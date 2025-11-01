@@ -1,0 +1,6 @@
+pywinauto
+pyautogui
+pillow
+pywin32
+gspread
+oauth2client
