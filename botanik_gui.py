@@ -147,6 +147,9 @@ class BotanikGUI:
         self.oturum_duraklatildi = False
         self.son_recete_sureleri = []  # Son 5 reçetenin süreleri (saniye)
 
+        # Yeniden başlatma sayacı
+        self.yeniden_baslatma_sayaci = 0
+
         # Aşama geçmişi
         self.log_gecmisi = []
 
@@ -575,6 +578,19 @@ class BotanikGUI:
         )
         self.stats_label.pack(fill="x", pady=2)
 
+        # Yeniden başlatma sayacı
+        self.restart_label = tk.Label(
+            stats_frame,
+            text="Program 0 kez yeniden başlatıldı",
+            font=("Arial", 7),
+            bg="#FFF3E0",
+            fg="#E65100",
+            relief="sunken",
+            bd=1,
+            height=1
+        )
+        self.restart_label.pack(fill="x", pady=(2, 0))
+
         # Durum
         status_frame = tk.Frame(main_frame, bg=self.bg_color)
         status_frame.pack(fill="both", expand=True)
@@ -931,6 +947,25 @@ class BotanikGUI:
                     fg='#2E7D32'
                 ).pack(side="left")
 
+                # İstatistik label
+                stats = self.timing.istatistik_al(ayar_key)
+                count = stats.get("count", 0)
+                avg = self.timing.ortalama_al(ayar_key)
+
+                if count > 0 and avg is not None:
+                    stat_text = f"({count}x, ort:{avg:.3f}s)"
+                else:
+                    stat_text = "(0x, ort:-)"
+
+                tk.Label(
+                    row_frame,
+                    text=stat_text,
+                    font=("Arial", 5),
+                    bg='#C8E6C9',
+                    fg='#616161',
+                    anchor="w"
+                ).pack(side="left", padx=(3, 0))
+
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
@@ -944,7 +979,7 @@ class BotanikGUI:
             font=("Arial", 8),
             bg='#FFA726',
             fg='white',
-            width=15,
+            width=13,
             height=1,
             command=self.varsayilana_don
         ).pack(side="left", padx=(0, 3))
@@ -955,9 +990,20 @@ class BotanikGUI:
             font=("Arial", 8, "bold"),
             bg='#388E3C',
             fg='white',
-            width=15,
+            width=13,
             height=1,
             command=self.ayarlari_kaydet
+        ).pack(side="left", padx=(0, 3))
+
+        tk.Button(
+            button_frame,
+            text="İstatistik Sıfırla",
+            font=("Arial", 8),
+            bg='#D32F2F',
+            fg='white',
+            width=13,
+            height=1,
+            command=self.istatistikleri_sifirla
         ).pack(side="left")
 
         # Durum mesajı
@@ -1035,6 +1081,20 @@ class BotanikGUI:
         except Exception as e:
             self.ayar_durum_label.config(text=f"❌ Hata: {e}", fg='#C62828')
 
+    def istatistikleri_sifirla(self):
+        """Tüm istatistikleri sıfırla"""
+        from tkinter import messagebox
+        cevap = messagebox.askyesno(
+            "İstatistikleri Sıfırla",
+            "Tüm sayfa yükleme istatistikleri silinecek. Emin misiniz?"
+        )
+        if cevap:
+            self.timing.istatistik_sifirla()
+            self.ayar_durum_label.config(text="✓ İstatistikler sıfırlandı", fg='#1B5E20')
+            self.log_ekle("✓ Sayfa yükleme istatistikleri sıfırlandı")
+            # Ayarlar sekmesini yenile (istatistikleri güncellemek için)
+            messagebox.showinfo("Bilgi", "İstatistikler sıfırlandı. Ayarlar sekmesi kapanıp açılırsa güncel değerler görünecektir.")
+
     def basla(self):
         """Başlat butonuna basıldığında"""
         logger.info(f"basla() çağrıldı: is_running={self.is_running}, secili_grup={self.secili_grup.get()}")
@@ -1106,7 +1166,13 @@ class BotanikGUI:
                 self.root.after(0, self.reset_ui)
                 return
 
-            self.root.after(0, lambda: self.log_ekle(f"🔄 Otomatik yeniden başlatma: Grup {self.aktif_grup}"))
+            # Sayacı artır ve güncelle
+            self.yeniden_baslatma_sayaci += 1
+            self.root.after(0, lambda: self.restart_label.config(
+                text=f"Program {self.yeniden_baslatma_sayaci} kez yeniden başlatıldı"
+            ))
+
+            self.root.after(0, lambda: self.log_ekle(f"🔄 Otomatik yeniden başlatma #{self.yeniden_baslatma_sayaci}: Grup {self.aktif_grup}"))
 
             # 1. MEDULA Giriş butonuna 2 kere bas
             self.root.after(0, lambda: self.log_ekle("📍 MEDULA Giriş butonuna basılıyor..."))

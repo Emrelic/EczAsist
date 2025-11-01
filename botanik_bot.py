@@ -33,6 +33,22 @@ class BotanikBot:
         # Zamanlama ayarları
         self.timing = get_timing_settings()
 
+    def timed_sleep(self, key, default=0.1):
+        """
+        Ayarlı bekleme süresi + istatistik kaydı
+
+        Args:
+            key (str): Timing ayar anahtarı
+            default (float): Varsayılan süre (bulunamazsa)
+        """
+        start_time = time.time()
+        sleep_duration = self.timing.get(key, default)
+        time.sleep(sleep_duration)
+        actual_duration = time.time() - start_time
+
+        # İstatistik kaydet
+        self.timing.kayit_ekle(key, actual_duration)
+
     def baglanti_kur(self, pencere_basligi="MEDULA", ilk_baglanti=False):
         """
         Medulla programına bağlan

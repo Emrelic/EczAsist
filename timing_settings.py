@@ -13,11 +13,15 @@ logger = logging.getLogger(__name__)
 class TimingSettings:
     """Zamanlama ayarlarını yöneten sınıf"""
 
-    def __init__(self, dosya_yolu="timing_settings.json"):
+    def __init__(self, dosya_yolu="timing_settings.json", istatistik_dosya="timing_stats.json"):
         # Dosyayı script'in bulunduğu dizine kaydet
         import os
         script_dir = os.path.dirname(os.path.abspath(__file__))
         self.dosya_yolu = Path(script_dir) / dosya_yolu
+        self.istatistik_dosya = Path(script_dir) / istatistik_dosya
+
+        # İstatistikler: {anahtar: {"count": 0, "total_time": 0.0}}
+        self.istatistikler = self.istatistik_yukle()
 
         # Varsayılan ayarlar (saniye cinsinden)
         self.varsayilan_ayarlar = {
@@ -161,6 +165,57 @@ class TimingSettings:
                 ("y_ikinci_deneme", "Y 2. Deneme"),
             ],
         }
+
+    def istatistik_yukle(self):
+        """İstatistikleri JSON dosyasından yükle"""
+        if self.istatistik_dosya.exists():
+            try:
+                with open(self.istatistik_dosya, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"İstatistik yükleme hatası: {e}")
+                return {}
+        return {}
+
+    def istatistik_kaydet(self):
+        """İstatistikleri JSON dosyasına kaydet"""
+        try:
+            with open(self.istatistik_dosya, 'w', encoding='utf-8') as f:
+                json.dump(self.istatistikler, f, indent=2, ensure_ascii=False)
+            return True
+        except Exception as e:
+            logger.error(f"İstatistik kaydetme hatası: {e}")
+            return False
+
+    def kayit_ekle(self, anahtar, gercek_sure):
+        """Bir işlem için gerçek süreyi kaydet"""
+        if anahtar not in self.istatistikler:
+            self.istatistikler[anahtar] = {"count": 0, "total_time": 0.0}
+
+        self.istatistikler[anahtar]["count"] += 1
+        self.istatistikler[anahtar]["total_time"] += gercek_sure
+
+        # Her 10 kayıtta bir otomatik kaydet
+        if self.istatistikler[anahtar]["count"] % 10 == 0:
+            self.istatistik_kaydet()
+
+    def ortalama_al(self, anahtar):
+        """Bir işlem için ortalama süreyi hesapla"""
+        if anahtar in self.istatistikler:
+            stats = self.istatistikler[anahtar]
+            if stats["count"] > 0:
+                return stats["total_time"] / stats["count"]
+        return None
+
+    def istatistik_al(self, anahtar):
+        """Bir işlem için tam istatistiği al"""
+        return self.istatistikler.get(anahtar, {"count": 0, "total_time": 0.0})
+
+    def istatistik_sifirla(self):
+        """Tüm istatistikleri sıfırla"""
+        self.istatistikler = {}
+        self.istatistik_kaydet()
+        logger.info("✓ İstatistikler sıfırlandı")
 
 
 # Global singleton
