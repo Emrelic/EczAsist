@@ -1300,8 +1300,21 @@ class BotanikGUI:
                 if self.stop_requested:
                     break
 
-            # Normal sonlanma (son reçete veya break) - UI'yi resetle
-            self.root.after(0, self.reset_ui)
+            # Normal sonlanma (son reçete veya break)
+            # Otomatik yeniden başlatma kontrolü
+            if self.aktif_grup and not self.stop_requested:
+                # Hata veya beklenmeyen durma - otomatik yeniden başlat
+                self.is_running = False
+                self.root.after(0, lambda: self.log_ekle("⏳ 2 saniye sonra otomatik yeniden başlatılacak..."))
+                time.sleep(2)
+
+                # Yeni thread'de yeniden başlat
+                recovery_thread = threading.Thread(target=self.otomatik_yeniden_baslat)
+                recovery_thread.daemon = True
+                recovery_thread.start()
+            else:
+                # Manuel durdurma veya aktif grup yok - UI'yi resetle
+                self.root.after(0, self.reset_ui)
 
         except Exception as e:
             logger.error(f"Otomasyon hatası: {e}", exc_info=True)
