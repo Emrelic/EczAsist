@@ -21,12 +21,11 @@ class MedulaSettings:
         # Varsayılan ayarlar
         self.varsayilan_ayarlar = {
             # Giriş Bilgileri
-            "kullanici_adi": "",
+            "kullanici_index": 0,  # Combobox'taki sıra (0=birinci, 1=ikinci, ...)
             "sifre": "",
 
-            # Masaüstü Simgesi
-            "masaustu_medula_path": "",
-            "masaustu_medula_name": "Botanik Medula",
+            # MEDULA Program Yolu (SABİT)
+            "medula_exe_path": r"C:\BotanikEczane\BotanikMedula.exe",
 
             # UI Element Tanımlamaları (Varsayılan)
             "giris_pencere_title": "BotanikEOS 2.1.199.0 (T)",
@@ -91,8 +90,8 @@ class MedulaSettings:
         return True
 
     def kullanici_bilgileri_dolu_mu(self):
-        """Kullanıcı adı ve şifre girilmiş mi?"""
-        return bool(self.ayarlar.get("kullanici_adi")) and bool(self.ayarlar.get("sifre"))
+        """Kullanıcı index ve şifre girilmiş mi?"""
+        return (self.ayarlar.get("kullanici_index") is not None) and bool(self.ayarlar.get("sifre"))
 
     def masaustu_path_dolu_mu(self):
         """Masaüstü MEDULA path'i girilmiş mi?"""

@@ -1936,6 +1936,584 @@ def medula_taskkill():
         return False
 
 
+def masaustu_medula_ac(medula_settings):
+    """
+    MEDULA programını exe dosyasından direkt çalıştır
+
+    Args:
+        medula_settings: MedulaSettings instance
+
+    Returns:
+        bool: Başarılıysa True
+    """
+    try:
+        import os
+        from timing_settings import get_timing_settings
+
+        timing = get_timing_settings()
+
+        # Ayarlardan exe yolunu al
+        exe_path = medula_settings.get("medula_exe_path", "")
+
+        if not exe_path or not os.path.exists(exe_path):
+            logger.error(f"MEDULA .exe dosyası bulunamadı: {exe_path}")
+            return False
+
+        logger.info(f"MEDULA programi baslatiliyor: {exe_path}")
+
+        # Subprocess ile exe'yi çalıştır
+        subprocess.Popen([exe_path])
+
+        logger.info("MEDULA programi baslatildi, giris penceresi bekleniyor...")
+        time.sleep(timing.get("masaustu_simge_bekleme"))
+
+        return True
+
+    except Exception as e:
+        logger.error(f"MEDULA programi baslatilamadi: {e}")
+        return False
+
+
+def medula_giris_yap(medula_settings):
+    """
+    MEDULA giriş penceresine kullanıcı adı ve şifre girerek giriş yap
+
+    Args:
+        medula_settings: MedulaSettings instance
+
+    Returns:
+        bool: Başarılıysa True
+    """
+    try:
+        from pywinauto import Desktop
+        import pyautogui
+        from timing_settings import get_timing_settings
+
+        timing = get_timing_settings()
+
+        logger.info("⏳ MEDULA giriş penceresi bekleniyor...")
+        time.sleep(timing.get("giris_pencere_bekleme"))
+
+        kullanici_index = medula_settings.get("kullanici_index", 0)
+        sifre = medula_settings.get("sifre")
+
+        if sifre is None or sifre == "":
+            logger.error("❌ MEDULA şifre ayarlanmamış!")
+            return False
+
+        logger.info(f"Kullanici index: {kullanici_index}")
+
+        desktop = Desktop(backend="uia")
+
+        # Giriş penceresini bul
+        giris_window = None
+        for window in desktop.windows():
+            try:
+                if "BotanikEOS" in window.window_text():
+                    giris_window = window
+                    break
+            except:
+                pass
+
+        if not giris_window:
+            logger.error("❌ MEDULA giriş penceresi bulunamadı")
+            return False
+
+        logger.info("✓ Giriş penceresi bulundu")
+
+        # ComboBox'tan kullanıcı seç - Index ile DOWN tuşu kullanarak
+        try:
+            logger.info(f"Kullanici combobox aranıyor...")
+
+            # Tüm UI elementlerini döngüyle tara ve ComboBox bul
+            all_controls = giris_window.descendants()
+            combobox = None
+
+            for ctrl in all_controls:
+                try:
+                    if "COMBOBOX" in ctrl.class_name().upper():
+                        combobox = ctrl
+                        logger.info(f"Combobox bulundu: {ctrl.class_name()}")
+                        break
+                except:
+                    pass
+
+            if combobox:
+                # ComboBox'ın koordinatlarını al
+                rect = combobox.rectangle()
+                x_center = (rect.left + rect.right) // 2
+                y_center = (rect.top + rect.bottom) // 2
+
+                logger.info(f"Combobox koordinatlari: x={x_center}, y={y_center}")
+
+                # Koordinata tıkla
+                logger.info("Combobox'a tıklanıyor...")
+                pyautogui.click(x_center, y_center)
+                time.sleep(0.5)
+
+                # Index kadar DOWN tuşuna bas
+                if kullanici_index > 0:
+                    logger.info(f"{kullanici_index} kere DOWN tuşuna basılıyor...")
+                    for i in range(kullanici_index):
+                        pyautogui.press('down')
+                        time.sleep(0.2)
+                else:
+                    logger.info("Index 0, birinci kullanici secilecek")
+
+                # Enter ile seç
+                logger.info("Enter basilarak kullanici seciliyor...")
+                pyautogui.press("enter")
+                time.sleep(timing.get("kullanici_secim"))
+                logger.info(f"Kullanici secildi (index: {kullanici_index})")
+            else:
+                logger.warning("Combobox bulunamadı!")
+
+        except Exception as e:
+            logger.error(f"ComboBox islemi basarisiz: {e}")
+            import traceback
+            traceback.print_exc()
+
+        # Şifre textbox'ına geç ve yaz
+        try:
+            logger.info("Sifre kutusuna geciliyor...")
+
+            # Şifre textbox'ını bul
+            sifre_textbox = None
+            all_controls = giris_window.descendants()
+
+            for ctrl in all_controls:
+                try:
+                    # Şifre kutusunu automation_id veya class_name ile bul
+                    if (hasattr(ctrl, 'automation_id') and ctrl.automation_id() == "txtSifre") or \
+                       ("EDIT" in ctrl.class_name().upper() and ctrl != combobox):
+                        sifre_textbox = ctrl
+                        logger.info(f"Sifre textbox bulundu: {ctrl.class_name()}")
+                        break
+                except:
+                    pass
+
+            if sifre_textbox:
+                # Şifre textbox'ının koordinatlarını al
+                rect = sifre_textbox.rectangle()
+                x_center = (rect.left + rect.right) // 2
+                y_center = (rect.top + rect.bottom) // 2
+
+                logger.info(f"Sifre textbox koordinatlari: x={x_center}, y={y_center}")
+
+                # Koordinata tıkla
+                logger.info("Sifre kutusuna tıklanıyor...")
+                pyautogui.click(x_center, y_center)
+                time.sleep(0.5)
+            else:
+                # Bulunamazsa TAB ile dene
+                logger.warning("Sifre textbox koordinat ile bulunamadi, TAB ile denenecek")
+                pyautogui.press("tab")
+                time.sleep(0.3)
+
+            # Şifreyi clipboard ile yapıştır
+            logger.info("Sifre clipboard'a kopyalanıyor...")
+            import pyperclip
+            pyperclip.copy(sifre)
+            time.sleep(0.2)
+
+            logger.info("Sifre yapıştırılıyor...")
+            pyautogui.hotkey('ctrl', 'v')
+            time.sleep(timing.get("sifre_yazma"))
+            logger.info("Sifre girildi")
+
+            # ENTER tuşuna bas
+            logger.info("Enter basilıyor...")
+            pyautogui.press("enter")
+            time.sleep(timing.get("giris_butonu"))
+            time.sleep(timing.get("giris_sonrasi_bekleme"))
+            logger.info("Giris yapildi, ana sayfa yukleniyor...")
+            return True
+
+        except Exception as e:
+            logger.error(f"Sifre girisi basarisiz: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    except Exception as e:
+        logger.error(f"MEDULA giris hatasi: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def recete_listesi_ac(bot):
+    """
+    MEDULA ana sayfasında "Reçete Listesi" butonuna tıkla
+
+    Args:
+        bot: BotanikBot instance
+
+    Returns:
+        bool: Başarılıysa True
+    """
+    try:
+        from timing_settings import get_timing_settings
+
+        timing = get_timing_settings()
+
+        if not bot or not bot.main_window:
+            logger.error("❌ Bot bağlantısı yok")
+            return False
+
+        logger.info("🔘 Reçete Listesi butonu aranıyor...")
+
+        # "Reçete Listesi" butonunu bul - Tüm butonları tara
+        try:
+            logger.info("Tüm butonlar taranıyor...")
+            all_buttons = bot.main_window.descendants(control_type="Button")
+
+            for btn in all_buttons:
+                try:
+                    btn_text = btn.window_text()
+                    if btn_text and "Reçete Listesi" in btn_text:
+                        logger.info(f"✓ Reçete Listesi butonu bulundu: '{btn_text}'")
+                        btn.click_input()
+                        logger.info("✓ Reçete Listesi butonuna tıklandı")
+                        time.sleep(timing.get("recete_listesi_butonu"))
+                        time.sleep(timing.get("recete_listesi_acilma"))
+                        return True
+                except:
+                    pass
+
+            logger.warning("Buton text'inde bulunamadı, AutomationId ile denenecek...")
+        except Exception as e:
+            logger.debug(f"Buton tarama hatası: {e}")
+
+        # Alternatif: AutomationId ile ara
+        try:
+            recete_listesi_btn = bot.main_window.descendants(auto_id="form1:menuHtmlCommandExButton31_MOUSE", control_type="Button")
+            if recete_listesi_btn and len(recete_listesi_btn) > 0:
+                recete_listesi_btn[0].click_input()
+                logger.info("✓ Reçete Listesi butonuna tıklandı (AutomationId)")
+                time.sleep(timing.get("recete_listesi_butonu"))
+                time.sleep(timing.get("recete_listesi_acilma"))
+                return True
+        except Exception as e:
+            logger.debug(f"AutomationId ile bulunamadı: {e}")
+
+        # Son deneme: Title ile ara
+        try:
+            recete_listesi_btn = bot.main_window.descendants(title_re=".*Reçete Listesi.*", control_type="Button")
+            if recete_listesi_btn and len(recete_listesi_btn) > 0:
+                recete_listesi_btn[0].click_input()
+                logger.info("✓ Reçete Listesi butonuna tıklandı (Title)")
+                time.sleep(timing.get("recete_listesi_butonu"))
+                time.sleep(timing.get("recete_listesi_acilma"))
+                return True
+        except Exception as e:
+            logger.debug(f"Title ile bulunamadı: {e}")
+
+        logger.error("❌ Reçete Listesi butonu bulunamadı")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Reçete Listesi açma hatası: {e}")
+        return False
+
+
+def donem_sec(bot, index=2):
+    """
+    Dönem seçme combobox'ında belirtilen index'i seç (0-based)
+
+    Args:
+        bot: BotanikBot instance
+        index: Seçilecek item indexi (varsayılan: 2 = 3. sıradaki item)
+
+    Returns:
+        bool: Başarılıysa True
+    """
+    try:
+        import pyautogui
+        from timing_settings import get_timing_settings
+
+        timing = get_timing_settings()
+
+        if not bot or not bot.main_window:
+            logger.error("❌ Bot bağlantısı yok")
+            return False
+
+        logger.info(f"🔘 Dönem seçiliyor (index={index})...")
+
+        # Dönem combobox'ını bul ve koordinat ile tıkla
+        try:
+            # Tüm ComboBox'ları bul
+            all_combos = bot.main_window.descendants(control_type="ComboBox")
+
+            logger.info(f"Toplam {len(all_combos)} ComboBox bulundu")
+
+            # ComboBox'ları logla
+            for i, combo in enumerate(all_combos):
+                try:
+                    combo_text = combo.window_text()
+                    logger.debug(f"ComboBox[{i}]: {combo_text}")
+                except:
+                    logger.debug(f"ComboBox[{i}]: (text okunamadı)")
+
+            donem_combobox = None
+
+            # Dönem combobox'ı genellikle 2. sırada (index=1)
+            if len(all_combos) >= 2:
+                donem_combobox = all_combos[1]  # İkinci ComboBox (index=1)
+                logger.info("İkinci ComboBox (index=1) dönem olarak seçildi")
+            elif len(all_combos) == 1:
+                donem_combobox = all_combos[0]  # Tek ComboBox varsa onu kullan
+                logger.info("Tek ComboBox bulundu, o kullanılıyor")
+            else:
+                logger.error("Hiç ComboBox bulunamadı")
+
+            if donem_combobox:
+                # ComboBox'ın koordinatlarını al
+                rect = donem_combobox.rectangle()
+                x_center = (rect.left + rect.right) // 2
+                y_center = (rect.top + rect.bottom) // 2
+
+                logger.info(f"Dönem ComboBox koordinatları: x={x_center}, y={y_center}")
+
+                # Koordinata tıkla
+                logger.info("Dönem ComboBox'a tıklanıyor...")
+                pyautogui.click(x_center, y_center)
+                time.sleep(timing.get("donem_combobox_tiklama"))
+
+                # Önce HOME tuşu ile en başa dön (önceki seçim hangi itemdeyse sıfırlansın)
+                logger.info("HOME tuşu ile en başa dönülüyor...")
+                pyautogui.press('home')
+                time.sleep(0.3)
+
+                # Index kadar DOWN tuşuna bas
+                if index > 0:
+                    logger.info(f"{index} kere DOWN tuşuna basılıyor...")
+                    for i in range(index):
+                        pyautogui.press('down')
+                        time.sleep(0.2)
+                else:
+                    logger.info("Index 0, birinci dönem seçilecek")
+
+                # Enter ile seç
+                logger.info("Enter basılarak dönem seçiliyor...")
+                pyautogui.press("enter")
+                time.sleep(timing.get("donem_secim"))
+                logger.info(f"✓ Dönem seçildi (index: {index})")
+                return True
+            else:
+                logger.error("❌ Dönem ComboBox bulunamadı")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Dönem seçimi hatası: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    except Exception as e:
+        logger.error(f"❌ Dönem seçme hatası: {e}")
+        return False
+
+
+def grup_butonuna_tikla(bot, grup):
+    """
+    A/B/C grup butonuna tıkla
+
+    Args:
+        bot: BotanikBot instance
+        grup: "A", "B" veya "C"
+
+    Returns:
+        bool: Başarılıysa True
+    """
+    try:
+        from timing_settings import get_timing_settings
+
+        timing = get_timing_settings()
+
+        if not bot or not bot.main_window:
+            logger.error("❌ Bot bağlantısı yok")
+            return False
+
+        logger.info(f"🔘 {grup} grubu butonu aranıyor...")
+
+        # Grup butonunu bul ve tıkla
+        grup_mapping = {
+            "A": "A",
+            "B": "B",
+            "C": "C Sıralı"
+        }
+
+        grup_text = grup_mapping.get(grup.upper())
+        if not grup_text:
+            logger.error(f"❌ Geçersiz grup: {grup}")
+            return False
+
+        try:
+            # Text elementi bul
+            grup_elements = bot.main_window.descendants(title=grup_text, control_type="Text")
+            if grup_elements and len(grup_elements) > 0:
+                # Text elementinin parent'ına tıkla (DataItem veya başka bir container olabilir)
+                try:
+                    # Text'in kendisine tıklayalım
+                    grup_elements[0].click_input()
+                    logger.info(f"✓ {grup} grubu butonuna tıklandı")
+                    time.sleep(timing.get("grup_butonu_tiklama"))
+                    time.sleep(timing.get("grup_sorgulama"))
+                    return True
+                except:
+                    # Parent'a tıklamayı dene
+                    parent = grup_elements[0].parent()
+                    parent.click_input()
+                    logger.info(f"✓ {grup} grubu butonuna tıklandı (parent)")
+                    time.sleep(timing.get("grup_butonu_tiklama"))
+                    time.sleep(timing.get("grup_sorgulama"))
+                    return True
+        except Exception as e:
+            logger.debug(f"Text elementi ile bulunamadı: {e}")
+
+        logger.error(f"❌ {grup} grubu butonu bulunamadı")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Grup butonu tıklama hatası: {e}")
+        return False
+
+
+def bulunamadi_mesaji_kontrol(bot):
+    """
+    "Bu döneme ait sonlandırılmamış reçete bulunamadı" mesajını kontrol et
+
+    Args:
+        bot: BotanikBot instance
+
+    Returns:
+        bool: Mesaj varsa True
+    """
+    try:
+        from timing_settings import get_timing_settings
+
+        timing = get_timing_settings()
+
+        if not bot or not bot.main_window:
+            logger.error("❌ Bot bağlantısı yok")
+            return False
+
+        logger.debug("🔍 'Bu döneme ait sonlandırılmamış reçete bulunamadı' mesajı aranıyor...")
+
+        time.sleep(timing.get("bulunamadi_mesaji_kontrol"))
+
+        # "Bu döneme ait sonlandırılmamış reçete bulunamadı" text elementini ara
+        try:
+            text_elements = bot.main_window.descendants(control_type="Text")
+            for text in text_elements:
+                try:
+                    text_value = text.window_text()
+                    if "Bu döneme ait sonlandırılmamış reçete bulunamadı" in text_value:
+                        logger.info("✓ 'Bu döneme ait sonlandırılmamış reçete bulunamadı' mesajı bulundu")
+                        return True
+                except:
+                    pass
+        except Exception as e:
+            logger.debug(f"Text element araması hatası: {e}")
+
+        logger.debug("ℹ 'Bu döneme ait sonlandırılmamış reçete bulunamadı' mesajı bulunamadı")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Bulunamadı mesajı kontrolü hatası: {e}")
+        return False
+
+
+def ilk_recete_ac(bot):
+    """
+    "Son İşlem Tarihi" labelinin orta noktasından 26 piksel aşağıya tıklayarak ilk reçeteyi aç
+
+    Args:
+        bot: BotanikBot instance
+
+    Returns:
+        bool: Başarılıysa True
+    """
+    try:
+        import pyautogui
+        from timing_settings import get_timing_settings
+
+        timing = get_timing_settings()
+
+        if not bot or not bot.main_window:
+            logger.error("❌ Bot bağlantısı yok")
+            return False
+
+        logger.info("🔘 İlk reçete açılıyor...")
+
+        # "Son İşlem Tarihi" veya "Son İşl.Tar." labelini bul
+        try:
+            # Tüm Text elementlerini tara
+            all_texts = bot.main_window.descendants(control_type="Text")
+
+            son_islem_label = None
+
+            for text_elem in all_texts:
+                try:
+                    text_value = text_elem.window_text()
+                    if text_value and "Son İşl" in text_value:
+                        son_islem_label = text_elem
+                        logger.info(f"✓ Label bulundu: '{text_value}'")
+                        break
+                except:
+                    pass
+
+            if son_islem_label:
+                # Koordinatları al
+                rect = son_islem_label.rectangle()
+
+                # Orta noktayı hesapla
+                center_x = (rect.left + rect.right) // 2
+                center_y = (rect.top + rect.bottom) // 2
+
+                # 25 piksel aşağıya tıkla
+                click_x = center_x
+                click_y = center_y + 25
+
+                logger.info(f"✓ Son İşlem Tarihi koordinatları: ({center_x}, {center_y})")
+                logger.info(f"🖱 İlk reçete tıklanıyor: ({click_x}, {click_y})")
+
+                # Çift tıkla (reçete açmak için genellikle çift tıklama gerekir)
+                pyautogui.doubleClick(click_x, click_y)
+                time.sleep(timing.get("ilk_recete_tiklama"))
+                time.sleep(timing.get("recete_acilma"))
+
+                logger.info("✓ İlk reçete açıldı")
+                return True
+            else:
+                logger.error("❌ 'Son İşlem Tarihi' label bulunamadı")
+
+                # Alternatif: İlk ListItem'ı dene
+                logger.info("Alternatif yöntem: İlk ListItem aranıyor...")
+                list_items = bot.main_window.descendants(control_type="ListItem")
+
+                if list_items and len(list_items) > 0:
+                    first_item = list_items[0]
+                    rect = first_item.rectangle()
+                    center_x = (rect.left + rect.right) // 2
+                    center_y = (rect.top + rect.bottom) // 2
+
+                    logger.info(f"✓ İlk ListItem bulundu, çift tıklanıyor: ({center_x}, {center_y})")
+                    pyautogui.doubleClick(center_x, center_y)
+                    time.sleep(timing.get("ilk_recete_tiklama"))
+                    time.sleep(timing.get("recete_acilma"))
+                    return True
+                else:
+                    logger.error("❌ ListItem de bulunamadı")
+                    return False
+
+        except Exception as e:
+            logger.error(f"❌ İlk reçete açma hatası: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    except Exception as e:
+        logger.error(f"❌ İlk reçete açma hatası: {e}")
+        return False
+
+
 def medula_ac_ve_giris_yap(medula_settings):
     """
     Masaüstünden MEDULA'yı aç ve giriş yap

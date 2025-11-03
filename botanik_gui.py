@@ -189,6 +189,9 @@ class BotanikGUI:
         # MEDULA'yı başlangıçta sol %80'e yerleştir
         self.root.after(800, self.medula_pencere_ayarla)
 
+        # Wizard kontrolü (ayarlar eksikse göster)
+        self.root.after(1000, self.wizard_kontrol)
+
     def medula_pencere_ayarla(self):
         """MEDULA penceresini başlangıçta sol 4/5'e yerleştir"""
         try:
@@ -233,14 +236,35 @@ class BotanikGUI:
             except:
                 pass
 
-            # Maximize ise restore et
+            # Minimize veya Maximize ise restore et
             try:
                 placement = win32gui.GetWindowPlacement(medula_hwnd)
-                if placement[1] == win32con.SW_SHOWMAXIMIZED:
+                current_state = placement[1]
+
+                # SW_SHOWMINIMIZED=2, SW_SHOWMAXIMIZED=3
+                # Minimize veya maximize ise restore et
+                if current_state == win32con.SW_SHOWMINIMIZED or current_state == win32con.SW_SHOWMAXIMIZED:
+                    logger.info(f"MEDULA durumu: {'minimize' if current_state == 2 else 'maximize'}, restore ediliyor...")
                     win32gui.ShowWindow(medula_hwnd, win32con.SW_RESTORE)
-                    time.sleep(0.3)  # Güvenli hasta takibi için: 0.2 → 0.3
-            except:
-                pass
+                    time.sleep(0.5)  # Restore için bekle
+
+                # Eğer -32000 koordinatlarında ise (minimize durumu), zorla restore et
+                eski_rect = win32gui.GetWindowRect(medula_hwnd)
+                if eski_rect[0] < -10000 or eski_rect[1] < -10000:
+                    logger.info("MEDULA minimize koordinatlarda, zorla restore ediliyor...")
+                    win32gui.ShowWindow(medula_hwnd, win32con.SW_RESTORE)
+                    time.sleep(0.5)
+                    # Pencereyi görünür yap
+                    win32gui.ShowWindow(medula_hwnd, win32con.SW_SHOW)
+                    time.sleep(0.3)
+            except Exception as e:
+                logger.warning(f"MEDULA restore işlemi hatası: {e}")
+                # Yine de restore dene
+                try:
+                    win32gui.ShowWindow(medula_hwnd, win32con.SW_RESTORE)
+                    time.sleep(0.5)
+                except:
+                    pass
 
             # Önce SetWindowPos ile yerleştir
             flags = win32con.SWP_SHOWWINDOW
@@ -278,6 +302,31 @@ class BotanikGUI:
 
         except Exception as e:
             logger.debug(f"MEDULA pencere ayarlanamadı: {e}")
+
+    def wizard_kontrol(self):
+        """MEDULA ayarlarını kontrol et, eksikse wizard'ı göster"""
+        try:
+            # Ayarları kontrol et
+            # Ayarların dolu olup olmadığını kontrol et
+            if not self.medula_settings.kullanici_bilgileri_dolu_mu():
+                logger.info("MEDULA ayarları eksik, wizard açılıyor...")
+
+                from medula_wizard import wizard_goster
+
+                # Wizard'ı göster
+                sonuc = wizard_goster(self.root, self.medula_settings)
+
+                if sonuc:
+                    logger.info("✓ Wizard tamamlandı, ayarlar kaydedildi")
+                    self.log_ekle("✓ MEDULA ayarları yapılandırıldı")
+                else:
+                    logger.warning("⚠ Wizard iptal edildi")
+                    self.log_ekle("⚠ MEDULA ayarları yapılandırılmadı")
+            else:
+                logger.info("✓ MEDULA ayarları mevcut, wizard atlanıyor")
+
+        except Exception as e:
+            logger.error(f"Wizard kontrol hatası: {e}")
 
     def konsolu_arkaya_gonder(self):
         """Konsol penceresini GUI'nin arkasına gönder"""
@@ -385,6 +434,160 @@ class BotanikGUI:
                 logger.debug("Konsol penceresi bulunamadı (pythonw ile çalışıyor olabilir)")
         except Exception as e:
             logger.error(f"Konsol konumlandırma hatası: {e}", exc_info=True)
+
+    def tum_pencereleri_yerlestir(self):
+        """
+        Tüm pencereleri yerleştir:
+        - MEDULA: Sol 4/5
+        - GUI: Sağ üst 1/5, üstten 2/3
+        - Konsol: Sağ alt 1/5, alttan 1/3
+        """
+        try:
+            import win32gui
+            import win32con
+            import ctypes
+
+            logger.info("🖼 Tüm pencereler yerleştiriliyor...")
+
+            # 1. MEDULA penceresini yerleştir (Sol 4/5)
+            if self.bot and self.bot.main_window:
+                try:
+                    medula_hwnd = self.bot.main_window.handle
+
+                    medula_x = 0
+                    medula_y = 0
+                    medula_width = int(self.screen_width * 4/5)
+                    medula_height = self.screen_height
+
+                    logger.info(f"MEDULA yerleştirilecek: x={medula_x}, y={medula_y}, w={medula_width}, h={medula_height}")
+
+                    # Restore (minimize ise)
+                    win32gui.ShowWindow(medula_hwnd, win32con.SW_RESTORE)
+                    time.sleep(0.1)
+
+                    # Yerleştir
+                    win32gui.SetWindowPos(
+                        medula_hwnd,
+                        win32con.HWND_TOP,
+                        medula_x, medula_y,
+                        medula_width, medula_height,
+                        win32con.SWP_SHOWWINDOW
+                    )
+                    time.sleep(0.05)
+                    win32gui.MoveWindow(medula_hwnd, medula_x, medula_y, medula_width, medula_height, True)
+
+                    logger.info("✓ MEDULA sol 4/5'e yerleştirildi")
+                except Exception as e:
+                    logger.warning(f"MEDULA yerleştirilemedi: {e}")
+
+            # 2. GUI penceresini yerleştir (Sağ üst 1/5, üstten 2/3)
+            try:
+                gui_x = int(self.screen_width * 4/5)
+                gui_y = 0
+                gui_width = int(self.screen_width * 1/5)
+                gui_height = int(self.screen_height * 2/3)
+
+                logger.info(f"GUI yerleştirilecek: x={gui_x}, y={gui_y}, w={gui_width}, h={gui_height}")
+
+                self.root.geometry(f"{gui_width}x{gui_height}+{gui_x}+{gui_y}")
+                self.root.update()
+
+                logger.info("✓ GUI sağ üst 1/5'e yerleştirildi")
+            except Exception as e:
+                logger.warning(f"GUI yerleştirilemedi: {e}")
+
+            # 3. Konsol penceresini yerleştir (Sağ alt 1/5, alttan 1/3)
+            try:
+                hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+
+                if hwnd:
+                    console_x = int(self.screen_width * 4/5)
+                    console_y = int(self.screen_height * 2/3)
+                    console_width = int(self.screen_width * 1/5)
+                    console_height = int(self.screen_height * 1/3)
+
+                    logger.info(f"Konsol yerleştirilecek: x={console_x}, y={console_y}, w={console_width}, h={console_height}")
+                    logger.info(f"Ekran boyutu: {self.screen_width}x{self.screen_height}")
+
+                    # Önce normal göster
+                    win32gui.ShowWindow(hwnd, win32con.SW_SHOWNORMAL)
+                    time.sleep(0.3)
+
+                    # Maximize'dan çık
+                    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                    time.sleep(0.3)
+
+                    # 5 kez ısrarla dene - konsol inatçı olabiliyor
+                    for deneme in range(5):
+                        logger.info(f"Konsol yerleştirme deneme {deneme+1}/5...")
+
+                        # 1. Yöntem: SetWindowPos
+                        try:
+                            win32gui.SetWindowPos(
+                                hwnd,
+                                win32con.HWND_TOP,
+                                console_x, console_y,
+                                console_width, console_height,
+                                win32con.SWP_SHOWWINDOW | win32con.SWP_NOZORDER
+                            )
+                        except Exception as e:
+                            logger.debug(f"SetWindowPos hatası: {e}")
+
+                        time.sleep(0.2)
+
+                        # 2. Yöntem: MoveWindow (daha güçlü)
+                        try:
+                            win32gui.MoveWindow(hwnd, console_x, console_y, console_width, console_height, True)
+                        except Exception as e:
+                            logger.debug(f"MoveWindow hatası: {e}")
+
+                        time.sleep(0.3)
+
+                        # Gerçek pozisyonu kontrol et
+                        try:
+                            rect = win32gui.GetWindowRect(hwnd)
+                            gercek_x = rect[0]
+                            gercek_y = rect[1]
+                            gercek_w = rect[2] - rect[0]
+                            gercek_h = rect[3] - rect[1]
+
+                            logger.info(f"  → Gerçek pozisyon: x={gercek_x}, y={gercek_y}, w={gercek_w}, h={gercek_h}")
+
+                            # Doğru yere yerleşti mi? (20 piksel tolerans)
+                            x_dogru = abs(gercek_x - console_x) < 20
+                            y_dogru = abs(gercek_y - console_y) < 20
+
+                            if x_dogru and y_dogru:
+                                logger.info(f"✓ Konsol sağ alt köşeye yerleştirildi ({deneme+1}. denemede)")
+                                break
+                            else:
+                                logger.warning(f"  ✗ Henüz yerleşmedi (x fark: {gercek_x - console_x}, y fark: {gercek_y - console_y})")
+                        except Exception as e:
+                            logger.debug(f"Pozisyon kontrolü hatası: {e}")
+
+                    # Son kontrol
+                    try:
+                        final_rect = win32gui.GetWindowRect(hwnd)
+                        logger.info(f"Konsol son pozisyon: x={final_rect[0]}, y={final_rect[1]}, w={final_rect[2]-final_rect[0]}, h={final_rect[3]-final_rect[1]}")
+                    except:
+                        pass
+
+                    logger.info("✓ Konsol yerleştirme tamamlandı")
+                else:
+                    logger.debug("Konsol penceresi bulunamadı")
+            except Exception as e:
+                logger.warning(f"Konsol yerleştirilemedi: {e}")
+                import traceback
+                traceback.print_exc()
+
+            # GUI'yi öne al
+            self.root.lift()
+            self.root.focus_force()
+
+            logger.info("✅ Tüm pencereler yerleştirildi")
+
+        except Exception as e:
+            logger.error(f"Pencere yerleştirme hatası: {e}", exc_info=True)
 
     def create_widgets(self):
         """Arayüzü oluştur"""
@@ -783,8 +986,13 @@ class BotanikGUI:
             thread.daemon = True
             thread.start()
         else:
-            # İlk reçete
-            self.log_ekle(f"ℹ İlk reçete - Elle açın")
+            # İlk reçete - Yeni akış başlat
+            self.log_ekle(f"ℹ İlk reçete - Otomatik başlatılıyor...")
+
+            # Thread'de yeni akışı başlat
+            thread = threading.Thread(target=self.ilk_recete_akisi, args=(grup,))
+            thread.daemon = True
+            thread.start()
 
     def recete_ac(self, grup, recete_no):
         """Reçeteyi otomatik aç (thread'de çalışır)"""
@@ -833,11 +1041,220 @@ class BotanikGUI:
                 return
 
             self.root.after(0, lambda: self.log_ekle(f"✅ Reçete açıldı: {recete_no}"))
-            self.root.after(0, lambda: self.log_ekle("▶ BAŞLAT'a basın"))
+
+            # Tüm pencereleri yerleştir
+            self.root.after(0, lambda: self.log_ekle("🖼 Pencereler yerleştiriliyor..."))
+            self.tum_pencereleri_yerlestir()
+            time.sleep(0.5)
+
+            self.root.after(0, lambda: self.log_ekle("▶ Otomatik olarak başlatılıyor..."))
+
+            # 1 saniye bekle ve otomatik olarak başlat
+            time.sleep(1)
+            self.root.after(0, self.basla)
 
         except Exception as e:
             logger.error(f"Reçete açma hatası: {e}")
             self.root.after(0, lambda: self.log_ekle(f"❌ Hata: {e}"))
+
+    def ilk_recete_akisi(self, grup):
+        """
+        İlk reçete için tam akış (masaüstü simgesi → giriş → reçete listesi → grup seçimi → ilk reçete)
+        """
+        try:
+            from botanik_bot import (
+                masaustu_medula_ac,
+                medula_giris_yap,
+                recete_listesi_ac,
+                donem_sec,
+                grup_butonuna_tikla,
+                bulunamadi_mesaji_kontrol,
+                ilk_recete_ac
+            )
+            from pywinauto import Desktop
+            import win32gui
+            import win32con
+
+            self.root.after(0, lambda: self.log_ekle("🚀 Grup {} için tam akış başlatılıyor...".format(grup)))
+
+            # MEDULA zaten açık mı kontrol et
+            medula_zaten_acik = False
+            medula_hwnd = None
+
+            try:
+                desktop = Desktop(backend="uia")
+                for window in desktop.windows():
+                    try:
+                        if "MEDULA" in window.window_text() and "BotanikEOS" not in window.window_text():
+                            medula_zaten_acik = True
+                            medula_hwnd = window.handle
+                            self.root.after(0, lambda: self.log_ekle("ℹ MEDULA zaten açık, restore ediliyor..."))
+                            break
+                    except:
+                        pass
+            except Exception as e:
+                logger.debug(f"MEDULA kontrol hatası: {e}")
+
+            # Eğer MEDULA açıksa, restore et ve giriş adımını atla
+            if medula_zaten_acik and medula_hwnd:
+                try:
+                    # Minimize ise restore et
+                    placement = win32gui.GetWindowPlacement(medula_hwnd)
+                    current_state = placement[1]
+
+                    if current_state == win32con.SW_SHOWMINIMIZED:
+                        self.root.after(0, lambda: self.log_ekle("📍 MEDULA minimize durumda, restore ediliyor..."))
+                        win32gui.ShowWindow(medula_hwnd, win32con.SW_RESTORE)
+                        time.sleep(0.5)
+
+                    # Koordinat kontrolü
+                    rect = win32gui.GetWindowRect(medula_hwnd)
+                    if rect[0] < -10000 or rect[1] < -10000:
+                        self.root.after(0, lambda: self.log_ekle("📍 MEDULA gizli konumda, görünür yapılıyor..."))
+                        win32gui.ShowWindow(medula_hwnd, win32con.SW_RESTORE)
+                        time.sleep(0.3)
+                        win32gui.ShowWindow(medula_hwnd, win32con.SW_SHOW)
+                        time.sleep(0.3)
+
+                    self.root.after(0, lambda: self.log_ekle("✓ MEDULA restore edildi"))
+                except Exception as e:
+                    self.root.after(0, lambda err=str(e): self.log_ekle(f"⚠ MEDULA restore hatası: {err}"))
+
+                # Bot'a bağlan
+                self.root.after(0, lambda: self.log_ekle("🔌 MEDULA'ya bağlanılıyor..."))
+                if self.bot is None:
+                    self.bot = BotanikBot()
+
+                if not self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
+                    self.root.after(0, lambda: self.log_ekle("❌ MEDULA'ya bağlanılamadı"))
+                    self.root.after(0, self.hata_sesi_calar)
+                    return
+
+                self.root.after(0, lambda: self.log_ekle("✓ MEDULA'ya bağlandı"))
+                time.sleep(1)
+
+            else:
+                # MEDULA açık değil, tam akış başlat
+                # 1. Masaüstü simgesine çift tıkla
+                self.root.after(0, lambda: self.log_ekle("🖱 Masaüstü simgesine tıklanıyor..."))
+                if not masaustu_medula_ac(self.medula_settings):
+                    self.root.after(0, lambda: self.log_ekle("❌ Masaüstü simgesi açılamadı"))
+                    self.root.after(0, self.hata_sesi_calar)
+                    return
+
+                # 2. MEDULA giriş yap
+                self.root.after(0, lambda: self.log_ekle("🔐 MEDULA girişi yapılıyor..."))
+                if not medula_giris_yap(self.medula_settings):
+                    self.root.after(0, lambda: self.log_ekle("❌ MEDULA girişi başarısız"))
+                    self.root.after(0, self.hata_sesi_calar)
+                    return
+
+                # 3. Bot'a bağlan
+                self.root.after(0, lambda: self.log_ekle("🔌 MEDULA'ya bağlanılıyor..."))
+                if self.bot is None:
+                    self.bot = BotanikBot()
+
+                if not self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
+                    self.root.after(0, lambda: self.log_ekle("❌ MEDULA'ya bağlanılamadı"))
+                    self.root.after(0, self.hata_sesi_calar)
+                    return
+
+                self.root.after(0, lambda: self.log_ekle("✓ MEDULA'ya bağlandı"))
+                time.sleep(1)  # Adım arası bekleme
+
+            # 4. Reçete Listesi'ne tıkla
+            self.root.after(0, lambda: self.log_ekle("📋 Reçete Listesi açılıyor..."))
+            if not recete_listesi_ac(self.bot):
+                self.root.after(0, lambda: self.log_ekle("❌ Reçete Listesi açılamadı"))
+                self.root.after(0, self.hata_sesi_calar)
+                return
+
+            # Pencereyi yenile
+            self.bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+            time.sleep(1)  # Adım arası bekleme
+
+            # 5. Dönem seç (index=2, yani 3. sıradaki)
+            self.root.after(0, lambda: self.log_ekle("📅 Dönem seçiliyor (3. sıra)..."))
+            if not donem_sec(self.bot, index=2):
+                self.root.after(0, lambda: self.log_ekle("❌ Dönem seçilemedi"))
+                self.root.after(0, self.hata_sesi_calar)
+                return
+
+            # Pencereyi yenile
+            self.bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+            time.sleep(1)  # Adım arası bekleme
+
+            # 6. Grup butonuna tıkla
+            self.root.after(0, lambda: self.log_ekle(f"📁 {grup} grubu sorgulanıyor..."))
+            if not grup_butonuna_tikla(self.bot, grup):
+                self.root.after(0, lambda: self.log_ekle(f"❌ {grup} grubu sorgulanamadı"))
+                self.root.after(0, self.hata_sesi_calar)
+                return
+
+            # Pencereyi yenile
+            self.bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+            time.sleep(1)  # Adım arası bekleme
+
+            # 7. "Bulunamadı" mesajı kontrolü
+            self.root.after(0, lambda: self.log_ekle("🔍 Reçete varlığı kontrol ediliyor..."))
+            if bulunamadi_mesaji_kontrol(self.bot):
+                # Mesaj var, 2. dönemi dene (index=1)
+                self.root.after(0, lambda: self.log_ekle("⚠ 3. dönemde reçete yok, 2. dönem deneniyor..."))
+
+                # Dönem seç (index=1, yani 2. sıradaki)
+                if not donem_sec(self.bot, index=1):
+                    self.root.after(0, lambda: self.log_ekle("❌ 2. dönem seçilemedi"))
+                    self.root.after(0, self.hata_sesi_calar)
+                    return
+
+                # Pencereyi yenile
+                self.bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+                time.sleep(1)
+
+                # Grup butonuna tekrar tıkla
+                self.root.after(0, lambda: self.log_ekle(f"📁 {grup} grubu (2. dönem) sorgulanıyor..."))
+                if not grup_butonuna_tikla(self.bot, grup):
+                    self.root.after(0, lambda: self.log_ekle(f"❌ {grup} grubu sorgulanamadı"))
+                    self.root.after(0, self.hata_sesi_calar)
+                    return
+
+                # Pencereyi yenile
+                self.bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+                time.sleep(1)
+
+                # Tekrar kontrol et
+                if bulunamadi_mesaji_kontrol(self.bot):
+                    self.root.after(0, lambda: self.log_ekle("❌ 2. dönemde de reçete bulunamadı"))
+                    self.root.after(0, self.hata_sesi_calar)
+                    return
+
+            # 8. İlk reçete aç
+            self.root.after(0, lambda: self.log_ekle("🔘 İlk reçete açılıyor..."))
+            if not ilk_recete_ac(self.bot):
+                self.root.after(0, lambda: self.log_ekle("❌ İlk reçete açılamadı"))
+                self.root.after(0, self.hata_sesi_calar)
+                return
+
+            # Pencereyi yenile
+            self.bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+
+            self.root.after(0, lambda: self.log_ekle("✅ İlk reçete başarıyla açıldı"))
+
+            # Tüm pencereleri yerleştir
+            self.root.after(0, lambda: self.log_ekle("🖼 Pencereler yerleştiriliyor..."))
+            self.tum_pencereleri_yerlestir()
+            time.sleep(0.5)
+
+            self.root.after(0, lambda: self.log_ekle("▶ Otomatik olarak başlatılıyor..."))
+
+            # 1 saniye bekle ve otomatik olarak başlat
+            time.sleep(1)
+            self.root.after(0, self.basla)
+
+        except Exception as e:
+            logger.error(f"İlk reçete akışı hatası: {e}", exc_info=True)
+            self.root.after(0, lambda err=str(e): self.log_ekle(f"❌ Hata: {err}"))
+            self.root.after(0, self.hata_sesi_calar)
 
     def grup_sifirla(self, grup):
         """X butonuna basıldığında grubu sıfırla"""

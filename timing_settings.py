@@ -62,6 +62,32 @@ class TimingSettings:
             # LABA/LAMA ve Yeniden Deneme
             "laba_sonrasi_bekleme": 0.3,        # LABA kapatıldıktan sonra
             "y_ikinci_deneme": 0.225,           # Y butonu 2. deneme
+
+            # Masaüstü İşlemleri
+            "masaustu_simge_tiklama": 1.0,      # Masaüstü simgesine çift tıklama
+            "masaustu_simge_bekleme": 3.0,      # Simge tıklandıktan sonra program açılmasını bekleme
+
+            # MEDULA Giriş İşlemleri
+            "giris_pencere_bekleme": 2.0,       # Giriş penceresinin açılmasını bekleme
+            "kullanici_combobox_ac": 0.5,       # Kullanıcı combobox'ını açma
+            "kullanici_secim": 0.5,             # Kullanıcı seçimi
+            "sifre_yazma": 0.5,                 # Şifre yazma
+            "giris_butonu": 1.0,                # Giriş butonuna tıklama
+            "giris_sonrasi_bekleme": 5.0,       # Giriş sonrası ana sayfanın açılmasını bekleme
+
+            # Reçete Listesi İşlemleri
+            "recete_listesi_butonu": 1.0,       # Reçete Listesi butonuna tıklama
+            "recete_listesi_acilma": 2.0,       # Reçete Listesi ekranının açılmasını bekleme
+            "donem_combobox_tiklama": 0.5,      # Dönem combobox'ına tıklama
+            "donem_secim": 1.0,                 # Dönem seçimi
+            "grup_butonu_tiklama": 1.0,         # A/B/C grup butonuna tıklama
+            "grup_sorgulama": 2.0,              # Grup sorgulama sonrası bekleme
+            "bulunamadi_mesaji_kontrol": 1.0,   # "Bu döneme ait sonlandırılmamış reçete bulunamadı" mesajı kontrolü
+            "ilk_recete_tiklama": 1.0,          # İlk reçeteye tıklama
+            "recete_acilma": 2.0,               # Reçete ekranının açılmasını bekleme
+
+            # Genel Adım Arası Bekleme
+            "adim_arasi_bekleme": 1.0,          # Her adım arasında varsayılan bekleme (1 saniye)
         }
 
         self.ayarlar = self.yukle()
@@ -156,6 +182,29 @@ class TimingSettings:
                 ("uyari_kapat", "Uyarı Kapat"),
                 ("laba_uyari", "LABA/LAMA Uyarı"),
             ],
+            "Masaüstü İşlemleri": [
+                ("masaustu_simge_tiklama", "Simge Tıklama"),
+                ("masaustu_simge_bekleme", "Simge Bekleme"),
+            ],
+            "MEDULA Giriş": [
+                ("giris_pencere_bekleme", "Giriş Pencere"),
+                ("kullanici_combobox_ac", "Kullanıcı Combobox Aç"),
+                ("kullanici_secim", "Kullanıcı Seçim"),
+                ("sifre_yazma", "Şifre Yazma"),
+                ("giris_butonu", "Giriş Butonu"),
+                ("giris_sonrasi_bekleme", "Giriş Sonrası"),
+            ],
+            "Reçete Listesi": [
+                ("recete_listesi_butonu", "Liste Butonu"),
+                ("recete_listesi_acilma", "Liste Açılma"),
+                ("donem_combobox_tiklama", "Dönem Combobox"),
+                ("donem_secim", "Dönem Seçim"),
+                ("grup_butonu_tiklama", "Grup Butonu"),
+                ("grup_sorgulama", "Grup Sorgulama"),
+                ("bulunamadi_mesaji_kontrol", "Bulunamadı Mesaj"),
+                ("ilk_recete_tiklama", "İlk Reçete Tıklama"),
+                ("recete_acilma", "Reçete Açılma"),
+            ],
             "Diğer İşlemler": [
                 ("ilac_ekran_bekleme", "İlaç Ekran Kontrol"),
                 ("ilac_secim_bekleme", "İlaç Seçim"),
@@ -163,6 +212,7 @@ class TimingSettings:
                 ("genel_gecis", "Genel Geçiş"),
                 ("laba_sonrasi_bekleme", "LABA Sonrası"),
                 ("y_ikinci_deneme", "Y 2. Deneme"),
+                ("adim_arasi_bekleme", "Adım Arası Bekleme"),
             ],
         }
 
