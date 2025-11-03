@@ -16,6 +16,9 @@ import winsound
 from datetime import datetime
 from botanik_bot import BotanikBot, tek_recete_isle
 from timing_settings import get_timing_settings
+from database import get_database
+from session_logger import SessionLogger
+from medula_settings import get_medula_settings
 
 # Logging ayarları
 logging.basicConfig(
@@ -149,6 +152,7 @@ class BotanikGUI:
 
         # Yeniden başlatma sayacı
         self.yeniden_baslatma_sayaci = 0
+        self.taskkill_sayaci = 0  # Taskkill sayacı
 
         # Aşama geçmişi
         self.log_gecmisi = []
@@ -157,6 +161,17 @@ class BotanikGUI:
         self.timing = get_timing_settings()
         self.ayar_entry_widgets = {}  # Ayar entry widget'larını sakla
         self.ayar_kaydet_timer = None  # Debounce timer
+
+        # MEDULA ayarları
+        self.medula_settings = get_medula_settings()
+
+        # Database ve oturum tracking
+        self.database = get_database()
+        self.aktif_oturum_id = None  # Aktif oturum ID
+        self.session_logger = None  # Oturum log dosyası
+
+        # CAPTCHA modu
+        self.captcha_bekleniyor = False
 
         self.create_widgets()
         self.load_grup_verileri()
@@ -552,6 +567,41 @@ class BotanikGUI:
             command=self.durdur
         )
         self.stop_button.pack(side="left", expand=True)
+
+        # CAPTCHA Devam Et Butonu (başlangıçta gizli)
+        self.captcha_button = tk.Button(
+            buttons_frame,
+            text="CAPTCHA Girdim\nDevam Et ▶",
+            font=("Arial", 9, "bold"),
+            bg="#FF9800",
+            fg="white",
+            activebackground="#F57C00",
+            width=14,
+            height=2,
+            relief="raised",
+            bd=2,
+            command=self.captcha_devam_et
+        )
+        # Başlangıçta gizli
+
+        # Görev Raporları Butonu
+        report_btn_frame = tk.Frame(main_frame, bg=self.bg_color)
+        report_btn_frame.pack(fill="x", pady=(0, 5))
+
+        self.report_button = tk.Button(
+            report_btn_frame,
+            text="📊 Görev Raporları",
+            font=("Arial", 9),
+            bg="#1976D2",
+            fg="white",
+            activebackground="#1565C0",
+            width=30,
+            height=1,
+            relief="raised",
+            bd=1,
+            command=self.gorev_raporlari_goster
+        )
+        self.report_button.pack()
 
         # İstatistikler
         stats_frame = tk.Frame(main_frame, bg=self.bg_color)
@@ -1121,6 +1171,13 @@ class BotanikGUI:
             self.oturum_sure_toplam = 0.0
             self.son_recete_sureleri = []  # Son 5 reçete sürelerini sıfırla
 
+            # Yeni oturum başlat (database + log dosyası)
+            son_recete = self.grup_durumu.son_recete_al(secili)
+            self.aktif_oturum_id = self.database.yeni_oturum_baslat(secili, son_recete)
+            self.session_logger = SessionLogger(self.aktif_oturum_id, secili)
+            self.log_ekle(f"📝 Yeni oturum başlatıldı (ID: {self.aktif_oturum_id})")
+            self.session_logger.info(f"Grup {secili} için yeni oturum başlatıldı")
+
         self.oturum_baslangic = time.time()
         self.oturum_duraklatildi = False
 
@@ -1396,12 +1453,82 @@ class BotanikGUI:
         text = f"Reçete:{self.oturum_recete} | İlaç:{self.oturum_takip} | Süre:{sure_text} | Ort(5):{ort_text}"
         self.stats_label.config(text=text)
 
+    def captcha_devam_et(self):
+        """CAPTCHA girildikten sonra devam et"""
+        self.captcha_bekleniyor = False
+        self.captcha_button.pack_forget()  # Butonu gizle
+        self.log_ekle("✓ CAPTCHA girişi tamamlandı, devam ediliyor...")
+        if self.session_logger:
+            self.session_logger.info("CAPTCHA girişi kullanıcı tarafından tamamlandı")
+
+    def gorev_raporlari_goster(self):
+        """Görev raporları penceresini aç"""
+        try:
+            from tkinter import Toplevel, ttk
+
+            # Yeni pencere
+            rapor_pencere = Toplevel(self.root)
+            rapor_pencere.title("Görev Raporları")
+            rapor_pencere.geometry("900x500")
+
+            # Treeview (tablo)
+            columns = ("ID", "Grup", "Başlangıç", "Bitiş", "Reçete", "Takip", "Y.Başlatma", "Taskkill", "Ort.Süre", "Durum")
+            tree = ttk.Treeview(rapor_pencere, columns=columns, show="headings", height=20)
+
+            # Başlıklar
+            for col in columns:
+                tree.heading(col, text=col)
+                tree.column(col, width=90, anchor="center")
+
+            # Scrollbar
+            scrollbar = ttk.Scrollbar(rapor_pencere, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=scrollbar.set)
+
+            # Verileri yükle
+            oturumlar = self.database.tum_oturumlari_getir(limit=100)
+            for oturum in oturumlar:
+                tree.insert("", "end", values=(
+                    oturum['id'],
+                    oturum['grup'],
+                    oturum['baslangic_zamani'],
+                    oturum['bitis_zamani'] or "-",
+                    oturum['toplam_recete'],
+                    oturum['toplam_takip'],
+                    oturum['yeniden_baslatma_sayisi'],
+                    oturum['taskkill_sayisi'],
+                    f"{oturum['ortalama_recete_suresi']:.2f}s",
+                    oturum['durum']
+                ))
+
+            tree.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+
+            self.log_ekle("📊 Görev raporları açıldı")
+        except Exception as e:
+            logger.error(f"Görev raporları hatası: {e}", exc_info=True)
+            self.log_ekle(f"❌ Raporlar açılamadı: {e}")
+
     def on_closing(self):
         """Pencere kapatma"""
         if self.is_running:
             self.durdur()
             if self.automation_thread and self.automation_thread.is_alive():
                 self.automation_thread.join(timeout=2)
+
+        # Aktif oturumu bitir
+        if self.aktif_oturum_id:
+            son_recete = self.grup_durumu.son_recete_al(self.aktif_grup) if self.aktif_grup else None
+            self.database.oturum_bitir(self.aktif_oturum_id, son_recete)
+
+            if self.session_logger:
+                self.session_logger.ozet_yaz(
+                    self.oturum_recete,
+                    self.oturum_takip,
+                    sum(self.son_recete_sureleri) / len(self.son_recete_sureleri) if self.son_recete_sureleri else 0,
+                    self.yeniden_baslatma_sayaci,
+                    self.taskkill_sayaci
+                )
+                self.session_logger.kapat()
 
         self.stats_timer_running = False
         self.root.destroy()

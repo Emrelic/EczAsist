@@ -12,7 +12,8 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(gh --version:*)",
-      "Bash(cmd.exe /c start \"\" \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\GitHub Desktop.lnk\")"
+      "Bash(cmd.exe /c start \"\" \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\GitHub Desktop.lnk\")",
+      "Bash(git push)"
     ],
     "deny": [],
     "ask": []
