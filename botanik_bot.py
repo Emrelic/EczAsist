@@ -1780,5 +1780,274 @@ def main():
     logger.info("=" * 40)
 
 
+# ==================== YARDIMCI FONKSİYONLAR ====================
+
+def popup_kontrol_ve_kapat():
+    """
+    Popup/dialog pencerelerini otomatik algıla ve kapat
+
+    Returns:
+        bool: Popup kapatıldıysa True
+    """
+    try:
+        from pywinauto import Desktop
+
+        desktop = Desktop(backend="uia")
+        windows = desktop.windows()
+
+        for window in windows:
+            try:
+                # Sadece görünür pencerelere bak
+                if not window.is_visible():
+                    continue
+
+                # Dialog/Modal pencere mi?
+                window_text = window.window_text()
+
+                # Boş başlık veya çok kısa başlıklı pencereler genelde popup
+                if not window_text or len(window_text) < 3:
+                    continue
+
+                # Küçük pencereler (popup olabilir)
+                try:
+                    rect = window.rectangle()
+                    width = rect.width()
+                    height = rect.height()
+
+                    # Çok büyük pencereler ana penceredir, skip
+                    if width > 800 or height > 600:
+                        continue
+
+                    # Çok küçük pencereler de anlamsız
+                    if width < 100 or height < 50:
+                        continue
+                except:
+                    continue
+
+                # Pencere içinde "Tamam", "OK", "Kapat", "X", "Evet", "Hayır" gibi butonlar ara
+                kapat_butonlari = ["Tamam", "OK", "Kapat", "İptal", "Evet", "Hayır", "Close", "Cancel"]
+
+                for buton_text in kapat_butonlari:
+                    try:
+                        buton = window.child_window(title=buton_text, control_type="Button")
+                        if buton.exists(timeout=0.5):
+                            logger.info(f"✓ Popup tespit edildi: '{window_text}', kapatılıyor...")
+                            buton.click()
+                            time.sleep(0.3)
+                            return True
+                    except:
+                        pass
+
+                # X (Close) butonu ara
+                try:
+                    close_button = window.child_window(title="Close", control_type="Button")
+                    if close_button.exists(timeout=0.5):
+                        logger.info(f"✓ Popup tespit edildi (X): '{window_text}', kapatılıyor...")
+                        close_button.click()
+                        time.sleep(0.3)
+                        return True
+                except:
+                    pass
+
+            except Exception as e:
+                continue
+
+        return False
+    except Exception as e:
+        logger.debug(f"Popup kontrol hatası: {e}")
+        return False
+
+
+def recete_kaydi_bulunamadi_mi(bot):
+    """
+    "Reçete kaydı bulunamadı" mesajını kontrol et
+
+    Args:
+        bot (BotanikBot): Bot instance
+
+    Returns:
+        bool: Mesaj varsa True (görev bitti)
+    """
+    try:
+        if not bot.main_window:
+            return False
+
+        # "Reçete kaydı bulunamadı." textini ara
+        try:
+            text_element = bot.main_window.child_window(title_re=".*Reçete kaydı bulunamadı.*", control_type="Text")
+            if text_element.exists(timeout=1):
+                logger.info("✓ 'Reçete kaydı bulunamadı' mesajı tespit edildi - Görev tamamlandı!")
+                return True
+        except:
+            pass
+
+        # Alternatif: Internet Explorer_Server içinde ara
+        try:
+            from pywinauto import Desktop
+            desktop = Desktop(backend="uia")
+
+            for window in desktop.windows():
+                try:
+                    if "MEDULA" in window.window_text():
+                        # Tüm text elementlerini tara
+                        texts = window.descendants(control_type="Text")
+                        for text in texts:
+                            if "bulunamadı" in text.window_text().lower():
+                                logger.info(f"✓ Görev bitişi mesajı: '{text.window_text()}'")
+                                return True
+                except:
+                    pass
+        except:
+            pass
+
+        return False
+    except Exception as e:
+        logger.debug(f"Görev bitişi kontrolü hatası: {e}")
+        return False
+
+
+def medula_taskkill():
+    """
+    MEDULA programını zorla kapat (taskkill)
+
+    Returns:
+        bool: Başarılıysa True
+    """
+    try:
+        import subprocess
+
+        # BotanikEczane.exe'yi kapat
+        result = subprocess.run(
+            ["taskkill", "/F", "/IM", "BotanikEczane.exe"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0:
+            logger.info("✓ MEDULA programı kapatıldı (taskkill)")
+            time.sleep(2)  # Programın tamamen kapanması için bekle
+            return True
+        else:
+            logger.warning(f"⚠ Taskkill başarısız: {result.stderr}")
+            return False
+    except Exception as e:
+        logger.error(f"❌ Taskkill hatası: {e}")
+        return False
+
+
+def medula_ac_ve_giris_yap(medula_settings):
+    """
+    Masaüstünden MEDULA'yı aç ve giriş yap
+
+    Args:
+        medula_settings: MEDULA ayarları instance'ı
+
+    Returns:
+        bool: Başarılıysa True
+    """
+    try:
+        from pywinauto import Desktop
+        import pyautogui
+
+        # 1. Masaüstü simgesini bul ve aç
+        logger.info("🖱 Masaüstünden MEDULA simgesi aranıyor...")
+
+        desktop = Desktop(backend="uia")
+
+        # Masaüstü listesi bul
+        try:
+            desktop_list = desktop.window(class_name="Progman").child_window(class_name="SHELLDLL_DefView").child_window(class_name="SysListView32")
+
+            # "Botanik Medula" simgesini bul
+            medula_item = desktop_list.child_window(title="Botanik Medula", control_type="ListItem")
+
+            if medula_item.exists(timeout=2):
+                # Çift tıkla
+                medula_item.double_click_input()
+                logger.info("✓ MEDULA simgesine çift tıklandı")
+                time.sleep(5)  # MEDULA'nın açılması için bekle
+            else:
+                logger.error("❌ MEDULA simgesi masaüstünde bulunamadı")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Masaüstü simgesi bulunamadı: {e}")
+            return False
+
+        # 2. Giriş penceresini bekle
+        logger.info("⏳ MEDULA giriş penceresi bekleniyor...")
+        time.sleep(3)
+
+        # 3. Giriş bilgilerini doldur
+        kullanici_adi = medula_settings.get("kullanici_adi")
+        sifre = medula_settings.get("sifre")
+
+        if not kullanici_adi or not sifre:
+            logger.error("❌ MEDULA kullanıcı adı veya şifre ayarlanmamış!")
+            return False
+
+        # Giriş penceresini bul
+        try:
+            giris_window = None
+            for window in desktop.windows():
+                if "BotanikEOS" in window.window_text():
+                    giris_window = window
+                    break
+
+            if not giris_window:
+                logger.error("❌ MEDULA giriş penceresi bulunamadı")
+                return False
+
+            logger.info("✓ Giriş penceresi bulundu")
+
+            # ComboBox'a tıkla ve kullanıcı seç
+            try:
+                combobox = giris_window.child_window(class_name_re=".*COMBOBOX.*")
+                if combobox.exists(timeout=2):
+                    # Dropdown'u aç
+                    dropdown_btn = combobox.child_window(title="Kapat", control_type="Button")
+                    if dropdown_btn.exists():
+                        dropdown_btn.click()
+                        time.sleep(0.5)
+
+                        # Liste açıldı, kullanıcı adını ara
+                        # Basit yaklaşım: İlk kullanıcıyı seç (çünkü kullanıcı adı text olarak girilemiyor, liste)
+                        pyautogui.press("down")  # İlk öğeye git
+                        time.sleep(0.2)
+                        pyautogui.press("enter")  # Seç
+                        time.sleep(0.5)
+                        logger.info("✓ Kullanıcı seçildi")
+            except Exception as e:
+                logger.warning(f"⚠ ComboBox işlemi başarısız: {e}")
+
+            # Şifre textbox'ına yaz
+            try:
+                sifre_textbox = giris_window.child_window(auto_id="txtSifre", control_type="Edit")
+                if sifre_textbox.exists(timeout=2):
+                    sifre_textbox.set_focus()
+                    time.sleep(0.2)
+                    sifre_textbox.set_edit_text(sifre)
+                    time.sleep(0.5)
+                    logger.info("✓ Şifre girildi")
+
+                    # ENTER tuşuna bas
+                    pyautogui.press("enter")
+                    time.sleep(3)
+                    logger.info("✓ Giriş yapıldı")
+                    return True
+            except Exception as e:
+                logger.error(f"❌ Şifre girişi başarısız: {e}")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Giriş işlemi başarısız: {e}")
+            return False
+
+        return False
+    except Exception as e:
+        logger.error(f"❌ MEDULA açma/giriş hatası: {e}")
+        return False
+
+
 if __name__ == "__main__":
     main()

@@ -140,6 +140,22 @@ class BotanikDatabase:
             logger.error(f"Artırma hatası: {e}")
             return False
 
+    def oturum_getir(self, oturum_id):
+        """Belirli bir oturumu ID'ye göre getir"""
+        try:
+            self.cursor.execute('''
+                SELECT * FROM oturumlar
+                WHERE id = ?
+            ''', (oturum_id,))
+
+            row = self.cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+            return None
+        except Exception as e:
+            logger.error(f"Oturum getirme hatası: {e}")
+            return None
+
     def aktif_oturum_al(self, grup=None):
         """Aktif oturumu al"""
         try:
