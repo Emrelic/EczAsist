@@ -2580,28 +2580,23 @@ def medula_ac_ve_giris_yap(medula_settings):
         from pywinauto import Desktop
         import pyautogui
 
-        # 1. Masaüstü simgesini bul ve aç
-        logger.info("🖱 Masaüstünden MEDULA simgesi aranıyor...")
+        # 1. MEDULA'yı exe path ile başlat
+        logger.info("📍 MEDULA EXE başlatılıyor...")
+        import subprocess
 
         desktop = Desktop(backend="uia")
 
-        # Masaüstü listesi bul
+        medula_exe = medula_settings.get("medula_exe_path")
+        if not medula_exe or medula_exe == "":
+            logger.error("❌ MEDULA exe path ayarlanmamış!")
+            return False
+
         try:
-            desktop_list = desktop.window(class_name="Progman").child_window(class_name="SHELLDLL_DefView").child_window(class_name="SysListView32")
-
-            # "Botanik Medula" simgesini bul
-            medula_item = desktop_list.child_window(title="Botanik Medula", control_type="ListItem")
-
-            if medula_item.exists(timeout=2):
-                # Çift tıkla
-                medula_item.double_click_input()
-                logger.info("✓ MEDULA simgesine çift tıklandı")
-                time.sleep(5)  # MEDULA'nın açılması için bekle
-            else:
-                logger.error("❌ MEDULA simgesi masaüstünde bulunamadı")
-                return False
+            subprocess.Popen([medula_exe])
+            logger.info(f"✓ MEDULA başlatıldı: {medula_exe}")
+            time.sleep(5)  # MEDULA'nın açılması için bekle
         except Exception as e:
-            logger.error(f"❌ Masaüstü simgesi bulunamadı: {e}")
+            logger.error(f"❌ MEDULA başlatılamadı: {e}")
             return False
 
         # 2. Giriş penceresini bekle
