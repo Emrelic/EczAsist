@@ -1017,26 +1017,43 @@ class BotanikBot:
                 "lblAlanYanCariTel"
             ]
 
+            logger.info("📞 Telefon numarası kontrolü başlıyor...")
+            bulunan_telefon_sayisi = 0
+
             for alan_id in telefon_alanlari:
                 try:
                     telefon_elem = self.main_window.child_window(auto_id=alan_id, control_type="Text")
                     if telefon_elem.exists(timeout=0.5):
-                        telefon_text = telefon_elem.window_text().strip()
+                        # window_text() yerine element_info.name kullan (LegacyIAccessible.Name)
+                        try:
+                            telefon_text = telefon_elem.element_info.name.strip()
+                        except:
+                            # Eğer element_info.name çalışmazsa window_text() dene
+                            telefon_text = telefon_elem.window_text().strip()
+
+                        logger.info(f"  {alan_id}: '{telefon_text}' (Uzunluk: {len(telefon_text)})")
 
                         # Telefon varsa (boş değilse)
                         if telefon_text and telefon_text != "":
+                            bulunan_telefon_sayisi += 1
                             logger.info(f"✓ Telefon bulundu ({alan_id}): {telefon_text}")
-                            return True
+                            return True  # EN AZ BİR TELEFON VARSA HEMEN TRUE DÖN
+                        else:
+                            logger.info(f"  {alan_id}: BOŞ")
+                    else:
+                        logger.warning(f"  {alan_id}: Element bulunamadı")
                 except Exception as e:
-                    logger.debug(f"Telefon alanı {alan_id} kontrol hatası: {e}")
+                    logger.warning(f"  {alan_id} kontrol hatası: {e}")
                     continue
 
             # Hiçbir alanda telefon yok
-            logger.warning("⚠ Telefon numarası bulunamadı (4 alan da boş)")
+            logger.warning(f"⚠ Telefon numarası bulunamadı ({bulunan_telefon_sayisi}/4 alan dolu)")
             return False
 
         except Exception as e:
             logger.error(f"Telefon kontrolü hatası: {e}")
+            import traceback
+            traceback.print_exc()
             # Hata durumunda telefon var kabul et (güvenli taraf)
             return True
 
@@ -2051,7 +2068,7 @@ def medula_taskkill():
 
         if result.returncode == 0:
             logger.info("✓ MEDULA programı kapatıldı (taskkill)")
-            time.sleep(2)  # Programın tamamen kapanması için bekle
+            time.sleep(5)  # Programın tamamen kapanması için bekle (2 → 5 saniye)
             return True
         else:
             logger.warning(f"⚠ Taskkill başarısız: {result.stderr}")
@@ -2133,7 +2150,14 @@ def medula_giris_yap(medula_settings):
             logger.error(f"❌ {kullanici_ad} için şifre ayarlanmamış!")
             return False
 
-        logger.info(f"🔐 {kullanici_ad} ile giriş yapılıyor (MEDULA Index: {kullanici_index})")
+        # Giriş yöntemi kontrolü
+        giris_yontemi = medula_settings.get("giris_yontemi", "indeks")
+        kullanici_adi_giris = medula_settings.get("kullanici_adi_giris", "")
+
+        if giris_yontemi == "indeks":
+            logger.info(f"🔐 {kullanici_ad} ile giriş yapılıyor (İndeks yöntemi - MEDULA Index: {kullanici_index})")
+        else:
+            logger.info(f"🔐 {kullanici_ad} ile giriş yapılıyor (Kullanıcı Adı yöntemi - MEDULA Kullanıcı: {kullanici_adi_giris})")
 
         desktop = Desktop(backend="uia")
 
@@ -2153,7 +2177,7 @@ def medula_giris_yap(medula_settings):
 
         logger.info("✓ Giriş penceresi bulundu")
 
-        # ComboBox'tan kullanıcı seç - Index ile DOWN tuşu kullanarak
+        # ComboBox'tan kullanıcı seç
         try:
             logger.info(f"Kullanici combobox aranıyor...")
 
@@ -2183,20 +2207,36 @@ def medula_giris_yap(medula_settings):
                 pyautogui.click(x_center, y_center)
                 time.sleep(0.5)
 
-                # Index kadar DOWN tuşuna bas
-                if kullanici_index > 0:
-                    logger.info(f"{kullanici_index} kere DOWN tuşuna basılıyor...")
-                    for i in range(kullanici_index):
-                        pyautogui.press('down')
-                        time.sleep(0.2)
+                # Giriş yöntemine göre kullanıcı seçimi
+                if giris_yontemi == "kullanici_adi":
+                    # Kullanıcı adı ile arama
+                    if kullanici_adi_giris:
+                        logger.info(f"Kullanıcı adı yazılıyor: {kullanici_adi_giris}")
+                        pyautogui.typewrite(kullanici_adi_giris, interval=0.1)
+                        time.sleep(0.3)
+                        logger.info("Enter ile seçiliyor...")
+                        pyautogui.press("enter")
+                        time.sleep(timing.get("kullanici_secim"))
+                        logger.info(f"Kullanıcı seçildi (ad: {kullanici_adi_giris})")
+                    else:
+                        logger.warning("Kullanıcı adı girilmemiş, varsayılan kullanıcı seçilecek")
+                        pyautogui.press("enter")
+                        time.sleep(timing.get("kullanici_secim"))
                 else:
-                    logger.info("Index 0, birinci kullanici secilecek")
+                    # İndeks ile seçim (mevcut yöntem)
+                    if kullanici_index > 0:
+                        logger.info(f"{kullanici_index} kere DOWN tuşuna basılıyor...")
+                        for i in range(kullanici_index):
+                            pyautogui.press('down')
+                            time.sleep(0.2)
+                    else:
+                        logger.info("Index 0, birinci kullanici secilecek")
 
-                # Enter ile seç
-                logger.info("Enter basilarak kullanici seciliyor...")
-                pyautogui.press("enter")
-                time.sleep(timing.get("kullanici_secim"))
-                logger.info(f"Kullanici secildi (index: {kullanici_index})")
+                    # Enter ile seç
+                    logger.info("Enter basilarak kullanici seciliyor...")
+                    pyautogui.press("enter")
+                    time.sleep(timing.get("kullanici_secim"))
+                    logger.info(f"Kullanici secildi (index: {kullanici_index})")
             else:
                 logger.warning("Combobox bulunamadı!")
 
@@ -2674,14 +2714,14 @@ def medula_ac_ve_giris_yap(medula_settings):
         try:
             subprocess.Popen([medula_exe])
             logger.info(f"✓ MEDULA başlatıldı: {medula_exe}")
-            time.sleep(5)  # MEDULA'nın açılması için bekle
+            time.sleep(8)  # MEDULA'nın açılması için bekle (5 → 8 saniye, taskkill sonrası daha fazla zaman gerekir)
         except Exception as e:
             logger.error(f"❌ MEDULA başlatılamadı: {e}")
             return False
 
         # 2. Giriş penceresini bekle
         logger.info("⏳ MEDULA giriş penceresi bekleniyor...")
-        time.sleep(3)
+        time.sleep(5)  # Giriş penceresi için ek bekleme (3 → 5 saniye)
 
         # 3. Aktif kullanıcının bilgilerini al
         aktif_kullanici = medula_settings.get_aktif_kullanici()
@@ -2697,7 +2737,14 @@ def medula_ac_ve_giris_yap(medula_settings):
             logger.error(f"❌ {kullanici_ad} için şifre ayarlanmamış!")
             return False
 
-        logger.info(f"🔐 {kullanici_ad} ile giriş yapılıyor (MEDULA Index: {kullanici_index})")
+        # Giriş yöntemi kontrolü
+        giris_yontemi = medula_settings.get("giris_yontemi", "indeks")
+        kullanici_adi_giris = medula_settings.get("kullanici_adi_giris", "")
+
+        if giris_yontemi == "indeks":
+            logger.info(f"🔐 {kullanici_ad} ile giriş yapılıyor (İndeks yöntemi - MEDULA Index: {kullanici_index})")
+        else:
+            logger.info(f"🔐 {kullanici_ad} ile giriş yapılıyor (Kullanıcı Adı yöntemi - MEDULA Kullanıcı: {kullanici_adi_giris})")
 
         # Giriş penceresini bul
         try:
@@ -2723,15 +2770,30 @@ def medula_ac_ve_giris_yap(medula_settings):
                         dropdown_btn.click()
                         time.sleep(0.5)
 
-                        # Liste açıldı, kullanıcı index'ine göre seç
-                        logger.info(f"Combobox'tan {kullanici_ad} seçiliyor (Index: {kullanici_index})...")
-                        for i in range(kullanici_index):
-                            pyautogui.press("down")
-                            time.sleep(0.1)
+                        # Giriş yöntemine göre kullanıcı seçimi
+                        if giris_yontemi == "kullanici_adi":
+                            # Kullanıcı adı ile arama
+                            if kullanici_adi_giris:
+                                logger.info(f"Kullanıcı adı yazılıyor: {kullanici_adi_giris}")
+                                pyautogui.typewrite(kullanici_adi_giris, interval=0.1)
+                                time.sleep(0.3)
+                                pyautogui.press("enter")
+                                time.sleep(0.5)
+                                logger.info(f"✓ Kullanıcı seçildi (ad: {kullanici_adi_giris})")
+                            else:
+                                logger.warning("Kullanıcı adı girilmemiş, varsayılan kullanıcı seçilecek")
+                                pyautogui.press("enter")
+                                time.sleep(0.5)
+                        else:
+                            # İndeks ile seçim (mevcut yöntem)
+                            logger.info(f"Combobox'tan {kullanici_ad} seçiliyor (Index: {kullanici_index})...")
+                            for i in range(kullanici_index):
+                                pyautogui.press("down")
+                                time.sleep(0.1)
 
-                        pyautogui.press("enter")  # Seç
-                        time.sleep(0.5)
-                        logger.info(f"✓ {kullanici_ad} seçildi")
+                            pyautogui.press("enter")  # Seç
+                            time.sleep(0.5)
+                            logger.info(f"✓ {kullanici_ad} seçildi")
             except Exception as e:
                 logger.warning(f"⚠ ComboBox işlemi başarısız: {e}")
 

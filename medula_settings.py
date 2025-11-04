@@ -78,6 +78,10 @@ class MedulaSettings:
 
             # Telefon Kontrolü
             "telefonsuz_atla": False,  # Telefonu olmayan hastaları atla
+
+            # Giriş Yöntemi
+            "giris_yontemi": "indeks",  # "indeks" veya "kullanici_adi"
+            "kullanici_adi_giris": "",  # Kullanıcı adı ile giriş yapılacaksa buraya yazılır
         }
 
         self.ayarlar = self.yukle()

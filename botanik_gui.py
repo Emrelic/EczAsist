@@ -178,6 +178,7 @@ class BotanikGUI:
         # Yeniden başlatma sayacı
         self.yeniden_baslatma_sayaci = 0
         self.taskkill_sayaci = 0  # Taskkill sayacı
+        self.ardisik_basarisiz_deneme = 0  # Ardışık başarısız yeniden başlatma denemesi (max 3)
 
         # Aşama geçmişi
         self.log_gecmisi = []
@@ -1015,7 +1016,7 @@ class BotanikGUI:
     def recete_ac(self, grup, recete_no):
         """Reçeteyi otomatik aç (thread'de çalışır)"""
         try:
-            from botanik_bot import medula_ac_ve_giris_yap
+            from botanik_bot import masaustu_medula_ac, medula_giris_yap
 
             # Bot yoksa oluştur ve bağlan
             if self.bot is None:
@@ -1026,8 +1027,17 @@ class BotanikGUI:
                     # MEDULA açık değil, otomatik olarak aç ve giriş yap
                     self.root.after(0, lambda: self.log_ekle("⚠ MEDULA açık değil, otomatik başlatılıyor..."))
 
-                    if not medula_ac_ve_giris_yap(self.medula_settings):
-                        self.root.after(0, lambda: self.log_ekle("❌ MEDULA açılamadı veya giriş yapılamadı"))
+                    # 1. Masaüstü simgesine çift tıkla
+                    self.root.after(0, lambda: self.log_ekle("🖱 Masaüstü simgesine tıklanıyor..."))
+                    if not masaustu_medula_ac(self.medula_settings):
+                        self.root.after(0, lambda: self.log_ekle("❌ Masaüstü simgesi açılamadı"))
+                        self.root.after(0, self.hata_sesi_calar)
+                        return
+
+                    # 2. MEDULA giriş yap
+                    self.root.after(0, lambda: self.log_ekle("🔐 MEDULA girişi yapılıyor..."))
+                    if not medula_giris_yap(self.medula_settings):
+                        self.root.after(0, lambda: self.log_ekle("❌ MEDULA girişi başarısız"))
                         self.root.after(0, self.hata_sesi_calar)
                         return
 
@@ -1349,9 +1359,27 @@ class BotanikGUI:
         self.log_text.see(tk.END)
 
     def create_settings_tab(self, parent):
-        """Ayarlar sekmesi içeriğini oluştur"""
+        """Ayarlar sekmesi içeriğini oluştur - İki alt sekme ile"""
+        # Alt sekmeler için notebook oluştur
+        settings_notebook = ttk.Notebook(parent)
+        settings_notebook.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Giriş Ayarları sekmesi
+        giris_tab = tk.Frame(settings_notebook, bg='#E3F2FD')
+        settings_notebook.add(giris_tab, text="  🔐 Giriş Ayarları  ")
+
+        # Timing Ayarları sekmesi
+        timing_tab = tk.Frame(settings_notebook, bg='#E8F5E9')
+        settings_notebook.add(timing_tab, text="  ⏱ Timing Ayarları  ")
+
+        # İçerikleri oluştur
+        self.create_giris_ayarlari_tab(giris_tab)
+        self.create_timing_ayarlari_tab(timing_tab)
+
+    def create_giris_ayarlari_tab(self, parent):
+        """Giriş Ayarları sekmesi içeriğini oluştur"""
         # Ana frame
-        main_frame = tk.Frame(parent, bg='#E8F5E9')
+        main_frame = tk.Frame(parent, bg='#E3F2FD')
         main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         # ===== MEDULA GİRİŞ BİLGİLERİ =====
@@ -1490,6 +1518,110 @@ class BotanikGUI:
             fg='#1565C0'
         ).grid(row=7, column=0, columnspan=2, pady=(0, 5))
 
+        # Ayırıcı (Giriş Yöntemi için)
+        tk.Label(
+            medula_frame,
+            text="─" * 50,
+            font=("Arial", 8),
+            bg='#E3F2FD',
+            fg='#90CAF9'
+        ).grid(row=8, column=0, columnspan=2, pady=5)
+
+        # Giriş Yöntemi Seçimi
+        tk.Label(
+            medula_frame,
+            text="🔐 Giriş Yöntemi:",
+            font=("Arial", 9, "bold"),
+            bg='#E3F2FD',
+            fg='#0D47A1'
+        ).grid(row=9, column=0, sticky="w", padx=5, pady=(5, 0))
+
+        # Giriş yöntemi için frame
+        giris_yontemi_frame = tk.Frame(medula_frame, bg='#E3F2FD')
+        giris_yontemi_frame.grid(row=9, column=1, sticky="w", padx=5, pady=(5, 0))
+
+        self.giris_yontemi_var = tk.StringVar(value=self.medula_settings.get("giris_yontemi", "indeks"))
+
+        # İndeks radio button
+        tk.Radiobutton(
+            giris_yontemi_frame,
+            text="İndeks ile (örn: 4. kullanıcı)",
+            variable=self.giris_yontemi_var,
+            value="indeks",
+            font=("Arial", 8),
+            bg='#E3F2FD',
+            fg='#1B5E20',
+            activebackground='#E3F2FD',
+            command=self.giris_yontemi_degisti
+        ).pack(anchor="w")
+
+        # Kullanıcı adı radio button
+        tk.Radiobutton(
+            giris_yontemi_frame,
+            text="Kullanıcı adı ile (örn: Ali Veli)",
+            variable=self.giris_yontemi_var,
+            value="kullanici_adi",
+            font=("Arial", 8),
+            bg='#E3F2FD',
+            fg='#1B5E20',
+            activebackground='#E3F2FD',
+            command=self.giris_yontemi_degisti
+        ).pack(anchor="w")
+
+        # Kullanıcı Adı Girişi (sadece kullanici_adi seçiliyse aktif)
+        tk.Label(
+            medula_frame,
+            text="MEDULA Kullanıcı Adı:",
+            font=("Arial", 8),
+            bg='#E3F2FD',
+            fg='#1B5E20'
+        ).grid(row=10, column=0, sticky="w", padx=5, pady=5)
+
+        self.kullanici_adi_giris_entry = tk.Entry(
+            medula_frame,
+            font=("Arial", 9),
+            width=30
+        )
+        self.kullanici_adi_giris_entry.grid(row=10, column=1, padx=5, pady=5)
+
+        # Varsayılan değeri yükle
+        kullanici_adi_giris = self.medula_settings.get("kullanici_adi_giris", "")
+        if kullanici_adi_giris:
+            self.kullanici_adi_giris_entry.insert(0, kullanici_adi_giris)
+
+        # İlk durumu ayarla
+        self.giris_yontemi_degisti()
+
+        # Bilgi notu
+        tk.Label(
+            medula_frame,
+            text="ℹ İndeks: Combobox'ta kaç kere DOWN tuşuna basılacağını belirler (0-5 arası)\nKullanıcı Adı: MEDULA giriş ekranında bu kullanıcı adı aranır",
+            font=("Arial", 6),
+            bg='#E3F2FD',
+            fg='#616161',
+            justify="left"
+        ).grid(row=11, column=0, columnspan=2, pady=(0, 5))
+
+        # Kaydet butonu (Giriş Yöntemi için)
+        tk.Button(
+            medula_frame,
+            text="💾 Giriş Yöntemi Ayarlarını Kaydet",
+            font=("Arial", 8, "bold"),
+            bg='#1976D2',
+            fg='white',
+            width=35,
+            command=self.giris_yontemi_ayarlarini_kaydet
+        ).grid(row=12, column=0, columnspan=2, pady=5)
+
+        # Ayırıcı (Telefon Kontrolü için)
+        tk.Label(
+            medula_frame,
+            text="─" * 50,
+            font=("Arial", 8),
+            bg='#E3F2FD',
+            fg='#90CAF9'
+        ).grid(row=13, column=0, columnspan=2, pady=5)
+
         # Telefon Kontrolü Checkbox
         self.telefonsuz_atla_var = tk.BooleanVar(value=self.medula_settings.get("telefonsuz_atla", False))
         telefon_checkbox = tk.Checkbutton(
@@ -1502,7 +1634,7 @@ class BotanikGUI:
             activebackground='#E3F2FD',
             command=self.telefon_ayarini_kaydet
         )
-        telefon_checkbox.grid(row=8, column=0, columnspan=2, sticky="w", padx=5, pady=(5, 0))
+        telefon_checkbox.grid(row=14, column=0, columnspan=2, sticky="w", padx=5, pady=(5, 0))
 
         tk.Label(
             medula_frame,
@@ -1510,7 +1642,13 @@ class BotanikGUI:
             font=("Arial", 6),
             bg='#E3F2FD',
             fg='#616161'
-        ).grid(row=9, column=0, columnspan=2, pady=(0, 5))
+        ).grid(row=15, column=0, columnspan=2, pady=(0, 5))
+
+    def create_timing_ayarlari_tab(self, parent):
+        """Timing Ayarları sekmesi içeriğini oluştur"""
+        # Ana frame
+        main_frame = tk.Frame(parent, bg='#E8F5E9')
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         # ===== ZAMANLAMA AYARLARI =====
         timing_title = tk.Label(
@@ -1563,8 +1701,8 @@ class BotanikGUI:
             )
             btn.pack(side="left", padx=1)
 
-        # Scrollable canvas
-        canvas = tk.Canvas(main_frame, bg='#E8F5E9', highlightthickness=0)
+        # Scrollable canvas (height belirtildi böylece scroll düzgün çalışır)
+        canvas = tk.Canvas(main_frame, bg='#E8F5E9', highlightthickness=0, height=400)
         scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas, bg='#E8F5E9')
 
@@ -1575,6 +1713,12 @@ class BotanikGUI:
 
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Mouse wheel scroll desteği
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         # Kategorilere göre ayarları göster
         kategoriler = self.timing.kategori_listesi()
@@ -1647,7 +1791,7 @@ class BotanikGUI:
                 tk.Label(
                     row_frame,
                     text=stat_text,
-                    font=("Arial", 5),
+                    font=("Arial", 7),
                     bg='#C8E6C9',
                     fg='#616161',
                     anchor="w"
@@ -1888,6 +2032,37 @@ class BotanikGUI:
             messagebox.showerror("Hata", "Kaydetme başarısız!")
             self.log_ekle("❌ MEDULA bilgileri kaydedilemedi")
 
+    def giris_yontemi_degisti(self):
+        """Giriş yöntemi değiştiğinde kullanıcı adı entry'sini aktif/pasif yap"""
+        yontem = self.giris_yontemi_var.get()
+        if yontem == "kullanici_adi":
+            self.kullanici_adi_giris_entry.config(state="normal")
+        else:
+            self.kullanici_adi_giris_entry.config(state="disabled")
+
+    def giris_yontemi_ayarlarini_kaydet(self):
+        """Giriş yöntemi ayarlarını kaydet"""
+        yontem = self.giris_yontemi_var.get()
+        kullanici_adi = self.kullanici_adi_giris_entry.get().strip()
+
+        # Kullanıcı adı yöntemi seçiliyse ama ad girilmemişse uyar
+        if yontem == "kullanici_adi" and not kullanici_adi:
+            messagebox.showwarning("Uyarı", "Kullanıcı adı ile giriş seçiliyse MEDULA Kullanıcı Adı alanını doldurmalısınız!")
+            return
+
+        # Ayarları güncelle
+        self.medula_settings.set("giris_yontemi", yontem)
+        self.medula_settings.set("kullanici_adi_giris", kullanici_adi)
+
+        if self.medula_settings.kaydet():
+            yontem_text = "İndeks" if yontem == "indeks" else f"Kullanıcı Adı ({kullanici_adi})"
+            messagebox.showinfo("Başarılı", f"Giriş yöntemi kaydedildi: {yontem_text}")
+            self.log_ekle(f"✓ Giriş yöntemi: {yontem_text}")
+            logger.info(f"✓ Giriş yöntemi ayarı: {yontem_text}")
+        else:
+            messagebox.showerror("Hata", "Ayar kaydedilemedi!")
+            self.log_ekle("❌ Giriş yöntemi kaydedilemedi")
+
     def telefon_ayarini_kaydet(self):
         """Telefon kontrolü ayarını kaydet"""
         telefonsuz_atla = self.telefonsuz_atla_var.get()
@@ -1918,6 +2093,7 @@ class BotanikGUI:
         self.is_running = True
         self.stop_requested = False
         self.aktif_grup = secili  # Aktif grubu sakla
+        self.ardisik_basarisiz_deneme = 0  # Yeni başlatmada sayacı sıfırla
 
         # İlk kez başlatılıyorsa sıfırla, duraklatılmışsa devam et
         if not self.oturum_duraklatildi:
@@ -1971,12 +2147,17 @@ class BotanikGUI:
         self.stats_timer_running = False
 
     def otomatik_yeniden_baslat(self):
-        """Gelişmiş otomatik yeniden başlatma: Ana Sayfa → Taskkill → Yeniden aç → Login"""
+        """
+        Gelişmiş otomatik yeniden başlatma: Ana Sayfa → Taskkill → Yeniden aç → Login
+
+        Returns:
+            bool: Başarılıysa True, başarısızsa False
+        """
         try:
             if not self.aktif_grup:
                 logger.warning("Aktif grup bulunamadı, yeniden başlatma iptal")
                 self.root.after(0, self.reset_ui)
-                return
+                return False
 
             # Sayacı artır ve güncelle
             self.yeniden_baslatma_sayaci += 1
@@ -2044,6 +2225,7 @@ class BotanikGUI:
                 else:
                     self.root.after(0, lambda: self.log_ekle("⚠ Taskkill başarısız, devam ediliyor..."))
 
+                # Taskkill sonrası ek bekleme (taskkill fonksiyonu içinde 5 sn bekliyor, buradan ek 2 sn)
                 time.sleep(2)
 
                 # MEDULA'yı aç ve giriş yap
@@ -2082,12 +2264,10 @@ class BotanikGUI:
                             self.root.after(0, lambda: self.log_ekle("⚠ MEDULA'ya bağlanılamadı"))
                     else:
                         self.root.after(0, lambda: self.log_ekle("❌ MEDULA açılamadı veya giriş yapılamadı"))
-                        self.root.after(0, self.reset_ui)
-                        return
+                        return False  # Başarısız
                 except Exception as e:
                     self.root.after(0, lambda err=str(e): self.log_ekle(f"❌ MEDULA açma/giriş hatası: {err}"))
-                    self.root.after(0, self.reset_ui)
-                    return
+                    return False  # Başarısız
 
             # 3. Adım: GUI'deki grup butonuna bas
             self.root.after(0, lambda: self.log_ekle(f"📍 Grup {self.aktif_grup} seçiliyor..."))
@@ -2099,8 +2279,7 @@ class BotanikGUI:
                 self.root.after(0, lambda: self.log_ekle(f"✓ Grup {self.aktif_grup} seçildi"))
             else:
                 self.root.after(0, lambda: self.log_ekle(f"⚠ Grup {self.aktif_grup} butonu bulunamadı"))
-                self.root.after(0, self.reset_ui)
-                return
+                return False  # Başarısız
 
             time.sleep(1)
 
@@ -2110,10 +2289,14 @@ class BotanikGUI:
             self.root.after(0, self.basla)
             self.root.after(0, lambda: self.log_ekle("✓ Otomatik yeniden başlatıldı"))
 
+            # Başarılı yeniden başlatma - sayacı sıfırla
+            self.ardisik_basarisiz_deneme = 0
+            return True  # Başarılı
+
         except Exception as e:
             logger.error(f"Otomatik yeniden başlatma hatası: {e}", exc_info=True)
             self.root.after(0, lambda err=str(e): self.log_ekle(f"❌ Yeniden başlatma hatası: {err}"))
-            self.root.after(0, self.reset_ui)
+            return False  # Başarısız
 
     def otomasyonu_calistir(self, grup):
         """Ana otomasyon döngüsü"""
@@ -2254,19 +2437,46 @@ class BotanikGUI:
                     break
 
             # Normal sonlanma (son reçete veya break)
+            # Görev sonu kontrolü
+            gorev_tamamlandi = False
+            try:
+                from botanik_bot import recete_kaydi_bulunamadi_mi
+                if self.bot and recete_kaydi_bulunamadi_mi(self.bot):
+                    gorev_tamamlandi = True
+                    self.root.after(0, lambda: self.log_ekle("🎯 Görev tamamlandı! 'Reçete kaydı bulunamadı' mesajı tespit edildi"))
+            except Exception as e:
+                logger.warning(f"Görev tamamlama kontrolü hatası: {e}")
+
             # Otomatik yeniden başlatma kontrolü
-            if self.aktif_grup and not self.stop_requested:
+            if self.aktif_grup and not self.stop_requested and not gorev_tamamlandi:
                 # Hata veya beklenmeyen durma - otomatik yeniden başlat
                 self.is_running = False
-                self.root.after(0, lambda: self.log_ekle("⏳ 2 saniye sonra otomatik yeniden başlatılacak..."))
+                self.ardisik_basarisiz_deneme += 1
+
+                if self.ardisik_basarisiz_deneme >= 3:
+                    self.root.after(0, lambda: self.log_ekle("❌ 3 DENEME BAŞARISIZ! Sistem durduruluyor..."))
+                    self.root.after(0, lambda: messagebox.showerror(
+                        "Yeniden Başlatma Başarısız",
+                        f"3 deneme sonrası MEDULA yeniden başlatılamadı.\n\n"
+                        f"Lütfen MEDULA'yı manuel olarak kontrol edin ve tekrar deneyin."
+                    ))
+                    self.root.after(0, self.reset_ui)
+                    return
+
+                self.root.after(0, lambda d=self.ardisik_basarisiz_deneme: self.log_ekle(f"⏳ 2 saniye sonra otomatik yeniden başlatılacak... (Deneme {d}/3)"))
                 time.sleep(2)
 
-                # Yeni thread'de yeniden başlat
-                recovery_thread = threading.Thread(target=self.otomatik_yeniden_baslat)
+                # Yeniden başlat
+                def yeniden_baslat_ve_kontrol():
+                    basarili = self.otomatik_yeniden_baslat()
+                    if not basarili:
+                        self.root.after(0, lambda: self.log_ekle(f"⚠ Yeniden başlatma başarısız (Deneme {self.ardisik_basarisiz_deneme}/3)"))
+
+                recovery_thread = threading.Thread(target=yeniden_baslat_ve_kontrol)
                 recovery_thread.daemon = True
                 recovery_thread.start()
             else:
-                # Manuel durdurma veya aktif grup yok - UI'yi resetle
+                # Manuel durdurma, aktif grup yok veya görev tamamlandı - UI'yi resetle
                 self.root.after(0, self.reset_ui)
 
         except Exception as e:
@@ -2274,21 +2484,81 @@ class BotanikGUI:
             self.root.after(0, lambda err=str(e): self.log_ekle(f"❌ Hata: {err}"))
             self.root.after(0, self.hata_sesi_calar)
 
-            # Otomatik yeniden başlatma yapılacak mı kontrol et
-            otomatik_baslatilacak = self.aktif_grup and not self.stop_requested
+            # 1. ADIM: Görev sonu kontrolü (Reçete kaydı bulunamadı mesajı)
+            gorev_tamamlandi = False
+            try:
+                from botanik_bot import recete_kaydi_bulunamadi_mi
+                if self.bot and recete_kaydi_bulunamadi_mi(self.bot):
+                    gorev_tamamlandi = True
+                    self.root.after(0, lambda: self.log_ekle("🎯 Görev tamamlandı! 'Reçete kaydı bulunamadı' mesajı tespit edildi"))
+                    if self.session_logger:
+                        self.session_logger.basari("Görev başarıyla tamamlandı (hata sonrası kontrol)")
+
+                    # Database'i güncelle ve oturumu bitir
+                    if self.aktif_oturum_id:
+                        son_recete = self.grup_durumu.son_recete_al(grup) if grup else None
+                        self.database.oturum_bitir(self.aktif_oturum_id, bitis_recete=son_recete)
+
+                        if self.session_logger:
+                            self.session_logger.ozet_yaz(
+                                self.oturum_recete,
+                                self.oturum_takip,
+                                0.0,
+                                self.yeniden_baslatma_sayaci,
+                                self.taskkill_sayaci
+                            )
+                            self.session_logger.kapat()
+
+                    # Görev tamamlama raporu göster
+                    self.root.after(0, lambda: self.gorev_tamamlandi_raporu(grup, self.oturum_recete, self.oturum_takip))
+                    self.root.after(0, self.reset_ui)
+                    return
+            except Exception as kontrol_hatasi:
+                logger.warning(f"Görev tamamlama kontrolü hatası: {kontrol_hatasi}")
+
+            # 2. ADIM: Görev sonu değilse, otomatik yeniden başlatma yap
+            otomatik_baslatilacak = self.aktif_grup and not self.stop_requested and not gorev_tamamlandi
 
             if otomatik_baslatilacak:
-                # Otomatik yeniden başlatılacak - sadece flag temizle
+                # Ardışık başarısız deneme sayısını kontrol et
+                if self.ardisik_basarisiz_deneme >= 3:
+                    self.root.after(0, lambda: self.log_ekle("❌ 3 DENEME BAŞARISIZ! Sistem durduruluyor..."))
+                    self.root.after(0, lambda: messagebox.showerror(
+                        "Yeniden Başlatma Başarısız",
+                        f"3 deneme sonrası MEDULA yeniden başlatılamadı.\n\n"
+                        f"Lütfen MEDULA'yı manuel olarak kontrol edin ve tekrar deneyin.\n\n"
+                        f"Yeniden Başlatma: {self.yeniden_baslatma_sayaci}\n"
+                        f"Taskkill: {self.taskkill_sayaci}"
+                    ))
+
+                    if self.session_logger:
+                        self.session_logger.hata(f"3 deneme başarısız! Sistem durdu.")
+
+                    # UI'yi resetle
+                    self.root.after(0, self.reset_ui)
+                    return
+
+                # Otomatik yeniden başlatılacak
                 self.is_running = False
-                self.root.after(0, lambda: self.log_ekle("⏳ 2 saniye sonra otomatik yeniden başlatılacak..."))
+                self.ardisik_basarisiz_deneme += 1
+                self.root.after(0, lambda d=self.ardisik_basarisiz_deneme: self.log_ekle(f"⏳ 2 saniye sonra otomatik yeniden başlatılacak... (Deneme {d}/3)"))
                 time.sleep(2)
 
-                # Yeni thread'de yeniden başlat
-                recovery_thread = threading.Thread(target=self.otomatik_yeniden_baslat)
+                # Yeniden başlat ve sonucu kontrol et
+                def yeniden_baslat_ve_kontrol():
+                    basarili = self.otomatik_yeniden_baslat()
+                    if not basarili:
+                        # Başarısız oldu, tekrar kontrol edilecek (exception handler'a geri dönecek)
+                        self.root.after(0, lambda: self.log_ekle(f"⚠ Yeniden başlatma başarısız (Deneme {self.ardisik_basarisiz_deneme}/3)"))
+                        if self.ardisik_basarisiz_deneme < 3:
+                            self.root.after(0, lambda: self.log_ekle("🔄 Yeniden denenecek..."))
+                    # Başarılı ise `ardisik_basarisiz_deneme` zaten 0'lanmış
+
+                recovery_thread = threading.Thread(target=yeniden_baslat_ve_kontrol)
                 recovery_thread.daemon = True
                 recovery_thread.start()
             else:
-                # Manuel durdurma veya aktif grup yok - UI'yi resetle
+                # Manuel durdurma, aktif grup yok veya görev tamamlandı - UI'yi resetle
                 self.root.after(0, self.reset_ui)
 
     def reset_ui(self):
@@ -2296,6 +2566,7 @@ class BotanikGUI:
         self.is_running = False
         self.stop_requested = False
         self.aktif_grup = None  # Aktif grubu temizle
+        self.ardisik_basarisiz_deneme = 0  # Ardışık deneme sayacını sıfırla
 
         self.start_button.config(state="normal", bg="#388E3C", fg="white")
         self.stop_button.config(state="disabled", bg="#616161")
