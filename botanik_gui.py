@@ -1015,12 +1015,29 @@ class BotanikGUI:
     def recete_ac(self, grup, recete_no):
         """Reçeteyi otomatik aç (thread'de çalışır)"""
         try:
+            from botanik_bot import medula_ac_ve_giris_yap
+
             # Bot yoksa oluştur ve bağlan
             if self.bot is None:
                 self.bot = BotanikBot()
+
+                # MEDULA'ya bağlanmayı dene
                 if not self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
-                    self.root.after(0, lambda: self.log_ekle("❌ MEDULA'ya bağlanılamadı"))
-                    return
+                    # MEDULA açık değil, otomatik olarak aç ve giriş yap
+                    self.root.after(0, lambda: self.log_ekle("⚠ MEDULA açık değil, otomatik başlatılıyor..."))
+
+                    if not medula_ac_ve_giris_yap(self.medula_settings):
+                        self.root.after(0, lambda: self.log_ekle("❌ MEDULA açılamadı veya giriş yapılamadı"))
+                        self.root.after(0, self.hata_sesi_calar)
+                        return
+
+                    self.root.after(0, lambda: self.log_ekle("✓ MEDULA açıldı ve giriş yapıldı"))
+
+                    # Şimdi tekrar bağlan
+                    if not self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
+                        self.root.after(0, lambda: self.log_ekle("❌ MEDULA'ya bağlanılamadı"))
+                        self.root.after(0, self.hata_sesi_calar)
+                        return
 
                 self.root.after(0, lambda: self.log_ekle("✓ MEDULA'ya bağlandı"))
 
