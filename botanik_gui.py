@@ -39,7 +39,10 @@ class GrupDurumu:
     """Grup durumlarını JSON dosyasında sakla"""
 
     def __init__(self, dosya_yolu="grup_durumlari.json"):
-        self.dosya_yolu = Path(dosya_yolu)
+        # Dosyayı script'in bulunduğu dizine kaydet (database.py gibi)
+        import os
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.dosya_yolu = Path(script_dir) / dosya_yolu
         self.veriler = self.yukle()
 
     def yukle(self):
@@ -61,10 +64,25 @@ class GrupDurumu:
     def kaydet(self):
         """Verileri JSON dosyasına kaydet"""
         try:
-            with open(self.dosya_yolu, 'w', encoding='utf-8') as f:
+            # Dizin yoksa oluştur
+            self.dosya_yolu.parent.mkdir(parents=True, exist_ok=True)
+
+            # Dosya açıksa veya kullanımdaysa, geçici dosya kullan
+            temp_dosya = self.dosya_yolu.with_suffix('.tmp')
+
+            with open(temp_dosya, 'w', encoding='utf-8') as f:
                 json.dump(self.veriler, f, indent=2, ensure_ascii=False)
+
+            # Geçici dosyayı asıl dosyanın üzerine taşı
+            import shutil
+            shutil.move(str(temp_dosya), str(self.dosya_yolu))
+
+        except PermissionError:
+            # İzin hatası - sessizce devam et (critical değil)
+            logger.debug(f"Grup durumları kaydetme izni yok (devam ediliyor)")
         except Exception as e:
-            logger.error(f"Grup durumları kaydedilemedi: {e}")
+            # Diğer hatalar
+            logger.warning(f"Grup durumları kaydedilemedi: {e}")
 
     def son_recete_al(self, grup):
         """Grubun son reçete numarasını al"""
@@ -1040,6 +1058,16 @@ class BotanikGUI:
                 self.root.after(0, lambda: self.log_ekle("❌ Sorgula başarısız"))
                 return
 
+            # Sorgula sonrası popup kontrolü
+            time.sleep(0.5)  # Popup için zaman tanı
+            try:
+                if popup_kontrol_ve_kapat():
+                    self.root.after(0, lambda: self.log_ekle("✓ Sorgula sonrası popup kapatıldı"))
+                    if self.session_logger:
+                        self.session_logger.info("Sorgula sonrası popup kapatıldı")
+            except Exception as e:
+                logger.warning(f"Sorgula popup kontrol hatası: {e}")
+
             self.root.after(0, lambda: self.log_ekle(f"✅ Reçete açıldı: {recete_no}"))
 
             # Tüm pencereleri yerleştir
@@ -1238,6 +1266,16 @@ class BotanikGUI:
             # Pencereyi yenile
             self.bot.baglanti_kur("MEDULA", ilk_baglanti=False)
 
+            # İlk reçete açıldıktan sonra popup kontrolü
+            time.sleep(0.5)  # Popup için zaman tanı
+            try:
+                if popup_kontrol_ve_kapat():
+                    self.root.after(0, lambda: self.log_ekle("✓ İlk reçete popup kapatıldı"))
+                    if self.session_logger:
+                        self.session_logger.info("İlk reçete popup kapatıldı")
+            except Exception as e:
+                logger.warning(f"İlk reçete popup kontrol hatası: {e}")
+
             self.root.after(0, lambda: self.log_ekle("✅ İlk reçete başarıyla açıldı"))
 
             # Tüm pencereleri yerleştir
@@ -1311,22 +1349,74 @@ class BotanikGUI:
         )
         medula_frame.pack(fill="x", pady=(0, 10))
 
-        # Kullanıcı Adı
+        # Kullanıcı Seçimi
         tk.Label(
             medula_frame,
-            text="Kullanıcı Adı:",
+            text="👤 Kullanıcı Seç:",
+            font=("Arial", 9, "bold"),
+            bg='#E3F2FD',
+            fg='#0D47A1'
+        ).grid(row=0, column=0, sticky="w", padx=5, pady=8)
+
+        kullanici_listesi = [k.get("ad", f"Kullanıcı {i+1}") for i, k in enumerate(self.medula_settings.get_kullanicilar())]
+        aktif_index = self.medula_settings.get("aktif_kullanici", 0)
+
+        self.kullanici_secim_var = tk.StringVar(value=kullanici_listesi[aktif_index] if kullanici_listesi else "Kullanıcı 1")
+        self.kullanici_secim_combo = ttk.Combobox(
+            medula_frame,
+            textvariable=self.kullanici_secim_var,
+            values=kullanici_listesi,
+            state="readonly",
+            font=("Arial", 9),
+            width=27
+        )
+        self.kullanici_secim_combo.grid(row=0, column=1, padx=5, pady=8)
+        self.kullanici_secim_combo.bind("<<ComboboxSelected>>", self.kullanici_secimi_degisti)
+
+        # Ayırıcı
+        tk.Label(
+            medula_frame,
+            text="─" * 50,
+            font=("Arial", 8),
+            bg='#E3F2FD',
+            fg='#90CAF9'
+        ).grid(row=1, column=0, columnspan=2, pady=5)
+
+        # Kullanıcı Adı (Opsiyonel Etiket)
+        tk.Label(
+            medula_frame,
+            text="Kullanıcı Etiketi:",
             font=("Arial", 8),
             bg='#E3F2FD',
             fg='#1B5E20'
-        ).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        ).grid(row=2, column=0, sticky="w", padx=5, pady=5)
 
-        self.medula_kullanici_entry = tk.Entry(
+        self.medula_kullanici_ad_entry = tk.Entry(
             medula_frame,
             font=("Arial", 9),
             width=30
         )
-        self.medula_kullanici_entry.insert(0, self.medula_settings.get("kullanici_adi", ""))
-        self.medula_kullanici_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.medula_kullanici_ad_entry.grid(row=2, column=1, padx=5, pady=5)
+
+        # MEDULA Kullanıcı Index
+        tk.Label(
+            medula_frame,
+            text="MEDULA Kullanıcı:",
+            font=("Arial", 8),
+            bg='#E3F2FD',
+            fg='#1B5E20'
+        ).grid(row=3, column=0, sticky="w", padx=5, pady=5)
+
+        self.medula_index_var = tk.StringVar()
+        self.medula_index_combo = ttk.Combobox(
+            medula_frame,
+            textvariable=self.medula_index_var,
+            values=["1. Kullanıcı (Index 0)", "2. Kullanıcı (Index 1)", "3. Kullanıcı (Index 2)"],
+            state="readonly",
+            font=("Arial", 9),
+            width=27
+        )
+        self.medula_index_combo.grid(row=3, column=1, padx=5, pady=5)
 
         # Şifre
         tk.Label(
@@ -1335,7 +1425,7 @@ class BotanikGUI:
             font=("Arial", 8),
             bg='#E3F2FD',
             fg='#1B5E20'
-        ).grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        ).grid(row=4, column=0, sticky="w", padx=5, pady=5)
 
         self.medula_sifre_entry = tk.Entry(
             medula_frame,
@@ -1343,19 +1433,21 @@ class BotanikGUI:
             width=30,
             show="*"
         )
-        self.medula_sifre_entry.insert(0, self.medula_settings.get("sifre", ""))
-        self.medula_sifre_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.medula_sifre_entry.grid(row=4, column=1, padx=5, pady=5)
+
+        # Seçili kullanıcının bilgilerini yükle
+        self.secili_kullanici_bilgilerini_yukle()
 
         # Kaydet Butonu
         tk.Button(
             medula_frame,
-            text="💾 MEDULA Bilgilerini Kaydet",
-            font=("Arial", 8, "bold"),
+            text="💾 Kullanıcı Bilgilerini Kaydet",
+            font=("Arial", 9, "bold"),
             bg='#1976D2',
             fg='white',
             width=30,
             command=self.medula_bilgilerini_kaydet
-        ).grid(row=2, column=0, columnspan=2, pady=10)
+        ).grid(row=5, column=0, columnspan=2, pady=10)
 
         # Uyarı
         tk.Label(
@@ -1364,7 +1456,15 @@ class BotanikGUI:
             font=("Arial", 6),
             bg='#E3F2FD',
             fg='#D32F2F'
-        ).grid(row=3, column=0, columnspan=2)
+        ).grid(row=6, column=0, columnspan=2)
+
+        tk.Label(
+            medula_frame,
+            text="ℹ Her kullanıcı için farklı MEDULA hesabı kullanabilirsiniz.",
+            font=("Arial", 7),
+            bg='#E3F2FD',
+            fg='#1565C0'
+        ).grid(row=7, column=0, columnspan=2, pady=(0, 5))
 
         # ===== ZAMANLAMA AYARLARI =====
         timing_title = tk.Label(
@@ -1636,21 +1736,96 @@ class BotanikGUI:
             # Ayarlar sekmesini yenile (istatistikleri güncellemek için)
             messagebox.showinfo("Bilgi", "İstatistikler sıfırlandı. Ayarlar sekmesi kapanıp açılırsa güncel değerler görünecektir.")
 
+    def kullanici_secimi_degisti(self, event=None):
+        """Kullanıcı seçimi değiştiğinde form alanlarını güncelle"""
+        self.secili_kullanici_bilgilerini_yukle()
+
+    def secili_kullanici_bilgilerini_yukle(self):
+        """Seçili kullanıcının bilgilerini form alanlarına yükle"""
+        # Seçili kullanıcı index'ini bul
+        secili_ad = self.kullanici_secim_var.get()
+        kullanicilar = self.medula_settings.get_kullanicilar()
+
+        secili_index = 0
+        for i, k in enumerate(kullanicilar):
+            if k.get("ad") == secili_ad:
+                secili_index = i
+                break
+
+        # Kullanıcı bilgilerini al
+        kullanici = self.medula_settings.get_kullanici(secili_index)
+
+        if kullanici:
+            # Form alanlarını temizle ve yeni değerleri yükle
+            self.medula_kullanici_ad_entry.delete(0, tk.END)
+            self.medula_kullanici_ad_entry.insert(0, kullanici.get("ad", ""))
+
+            # MEDULA Index combobox'ını ayarla
+            medula_index = kullanici.get("kullanici_index", 0)
+            if medula_index == 0:
+                self.medula_index_var.set("1. Kullanıcı (Index 0)")
+            elif medula_index == 1:
+                self.medula_index_var.set("2. Kullanıcı (Index 1)")
+            elif medula_index == 2:
+                self.medula_index_var.set("3. Kullanıcı (Index 2)")
+
+            # Şifreyi yükle
+            self.medula_sifre_entry.delete(0, tk.END)
+            self.medula_sifre_entry.insert(0, kullanici.get("sifre", ""))
+
     def medula_bilgilerini_kaydet(self):
-        """MEDULA kullanıcı adı ve şifresini kaydet"""
-        kullanici = self.medula_kullanici_entry.get().strip()
+        """Seçili kullanıcının MEDULA bilgilerini kaydet"""
+        # Formdaki değerleri al
+        kullanici_ad = self.medula_kullanici_ad_entry.get().strip()
         sifre = self.medula_sifre_entry.get().strip()
 
-        if not kullanici or not sifre:
-            messagebox.showwarning("Uyarı", "Kullanıcı adı ve şifre boş olamaz!")
+        # MEDULA index'i parse et
+        medula_index_str = self.medula_index_var.get()
+        if "Index 0" in medula_index_str:
+            medula_index = 0
+        elif "Index 1" in medula_index_str:
+            medula_index = 1
+        elif "Index 2" in medula_index_str:
+            medula_index = 2
+        else:
+            messagebox.showwarning("Uyarı", "Lütfen MEDULA kullanıcısını seçin!")
             return
 
-        self.medula_settings.set("kullanici_adi", kullanici)
-        self.medula_settings.set("sifre", sifre)
+        if not sifre:
+            messagebox.showwarning("Uyarı", "Şifre boş olamaz!")
+            return
 
+        # Seçili kullanıcı index'ini bul
+        secili_ad = self.kullanici_secim_var.get()
+        kullanicilar = self.medula_settings.get_kullanicilar()
+
+        secili_index = 0
+        for i, k in enumerate(kullanicilar):
+            if k.get("ad") == secili_ad:
+                secili_index = i
+                break
+
+        # Kullanıcı bilgilerini güncelle
+        self.medula_settings.update_kullanici(
+            secili_index,
+            ad=kullanici_ad if kullanici_ad else None,
+            kullanici_index=medula_index,
+            sifre=sifre
+        )
+
+        # Aktif kullanıcıyı ayarla
+        self.medula_settings.set_aktif_kullanici(secili_index)
+
+        # Kaydet
         if self.medula_settings.kaydet():
-            messagebox.showinfo("Başarılı", "MEDULA giriş bilgileri kaydedildi!")
-            self.log_ekle("✓ MEDULA giriş bilgileri güncellendi")
+            # Combobox'ı güncelle (kullanıcı adı değiştiyse)
+            if kullanici_ad:
+                kullanici_listesi = [k.get("ad", f"Kullanıcı {i+1}") for i, k in enumerate(self.medula_settings.get_kullanicilar())]
+                self.kullanici_secim_combo['values'] = kullanici_listesi
+                self.kullanici_secim_var.set(kullanici_ad)
+
+            messagebox.showinfo("Başarılı", f"{kullanici_ad if kullanici_ad else secili_ad} bilgileri kaydedildi!")
+            self.log_ekle(f"✓ {kullanici_ad if kullanici_ad else secili_ad} MEDULA bilgileri güncellendi")
         else:
             messagebox.showerror("Hata", "Kaydetme başarısız!")
             self.log_ekle("❌ MEDULA bilgileri kaydedilemedi")

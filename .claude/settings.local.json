@@ -13,7 +13,19 @@
       "Bash(git commit:*)",
       "Bash(gh --version:*)",
       "Bash(cmd.exe /c start \"\" \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\GitHub Desktop.lnk\")",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(python -m py_compile:*)",
+      "Bash(dir:*)",
+      "Bash(nul)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(timeout 5 python:*)",
+      "Bash(timeout 3 python:*)",
+      "Bash(del \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\BotTak3\\medula_settings.json\")",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(attrib:*)",
+      "Bash(del \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\BotTak3\\grup_durumlari.json\")"
     ],
     "deny": [],
     "ask": []

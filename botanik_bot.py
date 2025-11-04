@@ -927,61 +927,74 @@ class BotanikBot:
             logger.error(f"SONRA butonuna tıklama hatası: {e}")
             return False
 
-    def recete_no_oku(self):
+    def recete_no_oku(self, max_deneme=5, bekleme_suresi=0.5):
         """
         Ekrandaki reçete numarasını oku (örn: 3HKE0T4)
         Inspect'e göre Window 0x1C0D14 ve Name özelliğinden alınır
 
+        Args:
+            max_deneme: Maksimum deneme sayısı (varsayılan: 5)
+            bekleme_suresi: Her deneme arasında bekleme süresi (varsayılan: 0.5 saniye)
+
         Returns:
             str: Reçete numarası, bulunamazsa None
         """
-        try:
-            # Önce spesifik window ID ile dene
+        import time
+
+        for deneme in range(max_deneme):
             try:
-                # Text kontrollerini ara, Name özelliği içinde reçete numarası olan
+                # Önce spesifik window ID ile dene
+                try:
+                    # Text kontrollerini ara, Name özelliği içinde reçete numarası olan
+                    texts = self.main_window.descendants(control_type="Text")
+
+                    for text in texts:
+                        try:
+                            # Name özelliğini al
+                            name_prop = text.window_text()
+
+                            # Reçete numarası formatı: 6-8 karakter, alfanumerik
+                            if name_prop and 6 <= len(name_prop) <= 9:
+                                # Sadece harf, rakam içermeli
+                                if name_prop.replace('-', '').replace('_', '').isalnum():
+                                    # En az 1 harf ve 1 rakam olmalı
+                                    if any(c.isdigit() for c in name_prop) and any(c.isalpha() for c in name_prop):
+                                        logger.info(f"✓ Reçete No: {name_prop}")
+                                        return name_prop
+                        except:
+                            pass
+
+                except Exception as e:
+                    logger.debug(f"ID ile arama başarısız: {e}")
+
+                # Alternatif: Tüm text elementlerini tara
                 texts = self.main_window.descendants(control_type="Text")
 
                 for text in texts:
                     try:
-                        # Name özelliğini al
-                        name_prop = text.window_text()
-
-                        # Reçete numarası formatı: 6-8 karakter, alfanumerik
-                        if name_prop and 6 <= len(name_prop) <= 9:
-                            # Sadece harf, rakam içermeli
-                            if name_prop.replace('-', '').replace('_', '').isalnum():
-                                # En az 1 harf ve 1 rakam olmalı
-                                if any(c.isdigit() for c in name_prop) and any(c.isalpha() for c in name_prop):
-                                    logger.info(f"✓ Reçete No: {name_prop}")
-                                    return name_prop
+                        text_value = text.window_text()
+                        # Reçete numarası genellikle 7 karakterli alfanumerik kod (örn: 3HKE0T4)
+                        if text_value and 6 <= len(text_value) <= 9:
+                            # Sadece harf, rakam ve belki tire içermeli
+                            cleaned = text_value.replace('-', '').replace('_', '')
+                            if cleaned.isalnum() and any(c.isdigit() for c in text_value) and any(c.isalpha() for c in text_value):
+                                logger.info(f"✓ Reçete No: {text_value}")
+                                return text_value
                     except:
                         pass
 
+                # Bu denemede bulunamadı, bir sonraki denemede tekrar dene
+                if deneme < max_deneme - 1:
+                    logger.debug(f"Reçete numarası henüz yüklenmedi, bekleniyor... ({deneme + 1}/{max_deneme})")
+                    time.sleep(bekleme_suresi)
+
             except Exception as e:
-                logger.debug(f"ID ile arama başarısız: {e}")
+                logger.debug(f"Reçete no okuma denemesi {deneme + 1} hatası: {e}")
+                if deneme < max_deneme - 1:
+                    time.sleep(bekleme_suresi)
 
-            # Alternatif: Tüm text elementlerini tara
-            texts = self.main_window.descendants(control_type="Text")
-
-            for text in texts:
-                try:
-                    text_value = text.window_text()
-                    # Reçete numarası genellikle 7 karakterli alfanumerik kod (örn: 3HKE0T4)
-                    if text_value and 6 <= len(text_value) <= 9:
-                        # Sadece harf, rakam ve belki tire içermeli
-                        cleaned = text_value.replace('-', '').replace('_', '')
-                        if cleaned.isalnum() and any(c.isdigit() for c in text_value) and any(c.isalpha() for c in text_value):
-                            logger.info(f"✓ Reçete No: {text_value}")
-                            return text_value
-                except:
-                    pass
-
-            logger.warning("⚠️ Reçete numarası okunamadı")
-            return None
-
-        except Exception as e:
-            logger.error(f"Reçete no okuma hatası: {e}")
-            return None
+        logger.warning("⚠️ Reçete numarası okunamadı")
+        return None
 
     def recete_kaydi_var_mi_kontrol(self):
         """
@@ -1489,6 +1502,14 @@ def tek_recete_isle(bot, recete_sira_no):
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
 
+    # İlaç butonuna basıldıktan sonra popup kontrolü
+    time.sleep(0.3)  # Popup için zaman tanı
+    try:
+        if popup_kontrol_ve_kapat():
+            logger.info("✓ İlaç butonu sonrası popup kapatıldı")
+    except Exception as e:
+        logger.debug(f"İlaç butonu popup kontrol hatası: {e}")
+
     # "Kullanılan İlaç Listesi" ekranının yüklenmesini bekle
     adim_baslangic = time.time()
     ilac_ekrani = bot.ilac_ekrani_yuklendi_mi(max_bekleme=3)
@@ -1498,6 +1519,14 @@ def tek_recete_isle(bot, recete_sira_no):
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
 
+    # İlaç ekranı yüklendikten sonra popup kontrolü
+    time.sleep(0.3)  # Popup için zaman tanı
+    try:
+        if popup_kontrol_ve_kapat():
+            logger.info("✓ İlaç ekranı sonrası popup kapatıldı")
+    except Exception as e:
+        logger.debug(f"İlaç ekranı popup kontrol hatası: {e}")
+
     # Y butonuna tıkla
     ana_pencere = bot.main_window
     adim_baslangic = time.time()
@@ -1506,6 +1535,14 @@ def tek_recete_isle(bot, recete_sira_no):
     if not y_butonu:
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
+
+    # Y butonuna basıldıktan sonra popup kontrolü
+    time.sleep(0.3)  # Popup için zaman tanı
+    try:
+        if popup_kontrol_ve_kapat():
+            logger.info("✓ Y butonu sonrası popup kapatıldı")
+    except Exception as e:
+        logger.debug(f"Y butonu popup kontrol hatası: {e}")
 
     # İlaç Listesi penceresini akıllı bekleme ile bul (max 1 saniye)
     adim_baslangic = time.time()
@@ -1646,6 +1683,14 @@ def tek_recete_isle(bot, recete_sira_no):
     if not sonra:
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
+
+    # SONRA butonuna basıldıktan sonra popup kontrolü
+    time.sleep(0.5)  # Popup için zaman tanı
+    try:
+        if popup_kontrol_ve_kapat():
+            logger.info("✓ SONRA butonu sonrası popup kapatıldı")
+    except Exception as e:
+        logger.debug(f"SONRA butonu popup kontrol hatası: {e}")
 
     # Toplam reçete süresi
     toplam_sure = time.time() - recete_baslangic
@@ -1994,14 +2039,21 @@ def medula_giris_yap(medula_settings):
         logger.info("⏳ MEDULA giriş penceresi bekleniyor...")
         time.sleep(timing.get("giris_pencere_bekleme"))
 
-        kullanici_index = medula_settings.get("kullanici_index", 0)
-        sifre = medula_settings.get("sifre")
-
-        if sifre is None or sifre == "":
-            logger.error("❌ MEDULA şifre ayarlanmamış!")
+        # Aktif kullanıcının bilgilerini al
+        aktif_kullanici = medula_settings.get_aktif_kullanici()
+        if not aktif_kullanici:
+            logger.error("❌ Aktif kullanıcı bulunamadı!")
             return False
 
-        logger.info(f"Kullanici index: {kullanici_index}")
+        kullanici_index = aktif_kullanici.get("kullanici_index", 0)
+        sifre = aktif_kullanici.get("sifre")
+        kullanici_ad = aktif_kullanici.get("ad", "Kullanıcı")
+
+        if sifre is None or sifre == "":
+            logger.error(f"❌ {kullanici_ad} için şifre ayarlanmamış!")
+            return False
+
+        logger.info(f"🔐 {kullanici_ad} ile giriş yapılıyor (MEDULA Index: {kullanici_index})")
 
         desktop = Desktop(backend="uia")
 
@@ -2556,13 +2608,21 @@ def medula_ac_ve_giris_yap(medula_settings):
         logger.info("⏳ MEDULA giriş penceresi bekleniyor...")
         time.sleep(3)
 
-        # 3. Giriş bilgilerini doldur
-        kullanici_adi = medula_settings.get("kullanici_adi")
-        sifre = medula_settings.get("sifre")
-
-        if not kullanici_adi or not sifre:
-            logger.error("❌ MEDULA kullanıcı adı veya şifre ayarlanmamış!")
+        # 3. Aktif kullanıcının bilgilerini al
+        aktif_kullanici = medula_settings.get_aktif_kullanici()
+        if not aktif_kullanici:
+            logger.error("❌ Aktif kullanıcı bulunamadı!")
             return False
+
+        kullanici_index = aktif_kullanici.get("kullanici_index", 0)
+        sifre = aktif_kullanici.get("sifre")
+        kullanici_ad = aktif_kullanici.get("ad", "Kullanıcı")
+
+        if not sifre:
+            logger.error(f"❌ {kullanici_ad} için şifre ayarlanmamış!")
+            return False
+
+        logger.info(f"🔐 {kullanici_ad} ile giriş yapılıyor (MEDULA Index: {kullanici_index})")
 
         # Giriş penceresini bul
         try:
@@ -2588,13 +2648,15 @@ def medula_ac_ve_giris_yap(medula_settings):
                         dropdown_btn.click()
                         time.sleep(0.5)
 
-                        # Liste açıldı, kullanıcı adını ara
-                        # Basit yaklaşım: İlk kullanıcıyı seç (çünkü kullanıcı adı text olarak girilemiyor, liste)
-                        pyautogui.press("down")  # İlk öğeye git
-                        time.sleep(0.2)
+                        # Liste açıldı, kullanıcı index'ine göre seç
+                        logger.info(f"Combobox'tan {kullanici_ad} seçiliyor (Index: {kullanici_index})...")
+                        for i in range(kullanici_index):
+                            pyautogui.press("down")
+                            time.sleep(0.1)
+
                         pyautogui.press("enter")  # Seç
                         time.sleep(0.5)
-                        logger.info("✓ Kullanıcı seçildi")
+                        logger.info(f"✓ {kullanici_ad} seçildi")
             except Exception as e:
                 logger.warning(f"⚠ ComboBox işlemi başarısız: {e}")
 

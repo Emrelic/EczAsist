@@ -27,7 +27,9 @@ class BotanikDatabase:
     def baglanti_kur(self):
         """Database bağlantısını kur"""
         try:
-            self.conn = sqlite3.connect(str(self.db_yolu))
+            # check_same_thread=False: Farklı thread'lerden erişime izin ver
+            # Botanik GUI'de birçok thread kullanıldığı için gerekli
+            self.conn = sqlite3.connect(str(self.db_yolu), check_same_thread=False)
             self.cursor = self.conn.cursor()
             logger.info(f"✓ Database bağlantısı kuruldu: {self.db_yolu}")
         except Exception as e:

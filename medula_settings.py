@@ -20,9 +20,25 @@ class MedulaSettings:
 
         # Varsayılan ayarlar
         self.varsayilan_ayarlar = {
-            # Giriş Bilgileri
-            "kullanici_index": 0,  # Combobox'taki sıra (0=birinci, 1=ikinci, ...)
-            "sifre": "",
+            # Çok Kullanıcılı Sistem
+            "kullanicilar": [
+                {
+                    "ad": "Kullanıcı 1",
+                    "kullanici_index": 0,  # MEDULA Combobox'taki sıra
+                    "sifre": ""
+                },
+                {
+                    "ad": "Kullanıcı 2",
+                    "kullanici_index": 1,
+                    "sifre": ""
+                },
+                {
+                    "ad": "Kullanıcı 3",
+                    "kullanici_index": 2,
+                    "sifre": ""
+                }
+            ],
+            "aktif_kullanici": 0,  # Hangi kullanıcı aktif (0, 1, 2)
 
             # MEDULA Program Yolu (SABİT)
             "medula_exe_path": r"C:\BotanikEczane\BotanikMedula.exe",
@@ -54,6 +70,45 @@ class MedulaSettings:
             try:
                 with open(self.dosya_yolu, 'r', encoding='utf-8') as f:
                     yuklu_ayarlar = json.load(f)
+
+                # ESKİ FORMAT'TAN YENİ FORMAT'A MİGRASYON
+                # Eğer eski format kullanılıyorsa (kullanici_index ve sifre varsa)
+                if "kullanici_index" in yuklu_ayarlar and "kullanicilar" not in yuklu_ayarlar:
+                    logger.info("⚙ Eski ayar formatı tespit edildi, yeni formata dönüştürülüyor...")
+
+                    # Eski bilgileri al
+                    eski_index = yuklu_ayarlar.get("kullanici_index", 0)
+                    eski_sifre = yuklu_ayarlar.get("sifre", "")
+
+                    # Yeni yapıyı oluştur
+                    yuklu_ayarlar["kullanicilar"] = [
+                        {
+                            "ad": "Kullanıcı 1",
+                            "kullanici_index": eski_index,
+                            "sifre": eski_sifre
+                        },
+                        {
+                            "ad": "Kullanıcı 2",
+                            "kullanici_index": 1,
+                            "sifre": ""
+                        },
+                        {
+                            "ad": "Kullanıcı 3",
+                            "kullanici_index": 2,
+                            "sifre": ""
+                        }
+                    ]
+                    yuklu_ayarlar["aktif_kullanici"] = 0  # İlk kullanıcı aktif
+
+                    # Eski anahtarları temizle
+                    yuklu_ayarlar.pop("kullanici_index", None)
+                    yuklu_ayarlar.pop("sifre", None)
+                    yuklu_ayarlar.pop("kullanici_adi", None)
+
+                    # Hemen kaydet
+                    self.ayarlar = yuklu_ayarlar
+                    self.kaydet()
+                    logger.info("✓ Ayarlar yeni formata dönüştürüldü ve kaydedildi")
 
                 # Yeni eklenen ayarları da ekle (varsa)
                 for key, value in self.varsayilan_ayarlar.items():
@@ -90,12 +145,63 @@ class MedulaSettings:
         return True
 
     def kullanici_bilgileri_dolu_mu(self):
-        """Kullanıcı index ve şifre girilmiş mi?"""
-        return (self.ayarlar.get("kullanici_index") is not None) and bool(self.ayarlar.get("sifre"))
+        """Aktif kullanıcının bilgileri dolu mu?"""
+        kullanici = self.get_aktif_kullanici()
+        if kullanici:
+            return bool(kullanici.get("sifre"))
+        return False
 
     def masaustu_path_dolu_mu(self):
         """Masaüstü MEDULA path'i girilmiş mi?"""
         return bool(self.ayarlar.get("masaustu_medula_path"))
+
+    # ===== KULLANICI YÖNETİMİ =====
+
+    def get_kullanicilar(self):
+        """Tüm kullanıcıları getir"""
+        return self.ayarlar.get("kullanicilar", [])
+
+    def get_aktif_kullanici(self):
+        """Aktif kullanıcının bilgilerini getir"""
+        kullanicilar = self.get_kullanicilar()
+        aktif_index = self.ayarlar.get("aktif_kullanici", 0)
+
+        if 0 <= aktif_index < len(kullanicilar):
+            return kullanicilar[aktif_index]
+        elif len(kullanicilar) > 0:
+            return kullanicilar[0]
+        return None
+
+    def set_aktif_kullanici(self, index):
+        """Aktif kullanıcıyı ayarla (0, 1, 2)"""
+        kullanicilar = self.get_kullanicilar()
+        if 0 <= index < len(kullanicilar):
+            self.ayarlar["aktif_kullanici"] = index
+            return True
+        return False
+
+    def get_kullanici(self, index):
+        """Belirli bir kullanıcıyı getir"""
+        kullanicilar = self.get_kullanicilar()
+        if 0 <= index < len(kullanicilar):
+            return kullanicilar[index]
+        return None
+
+    def update_kullanici(self, index, ad=None, kullanici_index=None, sifre=None):
+        """Kullanıcı bilgilerini güncelle"""
+        kullanicilar = self.get_kullanicilar()
+
+        if 0 <= index < len(kullanicilar):
+            if ad is not None:
+                kullanicilar[index]["ad"] = ad
+            if kullanici_index is not None:
+                kullanicilar[index]["kullanici_index"] = kullanici_index
+            if sifre is not None:
+                kullanicilar[index]["sifre"] = sifre
+
+            self.ayarlar["kullanicilar"] = kullanicilar
+            return True
+        return False
 
 
 # Global singleton
