@@ -1448,11 +1448,18 @@ def tek_recete_isle(bot, recete_sira_no):
     recete_baslangic = time.time()
     adim_sureleri = []
 
-    def log_sure(ad, baslangic):
+    def log_sure(ad, baslangic, timing_key=None):
         """Bir adımın süresini kaydet ve yazdır."""
         sure = time.time() - baslangic
         adim_sureleri.append((ad, sure))
         logger.info(f"⏱ {ad}: {sure:.2f}s")
+
+        # Timing istatistiğine kaydet
+        if timing_key:
+            from timing_settings import get_timing_settings
+            timing = get_timing_settings()
+            timing.kayit_ekle(timing_key, sure)
+
         return sure
 
     medula_recete_no = None
@@ -1471,7 +1478,7 @@ def tek_recete_isle(bot, recete_sira_no):
     # ÖNEMLİ: Her reçete işlemi başlamadan önce "Reçete kaydı bulunamadı" kontrolü yap
     adim_baslangic = time.time()
     recete_kaydi_var = bot.recete_kaydi_var_mi_kontrol()
-    log_sure("Reçete kontrolü", adim_baslangic)
+    log_sure("Reçete kontrolü", adim_baslangic, "recete_kontrol")
     if not recete_kaydi_var:
         logger.error("❌ Reçete kaydı yok")
         log_recete_baslik()
@@ -1480,16 +1487,16 @@ def tek_recete_isle(bot, recete_sira_no):
     # REÇETE İÇİN NOT penceresi varsa kapat
     adim_baslangic = time.time()
     if bot.recete_not_penceresini_kapat():
-        log_sure("Reçete notu kapatma", adim_baslangic)
+        log_sure("Reçete notu kapatma", adim_baslangic, "recete_notu_kapat")
     else:
-        log_sure("Reçete notu kontrol", adim_baslangic)
+        log_sure("Reçete notu kontrol", adim_baslangic, "recete_kontrol")
 
     # UYARIDIR (Genel muayene tanısı) penceresi varsa kapat
     adim_baslangic = time.time()
     if bot.uyari_penceresini_kapat():
-        log_sure("Uyarı penceresi kapatma", adim_baslangic)
+        log_sure("Uyarı penceresi kapatma", adim_baslangic, "uyari_kapat")
     else:
-        log_sure("Uyarı penceresi kontrol", adim_baslangic)
+        log_sure("Uyarı penceresi kontrol", adim_baslangic, "uyari_kapat")
 
     medula_recete_no = bot.recete_no_oku()
     log_recete_baslik(medula_recete_no)
@@ -1497,7 +1504,7 @@ def tek_recete_isle(bot, recete_sira_no):
     # İlaç butonuna tıkla
     adim_baslangic = time.time()
     ilac_butonu = bot.ilac_butonuna_tikla()
-    log_sure("İlaç butonu", adim_baslangic)
+    log_sure("İlaç butonu", adim_baslangic, "ilac_butonu")
     if not ilac_butonu:
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
@@ -1513,7 +1520,7 @@ def tek_recete_isle(bot, recete_sira_no):
     # "Kullanılan İlaç Listesi" ekranının yüklenmesini bekle
     adim_baslangic = time.time()
     ilac_ekrani = bot.ilac_ekrani_yuklendi_mi(max_bekleme=3)
-    log_sure("İlaç ekranı yükleme", adim_baslangic)
+    log_sure("İlaç ekranı yükleme", adim_baslangic, "ilac_ekran_bekleme")
     if not ilac_ekrani:
         logger.error("❌ İlaç ekranı yüklenemedi")
         log_recete_baslik()
@@ -1531,7 +1538,7 @@ def tek_recete_isle(bot, recete_sira_no):
     ana_pencere = bot.main_window
     adim_baslangic = time.time()
     y_butonu = bot.y_tusuna_tikla()
-    log_sure("Y butonu", adim_baslangic)
+    log_sure("Y butonu", adim_baslangic, "y_butonu")
     if not y_butonu:
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
@@ -1556,27 +1563,27 @@ def tek_recete_isle(bot, recete_sira_no):
             break  # BULUNDU! Hemen devam et
         time.sleep(bot.timing.get("pencere_bulma"))
 
-    log_sure("İlaç penceresi bulma", adim_baslangic)
+    log_sure("İlaç penceresi bulma", adim_baslangic, "pencere_bulma")
 
     # İlaç Listesi bulunamadıysa → LABA/LAMA veya başka uyarı penceresi açıktır
     if not ilac_penceresi_bulundu:
         logger.info("⚠ İlaç Listesi bulunamadı → LABA/LAMA/Uyarı kontrolü yapılıyor...")
         laba_baslangic = time.time()
         laba_kapatildi = bot.laba_lama_uyarisini_kapat(max_bekleme=1.5, detayli_log=True)
-        log_sure("LABA/LAMA kontrol", laba_baslangic)
+        log_sure("LABA/LAMA kontrol", laba_baslangic, "laba_uyari")
 
         if laba_kapatildi:
             # Uyarı kapatıldı, tekrar Y butonuna bas
             time.sleep(bot.timing.get("laba_sonrasi_bekleme"))
             adim_baslangic = time.time()
             y_butonu_2 = bot.y_tusuna_tikla()
-            log_sure("Y butonu (2. deneme)", adim_baslangic)
+            log_sure("Y butonu (2. deneme)", adim_baslangic, "y_ikinci_deneme")
 
             if y_butonu_2:
                 time.sleep(bot.timing.get("y_ikinci_deneme"))
                 adim_baslangic = time.time()
                 ilac_penceresi_bulundu = bot.yeni_pencereyi_bul("İlaç Listesi")
-                log_sure("İlaç penceresi 2. bulma", adim_baslangic)
+                log_sure("İlaç penceresi 2. bulma", adim_baslangic, "pencere_bulma")
 
     # Hala bulunamadıysa gerçekten hata
     if not ilac_penceresi_bulundu:
@@ -1587,14 +1594,14 @@ def tek_recete_isle(bot, recete_sira_no):
     # "Bizden Alınmayanları Seç" butonunu ara
     adim_baslangic = time.time()
     alinmayan_secildi = bot.bizden_alinanlarin_sec_tusuna_tikla()
-    log_sure("Alınmayanları Seç", adim_baslangic)
+    log_sure("Alınmayanları Seç", adim_baslangic, "alinmayanlari_sec")
 
     # Eğer buton bulunamadıysa → LABA/LAMA uyarısı var olabilir
     if not alinmayan_secildi:
         logger.info("⚠ Bizden Alınmayanları Seç bulunamadı → LABA/LAMA kontrolü yapılıyor...")
         laba_baslangic = time.time()
         laba_kapatildi = bot.laba_lama_uyarisini_kapat(max_bekleme=1.5)
-        log_sure("LABA/LAMA kontrol", laba_baslangic)
+        log_sure("LABA/LAMA kontrol", laba_baslangic, "laba_uyari")
 
         if laba_kapatildi:
             # LABA/LAMA kapatıldı, tekrar dene
@@ -1603,13 +1610,13 @@ def tek_recete_isle(bot, recete_sira_no):
             # İlaç Listesi penceresini tekrar bul
             adim_baslangic = time.time()
             ilac_penceresi_bulundu = bot.yeni_pencereyi_bul("İlaç Listesi")
-            log_sure("İlaç penceresi 2. bulma", adim_baslangic)
+            log_sure("İlaç penceresi 2. bulma", adim_baslangic, "pencere_bulma")
 
             if ilac_penceresi_bulundu:
                 # Tekrar "Bizden Alınmayanları Seç" butonunu ara
                 adim_baslangic = time.time()
                 alinmayan_secildi = bot.bizden_alinanlarin_sec_tusuna_tikla()
-                log_sure("Alınmayanları Seç (2. deneme)", adim_baslangic)
+                log_sure("Alınmayanları Seç (2. deneme)", adim_baslangic, "alinmayanlari_sec")
 
         # Hala bulanamadıysa hata
         if not alinmayan_secildi:
@@ -1653,16 +1660,16 @@ def tek_recete_isle(bot, recete_sira_no):
             logger.info("→ Takip Et atlandı")
             kapatma_baslangic = time.time()
             bot.ilac_listesi_penceresini_kapat()
-            log_sure("İlaç penceresi kapatma", kapatma_baslangic)
+            log_sure("İlaç penceresi kapatma", kapatma_baslangic, "kapat_butonu")
             pencere_kapandi = True
 
-    log_sure("İlaç seçimi", adim_baslangic)
+    log_sure("İlaç seçimi", adim_baslangic, "ilac_secim_bekleme")
 
     # Her iki durumda da İlaç Listesi penceresini kapat
     if not pencere_kapandi:
         adim_baslangic = time.time()
         bot.ilac_listesi_penceresini_kapat()
-        log_sure("İlaç penceresi kapatma", adim_baslangic)
+        log_sure("İlaç penceresi kapatma", adim_baslangic, "kapat_butonu")
 
     # Ana Medula penceresine geri dön (main_window'u geri yükle)
     bot.main_window = ana_pencere
@@ -1671,7 +1678,7 @@ def tek_recete_isle(bot, recete_sira_no):
     # Geri Dön butonuna tıkla
     adim_baslangic = time.time()
     geri_don = bot.geri_don_butonuna_tikla()
-    log_sure("Geri Dön butonu", adim_baslangic)
+    log_sure("Geri Dön butonu", adim_baslangic, "geri_don_butonu")
     if not geri_don:
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
@@ -1679,7 +1686,7 @@ def tek_recete_isle(bot, recete_sira_no):
     # SONRA butonuna tıklayarak bir sonraki reçeteye geç
     adim_baslangic = time.time()
     sonra = bot.sonra_butonuna_tikla()
-    log_sure("Sonra butonu", adim_baslangic)
+    log_sure("Sonra butonu", adim_baslangic, "sonra_butonu")
     if not sonra:
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)

@@ -37,6 +37,7 @@ class TimingSettings:
             "sonra_butonu": 0.075,              # SONRA butonuna tıklama
             "kapat_butonu": 0.045,              # Pencere Kapat butonuna tıklama
             "takip_et": 0.09,                   # Takip Et tıklama
+            "alinmayanlari_sec": 0.15,          # Alınmayanları Seç tıklama
 
             # Sayfa Geçişleri
             "recete_sorgu": 0.375,              # Reçete Sorgu açma
@@ -52,6 +53,8 @@ class TimingSettings:
             "popup_kapat": 0.03,                # Popup kapatma (hızlı)
             "uyari_kapat": 0.03,                # Uyarı kapatma (hızlı)
             "laba_uyari": 0.075,                # LABA/LAMA uyarısı kapatma
+            "recete_kontrol": 0.05,             # Reçete kontrolü (hızlı)
+            "recete_notu_kapat": 0.05,          # Reçete notu kapatma
 
             # Diğer İşlemler
             "ilac_ekran_bekleme": 0.15,         # İlaç ekranı yükleme kontrolü
@@ -166,6 +169,7 @@ class TimingSettings:
                 ("sonra_butonu", "SONRA Butonu"),
                 ("kapat_butonu", "Kapat Butonu"),
                 ("takip_et", "Takip Et"),
+                ("alinmayanlari_sec", "Alınmayanları Seç"),
             ],
             "Sayfa Geçişleri": [
                 ("recete_sorgu", "Reçete Sorgu"),
@@ -181,6 +185,8 @@ class TimingSettings:
                 ("popup_kapat", "Popup Kapat"),
                 ("uyari_kapat", "Uyarı Kapat"),
                 ("laba_uyari", "LABA/LAMA Uyarı"),
+                ("recete_kontrol", "Reçete Kontrol"),
+                ("recete_notu_kapat", "Reçete Notu Kapat"),
             ],
             "Masaüstü İşlemleri": [
                 ("masaustu_simge_tiklama", "Simge Tıklama"),
