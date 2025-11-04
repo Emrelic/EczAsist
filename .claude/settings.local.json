@@ -25,7 +25,9 @@
       "Bash(python:*)",
       "Bash(pip install:*)",
       "Bash(attrib:*)",
-      "Bash(del \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\BotTak3\\grup_durumlari.json\")"
+      "Bash(del \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\BotTak3\\grup_durumlari.json\")",
+      "Bash(cmd.exe /c dir \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\*.txt\")",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
