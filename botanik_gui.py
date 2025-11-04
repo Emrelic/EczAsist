@@ -1411,7 +1411,14 @@ class BotanikGUI:
         self.medula_index_combo = ttk.Combobox(
             medula_frame,
             textvariable=self.medula_index_var,
-            values=["1. Kullanıcı (Index 0)", "2. Kullanıcı (Index 1)", "3. Kullanıcı (Index 2)"],
+            values=[
+                "1. Kullanıcı (Index 0)",
+                "2. Kullanıcı (Index 1)",
+                "3. Kullanıcı (Index 2)",
+                "4. Kullanıcı (Index 3)",
+                "5. Kullanıcı (Index 4)",
+                "6. Kullanıcı (Index 5)"
+            ],
             state="readonly",
             font=("Arial", 9),
             width=27
@@ -1790,6 +1797,12 @@ class BotanikGUI:
                 self.medula_index_var.set("2. Kullanıcı (Index 1)")
             elif medula_index == 2:
                 self.medula_index_var.set("3. Kullanıcı (Index 2)")
+            elif medula_index == 3:
+                self.medula_index_var.set("4. Kullanıcı (Index 3)")
+            elif medula_index == 4:
+                self.medula_index_var.set("5. Kullanıcı (Index 4)")
+            elif medula_index == 5:
+                self.medula_index_var.set("6. Kullanıcı (Index 5)")
 
             # Şifreyi yükle
             self.medula_sifre_entry.delete(0, tk.END)
@@ -1809,6 +1822,12 @@ class BotanikGUI:
             medula_index = 1
         elif "Index 2" in medula_index_str:
             medula_index = 2
+        elif "Index 3" in medula_index_str:
+            medula_index = 3
+        elif "Index 4" in medula_index_str:
+            medula_index = 4
+        elif "Index 5" in medula_index_str:
+            medula_index = 5
         else:
             messagebox.showwarning("Uyarı", "Lütfen MEDULA kullanıcısını seçin!")
             return

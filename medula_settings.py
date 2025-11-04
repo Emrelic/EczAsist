@@ -36,9 +36,24 @@ class MedulaSettings:
                     "ad": "Kullanıcı 3",
                     "kullanici_index": 2,
                     "sifre": ""
+                },
+                {
+                    "ad": "Kullanıcı 4",
+                    "kullanici_index": 3,
+                    "sifre": ""
+                },
+                {
+                    "ad": "Kullanıcı 5",
+                    "kullanici_index": 4,
+                    "sifre": ""
+                },
+                {
+                    "ad": "Kullanıcı 6",
+                    "kullanici_index": 5,
+                    "sifre": ""
                 }
             ],
-            "aktif_kullanici": 0,  # Hangi kullanıcı aktif (0, 1, 2)
+            "aktif_kullanici": 0,  # Hangi kullanıcı aktif (0, 1, 2, 3, 4, 5)
 
             # MEDULA Program Yolu (SABİT)
             "medula_exe_path": r"C:\BotanikEczane\BotanikMedula.exe",
@@ -99,6 +114,21 @@ class MedulaSettings:
                             "ad": "Kullanıcı 3",
                             "kullanici_index": 2,
                             "sifre": ""
+                        },
+                        {
+                            "ad": "Kullanıcı 4",
+                            "kullanici_index": 3,
+                            "sifre": ""
+                        },
+                        {
+                            "ad": "Kullanıcı 5",
+                            "kullanici_index": 4,
+                            "sifre": ""
+                        },
+                        {
+                            "ad": "Kullanıcı 6",
+                            "kullanici_index": 5,
+                            "sifre": ""
                         }
                     ]
                     yuklu_ayarlar["aktif_kullanici"] = 0  # İlk kullanıcı aktif
@@ -112,6 +142,24 @@ class MedulaSettings:
                     self.ayarlar = yuklu_ayarlar
                     self.kaydet()
                     logger.info("✓ Ayarlar yeni formata dönüştürüldü ve kaydedildi")
+
+                # 3 KULLANICIDAN 6 KULLANICIYA MİGRASYON
+                if "kullanicilar" in yuklu_ayarlar:
+                    kullanicilar = yuklu_ayarlar["kullanicilar"]
+                    if len(kullanicilar) < 6:
+                        logger.info(f"⚙ {len(kullanicilar)} kullanıcıdan 6 kullanıcıya genişletiliyor...")
+
+                        # Mevcut kullanıcıları koru, yeni slotlar ekle
+                        while len(kullanicilar) < 6:
+                            yeni_index = len(kullanicilar)
+                            kullanicilar.append({
+                                "ad": f"Kullanıcı {yeni_index + 1}",
+                                "kullanici_index": yeni_index,
+                                "sifre": ""
+                            })
+
+                        yuklu_ayarlar["kullanicilar"] = kullanicilar
+                        logger.info("✓ Kullanıcı listesi 6'ya genişletildi")
 
                 # Yeni eklenen ayarları da ekle (varsa)
                 for key, value in self.varsayilan_ayarlar.items():
@@ -176,7 +224,7 @@ class MedulaSettings:
         return None
 
     def set_aktif_kullanici(self, index):
-        """Aktif kullanıcıyı ayarla (0, 1, 2)"""
+        """Aktif kullanıcıyı ayarla (0, 1, 2, 3, 4, 5)"""
         kullanicilar = self.get_kullanicilar()
         if 0 <= index < len(kullanicilar):
             self.ayarlar["aktif_kullanici"] = index
