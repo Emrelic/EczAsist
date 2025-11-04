@@ -1466,6 +1466,28 @@ class BotanikGUI:
             fg='#1565C0'
         ).grid(row=7, column=0, columnspan=2, pady=(0, 5))
 
+        # Telefon Kontrolü Checkbox
+        self.telefonsuz_atla_var = tk.BooleanVar(value=self.medula_settings.get("telefonsuz_atla", False))
+        telefon_checkbox = tk.Checkbutton(
+            medula_frame,
+            text="📵 Telefon numarası olmayan hastaları atla",
+            variable=self.telefonsuz_atla_var,
+            font=("Arial", 9),
+            bg='#E3F2FD',
+            fg='#D32F2F',
+            activebackground='#E3F2FD',
+            command=self.telefon_ayarini_kaydet
+        )
+        telefon_checkbox.grid(row=8, column=0, columnspan=2, sticky="w", padx=5, pady=(5, 0))
+
+        tk.Label(
+            medula_frame,
+            text="ℹ Telefon yoksa hasta işleme alınmadan direkt sonraki hastaya geçilir.",
+            font=("Arial", 6),
+            bg='#E3F2FD',
+            fg='#616161'
+        ).grid(row=9, column=0, columnspan=2, pady=(0, 5))
+
         # ===== ZAMANLAMA AYARLARI =====
         timing_title = tk.Label(
             main_frame,
@@ -1829,6 +1851,18 @@ class BotanikGUI:
         else:
             messagebox.showerror("Hata", "Kaydetme başarısız!")
             self.log_ekle("❌ MEDULA bilgileri kaydedilemedi")
+
+    def telefon_ayarini_kaydet(self):
+        """Telefon kontrolü ayarını kaydet"""
+        telefonsuz_atla = self.telefonsuz_atla_var.get()
+        self.medula_settings.set("telefonsuz_atla", telefonsuz_atla)
+
+        if self.medula_settings.kaydet():
+            durum = "AÇIK" if telefonsuz_atla else "KAPALI"
+            self.log_ekle(f"✓ Telefon kontrolü: {durum}")
+            logger.info(f"✓ Telefon kontrolü ayarı: {durum}")
+        else:
+            self.log_ekle("❌ Ayar kaydedilemedi")
 
     def basla(self):
         """Başlat butonuna basıldığında"""

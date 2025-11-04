@@ -60,6 +60,9 @@ class MedulaSettings:
 
             # Giriş Butonu
             "giris_button_name": "Giriş",
+
+            # Telefon Kontrolü
+            "telefonsuz_atla": False,  # Telefonu olmayan hastaları atla
         }
 
         self.ayarlar = self.yukle()

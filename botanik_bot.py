@@ -996,6 +996,50 @@ class BotanikBot:
         logger.warning("⚠️ Reçete numarası okunamadı")
         return None
 
+    def telefon_numarasi_kontrol(self):
+        """
+        Reçetede telefon numarası var mı kontrol et (4 farklı alan)
+
+        Kontrol edilen alanlar:
+        1. lblMusteriTelefonu - Müşteri telefonu
+        2. lblYanCariTelefonu - Yan cari telefonu
+        3. lblIlaciAlanTelefonu - İlacı alan telefonu
+        4. lblAlanYanCariTel - Alan yan cari telefonu
+
+        Returns:
+            bool: En az bir alanda telefon varsa True, hiçbirinde yoksa False
+        """
+        try:
+            telefon_alanlari = [
+                "lblMusteriTelefonu",
+                "lblYanCariTelefonu",
+                "lblIlaciAlanTelefonu",
+                "lblAlanYanCariTel"
+            ]
+
+            for alan_id in telefon_alanlari:
+                try:
+                    telefon_elem = self.main_window.child_window(auto_id=alan_id, control_type="Text")
+                    if telefon_elem.exists(timeout=0.5):
+                        telefon_text = telefon_elem.window_text().strip()
+
+                        # Telefon varsa (boş değilse)
+                        if telefon_text and telefon_text != "":
+                            logger.info(f"✓ Telefon bulundu ({alan_id}): {telefon_text}")
+                            return True
+                except Exception as e:
+                    logger.debug(f"Telefon alanı {alan_id} kontrol hatası: {e}")
+                    continue
+
+            # Hiçbir alanda telefon yok
+            logger.warning("⚠ Telefon numarası bulunamadı (4 alan da boş)")
+            return False
+
+        except Exception as e:
+            logger.error(f"Telefon kontrolü hatası: {e}")
+            # Hata durumunda telefon var kabul et (güvenli taraf)
+            return True
+
     def recete_kaydi_var_mi_kontrol(self):
         """
         Ekranda "Reçete kaydı bulunamadı" veya "Sistem hatası" uyarısı var mı kontrol et
@@ -1500,6 +1544,35 @@ def tek_recete_isle(bot, recete_sira_no):
 
     medula_recete_no = bot.recete_no_oku()
     log_recete_baslik(medula_recete_no)
+
+    # Telefon kontrolü (ayar açıksa)
+    from medula_settings import get_medula_settings
+    medula_settings = get_medula_settings()
+    telefonsuz_atla = medula_settings.get("telefonsuz_atla", False)
+
+    if telefonsuz_atla:
+        telefon_var = bot.telefon_numarasi_kontrol()
+        if not telefon_var:
+            logger.info("⏭ Telefon numarası yok, hasta atlanıyor...")
+            # Direkt SONRA butonuna bas ve geç
+            adim_baslangic = time.time()
+            sonra = bot.sonra_butonuna_tikla()
+            log_sure("Sonra butonu (telefon yok)", adim_baslangic, "sonra_butonu")
+            if not sonra:
+                log_recete_baslik()
+                return (False, medula_recete_no, takip_sayisi)
+
+            # SONRA butonuna basıldıktan sonra popup kontrolü
+            time.sleep(0.5)  # Popup için zaman tanı
+            try:
+                if popup_kontrol_ve_kapat():
+                    logger.info("✓ SONRA butonu sonrası popup kapatıldı")
+            except Exception as e:
+                logger.debug(f"SONRA butonu popup kontrol hatası: {e}")
+
+            # Başarıyla atlandı, takip sayısı 0
+            logger.info(f"✓ Reçete {recete_sira_no} atlandı (telefon yok)")
+            return (True, medula_recete_no, 0)  # Başarılı sayılsın ama takip 0
 
     # İlaç butonuna tıkla
     adim_baslangic = time.time()
