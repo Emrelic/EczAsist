@@ -49,6 +49,60 @@ class BotanikBot:
         # İstatistik kaydet
         self.timing.kayit_ekle(key, actual_duration)
 
+    def retry_with_popup_check(self, operation_func, operation_name, max_retries=3):
+        """
+        UI element bulma/tıklama işlemini 3 kere dene, başarısız olursa popup kontrol et
+
+        Args:
+            operation_func: Çalıştırılacak fonksiyon (parametresiz)
+            operation_name: İşlem adı (log için)
+            max_retries: Maksimum deneme sayısı
+
+        Returns:
+            bool: Başarılıysa True, başarısızsa False
+        """
+        for deneme in range(1, max_retries + 1):
+            try:
+                # İşlemi çalıştır
+                sonuc = operation_func()
+                if sonuc:
+                    if deneme > 1:
+                        logger.info(f"✓ {operation_name} başarılı ({deneme}. denemede)")
+                    return True
+
+                # Başarısız oldu
+                if deneme < max_retries:
+                    logger.debug(f"⚠ {operation_name} başarısız (Deneme {deneme}/{max_retries})")
+
+                    # Popup kontrol et ve kapat
+                    try:
+                        if popup_kontrol_ve_kapat():
+                            logger.info(f"✓ Popup kapatıldı, {operation_name} tekrar deneniyor...")
+                            time.sleep(0.3)
+                    except Exception as e:
+                        logger.debug(f"Popup kontrol hatası: {e}")
+
+                    # Pencereyi yenile
+                    try:
+                        self.baglanti_kur("MEDULA", ilk_baglanti=False)
+                        time.sleep(0.3)
+                    except:
+                        pass
+
+                else:
+                    logger.error(f"❌ {operation_name} başarısız ({max_retries} deneme)")
+                    return False
+
+            except Exception as e:
+                if deneme < max_retries:
+                    logger.debug(f"⚠ {operation_name} hata (Deneme {deneme}/{max_retries}): {e}")
+                    time.sleep(0.3)
+                else:
+                    logger.error(f"❌ {operation_name} hata ({max_retries} deneme): {e}")
+                    return False
+
+        return False
+
     def baglanti_kur(self, pencere_basligi="MEDULA", ilk_baglanti=False):
         """
         Medulla programına bağlan
@@ -429,63 +483,82 @@ class BotanikBot:
                         # Önce bulunduğu konteynerde ara
                         if kapat_butonunu_bul_ve_tikla(hedef.parent()):
                             return True
-                        # 3 seviye yukarı çıkarak tekrar dene
-                        ata = hedef.parent()
-                        for _ in range(3):
+                        # Desktop taraması yap (WindowsForms penceresi için)
+                        from pywinauto import Desktop
+                        try:
+                            windows = Desktop(backend="uia").windows()
+                        except Exception:
+                            return False
+
+                        for window in windows:
                             try:
-                                ata = ata.parent()
+                                # WindowsForms class kontrolü
+                                class_name = window.class_name()
+                                if "WindowsForms10.Window" not in class_name:
+                                    continue
+                            except:
+                                continue
+
+                            # Pencere başlığında "UYARIDIR" var mı?
+                            try:
+                                window_text = window.window_text()
+                                if "UYARI" not in window_text.upper():
+                                    continue
+                                logger.debug(f"  ✓ Genel Muayene penceresi bulundu (başlık: {window_text})")
+                            except:
+                                continue
+
+                            # Kapat butonunu bul
+                            try:
+                                all_buttons = window.descendants(control_type="Button")
+                                kapat_buttons = [
+                                    btn for btn in all_buttons
+                                    if btn.window_text() and "KAPAT" in btn.window_text().upper()
+                                ]
+                                logger.debug(f"  → {len(kapat_buttons)} Kapat butonu bulundu")
                             except Exception:
-                                ata = None
-                            if kapat_butonunu_bul_ve_tikla(ata):
-                                return True
-                        # Ana pencerede tekrar dene
-                        if kapat_butonunu_bul_ve_tikla(self.main_window):
-                            return True
-                        # Hedef bulundu ama kapatılamadıysa tekrar arama yapma
+                                kapat_buttons = []
+
+                            if not kapat_buttons:
+                                # Kapat butonu yoksa window.close() dene
+                                try:
+                                    window.close()
+                                    logger.info("✓ Genel Muayene uyarısı kapatıldı (close)")
+                                    time.sleep(self.timing.get("uyari_kapat"))
+                                    return True
+                                except:
+                                    pass
+                                continue
+
+                            logger.info(f"⚠ Genel Muayene uyarısı bulundu! Kapatılıyor...")
+
+                            for btn in kapat_buttons:
+                                try:
+                                    try:
+                                        btn.invoke()
+                                    except Exception:
+                                        try:
+                                            btn.click()
+                                        except Exception:
+                                            btn.click_input()
+                                    logger.info("✓ Genel Muayene uyarısı kapatıldı")
+                                    time.sleep(self.timing.get("uyari_kapat"))
+                                    return True
+                                except Exception:
+                                    continue
+
                         return False
-
-            # Gerekiyorsa kısa bir Desktop taraması yap
-            kalan = max_bekleme - (time.time() - baslangic)
-            if kalan <= 0:
-                return False
-
-            from pywinauto import Desktop
-            try:
-                windows = Desktop(backend="uia").windows()
-            except Exception:
-                return False
-
-            for window in windows:
-                try:
-                    texts = window.descendants(control_type="Text")
-                except Exception:
-                    continue
-
-                hedef_bulundu = False
-                for text in texts:
-                    try:
-                        icerik = (text.window_text() or "").upper()
-                        if any(anahtar.upper() in icerik for anahtar in anahtar_ifadeler):
-                            hedef_bulundu = True
-                            break
-                    except Exception:
-                        continue
-
-                if not hedef_bulundu:
-                    continue
-
-                if kapat_butonunu_bul_ve_tikla(window):
-                    return True
 
             return False
 
         except Exception as e:
-            logger.error(f"Uyarı penceresi kapatma hatası: {e}")
+            logger.error(f"Genel Muayene uyarısı kapatma hatası: {e}")
             return False
 
     def laba_lama_uyarisini_kapat(self, max_bekleme=1.5, detayli_log=True):
         """
-        LABA/LAMA ve İlaç Çakışması uyarılarını "Tamam" butonuna tıklayarak kapat
+        SADECE LABA/LAMA uyarısını "Kapat" butonuna tıklayarak kapat
+        inspect.exe'den: class="#32770", Kapat düğmesi
 
         Args:
             max_bekleme: Maksimum bekleme süresi (saniye)
@@ -501,9 +574,8 @@ class BotanikBot:
                 logger.debug(f"🔍 LABA/LAMA uyarısı aranıyor (max {max_bekleme}s)...")
 
             baslangic = time.time()
-            # LABA/LAMA ve İlaç Çakışması uyarıları için anahtar ifadeler
-            laba_ifadeler = ("LABA-LAMA", "LABA / LAMA", "LABA/LAMA")
-            ilac_cakismasi_ifadeler = ("İLAÇ ÇAKIŞMASI", "ILAC CAKISMASI", "ÇAKIŞMASI VARDIR", "CAKISMASI VARDIR")
+            # LABA/LAMA uyarısı için anahtar ifadeler
+            laba_ifadeler = ("LABA", "LAMA")
 
             desktop = Desktop(backend="uia")
 
@@ -515,50 +587,55 @@ class BotanikBot:
 
                 for window in windows:
                     try:
-                        # Tüm butonları al
-                        all_buttons = window.descendants(control_type="Button")
-                        # "Tamam" veya "Taman" içerenleri filtrele (büyük/küçük harf duyarsız)
-                        buttons = [
-                            btn for btn in all_buttons
-                            if btn.window_text() and "TAMA" in btn.window_text().upper()
-                        ]
-                        if detayli_log and buttons:
-                            logger.debug(f"  → {len(buttons)} TAMA* butonu bulundu: {[btn.window_text() for btn in buttons]}")
-                    except Exception:
-                        buttons = []
-
-                    if not buttons:
+                        # class="#32770" kontrolü
+                        class_name = window.class_name()
+                        if class_name != "#32770":
+                            continue
+                    except:
                         continue
 
+                    # İçerikte LABA/LAMA ifadesi var mı?
                     try:
-                        # Tüm elementleri kontrol et (sadece Text değil)
                         texts = window.descendants()
-                    except Exception:
-                        texts = []
-
-                    # LABA/LAMA uyarısını kontrol et
-                    laba_bulundu = any(
-                        (text.window_text() or "").upper().find(ifade) >= 0
-                        for text in texts
-                        for ifade in laba_ifadeler
-                    )
-
-                    # İlaç çakışması uyarısını kontrol et
-                    ilac_cakismasi_bulundu = any(
-                        (text.window_text() or "").upper().find(ifade) >= 0
-                        for text in texts
-                        for ifade in ilac_cakismasi_ifadeler
-                    )
-
-                    # Her iki uyarıdan birini bulduysa kapat
-                    if not (laba_bulundu or ilac_cakismasi_bulundu):
+                        laba_bulundu = any(
+                            any(ifade in (text.window_text() or "").upper() for ifade in laba_ifadeler)
+                            for text in texts
+                        )
+                        if not laba_bulundu:
+                            continue
+                    except:
                         continue
 
-                    # Hangi uyarı bulunduğunu belirle
-                    uyari_tipi = "LABA/LAMA" if laba_bulundu else "İlaç Çakışması"
-                    logger.info(f"⚠ {uyari_tipi} uyarısı bulundu! Kapatılıyor...")
+                    if detayli_log:
+                        logger.debug(f"  ✓ LABA/LAMA penceresi bulundu (class=#32770)")
 
-                    for btn in buttons:
+                    # Kapat butonunu bul
+                    try:
+                        all_buttons = window.descendants(control_type="Button")
+                        kapat_buttons = [
+                            btn for btn in all_buttons
+                            if btn.window_text() and "KAPAT" in btn.window_text().upper()
+                        ]
+                        if detayli_log:
+                            logger.debug(f"  → {len(kapat_buttons)} Kapat butonu bulundu")
+                    except Exception:
+                        kapat_buttons = []
+
+                    if not kapat_buttons:
+                        if detayli_log:
+                            logger.debug(f"  ⚠ Kapat butonu bulunamadı, pencereyi kapatmaya çalışıyor...")
+                        try:
+                            window.close()
+                            logger.info(f"✓ LABA/LAMA uyarısı kapatıldı (close)")
+                            time.sleep(self.timing.get("laba_uyari"))
+                            return True
+                        except:
+                            pass
+                        continue
+
+                    logger.info(f"⚠ LABA/LAMA uyarısı bulundu! Kapatılıyor...")
+
+                    for btn in kapat_buttons:
                         try:
                             try:
                                 btn.invoke()
@@ -567,7 +644,7 @@ class BotanikBot:
                                     btn.click()
                                 except Exception:
                                     btn.click_input()
-                            logger.info(f"✓ {uyari_tipi} uyarısı kapatıldı")
+                            logger.info(f"✓ LABA/LAMA uyarısı kapatıldı")
                             time.sleep(self.timing.get("laba_uyari"))
                             return True
                         except Exception:
@@ -578,7 +655,110 @@ class BotanikBot:
             return False
 
         except Exception as e:
-            logger.error(f"Popup uyarısı kontrol hatası: {e}", exc_info=True)
+            logger.error(f"LABA/LAMA uyarısı kontrol hatası: {e}", exc_info=True)
+            return False
+
+    def ilac_cakismasi_uyarisini_kapat(self, max_bekleme=1.5, detayli_log=True):
+        """
+        SADECE İlaç Çakışması uyarısını "Kapat" butonuna tıklayarak kapat
+        inspect.exe'den: class="#32770", Kapat düğmesi
+
+        Args:
+            max_bekleme: Maksimum bekleme süresi (saniye)
+            detayli_log: Detaylı debug logları yaz (varsayılan True)
+
+        Returns:
+            bool: Uyarı kapatıldı ise True
+        """
+        try:
+            from pywinauto import Desktop
+
+            if detayli_log:
+                logger.debug(f"🔍 İlaç Çakışması uyarısı aranıyor (max {max_bekleme}s)...")
+
+            baslangic = time.time()
+            # İlaç Çakışması uyarısı için anahtar ifadeler
+            ilac_cakismasi_ifadeler = ("İLAÇ ÇAKIŞMASI", "ILAC CAKISMASI", "ÇAKIŞMA")
+
+            desktop = Desktop(backend="uia")
+
+            while time.time() - baslangic < max_bekleme:
+                try:
+                    windows = desktop.windows()
+                except Exception:
+                    windows = []
+
+                for window in windows:
+                    try:
+                        # class="#32770" kontrolü
+                        class_name = window.class_name()
+                        if class_name != "#32770":
+                            continue
+                    except:
+                        continue
+
+                    # İçerikte İlaç Çakışması ifadesi var mı?
+                    try:
+                        texts = window.descendants()
+                        ilac_cakismasi_bulundu = any(
+                            any(ifade in (text.window_text() or "").upper() for ifade in ilac_cakismasi_ifadeler)
+                            for text in texts
+                        )
+                        if not ilac_cakismasi_bulundu:
+                            continue
+                    except:
+                        continue
+
+                    if detayli_log:
+                        logger.debug(f"  ✓ İlaç Çakışması penceresi bulundu (class=#32770)")
+
+                    # Kapat butonunu bul
+                    try:
+                        all_buttons = window.descendants(control_type="Button")
+                        kapat_buttons = [
+                            btn for btn in all_buttons
+                            if btn.window_text() and "KAPAT" in btn.window_text().upper()
+                        ]
+                        if detayli_log:
+                            logger.debug(f"  → {len(kapat_buttons)} Kapat butonu bulundu")
+                    except Exception:
+                        kapat_buttons = []
+
+                    if not kapat_buttons:
+                        if detayli_log:
+                            logger.debug(f"  ⚠ Kapat butonu bulunamadı, pencereyi kapatmaya çalışıyor...")
+                        try:
+                            window.close()
+                            logger.info(f"✓ İlaç Çakışması uyarısı kapatıldı (close)")
+                            time.sleep(self.timing.get("ilac_cakismasi_uyari"))
+                            return True
+                        except:
+                            pass
+                        continue
+
+                    logger.info(f"⚠ İlaç Çakışması uyarısı bulundu! Kapatılıyor...")
+
+                    for btn in kapat_buttons:
+                        try:
+                            try:
+                                btn.invoke()
+                            except Exception:
+                                try:
+                                    btn.click()
+                                except Exception:
+                                    btn.click_input()
+                            logger.info(f"✓ İlaç Çakışması uyarısı kapatıldı")
+                            time.sleep(self.timing.get("ilac_cakismasi_uyari"))
+                            return True
+                        except Exception:
+                            continue
+
+                time.sleep(self.timing.get("popup_kapat"))
+
+            return False
+
+        except Exception as e:
+            logger.error(f"İlaç Çakışması uyarısı kontrol hatası: {e}", exc_info=True)
             return False
 
     def y_tusuna_tikla(self):
@@ -1022,28 +1202,34 @@ class BotanikBot:
 
             for alan_id in telefon_alanlari:
                 try:
-                    telefon_elem = self.main_window.child_window(auto_id=alan_id, control_type="Text")
-                    if telefon_elem.exists(timeout=0.5):
-                        # window_text() yerine element_info.name kullan (LegacyIAccessible.Name)
+                    # descendants() ile ara (UIAWrapper için child_window çalışmıyor)
+                    telefon_elems = self.main_window.descendants(auto_id=alan_id, control_type="Text")
+
+                    if telefon_elems and len(telefon_elems) > 0:
+                        telefon_elem = telefon_elems[0]
+
+                        # window_text() ile telefon numarasını al
                         try:
-                            telefon_text = telefon_elem.element_info.name.strip()
-                        except:
-                            # Eğer element_info.name çalışmazsa window_text() dene
                             telefon_text = telefon_elem.window_text().strip()
+                        except:
+                            try:
+                                telefon_text = telefon_elem.element_info.name.strip()
+                            except:
+                                telefon_text = ""
 
-                        logger.info(f"  {alan_id}: '{telefon_text}' (Uzunluk: {len(telefon_text)})")
+                        logger.debug(f"  {alan_id}: '{telefon_text}' (Uzunluk: {len(telefon_text)})")
 
-                        # Telefon varsa (boş değilse)
-                        if telefon_text and telefon_text != "":
+                        # Telefon varsa (boş değilse ve geçerli uzunlukta)
+                        if telefon_text and len(telefon_text) >= 10:  # En az 10 karakter (telefon numarası)
                             bulunan_telefon_sayisi += 1
                             logger.info(f"✓ Telefon bulundu ({alan_id}): {telefon_text}")
                             return True  # EN AZ BİR TELEFON VARSA HEMEN TRUE DÖN
                         else:
-                            logger.info(f"  {alan_id}: BOŞ")
+                            logger.debug(f"  {alan_id}: BOŞ veya geçersiz")
                     else:
-                        logger.warning(f"  {alan_id}: Element bulunamadı")
+                        logger.debug(f"  {alan_id}: Element bulunamadı")
                 except Exception as e:
-                    logger.warning(f"  {alan_id} kontrol hatası: {e}")
+                    logger.debug(f"  {alan_id} kontrol hatası: {e}")
                     continue
 
             # Hiçbir alanda telefon yok
@@ -1545,19 +1731,7 @@ def tek_recete_isle(bot, recete_sira_no):
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
 
-    # REÇETE İÇİN NOT penceresi varsa kapat
-    adim_baslangic = time.time()
-    if bot.recete_not_penceresini_kapat():
-        log_sure("Reçete notu kapatma", adim_baslangic, "recete_notu_kapat")
-    else:
-        log_sure("Reçete notu kontrol", adim_baslangic, "recete_kontrol")
-
-    # UYARIDIR (Genel muayene tanısı) penceresi varsa kapat
-    adim_baslangic = time.time()
-    if bot.uyari_penceresini_kapat():
-        log_sure("Uyarı penceresi kapatma", adim_baslangic, "uyari_kapat")
-    else:
-        log_sure("Uyarı penceresi kontrol", adim_baslangic, "uyari_kapat")
+    # Reçete notu ve uyarı kontrolü KALDIRILDI - retry mekanizması gerektiğinde yapacak
 
     medula_recete_no = bot.recete_no_oku()
     log_recete_baslik(medula_recete_no)
@@ -1571,41 +1745,38 @@ def tek_recete_isle(bot, recete_sira_no):
         telefon_var = bot.telefon_numarasi_kontrol()
         if not telefon_var:
             logger.info("⏭ Telefon numarası yok, hasta atlanıyor...")
-            # Direkt SONRA butonuna bas ve geç
+            # Direkt SONRA butonuna bas ve geç (3 deneme + popup kontrolü)
             adim_baslangic = time.time()
-            sonra = bot.sonra_butonuna_tikla()
+            sonra = bot.retry_with_popup_check(
+                lambda: bot.sonra_butonuna_tikla(),
+                "SONRA butonu"
+            )
             log_sure("Sonra butonu (telefon yok)", adim_baslangic, "sonra_butonu")
             if not sonra:
                 log_recete_baslik()
                 return (False, medula_recete_no, takip_sayisi)
 
-            # SONRA butonuna basıldıktan sonra popup kontrolü
-            time.sleep(0.5)  # Popup için zaman tanı
-            try:
-                if popup_kontrol_ve_kapat():
-                    logger.info("✓ SONRA butonu sonrası popup kapatıldı")
-            except Exception as e:
-                logger.debug(f"SONRA butonu popup kontrol hatası: {e}")
-
             # Başarıyla atlandı, takip sayısı 0
             logger.info(f"✓ Reçete {recete_sira_no} atlandı (telefon yok)")
             return (True, medula_recete_no, 0)  # Başarılı sayılsın ama takip 0
 
-    # İlaç butonuna tıkla
+    # Genel muayene uyarısı kontrolü (reçete açıldıktan hemen sonra)
+    try:
+        if bot.uyari_penceresini_kapat(max_bekleme=0.5):
+            logger.info("✓ Genel muayene uyarısı kapatıldı")
+    except Exception as e:
+        logger.debug(f"Uyarı kontrol hatası: {e}")
+
+    # İlaç butonuna tıkla (3 deneme + popup kontrolü)
     adim_baslangic = time.time()
-    ilac_butonu = bot.ilac_butonuna_tikla()
+    ilac_butonu = bot.retry_with_popup_check(
+        lambda: bot.ilac_butonuna_tikla(),
+        "İlaç butonu"
+    )
     log_sure("İlaç butonu", adim_baslangic, "ilac_butonu")
     if not ilac_butonu:
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
-
-    # İlaç butonuna basıldıktan sonra popup kontrolü
-    time.sleep(0.3)  # Popup için zaman tanı
-    try:
-        if popup_kontrol_ve_kapat():
-            logger.info("✓ İlaç butonu sonrası popup kapatıldı")
-    except Exception as e:
-        logger.debug(f"İlaç butonu popup kontrol hatası: {e}")
 
     # "Kullanılan İlaç Listesi" ekranının yüklenmesini bekle
     adim_baslangic = time.time()
@@ -1616,30 +1787,39 @@ def tek_recete_isle(bot, recete_sira_no):
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
 
-    # İlaç ekranı yüklendikten sonra popup kontrolü
-    time.sleep(0.3)  # Popup için zaman tanı
-    try:
-        if popup_kontrol_ve_kapat():
-            logger.info("✓ İlaç ekranı sonrası popup kapatıldı")
-    except Exception as e:
-        logger.debug(f"İlaç ekranı popup kontrol hatası: {e}")
-
-    # Y butonuna tıkla
+    # Y butonuna tıkla (popup kontrol ile 2 deneme)
     ana_pencere = bot.main_window
     adim_baslangic = time.time()
     y_butonu = bot.y_tusuna_tikla()
     log_sure("Y butonu", adim_baslangic, "y_butonu")
-    if not y_butonu:
-        log_recete_baslik()
-        return (False, medula_recete_no, takip_sayisi)
 
-    # Y butonuna basıldıktan sonra popup kontrolü
-    time.sleep(0.3)  # Popup için zaman tanı
-    try:
-        if popup_kontrol_ve_kapat():
-            logger.info("✓ Y butonu sonrası popup kapatıldı")
-    except Exception as e:
-        logger.debug(f"Y butonu popup kontrol hatası: {e}")
+    # Y butonu başarısız olursa LABA/LAMA ve İlaç Çakışması kontrol et
+    if not y_butonu:
+        logger.info("⚠ Y butonu bulunamadı → LABA/LAMA kontrolü yapılıyor...")
+
+        # 1. LABA/LAMA kontrol ve kapat
+        laba_baslangic = time.time()
+        laba_kapatildi = bot.laba_lama_uyarisini_kapat(max_bekleme=1.5, detayli_log=True)
+        log_sure("LABA/LAMA kontrol (Y öncesi)", laba_baslangic, "laba_uyari")
+
+        # 2. LABA/LAMA kapatıldıysa, İlaç Çakışması kontrol ve kapat
+        ilac_cakismasi_kapatildi = False
+        if laba_kapatildi:
+            logger.info("⚠ LABA/LAMA kapatıldı → İlaç Çakışması kontrolü yapılıyor...")
+            ilac_baslangic = time.time()
+            ilac_cakismasi_kapatildi = bot.ilac_cakismasi_uyarisini_kapat(max_bekleme=1.5, detayli_log=True)
+            log_sure("İlaç Çakışması kontrol (LABA sonrası)", ilac_baslangic, "ilac_cakismasi_uyari")
+
+        # 3. Herhangi bir popup kapatıldıysa Y butonuna tekrar bas
+        if laba_kapatildi or ilac_cakismasi_kapatildi:
+            time.sleep(bot.timing.get("laba_sonrasi_bekleme"))
+            adim_baslangic = time.time()
+            y_butonu = bot.y_tusuna_tikla()
+            log_sure("Y butonu (popup sonrası)", adim_baslangic, "y_ikinci_deneme")
+
+        if not y_butonu:
+            log_recete_baslik()
+            return (False, medula_recete_no, takip_sayisi)
 
     # İlaç Listesi penceresini akıllı bekleme ile bul (max 1 saniye)
     adim_baslangic = time.time()
@@ -1655,19 +1835,29 @@ def tek_recete_isle(bot, recete_sira_no):
 
     log_sure("İlaç penceresi bulma", adim_baslangic, "pencere_bulma")
 
-    # İlaç Listesi bulunamadıysa → LABA/LAMA veya başka uyarı penceresi açıktır
+    # İlaç Listesi bulunamadıysa → LABA/LAMA veya İlaç Çakışması uyarı penceresi açıktır
     if not ilac_penceresi_bulundu:
-        logger.info("⚠ İlaç Listesi bulunamadı → LABA/LAMA/Uyarı kontrolü yapılıyor...")
+        logger.info("⚠ İlaç Listesi bulunamadı → LABA/LAMA kontrolü yapılıyor...")
+
+        # 1. LABA/LAMA kontrol ve kapat
         laba_baslangic = time.time()
         laba_kapatildi = bot.laba_lama_uyarisini_kapat(max_bekleme=1.5, detayli_log=True)
         log_sure("LABA/LAMA kontrol", laba_baslangic, "laba_uyari")
 
+        # 2. LABA/LAMA kapatıldıysa, İlaç Çakışması kontrol ve kapat
+        ilac_cakismasi_kapatildi = False
         if laba_kapatildi:
-            # Uyarı kapatıldı, tekrar Y butonuna bas
+            logger.info("⚠ LABA/LAMA kapatıldı → İlaç Çakışması kontrolü yapılıyor...")
+            ilac_baslangic = time.time()
+            ilac_cakismasi_kapatildi = bot.ilac_cakismasi_uyarisini_kapat(max_bekleme=1.5, detayli_log=True)
+            log_sure("İlaç Çakışması kontrol (LABA sonrası)", ilac_baslangic, "ilac_cakismasi_uyari")
+
+        # 3. Herhangi bir popup kapatıldıysa tekrar Y butonuna bas
+        if laba_kapatildi or ilac_cakismasi_kapatildi:
             time.sleep(bot.timing.get("laba_sonrasi_bekleme"))
             adim_baslangic = time.time()
             y_butonu_2 = bot.y_tusuna_tikla()
-            log_sure("Y butonu (2. deneme)", adim_baslangic, "y_ikinci_deneme")
+            log_sure("Y butonu (popup sonrası)", adim_baslangic, "y_ikinci_deneme")
 
             if y_butonu_2:
                 time.sleep(bot.timing.get("y_ikinci_deneme"))
@@ -1686,15 +1876,25 @@ def tek_recete_isle(bot, recete_sira_no):
     alinmayan_secildi = bot.bizden_alinanlarin_sec_tusuna_tikla()
     log_sure("Alınmayanları Seç", adim_baslangic, "alinmayanlari_sec")
 
-    # Eğer buton bulunamadıysa → LABA/LAMA uyarısı var olabilir
+    # Eğer buton bulunamadıysa → LABA/LAMA veya İlaç Çakışması uyarısı var olabilir
     if not alinmayan_secildi:
         logger.info("⚠ Bizden Alınmayanları Seç bulunamadı → LABA/LAMA kontrolü yapılıyor...")
+
+        # 1. LABA/LAMA kontrol ve kapat
         laba_baslangic = time.time()
         laba_kapatildi = bot.laba_lama_uyarisini_kapat(max_bekleme=1.5)
         log_sure("LABA/LAMA kontrol", laba_baslangic, "laba_uyari")
 
+        # 2. LABA/LAMA kapatıldıysa, İlaç Çakışması kontrol ve kapat
+        ilac_cakismasi_kapatildi = False
         if laba_kapatildi:
-            # LABA/LAMA kapatıldı, tekrar dene
+            logger.info("⚠ LABA/LAMA kapatıldı → İlaç Çakışması kontrolü yapılıyor...")
+            ilac_baslangic = time.time()
+            ilac_cakismasi_kapatildi = bot.ilac_cakismasi_uyarisini_kapat(max_bekleme=1.5)
+            log_sure("İlaç Çakışması kontrol (LABA sonrası)", ilac_baslangic, "ilac_cakismasi_uyari")
+
+        # 3. Herhangi bir popup kapatıldıysa İlaç Listesi penceresini tekrar bul
+        if laba_kapatildi or ilac_cakismasi_kapatildi:
             time.sleep(bot.timing.get("laba_sonrasi_bekleme"))
 
             # İlaç Listesi penceresini tekrar bul
@@ -1773,21 +1973,16 @@ def tek_recete_isle(bot, recete_sira_no):
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
 
-    # SONRA butonuna tıklayarak bir sonraki reçeteye geç
+    # SONRA butonuna tıklayarak bir sonraki reçeteye geç (3 deneme + popup kontrolü)
     adim_baslangic = time.time()
-    sonra = bot.sonra_butonuna_tikla()
+    sonra = bot.retry_with_popup_check(
+        lambda: bot.sonra_butonuna_tikla(),
+        "SONRA butonu"
+    )
     log_sure("Sonra butonu", adim_baslangic, "sonra_butonu")
     if not sonra:
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi)
-
-    # SONRA butonuna basıldıktan sonra popup kontrolü
-    time.sleep(0.5)  # Popup için zaman tanı
-    try:
-        if popup_kontrol_ve_kapat():
-            logger.info("✓ SONRA butonu sonrası popup kapatıldı")
-    except Exception as e:
-        logger.debug(f"SONRA butonu popup kontrol hatası: {e}")
 
     # Toplam reçete süresi
     toplam_sure = time.time() - recete_baslangic
@@ -2051,6 +2246,7 @@ def recete_kaydi_bulunamadi_mi(bot):
 def medula_taskkill():
     """
     MEDULA programını zorla kapat (taskkill)
+    SADECE BotanikMedula.exe kapatılır (BotanikEczane.exe KAPANMAZ)
 
     Returns:
         bool: Başarılıysa True
@@ -2058,20 +2254,20 @@ def medula_taskkill():
     try:
         import subprocess
 
-        # BotanikEczane.exe'yi kapat
+        # SADECE BotanikMedula.exe'yi kapat
         result = subprocess.run(
-            ["taskkill", "/F", "/IM", "BotanikEczane.exe"],
+            ["taskkill", "/F", "/IM", "BotanikMedula.exe"],
             capture_output=True,
             text=True,
             timeout=5
         )
 
         if result.returncode == 0:
-            logger.info("✓ MEDULA programı kapatıldı (taskkill)")
-            time.sleep(5)  # Programın tamamen kapanması için bekle (2 → 5 saniye)
+            logger.info("✓ BotanikMedula.exe kapatıldı (taskkill)")
+            time.sleep(2)  # Programın tamamen kapanması için bekle
             return True
         else:
-            logger.warning(f"⚠ Taskkill başarısız: {result.stderr}")
+            logger.warning("⚠ Taskkill başarısız: BotanikMedula.exe bulunamadı")
             return False
     except Exception as e:
         logger.error(f"❌ Taskkill hatası: {e}")
@@ -2760,58 +2956,108 @@ def medula_ac_ve_giris_yap(medula_settings):
 
             logger.info("✓ Giriş penceresi bulundu")
 
-            # ComboBox'a tıkla ve kullanıcı seç
+            # Giriş penceresini aktif hale getir ve odaklan
             try:
-                combobox = giris_window.child_window(class_name_re=".*COMBOBOX.*")
-                if combobox.exists(timeout=2):
-                    # Dropdown'u aç
-                    dropdown_btn = combobox.child_window(title="Kapat", control_type="Button")
-                    if dropdown_btn.exists():
-                        dropdown_btn.click()
+                giris_window.set_focus()
+                time.sleep(0.5)
+            except Exception as e:
+                logger.debug(f"Pencere focus hatası (devam ediliyor): {e}")
+
+            # ComboBox'a tıkla ve kullanıcı seç (PyAutoGUI ile basit çözüm)
+            try:
+                # Tab ile combobox'a git
+                pyautogui.press("tab")
+                time.sleep(0.3)
+
+                # Alt+Down ile dropdown'u aç
+                pyautogui.keyDown("alt")
+                pyautogui.press("down")
+                pyautogui.keyUp("alt")
+                time.sleep(0.5)
+
+                # Giriş yöntemine göre kullanıcı seçimi
+                if giris_yontemi == "kullanici_adi":
+                    # Kullanıcı adı ile arama
+                    if kullanici_adi_giris:
+                        logger.info(f"Kullanıcı adı yazılıyor: {kullanici_adi_giris}")
+                        pyautogui.typewrite(kullanici_adi_giris, interval=0.1)
+                        time.sleep(0.3)
+                        pyautogui.press("enter")
                         time.sleep(0.5)
+                        logger.info(f"✓ Kullanıcı seçildi (ad: {kullanici_adi_giris})")
+                    else:
+                        logger.warning("Kullanıcı adı girilmemiş, varsayılan kullanıcı seçilecek")
+                        pyautogui.press("enter")
+                        time.sleep(0.5)
+                else:
+                    # İndeks ile seçim (mevcut yöntem)
+                    logger.info(f"Combobox'tan {kullanici_ad} seçiliyor (Index: {kullanici_index})...")
+                    for i in range(kullanici_index):
+                        pyautogui.press("down")
+                        time.sleep(0.1)
 
-                        # Giriş yöntemine göre kullanıcı seçimi
-                        if giris_yontemi == "kullanici_adi":
-                            # Kullanıcı adı ile arama
-                            if kullanici_adi_giris:
-                                logger.info(f"Kullanıcı adı yazılıyor: {kullanici_adi_giris}")
-                                pyautogui.typewrite(kullanici_adi_giris, interval=0.1)
-                                time.sleep(0.3)
-                                pyautogui.press("enter")
-                                time.sleep(0.5)
-                                logger.info(f"✓ Kullanıcı seçildi (ad: {kullanici_adi_giris})")
-                            else:
-                                logger.warning("Kullanıcı adı girilmemiş, varsayılan kullanıcı seçilecek")
-                                pyautogui.press("enter")
-                                time.sleep(0.5)
-                        else:
-                            # İndeks ile seçim (mevcut yöntem)
-                            logger.info(f"Combobox'tan {kullanici_ad} seçiliyor (Index: {kullanici_index})...")
-                            for i in range(kullanici_index):
-                                pyautogui.press("down")
-                                time.sleep(0.1)
-
-                            pyautogui.press("enter")  # Seç
-                            time.sleep(0.5)
-                            logger.info(f"✓ {kullanici_ad} seçildi")
+                    pyautogui.press("enter")  # Seç
+                    time.sleep(0.5)
+                    logger.info(f"✓ {kullanici_ad} seçildi")
             except Exception as e:
                 logger.warning(f"⚠ ComboBox işlemi başarısız: {e}")
 
             # Şifre textbox'ına yaz
             try:
-                sifre_textbox = giris_window.child_window(auto_id="txtSifre", control_type="Edit")
-                if sifre_textbox.exists(timeout=2):
-                    sifre_textbox.set_focus()
-                    time.sleep(0.2)
-                    sifre_textbox.set_edit_text(sifre)
-                    time.sleep(0.5)
-                    logger.info("✓ Şifre girildi")
+                # Kullanıcı seçildikten sonra 2 kez Tab ile şifre alanına git
+                pyautogui.press("tab")
+                time.sleep(0.2)
+                pyautogui.press("tab")
+                time.sleep(0.3)
+                logger.info("✓ Şifre alanına gidildi (2x Tab)")
 
-                    # ENTER tuşuna bas
-                    pyautogui.press("enter")
-                    time.sleep(3)
-                    logger.info("✓ Giriş yapıldı")
-                    return True
+                # Şifre alanını temizle (varsa eski şifre)
+                pyautogui.hotkey('ctrl', 'a')
+                time.sleep(0.1)
+                pyautogui.press('backspace')
+                time.sleep(0.2)
+
+                # Şifreyi karakter karakter yaz
+                pyautogui.write(sifre, interval=0.05)
+                time.sleep(0.5)
+                logger.info("✓ Şifre girildi")
+
+                # ENTER tuşuna bas
+                pyautogui.press("enter")
+                time.sleep(4)
+
+                # Giriş başarılı mı kontrol et
+                from pywinauto import Desktop
+                desktop = Desktop(backend="uia")
+
+                # 5 saniye boyunca MEDULA ana penceresini bekle
+                medula_bulundu = False
+                for bekleme in range(10):  # 10 * 0.5 = 5 saniye
+                    for window in desktop.windows():
+                        try:
+                            window_text = window.window_text()
+                            if "MEDULA" in window_text and "BotanikEOS" not in window_text:
+                                logger.info("✓ Giriş yapıldı - MEDULA ana penceresi açıldı")
+                                medula_bulundu = True
+                                return True
+                        except:
+                            pass
+                    if medula_bulundu:
+                        break
+                    time.sleep(0.5)
+
+                # Giriş penceresi hala açıksa şifre yanlış demektir
+                for window in desktop.windows():
+                    try:
+                        if "BotanikEOS" in window.window_text():
+                            logger.error("❌ Giriş başarısız - Şifre yanlış olabilir")
+                            return False
+                    except:
+                        pass
+
+                logger.warning("⚠ Giriş durumu belirsiz")
+                return False
+
             except Exception as e:
                 logger.error(f"❌ Şifre girişi başarısız: {e}")
                 return False

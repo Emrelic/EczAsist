@@ -23,6 +23,11 @@ class TimingSettings:
         # İstatistikler: {anahtar: {"count": 0, "total_time": 0.0}}
         self.istatistikler = self.istatistik_yukle()
 
+        # Optimize mode - otomatik süre ayarlama
+        self.optimize_mode = False  # Optimize mode aktif mi?
+        self.optimized_keys = set()  # Optimize edilmiş anahtarlar
+        self.optimize_multiplier = 1.3  # Reel süre × 1.3
+
         # Varsayılan ayarlar (saniye cinsinden)
         self.varsayilan_ayarlar = {
             # Pencere İşlemleri
@@ -53,6 +58,7 @@ class TimingSettings:
             "popup_kapat": 0.03,                # Popup kapatma (hızlı)
             "uyari_kapat": 0.03,                # Uyarı kapatma (hızlı)
             "laba_uyari": 0.075,                # LABA/LAMA uyarısı kapatma
+            "ilac_cakismasi_uyari": 0.075,      # İlaç Çakışması uyarısı kapatma
             "recete_kontrol": 0.05,             # Reçete kontrolü (hızlı)
             "recete_notu_kapat": 0.05,          # Reçete notu kapatma
 
@@ -244,12 +250,20 @@ class TimingSettings:
             return False
 
     def kayit_ekle(self, anahtar, gercek_sure):
-        """Bir işlem için gerçek süreyi kaydet"""
+        """Bir işlem için gerçek süreyi kaydet ve optimize mode ise ayarı güncelle"""
         if anahtar not in self.istatistikler:
             self.istatistikler[anahtar] = {"count": 0, "total_time": 0.0}
 
         self.istatistikler[anahtar]["count"] += 1
         self.istatistikler[anahtar]["total_time"] += gercek_sure
+
+        # Optimize mode: Reel süre × 1.3 ile ayarı güncelle (sadece bir kere)
+        if self.optimize_mode and anahtar not in self.optimized_keys:
+            yeni_deger = gercek_sure * self.optimize_multiplier
+            self.set(anahtar, yeni_deger)
+            self.optimized_keys.add(anahtar)
+            logger.info(f"🔧 Optimize: {anahtar} = {yeni_deger:.3f}s (reel: {gercek_sure:.3f}s)")
+            self.kaydet()  # Hemen kaydet
 
         # Her 10 kayıtta bir otomatik kaydet
         if self.istatistikler[anahtar]["count"] % 10 == 0:
@@ -272,6 +286,28 @@ class TimingSettings:
         self.istatistikler = {}
         self.istatistik_kaydet()
         logger.info("✓ İstatistikler sıfırlandı")
+
+    def optimize_mode_ac(self, multiplier=1.3):
+        """Optimize mode'u aç ve tüm ayarları 3 saniye yap
+
+        Args:
+            multiplier: Reel süreye uygulanacak çarpan (örn: 1.3 = %30 fazla, 0.9 = %10 eksik)
+        """
+        self.optimize_mode = True
+        self.optimize_multiplier = multiplier
+        self.optimized_keys.clear()
+
+        # Tüm ayarları 3 saniye yap
+        for anahtar in self.ayarlar.keys():
+            self.ayarlar[anahtar] = 3.0
+
+        self.kaydet()
+        logger.info(f"🚀 Optimize mode aktif - Çarpan: {multiplier}x - Tüm ayarlar 3s başlatıldı")
+
+    def optimize_mode_kapat(self):
+        """Optimize mode'u kapat"""
+        self.optimize_mode = False
+        logger.info("⏹ Optimize mode kapatıldı")
 
 
 # Global singleton

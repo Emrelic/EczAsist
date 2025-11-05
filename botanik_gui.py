@@ -1013,6 +1013,68 @@ class BotanikGUI:
             thread.daemon = True
             thread.start()
 
+    def medula_ac_ve_giris_5_deneme_yap(self):
+        """
+        MEDULA'yı açmayı 5 kere dener. Her denemede:
+        1. Taskkill ile MEDULA'yı kapatır
+        2. MEDULA'yı açıp giriş yapar
+
+        Returns:
+            bool: Başarılıysa True, 5 deneme de başarısız olursa False
+        """
+        MAX_DENEME = 5
+
+        for deneme in range(1, MAX_DENEME + 1):
+            self.root.after(0, lambda d=deneme: self.log_ekle(f"🔄 MEDULA açma denemesi {d}/{MAX_DENEME}"))
+
+            # 1. Taskkill ile MEDULA'yı kapat
+            self.root.after(0, lambda: self.log_ekle("📍 MEDULA kapatılıyor (taskkill)..."))
+            if medula_taskkill():
+                self.taskkill_sayaci += 1
+                self.root.after(0, lambda: self.log_ekle(f"✓ MEDULA kapatıldı (Taskkill: {self.taskkill_sayaci})"))
+
+                # Database'e kaydet
+                if self.aktif_oturum_id:
+                    self.database.artir(self.aktif_oturum_id, "taskkill_sayisi")
+                    if self.session_logger:
+                        self.session_logger.warning(f"Taskkill yapıldı (#{self.taskkill_sayaci})")
+            else:
+                self.root.after(0, lambda: self.log_ekle("⚠ Taskkill başarısız, devam ediliyor..."))
+
+            # Taskkill sonrası bekleme
+            time.sleep(2)
+
+            # 2. MEDULA'yı aç ve giriş yap
+            self.root.after(0, lambda: self.log_ekle("📍 MEDULA açılıyor ve giriş yapılıyor..."))
+
+            try:
+                if medula_ac_ve_giris_yap(self.medula_settings):
+                    self.root.after(0, lambda: self.log_ekle("✓ MEDULA açıldı ve giriş yapıldı"))
+                    time.sleep(3)
+
+                    # Başarılı, bot'a bağlanmayı dene
+                    if self.bot is None:
+                        self.bot = BotanikBot()
+
+                    if self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
+                        self.root.after(0, lambda: self.log_ekle("✓ MEDULA'ya bağlandı"))
+                        return True
+                    else:
+                        self.root.after(0, lambda: self.log_ekle("⚠ Bağlantı kurulamadı, yeniden denenecek..."))
+                else:
+                    self.root.after(0, lambda: self.log_ekle("⚠ MEDULA açılamadı veya giriş yapılamadı"))
+            except Exception as e:
+                self.root.after(0, lambda err=str(e): self.log_ekle(f"⚠ Hata: {err}"))
+
+            # Son deneme değilse biraz bekle
+            if deneme < MAX_DENEME:
+                self.root.after(0, lambda: self.log_ekle("⏳ 3 saniye bekleniyor..."))
+                time.sleep(3)
+
+        # 5 deneme de başarısız
+        self.root.after(0, lambda: self.log_ekle("❌ 5 deneme de başarısız oldu!"))
+        return False
+
     def recete_ac(self, grup, recete_no):
         """Reçeteyi otomatik aç (thread'de çalışır)"""
         try:
@@ -1024,28 +1086,11 @@ class BotanikGUI:
 
                 # MEDULA'ya bağlanmayı dene
                 if not self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
-                    # MEDULA açık değil, otomatik olarak aç ve giriş yap
-                    self.root.after(0, lambda: self.log_ekle("⚠ MEDULA açık değil, otomatik başlatılıyor..."))
+                    # MEDULA açık değil, 5 kere deneyerek otomatik olarak aç ve giriş yap
+                    self.root.after(0, lambda: self.log_ekle("⚠ MEDULA açık değil, otomatik başlatılıyor (5 deneme)..."))
 
-                    # 1. Masaüstü simgesine çift tıkla
-                    self.root.after(0, lambda: self.log_ekle("🖱 Masaüstü simgesine tıklanıyor..."))
-                    if not masaustu_medula_ac(self.medula_settings):
-                        self.root.after(0, lambda: self.log_ekle("❌ Masaüstü simgesi açılamadı"))
-                        self.root.after(0, self.hata_sesi_calar)
-                        return
-
-                    # 2. MEDULA giriş yap
-                    self.root.after(0, lambda: self.log_ekle("🔐 MEDULA girişi yapılıyor..."))
-                    if not medula_giris_yap(self.medula_settings):
-                        self.root.after(0, lambda: self.log_ekle("❌ MEDULA girişi başarısız"))
-                        self.root.after(0, self.hata_sesi_calar)
-                        return
-
-                    self.root.after(0, lambda: self.log_ekle("✓ MEDULA açıldı ve giriş yapıldı"))
-
-                    # Şimdi tekrar bağlan
-                    if not self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
-                        self.root.after(0, lambda: self.log_ekle("❌ MEDULA'ya bağlanılamadı"))
+                    if not self.medula_ac_ve_giris_5_deneme_yap():
+                        self.root.after(0, lambda: self.log_ekle("❌ MEDULA açılamadı (5 deneme başarısız)"))
                         self.root.after(0, self.hata_sesi_calar)
                         return
 
@@ -1058,7 +1103,28 @@ class BotanikGUI:
             if not recete_sorgu_acildi:
                 # Açılmadıysa Ana Sayfa'ya dön ve tekrar dene
                 self.root.after(0, lambda: self.log_ekle("🏠 Ana Sayfa..."))
-                if self.bot.ana_sayfaya_don():
+                ana_sayfa_acildi = self.bot.ana_sayfaya_don()
+
+                if not ana_sayfa_acildi:
+                    # Ana Sayfa butonu da bulunamadı, MEDULA sıkışmış - yeniden başlat
+                    self.root.after(0, lambda: self.log_ekle("⚠ MEDULA sıkışmış, yeniden başlatılıyor..."))
+
+                    # Bot bağlantısını sıfırla
+                    self.bot = None
+
+                    # MEDULA'yı yeniden başlat ve giriş yap (taskkill dahil)
+                    if not self.medula_ac_ve_giris_5_deneme_yap():
+                        self.root.after(0, lambda: self.log_ekle("❌ MEDULA yeniden başlatılamadı"))
+                        self.root.after(0, self.hata_sesi_calar)
+                        return
+
+                    self.root.after(0, lambda: self.log_ekle("✓ MEDULA yeniden başlatıldı"))
+                    time.sleep(1)
+
+                    # Reçete Sorgu'ya tekrar tıkla
+                    self.root.after(0, lambda: self.log_ekle("🔘 Reçete Sorgu (yeniden başlatma sonrası)..."))
+                    recete_sorgu_acildi = self.bot.recete_sorgu_ac()
+                else:
                     time.sleep(0.75)  # Güvenli hasta takibi için: 0.5 → 0.75
                     self.root.after(0, lambda: self.log_ekle("🔘 Reçete Sorgu (2. deneme)..."))
                     recete_sorgu_acildi = self.bot.recete_sorgu_ac()
@@ -1189,28 +1255,11 @@ class BotanikGUI:
                 time.sleep(1)
 
             else:
-                # MEDULA açık değil, tam akış başlat
-                # 1. Masaüstü simgesine çift tıkla
-                self.root.after(0, lambda: self.log_ekle("🖱 Masaüstü simgesine tıklanıyor..."))
-                if not masaustu_medula_ac(self.medula_settings):
-                    self.root.after(0, lambda: self.log_ekle("❌ Masaüstü simgesi açılamadı"))
-                    self.root.after(0, self.hata_sesi_calar)
-                    return
+                # MEDULA açık değil, 5 kere deneyerek aç ve giriş yap
+                self.root.after(0, lambda: self.log_ekle("⚠ MEDULA açık değil, otomatik başlatılıyor (5 deneme)..."))
 
-                # 2. MEDULA giriş yap
-                self.root.after(0, lambda: self.log_ekle("🔐 MEDULA girişi yapılıyor..."))
-                if not medula_giris_yap(self.medula_settings):
-                    self.root.after(0, lambda: self.log_ekle("❌ MEDULA girişi başarısız"))
-                    self.root.after(0, self.hata_sesi_calar)
-                    return
-
-                # 3. Bot'a bağlan
-                self.root.after(0, lambda: self.log_ekle("🔌 MEDULA'ya bağlanılıyor..."))
-                if self.bot is None:
-                    self.bot = BotanikBot()
-
-                if not self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
-                    self.root.after(0, lambda: self.log_ekle("❌ MEDULA'ya bağlanılamadı"))
+                if not self.medula_ac_ve_giris_5_deneme_yap():
+                    self.root.after(0, lambda: self.log_ekle("❌ MEDULA açılamadı (5 deneme başarısız)"))
                     self.root.after(0, self.hata_sesi_calar)
                     return
 
@@ -1701,6 +1750,68 @@ class BotanikGUI:
             )
             btn.pack(side="left", padx=1)
 
+        # Optimize Mode Checkbox
+        optimize_frame = tk.Frame(main_frame, bg='#E8F5E9')
+        optimize_frame.pack(fill="x", pady=(5, 0))
+
+        self.optimize_mode_var = tk.BooleanVar(value=False)
+        optimize_checkbox = tk.Checkbutton(
+            optimize_frame,
+            text="🔧 Otomatik Optimize:",
+            variable=self.optimize_mode_var,
+            font=("Arial", 9, "bold"),
+            bg='#E8F5E9',
+            fg='#FF6F00',
+            activebackground='#E8F5E9',
+            command=self.optimize_mode_toggle
+        )
+        optimize_checkbox.pack(side="left", padx=5)
+
+        # Çarpan label
+        tk.Label(
+            optimize_frame,
+            text="Çarpan:",
+            font=("Arial", 8),
+            bg='#E8F5E9',
+            fg='#424242'
+        ).pack(side="left", padx=(5, 2))
+
+        # Çarpan input (0.8 - 2.0 arası)
+        self.optimize_multiplier_var = tk.StringVar(value="1.3")
+        multiplier_spinbox = tk.Spinbox(
+            optimize_frame,
+            from_=0.8,
+            to=2.0,
+            increment=0.1,
+            textvariable=self.optimize_multiplier_var,
+            width=5,
+            font=("Arial", 8),
+            bg='white'
+        )
+        multiplier_spinbox.pack(side="left", padx=2)
+
+        # Açıklama
+        tk.Label(
+            optimize_frame,
+            text="x (0.8=-%20, 1.0=aynı, 1.3=+%30, 1.5=+%50)",
+            font=("Arial", 7),
+            bg='#E8F5E9',
+            fg='#757575'
+        ).pack(side="left", padx=(2, 5))
+
+        # Optimize açıklama (ikinci satır)
+        optimize_info_frame = tk.Frame(main_frame, bg='#E8F5E9')
+        optimize_info_frame.pack(fill="x", pady=(0, 5))
+
+        optimize_info = tk.Label(
+            optimize_info_frame,
+            text="(İlk çalıştırmada tüm süreler 3s başlar, sonra reel süre × çarpan ile otomatik ayarlanır)",
+            font=("Arial", 7),
+            bg='#E8F5E9',
+            fg='#757575'
+        )
+        optimize_info.pack(side="left", padx=5)
+
         # Scrollable canvas (height belirtildi böylece scroll düzgün çalışır)
         canvas = tk.Canvas(main_frame, bg='#E8F5E9', highlightthickness=0, height=400)
         scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
@@ -1883,6 +1994,33 @@ class BotanikGUI:
             yeni_deger = round(varsayilan * carpan, 3)
             entry_var.set(str(yeni_deger))
         self.ayar_durum_label.config(text=f"✓ Tüm ayarlar {carpan}x olarak güncellendi", fg='#1B5E20')
+
+    def optimize_mode_toggle(self):
+        """Optimize mode checkbox'ı değiştiğinde"""
+        if self.optimize_mode_var.get():
+            # Çarpanı al
+            try:
+                multiplier = float(self.optimize_multiplier_var.get())
+                if multiplier < 0.8 or multiplier > 2.0:
+                    multiplier = 1.3
+                    self.optimize_multiplier_var.set("1.3")
+            except:
+                multiplier = 1.3
+                self.optimize_multiplier_var.set("1.3")
+
+            # Optimize mode açıldı
+            self.timing.optimize_mode_ac(multiplier)
+            self.log_ekle(f"🚀 Otomatik optimize aktif - Çarpan: {multiplier}x - Tüm ayarlar 3s")
+            logger.info(f"🚀 Otomatik optimize mode aktif - Çarpan: {multiplier}x")
+
+            # GUI'deki entry'leri de güncelle
+            for key, entry_var in self.ayar_entry_widgets.items():
+                entry_var.set("3.0")
+        else:
+            # Optimize mode kapatıldı
+            self.timing.optimize_mode_kapat()
+            self.log_ekle("⏹ Otomatik optimize kapatıldı")
+            logger.info("⏹ Otomatik optimize mode kapatıldı")
 
     def varsayilana_don(self):
         """Tüm değerleri varsayılana döndür"""
@@ -2207,66 +2345,82 @@ class BotanikGUI:
             except Exception as e:
                 self.root.after(0, lambda err=str(e): self.log_ekle(f"⚠ MEDULA penceresi bulunamadı: {err}"))
 
-            # 2. Adım: Bağlantı kurulamadıysa taskkill → yeniden aç → login
+            # 2. Adım: Bağlantı kurulamadıysa taskkill → yeniden aç → login (5 kere dene)
             if not baglanti_basarili:
-                self.root.after(0, lambda: self.log_ekle("⚠ 3 deneme başarısız, MEDULA yeniden açılıyor..."))
+                self.root.after(0, lambda: self.log_ekle("⚠ 3 deneme başarısız, MEDULA yeniden açılıyor (5 deneme)..."))
 
-                # Taskkill
-                self.root.after(0, lambda: self.log_ekle("📍 MEDULA kapatılıyor (taskkill)..."))
-                if medula_taskkill():
-                    self.taskkill_sayaci += 1
-                    self.root.after(0, lambda: self.log_ekle(f"✓ MEDULA kapatıldı (Taskkill: {self.taskkill_sayaci})"))
+                MAX_DENEME = 5
+                yeniden_acma_basarili = False
 
-                    # Database'e kaydet
-                    if self.aktif_oturum_id:
-                        self.database.artir(self.aktif_oturum_id, "taskkill_sayisi")
-                        if self.session_logger:
-                            self.session_logger.warning(f"Taskkill yapıldı (#{self.taskkill_sayaci})")
-                else:
-                    self.root.after(0, lambda: self.log_ekle("⚠ Taskkill başarısız, devam ediliyor..."))
+                for deneme in range(1, MAX_DENEME + 1):
+                    self.root.after(0, lambda d=deneme: self.log_ekle(f"🔄 Yeniden açma denemesi {d}/{MAX_DENEME}"))
 
-                # Taskkill sonrası ek bekleme (taskkill fonksiyonu içinde 5 sn bekliyor, buradan ek 2 sn)
-                time.sleep(2)
+                    # Taskkill
+                    self.root.after(0, lambda: self.log_ekle("📍 MEDULA kapatılıyor (taskkill)..."))
+                    if medula_taskkill():
+                        self.taskkill_sayaci += 1
+                        self.root.after(0, lambda: self.log_ekle(f"✓ MEDULA kapatıldı (Taskkill: {self.taskkill_sayaci})"))
 
-                # MEDULA'yı aç ve giriş yap
-                self.root.after(0, lambda: self.log_ekle("📍 MEDULA açılıyor ve giriş yapılıyor..."))
-                try:
-                    if medula_ac_ve_giris_yap(self.medula_settings):
-                        self.root.after(0, lambda: self.log_ekle("✓ MEDULA açıldı ve giriş yapıldı"))
+                        # Database'e kaydet
+                        if self.aktif_oturum_id:
+                            self.database.artir(self.aktif_oturum_id, "taskkill_sayisi")
+                            if self.session_logger:
+                                self.session_logger.warning(f"Taskkill yapıldı (#{self.taskkill_sayaci})")
+                    else:
+                        self.root.after(0, lambda: self.log_ekle("⚠ Taskkill başarısız, devam ediliyor..."))
+
+                    # Taskkill sonrası ek bekleme (taskkill fonksiyonu içinde 5 sn bekliyor, buradan ek 2 sn)
+                    time.sleep(2)
+
+                    # MEDULA'yı aç ve giriş yap
+                    self.root.after(0, lambda: self.log_ekle("📍 MEDULA açılıyor ve giriş yapılıyor..."))
+                    try:
+                        if medula_ac_ve_giris_yap(self.medula_settings):
+                            self.root.after(0, lambda: self.log_ekle("✓ MEDULA açıldı ve giriş yapıldı"))
+                            time.sleep(3)
+
+                            # CAPTCHA kontrolü - Butonu göster
+                            self.captcha_bekleniyor = True
+                            self.root.after(0, lambda: self.captcha_button.pack(side="left", padx=5))
+                            self.root.after(0, lambda: self.log_ekle("⏸ CAPTCHA'yı girdikten sonra 'CAPTCHA Girdim, Devam Et' butonuna basın"))
+
+                            # 3 bip sesi
+                            for _ in range(3):
+                                winsound.Beep(1000, 300)
+                                time.sleep(0.2)
+
+                            if self.session_logger:
+                                self.session_logger.info("CAPTCHA bekleniyor...")
+
+                            # CAPTCHA bekle
+                            while self.captcha_bekleniyor:
+                                time.sleep(0.5)
+
+                            self.root.after(0, lambda: self.log_ekle("✓ CAPTCHA girişi tamamlandı, MEDULA'ya bağlanılıyor..."))
+
+                            # Bot'a yeniden bağlan
+                            if not self.bot:
+                                self.bot = BotanikBot()
+
+                            if self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
+                                self.root.after(0, lambda: self.log_ekle("✓ MEDULA'ya bağlandı"))
+                                yeniden_acma_basarili = True
+                                break  # Başarılı, döngüden çık
+                            else:
+                                self.root.after(0, lambda: self.log_ekle("⚠ MEDULA'ya bağlanılamadı, yeniden denenecek..."))
+                        else:
+                            self.root.after(0, lambda: self.log_ekle("⚠ MEDULA açılamadı veya giriş yapılamadı, yeniden denenecek..."))
+                    except Exception as e:
+                        self.root.after(0, lambda err=str(e): self.log_ekle(f"⚠ MEDULA açma/giriş hatası: {err}"))
+
+                    # Son deneme değilse biraz bekle
+                    if deneme < MAX_DENEME:
+                        self.root.after(0, lambda: self.log_ekle("⏳ 3 saniye bekleniyor..."))
                         time.sleep(3)
 
-                        # CAPTCHA kontrolü - Butonu göster
-                        self.captcha_bekleniyor = True
-                        self.root.after(0, lambda: self.captcha_button.pack(side="left", padx=5))
-                        self.root.after(0, lambda: self.log_ekle("⏸ CAPTCHA'yı girdikten sonra 'CAPTCHA Girdim, Devam Et' butonuna basın"))
-
-                        # 3 bip sesi
-                        for _ in range(3):
-                            winsound.Beep(1000, 300)
-                            time.sleep(0.2)
-
-                        if self.session_logger:
-                            self.session_logger.info("CAPTCHA bekleniyor...")
-
-                        # CAPTCHA bekle
-                        while self.captcha_bekleniyor:
-                            time.sleep(0.5)
-
-                        self.root.after(0, lambda: self.log_ekle("✓ CAPTCHA girişi tamamlandı, MEDULA'ya bağlanılıyor..."))
-
-                        # Bot'a yeniden bağlan
-                        if not self.bot:
-                            self.bot = BotanikBot()
-
-                        if self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
-                            self.root.after(0, lambda: self.log_ekle("✓ MEDULA'ya bağlandı"))
-                        else:
-                            self.root.after(0, lambda: self.log_ekle("⚠ MEDULA'ya bağlanılamadı"))
-                    else:
-                        self.root.after(0, lambda: self.log_ekle("❌ MEDULA açılamadı veya giriş yapılamadı"))
-                        return False  # Başarısız
-                except Exception as e:
-                    self.root.after(0, lambda err=str(e): self.log_ekle(f"❌ MEDULA açma/giriş hatası: {err}"))
+                # 5 deneme sonucu kontrol et
+                if not yeniden_acma_basarili:
+                    self.root.after(0, lambda: self.log_ekle("❌ 5 deneme de başarısız oldu!"))
                     return False  # Başarısız
 
             # 3. Adım: GUI'deki grup butonuna bas
