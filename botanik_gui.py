@@ -16,11 +16,15 @@ import winsound
 from datetime import datetime
 from botanik_bot import (
     BotanikBot,
+    RaporTakip,
     tek_recete_isle,
     popup_kontrol_ve_kapat,
     recete_kaydi_bulunamadi_mi,
     medula_taskkill,
-    medula_ac_ve_giris_yap
+    medula_ac_ve_giris_yap,
+    SistemselHataException,
+    medula_yeniden_baslat_ve_giris_yap,
+    sonraki_gruba_gec_islemi
 )
 from timing_settings import get_timing_settings
 from database import get_database
@@ -47,18 +51,76 @@ class GrupDurumu:
 
     def yukle(self):
         """JSON dosyasından verileri yükle"""
+        guncellendi = False
         if self.dosya_yolu.exists():
             try:
                 with open(self.dosya_yolu, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    veriler = json.load(f)
+
+                    # Eski dosyaları yeni formata güncelle (backwards compatibility)
+                    for grup in ["A", "B", "C"]:
+                        if grup in veriler:
+                            # Eksik alanları ekle
+                            if "toplam_takipli_recete" not in veriler[grup]:
+                                veriler[grup]["toplam_takipli_recete"] = 0
+                                guncellendi = True
+                            if "bitti_tarihi" not in veriler[grup]:
+                                veriler[grup]["bitti_tarihi"] = None
+                                guncellendi = True
+                            if "bitti_recete_sayisi" not in veriler[grup]:
+                                veriler[grup]["bitti_recete_sayisi"] = None
+                                guncellendi = True
+
+                    # aktif_mod alanı yoksa ekle
+                    if "aktif_mod" not in veriler:
+                        veriler["aktif_mod"] = None
+                        guncellendi = True
+
+                    # Eğer güncelleme yapıldıysa dosyaya kaydet
+                    if guncellendi:
+                        try:
+                            temp_dosya = self.dosya_yolu.with_suffix('.tmp')
+                            with open(temp_dosya, 'w', encoding='utf-8') as f:
+                                json.dump(veriler, f, indent=2, ensure_ascii=False)
+                            import shutil
+                            shutil.move(str(temp_dosya), str(self.dosya_yolu))
+                        except:
+                            pass
+
+                    return veriler
             except:
                 pass
 
         # Varsayılan yapı
         return {
-            "A": {"son_recete": "", "toplam_recete": 0, "toplam_takip": 0, "toplam_sure": 0.0},
-            "B": {"son_recete": "", "toplam_recete": 0, "toplam_takip": 0, "toplam_sure": 0.0},
-            "C": {"son_recete": "", "toplam_recete": 0, "toplam_takip": 0, "toplam_sure": 0.0}
+            "aktif_mod": None,  # "tumunu_kontrol", "A", "B", "C" veya None
+            "A": {
+                "son_recete": "",
+                "toplam_recete": 0,
+                "toplam_takip": 0,
+                "toplam_takipli_recete": 0,
+                "toplam_sure": 0.0,
+                "bitti_tarihi": None,
+                "bitti_recete_sayisi": None
+            },
+            "B": {
+                "son_recete": "",
+                "toplam_recete": 0,
+                "toplam_takip": 0,
+                "toplam_takipli_recete": 0,
+                "toplam_sure": 0.0,
+                "bitti_tarihi": None,
+                "bitti_recete_sayisi": None
+            },
+            "C": {
+                "son_recete": "",
+                "toplam_recete": 0,
+                "toplam_takip": 0,
+                "toplam_takipli_recete": 0,
+                "toplam_sure": 0.0,
+                "bitti_tarihi": None,
+                "bitti_recete_sayisi": None
+            }
         }
 
     def kaydet(self):
@@ -94,11 +156,16 @@ class GrupDurumu:
             self.veriler[grup]["son_recete"] = recete_no
             self.kaydet()
 
-    def istatistik_guncelle(self, grup, recete_sayisi=0, takip_sayisi=0, sure=0.0):
+    def istatistik_guncelle(self, grup, recete_sayisi=0, takip_sayisi=0, takipli_recete_sayisi=0, sure=0.0):
         """Grup istatistiklerini güncelle"""
         if grup in self.veriler:
+            # Eksik alanları güvenli şekilde handle et
+            if "toplam_takipli_recete" not in self.veriler[grup]:
+                self.veriler[grup]["toplam_takipli_recete"] = 0
+
             self.veriler[grup]["toplam_recete"] += recete_sayisi
             self.veriler[grup]["toplam_takip"] += takip_sayisi
+            self.veriler[grup]["toplam_takipli_recete"] += takipli_recete_sayisi
             self.veriler[grup]["toplam_sure"] += sure
             self.kaydet()
 
@@ -107,14 +174,48 @@ class GrupDurumu:
         return self.veriler.get(grup, {})
 
     def grup_sifirla(self, grup):
-        """Grubu sıfırla (ay sonu)"""
+        """Grubu sıfırla (ay sonu) - BİTTİ bilgisini de temizler"""
         if grup in self.veriler:
             self.veriler[grup] = {
                 "son_recete": "",
                 "toplam_recete": 0,
                 "toplam_takip": 0,
-                "toplam_sure": 0.0
+                "toplam_takipli_recete": 0,
+                "toplam_sure": 0.0,
+                "bitti_tarihi": None,
+                "bitti_recete_sayisi": None
             }
+            self.kaydet()
+
+    def aktif_mod_ayarla(self, mod):
+        """Aktif modu ayarla: "tumunu_kontrol", "A", "B", "C" veya None"""
+        self.veriler["aktif_mod"] = mod
+        self.kaydet()
+
+    def aktif_mod_al(self):
+        """Aktif modu al"""
+        return self.veriler.get("aktif_mod", None)
+
+    def bitti_bilgisi_ayarla(self, grup, tarih, recete_sayisi):
+        """Grup bitiş bilgisini kaydet"""
+        if grup in self.veriler:
+            self.veriler[grup]["bitti_tarihi"] = tarih
+            self.veriler[grup]["bitti_recete_sayisi"] = recete_sayisi
+            self.kaydet()
+
+    def bitti_bilgisi_al(self, grup):
+        """Grup bitiş bilgisini al - (tarih, recete_sayisi) tuple döner"""
+        if grup in self.veriler:
+            tarih = self.veriler[grup].get("bitti_tarihi", None)
+            sayisi = self.veriler[grup].get("bitti_recete_sayisi", None)
+            return (tarih, sayisi)
+        return (None, None)
+
+    def bitti_bilgisi_temizle(self, grup):
+        """Grup bitiş bilgisini temizle (yeni işlem başladığında)"""
+        if grup in self.veriler:
+            self.veriler[grup]["bitti_tarihi"] = None
+            self.veriler[grup]["bitti_recete_sayisi"] = None
             self.kaydet()
 
 
@@ -157,6 +258,11 @@ class BotanikGUI:
         # Grup durumları
         self.grup_durumu = GrupDurumu()
 
+        # Rapor takip (CSV)
+        self.rapor_takip = RaporTakip()
+        self.son_kopyalama_tarihi = None
+        self.son_kopyalama_button = None
+
         # Bot
         self.bot = None
         self.automation_thread = None
@@ -167,9 +273,15 @@ class BotanikGUI:
         self.secili_grup = tk.StringVar(value="")
         self.aktif_grup = None  # Şu anda çalışan grup (A/B/C)
 
+        # Tümünü Kontrol Et (A→B→C) değişkenleri
+        self.tumu_kontrol_aktif = False  # Tümünü kontrol modu aktif mi?
+        self.tumu_kontrol_grup_sirasi = ["A", "B", "C"]  # Sıralı gruplar
+        self.tumu_kontrol_mevcut_index = 0  # Şu anda hangi grup işleniyor (index)
+
         # Oturum istatistikleri
         self.oturum_recete = 0
         self.oturum_takip = 0
+        self.oturum_takipli_recete = 0  # Takipli ilaç bulunan reçete sayısı
         self.oturum_baslangic = None
         self.oturum_sure_toplam = 0.0  # Toplam çalışma süresi (durdur/başlat arası)
         self.oturum_duraklatildi = False
@@ -196,8 +308,7 @@ class BotanikGUI:
         self.aktif_oturum_id = None  # Aktif oturum ID
         self.session_logger = None  # Oturum log dosyası
 
-        # CAPTCHA modu
-        self.captcha_bekleniyor = False
+        # CAPTCHA modu kaldırıldı - Botanik program kendi çözüyor
 
         self.create_widgets()
         self.load_grup_verileri()
@@ -671,6 +782,7 @@ class BotanikGUI:
         self.grup_buttons = {}
         self.grup_x_buttons = {}
         self.grup_stat_labels = {}  # Aylık istatistik labelları
+        self.grup_bitti_labels = {}  # ✅ BİTTİ bilgi labelları
         self.grup_frames = {}  # Grup frame'leri (renk değiştirmek için)
 
         for grup in ["A", "B", "C"]:
@@ -749,7 +861,7 @@ class BotanikGUI:
             # Alt kısım - Aylık istatistikler
             stat_label = tk.Label(
                 grup_outer,
-                text="Ay: Reçete:0 | İlaç:0 | 0s 0ms",
+                text="Ay: Rç:0 | Takipli:0 | İlaç:0 | 0s 0ms",
                 font=("Arial", 6),
                 bg="#C8E6C9",
                 fg="#1B5E20",
@@ -759,6 +871,39 @@ class BotanikGUI:
             )
             stat_label.pack(fill="x")
             self.grup_stat_labels[grup] = stat_label
+
+            # ✅ YENİ: BİTTİ bilgi label'ı (stat_label altında)
+            bitti_label = tk.Label(
+                grup_outer,
+                text="",  # Başlangıçta boş
+                font=("Arial", 7, "bold"),
+                bg="#FFF9C4",  # Açık sarı arka plan
+                fg="#F57F17",  # Koyu sarı yazı
+                anchor="center",
+                padx=5,
+                pady=2
+            )
+            # Başlangıçta gizli (pack etmiyoruz, sadece kaydediyoruz)
+            self.grup_bitti_labels[grup] = bitti_label
+
+        # HEPSİNİ KONTROL ET butonu (C grubu altında)
+        tumu_kontrol_frame = tk.Frame(groups_frame, bg=self.bg_color)
+        tumu_kontrol_frame.pack(fill="x", pady=(10, 5))
+
+        self.tumu_kontrol_button = tk.Button(
+            tumu_kontrol_frame,
+            text="🔄 HEPSİNİ KONTROL ET (A→B→C)",
+            font=("Arial", 10, "bold"),
+            bg="#1976D2",
+            fg="white",
+            activebackground="#1565C0",
+            disabledforeground="#E0E0E0",
+            height=2,
+            relief="raised",
+            bd=3,
+            command=self.tumu_kontrol_et
+        )
+        self.tumu_kontrol_button.pack(fill="x", padx=5)
 
         # Başlat/Durdur butonları
         buttons_frame = tk.Frame(main_frame, bg=self.bg_color)
@@ -797,21 +942,36 @@ class BotanikGUI:
         )
         self.stop_button.pack(side="left", expand=True)
 
-        # CAPTCHA Devam Et Butonu (başlangıçta gizli)
-        self.captcha_button = tk.Button(
-            buttons_frame,
-            text="CAPTCHA Girdim\nDevam Et ▶",
+        # CAPTCHA butonu kaldırıldı - Botanik program kendi çözüyor
+
+        # CSV Kopyala Butonları
+        # CSV Kopyala Butonu (Başlat/Durdur'un hemen altında)
+        csv_button = tk.Button(
+            main_frame,
+            text="📋 CSV Kopyala",
+            font=("Arial", 9, "bold"),
+            bg="#FFA726",
+            fg="white",
+            activebackground="#FB8C00",
+            relief="raised",
+            bd=2,
+            command=self.csv_temizle_kopyala
+        )
+        csv_button.pack(fill="x", pady=(10, 5))
+
+        # Son Kopyalamayı Tekrarla Butonu
+        self.son_kopyalama_button = tk.Button(
+            main_frame,
+            text="📋 Son Kopyalama (---)",
             font=("Arial", 9, "bold"),
             bg="#FF9800",
             fg="white",
             activebackground="#F57C00",
-            width=14,
-            height=2,
             relief="raised",
             bd=2,
-            command=self.captcha_devam_et
+            command=self.csv_son_kopyalamayi_tekrarla
         )
-        # Başlangıçta gizli
+        self.son_kopyalama_button.pack(fill="x", pady=(5, 5))
 
         # Görev Raporları Butonu
         report_btn_frame = tk.Frame(main_frame, bg=self.bg_color)
@@ -847,7 +1007,7 @@ class BotanikGUI:
 
         self.stats_label = tk.Label(
             stats_frame,
-            text="Reçete:0 | İlaç:0 | Süre:0s 0ms | Ort(5):-",
+            text="Rç:0 | Takipli:0 | İlaç:0 | R:0 | Süre:0s 0ms | Ort(5):-",
             font=("Arial", 8),
             bg="#C8E6C9",
             fg="#1B5E20",
@@ -934,11 +1094,15 @@ class BotanikGUI:
             # Aylık istatistikleri göster
             self.aylik_istatistik_guncelle(grup)
 
+            # ✅ BİTTİ bilgisini göster
+            self.bitti_bilgisi_guncelle(grup)
+
     def aylik_istatistik_guncelle(self, grup):
         """Grubun aylık istatistiklerini label'a yaz"""
         stats = self.grup_durumu.istatistik_al(grup)
         recete_sayi = stats.get("toplam_recete", 0)
         takip_sayi = stats.get("toplam_takip", 0)
+        takipli_recete_sayi = stats.get("toplam_takipli_recete", 0)
         sure_saniye = stats.get("toplam_sure", 0.0)
 
         # Süreyi dakika/saat formatına çevir (milisaniye ile)
@@ -954,8 +1118,26 @@ class BotanikGUI:
         else:
             sure_text = f"{int(sure_saniye)}s {milisaniye}ms"
 
-        text = f"Ay: Reçete:{recete_sayi} | İlaç:{takip_sayi} | {sure_text}"
+        text = f"Ay: Rç:{recete_sayi} | Takipli:{takipli_recete_sayi} | İlaç:{takip_sayi} | {sure_text}"
         self.grup_stat_labels[grup].config(text=text)
+
+    def bitti_bilgisi_guncelle(self, grup):
+        """
+        Grubun BİTTİ bilgisini label'a yaz ve göster/gizle
+
+        Args:
+            grup: Grup adı ("A", "B" veya "C")
+        """
+        tarih, sayisi = self.grup_durumu.bitti_bilgisi_al(grup)
+
+        if tarih and sayisi is not None:
+            # BİTTİ bilgisi var - göster
+            text = f"✅ BİTTİ {tarih} | {sayisi} reçete"
+            self.grup_bitti_labels[grup].config(text=text)
+            self.grup_bitti_labels[grup].pack(fill="x", pady=(0, 2))  # Göster
+        else:
+            # BİTTİ bilgisi yok - gizle
+            self.grup_bitti_labels[grup].pack_forget()
 
     def grup_secildi_click(self, grup):
         """Grup alanına tıklandığında (frame veya label tıklaması)"""
@@ -968,6 +1150,11 @@ class BotanikGUI:
         """Grup seçildiğinde"""
         logger.info(f"Grup {grup} seçildi")
         self.log_ekle(f"📁 Grup {grup} seçildi")
+
+        # ✅ Aktif modu ayarla (sadece manuel seçimde, tumu_kontrol değilse)
+        if not self.tumu_kontrol_aktif:
+            self.grup_durumu.aktif_mod_ayarla(grup)
+            logger.info(f"Aktif mod: {grup}")
 
         # Tüm grupların rengini normale çevir (açık yeşil)
         for g in ["A", "B", "C"]:
@@ -1377,6 +1564,101 @@ class BotanikGUI:
         self.aylik_istatistik_guncelle(grup)  # Aylık istatistiği de güncelle
         self.log_ekle(f"Grup {grup} sıfırlandı")
         logger.info(f"Grup {grup} sıfırlandı")
+
+    def csv_temizle_kopyala(self):
+        """Kopyalanmamış + geçerli raporları SonRaporlar.csv olarak kaydet ve panoya kopyala"""
+        try:
+            from datetime import datetime
+            import csv
+            from pathlib import Path
+
+            # Kopyalanmamış + geçerli raporları al
+            raporlar, silinen_sayisi = self.rapor_takip.kopyalanmamis_raporlari_al()
+
+            if not raporlar:
+                if silinen_sayisi > 0:
+                    self.log_ekle(f"ℹ️ {silinen_sayisi} geçmiş rapor atlandı, kopyalanacak yeni rapor yok")
+                else:
+                    self.log_ekle("ℹ️ Kopyalanacak yeni rapor yok")
+                return
+
+            # SonRaporlar.csv yolu
+            son_raporlar_yolu = Path("SonRaporlar.csv")
+
+            # CSV'ye yaz (Mesajlar format: Ad Soyad, Telefon, Rapor Tanısı, Bitiş Tarihi, Kayıt Tarihi)
+            with open(son_raporlar_yolu, 'w', newline='', encoding='utf-8-sig') as f:
+                fieldnames = ['Ad Soyad', 'Telefon', 'Rapor Tanısı', 'Bitiş Tarihi', 'Kayıt Tarihi']
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+
+                for rapor in raporlar:
+                    writer.writerow({
+                        'Ad Soyad': rapor['ad'],
+                        'Telefon': rapor['telefon'],
+                        'Rapor Tanısı': rapor['tani'],
+                        'Bitiş Tarihi': rapor['bitis'],
+                        'Kayıt Tarihi': rapor['kayit']
+                    })
+
+            # CSV içeriğini panoya kopyala
+            with open(son_raporlar_yolu, 'r', encoding='utf-8-sig') as f:
+                csv_icerik = f.read()
+
+            self.root.clipboard_clear()
+            self.root.clipboard_append(csv_icerik)
+            self.root.update()
+
+            # Kopyalanan raporları işaretle
+            isaretlenen = self.rapor_takip.kopyalandi_isaretle(raporlar)
+
+            # Bildirim
+            if silinen_sayisi > 0:
+                self.log_ekle(f"✓ {silinen_sayisi} geçmiş rapor atlandı")
+            self.log_ekle(f"✓ {len(raporlar)} rapor panoya kopyalandı ve işaretlendi")
+
+            # Son kopyalama tarihini güncelle
+            self.son_kopyalama_tarihi = datetime.now()
+            self._guncelle_son_kopyalama_butonu()
+
+        except Exception as e:
+            self.log_ekle(f"❌ CSV kopyalama hatası: {e}")
+            logger.error(f"CSV kopyalama hatası: {e}")
+
+    def csv_son_kopyalamayi_tekrarla(self):
+        """SonRaporlar.csv dosyasını tekrar panoya kopyala"""
+        try:
+            from pathlib import Path
+
+            son_raporlar_yolu = Path("SonRaporlar.csv")
+
+            if not son_raporlar_yolu.exists():
+                self.log_ekle("❌ SonRaporlar.csv dosyası bulunamadı. Önce normal kopyalama yapın.")
+                return
+
+            # Dosyayı oku ve panoya kopyala
+            with open(son_raporlar_yolu, 'r', encoding='utf-8-sig') as f:
+                csv_icerik = f.read()
+
+            # Satır sayısını hesapla (header hariç)
+            satir_sayisi = csv_icerik.count('\n') - 1
+            if satir_sayisi < 0:
+                satir_sayisi = 0
+
+            self.root.clipboard_clear()
+            self.root.clipboard_append(csv_icerik)
+            self.root.update()
+
+            self.log_ekle(f"✓ Son kopyalama ({satir_sayisi} rapor) tekrar panoya kopyalandı")
+
+        except Exception as e:
+            self.log_ekle(f"❌ Son kopyalama hatası: {e}")
+            logger.error(f"Son kopyalama hatası: {e}")
+
+    def _guncelle_son_kopyalama_butonu(self):
+        """Son kopyalama butonunun metnini güncelle"""
+        if self.son_kopyalama_button and self.son_kopyalama_tarihi:
+            tarih_str = self.son_kopyalama_tarihi.strftime("%d/%m/%Y %H:%M")
+            self.son_kopyalama_button.config(text=f"📋 Son Kopyalama ({tarih_str})")
 
     def hata_sesi_calar(self):
         """Hata durumunda 3 kez bip sesi çıkar"""
@@ -2237,8 +2519,13 @@ class BotanikGUI:
         if not self.oturum_duraklatildi:
             self.oturum_recete = 0
             self.oturum_takip = 0
+            self.oturum_takipli_recete = 0
             self.oturum_sure_toplam = 0.0
             self.son_recete_sureleri = []  # Son 5 reçete sürelerini sıfırla
+
+            # ✅ YENİ: BİTTİ bilgisini temizle (yeni işlem başlıyor)
+            self.grup_durumu.bitti_bilgisi_temizle(secili)
+            self.root.after(0, lambda g=secili: self.bitti_bilgisi_guncelle(g))  # GUI'yi güncelle
 
             # Yeni oturum başlat (database + log dosyası)
             son_recete = self.grup_durumu.son_recete_al(secili)
@@ -2264,6 +2551,35 @@ class BotanikGUI:
         self.automation_thread.daemon = True
         self.automation_thread.start()
 
+    def tumu_kontrol_et(self):
+        """HEPSİNİ KONTROL ET butonuna basıldığında (A→B→C sırayla)"""
+        logger.info("tumu_kontrol_et() çağrıldı")
+
+        # Çalışıyorsa engelle
+        if self.is_running:
+            self.log_ekle("❌ Sistem zaten çalışıyor! Önce durdurun.")
+            logger.warning("Tümünü kontrol iptal: is_running=True")
+            return
+
+        # ✅ YENİ: Hafızayı SİLME! Sadece aktif modu ayarla
+        self.grup_durumu.aktif_mod_ayarla("tumunu_kontrol")
+        logger.info("Aktif mod: tumunu_kontrol")
+
+        # Tümünü kontrol modunu aktif et
+        self.tumu_kontrol_aktif = True
+        self.tumu_kontrol_mevcut_index = 0  # A grubundan başla
+
+        # A grubunu seç
+        ilk_grup = self.tumu_kontrol_grup_sirasi[0]  # "A"
+        self.secili_grup.set(ilk_grup)
+        self.grup_buttons[ilk_grup].invoke()  # Radio button'ı seç
+
+        self.log_ekle(f"🚀 TÜMÜNÜ KONTROL ET BAŞLATILDI: A → B → C")
+        self.log_ekle(f"📍 Başlangıç: Grup {ilk_grup} (kaldığı yerden devam)")
+
+        # NOT: basla() çağırmaya gerek yok, çünkü grup_buttons[ilk_grup].invoke()
+        # zaten grup_secildi() → ilk_recete_akisi() → basla() akışını tetikliyor
+
     def durdur(self):
         """Durdur butonuna basıldığında"""
         if not self.is_running:
@@ -2277,6 +2593,7 @@ class BotanikGUI:
         self.oturum_duraklatildi = True
         self.stop_requested = True
         self.aktif_grup = None  # Manuel durdurma - otomatik başlatmayı engelle
+        self.tumu_kontrol_aktif = False  # Tümünü kontrol modunu iptal et
         self.stop_button.config(state="disabled", bg="#616161")
         self.status_label.config(text="Durduruluyor...", bg="#FFF9C4", fg="#F9A825")
         self.log_ekle("⏸ Durdurma isteği gönderildi")
@@ -2377,26 +2694,7 @@ class BotanikGUI:
                     try:
                         if medula_ac_ve_giris_yap(self.medula_settings):
                             self.root.after(0, lambda: self.log_ekle("✓ MEDULA açıldı ve giriş yapıldı"))
-                            time.sleep(3)
-
-                            # CAPTCHA kontrolü - Butonu göster
-                            self.captcha_bekleniyor = True
-                            self.root.after(0, lambda: self.captcha_button.pack(side="left", padx=5))
-                            self.root.after(0, lambda: self.log_ekle("⏸ CAPTCHA'yı girdikten sonra 'CAPTCHA Girdim, Devam Et' butonuna basın"))
-
-                            # 3 bip sesi
-                            for _ in range(3):
-                                winsound.Beep(1000, 300)
-                                time.sleep(0.2)
-
-                            if self.session_logger:
-                                self.session_logger.info("CAPTCHA bekleniyor...")
-
-                            # CAPTCHA bekle
-                            while self.captcha_bekleniyor:
-                                time.sleep(0.5)
-
-                            self.root.after(0, lambda: self.log_ekle("✓ CAPTCHA girişi tamamlandı, MEDULA'ya bağlanılıyor..."))
+                            time.sleep(5)  # Botanik kendi CAPTCHA'yı çözüyor, bekleme süresi
 
                             # Bot'a yeniden bağlan
                             if not self.bot:
@@ -2437,7 +2735,51 @@ class BotanikGUI:
 
             time.sleep(1)
 
-            # 4. Adım: Başlat butonuna bas
+            # 4. Adım: SON REÇETEYE GİT (Kaldığı yerden devam)
+            son_recete = self.grup_durumu.son_recete_al(self.aktif_grup)
+            if son_recete:
+                self.root.after(0, lambda: self.log_ekle(f"📍 Son reçeteye gidiliyor: {son_recete}"))
+                try:
+                    # Reçete Sorgu'ya git
+                    if self.bot.recete_sorgu_ac():
+                        self.root.after(0, lambda: self.log_ekle("✓ Reçete Sorgu açıldı"))
+                        time.sleep(1)
+
+                        # Reçete numarasını yaz
+                        if self.bot.recete_no_yaz(son_recete):
+                            self.root.after(0, lambda: self.log_ekle(f"✓ Reçete No yazıldı: {son_recete}"))
+                            time.sleep(0.5)
+
+                            # Sorgula butonuna bas
+                            if self.bot.sorgula_butonuna_tikla():
+                                self.root.after(0, lambda: self.log_ekle("✓ Sorgula butonuna basıldı"))
+                                time.sleep(2)  # Reçetenin açılmasını bekle
+
+                                self.root.after(0, lambda: self.log_ekle(f"✅ Kaldığı yerden devam ediliyor: {son_recete}"))
+
+                                # 5. Adım: Başlat butonuna bas (devam için)
+                                self.root.after(0, lambda: self.log_ekle("📍 Başlat butonuna basılıyor..."))
+                                time.sleep(1)
+                                self.root.after(0, self.basla)
+                                self.root.after(0, lambda: self.log_ekle("✓ Otomatik yeniden başlatıldı (kaldığı yerden devam)"))
+
+                                # Başarılı yeniden başlatma - sayacı sıfırla
+                                self.ardisik_basarisiz_deneme = 0
+                                return True  # Başarılı
+                            else:
+                                self.root.after(0, lambda: self.log_ekle("⚠ Sorgula butonuna basılamadı"))
+                        else:
+                            self.root.after(0, lambda: self.log_ekle("⚠ Reçete No yazılamadı"))
+                    else:
+                        self.root.after(0, lambda: self.log_ekle("⚠ Reçete Sorgu açılamadı"))
+                except Exception as e:
+                    self.root.after(0, lambda err=str(e): self.log_ekle(f"⚠ Reçete bulma hatası: {err}"))
+                    logger.error(f"Reçete bulma hatası: {e}", exc_info=True)
+
+                # Reçete bulunamazsa normal başlat
+                self.root.after(0, lambda: self.log_ekle("⚠ Son reçete bulunamadı, gruptan başlatılıyor"))
+
+            # 5. Adım: Başlat butonuna bas (normal başlatma veya fallback)
             self.root.after(0, lambda: self.log_ekle("📍 Başlat butonuna basılıyor..."))
             time.sleep(1)
             self.root.after(0, self.basla)
@@ -2477,37 +2819,278 @@ class BotanikGUI:
             recete_sira = 1
             oturum_sure_toplam = 0.0
 
-            while not self.stop_requested:
-                recete_baslangic = time.time()
+            try:
+                while not self.stop_requested:
+                    recete_baslangic = time.time()
 
-                self.root.after(0, lambda r=recete_sira: self.log_ekle(f"📋 Reçete {r} işleniyor..."))
+                    self.root.after(0, lambda r=recete_sira: self.log_ekle(f"📋 Reçete {r} işleniyor..."))
 
-                # Popup kontrolü (reçete açılmadan önce)
-                try:
-                    if popup_kontrol_ve_kapat():
-                        self.root.after(0, lambda: self.log_ekle("✓ Popup kapatıldı"))
-                        if self.session_logger:
-                            self.session_logger.info("Popup tespit edilip kapatıldı")
-                except Exception as e:
-                    logger.warning(f"Popup kontrol hatası: {e}")
+                    # Popup kontrolü (reçete açılmadan önce)
+                    try:
+                        if popup_kontrol_ve_kapat():
+                            self.root.after(0, lambda: self.log_ekle("✓ Popup kapatıldı"))
+                            if self.session_logger:
+                                self.session_logger.info("Popup tespit edilip kapatıldı")
+                    except Exception as e:
+                        logger.warning(f"Popup kontrol hatası: {e}")
 
-                # Reçete numarasını oku
-                medula_recete_no = self.bot.recete_no_oku()
-                if medula_recete_no:
-                    # Grup label'ını güncelle
-                    self.root.after(0, lambda no=medula_recete_no: self.grup_labels[grup].config(text=no))
-                    # Hafızaya kaydet
-                    self.grup_durumu.son_recete_guncelle(grup, medula_recete_no)
-                    self.root.after(0, lambda no=medula_recete_no: self.log_ekle(f"🏷 No: {no}"))
+                    # Reçete numarasını oku
+                    medula_recete_no = self.bot.recete_no_oku()
+                    if medula_recete_no:
+                        # Grup label'ını güncelle
+                        self.root.after(0, lambda no=medula_recete_no: self.grup_labels[grup].config(text=no))
+                        # Hafızaya kaydet
+                        self.grup_durumu.son_recete_guncelle(grup, medula_recete_no)
+                        self.root.after(0, lambda no=medula_recete_no: self.log_ekle(f"🏷 No: {no}"))
 
-                # Görev tamamlandı mı kontrol et (reçete bulunamadı mesajı)
-                try:
-                    if recete_kaydi_bulunamadi_mi(self.bot):
-                        self.root.after(0, lambda: self.log_ekle("🎯 Görev tamamlandı! 'Reçete kaydı bulunamadı' mesajı tespit edildi"))
-                        if self.session_logger:
-                            self.session_logger.basari("Görev başarıyla tamamlandı")
+                    # Görev tamamlandı mı kontrol et (reçete bulunamadı mesajı)
+                    try:
+                        if recete_kaydi_bulunamadi_mi(self.bot):
+                            self.root.after(0, lambda: self.log_ekle("🎯 Görev tamamlandı! 'Reçete kaydı bulunamadı' mesajı tespit edildi"))
 
-                        # Database'i güncelle ve oturumu bitir
+                            # ✅ YENİ: Popup'ı kapat (grup geçişinden önce!)
+                            try:
+                                logger.info("🔄 Görev tamamlama popup'ı kapatılıyor...")
+                                popup_kapatildi = popup_kontrol_ve_kapat()
+                                if popup_kapatildi:
+                                    self.root.after(0, lambda: self.log_ekle("✓ Popup kapatıldı"))
+                                    logger.info("✓ Popup başarıyla kapatıldı")
+                                time.sleep(0.5)  # Popup'ın tamamen kapanması için bekle
+                            except Exception as popup_err:
+                                logger.warning(f"Popup kapatma hatası (devam ediliyor): {popup_err}")
+
+                            if self.session_logger:
+                                self.session_logger.basari("Görev başarıyla tamamlandı")
+
+                            # ✅ YENİ: BİTTİ bilgisini kaydet
+                            from datetime import datetime
+                            bugun = datetime.now().strftime("%Y-%m-%d")
+                            self.grup_durumu.bitti_bilgisi_ayarla(grup, bugun, self.oturum_recete)
+                            self.root.after(0, lambda g=grup: self.bitti_bilgisi_guncelle(g))  # GUI'yi güncelle
+                            logger.info(f"✅ Grup {grup} BİTTİ: {bugun}, {self.oturum_recete} reçete")
+
+                            # Database'i güncelle ve oturumu bitir
+                            if self.aktif_oturum_id:
+                                ortalama_sure = oturum_sure_toplam / self.oturum_recete if self.oturum_recete > 0 else 0
+                                self.database.oturum_guncelle(
+                                    self.aktif_oturum_id,
+                                    toplam_recete=self.oturum_recete,
+                                    toplam_takip=self.oturum_takip,
+                                    ortalama_recete_suresi=ortalama_sure
+                                )
+                                son_recete = self.grup_durumu.son_recete_al(grup)
+                                self.database.oturum_bitir(self.aktif_oturum_id, bitis_recete=son_recete)
+
+                                if self.session_logger:
+                                    self.session_logger.ozet_yaz(
+                                        self.oturum_recete,
+                                        self.oturum_takip,
+                                        ortalama_sure,
+                                        self.yeniden_baslatma_sayaci,
+                                        self.taskkill_sayaci
+                                    )
+                                    self.session_logger.kapat()
+
+                            # TÜMÜNÜ KONTROL ET modu kontrolü
+                            if self.tumu_kontrol_aktif:
+                                # Mevcut grubu tamamlandı, sonrakine geç
+                                self.tumu_kontrol_mevcut_index += 1
+
+                                if self.tumu_kontrol_mevcut_index < len(self.tumu_kontrol_grup_sirasi):
+                                    # Sonraki grup var
+                                    sonraki_grup = self.tumu_kontrol_grup_sirasi[self.tumu_kontrol_mevcut_index]
+                                    self.root.after(0, lambda g=grup, sg=sonraki_grup:
+                                        self.log_ekle(f"✅ Grup {g} tamamlandı! → Sıradaki: Grup {sg}"))
+
+                                    # Oturumu bitir (mevcut grup için)
+                                    if self.session_logger:
+                                        self.session_logger.ozet_yaz(
+                                            self.oturum_recete,
+                                            self.oturum_takip,
+                                            ortalama_sure,
+                                            self.yeniden_baslatma_sayaci,
+                                            self.taskkill_sayaci
+                                        )
+                                        self.session_logger.kapat()
+                                        self.session_logger = None
+
+                                    # Sonraki gruba geçiş işlemi
+                                    def sonraki_gruba_gec():
+                                        try:
+                                            self.root.after(0, lambda sg=sonraki_grup: self.log_ekle(f"🔄 {sg} grubuna geçiliyor..."))
+                                            logger.info(f"🔄 Sonraki gruba geçiliyor: {sonraki_grup}")
+
+                                            # Grup geçiş işlemini yap (Geri Dön → Dönem → Grup → İlk reçete)
+                                            if sonraki_gruba_gec_islemi(self.bot, sonraki_grup):
+                                                self.root.after(0, lambda sg=sonraki_grup: self.log_ekle(f"✅ {sg} grubuna geçildi"))
+
+                                                # UI durumunu güncelle
+                                                self.is_running = False
+                                                self.oturum_duraklatildi = False
+                                                self.secili_grup.set(sonraki_grup)
+                                                self.aktif_grup = sonraki_grup
+
+                                                # Yeni oturum başlat
+                                                self.oturum_recete = 0
+                                                self.oturum_takip = 0
+                                                self.oturum_takipli_recete = 0
+                                                self.oturum_sure_toplam = 0.0
+                                                self.son_recete_sureleri = []
+
+                                                # Database ve logger
+                                                son_recete = self.grup_durumu.son_recete_al(sonraki_grup)
+                                                self.aktif_oturum_id = self.database.yeni_oturum_baslat(sonraki_grup, son_recete)
+                                                self.session_logger = SessionLogger(self.aktif_oturum_id, sonraki_grup)
+                                                self.root.after(0, lambda: self.log_ekle(f"📝 Yeni oturum başlatıldı (ID: {self.aktif_oturum_id})"))
+
+                                                # Grup rengini güncelle
+                                                for g in ["A", "B", "C"]:
+                                                    if g in self.grup_frames:
+                                                        bg_color = "#BBDEFB" if g == sonraki_grup else "#E8F5E9"
+                                                        self.grup_frames[g]['main'].config(bg=bg_color)
+                                                        for widget in self.grup_frames[g]['widgets']:
+                                                            try:
+                                                                widget.config(bg=bg_color)
+                                                            except:
+                                                                pass
+
+                                                # İşleme başla
+                                                self.root.after(500, lambda: self.basla())
+                                            else:
+                                                raise Exception("Grup geçişi başarısız")
+
+                                        except Exception as e:
+                                            # Hata - taskkill + yeniden başlat
+                                            logger.error(f"Grup geçişi hatası: {e}")
+                                            self.root.after(0, lambda err=str(e): self.log_ekle(f"❌ Grup geçişi hatası: {err}"))
+                                            self.root.after(0, lambda: self.log_ekle("🔄 MEDULA yeniden başlatılıyor..."))
+
+                                            # Taskkill
+                                            if medula_taskkill():
+                                                self.root.after(0, lambda: self.log_ekle("✓ MEDULA kapatıldı"))
+                                                self.taskkill_sayaci += 1
+                                                time.sleep(3)
+                                            else:
+                                                self.root.after(0, lambda: self.log_ekle("⚠ Taskkill başarısız"))
+
+                                            # Yeniden başlat ve giriş yap
+                                            if medula_yeniden_baslat_ve_giris_yap(self.bot):
+                                                self.root.after(0, lambda: self.log_ekle("✅ MEDULA yeniden başlatıldı"))
+                                                self.yeniden_baslatma_sayaci += 1
+
+                                                # Sonraki gruba tekrar geç
+                                                self.root.after(0, lambda: self.log_ekle(f"🔄 {sonraki_grup} grubuna tekrar geçiliyor..."))
+                                                try:
+                                                    if sonraki_gruba_gec_islemi(self.bot, sonraki_grup):
+                                                        self.root.after(0, lambda sg=sonraki_grup: self.log_ekle(f"✅ {sg} grubuna geçildi"))
+                                                        # UI güncelle ve başlat
+                                                        self.is_running = False
+                                                        self.oturum_duraklatildi = False
+                                                        self.secili_grup.set(sonraki_grup)
+                                                        self.aktif_grup = sonraki_grup
+                                                        self.oturum_recete = 0
+                                                        self.oturum_takip = 0
+                                                        self.oturum_takipli_recete = 0
+                                                        self.oturum_sure_toplam = 0.0
+                                                        self.son_recete_sureleri = []
+                                                        son_recete = self.grup_durumu.son_recete_al(sonraki_grup)
+                                                        self.aktif_oturum_id = self.database.yeni_oturum_baslat(sonraki_grup, son_recete)
+                                                        self.session_logger = SessionLogger(self.aktif_oturum_id, sonraki_grup)
+                                                        self.root.after(500, lambda: self.basla())
+                                                    else:
+                                                        raise Exception("2. deneme de başarısız")
+                                                except Exception as e2:
+                                                    logger.error(f"2. deneme de başarısız: {e2}")
+                                                    self.root.after(0, lambda: self.log_ekle("❌ Grup geçişi 2. deneme de başarısız!"))
+                                                    self.root.after(0, self.reset_ui)
+                                            else:
+                                                self.root.after(0, lambda: self.log_ekle("❌ MEDULA yeniden başlatılamadı!"))
+                                                self.root.after(0, self.reset_ui)
+
+                                    self.root.after(0, sonraki_gruba_gec)
+
+                                    break  # Mevcut grup thread'ini bitir
+                                else:
+                                    # Tüm gruplar tamamlandı
+                                    self.tumu_kontrol_aktif = False
+                                    self.root.after(0, lambda: self.log_ekle("🎉 TÜMÜ TAMAMLANDI! A, B, C gruplarının hepsi kontrol edildi."))
+                                    self.root.after(0, lambda: self.gorev_tamamlandi_raporu(grup, self.oturum_recete, self.oturum_takip))
+                                    break
+                            else:
+                                # Normal mod - sadece raporu göster
+                                self.root.after(0, lambda: self.gorev_tamamlandi_raporu(grup, self.oturum_recete, self.oturum_takip))
+                                break
+                    except Exception as e:
+                        logger.warning(f"Görev tamamlama kontrolü hatası: {e}")
+
+                    # Tek reçete işle
+                    try:
+                        basari, medula_no, takip_adet, hata_nedeni = tek_recete_isle(self.bot, recete_sira, self.rapor_takip)
+                    except SistemselHataException as e:
+                        # ✅ Sistemsel hata yakalandı!
+                        self.root.after(0, lambda: self.log_ekle("⚠️ SİSTEMSEL HATA TESPİT EDİLDİ!"))
+                        logger.error(f"Sistemsel hata: {e}")
+
+                        # MEDULA'yı yeniden başlat
+                        self.root.after(0, lambda: self.log_ekle("🔄 MEDULA yeniden başlatılıyor..."))
+                        if medula_yeniden_baslat_ve_giris_yap(self.bot):
+                            self.root.after(0, lambda: self.log_ekle("✅ MEDULA başarıyla yeniden başlatıldı"))
+
+                            # Aktif modu kontrol et ve devam et
+                            aktif_mod = self.grup_durumu.aktif_mod_al()
+                            self.root.after(0, lambda m=aktif_mod: self.log_ekle(f"📍 Aktif mod: {m}"))
+
+                            if aktif_mod == "tumunu_kontrol":
+                                # Tümünü kontrol et modunu yeniden aktif et
+                                self.tumu_kontrol_aktif = True
+                                self.root.after(0, lambda: self.log_ekle("🔄 Tümünü kontrol et modu devam ediyor..."))
+
+                            # Kaldığı yerden devam et (reçete zaten açık, işlemi tekrarla)
+                            continue
+                        else:
+                            self.root.after(0, lambda: self.log_ekle("❌ MEDULA yeniden başlatılamadı!"))
+                            break
+
+                    # Popup kontrolü (reçete işlendikten sonra)
+                    try:
+                        if popup_kontrol_ve_kapat():
+                            self.root.after(0, lambda: self.log_ekle("✓ Popup kapatıldı"))
+                            if self.session_logger:
+                                self.session_logger.info("Popup tespit edilip kapatıldı")
+                    except Exception as e:
+                        logger.warning(f"Popup kontrol hatası: {e}")
+
+                    recete_sure = time.time() - recete_baslangic
+                    oturum_sure_toplam += recete_sure
+
+                    if basari:
+                        self.oturum_recete += 1
+                        self.oturum_takip += takip_adet
+
+                        # Takipli ilaç varsa takipli reçete sayacını artır
+                        if takip_adet > 0:
+                            self.oturum_takipli_recete += 1
+
+                        # Son 5 reçete süresini sakla
+                        self.son_recete_sureleri.append(recete_sure)
+                        if len(self.son_recete_sureleri) > 5:
+                            self.son_recete_sureleri.pop(0)  # En eskiyi sil
+
+                        # Süreyi formatla (saniye.milisaniye)
+                        sure_sn = int(recete_sure)
+                        sure_ms = int((recete_sure * 1000) % 1000)
+
+                        self.root.after(0, lambda r=recete_sira, t=takip_adet, s=sure_sn, ms=sure_ms:
+                                       self.log_ekle(f"✅ Reçete {r} | {t} ilaç takip | {s}.{ms:03d}s"))
+
+                        # İstatistikleri güncelle
+                        takipli_recete = 1 if takip_adet > 0 else 0
+                        self.grup_durumu.istatistik_guncelle(grup, 1, takip_adet, takipli_recete, recete_sure)
+
+                        # Aylık istatistik labelını güncelle
+                        self.root.after(0, lambda g=grup: self.aylik_istatistik_guncelle(g))
+
+                        # Database'e kaydet (her reçete sonrası)
                         if self.aktif_oturum_id:
                             ortalama_sure = oturum_sure_toplam / self.oturum_recete if self.oturum_recete > 0 else 0
                             self.database.oturum_guncelle(
@@ -2516,85 +3099,31 @@ class BotanikGUI:
                                 toplam_takip=self.oturum_takip,
                                 ortalama_recete_suresi=ortalama_sure
                             )
-                            son_recete = self.grup_durumu.son_recete_al(grup)
-                            self.database.oturum_bitir(self.aktif_oturum_id, bitis_recete=son_recete)
 
-                            if self.session_logger:
-                                self.session_logger.ozet_yaz(
-                                    self.oturum_recete,
-                                    self.oturum_takip,
-                                    ortalama_sure,
-                                    self.yeniden_baslatma_sayaci,
-                                    self.taskkill_sayaci
-                                )
-                                self.session_logger.kapat()
-
-                        # Görev tamamlama raporu göster
-                        self.root.after(0, lambda: self.gorev_tamamlandi_raporu(grup, self.oturum_recete, self.oturum_takip))
+                        recete_sira += 1
+                    else:
+                        # Hata nedenini loga yaz
+                        if hata_nedeni:
+                            self.root.after(0, lambda h=hata_nedeni: self.log_ekle(f"❌ Program Durdu: {h}"))
+                        else:
+                            self.root.after(0, lambda: self.log_ekle("⚠ Reçete işlenemedi veya son reçete"))
                         break
-                except Exception as e:
-                    logger.warning(f"Görev tamamlama kontrolü hatası: {e}")
 
-                # Tek reçete işle
-                basari, medula_no, takip_adet = tek_recete_isle(self.bot, recete_sira)
+                    if self.stop_requested:
+                        break
 
-                # Popup kontrolü (reçete işlendikten sonra)
-                try:
-                    if popup_kontrol_ve_kapat():
-                        self.root.after(0, lambda: self.log_ekle("✓ Popup kapatıldı"))
-                        if self.session_logger:
-                            self.session_logger.info("Popup tespit edilip kapatıldı")
-                except Exception as e:
-                    logger.warning(f"Popup kontrol hatası: {e}")
-
-                recete_sure = time.time() - recete_baslangic
-                oturum_sure_toplam += recete_sure
-
-                if basari:
-                    self.oturum_recete += 1
-                    self.oturum_takip += takip_adet
-
-                    # Son 5 reçete süresini sakla
-                    self.son_recete_sureleri.append(recete_sure)
-                    if len(self.son_recete_sureleri) > 5:
-                        self.son_recete_sureleri.pop(0)  # En eskiyi sil
-
-                    # Süreyi formatla (saniye.milisaniye)
-                    sure_sn = int(recete_sure)
-                    sure_ms = int((recete_sure * 1000) % 1000)
-
-                    self.root.after(0, lambda r=recete_sira, t=takip_adet, s=sure_sn, ms=sure_ms:
-                                   self.log_ekle(f"✅ Reçete {r} | {t} ilaç takip | {s}.{ms:03d}s"))
-
-                    # İstatistikleri güncelle
-                    self.grup_durumu.istatistik_guncelle(grup, 1, takip_adet, recete_sure)
-
-                    # Aylık istatistik labelını güncelle
-                    self.root.after(0, lambda g=grup: self.aylik_istatistik_guncelle(g))
-
-                    # Database'e kaydet (her reçete sonrası)
-                    if self.aktif_oturum_id:
-                        ortalama_sure = oturum_sure_toplam / self.oturum_recete if self.oturum_recete > 0 else 0
-                        self.database.oturum_guncelle(
-                            self.aktif_oturum_id,
-                            toplam_recete=self.oturum_recete,
-                            toplam_takip=self.oturum_takip,
-                            ortalama_recete_suresi=ortalama_sure
-                        )
-
-                    recete_sira += 1
-                else:
-                    self.root.after(0, lambda: self.log_ekle("⚠ Reçete işlenemedi veya son reçete"))
-                    break
-
-                if self.stop_requested:
-                    break
+            except SistemselHataException as e:
+                # ✅ Döngü dışında sistemsel hata (genel catch)
+                self.root.after(0, lambda: self.log_ekle("⚠️ SİSTEMSEL HATA (DÖNGÜ DIŞI)"))
+                logger.error(f"Sistemsel hata (döngü dışı): {e}")
+                # Yeniden başlatma zaten tek_recete_isle içinde yapılıyor
+                pass
 
             # Normal sonlanma (son reçete veya break)
             # Görev sonu kontrolü
             gorev_tamamlandi = False
             try:
-                from botanik_bot import recete_kaydi_bulunamadi_mi
+                # Global import kullan (local import kaldırıldı - scope hatası önlendi)
                 if self.bot and recete_kaydi_bulunamadi_mi(self.bot):
                     gorev_tamamlandi = True
                     self.root.after(0, lambda: self.log_ekle("🎯 Görev tamamlandı! 'Reçete kaydı bulunamadı' mesajı tespit edildi"))
@@ -2641,7 +3170,7 @@ class BotanikGUI:
             # 1. ADIM: Görev sonu kontrolü (Reçete kaydı bulunamadı mesajı)
             gorev_tamamlandi = False
             try:
-                from botanik_bot import recete_kaydi_bulunamadi_mi
+                # Global import kullan (local import kaldırıldı - scope hatası önlendi)
                 if self.bot and recete_kaydi_bulunamadi_mi(self.bot):
                     gorev_tamamlandi = True
                     self.root.after(0, lambda: self.log_ekle("🎯 Görev tamamlandı! 'Reçete kaydı bulunamadı' mesajı tespit edildi"))
@@ -2720,6 +3249,7 @@ class BotanikGUI:
         self.is_running = False
         self.stop_requested = False
         self.aktif_grup = None  # Aktif grubu temizle
+        self.tumu_kontrol_aktif = False  # Tümünü kontrol modunu sıfırla
         self.ardisik_basarisiz_deneme = 0  # Ardışık deneme sayacını sıfırla
 
         self.start_button.config(state="normal", bg="#388E3C", fg="white")
@@ -2771,16 +3301,10 @@ class BotanikGUI:
         else:
             ort_text = "-"
 
-        text = f"Reçete:{self.oturum_recete} | İlaç:{self.oturum_takip} | Süre:{sure_text} | Ort(5):{ort_text}"
+        text = f"Rç:{self.oturum_recete} | Takipli:{self.oturum_takipli_recete} | İlaç:{self.oturum_takip} | R:{self.rapor_takip.toplam_kayit} | Süre:{sure_text} | Ort(5):{ort_text}"
         self.stats_label.config(text=text)
 
-    def captcha_devam_et(self):
-        """CAPTCHA girildikten sonra devam et"""
-        self.captcha_bekleniyor = False
-        self.captcha_button.pack_forget()  # Butonu gizle
-        self.log_ekle("✓ CAPTCHA girişi tamamlandı, devam ediliyor...")
-        if self.session_logger:
-            self.session_logger.info("CAPTCHA girişi kullanıcı tarafından tamamlandı")
+    # captcha_devam_et fonksiyonu kaldırıldı - artık gerekli değil
 
     def gorev_tamamlandi_raporu(self, grup, toplam_recete, toplam_takip):
         """Görev tamamlandığında rapor göster"""
@@ -2883,6 +3407,13 @@ Tüm reçeteler başarıyla işlendi!
                     self.taskkill_sayaci
                 )
                 self.session_logger.kapat()
+
+        # Database bağlantısını kapat
+        try:
+            if self.database:
+                self.database.kapat()
+        except Exception as e:
+            logger.error(f"Database kapatma hatası: {e}")
 
         self.stats_timer_running = False
         self.root.destroy()

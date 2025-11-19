@@ -234,11 +234,14 @@ class BotanikDatabase:
         }
 
     def kapat(self):
-        """Database bağlantısını kapat"""
+        """Database bağlantısını kapat ve singleton'ı sıfırla"""
+        global _database
         try:
-            if hasattr(self, 'conn'):
+            if hasattr(self, 'conn') and self.conn:
                 self.conn.close()
                 logger.info("✓ Database bağlantısı kapatıldı")
+                # Singleton'ı sıfırla (tekrar get_database() çağrılırsa yeni bağlantı açılsın)
+                _database = None
         except Exception as e:
             logger.error(f"Database kapatma hatası: {e}")
 

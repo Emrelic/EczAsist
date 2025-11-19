@@ -97,6 +97,11 @@ class TimingSettings:
 
             # Genel Adım Arası Bekleme
             "adim_arasi_bekleme": 1.0,          # Her adım arasında varsayılan bekleme (1 saniye)
+
+            # Retry Mekanizması Beklemeleri
+            "retry_after_popup": 0.3,           # Popup kapatıldıktan sonra bekleme
+            "retry_after_reconnect": 0.3,       # Yeniden bağlantı sonrası bekleme
+            "retry_after_error": 0.3,           # Hata sonrası bekleme
         }
 
         self.ayarlar = self.yukle()
@@ -159,6 +164,85 @@ class TimingSettings:
             logger.info(f"✓ Tüm ayarlar {carpan}x ile güncellendi")
             return True
         return False
+
+    def hizli_mod_uygula(self):
+        """
+        Hızlı Mod: BotTak7'deki agresif bekleme sürelerini uygula
+        Dikkat: Stabil sistemlerde hız kazancı sağlar, ancak hata oranı artabilir!
+        """
+        hizli_sureler = {
+            # Pencere İşlemleri (30-40% daha hızlı)
+            "pencere_restore": 0.15,        # 0.225'ten düşürüldü
+            "pencere_move": 0.05,           # 0.075'ten düşürüldü
+            "pencere_bulma": 0.05,          # 0.075'ten düşürüldü
+
+            # Buton Tıklamaları (40-50% daha hızlı)
+            "ilac_butonu": 0.12,            # 0.225'ten düşürüldü
+            "y_butonu": 0.08,               # 0.15'ten düşürüldü
+            "geri_don_butonu": 0.04,        # 0.09'dan düşürüldü
+            "sonra_butonu": 0.03,           # 0.075'ten düşürüldü
+            "kapat_butonu": 0.02,           # 0.045'ten düşürüldü
+            "takip_et": 0.04,               # 0.09'dan düşürüldü
+            "alinmayanlari_sec": 0.08,      # 0.15'ten düşürüldü
+
+            # Sayfa Geçişleri (30-40% daha hızlı)
+            "recete_sorgu": 0.25,           # 0.375'ten düşürüldü
+            "ana_sayfa": 0.5,               # 0.75'ten düşürüldü
+            "sorgula_butonu": 0.25,         # 0.375'ten düşürüldü
+
+            # Veri Girişi (40-50% daha hızlı)
+            "text_focus": 0.08,             # 0.15'ten düşürüldü
+            "text_clear": 0.04,             # 0.075'ten düşürüldü
+            "text_write": 0.08,             # 0.15'ten düşürüldü
+
+            # Popup/Dialog İşlemleri (zaten düşük, çok değişmez)
+            "popup_kapat": 0.02,            # 0.03'ten düşürüldü
+            "uyari_kapat": 0.02,            # 0.03'ten düşürüldü
+            "laba_uyari": 0.05,             # 0.075'ten düşürüldü
+            "ilac_cakismasi_uyari": 0.05,   # 0.075'ten düşürüldü
+            "recete_kontrol": 0.03,         # 0.05'ten düşürüldü
+            "recete_notu_kapat": 0.03,      # 0.05'ten düşürüldü
+
+            # Diğer İşlemler (30-40% daha hızlı)
+            "ilac_ekran_bekleme": 0.08,     # 0.15'ten düşürüldü
+            "ilac_secim_bekleme": 0.02,     # 0.045'ten düşürüldü
+            "sag_tik": 0.06,                # 0.12'den düşürüldü
+            "genel_gecis": 0.02,            # 0.045'ten düşürüldü
+            "laba_sonrasi_bekleme": 0.15,   # 0.3'ten düşürüldü
+            "y_ikinci_deneme": 0.12,        # 0.225'ten düşürüldü
+
+            # Masaüstü ve MEDULA giriş (değişmedi)
+            "masaustu_simge_tiklama": 1.0,
+            "masaustu_simge_bekleme": 3.0,
+            "giris_pencere_bekleme": 2.0,
+            "kullanici_combobox_ac": 0.5,
+            "kullanici_secim": 0.5,
+            "sifre_yazma": 0.5,
+            "giris_butonu": 1.0,
+            "giris_sonrasi_bekleme": 5.0,
+
+            # Reçete Listesi (değişmedi)
+            "recete_listesi_butonu": 1.0,
+            "recete_listesi_acilma": 2.0,
+            "donem_combobox_tiklama": 0.5,
+            "donem_secim": 1.0,
+            "grup_butonu_tiklama": 1.0,
+            "grup_sorgulama": 2.0,
+            "bulunamadi_mesaji_kontrol": 1.0,
+            "ilk_recete_tiklama": 1.0,
+            "recete_acilma": 2.0,
+            "adim_arasi_bekleme": 1.0,
+
+            # Retry Mekanizması (optimize edildi)
+            "retry_after_popup": 0.2,           # 0.3'ten düşürüldü
+            "retry_after_reconnect": 0.2,       # 0.3'ten düşürüldü
+            "retry_after_error": 0.2,           # 0.3'ten düşürüldü
+        }
+
+        self.ayarlar.update(hizli_sureler)
+        self.kaydet()
+        logger.info("⚡ Hızlı Mod aktif - Bekleme süreleri %30-50 azaltıldı (BotTak7 profili)")
+        return True
 
     def kategori_listesi(self):
         """Ayarları kategorilere göre grupla"""
@@ -287,27 +371,80 @@ class TimingSettings:
         self.istatistik_kaydet()
         logger.info("✓ İstatistikler sıfırlandı")
 
-    def optimize_mode_ac(self, multiplier=1.3):
-        """Optimize mode'u aç ve tüm ayarları 3 saniye yap
+    def optimize_mode_ac(self, multiplier=1.3, baslangic_suresi=3.0):
+        """Optimize mode'u aç ve tüm ayarları özel süreyle başlat
 
         Args:
-            multiplier: Reel süreye uygulanacak çarpan (örn: 1.3 = %30 fazla, 0.9 = %10 eksik)
+            multiplier: Reel süreye uygulanacak çarpan
+                - 1.5 = %50 fazla (çok güvenli) - Yavaş/kararsız sistemler
+                - 1.3 = %30 fazla (güvenli) - Standart önerilen
+                - 1.2 = %20 fazla (dengeli) - Stabil sistemler
+                - 1.1 = %10 fazla (agresif) - Çok hızlı/stabil sistemler
+            baslangic_suresi: İlk ölçümden önce kullanılacak süre
+                - 3.0s = Güvenli (varsayılan)
+                - 1.0s = Dengeli
+                - 0.5s = Agresif
+                - 0.1s = Çok agresif (riskli!)
         """
         self.optimize_mode = True
         self.optimize_multiplier = multiplier
         self.optimized_keys.clear()
 
-        # Tüm ayarları 3 saniye yap
+        # Tüm ayarları başlangıç süresine ayarla
         for anahtar in self.ayarlar.keys():
-            self.ayarlar[anahtar] = 3.0
+            self.ayarlar[anahtar] = baslangic_suresi
 
         self.kaydet()
-        logger.info(f"🚀 Optimize mode aktif - Çarpan: {multiplier}x - Tüm ayarlar 3s başlatıldı")
+        logger.info(f"🚀 Optimize mode aktif - Çarpan: {multiplier}x - Başlangıç: {baslangic_suresi}s")
 
     def optimize_mode_kapat(self):
         """Optimize mode'u kapat"""
         self.optimize_mode = False
         logger.info("⏹ Optimize mode kapatıldı")
+
+    def optimize_profile_uygula(self, profile="guvenli"):
+        """
+        Hazır optimizasyon profili uygula
+
+        Args:
+            profile: "cok_guvenli", "guvenli", "dengeli", "agresif", "cok_agresif"
+        """
+        profiles = {
+            "cok_guvenli": {
+                "multiplier": 1.5,
+                "baslangic": 3.0,
+                "aciklama": "Yavaş/kararsız sistemler için (%50 marj)"
+            },
+            "guvenli": {
+                "multiplier": 1.3,
+                "baslangic": 3.0,
+                "aciklama": "Standart önerilen (%30 marj)"
+            },
+            "dengeli": {
+                "multiplier": 1.2,
+                "baslangic": 1.0,
+                "aciklama": "Stabil sistemler için (%20 marj)"
+            },
+            "agresif": {
+                "multiplier": 1.1,
+                "baslangic": 0.5,
+                "aciklama": "Çok hızlı/stabil sistemler için (%10 marj)"
+            },
+            "cok_agresif": {
+                "multiplier": 1.1,
+                "baslangic": 0.1,
+                "aciklama": "SADECE test/debug için (%10 marj, çok riskli!)"
+            }
+        }
+
+        if profile not in profiles:
+            logger.error(f"Geçersiz profil: {profile}")
+            return False
+
+        p = profiles[profile]
+        self.optimize_mode_ac(multiplier=p["multiplier"], baslangic_suresi=p["baslangic"])
+        logger.info(f"✓ {profile.upper()} profil: {p['aciklama']}")
+        return True
 
 
 # Global singleton
