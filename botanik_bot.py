@@ -253,6 +253,7 @@ class RaporTakip:
     def kopyalandi_isaretle(self, raporlar_listesi):
         """
         Verilen raporların Kopyalandı sütununa bugünün tarihini yazar.
+        Atomic write kullanılarak data loss önlenir.
 
         Args:
             raporlar_listesi: [{ad, telefon, tani, bitis, kayit}, ...] formatında rapor listesi
@@ -260,6 +261,9 @@ class RaporTakip:
         Returns:
             int: İşaretlenen rapor sayısı
         """
+        import tempfile
+        import shutil
+
         try:
             bugun = datetime.now().strftime("%d/%m/%Y")
             isaretlenen_sayisi = 0
@@ -286,11 +290,25 @@ class RaporTakip:
                     row['Kopyalandı'] = bugun
                     isaretlenen_sayisi += 1
 
-            # Güncellenmiş veriyi yaz
-            with open(self.dosya_yolu, 'w', newline='', encoding='utf-8-sig') as f:
-                writer = csv.DictWriter(f, fieldnames=header)
-                writer.writeheader()
-                writer.writerows(tum_satirlar)
+            # ATOMIC WRITE: Önce temp dosyaya yaz, sonra rename et
+            temp_fd, temp_path = tempfile.mkstemp(suffix='.csv', dir=self.dosya_yolu.parent, text=True)
+            try:
+                with os.fdopen(temp_fd, 'w', newline='', encoding='utf-8-sig') as f:
+                    writer = csv.DictWriter(f, fieldnames=header)
+                    writer.writeheader()
+                    writer.writerows(tum_satirlar)
+
+                # Atomic rename (Windows'ta replace kullan)
+                shutil.move(temp_path, self.dosya_yolu)
+                logger.debug(f"✓ CSV atomik olarak güncellendi: {isaretlenen_sayisi} rapor işaretlendi")
+
+            except Exception as write_error:
+                # Hata durumunda temp dosyayı sil
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+                raise write_error
 
             return isaretlenen_sayisi
 
@@ -2324,11 +2342,16 @@ class BotanikBot:
     def recete_bilgilerini_al(self):
         """
         Ekrandaki reçete bilgilerini al
-        (Gelecekte geliştirilecek)
+
+        ⚠️ NOT IMPLEMENTED YET
+        Bu fonksiyon henüz tamamlanmamıştır.
+
+        Returns:
+            None: Fonksiyon implement edilmediği için her zaman None döner
         """
-        logger.info("Reçete bilgileri alınıyor...")
-        # TODO: Reçete bilgilerini okuma işlemi
-        pass
+        logger.warning("⚠️ recete_bilgilerini_al() henüz implement edilmedi")
+        # TODO: Reçete bilgilerini okuma işlemi implement edilecek
+        return None
 
     def rapor_butonuna_tikla(self):
         """

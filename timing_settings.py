@@ -6,6 +6,7 @@ Her işlem için bekleme sürelerini yönetir ve saklar
 import json
 from pathlib import Path
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,9 @@ class TimingSettings:
         self.optimize_mode = False  # Optimize mode aktif mi?
         self.optimized_keys = set()  # Optimize edilmiş anahtarlar
         self.optimize_multiplier = 1.3  # Reel süre × 1.3
+
+        # Thread safety
+        self._lock = threading.Lock()  # Race condition önleme
 
         # Varsayılan ayarlar (saniye cinsinden)
         self.varsayilan_ayarlar = {
@@ -334,24 +338,28 @@ class TimingSettings:
             return False
 
     def kayit_ekle(self, anahtar, gercek_sure):
-        """Bir işlem için gerçek süreyi kaydet ve optimize mode ise ayarı güncelle"""
-        if anahtar not in self.istatistikler:
-            self.istatistikler[anahtar] = {"count": 0, "total_time": 0.0}
+        """
+        Bir işlem için gerçek süreyi kaydet ve optimize mode ise ayarı güncelle
+        Thread-safe implementation
+        """
+        with self._lock:  # Race condition önleme
+            if anahtar not in self.istatistikler:
+                self.istatistikler[anahtar] = {"count": 0, "total_time": 0.0}
 
-        self.istatistikler[anahtar]["count"] += 1
-        self.istatistikler[anahtar]["total_time"] += gercek_sure
+            self.istatistikler[anahtar]["count"] += 1
+            self.istatistikler[anahtar]["total_time"] += gercek_sure
 
-        # Optimize mode: Reel süre × 1.3 ile ayarı güncelle (sadece bir kere)
-        if self.optimize_mode and anahtar not in self.optimized_keys:
-            yeni_deger = gercek_sure * self.optimize_multiplier
-            self.set(anahtar, yeni_deger)
-            self.optimized_keys.add(anahtar)
-            logger.info(f"🔧 Optimize: {anahtar} = {yeni_deger:.3f}s (reel: {gercek_sure:.3f}s)")
-            self.kaydet()  # Hemen kaydet
+            # Optimize mode: Reel süre × 1.3 ile ayarı güncelle (sadece bir kere)
+            if self.optimize_mode and anahtar not in self.optimized_keys:
+                yeni_deger = gercek_sure * self.optimize_multiplier
+                self.set(anahtar, yeni_deger)
+                self.optimized_keys.add(anahtar)  # Artık thread-safe
+                logger.info(f"🔧 Optimize: {anahtar} = {yeni_deger:.3f}s (reel: {gercek_sure:.3f}s)")
+                self.kaydet()  # Hemen kaydet
 
-        # Her 10 kayıtta bir otomatik kaydet
-        if self.istatistikler[anahtar]["count"] % 10 == 0:
-            self.istatistik_kaydet()
+            # Her 10 kayıtta bir otomatik kaydet
+            if self.istatistikler[anahtar]["count"] % 10 == 0:
+                self.istatistik_kaydet()
 
     def ortalama_al(self, anahtar):
         """Bir işlem için ortalama süreyi hesapla"""
@@ -456,3 +464,9 @@ def get_timing_settings():
     if _timing_settings is None:
         _timing_settings = TimingSettings()
     return _timing_settings
+
+def reset_timing_settings():
+    """Singleton'ı sıfırla (yeniden yüklemek için)"""
+    global _timing_settings
+    _timing_settings = None
+    logger.debug("TimingSettings singleton sıfırlandı")

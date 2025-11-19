@@ -268,3 +268,9 @@ def get_medula_settings():
     if _medula_settings is None:
         _medula_settings = MedulaSettings()
     return _medula_settings
+
+def reset_medula_settings():
+    """Singleton'ı sıfırla (yeniden yüklemek için)"""
+    global _medula_settings
+    _medula_settings = None
+    logger.debug("MedulaSettings singleton sıfırlandı")
