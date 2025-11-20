@@ -306,8 +306,8 @@ class RaporTakip:
                 # Hata durumunda temp dosyayı sil
                 try:
                     os.unlink(temp_path)
-                except:
-                    pass
+                except OSError as e:
+                    logger.debug(f"Temp dosya silme hatası (non-critical): {e}")
                 raise write_error
 
             return isaretlenen_sayisi
@@ -506,8 +506,8 @@ class BotanikBot:
                         if placement[1] == win32con.SW_SHOWMAXIMIZED:
                             win32gui.ShowWindow(medula_hwnd, win32con.SW_RESTORE)
                             self.timed_sleep("pencere_restore")
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Pencere restore hatası: {type(e).__name__}: {e}")
 
                     # Pencereyi direkt MoveWindow ile yerleştir
                     win32gui.MoveWindow(medula_hwnd, medula_x, medula_y, medula_width, medula_height, True)
@@ -693,8 +693,8 @@ class BotanikBot:
                         if "Kullanılan İlaç Listesi" in text_value or "Kullanilan İlaç Listesi" in text_value:
                             logger.info("✓ İlaç ekranı yüklendi")
                             return True
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"İlaç ekranı kontrolü hatası: {type(e).__name__}")
 
                 self.timed_sleep("ilac_ekran_bekleme")
 
@@ -883,7 +883,8 @@ class BotanikBot:
                                 class_name = window.class_name()
                                 if "WindowsForms10.Window" not in class_name:
                                     continue
-                            except:
+                            except Exception as e:
+                                logger.debug(f"class_name kontrolü hatası: {type(e).__name__}")
                                 continue
 
                             # Pencere başlığında "UYARIDIR" var mı?
@@ -892,7 +893,8 @@ class BotanikBot:
                                 if "UYARI" not in window_text.upper():
                                     continue
                                 logger.debug(f"  ✓ Genel Muayene penceresi bulundu (başlık: {window_text})")
-                            except:
+                            except Exception as e:
+                                logger.debug(f"window_text kontrolü hatası: {type(e).__name__}")
                                 continue
 
                             # Kapat butonunu bul
@@ -913,8 +915,8 @@ class BotanikBot:
                                     logger.info("✓ Genel Muayene uyarısı kapatıldı (close)")
                                     self.timed_sleep("uyari_kapat")
                                     return True
-                                except:
-                                    pass
+                                except Exception as e:
+                                    logger.debug(f"window.close() hatası: {type(e).__name__}")
                                 continue
 
                             logger.info(f"⚠ Genel Muayene uyarısı bulundu! Kapatılıyor...")
@@ -978,7 +980,8 @@ class BotanikBot:
                         class_name = window.class_name()
                         if class_name != "#32770":
                             continue
-                    except:
+                    except Exception as e:
+                        logger.debug(f"LABA class_name kontrolü hatası: {type(e).__name__}")
                         continue
 
                     # İçerikte LABA/LAMA ifadesi var mı?
@@ -990,7 +993,8 @@ class BotanikBot:
                         )
                         if not laba_bulundu:
                             continue
-                    except:
+                    except Exception as e:
+                        logger.debug(f"LABA/LAMA içerik kontrolü hatası: {type(e).__name__}")
                         continue
 
                     if detayli_log:
@@ -1004,16 +1008,18 @@ class BotanikBot:
                         if tamam_btn.exists(timeout=0.3):
                             try:
                                 tamam_btn.invoke()
-                            except:
+                            except Exception as e:
+                                logger.debug(f"tamam_btn.invoke() hatası: {type(e).__name__}")
                                 try:
                                     tamam_btn.click()
-                                except:
+                                except Exception as e2:
+                                    logger.debug(f"tamam_btn.click() hatası: {type(e2).__name__}")
                                     tamam_btn.click_input()
                             logger.info(f"✓ LABA/LAMA uyarısı kapatıldı (Tamam hızlı)")
                             self.timed_sleep("laba_uyari")
                             return True
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"TAMAM butonu arama hatası: {type(e).__name__}")
 
                     # OPTIMIZE: Alternatif - KAPAT butonu ara
                     try:
@@ -1021,16 +1027,18 @@ class BotanikBot:
                         if kapat_btn.exists(timeout=0.3):
                             try:
                                 kapat_btn.invoke()
-                            except:
+                            except Exception as e:
+                                logger.debug(f"kapat_btn.invoke() hatası: {type(e).__name__}")
                                 try:
                                     kapat_btn.click()
-                                except:
+                                except Exception as e2:
+                                    logger.debug(f"kapat_btn.click() hatası: {type(e2).__name__}")
                                     kapat_btn.click_input()
                             logger.info(f"✓ LABA/LAMA uyarısı kapatıldı (Kapat hızlı)")
                             self.timed_sleep("laba_uyari")
                             return True
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"KAPAT butonu arama hatası: {type(e).__name__}")
 
                     # FALLBACK: descendants() ile TAMAM veya KAPAT ara
                     try:
@@ -1072,8 +1080,8 @@ class BotanikBot:
                         logger.info(f"✓ LABA/LAMA uyarısı kapatıldı (close)")
                         self.timed_sleep("laba_uyari")
                         return True
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"window.close() hatası (LABA): {type(e).__name__}")
 
                 self.timed_sleep("popup_kapat")
 
@@ -1119,7 +1127,8 @@ class BotanikBot:
                         class_name = window.class_name()
                         if class_name != "#32770":
                             continue
-                    except:
+                    except Exception as e:
+                        logger.debug(f"İlaç Çakışması class_name kontrolü hatası: {type(e).__name__}")
                         continue
 
                     # İçerikte İlaç Çakışması ifadesi var mı?
@@ -1131,7 +1140,8 @@ class BotanikBot:
                         )
                         if not ilac_cakismasi_bulundu:
                             continue
-                    except:
+                    except Exception as e:
+                        logger.debug(f"İlaç Çakışması içerik kontrolü hatası: {type(e).__name__}")
                         continue
 
                     if detayli_log:
@@ -1145,16 +1155,18 @@ class BotanikBot:
                         if tamam_btn.exists(timeout=0.3):
                             try:
                                 tamam_btn.invoke()
-                            except:
+                            except Exception as e:
+                                logger.debug(f"İlaç Çakışması tamam_btn.invoke() hatası: {type(e).__name__}")
                                 try:
                                     tamam_btn.click()
-                                except:
+                                except Exception as e2:
+                                    logger.debug(f"İlaç Çakışması tamam_btn.click() hatası: {type(e2).__name__}")
                                     tamam_btn.click_input()
                             logger.info(f"✓ İlaç Çakışması uyarısı kapatıldı (Tamam hızlı)")
                             self.timed_sleep("ilac_cakismasi_uyari")
                             return True
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"İlaç Çakışması TAMAM butonu arama hatası: {type(e).__name__}")
 
                     # OPTIMIZE: Alternatif - KAPAT butonu ara
                     try:
@@ -1162,16 +1174,18 @@ class BotanikBot:
                         if kapat_btn.exists(timeout=0.3):
                             try:
                                 kapat_btn.invoke()
-                            except:
+                            except Exception as e:
+                                logger.debug(f"İlaç Çakışması kapat_btn.invoke() hatası: {type(e).__name__}")
                                 try:
                                     kapat_btn.click()
-                                except:
+                                except Exception as e2:
+                                    logger.debug(f"İlaç Çakışması kapat_btn.click() hatası: {type(e2).__name__}")
                                     kapat_btn.click_input()
                             logger.info(f"✓ İlaç Çakışması uyarısı kapatıldı (Kapat hızlı)")
                             self.timed_sleep("ilac_cakismasi_uyari")
                             return True
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"İlaç Çakışması KAPAT butonu arama hatası: {type(e).__name__}")
 
                     # FALLBACK: descendants() ile TAMAM veya KAPAT ara
                     try:
@@ -1213,8 +1227,8 @@ class BotanikBot:
                         logger.info(f"✓ İlaç Çakışması uyarısı kapatıldı (close)")
                         self.timed_sleep("ilac_cakismasi_uyari")
                         return True
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"window.close() hatası (İlaç Çakışması): {type(e).__name__}")
 
                 self.timed_sleep("popup_kapat")
 
@@ -1240,7 +1254,8 @@ class BotanikBot:
                     logger.info("✓ Y butonuna tıklandı (cache)")
                     self.timed_sleep("y_butonu")
                     return True
-                except:
+                except Exception as e:
+                    logger.debug(f"Cache'den Y butonu invoke() hatası: {type(e).__name__}")
                     self._clear_cache_key("y_button")
 
             # OPTIMIZE: child_window() ile hızlı arama
@@ -1252,18 +1267,20 @@ class BotanikBot:
                     try:
                         y_button.invoke()
                         logger.info("✓ Y butonuna tıklandı (hızlı)")
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Y butonu invoke() hatası: {type(e).__name__}")
                         try:
                             y_button.click()
                             logger.info("✓ Y butonuna tıklandı (hızlı)")
-                        except:
+                        except Exception as e2:
+                            logger.debug(f"Y butonu click() hatası: {type(e2).__name__}")
                             y_button.click_input()
                             logger.info("✓ Y butonuna tıklandı (hızlı)")
 
                     self.timed_sleep("y_butonu")
                     return True
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Y butonu child_window() arama hatası: {type(e).__name__}")
 
             # FALLBACK: descendants() ile arama (daha yavaş ama güvenli)
             try:
@@ -1273,11 +1290,13 @@ class BotanikBot:
                     try:
                         y_button[0].invoke()
                         logger.info("✓ Y butonuna tıklandı (fallback)")
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Y butonu fallback invoke() hatası: {type(e).__name__}")
                         try:
                             y_button[0].click()
                             logger.info("✓ Y butonuna tıklandı (fallback)")
-                        except:
+                        except Exception as e2:
+                            logger.debug(f"Y butonu fallback click() hatası: {type(e2).__name__}")
                             y_button[0].click_input()
                             logger.info("✓ Y butonuna tıklandı (fallback)")
 
@@ -1314,8 +1333,8 @@ class BotanikBot:
                     if pencere_basligi_iceren in window_title:
                         self.main_window = window
                         return True
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Pencere başlığı kontrolü hatası: {type(e).__name__}")
 
             logger.warning(f"❌ '{pencere_basligi_iceren}' bulunamadı")
             return False
@@ -1342,16 +1361,18 @@ class BotanikBot:
                 if bizden_button.exists(timeout=0.5):
                     try:
                         bizden_button.invoke()
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Bizden alınanlar invoke() hatası: {type(e).__name__}")
                         try:
                             bizden_button.click()
-                        except:
+                        except Exception as e2:
+                            logger.debug(f"Bizden alınanlar click() hatası: {type(e2).__name__}")
                             bizden_button.click_input()
 
                     logger.info("✓ Alınmayanları seç (hızlı)")
                     return True
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Bizden alınanlar child_window() arama hatası: {type(e).__name__}")
 
             # FALLBACK: descendants() ile arama (daha yavaş ama güvenli)
             try:
@@ -1364,15 +1385,17 @@ class BotanikBot:
                         if "Alınmayanları Seç" in btn_text or "Alınanları Seç" in btn_text:
                             bizden_button = [btn]
                             break
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Buton text kontrolü hatası: {type(e).__name__}")
                 if bizden_button and len(bizden_button) > 0:
                     try:
                         bizden_button[0].invoke()
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Bizden alınanlar fallback invoke() hatası: {type(e).__name__}")
                         try:
                             bizden_button[0].click()
-                        except:
+                        except Exception as e2:
+                            logger.debug(f"Bizden alınanlar fallback click() hatası: {type(e2).__name__}")
                             bizden_button[0].click_input()
 
                     logger.info("✓ Alınmayanları seç (fallback)")
@@ -1416,22 +1439,22 @@ class BotanikBot:
                             value = cell.legacy_properties().get('Value', '')
                             if value == "Seçili":
                                 secili = True
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Operation failed: {type(e).__name__}")
 
                         # Yöntem 2: Toggle state
                         try:
                             toggle_state = cell.get_toggle_state()
                             if toggle_state == 1:
                                 secili = True
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Operation failed: {type(e).__name__}")
 
                         if secili:
                             secili_sayisi += 1
 
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             logger.info(f"→ {secili_sayisi}/{toplam_ilac} ilaç seçili")
 
@@ -1462,8 +1485,8 @@ class BotanikBot:
                         ilk_ilac = cell
                         logger.info(f"İlk ilaç bulundu: {cell_name}")
                         break
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             if ilk_ilac is None:
                 logger.error("İlk ilaç bulunamadı")
@@ -1486,8 +1509,8 @@ class BotanikBot:
                             logger.info("✓ Takip Et tıklandı")
                             self.timed_sleep("takip_et")
                             return True
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Operation failed: {type(e).__name__}")
 
                 logger.error("❌ Takip Et bulunamadı")
                 return False
@@ -1517,8 +1540,8 @@ class BotanikBot:
                     logger.info("✓ Pencere kapatıldı (hızlı)")
                     self.timed_sleep("kapat_butonu")
                     return True
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Operation failed: {type(e).__name__}")
 
             # FALLBACK: descendants() ile arama (daha yavaş ama güvenli)
             buttons = self.main_window.descendants(control_type="Button")
@@ -1531,8 +1554,8 @@ class BotanikBot:
                         logger.info("✓ Pencere kapatıldı (fallback)")
                         self.timed_sleep("kapat_butonu")
                         return True
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             logger.warning("❌ Kapat butonu yok")
             return False
@@ -1559,17 +1582,19 @@ class BotanikBot:
                 if geri_don_btn.exists(timeout=0.5):
                     try:
                         geri_don_btn.invoke()
-                    except:
+                    except Exception as e:
+                        logger.debug(f"First attempt failed: {type(e).__name__}")
                         try:
                             geri_don_btn.click()
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Geri dön click() failed: {type(e).__name__}")
                             geri_don_btn.click_input()
 
                     logger.info("✓ Geri Dön tıklandı (hızlı)")
                     self.timed_sleep("geri_don_butonu")
                     return True
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Operation failed: {type(e).__name__}")
 
             # FALLBACK: Eski yöntem (descendants) - daha yavaş ama güvenli
             buttons = self.main_window.descendants(control_type="Button")
@@ -1580,17 +1605,19 @@ class BotanikBot:
                     if "Geri Dön" in btn_name or "Geri Don" in btn_name:
                         try:
                             btn.invoke()
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Second attempt failed: {type(e).__name__}")
                             try:
                                 btn.click()
-                            except:
+                            except Exception as e:
+                                logger.debug(f"Button click() failed: {type(e).__name__}")
                                 btn.click_input()
 
                         logger.info("✓ Geri Dön tıklandı (fallback)")
                         self.timed_sleep("geri_don_butonu")
                         return True
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             logger.warning("❌ Geri Dön bulunamadı")
             return False
@@ -1617,17 +1644,19 @@ class BotanikBot:
                 if sonra_btn.exists(timeout=0.5):
                     try:
                         sonra_btn.invoke()
-                    except:
+                    except Exception as e:
+                        logger.debug(f"First attempt failed: {type(e).__name__}")
                         try:
                             sonra_btn.click()
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Sonra button click() failed: {type(e).__name__}")
                             sonra_btn.click_input()
 
                     logger.info("✓ SONRA > Sonraki reçete (hızlı)")
                     self.timed_sleep("sonra_butonu")
                     return True
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Operation failed: {type(e).__name__}")
 
             # FALLBACK: Eski yöntem (descendants) - daha yavaş ama güvenli
             buttons = self.main_window.descendants(control_type="Button")
@@ -1638,17 +1667,19 @@ class BotanikBot:
                     if "Sonra" in btn_name and ">" in btn_name:
                         try:
                             btn.invoke()
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Second attempt failed: {type(e).__name__}")
                             try:
                                 btn.click()
-                            except:
+                            except Exception as e:
+                                logger.debug(f"Button click() failed: {type(e).__name__}")
                                 btn.click_input()
 
                         logger.info("✓ SONRA > Sonraki reçete (fallback)")
                         self.timed_sleep("sonra_butonu")
                         return True
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             logger.warning("❌ SONRA yok (Son reçete)")
             return False
@@ -1691,8 +1722,8 @@ class BotanikBot:
                                     if any(c.isdigit() for c in name_prop) and any(c.isalpha() for c in name_prop):
                                         logger.info(f"✓ Reçete No: {name_prop}")
                                         return name_prop
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Operation failed: {type(e).__name__}")
 
                 except Exception as e:
                     logger.debug(f"ID ile arama başarısız: {e}")
@@ -1710,8 +1741,8 @@ class BotanikBot:
                             if cleaned.isalnum() and any(c.isdigit() for c in text_value) and any(c.isalpha() for c in text_value):
                                 logger.info(f"✓ Reçete No: {text_value}")
                                 return text_value
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Operation failed: {type(e).__name__}")
 
                 # Bu denemede bulunamadı, bir sonraki denemede tekrar dene
                 if deneme < max_deneme - 1:
@@ -1875,18 +1906,20 @@ class BotanikBot:
                             auto_id = None
                             try:
                                 auto_id = text_elem.element_info.automation_id
-                            except:
-                                pass
+                            except Exception as e:
+                                logger.debug(f"Operation failed: {type(e).__name__}")
 
                             if auto_id and "Tel" in auto_id:
                                 try:
                                     raw_text = text_elem.window_text()
                                     text_value = raw_text.strip() if raw_text else ""
-                                except:
+                                except Exception as e:
+                                    logger.debug(f"Fourth attempt failed: {type(e).__name__}")
                                     try:
                                         raw_name = text_elem.element_info.name
                                         text_value = raw_name.strip() if raw_name else ""
-                                    except:
+                                    except Exception as e:
+                                        logger.debug(f"Text value read failed: {type(e).__name__}")
                                         text_value = ""
 
                                 logger.info(f"  • Tel içeren ID: {auto_id} = '{text_value}'")
@@ -1899,7 +1932,8 @@ class BotanikBot:
                                         logger.info(f"✓ SONUÇ: TELEFON VAR (alternatif arama): {text_value}")
                                         logger.info("=" * 60)
                                         return True
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Operation failed, continuing: {type(e).__name__}")
                             continue
 
                     # Hala bulunamadıysa, tüm text değerlerini pattern ile kontrol et
@@ -1909,11 +1943,13 @@ class BotanikBot:
                             try:
                                 raw_text = text_elem.window_text()
                                 text_value = raw_text.strip() if raw_text else ""
-                            except:
+                            except Exception as e:
+                                logger.debug(f"Third attempt failed: {type(e).__name__}")
                                 try:
                                     raw_name = text_elem.element_info.name
                                     text_value = raw_name.strip() if raw_name else ""
-                                except:
+                                except Exception as e:
+                                    logger.debug(f"Text value read failed: {type(e).__name__}")
                                     text_value = ""
 
                             if text_value and telefon_pattern.search(text_value):
@@ -1922,7 +1958,8 @@ class BotanikBot:
                                 logger.info(f"✓ SONUÇ: TELEFON VAR (pattern arama): {text_value}")
                                 logger.info("=" * 60)
                                 return True
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Operation failed, continuing: {type(e).__name__}")
                             continue
 
                 except Exception as e:
@@ -1964,8 +2001,8 @@ class BotanikBot:
                     if "Sistem hatası" in text_value or "Sistem hatasi" in text_value:
                         logger.error(f"❌ MEDULA HATA: '{text_value}'")
                         return False
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             return True
 
@@ -1992,7 +2029,8 @@ class BotanikBot:
                     logger.info("✓ Reçete Sorgu butonu tıklandı (cache)")
                     self.timed_sleep("recete_sorgu")
                     return True
-                except:
+                except Exception as e:
+                    logger.debug(f"Cache recete_sorgu_button invoke failed: {type(e).__name__}")
                     self._clear_cache_key("recete_sorgu_button")
 
             # Yöntem 1: AutomationId ile ara (OPTIMIZE: control_type eklendi)
@@ -2002,10 +2040,12 @@ class BotanikBot:
                     self._cache_element("recete_sorgu_button", sorgu_button[0])  # Cache'e ekle
                     try:
                         sorgu_button[0].invoke()
-                    except:
+                    except Exception as e:
+                        logger.debug(f"First attempt failed: {type(e).__name__}")
                         try:
                             sorgu_button[0].click()
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Sorgu button click() failed: {type(e).__name__}")
                             sorgu_button[0].click_input()
 
                     logger.info("✓ Reçete Sorgu butonu tıklandı (AutomationId)")
@@ -2029,16 +2069,19 @@ class BotanikBot:
                                 self._cache_element("recete_sorgu_button", btn)  # Cache'e ekle
                                 try:
                                     btn.invoke()
-                                except:
+                                except Exception as e:
+                                    logger.debug(f"Fourth attempt failed: {type(e).__name__}")
                                     try:
                                         btn.click()
-                                    except:
+                                    except Exception as e:
+                                        logger.debug(f"Button click() failed: {type(e).__name__}")
                                         btn.click_input()
 
                                 logger.info("✓ Reçete Sorgu butonu tıklandı (Name)")
                                 self.timed_sleep("recete_sorgu")
                                 return True
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Operation failed, continuing: {type(e).__name__}")
                         continue
             except Exception as e:
                 logger.debug(f"Name ile bulunamadı: {e}")
@@ -2057,16 +2100,19 @@ class BotanikBot:
                                 self._cache_element("recete_sorgu_button", ctrl)  # Cache'e ekle
                                 try:
                                     ctrl.invoke()
-                                except:
+                                except Exception as e:
+                                    logger.debug(f"Fourth attempt failed: {type(e).__name__}")
                                     try:
                                         ctrl.click()
-                                    except:
+                                    except Exception as e:
+                                        logger.debug(f"Control click() failed: {type(e).__name__}")
                                         ctrl.click_input()
 
                                 logger.info("✓ Reçete Sorgu butonu tıklandı (Tüm kontroller)")
                                 self.timed_sleep("recete_sorgu")
                                 return True
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Operation failed, continuing: {type(e).__name__}")
                         continue
             except Exception as e:
                 logger.debug(f"Tüm kontroller ile bulunamadı: {e}")
@@ -2096,7 +2142,8 @@ class BotanikBot:
                     logger.info("✓ Ana Sayfa butonu tıklandı (cache)")
                     self.timed_sleep("ana_sayfa")
                     return True
-                except:
+                except Exception as e:
+                    logger.debug(f"Cache ana_sayfa_button invoke failed: {type(e).__name__}")
                     self._clear_cache_key("ana_sayfa_button")
 
             # Yöntem 1: AutomationId ile ara (OPTIMIZE: control_type eklendi, f: öneki eklendi)
@@ -2106,10 +2153,12 @@ class BotanikBot:
                     self._cache_element("ana_sayfa_button", ana_sayfa_button[0])  # Cache'e ekle
                     try:
                         ana_sayfa_button[0].invoke()
-                    except:
+                    except Exception as e:
+                        logger.debug(f"First attempt failed: {type(e).__name__}")
                         try:
                             ana_sayfa_button[0].click()
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Ana sayfa button click() failed: {type(e).__name__}")
                             ana_sayfa_button[0].click_input()
 
                     logger.info("✓ Ana Sayfa butonu tıklandı (AutomationId)")
@@ -2128,16 +2177,19 @@ class BotanikBot:
                             self._cache_element("ana_sayfa_button", btn)  # Cache'e ekle
                             try:
                                 btn.invoke()
-                            except:
+                            except Exception as e:
+                                logger.debug(f"Third attempt failed: {type(e).__name__}")
                                 try:
                                     btn.click()
-                                except:
+                                except Exception as e2:
+                                    logger.debug(f"Fourth attempt failed: {type(e2).__name__}")
                                     btn.click_input()
 
                             logger.info("✓ Ana Sayfa butonu tıklandı (Name)")
                             self.timed_sleep("ana_sayfa")
                             return True
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Operation failed, continuing: {type(e).__name__}")
                         continue
             except Exception as e:
                 logger.debug(f"Name ile bulunamadı: {e}")
@@ -2176,8 +2228,8 @@ class BotanikBot:
                     try:
                         edit.set_edit_text("")
                         self.timed_sleep("text_clear")
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Operation failed: {type(e).__name__}")
 
                     # Yeni değeri yaz
                     edit.set_edit_text(recete_no)
@@ -2189,8 +2241,8 @@ class BotanikBot:
                         if current_value == recete_no:
                             logger.info(f"✓ Reçete numarası yazıldı (AutomationId): {recete_no}")
                             return True
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Operation failed: {type(e).__name__}")
 
                     # Alternatif kontrol
                     try:
@@ -2198,8 +2250,8 @@ class BotanikBot:
                         if current_text == recete_no:
                             logger.info(f"✓ Reçete numarası yazıldı (AutomationId): {recete_no}")
                             return True
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Operation failed: {type(e).__name__}")
 
                     # Yazma işlemi yapıldı ama doğrulama yapılamadı
                     logger.info(f"✓ Reçete numarası yazıldı (AutomationId, doğrulama yok): {recete_no}")
@@ -2219,11 +2271,12 @@ class BotanikBot:
                         current_value = ""
                         try:
                             current_value = edit.get_value() or ""
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Second attempt failed: {type(e).__name__}")
                             try:
                                 current_value = edit.window_text() or ""
-                            except:
-                                pass
+                            except Exception as e:
+                                logger.debug(f"Operation failed: {type(e).__name__}")
 
                         # BOŞ değilse atla
                         if current_value.strip():
@@ -2244,16 +2297,18 @@ class BotanikBot:
                         # Kontrol et
                         try:
                             current_value = edit.get_value()
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Second attempt failed: {type(e).__name__}")
                             try:
                                 current_value = edit.window_text()
-                            except:
-                                pass
+                            except Exception as e:
+                                logger.debug(f"Operation failed: {type(e).__name__}")
 
                         if current_value == recete_no:
                             logger.info(f"✓ Reçete numarası yazıldı (İlk boş Edit): {recete_no}")
                             return True
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Operation failed, continuing: {type(e).__name__}")
                         continue
 
                 logger.error("❌ Reçete numarası alanı bulunamadı")
@@ -2285,7 +2340,8 @@ class BotanikBot:
                     logger.info("✓ Sorgula butonu tıklandı (cache)")
                     self.timed_sleep("sorgula_butonu")
                     return True
-                except:
+                except Exception as e:
+                    logger.debug(f"Cache sorgula_button invoke failed: {type(e).__name__}")
                     self._clear_cache_key("sorgula_button")
 
             # Yöntem 1: AutomationId ile ara (EN DOĞRUSU) (OPTIMIZE: control_type eklendi)
@@ -2295,10 +2351,12 @@ class BotanikBot:
                     self._cache_element("sorgula_button", sorgula_button[0])  # Cache'e ekle
                     try:
                         sorgula_button[0].invoke()
-                    except:
+                    except Exception as e:
+                        logger.debug(f"First attempt failed: {type(e).__name__}")
                         try:
                             sorgula_button[0].click()
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Sorgula button click() failed: {type(e).__name__}")
                             sorgula_button[0].click_input()
 
                     logger.info("✓ Sorgula butonu tıklandı (AutomationId)")
@@ -2318,16 +2376,19 @@ class BotanikBot:
                             # İLK "Sorgula" butonunu bul (en üstteki)
                             try:
                                 btn.invoke()
-                            except:
+                            except Exception as e:
+                                logger.debug(f"Third attempt failed: {type(e).__name__}")
                                 try:
                                     btn.click()
-                                except:
+                                except Exception as e2:
+                                    logger.debug(f"Fourth attempt failed: {type(e2).__name__}")
                                     btn.click_input()
 
                             logger.info("✓ Sorgula butonu tıklandı (İlk Sorgula)")
                             self.timed_sleep("sorgula_butonu")
                             return True
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Operation failed, continuing: {type(e).__name__}")
                         continue
             except Exception as e:
                 logger.debug(f"Name ile bulunamadı: {e}")
@@ -2370,17 +2431,19 @@ class BotanikBot:
                 if rapor_btn.exists(timeout=0.5):
                     try:
                         rapor_btn.invoke()
-                    except:
+                    except Exception as e:
+                        logger.debug(f"First attempt failed: {type(e).__name__}")
                         try:
                             rapor_btn.click()
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Rapor button click() failed: {type(e).__name__}")
                             rapor_btn.click_input()
 
                     logger.info("✓ Rapor butonu tıklandı (hızlı)")
                     self.timed_sleep("rapor_button_wait", 0.5)
                     return True
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Operation failed: {type(e).__name__}")
 
             # FALLBACK: İsimle arama
             buttons = self.main_window.descendants(control_type="Button")
@@ -2391,17 +2454,19 @@ class BotanikBot:
                     if btn_name == "Rapor":
                         try:
                             btn.invoke()
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Second attempt failed: {type(e).__name__}")
                             try:
                                 btn.click()
-                            except:
+                            except Exception as e:
+                                logger.debug(f"Button click() failed: {type(e).__name__}")
                                 btn.click_input()
 
                         logger.info("✓ Rapor butonu tıklandı (fallback)")
                         self.timed_sleep("rapor_button_wait", 0.5)
                         return True
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             logger.warning("❌ Rapor butonu bulunamadı")
             return False
@@ -2476,8 +2541,8 @@ class BotanikBot:
                                                     break
                                             if not skip:
                                                 cell_values.append(cell_text.strip())
-                                    except:
-                                        pass
+                                    except Exception as e:
+                                        logger.debug(f"Cell text parse error: {type(e).__name__}")
 
                                 logger.debug(f"    Satır {row_idx+1}: {cell_values}")
 
@@ -2556,10 +2621,10 @@ class BotanikBot:
                     text_value = text.window_text()
                     if text_value and len(text_value.split()) >= 2 and len(text_value) > 5:
                         return text_value.strip()
-                except:
-                    pass
-        except:
-            pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
+        except Exception as e:
+            logger.debug(f"Operation failed: {type(e).__name__}")
         return "Bilinmeyen"
 
     def telefon_numarasi_oku(self):
@@ -2573,10 +2638,10 @@ class BotanikBot:
                         clean_phone = edit_value.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
                         if clean_phone.isdigit() and len(clean_phone) >= 10:
                             return clean_phone
-                except:
-                    pass
-        except:
-            pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
+        except Exception as e:
+            logger.debug(f"Operation failed: {type(e).__name__}")
         return ""
 
     def tum_butonlari_listele(self):
@@ -2592,8 +2657,8 @@ class BotanikBot:
                         btn_name = btn.window_text()
                         if btn_name:
                             logger.info(f"  {i}. Buton: '{btn_name}'")
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Operation failed: {type(e).__name__}")
             else:
                 logger.warning("Hiç buton bulunamadı")
         except Exception as e:
@@ -2854,10 +2919,10 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip):
                         ilac_var = True
                         logger.info(f"✓ Seçili ilaç var")
                         break
-                except:
-                    pass
-        except:
-            pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
+        except Exception as e:
+            logger.debug(f"Operation failed: {type(e).__name__}")
 
     if ilac_var:
         bot.ilk_ilaca_sag_tik_ve_takip_et()
@@ -2959,8 +3024,8 @@ def console_pencereyi_ayarla():
             try:
                 # Buffer yüksekliğini 9999 satıra ayarla (scroll için)
                 subprocess.run('mode con: lines=9999', shell=True, capture_output=True)
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Operation failed: {type(e).__name__}")
 
             # Pencereyi görünür yap (minimize ise restore et)
             win32gui.ShowWindow(console_hwnd, win32con.SW_RESTORE)
@@ -3123,7 +3188,8 @@ def popup_kontrol_ve_kapat():
                     # Çok küçük pencereler de anlamsız
                     if width < 100 or height < 50:
                         continue
-                except:
+                except Exception as e:
+                    logger.debug(f"Window size check failed: {type(e).__name__}")
                     continue
 
                 # Pencere içinde "Tamam", "OK", "Kapat", "X", "Evet", "Hayır" gibi butonlar ara
@@ -3137,8 +3203,8 @@ def popup_kontrol_ve_kapat():
                             buton.click()
                             time.sleep(0.3)
                             return True
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Operation failed: {type(e).__name__}")
 
                 # X (Close) butonu ara
                 try:
@@ -3148,8 +3214,8 @@ def popup_kontrol_ve_kapat():
                         close_button.click()
                         time.sleep(0.3)
                         return True
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             except Exception as e:
                 continue
@@ -3194,8 +3260,8 @@ def sistemsel_hata_kontrol():
                     if hata_text.exists(timeout=0.3):
                         logger.error("❌ SİSTEMSEL HATA TESPİT EDİLDİ: 'Yazılımsal veya sistemsel bir hata oluştu.'")
                         return True
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
                 # Alternatif: Tüm text elementlerini tara
                 try:
@@ -3206,8 +3272,8 @@ def sistemsel_hata_kontrol():
                         if "yazılımsal" in text_content and "sistemsel" in text_content and "hata" in text_content:
                             logger.error(f"❌ SİSTEMSEL HATA TESPİT EDİLDİ: '{raw_content}'")
                             return True
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             except Exception as e:
                 continue
@@ -3238,8 +3304,8 @@ def recete_kaydi_bulunamadi_mi(bot):
             if text_element.exists(timeout=0.3):
                 logger.info("✓ 'Reçete kaydı bulunamadı' mesajı tespit edildi - Görev tamamlandı!")
                 return True
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Operation failed: {type(e).__name__}")
 
         # Alternatif: Internet Explorer_Server içinde ara
         try:
@@ -3256,10 +3322,10 @@ def recete_kaydi_bulunamadi_mi(bot):
                             if raw_text and "bulunamadı" in raw_text.lower():
                                 logger.info(f"✓ Görev bitişi mesajı: '{raw_text}'")
                                 return True
-                except:
-                    pass
-        except:
-            pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
+        except Exception as e:
+            logger.debug(f"Operation failed: {type(e).__name__}")
 
         return False
     except Exception as e:
@@ -3464,8 +3530,8 @@ def medula_giris_yap(medula_settings):
                 if "BotanikEOS" in window.window_text():
                     giris_window = window
                     break
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Operation failed: {type(e).__name__}")
 
         if not giris_window:
             logger.error("❌ MEDULA giriş penceresi bulunamadı")
@@ -3487,8 +3553,8 @@ def medula_giris_yap(medula_settings):
                         combobox = ctrl
                         logger.info(f"Combobox bulundu: {ctrl.class_name()}")
                         break
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             if combobox:
                 # ComboBox'ın koordinatlarını al
@@ -3557,8 +3623,8 @@ def medula_giris_yap(medula_settings):
                         sifre_textbox = ctrl
                         logger.info(f"Sifre textbox bulundu: {ctrl.class_name()}")
                         break
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             if sifre_textbox:
                 # Şifre textbox'ının koordinatlarını al
@@ -3647,8 +3713,8 @@ def recete_listesi_ac(bot):
                     btn_text = btn.window_text()
                     if btn_text:
                         logger.info(f"  Buton {i+1}: '{btn_text}'")
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             # Şimdi gerçekten Reçete Listesi'ni ara
             for btn in all_buttons:
@@ -3661,8 +3727,8 @@ def recete_listesi_ac(bot):
                         time.sleep(timing.get("recete_listesi_butonu"))
                         time.sleep(timing.get("recete_listesi_acilma"))
                         return True
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             logger.warning("Buton text'inde bulunamadı, AutomationId ile denenecek...")
         except Exception as e:
@@ -3734,8 +3800,8 @@ def donem_sec(bot, index=2):
                 try:
                     combo_text = combo.window_text()
                     logger.debug(f"ComboBox[{i}]: {combo_text}")
-                except:
-                    logger.debug(f"ComboBox[{i}]: (text okunamadı)")
+                except Exception as e:
+                    logger.debug(f"ComboBox[{i}]: (text okunamadı - {type(e).__name__})")
 
             donem_combobox = None
 
@@ -3842,7 +3908,8 @@ def grup_butonuna_tikla(bot, grup):
                     time.sleep(timing.get("grup_butonu_tiklama"))
                     time.sleep(timing.get("grup_sorgulama"))
                     return True
-                except:
+                except Exception as e:
+                    logger.debug(f"Grup button click failed: {type(e).__name__}")
                     # Parent'a tıklamayı dene
                     parent = grup_elements[0].parent()
                     parent.click_input()
@@ -3892,8 +3959,8 @@ def bulunamadi_mesaji_kontrol(bot):
                     if "Bu döneme ait sonlandırılmamış reçete bulunamadı" in text_value:
                         logger.info("✓ 'Bu döneme ait sonlandırılmamış reçete bulunamadı' mesajı bulundu")
                         return True
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
         except Exception as e:
             logger.debug(f"Text element araması hatası: {e}")
 
@@ -3940,8 +4007,8 @@ def ilk_recete_ac(bot):
                         son_islem_label = text_elem
                         logger.info(f"✓ Label bulundu: '{text_value}'")
                         break
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             if son_islem_label:
                 # Koordinatları al
@@ -4290,8 +4357,8 @@ def medula_ac_ve_giris_yap(medula_settings):
                                 logger.info("✓ Giriş yapıldı - MEDULA ana penceresi açıldı")
                                 medula_bulundu = True
                                 return True
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Operation failed: {type(e).__name__}")
                     if medula_bulundu:
                         break
                     time.sleep(0.5)
@@ -4302,8 +4369,8 @@ def medula_ac_ve_giris_yap(medula_settings):
                         if "BotanikEOS" in window.window_text():
                             logger.error("❌ Giriş başarısız - Şifre yanlış olabilir")
                             return False
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Operation failed: {type(e).__name__}")
 
                 logger.warning("⚠ Giriş durumu belirsiz")
                 return False

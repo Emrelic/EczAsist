@@ -84,12 +84,12 @@ class GrupDurumu:
                                 json.dump(veriler, f, indent=2, ensure_ascii=False)
                             import shutil
                             shutil.move(str(temp_dosya), str(self.dosya_yolu))
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Operation failed: {type(e).__name__}")
 
                     return veriler
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Operation failed: {type(e).__name__}")
 
         # Varsayılan yapı
         return {
@@ -341,8 +341,8 @@ class BotanikGUI:
                         medula_hwnd = window.handle
                         logger.info(f"MEDULA penceresi bulundu: {window.window_text()}")
                         break
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             if medula_hwnd is None:
                 logger.debug("MEDULA penceresi bulunamadı (henüz açılmamış olabilir)")
@@ -363,8 +363,8 @@ class BotanikGUI:
             try:
                 eski_rect = win32gui.GetWindowRect(medula_hwnd)
                 logger.info(f"MEDULA eski pozisyon: x={eski_rect[0]}, y={eski_rect[1]}, w={eski_rect[2]-eski_rect[0]}, h={eski_rect[3]-eski_rect[1]}")
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Operation failed: {type(e).__name__}")
 
             # Minimize veya Maximize ise restore et
             try:
@@ -393,8 +393,8 @@ class BotanikGUI:
                 try:
                     win32gui.ShowWindow(medula_hwnd, win32con.SW_RESTORE)
                     time.sleep(0.5)
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
             # Önce SetWindowPos ile yerleştir
             flags = win32con.SWP_SHOWWINDOW
@@ -494,8 +494,8 @@ class BotanikGUI:
                 try:
                     eski_rect = win32gui.GetWindowRect(hwnd)
                     logger.info(f"Konsol eski pozisyon: x={eski_rect[0]}, y={eski_rect[1]}, w={eski_rect[2]-eski_rect[0]}, h={eski_rect[3]-eski_rect[1]}")
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
                 # Önce konsolu göster (minimize ise)
                 win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
@@ -699,8 +699,8 @@ class BotanikGUI:
                     try:
                         final_rect = win32gui.GetWindowRect(hwnd)
                         logger.info(f"Konsol son pozisyon: x={final_rect[0]}, y={final_rect[1]}, w={final_rect[2]-final_rect[0]}, h={final_rect[3]-final_rect[1]}")
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Operation failed: {type(e).__name__}")
 
                     logger.info("✓ Konsol yerleştirme tamamlandı")
                 else:
@@ -1165,8 +1165,8 @@ class BotanikGUI:
                 for widget in self.grup_frames[g]['widgets']:
                     try:
                         widget.config(bg="#E8F5E9")
-                    except:
-                        pass  # X butonu gibi bazı widget'larda bg olmayabilir
+                    except Exception as e:
+                        logger.debug(f"Operation failed: {type(e).__name__}")  # X butonu gibi bazı widget'larda bg olmayabilir
 
         # Seçili grubu mavi yap
         if grup in self.grup_frames:
@@ -1176,8 +1176,8 @@ class BotanikGUI:
             for widget in self.grup_frames[grup]['widgets']:
                 try:
                     widget.config(bg="#BBDEFB")
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
         # Son reçete numarasını kontrol et
         son_recete = self.grup_durumu.son_recete_al(grup)
@@ -1398,8 +1398,8 @@ class BotanikGUI:
                             medula_hwnd = window.handle
                             self.root.after(0, lambda: self.log_ekle("ℹ MEDULA zaten açık, restore ediliyor..."))
                             break
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Operation failed: {type(e).__name__}")
             except Exception as e:
                 logger.debug(f"MEDULA kontrol hatası: {e}")
 
@@ -1667,8 +1667,8 @@ class BotanikGUI:
                 for _ in range(3):
                     winsound.Beep(1000, 300)  # 1000Hz, 300ms
                     time.sleep(0.2)
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Operation failed: {type(e).__name__}")
 
         thread = threading.Thread(target=calar)
         thread.daemon = True
@@ -2286,7 +2286,8 @@ class BotanikGUI:
                 if multiplier < 0.8 or multiplier > 2.0:
                     multiplier = 1.3
                     self.optimize_multiplier_var.set("1.3")
-            except:
+            except Exception as e:
+                logger.debug(f"Multiplier parse error: {type(e).__name__}")
                 multiplier = 1.3
                 self.optimize_multiplier_var.set("1.3")
 
@@ -2951,8 +2952,8 @@ class BotanikGUI:
                                                         for widget in self.grup_frames[g]['widgets']:
                                                             try:
                                                                 widget.config(bg=bg_color)
-                                                            except:
-                                                                pass
+                                                            except Exception as e:
+                                                                logger.debug(f"Widget bg config failed: {type(e).__name__}")
 
                                                 # İşleme başla
                                                 self.root.after(500, lambda: self.basla())
