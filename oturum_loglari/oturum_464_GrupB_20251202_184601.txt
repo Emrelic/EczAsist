@@ -1,0 +1,12 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 464
+Grup: B
+Başlangıç: 2025-12-02 18:46:01
+================================================================================
+
+[18:46:01.319] [INFO] Grup B için yeni oturum başlatıldı
+[18:47:03.304] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[18:47:17.604] [BAŞARI] ✅ 5 rapor CSV'ye kaydedildi - ŞEFİKA TUBTEMUR (5468764932)
+[18:47:44.760] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...

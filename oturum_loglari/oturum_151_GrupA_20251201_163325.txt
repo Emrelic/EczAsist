@@ -1,0 +1,27 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 151
+Grup: A
+Başlangıç: 2025-12-01 16:33:25
+================================================================================
+
+[16:33:25.299] [INFO] Grup A için yeni oturum başlatıldı
+[16:33:55.186] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete İşlem ekranındayken)...
+[16:34:13.677] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[16:35:03.534] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete İşlem ekranındayken)...
+[16:35:22.352] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-12-01 16:40:34
+Toplam Süre: 7 dakika 9 saniye
+Toplam Reçete: 2
+Toplam Takip: 0
+Ortalama Reçete Süresi: 62.22 saniye
+Yeniden Başlatma: 0 kez
+Taskkill: 0 kez
+================================================================================
+
+[16:40:34.866] Oturum log dosyası kapatıldı.

@@ -1,0 +1,15 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 75
+Grup: A
+Başlangıç: 2025-11-22 01:12:02
+================================================================================
+
+[01:12:02.400] [INFO] Grup A için yeni oturum başlatıldı
+[01:12:33.997] [INFO] 🔵 Rapor toplama başlatılıyor...
+[01:12:45.067] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[01:13:21.422] [INFO] 🔵 Rapor toplama başlatılıyor...
+[01:13:22.478] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[01:13:38.488] [INFO] Yeniden başlatma #1
+[01:13:49.487] [WARNING] Taskkill yapıldı (#1)

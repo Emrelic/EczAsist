@@ -52,7 +52,9 @@ class SessionLogger:
     def yaz(self, mesaj, seviye="INFO"):
         """Log dosyasına mesaj yaz"""
         try:
-            zaman = datetime.now().strftime("%H:%M:%S")
+            # Milisaniye dahil zaman formatı
+            now = datetime.now()
+            zaman = now.strftime("%H:%M:%S") + f".{now.microsecond // 1000:03d}"
             satir = f"[{zaman}] [{seviye}] {mesaj}\n"
 
             with open(self.log_dosya, 'a', encoding='utf-8') as f:
@@ -107,7 +109,9 @@ class SessionLogger:
     def kapat(self):
         """Log dosyasını kapat (son satır ekle)"""
         try:
+            now = datetime.now()
+            zaman = now.strftime("%H:%M:%S") + f".{now.microsecond // 1000:03d}"
             with open(self.log_dosya, 'a', encoding='utf-8') as f:
-                f.write(f"\n[{datetime.now().strftime('%H:%M:%S')}] Oturum log dosyası kapatıldı.\n")
+                f.write(f"\n[{zaman}] Oturum log dosyası kapatıldı.\n")
         except Exception as e:
             logger.error(f"Log kapatma hatası: {e}")

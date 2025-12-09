@@ -1,0 +1,24 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 157
+Grup: B
+Başlangıç: 2025-12-01 19:18:03
+================================================================================
+
+[19:18:03.617] [INFO] Grup B için yeni oturum başlatıldı
+[19:18:29.169] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:18:50.238] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[19:19:16.649] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:19:37.754] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[19:20:05.476] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:20:26.670] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[19:20:54.659] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:21:15.769] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[19:21:47.929] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:22:08.356] [BAŞARI] ✅ 7 rapor CSV'ye kaydedildi - MÜCAHİT YILDIZ (5365276614)
+[19:22:40.168] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:23:01.134] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[19:23:30.670] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:23:51.468] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[19:24:15.646] [INFO] Yeniden başlatma #5

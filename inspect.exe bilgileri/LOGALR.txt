@@ -1,0 +1,900 @@
+15:21:34.955: ✓ Zamanlama ayarları yüklendi (Profil: current)
+15:21:34.956: ✓ MEDULA ayarları yüklendi
+15:21:34.959: ✓ Database bağlantısı kuruldu: C:\Users\ikizler1\OneDrive\Desktop\botTak birleşmeli\BotTak3+7\oturum_raporlari.db
+15:21:34.965: ✓ Database tabloları oluşturuldu
+15:21:36.302: Konsol yerleştirilecek: x=1536, y=720, w=384, h=360
+15:21:36.302: Konsol eski pozisyon: x=0, y=0, w=0, h=0
+15:21:36.563: Konsol yeni pozisyon: x=1536, y=720, w=384, h=360
+15:21:36.563: ✓ Konsol sağ alt 1/3'e yerleştirildi
+15:21:37.092: MEDULA penceresi bulundu: MEDULA 2.1.201.0 EMRE GÖKMEN (T)
+15:21:37.092: MEDULA eski pozisyon: x=-32000, y=-32000, w=160, h=28
+15:21:37.092: MEDULA durumu: minimize, restore ediliyor...
+15:21:37.857: MEDULA yeni pozisyon: x=0, y=0, w=1536, h=1040
+15:21:37.858: ✓ MEDULA sol 4/5'e yerleştirildi
+15:21:37.858: ✓ MEDULA ayarları mevcut, wizard atlanıyor
+15:21:49.533: Grup A sıfırlandı
+15:21:50.635: tumu_kontrol_et() çağrıldı
+15:21:50.640: Aktif mod: tumunu_kontrol
+15:21:50.644: Grup A seçildi
+15:21:51.618: ✓ MEDULA'ya bağlandı
+15:21:51.889: ✓ MEDULA sol %80'e yerleşti (1536x1040)
+15:21:52.890: ⏳ Ana sayfa yüklenmesi bekleniyor (2 saniye)...
+15:21:55.671:   Buton 1: '    e-Reçete Sorgu'
+15:21:55.673:   Buton 2: '    e-Reçete Sorgu'
+15:21:55.674:   Buton 3: '    Reçete Giriş'
+15:21:55.675:   Buton 4: '    Reçete Giriş'
+15:21:55.676:   Buton 5: '    Reçete Listesi'
+15:21:55.677:   Buton 6: '    Reçete Listesi'
+15:21:55.678:   Buton 7: '    Reçete Listesi (Günlük)'
+15:21:55.679:   Buton 8: '    Reçete Listesi (Günlük)'
+15:21:55.681:   Buton 9: '    Reçete Sorgu'
+15:21:55.682:   Buton 10: '    Reçete Sorgu'
+15:21:55.683:   Buton 11: '    İade Reçete Sorgu/Düzeltme'
+15:21:55.684:   Buton 12: '    İade Reçete Sorgu/Düzeltme'
+15:21:55.685:   Buton 13: '    İlaç Bilgisi'
+15:21:55.686:   Buton 14: '    İlaç Bilgisi'
+15:21:55.687:   Buton 15: '    Silinmiş Karekod'
+15:21:55.688:   Buton 16: '    Silinmiş Karekod'
+15:21:55.689:   Buton 17: '    Manuel Reçete Giriş'
+15:21:55.691:   Buton 18: '    Manuel Reçete Giriş'
+15:21:55.692:   Buton 19: '    Manuel Reçete Liste'
+15:21:55.693:   Buton 20: '    Manuel Reçete Liste'
+15:21:55.698: ✓ Reçete Listesi butonu bulundu: '    Reçete Listesi'
+15:21:55.770: ✓ Reçete Listesi butonuna tıklandı
+15:21:59.629: 🔘 Dönem seçiliyor (index=2)...
+15:22:00.088: Toplam 2 ComboBox bulundu
+15:22:00.090: İkinci ComboBox (index=1) dönem olarak seçildi
+15:22:00.092: Dönem ComboBox koordinatları: x=1164, y=201
+15:22:00.092: Dönem ComboBox'a tıklanıyor...
+15:22:00.452: HOME tuşu ile en başa dönülüyor...
+15:22:00.854: 2 kere DOWN tuşuna basılıyor...
+15:22:01.458: Enter basılarak dönem seçiliyor...
+15:22:02.060: ✓ Dönem seçildi (index: 2)
+15:22:03.608: ✓ A grubu butonuna tıklandı
+15:22:07.225: ✓ 'Bu döneme ait sonlandırılmamış reçete bulunamadı' mesajı bulundu
+15:22:07.225: 🔘 Dönem seçiliyor (index=1)...
+15:22:07.655: Toplam 2 ComboBox bulundu
+15:22:07.657: İkinci ComboBox (index=1) dönem olarak seçildi
+15:22:07.658: Dönem ComboBox koordinatları: x=1164, y=261
+15:22:07.658: Dönem ComboBox'a tıklanıyor...
+15:22:08.025: HOME tuşu ile en başa dönülüyor...
+15:22:08.427: 1 kere DOWN tuşuna basılıyor...
+15:22:08.730: Enter basılarak dönem seçiliyor...
+15:22:09.332: ✓ Dönem seçildi (index: 1)
+15:22:10.882: ✓ A grubu butonuna tıklandı
+15:22:16.700: 🔘 İlk reçete açılıyor...
+15:22:18.976: ✓ Label bulundu: 'Son İşl.Tar.'
+15:22:18.977: ✓ Son İşlem Tarihi koordinatları: (501, 377)
+15:22:18.977: 🖱 İlk reçete tıklanıyor: (501, 402)
+15:22:20.594: ✓ İlk reçete açıldı
+15:22:21.266: 🖼 Tüm pencereler yerleştiriliyor...
+15:22:21.270: MEDULA yerleştirilecek: x=0, y=0, w=1536, h=1080
+15:22:21.467: ✓ MEDULA sol 4/5'e yerleştirildi
+15:22:21.467: GUI yerleştirilecek: x=1536, y=0, w=384, h=720
+15:22:21.470: ✓ GUI sağ üst 1/5'e yerleştirildi
+15:22:21.470: Konsol yerleştirilecek: x=1536, y=720, w=384, h=360
+15:22:21.470: Ekran boyutu: 1920x1080
+15:22:22.071: Konsol yerleştirme deneme 1/5...
+15:22:22.573:   → Gerçek pozisyon: x=1536, y=720, w=384, h=360
+15:22:22.574: ✓ Konsol sağ alt köşeye yerleştirildi (1. denemede)
+15:22:22.574: Konsol son pozisyon: x=1536, y=720, w=384, h=360
+15:22:22.575: ✓ Konsol yerleştirme tamamlandı
+15:22:22.597: ✅ Tüm pencereler yerleştirildi
+15:22:24.099: basla() çağrıldı: is_running=False, secili_grup=A
+15:22:24.121: ✓ Yeni oturum başlatıldı: ID=60, Grup=A
+15:22:24.125: ✓ Oturum log dosyası oluşturuldu: oturum_60_GrupA_20251121_152224.txt
+15:22:26.667: ✓ Reçete No: 3I9DYCL
+15:22:31.070: ⏱ Reçete kontrolü: 1.38s
+15:22:32.227: ✓ Reçete No: 3I9DYCL
+15:22:32.228: 📋 REÇETE 1 | No: 3I9DYCL
+15:22:33.878: ✓ Telefon bulundu (alt. arama): C:(555) 815 2606
+15:22:39.631: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:22:39.746: ⏱ İlaç butonu: 4.48s
+15:22:43.415: ✓ İlaç ekranı yüklendi (3.67s)
+15:22:43.416: ⏱ İlaç ekranı yükleme: 3.67s
+15:22:45.644: ✓ Y butonuna tıklandı (hızlı)
+15:22:45.720: ⏱ Y butonu: 2.30s
+15:22:46.047: ⏱ İlaç penceresi bulma: 0.33s
+15:22:46.579: ✓ Alınmayanları seç (fallback)
+15:22:46.580: ⏱ Alınmayanları Seç: 0.53s
+15:22:52.439: → 0/11 ilaç seçili
+15:22:52.439: ✗ Seçili ilaç yok
+15:22:52.440: → Takip Et atlandı
+15:22:52.858: ✓ Pencere kapatıldı (fallback)
+15:22:52.881: ⏱ İlaç penceresi kapatma: 0.44s
+15:22:52.881: ⏱ İlaç seçimi: 6.30s
+15:22:54.433: ✓ Geri Dön tıklandı (hızlı)
+15:22:54.484: ⏱ Geri Dön butonu: 1.60s
+15:22:56.455: ✓ Rapor butonu tıklandı (hızlı)
+15:22:59.378: 📝 Hasta adı bulundu: MEHMET DEĞERLİYURT
+15:23:00.334: 🔍 Bulunan tablo sayısı: 12
+15:23:00.580:   📊 Tablo 1: 72 satır
+15:23:01.124:   ✓ Rapor 1: 03/10/2026 10.02.1 - Miyastenia Gravis (G70.0,G70.... | 03/10/2025
+15:23:01.265:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 20/11/1975
+15:23:01.528:   ✓ Rapor 3: 10.02.1 - Miyastenia Gravis (G70.0,G70.2) DELTACOR... | 03/10/2026
+15:23:01.639:   ✓ Rapor 4: 10.02.1 - Miyastenia Gravis (G70.0,G70.2) DELTACOR... | 03/10/2026
+15:23:01.735:   ⚡ 4 rapor bulundu
+15:23:02.117: ✓ Rapor penceresi kapatıldı
+15:23:02.117: ✅ Toplam 4 rapor toplandı - Hasta: MEHMET DEĞERLİYURT
+15:23:02.122: ⏱ Rapor toplama: 7.64s
+15:23:02.128:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:23:02.128: ✓ Hasta raporları kaydedildi: MEHMET DEĞERLİYURT
+15:23:04.347: ✓ SONRA > Sonraki reçete (hızlı)
+15:23:04.386: ⏱ Sonra butonu: 2.26s
+15:23:04.386: 🕐 TOPLAM: 34.70s
+15:23:07.190: ✓ Reçete No: 3I9E2VE
+15:23:12.349: ⏱ Reçete kontrolü: 1.43s
+15:23:13.554: ✓ Reçete No: 3I9E2VE
+15:23:13.555: 📋 REÇETE 2 | No: 3I9E2VE
+15:23:15.332: ✓ Telefon bulundu (alt. arama): C:(544) 977 1539
+15:23:19.922: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:23:20.036: ⏱ İlaç butonu: 3.26s
+15:23:24.146: ✓ İlaç ekranı yüklendi (4.11s)
+15:23:24.146: ⏱ İlaç ekranı yükleme: 4.11s
+15:23:25.841: ✓ Y butonuna tıklandı (cache)
+15:23:25.917: ⏱ Y butonu: 1.77s
+15:23:26.059: ⏱ İlaç penceresi bulma: 0.14s
+15:23:26.477: ✓ Alınmayanları seç (fallback)
+15:23:26.477: ⏱ Alınmayanları Seç: 0.42s
+15:23:32.670: → 0/12 ilaç seçili
+15:23:32.671: ✗ Seçili ilaç yok
+15:23:32.671: → Takip Et atlandı
+15:23:33.105: ✓ Pencere kapatıldı (fallback)
+15:23:33.127: ⏱ İlaç penceresi kapatma: 0.46s
+15:23:33.129: ⏱ İlaç seçimi: 6.65s
+15:23:34.746: ✓ Geri Dön tıklandı (hızlı)
+15:23:34.796: ⏱ Geri Dön butonu: 1.67s
+15:23:37.232: ✓ Rapor butonu tıklandı (hızlı)
+15:23:40.256: 📝 Hasta adı bulundu: ŞAHNAZ ÜZMAN
+15:23:41.257: 🔍 Bulunan tablo sayısı: 12
+15:23:41.530:   📊 Tablo 1: 79 satır
+15:23:42.136:   ✓ Rapor 1: 25/12/2025 02.01 - Kanser (1 yıllık)(C00-C97)(D00-... | 25/06/2025
+15:23:42.276:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 16/01/1973
+15:23:42.578:   ✓ Rapor 3: 02.01 - Kanser (1 yıllık)(C00-C97)(D00-D48) 511001... | 25/12/2025
+15:23:42.752:   ✓ Rapor 4: 02.01 - Kanser (1 yıllık)(C00-C97)(D00-D48) 511001... | 25/12/2025
+15:23:42.947:   ⚡ 4 rapor bulundu
+15:23:43.330: ✓ Rapor penceresi kapatıldı
+15:23:43.330: ✅ Toplam 4 rapor toplandı - Hasta: ŞAHNAZ ÜZMAN
+15:23:43.334: ⏱ Rapor toplama: 8.54s
+15:23:43.340:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:23:43.341: ✓ Hasta raporları kaydedildi: ŞAHNAZ ÜZMAN
+15:23:45.491: ✓ SONRA > Sonraki reçete (hızlı)
+15:23:45.528: ⏱ Sonra butonu: 2.19s
+15:23:45.529: 🕐 TOPLAM: 34.61s
+15:23:50.895: ✓ Reçete No: 3I9H7TD
+15:23:55.815: ⏱ Reçete kontrolü: 1.55s
+15:23:57.127: ✓ Reçete No: 3I9H7TD
+15:23:57.127: 📋 REÇETE 3 | No: 3I9H7TD
+15:23:58.760: ✓ Telefon bulundu (alt. arama): C:(532) 201 5434
+15:24:03.165: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:24:03.279: ⏱ İlaç butonu: 3.16s
+15:24:06.971: ✓ İlaç ekranı yüklendi (3.69s)
+15:24:06.971: ⏱ İlaç ekranı yükleme: 3.69s
+15:24:08.628: ✓ Y butonuna tıklandı (cache)
+15:24:08.703: ⏱ Y butonu: 1.73s
+15:24:08.870: ⏱ İlaç penceresi bulma: 0.17s
+15:24:09.324: ✓ Alınmayanları seç (fallback)
+15:24:09.324: ⏱ Alınmayanları Seç: 0.45s
+15:24:16.057: → 0/14 ilaç seçili
+15:24:16.057: ✗ Seçili ilaç yok
+15:24:16.057: → Takip Et atlandı
+15:24:16.513: ✓ Pencere kapatıldı (fallback)
+15:24:16.536: ⏱ İlaç penceresi kapatma: 0.48s
+15:24:16.536: ⏱ İlaç seçimi: 7.21s
+15:24:18.040: ✓ Geri Dön tıklandı (hızlı)
+15:24:18.088: ⏱ Geri Dön butonu: 1.55s
+15:24:20.231: ✓ Rapor butonu tıklandı (hızlı)
+15:24:23.182: 📝 Hasta adı bulundu: GÖNÜL KÖPRÜLÜ
+15:24:24.139: 🔍 Bulunan tablo sayısı: 12
+15:24:24.385:   📊 Tablo 1: 72 satır
+15:24:24.946:   ✓ Rapor 1: 25/03/2026 11.04.5 ---> Yaygin Anksiyete Bozuklugu... | 26/09/2025
+15:24:25.080:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 05/03/1958
+15:24:25.348:   ✓ Rapor 3: 11.04.5 ---> Yaygin Anksiyete Bozuklugu(F41.1)(F41... | 25/03/2026
+15:24:25.464:   ✓ Rapor 4: 11.04.5 ---> Yaygin Anksiyete Bozuklugu(F41.1)(F41... | 25/03/2026
+15:24:25.567:   ⚡ 4 rapor bulundu
+15:24:25.948: ✓ Rapor penceresi kapatıldı
+15:24:25.949: ✅ Toplam 4 rapor toplandı - Hasta: GÖNÜL KÖPRÜLÜ
+15:24:25.953: ⏱ Rapor toplama: 7.86s
+15:24:25.958:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:24:25.959: ✓ Hasta raporları kaydedildi: GÖNÜL KÖPRÜLÜ
+15:24:28.105: ✓ SONRA > Sonraki reçete (hızlı)
+15:24:28.143: ⏱ Sonra butonu: 2.18s
+15:24:28.144: 🕐 TOPLAM: 33.88s
+15:24:31.033: ✓ Reçete No: 3I9RNKC
+15:24:35.787: ⏱ Reçete kontrolü: 1.35s
+15:24:36.941: ✓ Reçete No: 3I9RNKC
+15:24:36.941: 📋 REÇETE 4 | No: 3I9RNKC
+15:24:38.649: ✓ Telefon bulundu (alt. arama): C:(552) 930 3090
+15:24:43.260: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:24:43.374: ⏱ İlaç butonu: 3.10s
+15:24:47.138: ✓ İlaç ekranı yüklendi (3.76s)
+15:24:47.138: ⏱ İlaç ekranı yükleme: 3.76s
+15:24:48.798: ✓ Y butonuna tıklandı (cache)
+15:24:48.873: ⏱ Y butonu: 1.73s
+15:24:49.016: ⏱ İlaç penceresi bulma: 0.14s
+15:24:49.468: ✓ Alınmayanları seç (fallback)
+15:24:49.468: ⏱ Alınmayanları Seç: 0.45s
+15:24:56.099: → 0/14 ilaç seçili
+15:24:56.099: ✗ Seçili ilaç yok
+15:24:56.099: → Takip Et atlandı
+15:24:56.559: ✓ Pencere kapatıldı (fallback)
+15:24:56.582: ⏱ İlaç penceresi kapatma: 0.48s
+15:24:56.583: ⏱ İlaç seçimi: 7.11s
+15:24:58.141: ✓ Geri Dön tıklandı (hızlı)
+15:24:58.187: ⏱ Geri Dön butonu: 1.60s
+15:25:00.207: ✓ Rapor butonu tıklandı (hızlı)
+15:25:03.736: 📝 Hasta adı bulundu: MEDET DURDAĞI
+15:25:04.784: 🔍 Bulunan tablo sayısı: 12
+15:25:05.190:   📊 Tablo 1: 128 satır
+15:25:05.996:   ✓ Rapor 1: 28/04/2026 06.01 - Hepatit B Gastro(B18.1) 5014980... | 29/04/2025
+15:25:06.132:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 01/11/1976
+15:25:06.635:   ✓ Rapor 3: 06.01 - Hepatit B Gastro(B18.1) 501498020 1472052 ... | 28/04/2026
+15:25:07.006:   ✓ Rapor 4: 06.01 - Hepatit B Gastro(B18.1) 501498020 1472052 ... | 28/04/2026
+15:25:07.421:   ⚡ 4 rapor bulundu
+15:25:07.803: ✓ Rapor penceresi kapatıldı
+15:25:07.805: ✅ Toplam 4 rapor toplandı - Hasta: MEDET DURDAĞI
+15:25:07.810: ⏱ Rapor toplama: 9.62s
+15:25:07.820:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:25:07.824: ✓ Hasta raporları kaydedildi: MEDET DURDAĞI
+15:25:10.247: ✓ SONRA > Sonraki reçete (hızlı)
+15:25:10.285: ⏱ Sonra butonu: 2.46s
+15:25:10.286: 🕐 TOPLAM: 35.85s
+15:25:14.474: ✓ Reçete No: 3I9UIF3
+15:25:19.604: ⏱ Reçete kontrolü: 1.65s
+15:25:20.995: ✓ Reçete No: 3I9UIF3
+15:25:20.995: 📋 REÇETE 5 | No: 3I9UIF3
+15:25:22.869: ✓ Telefon bulundu (alt. arama): C:(538) 669 3761
+15:25:28.233: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:25:28.347: ⏱ İlaç butonu: 3.69s
+15:25:32.240: ✓ İlaç ekranı yüklendi (3.89s)
+15:25:32.241: ⏱ İlaç ekranı yükleme: 3.89s
+15:25:37.105: ✓ Y butonuna tıklandı (hızlı)
+15:25:37.181: ⏱ Y butonu: 4.94s
+15:25:37.327: ❌ 'İlaç Listesi' bulunamadı
+15:25:37.503: ❌ 'İlaç Listesi' bulunamadı
+15:25:37.678: ❌ 'İlaç Listesi' bulunamadı
+15:25:37.845: ❌ 'İlaç Listesi' bulunamadı
+15:25:38.008: ❌ 'İlaç Listesi' bulunamadı
+15:25:38.198: ❌ 'İlaç Listesi' bulunamadı
+15:25:38.236: ⏱ İlaç penceresi bulma: 1.05s
+15:25:38.236: ⚠ İlaç Listesi bulunamadı → 1 saniye bekleyip ENTER basılıyor...
+15:25:39.288: ✓ ENTER tuşuna basıldı (1. deneme)
+15:25:39.635: ❌ 'İlaç Listesi' bulunamadı
+15:25:39.811: ❌ 'İlaç Listesi' bulunamadı
+15:25:39.974: ❌ 'İlaç Listesi' bulunamadı
+15:25:40.143: ❌ 'İlaç Listesi' bulunamadı
+15:25:40.332: ❌ 'İlaç Listesi' bulunamadı
+15:25:40.370: ⏱ İlaç penceresi bulma (ENTER sonrası): 1.08s
+15:25:40.370: ⚠ İlaç Listesi hala bulunamadı → 1 saniye bekleyip tekrar ENTER basılıyor...
+15:25:41.421: ✓ ENTER tuşuna basıldı (2. deneme)
+15:25:43.459: ✓ Y butonuna tıklandı (cache)
+15:25:43.534: ⏱ Y butonu (2. ENTER sonrası): 1.96s
+15:25:43.726: ✓ İlaç Listesi bulundu (2. ENTER + Y sonrası)
+15:25:43.727: ⏱ İlaç penceresi bulma (2. deneme): 0.19s
+15:25:44.219: ✓ Alınmayanları seç (fallback)
+15:25:44.219: ⏱ Alınmayanları Seç: 0.49s
+15:25:51.224: → 0/13 ilaç seçili
+15:25:51.224: ✗ Seçili ilaç yok
+15:25:51.224: → Takip Et atlandı
+15:25:51.685: ✓ Pencere kapatıldı (fallback)
+15:25:51.708: ⏱ İlaç penceresi kapatma: 0.48s
+15:25:51.708: ⏱ İlaç seçimi: 7.49s
+15:25:53.489: ✓ Geri Dön tıklandı (hızlı)
+15:25:53.535: ⏱ Geri Dön butonu: 1.83s
+15:25:56.947: ✓ Rapor butonu tıklandı (fallback)
+15:26:00.539: 📝 Hasta adı bulundu: ALİ KAYIKCI
+15:26:01.734: 🔍 Bulunan tablo sayısı: 12
+15:26:02.234:   📊 Tablo 1: 146 satır
+15:26:03.240:   ✓ Rapor 1: 03/03/2026 10.12.1 ---> Diabetik noropati(G63.2*)(... | 03/03/2025
+15:26:03.389:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 19/01/1956
+15:26:04.083:   ✓ Rapor 3: 10.12.1 ---> Diabetik noropati(G63.2*)(G59.0*) 490... | 03/03/2026
+15:26:04.589:   ✓ Rapor 4: 10.12.1 ---> Diabetik noropati(G63.2*)(G59.0*) 490... | 03/03/2026
+15:26:05.235:   ⚡ 4 rapor bulundu
+15:26:05.616: ✓ Rapor penceresi kapatıldı
+15:26:05.616: ✅ Toplam 4 rapor toplandı - Hasta: ALİ KAYIKCI
+15:26:05.618: ⏱ Rapor toplama: 12.08s
+15:26:05.620:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:26:05.621: ✓ Hasta raporları kaydedildi: ALİ KAYIKCI
+15:26:08.432: ✓ SONRA > Sonraki reçete (hızlı)
+15:26:08.470: ⏱ Sonra butonu: 2.85s
+15:26:08.471: 🕐 TOPLAM: 50.52s
+15:26:12.999: ✓ Reçete No: 3IA9D8M
+15:26:18.393: ⏱ Reçete kontrolü: 1.60s
+15:26:19.715: ✓ Reçete No: 3IA9D8M
+15:26:19.715: 📋 REÇETE 6 | No: 3IA9D8M
+15:26:21.394: ✓ Telefon bulundu (alt. arama): C:(533) 253 9253
+15:26:26.022: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:26:26.136: ⏱ İlaç butonu: 3.35s
+15:26:29.890: ✓ İlaç ekranı yüklendi (3.75s)
+15:26:29.890: ⏱ İlaç ekranı yükleme: 3.75s
+15:26:31.553: ✓ Y butonuna tıklandı (cache)
+15:26:31.630: ⏱ Y butonu: 1.74s
+15:26:31.775: ⏱ İlaç penceresi bulma: 0.14s
+15:26:32.186: ✓ Alınmayanları seç (fallback)
+15:26:32.187: ⏱ Alınmayanları Seç: 0.41s
+15:26:37.886: → 0/8 ilaç seçili
+15:26:37.887: ✗ Seçili ilaç yok
+15:26:37.887: → Takip Et atlandı
+15:26:38.307: ✓ Pencere kapatıldı (fallback)
+15:26:38.329: ⏱ İlaç penceresi kapatma: 0.44s
+15:26:38.330: ⏱ İlaç seçimi: 6.14s
+15:26:39.871: ✓ Geri Dön tıklandı (hızlı)
+15:26:39.917: ⏱ Geri Dön butonu: 1.59s
+15:26:42.238: ✓ Rapor butonu tıklandı (hızlı)
+15:26:45.291: 📝 Hasta adı bulundu: HİKMET KÖROĞLU
+15:26:46.279: 🔍 Bulunan tablo sayısı: 12
+15:26:46.610:   📊 Tablo 1: 94 satır
+15:26:47.269:   ✓ Rapor 1: 13/04/2027 07.01.3 - Diabetes Insipitus(E23.2) 500... | 14/04/2025
+15:26:47.405:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 04/03/1969
+15:26:47.765:   ✓ Rapor 3: 07.01.3 - Diabetes Insipitus(E23.2) 500652462 1469... | 13/04/2027
+15:26:47.992:   ✓ Rapor 4: 07.01.3 - Diabetes Insipitus(E23.2) 500652462 1469... | 13/04/2027
+15:26:48.220:   ⚡ 4 rapor bulundu
+15:26:48.601: ✓ Rapor penceresi kapatıldı
+15:26:48.602: ✅ Toplam 4 rapor toplandı - Hasta: HİKMET KÖROĞLU
+15:26:48.603: ⏱ Rapor toplama: 8.69s
+15:26:48.606:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:26:48.606: ✓ Hasta raporları kaydedildi: HİKMET KÖROĞLU
+15:26:50.818: ✓ SONRA > Sonraki reçete (hızlı)
+15:26:50.858: ⏱ Sonra butonu: 2.25s
+15:26:50.858: 🕐 TOPLAM: 34.06s
+15:26:54.110: ✓ Reçete No: 3IA9RGT
+15:26:59.077: ⏱ Reçete kontrolü: 1.46s
+15:27:00.316: ✓ Reçete No: 3IA9RGT
+15:27:00.316: 📋 REÇETE 7 | No: 3IA9RGT
+15:27:01.992: ✓ Telefon bulundu (alt. arama): C:(555) 105 3456
+15:27:06.834: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:27:06.948: ⏱ İlaç butonu: 3.49s
+15:27:11.280: ✓ İlaç ekranı yüklendi (4.33s)
+15:27:11.281: ⏱ İlaç ekranı yükleme: 4.33s
+15:27:12.980: ✓ Y butonuna tıklandı (cache)
+15:27:13.058: ⏱ Y butonu: 1.78s
+15:27:13.207: ⏱ İlaç penceresi bulma: 0.15s
+15:27:13.728: ✓ Alınmayanları seç (fallback)
+15:27:13.728: ⏱ Alınmayanları Seç: 0.52s
+15:27:21.019: → 0/15 ilaç seçili
+15:27:21.019: ✗ Seçili ilaç yok
+15:27:21.020: → Takip Et atlandı
+15:27:21.498: ✓ Pencere kapatıldı (fallback)
+15:27:21.521: ⏱ İlaç penceresi kapatma: 0.50s
+15:27:21.522: ⏱ İlaç seçimi: 7.79s
+15:27:23.198: ✓ Geri Dön tıklandı (hızlı)
+15:27:23.255: ⏱ Geri Dön butonu: 1.73s
+15:27:26.225: ✓ Rapor butonu tıklandı (hızlı)
+15:27:29.376: 📝 Hasta adı bulundu: ŞÜKRÜYE SEVİPTEKİN
+15:27:30.442: 🔍 Bulunan tablo sayısı: 12
+15:27:30.755:   📊 Tablo 1: 87 satır
+15:27:31.414:   ✓ Rapor 1: 18/02/2026 04.02 - Koroner arter hastaligi(I20)(I2... | 20/02/2024
+15:27:31.553:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 08/02/1948
+15:27:31.903:   ✓ Rapor 3: 04.02 - Koroner arter hastaligi(I20)(I21)(I25)(Z95... | 18/02/2026
+15:27:32.126:   ✓ Rapor 4: 04.02 - Koroner arter hastaligi(I20)(I21)(I25)(Z95... | 18/02/2026
+15:27:32.342:   ⚡ 4 rapor bulundu
+15:27:32.724: ✓ Rapor penceresi kapatıldı
+15:27:32.724: ✅ Toplam 4 rapor toplandı - Hasta: ŞÜKRÜYE SEVİPTEKİN
+15:27:32.726: ⏱ Rapor toplama: 9.47s
+15:27:32.731:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:27:32.732: ✓ Hasta raporları kaydedildi: ŞÜKRÜYE SEVİPTEKİN
+15:27:35.096: ✓ SONRA > Sonraki reçete (hızlı)
+15:27:35.134: ⏱ Sonra butonu: 2.40s
+15:27:35.135: 🕐 TOPLAM: 37.52s
+15:27:38.978: ✓ Reçete No: 3IAPEQO
+15:27:44.430: ⏱ Reçete kontrolü: 1.52s
+15:27:45.733: ✓ Reçete No: 3IAPEQO
+15:27:45.733: 📋 REÇETE 8 | No: 3IAPEQO
+15:27:47.474: ✓ Telefon bulundu (alt. arama): C:(532) 585 1205
+15:27:52.572: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:27:52.686: ⏱ İlaç butonu: 3.70s
+15:27:56.381: ⚠️ İlaç ekranı yüklenemedi
+15:27:56.381: ⏱ İlaç ekranı yükleme: 3.69s
+15:27:56.382: ❌ İlaç ekranı yüklenemedi
+15:28:09.531: ✓ BotanikMedula.exe kapatıldı (taskkill)
+15:28:13.544: 📍 MEDULA EXE başlatılıyor...
+15:28:13.554: ✓ MEDULA başlatıldı: C:\BotanikEczane\BotanikMedula.exe
+15:28:21.555: ⏳ MEDULA giriş penceresi bekleniyor...
+15:28:26.556: 🔐 Kullanıcı 4 ile giriş yapılıyor (İndeks yöntemi - MEDULA Index: 3)
+15:28:26.732: ✓ Giriş penceresi bulundu
+15:28:28.439: Combobox'tan Kullanıcı 4 seçiliyor (Index: 3)...
+15:28:29.647: ✓ Kullanıcı 4 seçildi
+15:28:30.350: ✓ Şifre alanına gidildi (2x Tab)
+15:28:31.765: ✓ Şifre girildi
+15:28:39.723: ✓ Giriş yapıldı - MEDULA ana penceresi açıldı
+15:28:44.861: ✓ MEDULA'ya bağlandı
+15:28:45.128: ✓ MEDULA sol %80'e yerleşti (1536x1040)
+15:28:46.129: Grup A seçildi
+15:28:46.931: ✓ Reçete Sorgu butonu tıklandı (Name)
+15:28:47.890: Reçete numarası yazılıyor: 3IAPEQO
+15:28:47.904: ✓ Reçete Sorgu butonu tıklandı (Name)
+15:28:49.050: ❌ Reçete numarası alanı bulunamadı
+15:28:49.286: Reçete numarası yazılıyor: 3IAPEQO
+15:28:50.024: ✓ Reçete numarası yazıldı (İlk boş Edit): 3IAPEQO
+15:28:51.240: ✓ Sorgula butonu tıklandı (İlk Sorgula)
+15:28:54.451: basla() çağrıldı: is_running=False, secili_grup=A
+15:28:54.468: ✓ Yeni oturum başlatıldı: ID=61, Grup=A
+15:28:54.470: ✓ Oturum log dosyası oluşturuldu: oturum_61_GrupA_20251121_152854.txt
+15:28:57.394: ✓ Reçete No: 3IAPEQO
+15:29:02.569: ⏱ Reçete kontrolü: 1.71s
+15:29:03.828: ✓ Reçete No: 3IAPEQO
+15:29:03.828: 📋 REÇETE 1 | No: 3IAPEQO
+15:29:05.515: ✓ Telefon bulundu (alt. arama): C:(532) 585 1205
+15:29:10.268: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:29:10.382: ⏱ İlaç butonu: 3.39s
+15:29:14.206: ✓ İlaç ekranı yüklendi (3.82s)
+15:29:14.207: ⏱ İlaç ekranı yükleme: 3.82s
+15:29:17.758: ✓ Y butonuna tıklandı (hızlı)
+15:29:17.834: ⏱ Y butonu: 3.63s
+15:29:17.969: ❌ 'İlaç Listesi' bulunamadı
+15:29:18.137: ❌ 'İlaç Listesi' bulunamadı
+15:29:18.308: ❌ 'İlaç Listesi' bulunamadı
+15:29:18.470: ❌ 'İlaç Listesi' bulunamadı
+15:29:18.636: ❌ 'İlaç Listesi' bulunamadı
+15:29:18.805: ❌ 'İlaç Listesi' bulunamadı
+15:29:18.843: ⏱ İlaç penceresi bulma: 1.01s
+15:29:18.843: ⚠ İlaç Listesi bulunamadı → 1 saniye bekleyip ENTER basılıyor...
+15:29:19.894: ✓ ENTER tuşuna basıldı (1. deneme)
+15:29:20.264: ❌ 'İlaç Listesi' bulunamadı
+15:29:20.428: ❌ 'İlaç Listesi' bulunamadı
+15:29:20.592: ❌ 'İlaç Listesi' bulunamadı
+15:29:20.816: ❌ 'İlaç Listesi' bulunamadı
+15:29:20.984: ❌ 'İlaç Listesi' bulunamadı
+15:29:21.022: ⏱ İlaç penceresi bulma (ENTER sonrası): 1.13s
+15:29:21.022: ⚠ İlaç Listesi hala bulunamadı → 1 saniye bekleyip tekrar ENTER basılıyor...
+15:29:22.073: ✓ ENTER tuşuna basıldı (2. deneme)
+15:29:24.790: ✓ Y butonuna tıklandı (cache)
+15:29:24.866: ⏱ Y butonu (2. ENTER sonrası): 2.64s
+15:29:25.035: ✓ İlaç Listesi bulundu (2. ENTER + Y sonrası)
+15:29:25.035: ⏱ İlaç penceresi bulma (2. deneme): 0.17s
+15:29:25.558: ✓ Alınmayanları seç (fallback)
+15:29:25.558: ⏱ Alınmayanları Seç: 0.52s
+15:29:32.279: → 0/14 ilaç seçili
+15:29:32.279: ✗ Seçili ilaç yok
+15:29:32.279: → Takip Et atlandı
+15:29:32.738: ✓ Pencere kapatıldı (fallback)
+15:29:32.760: ⏱ İlaç penceresi kapatma: 0.48s
+15:29:32.761: ⏱ İlaç seçimi: 7.20s
+15:29:34.338: ✓ Geri Dön tıklandı (hızlı)
+15:29:34.384: ⏱ Geri Dön butonu: 1.62s
+15:29:36.914: ✓ Rapor butonu tıklandı (hızlı)
+15:29:40.051: 📝 Hasta adı bulundu: DURMUŞ YETGİN
+15:29:41.095: 🔍 Bulunan tablo sayısı: 12
+15:29:41.510:   📊 Tablo 1: 110 satır
+15:29:42.272:   ✓ Rapor 1: 11/06/2026 20.00 - EK- 4/D Listesinde Yer Almayan ... | 12/06/2025
+15:29:42.416:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 10/04/1949
+15:29:42.841:   ✓ Rapor 3: 20.00 - EK- 4/D Listesinde Yer Almayan Hastalıklar... | 11/06/2026
+15:29:43.123:   ✓ Rapor 4: 20.00 - EK- 4/D Listesinde Yer Almayan Hastalıklar... | 11/06/2026
+15:29:43.441:   ⚡ 4 rapor bulundu
+15:29:43.823: ✓ Rapor penceresi kapatıldı
+15:29:43.823: ✅ Toplam 4 rapor toplandı - Hasta: DURMUŞ YETGİN
+15:29:43.828: ⏱ Rapor toplama: 9.44s
+15:29:43.836:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:29:43.836: ✓ Hasta raporları kaydedildi: DURMUŞ YETGİN
+15:29:46.152: ✓ SONRA > Sonraki reçete (hızlı)
+15:29:46.190: ⏱ Sonra butonu: 2.35s
+15:29:46.190: 🕐 TOPLAM: 45.34s
+15:29:49.414: ✓ Reçete No: 3IAQ6C8
+15:29:54.405: ⏱ Reçete kontrolü: 1.39s
+15:29:55.619: ✓ Reçete No: 3IAQ6C8
+15:29:55.620: 📋 REÇETE 2 | No: 3IAQ6C8
+15:29:57.228: ✓ Telefon bulundu (alt. arama): C:(532) 541 2886
+15:30:01.583: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:30:01.697: ⏱ İlaç butonu: 3.15s
+15:30:05.392: ✓ İlaç ekranı yüklendi (3.69s)
+15:30:05.392: ⏱ İlaç ekranı yükleme: 3.69s
+15:30:07.122: ✓ Y butonuna tıklandı (cache)
+15:30:07.198: ⏱ Y butonu: 1.80s
+15:30:07.360: ⏱ İlaç penceresi bulma: 0.16s
+15:30:07.773: ✓ Alınmayanları seç (fallback)
+15:30:07.774: ⏱ Alınmayanları Seç: 0.41s
+15:30:13.374: → 0/10 ilaç seçili
+15:30:13.375: ✗ Seçili ilaç yok
+15:30:13.375: → Takip Et atlandı
+15:30:13.800: ✓ Pencere kapatıldı (fallback)
+15:30:13.822: ⏱ İlaç penceresi kapatma: 0.45s
+15:30:13.823: ⏱ İlaç seçimi: 6.05s
+15:30:15.352: ✓ Geri Dön tıklandı (hızlı)
+15:30:15.398: ⏱ Geri Dön butonu: 1.58s
+15:30:17.381: ✓ Rapor butonu tıklandı (hızlı)
+15:30:20.579: 📝 Hasta adı bulundu: MUSTAFA YENİTURAN
+15:30:21.585: 🔍 Bulunan tablo sayısı: 12
+15:30:22.120:   📊 Tablo 1: 94 satır
+15:30:22.752:   ✓ Rapor 1: 26/10/2026 04.08 - Hiperkolesterolemi, Hiperlipide... | 27/10/2025
+15:30:22.887:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 02/01/1964
+15:30:23.246:   ✓ Rapor 3: 04.08 - Hiperkolesterolemi, Hiperlipidemi(E78) 527... | 26/10/2026
+15:30:23.445:   ✓ Rapor 4: 04.08 - Hiperkolesterolemi, Hiperlipidemi(E78) 527... | 26/10/2026
+15:30:23.667:   ⚡ 4 rapor bulundu
+15:30:24.048: ✓ Rapor penceresi kapatıldı
+15:30:24.049: ✅ Toplam 4 rapor toplandı - Hasta: MUSTAFA YENİTURAN
+15:30:24.053: ⏱ Rapor toplama: 8.65s
+15:30:24.061:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:30:24.062: ✓ Hasta raporları kaydedildi: MUSTAFA YENİTURAN
+15:30:26.272: ✓ SONRA > Sonraki reçete (hızlı)
+15:30:26.310: ⏱ Sonra butonu: 2.25s
+15:30:26.310: 🕐 TOPLAM: 33.30s
+15:30:29.052: ✓ Reçete No: 3IARUPW
+15:30:33.438: ⏱ Reçete kontrolü: 1.39s
+15:30:34.569: ✓ Reçete No: 3IARUPW
+15:30:34.570: 📋 REÇETE 3 | No: 3IARUPW
+15:30:36.208: ✓ Telefon bulundu (alt. arama): C:(539) 668 8358
+15:30:40.547: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:30:40.660: ⏱ İlaç butonu: 3.11s
+15:30:44.454: ✓ İlaç ekranı yüklendi (3.79s)
+15:30:44.455: ⏱ İlaç ekranı yükleme: 3.79s
+15:30:46.150: ✓ Y butonuna tıklandı (cache)
+15:30:46.226: ⏱ Y butonu: 1.77s
+15:30:46.385: ⏱ İlaç penceresi bulma: 0.16s
+15:30:46.851: ✓ Alınmayanları seç (fallback)
+15:30:46.851: ⏱ Alınmayanları Seç: 0.47s
+15:30:53.529: → 0/15 ilaç seçili
+15:30:53.529: ✗ Seçili ilaç yok
+15:30:53.529: → Takip Et atlandı
+15:30:53.996: ✓ Pencere kapatıldı (fallback)
+15:30:54.018: ⏱ İlaç penceresi kapatma: 0.49s
+15:30:54.019: ⏱ İlaç seçimi: 7.17s
+15:30:55.545: ✓ Geri Dön tıklandı (hızlı)
+15:30:55.593: ⏱ Geri Dön butonu: 1.57s
+15:30:57.732: ✓ Rapor butonu tıklandı (hızlı)
+15:31:00.929: 📝 Hasta adı bulundu: KAMER BEHREM
+15:31:02.350: 🔍 Bulunan tablo sayısı: 12
+15:31:02.726:   📊 Tablo 1: 107 satır
+15:31:03.444:   ✓ Rapor 1: 19/05/2026 04.02.1 Koroner arter hastalığında klop... | 20/05/2025
+15:31:03.579:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 25/02/1954
+15:31:03.998:   ✓ Rapor 3: 04.02.1 Koroner arter hastalığında klopidogrel kul... | 19/05/2026
+15:31:04.257:   ✓ Rapor 4: 04.02.1 Koroner arter hastalığında klopidogrel kul... | 19/05/2026
+15:31:04.556:   ⚡ 4 rapor bulundu
+15:31:04.940: ✓ Rapor penceresi kapatıldı
+15:31:04.941: ✅ Toplam 4 rapor toplandı - Hasta: KAMER BEHREM
+15:31:04.946: ⏱ Rapor toplama: 9.35s
+15:31:04.952:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:31:04.953: ✓ Hasta raporları kaydedildi: KAMER BEHREM
+15:31:07.365: ✓ SONRA > Sonraki reçete (hızlı)
+15:31:07.404: ⏱ Sonra butonu: 2.45s
+15:31:07.406: 🕐 TOPLAM: 35.36s
+15:31:10.769: ✓ Reçete No: 3IAXBWP
+15:31:15.907: ⏱ Reçete kontrolü: 1.70s
+15:31:17.080: ✓ Reçete No: 3IAXBWP
+15:31:17.080: 📋 REÇETE 4 | No: 3IAXBWP
+15:31:18.724: ✓ Telefon bulundu (alt. arama): C:(544) 611 1522
+15:31:23.189: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:31:23.303: ⏱ İlaç butonu: 3.20s
+15:31:27.547: ✓ İlaç ekranı yüklendi (4.24s)
+15:31:27.547: ⏱ İlaç ekranı yükleme: 4.24s
+15:31:29.223: ✓ Y butonuna tıklandı (cache)
+15:31:29.299: ⏱ Y butonu: 1.75s
+15:31:29.453: ⏱ İlaç penceresi bulma: 0.15s
+15:31:29.936: ✓ Alınmayanları seç (fallback)
+15:31:29.937: ⏱ Alınmayanları Seç: 0.48s
+15:31:36.116: → 0/13 ilaç seçili
+15:31:36.116: ✗ Seçili ilaç yok
+15:31:36.117: → Takip Et atlandı
+15:31:36.556: ✓ Pencere kapatıldı (fallback)
+15:31:36.578: ⏱ İlaç penceresi kapatma: 0.46s
+15:31:36.579: ⏱ İlaç seçimi: 6.64s
+15:31:38.119: ✓ Geri Dön tıklandı (hızlı)
+15:31:38.167: ⏱ Geri Dön butonu: 1.59s
+15:31:40.660: ✓ Rapor butonu tıklandı (hızlı)
+15:31:43.773: 📝 Hasta adı bulundu: HAŞİM GÜRLEK
+15:31:44.775: 🔍 Bulunan tablo sayısı: 12
+15:31:45.116:   📊 Tablo 1: 100 satır
+15:31:45.773:   ✓ Rapor 1: 07/07/2026 20.00 - EK- 4/D Listesinde Yer Almayan ... | 07/07/2025
+15:31:45.910:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 10/05/1955
+15:31:46.282:   ✓ Rapor 3: 20.00 - EK- 4/D Listesinde Yer Almayan Hastalıklar... | 07/07/2026
+15:31:46.504:   ✓ Rapor 4: 20.00 - EK- 4/D Listesinde Yer Almayan Hastalıklar... | 07/07/2026
+15:31:46.784:   ⚡ 4 rapor bulundu
+15:31:47.165: ✓ Rapor penceresi kapatıldı
+15:31:47.166: ✅ Toplam 4 rapor toplandı - Hasta: HAŞİM GÜRLEK
+15:31:47.170: ⏱ Rapor toplama: 9.00s
+15:31:47.178:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:31:47.180: ✓ Hasta raporları kaydedildi: HAŞİM GÜRLEK
+15:31:49.454: ✓ SONRA > Sonraki reçete (hızlı)
+15:31:49.492: ⏱ Sonra butonu: 2.31s
+15:31:49.493: 🕐 TOPLAM: 35.29s
+15:31:52.768: ✓ Reçete No: 3IB0W8T
+15:31:58.079: ⏱ Reçete kontrolü: 1.33s
+15:31:59.196: ✓ Reçete No: 3IB0W8T
+15:31:59.196: 📋 REÇETE 5 | No: 3IB0W8T
+15:32:00.794: ✓ Telefon bulundu (alt. arama): C:(532) 264 8661
+15:32:05.083: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:32:05.197: ⏱ İlaç butonu: 3.08s
+15:32:08.930: ✓ İlaç ekranı yüklendi (3.73s)
+15:32:08.930: ⏱ İlaç ekranı yükleme: 3.73s
+15:32:10.625: ✓ Y butonuna tıklandı (cache)
+15:32:10.701: ⏱ Y butonu: 1.77s
+15:32:10.847: ⏱ İlaç penceresi bulma: 0.15s
+15:32:11.280: ✓ Alınmayanları seç (fallback)
+15:32:11.280: ⏱ Alınmayanları Seç: 0.43s
+15:32:17.677: → 0/11 ilaç seçili
+15:32:17.677: ✗ Seçili ilaç yok
+15:32:17.677: → Takip Et atlandı
+15:32:18.116: ✓ Pencere kapatıldı (fallback)
+15:32:18.139: ⏱ İlaç penceresi kapatma: 0.46s
+15:32:18.140: ⏱ İlaç seçimi: 6.86s
+15:32:19.712: ✓ Geri Dön tıklandı (hızlı)
+15:32:19.760: ⏱ Geri Dön butonu: 1.62s
+15:32:22.284: ✓ Rapor butonu tıklandı (hızlı)
+15:32:25.254: 📝 Hasta adı bulundu: HAYRİ MUSAOĞLU
+15:32:26.206: 🔍 Bulunan tablo sayısı: 12
+15:32:26.464:   📊 Tablo 1: 79 satır
+15:32:27.031:   ✓ Rapor 1: 16/10/2026 04.02.1 Koroner arter hastalığında klop... | 17/10/2025
+15:32:27.162:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 20/05/1955
+15:32:27.442:   ✓ Rapor 3: 04.02.1 Koroner arter hastalığında klopidogrel kul... | 16/10/2026
+15:32:27.583:   ✓ Rapor 4: 04.02.1 Koroner arter hastalığında klopidogrel kul... | 16/10/2026
+15:32:27.719:   ⚡ 4 rapor bulundu
+15:32:28.100: ✓ Rapor penceresi kapatıldı
+15:32:28.101: ✅ Toplam 4 rapor toplandı - Hasta: HAYRİ MUSAOĞLU
+15:32:28.106: ⏱ Rapor toplama: 8.34s
+15:32:28.113:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:32:28.114: ✓ Hasta raporları kaydedildi: HAYRİ MUSAOĞLU
+15:32:30.265: ✓ SONRA > Sonraki reçete (hızlı)
+15:32:30.303: ⏱ Sonra butonu: 2.19s
+15:32:30.303: 🕐 TOPLAM: 33.55s
+15:32:33.123: ✓ Reçete No: 3IB391D
+15:32:37.453: ⏱ Reçete kontrolü: 1.31s
+15:32:38.582: ✓ Reçete No: 3IB391D
+15:32:38.583: 📋 REÇETE 6 | No: 3IB391D
+15:32:40.260: ✓ Telefon bulundu (alt. arama): C:(542) 661 2394
+15:32:44.764: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:32:44.878: ⏱ İlaç butonu: 3.03s
+15:32:48.519: ✓ İlaç ekranı yüklendi (3.64s)
+15:32:48.519: ⏱ İlaç ekranı yükleme: 3.64s
+15:32:50.116: ✓ Y butonuna tıklandı (cache)
+15:32:50.192: ⏱ Y butonu: 1.67s
+15:32:50.341: ⏱ İlaç penceresi bulma: 0.15s
+15:32:50.797: ✓ Alınmayanları seç (fallback)
+15:32:50.797: ⏱ Alınmayanları Seç: 0.46s
+15:32:57.146: → 0/14 ilaç seçili
+15:32:57.147: ✗ Seçili ilaç yok
+15:32:57.147: → Takip Et atlandı
+15:32:57.613: ✓ Pencere kapatıldı (fallback)
+15:32:57.636: ⏱ İlaç penceresi kapatma: 0.49s
+15:32:57.636: ⏱ İlaç seçimi: 6.84s
+15:32:59.130: ✓ Geri Dön tıklandı (hızlı)
+15:32:59.178: ⏱ Geri Dön butonu: 1.54s
+15:33:01.170: ✓ Rapor butonu tıklandı (hızlı)
+15:33:04.232: 📝 Hasta adı bulundu: HALİL YAPICI
+15:33:05.185: 🔍 Bulunan tablo sayısı: 12
+15:33:05.431:   📊 Tablo 1: 72 satır
+15:33:05.973:   ✓ Rapor 1: 02/05/2026 02.01 - Kanser (1 yıllık)(C00-C97)(D00-... | 03/11/2025
+15:33:06.100:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 10/03/1982
+15:33:06.352:   ✓ Rapor 3: 02.01 - Kanser (1 yıllık)(C00-C97)(D00-D48) 528470... | 02/05/2026
+15:33:06.461:   ✓ Rapor 4: 02.01 - Kanser (1 yıllık)(C00-C97)(D00-D48) 528470... | 02/05/2026
+15:33:06.559:   ⚡ 4 rapor bulundu
+15:33:06.940: ✓ Rapor penceresi kapatıldı
+15:33:06.941: ✅ Toplam 4 rapor toplandı - Hasta: HALİL YAPICI
+15:33:06.945: ⏱ Rapor toplama: 7.77s
+15:33:06.953:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:33:06.953: ✓ Hasta raporları kaydedildi: HALİL YAPICI
+15:33:08.977: ✓ SONRA > Sonraki reçete (hızlı)
+15:33:09.015: ⏱ Sonra butonu: 2.06s
+15:33:09.015: 🕐 TOPLAM: 32.87s
+15:33:11.934: ✓ Reçete No: 3IBE4KB
+15:33:16.461: ⏱ Reçete kontrolü: 1.38s
+15:33:17.594: ✓ Reçete No: 3IBE4KB
+15:33:17.595: 📋 REÇETE 7 | No: 3IBE4KB
+15:33:19.201: ✓ Telefon bulundu (alt. arama): C:(534) 392 5012
+15:33:23.545: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:33:23.659: ⏱ İlaç butonu: 3.12s
+15:33:27.283: ✓ İlaç ekranı yüklendi (3.62s)
+15:33:27.283: ⏱ İlaç ekranı yükleme: 3.62s
+15:33:28.975: ✓ Y butonuna tıklandı (cache)
+15:33:29.051: ⏱ Y butonu: 1.77s
+15:33:29.194: ⏱ İlaç penceresi bulma: 0.14s
+15:33:29.662: ✓ Alınmayanları seç (fallback)
+15:33:29.662: ⏱ Alınmayanları Seç: 0.47s
+15:33:36.164: → 0/14 ilaç seçili
+15:33:36.165: ✗ Seçili ilaç yok
+15:33:36.165: → Takip Et atlandı
+15:33:36.627: ✓ Pencere kapatıldı (fallback)
+15:33:36.650: ⏱ İlaç penceresi kapatma: 0.48s
+15:33:36.650: ⏱ İlaç seçimi: 6.99s
+15:33:38.173: ✓ Geri Dön tıklandı (hızlı)
+15:33:38.221: ⏱ Geri Dön butonu: 1.57s
+15:33:40.438: ✓ Rapor butonu tıklandı (hızlı)
+15:33:43.439: 📝 Hasta adı bulundu: NAZİFE KILIÇALP
+15:33:44.397: 🔍 Bulunan tablo sayısı: 12
+15:33:44.657:   📊 Tablo 1: 79 satır
+15:33:45.222:   ✓ Rapor 1: 28/11/2025 04.02.1 Koroner arter hastalığında klop... | 29/11/2024
+15:33:45.355:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 02/04/1955
+15:33:45.648:   ✓ Rapor 3: 04.02.1 Koroner arter hastalığında klopidogrel kul... | 28/11/2025
+15:33:45.784:   ✓ Rapor 4: 04.02.1 Koroner arter hastalığında klopidogrel kul... | 28/11/2025
+15:33:45.924:   ⚡ 4 rapor bulundu
+15:33:46.306: ✓ Rapor penceresi kapatıldı
+15:33:46.306: ✅ Toplam 4 rapor toplandı - Hasta: NAZİFE KILIÇALP
+15:33:46.311: ⏱ Rapor toplama: 8.09s
+15:33:46.321:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:33:46.322: ✓ Hasta raporları kaydedildi: NAZİFE KILIÇALP
+15:33:48.449: ✓ SONRA > Sonraki reçete (hızlı)
+15:33:48.487: ⏱ Sonra butonu: 2.17s
+15:33:48.488: 🕐 TOPLAM: 33.41s
+15:33:51.561: ✓ Reçete No: 3IBE4Y8
+15:33:56.321: ⏱ Reçete kontrolü: 1.39s
+15:33:57.473: ✓ Reçete No: 3IBE4Y8
+15:33:57.473: 📋 REÇETE 8 | No: 3IBE4Y8
+15:33:59.127: ✓ Telefon bulundu (alt. arama): C:(552) 581 3457
+15:34:03.558: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:34:03.671: ⏱ İlaç butonu: 3.16s
+15:34:07.440: ✓ İlaç ekranı yüklendi (3.77s)
+15:34:07.440: ⏱ İlaç ekranı yükleme: 3.77s
+15:34:09.084: ✓ Y butonuna tıklandı (cache)
+15:34:09.160: ⏱ Y butonu: 1.72s
+15:34:09.316: ⏱ İlaç penceresi bulma: 0.16s
+15:34:09.782: ✓ Alınmayanları seç (fallback)
+15:34:09.782: ⏱ Alınmayanları Seç: 0.47s
+15:34:16.322: → 0/14 ilaç seçili
+15:34:16.322: ✗ Seçili ilaç yok
+15:34:16.322: → Takip Et atlandı
+15:34:16.790: ✓ Pencere kapatıldı (fallback)
+15:34:16.813: ⏱ İlaç penceresi kapatma: 0.49s
+15:34:16.813: ⏱ İlaç seçimi: 7.03s
+15:34:18.348: ✓ Geri Dön tıklandı (hızlı)
+15:34:18.396: ⏱ Geri Dön butonu: 1.58s
+15:34:20.790: ✓ Rapor butonu tıklandı (fallback)
+15:34:24.265: 📝 Hasta adı bulundu: CEMİLE ÖZTÜRK
+15:34:25.411: 🔍 Bulunan tablo sayısı: 12
+15:34:25.890:   📊 Tablo 1: 157 satır
+15:34:26.777:   ✓ Rapor 1: 08/09/2026 07.02.1 - Diabetes Mellitus(E10-E14) 52... | 08/09/2025
+15:34:26.908:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 11/10/1952
+15:34:27.531:   ✓ Rapor 3: 07.02.1 - Diabetes Mellitus(E10-E14) 521058589 739... | 08/09/2026
+15:34:27.990:   ✓ Rapor 4: 07.02.1 - Diabetes Mellitus(E10-E14) 521058589 739... | 08/09/2026
+15:34:28.569:   ⚡ 4 rapor bulundu
+15:34:28.951: ✓ Rapor penceresi kapatıldı
+15:34:28.951: ✅ Toplam 4 rapor toplandı - Hasta: CEMİLE ÖZTÜRK
+15:34:28.956: ⏱ Rapor toplama: 10.56s
+15:34:28.962:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:34:28.963: ✓ Hasta raporları kaydedildi: CEMİLE ÖZTÜRK
+15:34:31.453: ✓ SONRA > Sonraki reçete (hızlı)
+15:34:31.491: ⏱ Sonra butonu: 2.53s
+15:34:31.492: 🕐 TOPLAM: 36.57s
+15:34:34.760: ✓ Reçete No: 3IBEBG1
+15:34:39.901: ⏱ Reçete kontrolü: 1.63s
+15:34:41.004: ✓ Reçete No: 3IBEBG1
+15:34:41.004: 📋 REÇETE 9 | No: 3IBEBG1
+15:34:42.596: ✓ Telefon bulundu (alt. arama): C:(552) 481 3457
+15:34:46.866: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:34:46.980: ⏱ İlaç butonu: 3.08s
+15:34:51.117: ✓ İlaç ekranı yüklendi (4.14s)
+15:34:51.117: ⏱ İlaç ekranı yükleme: 4.14s
+15:34:52.786: ✓ Y butonuna tıklandı (cache)
+15:34:52.862: ⏱ Y butonu: 1.74s
+15:34:53.014: ⏱ İlaç penceresi bulma: 0.15s
+15:34:53.515: ✓ Alınmayanları seç (fallback)
+15:34:53.521: ⏱ Alınmayanları Seç: 0.51s
+15:35:00.465: → 0/14 ilaç seçili
+15:35:00.465: ✗ Seçili ilaç yok
+15:35:00.465: → Takip Et atlandı
+15:35:00.931: ✓ Pencere kapatıldı (fallback)
+15:35:00.954: ⏱ İlaç penceresi kapatma: 0.49s
+15:35:00.955: ⏱ İlaç seçimi: 7.43s
+15:35:02.467: ✓ Geri Dön tıklandı (hızlı)
+15:35:02.513: ⏱ Geri Dön butonu: 1.56s
+15:35:04.539: ✓ Rapor butonu tıklandı (hızlı)
+15:35:07.831: 📝 Hasta adı bulundu: ŞEHRİ KILIÇALP
+15:35:08.901: 🔍 Bulunan tablo sayısı: 12
+15:35:09.344:   📊 Tablo 1: 136 satır
+15:35:10.183:   ✓ Rapor 1: 04/02/2026 07.02.1 - Diabetes Mellitus(E10-E14) 49... | 04/02/2025
+15:35:10.318:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 07/07/1981
+15:35:10.837:   ✓ Rapor 3: 07.02.1 - Diabetes Mellitus(E10-E14) 491587691 128... | 04/02/2026
+15:35:11.227:   ✓ Rapor 4: 07.02.1 - Diabetes Mellitus(E10-E14) 491587691 128... | 04/02/2026
+15:35:11.682:   ⚡ 4 rapor bulundu
+15:35:12.063: ✓ Rapor penceresi kapatıldı
+15:35:12.064: ✅ Toplam 4 rapor toplandı - Hasta: ŞEHRİ KILIÇALP
+15:35:12.068: ⏱ Rapor toplama: 9.55s
+15:35:12.075:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:35:12.076: ✓ Hasta raporları kaydedildi: ŞEHRİ KILIÇALP
+15:35:14.490: ✓ SONRA > Sonraki reçete (hızlı)
+15:35:14.527: ⏱ Sonra butonu: 2.45s
+15:35:14.527: 🕐 TOPLAM: 36.26s
+15:35:18.065: ✓ Reçete No: 3IBYI5X
+15:35:23.501: ⏱ Reçete kontrolü: 1.53s
+15:35:24.702: ✓ Reçete No: 3IBYI5X
+15:35:24.703: 📋 REÇETE 10 | No: 3IBYI5X
+15:35:26.405: ✓ Telefon bulundu (alt. arama): C:(530) 937 7005
+15:35:30.974: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:35:31.087: ⏱ İlaç butonu: 3.25s
+15:35:34.864: ✓ İlaç ekranı yüklendi (3.78s)
+15:35:34.864: ⏱ İlaç ekranı yükleme: 3.78s
+15:35:36.539: ✓ Y butonuna tıklandı (cache)
+15:35:36.615: ⏱ Y butonu: 1.75s
+15:35:36.762: ⏱ İlaç penceresi bulma: 0.15s
+15:35:37.237: ✓ Alınmayanları seç (fallback)
+15:35:37.237: ⏱ Alınmayanları Seç: 0.48s
+15:35:43.889: → 0/14 ilaç seçili
+15:35:43.889: ✗ Seçili ilaç yok
+15:35:43.889: → Takip Et atlandı
+15:35:44.356: ✓ Pencere kapatıldı (fallback)
+15:35:44.379: ⏱ İlaç penceresi kapatma: 0.49s
+15:35:44.381: ⏱ İlaç seçimi: 7.14s
+15:35:45.977: ✓ Geri Dön tıklandı (hızlı)
+15:35:46.024: ⏱ Geri Dön butonu: 1.64s
+15:35:49.045: ✓ Rapor butonu tıklandı (hızlı)
+15:35:52.251: 📝 Hasta adı bulundu: AYŞE ULAŞ
+15:35:53.279: 🔍 Bulunan tablo sayısı: 12
+15:35:53.678:   📊 Tablo 1: 122 satır
+15:35:54.421:   ✓ Rapor 1: 05/11/2025 20.00 - EK- 4/D Listesinde Yer Almayan ... | 06/10/2025
+15:35:54.552:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 02/01/1948
+15:35:55.025:   ✓ Rapor 3: 20.00 - EK- 4/D Listesinde Yer Almayan Hastalıklar... | 05/11/2025
+15:35:55.344:   ✓ Rapor 4: 20.00 - EK- 4/D Listesinde Yer Almayan Hastalıklar... | 05/11/2025
+15:35:55.746:   ⚡ 4 rapor bulundu
+15:35:56.128: ✓ Rapor penceresi kapatıldı
+15:35:56.128: ✅ Toplam 4 rapor toplandı - Hasta: AYŞE ULAŞ
+15:35:56.133: ⏱ Rapor toplama: 10.11s
+15:35:56.140:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:35:56.141: ✓ Hasta raporları kaydedildi: AYŞE ULAŞ
+15:35:58.466: ✓ SONRA > Sonraki reçete (hızlı)
+15:35:58.505: ⏱ Sonra butonu: 2.36s
+15:35:58.505: 🕐 TOPLAM: 36.53s
+15:36:02.289: ✓ Reçete No: 3ICADDA
+15:36:07.501: ⏱ Reçete kontrolü: 1.49s
+15:36:08.676: ✓ Reçete No: 3ICADDA
+15:36:08.676: 📋 REÇETE 11 | No: 3ICADDA
+15:36:10.328: ✓ Telefon bulundu (alt. arama): C:(535) 311 3702
+15:36:14.798: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:36:14.912: ⏱ İlaç butonu: 3.20s
+15:36:18.605: ✓ İlaç ekranı yüklendi (3.69s)
+15:36:18.605: ⏱ İlaç ekranı yükleme: 3.69s
+15:36:20.265: ✓ Y butonuna tıklandı (cache)
+15:36:20.344: ⏱ Y butonu: 1.74s
+15:36:20.486: ⏱ İlaç penceresi bulma: 0.14s
+15:36:20.988: ✓ Alınmayanları seç (fallback)
+15:36:20.989: ⏱ Alınmayanları Seç: 0.50s
+15:36:27.797: → 0/14 ilaç seçili
+15:36:27.797: ✗ Seçili ilaç yok
+15:36:27.797: → Takip Et atlandı
+15:36:28.263: ✓ Pencere kapatıldı (fallback)
+15:36:28.287: ⏱ İlaç penceresi kapatma: 0.49s
+15:36:28.287: ⏱ İlaç seçimi: 7.30s
+15:36:29.794: ✓ Geri Dön tıklandı (hızlı)
+15:36:29.842: ⏱ Geri Dön butonu: 1.55s
+15:36:32.407: ✓ Rapor butonu tıklandı (hızlı)
+15:36:35.395: 📝 Hasta adı bulundu: EMİNE MULHAN
+15:36:36.366: 🔍 Bulunan tablo sayısı: 12
+15:36:36.627:   📊 Tablo 1: 79 satır
+15:36:37.203:   ✓ Rapor 1: 24/02/2026 20.00 - EK- 4/D Listesinde Yer Almayan ... | 25/02/2025
+15:36:37.335:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 09/03/1982
+15:36:37.625:   ✓ Rapor 3: 20.00 - EK- 4/D Listesinde Yer Almayan Hastalıklar... | 24/02/2026
+15:36:37.766:   ✓ Rapor 4: 20.00 - EK- 4/D Listesinde Yer Almayan Hastalıklar... | 24/02/2026
+15:36:37.908:   ⚡ 4 rapor bulundu
+15:36:38.290: ✓ Rapor penceresi kapatıldı
+15:36:38.290: ✅ Toplam 4 rapor toplandı - Hasta: EMİNE MULHAN
+15:36:38.295: ⏱ Rapor toplama: 8.45s
+15:36:38.302:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:36:38.303: ✓ Hasta raporları kaydedildi: EMİNE MULHAN
+15:36:40.520: ✓ SONRA > Sonraki reçete (hızlı)
+15:36:40.558: ⏱ Sonra butonu: 2.25s
+15:36:40.558: 🕐 TOPLAM: 34.54s
+15:36:45.753: ✓ Reçete No: 3ICCZVI
+15:36:50.665: ⏱ Reçete kontrolü: 1.56s
+15:36:51.876: ✓ Reçete No: 3ICCZVI
+15:36:51.877: 📋 REÇETE 12 | No: 3ICCZVI
+15:36:53.677: ✓ Telefon bulundu (alt. arama): C:(538) 226 6905
+15:36:58.273: ✓ İlaç butonuna tıklandı (Method 1: auto_id)
+15:36:58.387: ⏱ İlaç butonu: 3.28s
+15:37:01.997: ✓ İlaç ekranı yüklendi (3.61s)
+15:37:01.997: ⏱ İlaç ekranı yükleme: 3.61s
+15:37:03.776: ✓ Y butonuna tıklandı (cache)
+15:37:03.852: ⏱ Y butonu: 1.85s
+15:37:04.020: ⏱ İlaç penceresi bulma: 0.17s
+15:37:04.502: ✓ Alınmayanları seç (fallback)
+15:37:04.503: ⏱ Alınmayanları Seç: 0.48s
+15:37:10.799: → 0/12 ilaç seçili
+15:37:10.799: ✗ Seçili ilaç yok
+15:37:10.799: → Takip Et atlandı
+15:37:11.223: ✓ Pencere kapatıldı (fallback)
+15:37:11.246: ⏱ İlaç penceresi kapatma: 0.45s
+15:37:11.246: ⏱ İlaç seçimi: 6.74s
+15:37:12.800: ✓ Geri Dön tıklandı (hızlı)
+15:37:12.846: ⏱ Geri Dön butonu: 1.60s
+15:37:15.345: ✓ Rapor butonu tıklandı (hızlı)
+15:37:18.581: 📝 Hasta adı bulundu: ŞENAY TAŞKIN
+15:37:19.594: 🔍 Bulunan tablo sayısı: 12
+15:37:19.917:   📊 Tablo 1: 100 satır
+15:37:20.624:   ✓ Rapor 1: 21/04/2027 07.02.1 - Diabetes Mellitus(E10-E14) 50... | 22/04/2025
+15:37:20.757:   ✓ Rapor 2: - Hak sahibi bilgileri güncel değil ise reçete gir... | 03/09/1976
+15:37:21.138:   ✓ Rapor 3: 07.02.1 - Diabetes Mellitus(E10-E14) 500561279 102... | 21/04/2027
+15:37:21.371:   ✓ Rapor 4: 07.02.1 - Diabetes Mellitus(E10-E14) 500561279 102... | 21/04/2027
+15:37:21.635:   ⚡ 4 rapor bulundu
+15:37:22.017: ✓ Rapor penceresi kapatıldı
+15:37:22.017: ✅ Toplam 4 rapor toplandı - Hasta: ŞENAY TAŞKIN
+15:37:22.022: ⏱ Rapor toplama: 9.18s
+15:37:22.029:   ✓ 3 satır (4 rapor) CSV'ye kaydedildi
+15:37:22.030: ✓ Hasta raporları kaydedildi: ŞENAY TAŞKIN
+15:37:24.364: ✓ SONRA > Sonraki reçete (hızlı)
+15:37:24.401: ⏱ Sonra butonu: 2.37s
+15:37:24.402: 🕐 TOPLAM: 35.30s

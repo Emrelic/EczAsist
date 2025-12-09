@@ -1,0 +1,15 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 461
+Grup: B
+Başlangıç: 2025-12-02 16:36:10
+================================================================================
+
+[16:36:10.574] [INFO] Grup B için yeni oturum başlatıldı
+[16:36:40.083] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[16:36:55.388] [WARNING] ⚠️ Rapor bulunamadı - HACER DEĞERLİYURT
+[16:37:38.324] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[16:37:53.262] [WARNING] ⚠️ Rapor bulunamadı - AYŞEGÜL KÖR
+[16:38:19.526] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[16:38:33.574] [BAŞARI] ✅ 1 rapor CSV'ye kaydedildi - REYHAN GENÇER (5422015891)

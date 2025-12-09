@@ -1,0 +1,73 @@
+How found:	Mouse move (1469,41)
+	hwnd=0x0000000000010132 64bit class="SysListView32" style=0x56003A40 ex=0x0
+Name:	"Botanik Medula"
+ControlType:	UIA_ListItemControlTypeId (0xC357)
+LocalizedControlType:	"liste öğesi"
+BoundingRectangle:	{l:1444 t:5 r:1520 b:90}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	true
+HasKeyboardFocus:	true
+ProcessId:	12696
+RuntimeId:	[2A.10132.4.35]
+AutomationId:	"ListViewItem-53"
+FrameworkId:	"Win32"
+ProviderDescription:	"[pid:12696,providerId:0x0 Annotation:Microsoft: Annotation Proxy (unmanaged:UIAutomationCore.DLL); Main(parent link):Microsoft: ListView Item Proxy (unmanaged:UIAutomationCore.DLL)]"
+HelpText:	"Botanik Medula"
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.DefaultAction:	"Çift Tıklatın"
+LegacyIAccessible.Description:	""
+LegacyIAccessible.Help:	"Botanik Medula"
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	"Botanik Medula"
+LegacyIAccessible.Role:	öğeleri listele (0x22)
+LegacyIAccessible.State:	seçili,odaklanmış,odaklanabilir,seçilebilir,çoktan seçilebilir (0x1300006)
+LegacyIAccessible.Value:	""
+SelectionItem.IsSelected:	true
+SelectionItem.SelectionContainer:	"Masaüstü" liste
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	true
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	true
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	true
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	"Botanik E-Fatura" liste öğesi
+Previous:	"BotanikEczane - Kısayol" liste öğesi
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	"Masaüstü" liste
+	"" bölme
+	"Program Manager" bölme
+	"Masaüstü 1" bölme
+	[ No Parent ]

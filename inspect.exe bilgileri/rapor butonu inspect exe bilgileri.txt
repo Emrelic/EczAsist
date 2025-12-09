@@ -1,0 +1,89 @@
+How found:	Mouse move (681,213)
+	hwnd=0x0000000000020CDE 32bit class="Internet Explorer_Server" style=0x56000000 ex=0x0
+Name:	"Rapor"
+ControlType:	UIA_ButtonControlTypeId (0xC350)
+LocalizedControlType:	"düğme"
+BoundingRectangle:	{l:656 t:203 r:731 b:222}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	false
+HasKeyboardFocus:	false
+AccessKey:	""
+ProcessId:	10692
+RuntimeId:	[2A.20CDE.4.351]
+AutomationId:	"f:buttonRaporListesi"
+FrameworkId:	"InternetExplorer"
+ProviderDescription:	"[pid:10692,providerId:0x0 Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
+AriaProperties:	""
+LiveSettingProperty:	Off (0)
+IsPassword:	false
+IsRequiredForForm:	false
+IsDataValidForForm:	true
+HelpText:	""
+Orientation:	0
+IsDialog:	false
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.DefaultAction:	"Basın"
+LegacyIAccessible.Description:	""
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	"Rapor"
+LegacyIAccessible.Role:	düğme (0x2B)
+LegacyIAccessible.State:	varsayılan (0x100)
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	true
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	true
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	true
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	[null]
+Previous:	[null]
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	"" öğe
+	"" tablo
+	"" öğe
+	"" tablo
+	"" öğe
+	"" tablo
+	"" öğe
+	"" tablo
+	"Medula Eczane" bölme
+	"https://medeczane.sgk.gov.tr/eczane/faces/pages/haksahibi/RaporListe.jsp" bölme
+	"" bölme
+	"" bölme
+	"" bölme
+	"MEDULA 2.1.199.0 EMRE GÖKMEN (T)" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

@@ -1,0 +1,92 @@
+How found:	Mouse move (1197,399)
+	hwnd=0x00000000002504C0 32bit class="Internet Explorer_Server" style=0x56000000 ex=0x0
+Name:	""
+ControlType:	UIA_DataItemControlTypeId (0xC36D)
+LocalizedControlType:	"öğe"
+BoundingRectangle:	{l:1170 t:389 r:1240 b:414}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	false
+HasKeyboardFocus:	false
+AccessKey:	""
+ProcessId:	2832
+RuntimeId:	[2A.2504C0.4.3009]
+FrameworkId:	"InternetExplorer"
+ProviderDescription:	"[pid:2832,providerId:0x0 Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
+AriaProperties:	""
+LiveSettingProperty:	Off (0)
+IsPassword:	false
+IsRequiredForForm:	false
+IsDataValidForForm:	true
+HelpText:	""
+Orientation:	0
+IsDialog:	false
+GridItem.Column:	9
+GridItem.ColumnSpan:	1
+GridItem.ContainingGrid:	"" tablo
+GridItem.Row:	1
+GridItem.RowSpan:	1
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	""
+LegacyIAccessible.Role:	hücre (0x1D)
+LegacyIAccessible.State:	normal (0x0)
+Table.ItemColumnHeaderItems:	"Barkodlu" üstbilgi öğesi
+Table.ItemRowHeaderItems:	
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	true
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	false
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	true
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	true
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	true
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	"" öğe
+Previous:	"K" öğe
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	"" tablo
+	"" öğe
+	"" tablo
+	"" öğe
+	"" tablo
+	"" öğe
+	"" tablo
+	"Medula Eczane" bölme
+	"https://medeczane.sgk.gov.tr/eczane/faces/pages/recete/ReceteIslem2.jsp" bölme
+	"" bölme
+	"" bölme
+	"" bölme
+	"MEDULA 2.1.199.0 EMRE GÖKMEN (T)" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

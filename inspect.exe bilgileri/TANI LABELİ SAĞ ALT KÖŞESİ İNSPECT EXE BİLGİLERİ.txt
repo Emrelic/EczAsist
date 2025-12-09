@@ -1,0 +1,92 @@
+How found:	Mouse move (1230,388)
+	hwnd=0x0000000000070E9A 32bit class="Internet Explorer_Server" style=0x56000000 ex=0x0
+Name:	"Tanı"
+ControlType:	UIA_HeaderItemControlTypeId (0xC373)
+LocalizedControlType:	"üstbilgi öğesi"
+BoundingRectangle:	{l:953 t:364 r:1236 b:394}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	false
+HasKeyboardFocus:	false
+AccessKey:	""
+ProcessId:	1368
+RuntimeId:	[2A.70E9A.4.3A48]
+FrameworkId:	"InternetExplorer"
+ProviderDescription:	"[pid:1368,providerId:0x0 Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
+AriaProperties:	""
+LiveSettingProperty:	Off (0)
+IsPassword:	false
+IsRequiredForForm:	false
+IsDataValidForForm:	true
+HelpText:	""
+Orientation:	0
+IsDialog:	false
+GridItem.Column:	6
+GridItem.ColumnSpan:	1
+GridItem.ContainingGrid:	"" tablo
+GridItem.Row:	0
+GridItem.RowSpan:	1
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	"Tanı"
+LegacyIAccessible.Role:	sütun başlığı (0x19)
+LegacyIAccessible.State:	normal (0x0)
+Table.ItemColumnHeaderItems:	
+Table.ItemRowHeaderItems:	
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	true
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	false
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	true
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	true
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	true
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	"Tanı" metin
+LastChild:	"Tanı" metin
+Next:	"1 " öğe
+Previous:	"Kayıt Şekli" üstbilgi öğesi
+Other Props:	Object has no additional properties
+Children:	"Tanı" metin
+Ancestors:	"" tablo
+	"" öğe
+	"" tablo
+	"" öğe
+	"" tablo
+	"" öğe
+	"" tablo
+	"Medula Eczane" bölme
+	"https://medeczane.sgk.gov.tr/eczane/faces/pages/recete/ReceteIslem2.jsp" bölme
+	"" bölme
+	"" bölme
+	"" bölme
+	"MEDULA 2.1.199.0 botan  (T)" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

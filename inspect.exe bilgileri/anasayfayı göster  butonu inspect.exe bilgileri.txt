@@ -1,0 +1,75 @@
+How found:	Mouse move (59,65)
+	hwnd=0x00000000012C0E10 32bit class="WindowsForms10.Window.b.app.0.338574f_r8_ad1" style=0x56000000 ex=0x0
+Name:	"Giriş"
+ControlType:	UIA_ButtonControlTypeId (0xC350)
+LocalizedControlType:	"düğme"
+BoundingRectangle:	{l:31 t:52 r:86 b:75}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	true
+HasKeyboardFocus:	true
+AccessKey:	""
+ProcessId:	16948
+RuntimeId:	[2A.12C0E10]
+AutomationId:	"btnMedulayaGirisYap"
+FrameworkId:	"WinForm"
+ClassName:	"WindowsForms10.Window.b.app.0.338574f_r8_ad1"
+NativeWindowHandle:	0x12C0E10
+ProviderDescription:	"[pid:9644,providerId:0x12C0E10 Main:Nested [pid:16948,providerId:0x12C0E10 Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	false
+HelpText:	""
+IsDialog:	false
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.DefaultAction:	"Tıkla"
+LegacyIAccessible.Description:	""
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	"Giriş"
+LegacyIAccessible.Role:	düğme (0x2B)
+LegacyIAccessible.State:	odaklanmış,odaklanabilir,seçilebilir (0x300004)
+LegacyIAccessible.Value:	""
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	true
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	false
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	"FİB" düğme
+Previous:	"Aktar" düğme
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	"pnlMedulaBaslik" bölme
+	"MEDULA 2.1.199.0 EMRE GÖKMEN (T)" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

@@ -1,0 +1,74 @@
+How found:	Mouse move (483,299)
+	hwnd=0x0000000000540DF0 32bit class="ComboLBox" style=0x54808041 ex=0x88
+Name:	"15-Emre Gökmen"
+ControlType:	UIA_ListItemControlTypeId (0xC357)
+LocalizedControlType:	"liste öğesi"
+BoundingRectangle:	{l:365 t:296 r:534 b:309}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	true
+HasKeyboardFocus:	true
+AccessKey:	""
+ProcessId:	3536
+RuntimeId:	[2A.540DF0.4.80000001.540DF0.FFFFFFFC.2]
+ProviderDescription:	"[pid:3536,providerId:0x0 Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	false
+HelpText:	""
+IsDialog:	false
+LegacyIAccessible.ChildId:	2
+LegacyIAccessible.DefaultAction:	"Çift Tıklatma"
+LegacyIAccessible.Description:	""
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	"15-Emre Gökmen"
+LegacyIAccessible.Role:	öğeleri listele (0x22)
+LegacyIAccessible.State:	seçili,odaklanmış,odaklanabilir,seçilebilir (0x300006)
+LegacyIAccessible.Value:	""
+SelectionItem.IsSelected:	true
+SelectionItem.SelectionContainer:	"" liste
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	true
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	true
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	true
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	"4-ÜMİT ÇINARKAYA" liste öğesi
+Previous:	"0-EMRE GÖKMEN" liste öğesi
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	"" liste
+	"" birleşik giriş kutusu
+	"BotanikEOS 2.1.199.0 (T)" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

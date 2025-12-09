@@ -1,0 +1,15 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 523
+Grup: A
+Başlangıç: 2025-12-10 02:22:45
+================================================================================
+
+[02:22:45.068] [INFO] Grup A için yeni oturum başlatıldı
+[02:23:11.364] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:23:44.444] [WARNING] ⚠️ Rapor bulunamadı - Bilinmeyen
+[02:24:12.286] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:24:20.127] [WARNING] ⚠️ Rapor bulunamadı - BERAT DEĞİRMENCİOĞLU
+[02:24:46.892] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:24:54.914] [WARNING] ⚠️ Rapor bulunamadı - BEDİA DEĞİRMENCİOĞLU

@@ -1,0 +1,30 @@
+cd C:\Users\ikizler1\AndroidStudioProjects\IlacTakip
+claude
+claude-code --model opus-4
+
+cd C:\Users\ikizler1\AndroidStudioProjects\IlacTakip
+claude code config set model claude-sonnet-4-5-20250929
+
+claude code config set model sonnet
+
+claude code config get model
+
+
+# Terminal 1'de Sonnet
+claude code --model sonnet
+
+# Terminal 2'de Opus
+claude code --model opus
+
+# Terminal 1'de
+CLAUDE_MODEL=sonnet claude code
+
+# Terminal 2'de
+CLAUDE_MODEL=opus claude code
+
+
+
+
+
+cd /mnt/c/Users/ikizler1/AndroidStudioProjects/IlacTakip
+codex

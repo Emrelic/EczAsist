@@ -1,0 +1,437 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+
+
+
+
+<html>
+<head>
+<title>Medula Eczane</title>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-9">
+<meta name="GENERATOR" content="Rational Software Architect">
+<link rel="stylesheet" type="text/css"
+	href="/eczane/theme/stylesheet.css"
+	title="Style">
+<link rel="stylesheet"
+	href="/eczane/theme/styles.css"
+	type="text/css">	
+<script src="/eczane/scripts/medula.js" language="javascript"></script>
+<script type="text/javascript">
+	function checkBox(selectOneCheckBox) {
+	  var id = selectOneCheckBox.name.substring(selectOneCheckBox.name.lastIndexOf(':'));
+      var el = selectOneCheckBox.form.elements;
+      for (var i = 0; i < el.length; i++) {
+            if (el[i].name.substring(el[i].name.lastIndexOf(':')) == id) {
+                  el[i].checked = false;
+            }
+      }
+      selectOneCheckBox.checked = true;
+
+}
+
+</script></head>
+
+	<body bgcolor="#FFFFFF" text="#000000" leftmargin="0" marginwidth="0" topmargin="5" background="/eczane/images/background.gif" onkeydown="onkeydawn();" onload="onlood();">
+	<form id="form1" name="form1" method="post" action="/eczane/faces/pages/haksahibi/IlacListe.jsp" enctype="application/x-www-form-urlencoded" class="form">
+			<table width="100%" border="0" cellspacing="0" cellpadding="0"
+				height="450">
+				<tbody>
+					<tr>
+						<td width="165" valign="top"
+							style="padding-top:5; padding-left:5; padding-right:5; padding-bottom:5;"
+							bgcolor="#EEEEEE">
+						<table width="100%" border="0" cellspacing="1" cellpadding="10"
+							class="menuText" bgcolor="#AFAFAF" style="margin-bottom:4px;">
+							<tr>
+								<td align="center" class="loggedInUserMenu"><span class="outputText">&#304;K&#304;ZLER ECZANES&#304; (18342920)</span></td>
+							</tr>
+						</table>
+
+<script type="text/JavaScript" language="JavaScript" src="/eczane/.ibmjsfres/hxclient_core_v3_1_16.js"></script>
+
+<script type="text/JavaScript" language="JavaScript" src="/eczane/.ibmjsfres/hxclient_S_v3_1_16_tr.js?viewLocale=tr_TR"></script>
+<script type="text/JavaScript" language="JavaScript">
+if (hX_6) hX_6.setResourceServer("/eczane/.ibmjsfres");
+if(hX_6 && hX_6.setLocale) hX_6.setLocale("tr_TR");
+
+</script><table id="form1:menu" class="panelActionbar" border="0" cellspacing="0" cellpadding="0" style="background-color: #637595"><tr><td colspan="2"><span id="form1:menuHtmlOutputText01" style="vertical-align: middle; width: 165px; line-height: 20px" class="headerRow">&#160;&#160;:: Re&#231;ete</span></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;e-Re&#231;ete Sorgu" id="form1:menuHtmlCommandExButton11" name="form1:menuHtmlCommandExButton11" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Re&#231;ete Giri&#351;" id="form1:menuHtmlCommandExButton21" name="form1:menuHtmlCommandExButton21" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Re&#231;ete Listesi" id="form1:menuHtmlCommandExButton31" name="form1:menuHtmlCommandExButton31" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Re&#231;ete Listesi (G&uuml;nl&uuml;k)" id="form1:menuHtmlCommandExButton41" name="form1:menuHtmlCommandExButton41" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Re&#231;ete Sorgu" id="form1:menuHtmlCommandExButton51" name="form1:menuHtmlCommandExButton51" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;&#304;ade Re&#231;ete Sorgu/D&uuml;zeltme" id="form1:menuHtmlCommandExButton61" name="form1:menuHtmlCommandExButton61" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;&#304;la&#231; Bilgisi" id="form1:menuHtmlCommandExButton71" name="form1:menuHtmlCommandExButton71" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Silinmi&#351; Karekod" id="form1:menuHtmlCommandExButton81" name="form1:menuHtmlCommandExButton81" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Manuel Re&#231;ete Giri&#351;" id="form1:menuHtmlCommandExButton91" name="form1:menuHtmlCommandExButton91" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Manuel Re&#231;ete Liste" id="form1:menuHtmlCommandExButton101" name="form1:menuHtmlCommandExButton101" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><span id="form1:menuHtmlOutputText111" style="vertical-align: middle; width: 165px; line-height: 20px" class="headerRow">&#160;&#160;:: Fatura</span></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Fatura Sonland&#305;rma" id="form1:menuHtmlCommandExButton121" name="form1:menuHtmlCommandExButton121" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Eski Fatura Sorgu" id="form1:menuHtmlCommandExButton131" name="form1:menuHtmlCommandExButton131" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Ek Fatura" id="form1:menuHtmlCommandExButton141" name="form1:menuHtmlCommandExButton141" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;&#304;ade/Kesinti Sorgu" id="form1:menuHtmlCommandExButton151" name="form1:menuHtmlCommandExButton151" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Emekli &#304;la&#231; Kat&#305;l&#305;m" id="form1:menuHtmlCommandExButton161" name="form1:menuHtmlCommandExButton161" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><span id="form1:menuHtmlOutputText171" style="vertical-align: middle; width: 165px; line-height: 20px" class="headerRow">&#160;&#160;:: Mesaj</span></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Mesaj G&ouml;r&uuml;nt&uuml;leme" id="form1:menuHtmlCommandExButton181" name="form1:menuHtmlCommandExButton181" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><span id="form1:menuHtmlOutputText191" style="vertical-align: middle; width: 165px; line-height: 20px" class="headerRow">&#160;&#160;:: Kullan&#305;c&#305; &#304;&#351;lemleri</span></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;&#350;ifre De&#287;i&#351;tir" id="form1:menuHtmlCommandExButton201" name="form1:menuHtmlCommandExButton201" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Bilgi G&uuml;ncelleme" id="form1:menuHtmlCommandExButton211" name="form1:menuHtmlCommandExButton211" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;TBMM Uygulamas&#305;" id="form1:menuHtmlCommandExButton221" name="form1:menuHtmlCommandExButton221" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;&#199;&#305;k&#305;&#351; Yap" id="form1:menuHtmlCommandExButton231" name="form1:menuHtmlCommandExButton231" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr></table>
+
+
+
+
+
+
+</td>
+						<td align="center" valign="top" style="padding:10 10 10 10;" class="paragraph" bgcolor="#EEEEEE">
+							
+
+
+
+<br>
+							<table width="790px" bgcolor="#F5F5F5" border="0" cellpadding="5" cellspacing="0">
+							<tr height="20">
+								<td class="menuHeader">Kullan&#305;lan &#304;la&#231; Listesi</td>
+							</tr>	
+							<tr>
+								<td>
+								<table width="100%" cellpadding="1" cellspacing="1"
+									class="borderTable">
+									<tr class="row1">
+										<td class="label">&nbsp;
+										<table id="form1:box33" class="panelBox"><tr><td><input type="submit" value="Geri D&ouml;n" id="form1:buttonGeriDon" name="form1:buttonGeriDon" class="commandExButton" /></td><td><input type="submit" value="G&ouml;z &#304;la&#231;lar&#305;" id="form1:buttonGozIlacListesi" name="form1:buttonGozIlacListesi" class="commandExButton" /></td></tr></table>
+											</td>
+									</tr>
+								</table>
+								</td>
+							</tr>	
+							<tr>
+								<td>
+								<table width="100%" cellpadding="1" cellspacing="1"
+									class="borderTable">
+									<tr class="headerRow">
+										<td colspan="7">Hak Sahibi Bilgileri</td>
+									</tr>			
+									<tr class="row1">
+										<td class="label" width="160px">&nbsp;<span id="form1:text9" class="outputText">T.C. Kimlik Numaras&#305;</span></td>
+										<td align="center" width="5px"><strong>:</strong></td>
+										<td class="label">&nbsp;<span id="form1:text18" style="color: blue" class="outputText">38348204****</span></td>
+										<td align="center" width="5px"><strong></strong></td>
+										<td class="label" width="160px">&nbsp;<span id="form1:text4" class="outputText">Ad&#305; / Soyad&#305;</span></td>
+										<td align="center" width="5px"><strong>:</strong></td>
+										<td class="label"><table id="form1:box3" class="panelBox"><tr><td><span id="form1:text7" style="color: blue" class="outputText">ALPENG&#304;</span></td><td><span id="form1:text6" style="color: blue" class="outputText">DURAN</span></td></tr></table></td>
+									</tr>
+									<tr class="row2">
+										<td class="label" width="160px">&nbsp;<span id="form1:text19" class="outputText">Cinsiyeti</span></td>
+										<td align="center" width="5px"><strong>:</strong></td>
+										<td class="label">&nbsp;<span id="form1:text21" style="color: blue" class="outputText">Erkek</span></td>
+										<td align="center" width="5px"><strong></strong></td>
+										<td class="label" width="160px">&nbsp;<span id="form1:text22" class="outputText">Do&#287;um Tarihi</span></td>
+										<td align="center" width="5px"><strong>:</strong></td>
+										<td class="label">&nbsp;<span id="form1:text23" style="color: blue" class="outputText">14/02/1993</span></td>
+									</tr>
+									<tr class="row1">
+										<td class="label" colspan="7">
+											<span id="form1:text5" style="color: blue" class="outputText">- Hak sahibi bilgileri g&uuml;ncel de&#287;il ise re&#231;ete girildi&#287;i zaman g&uuml;ncellenecektir.</span><br>
+										<span id="form1:text12" style="color: blue" class="outputText">- Hatal&#305; bilgileri d&uuml;zelttirmek i&#231;in SGK Sosyal G&uuml;venlik Merkezlerine ba&#351;vurunuz.</span><br>
+										<span id="form1:text11" style="color: blue" class="outputText">- Bilgiler g&#252;ncellenmedi&#287;i takdirde re&#231;ete'yi 'M&#252;stehakl&#305;k sorgusunu ayn&#305; g&#252;n i&#231;in tekrar yap' se&#231;ene&#287;ini i&#351;aretleyerek kaydediniz.</span></td>
+									</tr>
+								</table>
+								</td>
+							</tr>	
+							<tr>
+								<td>
+								<table width="100%" cellpadding="1" cellspacing="1"
+									class="borderTable">
+									<tr class="headerRow">
+										<td colspan="7"></td>
+									</tr>			
+									
+									<tr class="row1">
+										<td class="label" colspan="7" width="160px">
+													</td>
+										
+										
+									</tr>
+									</table>
+								</td>
+							</tr>														
+							<tr>
+								<td>
+								<table width="100%" cellpadding="1" cellspacing="1"
+									class="borderTable">
+									<tr class="headerRow">
+										<td colspan="7">&#304;la&#231;lar</td>
+									</tr>
+									<tr class="row1">
+										<td class="label" colspan="7"><table id="form1:tableExKisiIlacList" class="dataTableEx" width="100%" border="0" cellpadding="2" cellspacing="0" ><thead ><tr ><th class="headerClass" scope="col" ><img src="/eczane/.ibmjsfres/img/1x1.gif" ></img></th><th align="center" class="headerClass" scope="col" ><span id="form1:tableExKisiIlacList:text3" class="outputText">Re&#231;ete No</span></th><th align="center" class="headerClass" scope="col" ><span id="form1:tableExKisiIlacList:text4" class="outputText">&#304;la&#231; Ad&#305;</span></th><th align="center" class="headerClass" scope="col" ><span id="form1:tableExKisiIlacList:text2" class="outputText">Re&#231;ete Tar.</span></th><th align="center" class="headerClass" scope="col" ><span id="form1:tableExKisiIlacList:text5" class="outputText">&#304;la&#231; Al&#305;m Tar.</span></th><th align="center" class="headerClass" scope="col" ><span id="form1:tableExKisiIlacList:text12" class="outputText">Verilebilece&#287;i Tarih</span></th><th align="center" class="headerClass" scope="col" ><span id="form1:tableExKisiIlacList:text7" class="outputText">Adet</span></th><th align="center" class="headerClass" scope="col" ><span id="form1:tableExKisiIlacList:text8" class="outputText">&#304;la&#231; Kullan&#305;m&#305;</span></th><th align="center" class="headerClass" scope="col" ><span id="form1:tableExKisiIlacList:text25" class="outputText">Rapor Te&#351;hisi</span></th><th align="center" class="headerClass" scope="col" ><span id="form1:tableExKisiIlacList:text28" class="outputText">UK</span></th></tr>
+</thead><tbody >
+<tr class="rowClass1" ><td ><span id="form1:tableExKisiIlacList:0:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:0:rowAction2__hidden_action" name="form1:tableExKisiIlacList:0:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:0:text14" class="outputText">3HQVI02</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:0:text15" class="outputText">LEVMONT 5/10 MG 30 FTB(8699976090140)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:0:text10" class="outputText">08/10/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:0:text21" class="outputText">11/10/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:0:text13" class="outputText">10/01/2026</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:0:text18" class="outputText">3</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:0:text17" class="outputText">G&uuml;nde 1&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:0:text26" class="outputText">20.00</span></td>
+<td align="center" ><span class="outputText">226</span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExKisiIlacList:1:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:1:rowAction2__hidden_action" name="form1:tableExKisiIlacList:1:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:1:text14" class="outputText">3I9FCNU</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:1:text15" class="outputText">RINOCLENIL 100 MCG NAZAL SPREY, SUSPANSIYON (120 DOZ)(8699822520241)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:1:text10" class="outputText">31/10/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:1:text21" class="outputText">01/11/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:1:text13" class="outputText">31/12/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:1:text18" class="outputText">1</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:1:text17" class="outputText">G&uuml;nde 2&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:1:text26" class="outputText"></span></td>
+<td align="center" ><span class="outputText"></span></td>
+</tr>
+<tr class="rowClass1" ><td ><span id="form1:tableExKisiIlacList:2:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:2:rowAction2__hidden_action" name="form1:tableExKisiIlacList:2:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:2:text14" class="outputText">3FMAN0O</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:2:text15" class="outputText">SYMBICORT FORTE T.HALER 320 9 MCG. (LABA+IKS)(8699786550124)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:2:text10" class="outputText">14/07/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:2:text21" class="outputText">14/07/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:2:text13" class="outputText">11/11/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:2:text18" class="outputText">2</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:2:text17" class="outputText">G&uuml;nde 1&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:2:text26" class="outputText">05.01</span></td>
+<td align="center" ><span class="outputText"></span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExKisiIlacList:3:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:3:rowAction2__hidden_action" name="form1:tableExKisiIlacList:3:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:3:text14" class="outputText">3I9FCNU</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:3:text15" class="outputText">KLAMOKS-BID 1000 MG 14 FILM TB.(8699569090694)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:3:text10" class="outputText">31/10/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:3:text21" class="outputText">01/11/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:3:text13" class="outputText">08/11/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:3:text18" class="outputText">1</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:3:text17" class="outputText">G&uuml;nde 2&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:3:text26" class="outputText"></span></td>
+<td align="center" ><span class="outputText"></span></td>
+</tr>
+<tr class="rowClass1" ><td ><span id="form1:tableExKisiIlacList:4:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:4:rowAction2__hidden_action" name="form1:tableExKisiIlacList:4:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:4:text14" class="outputText">3FMAN0O</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:4:text15" class="outputText">LEVMONT 5/10 MG 30 FTB(8699976090140)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:4:text10" class="outputText">14/07/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:4:text21" class="outputText">14/07/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:4:text13" class="outputText">12/10/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:4:text18" class="outputText">3</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:4:text17" class="outputText">G&uuml;nde 1&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:4:text26" class="outputText">20.00</span></td>
+<td align="center" ><span class="outputText">226</span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExKisiIlacList:5:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:5:rowAction2__hidden_action" name="form1:tableExKisiIlacList:5:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:5:text14" class="outputText">3E2UX8B</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:5:text15" class="outputText">LEVMONT 5/10 MG 30 FTB(8699976090140)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:5:text10" class="outputText">09/05/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:5:text21" class="outputText">09/05/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:5:text13" class="outputText">12/06/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:5:text18" class="outputText">1</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:5:text17" class="outputText">G&uuml;nde 1&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:5:text26" class="outputText">20.00</span></td>
+<td align="center" ><span class="outputText">226</span></td>
+</tr>
+<tr class="rowClass1" ><td ><span id="form1:tableExKisiIlacList:6:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:6:rowAction2__hidden_action" name="form1:tableExKisiIlacList:6:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:6:text14" class="outputText">3E2UX8B</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:6:text15" class="outputText">SYMBICORT FORTE T.HALER 320 9 MCG. (LABA+IKS)(8699786550124)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:6:text10" class="outputText">09/05/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:6:text21" class="outputText">09/05/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:6:text13" class="outputText">12/06/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:6:text18" class="outputText">1</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:6:text17" class="outputText">G&uuml;nde 2&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:6:text26" class="outputText">05.01</span></td>
+<td align="center" ><span class="outputText"></span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExKisiIlacList:7:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:7:rowAction2__hidden_action" name="form1:tableExKisiIlacList:7:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:7:text14" class="outputText">3DDKFP4</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:7:text15" class="outputText">SYMBICORT FORTE T.HALER 320 9 MCG. (LABA+IKS)(8699786550124)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:7:text10" class="outputText">10/04/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:7:text21" class="outputText">12/04/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:7:text13" class="outputText">13/05/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:7:text18" class="outputText">1</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:7:text17" class="outputText">G&uuml;nde 2&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:7:text26" class="outputText">05.01</span></td>
+<td align="center" ><span class="outputText"></span></td>
+</tr>
+<tr class="rowClass1" ><td ><span id="form1:tableExKisiIlacList:8:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:8:rowAction2__hidden_action" name="form1:tableExKisiIlacList:8:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:8:text14" class="outputText">3DDKFP4</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:8:text15" class="outputText">LEVMONT 5/10 MG 30 FTB(8699976090140)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:8:text10" class="outputText">10/04/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:8:text21" class="outputText">12/04/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:8:text13" class="outputText">13/05/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:8:text18" class="outputText">1</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:8:text17" class="outputText">G&uuml;nde 1&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:8:text26" class="outputText">20.00</span></td>
+<td align="center" ><span class="outputText">226</span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExKisiIlacList:9:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:9:rowAction2__hidden_action" name="form1:tableExKisiIlacList:9:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:9:text14" class="outputText">3AZ7FJC</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:9:text15" class="outputText">SYMBICORT FORTE T.HALER 320 9 MCG. (LABA+IKS)(8699786550124)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:9:text10" class="outputText">10/01/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:9:text21" class="outputText">11/01/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:9:text13" class="outputText">13/04/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:9:text18" class="outputText">3</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:9:text17" class="outputText">G&uuml;nde 2&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:9:text26" class="outputText">05.01</span></td>
+<td align="center" ><span class="outputText"></span></td>
+</tr>
+<tr class="rowClass1" ><td ><span id="form1:tableExKisiIlacList:10:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:10:rowAction2__hidden_action" name="form1:tableExKisiIlacList:10:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:10:text14" class="outputText">3AZ7FJC</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:10:text15" class="outputText">LEVMONT 5/10 MG 90 FTB(8699976090157)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:10:text10" class="outputText">10/01/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:10:text21" class="outputText">11/01/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:10:text13" class="outputText">13/04/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:10:text18" class="outputText">1</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:10:text17" class="outputText">G&uuml;nde 1&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:10:text26" class="outputText">20.00</span></td>
+<td align="center" ><span class="outputText">226</span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExKisiIlacList:11:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:11:rowAction2__hidden_action" name="form1:tableExKisiIlacList:11:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:11:text14" class="outputText">3AZ7FJC</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:11:text15" class="outputText">ILIADIN %0.05 SPREY(8699563544902)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:11:text10" class="outputText">10/01/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:11:text21" class="outputText">11/01/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:11:text13" class="outputText">08/02/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:11:text18" class="outputText">1</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:11:text17" class="outputText">G&uuml;nde 3&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:11:text26" class="outputText"></span></td>
+<td align="center" ><span class="outputText"></span></td>
+</tr>
+<tr class="rowClass1" ><td ><span id="form1:tableExKisiIlacList:12:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:12:rowAction2__hidden_action" name="form1:tableExKisiIlacList:12:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:12:text14" class="outputText">38TBG6M</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:12:text15" class="outputText">LEVMONT 5/10 MG 30 FTB(8699976090140)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:12:text10" class="outputText">14/10/2024</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:12:text21" class="outputText">15/10/2024</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:12:text13" class="outputText">13/01/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:12:text18" class="outputText">3</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:12:text17" class="outputText">G&uuml;nde 1&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:12:text26" class="outputText">20.00</span></td>
+<td align="center" ><span class="outputText"></span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExKisiIlacList:13:rowAction2">
+<input type="hidden" id="form1:tableExKisiIlacList:13:rowAction2__hidden_action" name="form1:tableExKisiIlacList:13:rowAction2__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="center" ><span id="form1:tableExKisiIlacList:13:text14" class="outputText">38TBG6M</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:13:text15" class="outputText">SYMBICORT FORTE T.HALER 320 9 MCG. (LABA+IKS)(8699786550124)</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:13:text10" class="outputText">14/10/2024</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:13:text21" class="outputText">15/10/2024</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:13:text13" class="outputText">13/01/2025</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:13:text18" class="outputText">3</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:13:text17" class="outputText">G&uuml;nde 2&#160;x&#160;1.0</span></td>
+<td align="center" ><span id="form1:tableExKisiIlacList:13:text26" class="outputText">05.01</span></td>
+<td align="center" ><span class="outputText"></span></td>
+</tr>
+</tbody>
+<tfoot ><tr ><td scope="colgroup" class="footerClass" colspan="10" ><table id="form1:tableExKisiIlacList:box1" class="panelBox"><tr><td><span id="form1:tableExKisiIlacList:web1" class="pagerWeb">
+<input type="hidden" id="form1:tableExKisiIlacList:web1__pagerWeb" name="form1:tableExKisiIlacList:web1__pagerWeb" value="0" />
+<strong>1</strong>
+</span>
+</td></tr></table></td></tr>
+</tfoot></table>
+</td>
+									</tr>		
+									<tr class="row1">
+										<td colspan="7" align="center">
+										<span id="form1:text37" style=" " class="outputText"> </span>
+													</td>
+									</tr>										
+								</table>
+								
+								</td>
+							</tr>																					
+						</table><br>			
+						
+																																			
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		<input type="hidden" name="form1_SUBMIT" value="1" /><input type="hidden" name="javax.faces.ViewState" id="javax.faces.ViewState" value="7asHW7LWPwrmdtXVYrrId8M/T5NIGhRbIXn9EguitF3njffrqRv9J41E+S7Ckf8EfUY/WIK0WNQeLp0BUwlKRoHVWYX18shQ9DkouUY89vpaztrbiziY39w8MXyYNZpWwqWxB9+dtY05URuxM/csds9N6zvFLxNZgASEW5YEygSoMat1" /></form>
+<script type="text/javascript" src="/eczane/.ibmjsfres/hxclient_be_v3_1_16.js"></script>
+<script type="text/javascript" src="/eczane/.ibmjsfres/hxclient_im_v3_1_16.js"></script>
+<script type="text/javascript" src="/eczane/.ibmjsfres/hxclient_table_v3_1_16.js"></script>
+<script type="text/javascript">
+hX_6.addComponent("form1:menuHtmlCommandExButton11", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;e-Re&#231;ete Sorgu"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton21", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Re&#231;ete Giri&#351;"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton31", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Re&#231;ete Listesi"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton41", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Re&#231;ete Listesi (G&#252;nl&#252;k)"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton51", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Re&#231;ete Sorgu"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton61", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;&#304;ade Re&#231;ete Sorgu/D&#252;zeltme"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton71", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;&#304;la&#231; Bilgisi"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton81", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Silinmi&#351; Karekod"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton91", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Manuel Re&#231;ete Giri&#351;"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton101", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Manuel Re&#231;ete Liste"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton121", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Fatura Sonland&#305;rma"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton131", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Eski Fatura Sorgu"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton141", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Ek Fatura"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton151", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;&#304;ade/Kesinti Sorgu"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton161", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Emekli &#304;la&#231; Kat&#305;l&#305;m"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton181", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Mesaj G&#246;r&#252;nt&#252;leme"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton201", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;&#350;ifre De&#287;i&#351;tir"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton211", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Bilgi G&#252;ncelleme"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton221", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;TBMM Uygulamas&#305;"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton231", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;&#199;&#305;k&#305;&#351; Yap"));
+
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:0:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:0:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:1:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:1:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:2:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:2:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:3:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:3:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:4:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:4:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:5:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:5:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:6:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:6:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:7:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:7:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:8:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:8:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:9:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:9:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:10:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:10:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:11:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:11:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:12:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:12:rowAction2__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExKisiIlacList:13:rowAction2","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExKisiIlacList:13:rowAction2__hidden_action","input-value:true"));
+hX_6.onPageLoad();</script><span style="padding-left:5px" class="outputText">Son &#350;ifre G&uuml;ncelleme Tarihi: </span><span style="font-weight: normal" class="outputText">25/05/2017</span>
+
+
+
+<table width="100%" border="0" cellspacing="0" cellpadding="0" height="23" bgcolor="#333333" style="margin-top:1px;">
+ <tr>
+		
+		<td align="right" >
+			 
+			
+		</td>
+	</tr>
+  <tr> 
+	<td width="200" style="color: #333333">
+		&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+		uygmedecz8
+	</td>
+    <td align="center" class="footerText">Sosyal G&#252;venlik Kurumu &copy; 2010-2025</td>
+	<td width="200" align="right" class="footerText">S&#252;r&#252;m : 1.1171&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+  </tr>  
+</table>
+	</body>
+
+</html>

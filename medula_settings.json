@@ -1,0 +1,47 @@
+{
+  "medula_exe_path": "C:\\BotanikEczane\\BotanikMedula.exe",
+  "giris_pencere_title": "BotanikEOS 2.1.199.0 (T)",
+  "giris_pencere_automation_id": "SifreSorForm",
+  "kullanici_combobox_class": "WindowsForms10.COMBOBOX.app.0.134c08f_r8_ad1",
+  "kullanici_dropdown_button_name": "Kapat",
+  "sifre_textbox_automation_id": "txtSifre",
+  "sifre_textbox_class": "WindowsForms10.EDIT.app.0.134c08f_r8_ad1",
+  "medula_process_name": "BotanikEczane.exe",
+  "giris_button_name": "Giriş",
+  "kullanicilar": [
+    {
+      "ad": "Kullanıcı 1",
+      "kullanici_index": 1,
+      "sifre": "152634"
+    },
+    {
+      "ad": "Kullanıcı 2",
+      "kullanici_index": 1,
+      "sifre": "152634"
+    },
+    {
+      "ad": "15-Emre Gökmen",
+      "kullanici_index": 2,
+      "sifre": "152634"
+    },
+    {
+      "ad": "Kullanıcı 4",
+      "kullanici_index": 3,
+      "sifre": "152634"
+    },
+    {
+      "ad": "Kullanıcı 5",
+      "kullanici_index": 4,
+      "sifre": ""
+    },
+    {
+      "ad": "Kullanıcı 6",
+      "kullanici_index": 5,
+      "sifre": ""
+    }
+  ],
+  "aktif_kullanici": 3,
+  "telefonsuz_atla": true,
+  "giris_yontemi": "indeks",
+  "kullanici_adi_giris": ""
+}

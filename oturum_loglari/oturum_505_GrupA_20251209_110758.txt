@@ -1,0 +1,25 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 505
+Grup: A
+Başlangıç: 2025-12-09 11:07:58
+================================================================================
+
+[11:07:58.080] [INFO] Grup A için yeni oturum başlatıldı
+[11:08:23.980] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[11:08:31.889] [BAŞARI] ✅ 10 rapor CSV'ye kaydedildi - GÜLŞEN ÇILGINOĞLU (5301711023)
+[11:09:00.072] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[11:09:07.413] [BAŞARI] ✅ 5 rapor CSV'ye kaydedildi - EMİNE TUFAN (5373063599)
+[11:09:35.003] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[11:09:43.525] [BAŞARI] ✅ 9 rapor CSV'ye kaydedildi - FERİHAN TUĞCU (5366619191)
+[11:10:13.108] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[11:10:20.669] [BAŞARI] ✅ 8 rapor CSV'ye kaydedildi - ÖMER İLBASAN (5334397118)
+[11:10:49.335] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[11:10:57.747] [BAŞARI] ✅ 6 rapor CSV'ye kaydedildi - SABİRE YILDIZ (5359278472)
+[11:11:26.458] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[11:11:34.481] [BAŞARI] ✅ 6 rapor CSV'ye kaydedildi - FAHRİ ŞAHİN (5359608270)
+[11:12:02.966] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[11:12:10.718] [BAŞARI] ✅ 6 rapor CSV'ye kaydedildi - ESME ÇELİK (5454064241)
+[11:12:33.770] [INFO] Yeniden başlatma #1
+[11:12:45.092] [WARNING] Taskkill yapıldı (#1)

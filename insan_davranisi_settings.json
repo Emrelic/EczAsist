@@ -1,0 +1,27 @@
+{
+  "ritim_bozucu": {
+    "aktif": false,
+    "max_ms": 3000
+  },
+  "dikkat_bozucu": {
+    "aktif": false,
+    "aralik_max_ms": 100000,
+    "duraklama_max_ms": 10000
+  },
+  "yorgunluk": {
+    "aktif": false,
+    "calisma_min_ms": 1200000,
+    "calisma_max_ms": 1800000,
+    "dinlenme_min_ms": 300000,
+    "dinlenme_max_ms": 480000
+  },
+  "hata_durumunda_bekle": {
+    "aktif": false
+  },
+  "textbox_122": {
+    "yazmayi_devre_disi_birak": false,
+    "ozel_deger_kullan": false,
+    "deger_1": "122",
+    "deger_2": "122"
+  }
+}

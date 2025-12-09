@@ -4,11 +4,13 @@ Bu bot, Medulla programında otomatik reçete işlemleri yapar.
 """
 
 import time
+import threading
 from pywinauto import Application, timings
 from pywinauto.findwindows import ElementNotFoundError
 from pywinauto.keyboard import send_keys
 import logging
 import ctypes
+from ctypes import wintypes
 import win32gui
 import win32con
 import subprocess
@@ -17,15 +19,398 @@ from pathlib import Path
 from datetime import datetime
 from timing_settings import get_timing_settings
 
+# ===== WINDOWS HOOK POPUP WATCHER =====
+# Event-driven popup detection - yeni pencere açıldığında tetiklenir
+# CPU kullanmadan bekler, popup fırlayınca otomatik kapatır
+
+# Windows Hook sabitleri
+EVENT_OBJECT_CREATE = 0x8000
+EVENT_OBJECT_SHOW = 0x8002
+WINEVENT_OUTOFCONTEXT = 0x0000
+WINEVENT_SKIPOWNPROCESS = 0x0002
+
+# Callback tipi tanımı
+WINEVENTPROC = ctypes.WINFUNCTYPE(
+    None,
+    wintypes.HANDLE,  # hWinEventHook
+    wintypes.DWORD,   # event
+    wintypes.HWND,    # hwnd
+    wintypes.LONG,    # idObject
+    wintypes.LONG,    # idChild
+    wintypes.DWORD,   # idEventThread
+    wintypes.DWORD    # dwmsEventTime
+)
+
+# Kapatılacak popup tanımları - YENİ POPUP'LAR BURAYA EKLENİR
+# Inspect bilgileri: 9 Aralık 2025
+POPUP_PATTERNS = [
+    {
+        # UYARIDIR... / Genel Muayene popup
+        # Title: "UYARIDIR...", Class: WindowsForms10.Window.8.app.0.134c08f_r8_ad1
+        "name": "UYARIDIR",
+        "title_contains": "UYARIDIR",
+        "close_methods": [
+            {"type": "auto_id", "value": "Close"},
+            {"type": "name", "value": "Kapat"},
+            {"type": "esc_key"}
+        ]
+    },
+    {
+        # REÇETE İÇİN NOT paneli
+        # Title element: AutomationId="lblNotBaslik", Name="REÇETE İÇİN NOT"
+        # Kapat butonu: AutomationId="btnReceteNotuPanelKapat", Name="KAPAT"
+        "name": "REÇETE İÇİN NOT",
+        "title_contains": "REÇETE İÇİN NOT",
+        "close_methods": [
+            {"type": "auto_id", "value": "btnReceteNotuPanelKapat"},
+            {"type": "name", "value": "KAPAT"},
+            {"type": "esc_key"}
+        ]
+    },
+    {
+        # LABA/LAMA ve İlaç Çakışması Dialog'ları
+        # ClassName: #32770 (Windows Dialog), Title: boş
+        # Çarpı butonu: AutomationId="Close", Name="Kapat"
+        # Tamam butonu: AutomationId="2", Name="Tamam"
+        "name": "Dialog (#32770)",
+        "title_contains": None,  # Boş başlık
+        "class_name": "#32770",  # Windows Dialog class
+        "close_methods": [
+            {"type": "auto_id", "value": "Close"},
+            {"type": "name", "value": "Kapat"},
+            {"type": "auto_id", "value": "2"},  # Tamam butonu
+            {"type": "name", "value": "Tamam"},
+            {"type": "esc_key"}
+        ]
+    },
+    {
+        # Genel WinForms Popup (fallback)
+        "name": "Genel WinForms Popup",
+        "title_contains": None,
+        "class_contains": "WindowsForms10.Window",
+        "close_methods": [
+            {"type": "name", "value": "Kapat"},
+            {"type": "name", "value": "KAPAT"},
+            {"type": "name", "value": "Tamam"},
+            {"type": "name", "value": "OK"},
+            {"type": "name", "value": "Evet"},
+            {"type": "name", "value": "Hayır"},
+            {"type": "esc_key"}
+        ]
+    }
+]
+
+
+class PopupWatcher:
+    """
+    Windows Hook tabanlı event-driven popup watcher.
+
+    Popup açıldığında otomatik tetiklenir, CPU kullanmadan bekler.
+    Popup kapatılınca log yazar, program kaldığı yerden devam eder.
+    """
+
+    def __init__(self, bot_instance=None):
+        self.bot = bot_instance
+        self.running = False
+        self.thread = None
+        self.hook = None
+        self._callback = None  # prevent garbage collection
+        self._kapatilan_popup_sayisi = 0
+        self._son_popup_zamani = None
+
+        # Logger
+        self.logger = logging.getLogger("PopupWatcher")
+
+    def start(self):
+        """Popup watcher thread'ini başlat"""
+        if self.running:
+            return
+
+        self.running = True
+        self.thread = threading.Thread(target=self._run_hook_loop, daemon=True)
+        self.thread.start()
+        self.logger.info("🔔 Popup Watcher başlatıldı (event-driven)")
+
+    def stop(self):
+        """Popup watcher'ı durdur"""
+        self.running = False
+        if self.hook:
+            ctypes.windll.user32.UnhookWinEvent(self.hook)
+            self.hook = None
+
+    def _run_hook_loop(self):
+        """Windows event hook döngüsü"""
+        try:
+            # Callback fonksiyonunu tanımla
+            self._callback = WINEVENTPROC(self._win_event_callback)
+
+            # Hook'u kur - EVENT_OBJECT_SHOW yakalayacağız
+            self.hook = ctypes.windll.user32.SetWinEventHook(
+                EVENT_OBJECT_SHOW,  # min event
+                EVENT_OBJECT_SHOW,  # max event
+                None,               # hmodWinEventProc
+                self._callback,     # callback
+                0,                  # idProcess (0 = tümü)
+                0,                  # idThread (0 = tümü)
+                WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS
+            )
+
+            if not self.hook:
+                self.logger.error("Windows hook kurulamadı!")
+                return
+
+            self.logger.debug("Windows hook kuruldu, popup'lar izleniyor...")
+
+            # Message loop - hook'un çalışması için gerekli
+            msg = wintypes.MSG()
+            while self.running:
+                # GetMessage yerine PeekMessage kullanarak non-blocking döngü
+                if ctypes.windll.user32.PeekMessageW(
+                    ctypes.byref(msg), None, 0, 0, 1  # PM_REMOVE
+                ):
+                    ctypes.windll.user32.TranslateMessage(ctypes.byref(msg))
+                    ctypes.windll.user32.DispatchMessageW(ctypes.byref(msg))
+                else:
+                    # Mesaj yoksa kısa bekle (CPU kullanımı minimize)
+                    time.sleep(0.1)
+
+        except Exception as e:
+            self.logger.error(f"Popup watcher hatası: {type(e).__name__}: {e}")
+        finally:
+            if self.hook:
+                ctypes.windll.user32.UnhookWinEvent(self.hook)
+                self.hook = None
+
+    def _win_event_callback(self, hWinEventHook, event, hwnd, idObject, idChild,
+                            idEventThread, dwmsEventTime):
+        """Windows event callback - pencere gösterildiğinde tetiklenir"""
+        if not hwnd or idObject != 0:  # OBJID_WINDOW = 0
+            return
+
+        try:
+            # ===== SADECE TOP-LEVEL POPUP PENCERELERI YAKALA =====
+            # Ana pencere içindeki label-tarzı popup'lar değil, gerçek popup'lar
+
+            # 1. Pencere görünür mü?
+            if not ctypes.windll.user32.IsWindowVisible(hwnd):
+                return
+
+            # 2. Top-level pencere mi? (Parent = None veya Desktop)
+            parent = ctypes.windll.user32.GetParent(hwnd)
+            if parent:
+                # Parent varsa ve Desktop değilse, bu bir child window (label olabilir)
+                # Desktop hwnd = 0 veya GetDesktopWindow()
+                desktop = ctypes.windll.user32.GetDesktopWindow()
+                if parent != desktop and parent != 0:
+                    return  # Child window, popup değil
+
+            # 3. Pencere stili kontrol - WS_POPUP veya WS_OVERLAPPED mi?
+            GWL_STYLE = -16
+            WS_POPUP = 0x80000000
+            WS_CHILD = 0x40000000
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_STYLE)
+
+            # Child window ise atla (ana pencere içi element)
+            if style & WS_CHILD:
+                return
+
+            # Pencere başlığını al
+            length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+            if length == 0:
+                return
+
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            ctypes.windll.user32.GetWindowTextW(hwnd, buffer, length + 1)
+            window_title = buffer.value
+
+            if not window_title:
+                return
+
+            # Class name al
+            class_buffer = ctypes.create_unicode_buffer(256)
+            ctypes.windll.user32.GetClassNameW(hwnd, class_buffer, 256)
+            class_name = class_buffer.value
+
+            # Popup pattern kontrolü
+            for pattern in POPUP_PATTERNS:
+                if self._matches_pattern(window_title, class_name, pattern):
+                    # Popup bulundu! Kapatmayı dene
+                    self.logger.info(f"🔔 Popup tespit edildi: '{window_title}' ({pattern['name']})")
+
+                    # Kısa bir gecikme (pencere tam açılsın)
+                    time.sleep(0.2)
+
+                    # Popup'ı kapat
+                    if self._close_popup(hwnd, window_title, pattern):
+                        self._kapatilan_popup_sayisi += 1
+                        self._son_popup_zamani = datetime.now()
+                        self.logger.info(f"✅ Popup kapatıldı: '{window_title}' "
+                                        f"(Toplam: {self._kapatilan_popup_sayisi})")
+                    break
+
+        except Exception as e:
+            # Callback hataları sessizce geç (çok sık tetiklenir)
+            pass
+
+    def _matches_pattern(self, window_title, class_name, pattern):
+        """Pencere pattern'e uyuyor mu kontrol et"""
+        # ===== ÖNEMLİ PENCERELER - ASLA KAPATILMAZ =====
+        # Bu pencereler popup değil, program için gerekli pencereler
+
+        # 1. Ana pencere (MEDULA)
+        if "MEDULA" in window_title:
+            return False
+
+        # 2. Medula giriş penceresi (BotanikEOS)
+        if "BotanikEOS" in window_title:
+            return False
+
+        # 3. Hasta ilaç listesi penceresi (Y butonuna basınca açılır)
+        if "İlaç Listesi" in window_title:
+            return False
+
+        # 4. Reçete penceresi
+        if "Reçete" in window_title and "NOT" not in window_title:
+            return False
+
+        # title_contains kontrolü
+        title_check = pattern.get("title_contains")
+        if title_check is not None:
+            # Belirli bir başlık arıyoruz
+            if title_check not in window_title:
+                return False
+        elif pattern.get("class_name") == "#32770":
+            # #32770 Dialog için boş/kısa başlık bekliyoruz
+            # LABA/LAMA ve İlaç Çakışması dialog'ları başlıksız
+            if len(window_title) > 20:  # Uzun başlık = ana pencere
+                return False
+
+        # class_name tam eşleşme kontrolü (#32770 gibi)
+        if pattern.get("class_name"):
+            if class_name != pattern["class_name"]:
+                return False
+            return True  # class_name eşleşti, popup bulundu
+
+        # class_contains kısmi eşleşme kontrolü
+        if pattern.get("class_contains"):
+            if pattern["class_contains"] not in class_name:
+                return False
+
+        return True
+
+    def _close_popup(self, hwnd, window_title, pattern):
+        """Popup'ı kapat"""
+        from pywinauto import Desktop
+
+        try:
+            desktop = Desktop(backend="uia")
+            window = desktop.window(handle=hwnd)
+
+            if not window.exists(timeout=0.3):
+                return False
+
+            # Kapatma metodlarını dene
+            for method in pattern.get("close_methods", []):
+                try:
+                    if method["type"] == "auto_id":
+                        btn = window.child_window(auto_id=method["value"], control_type="Button")
+                        if btn.exists(timeout=0.2):
+                            self._click_button(btn)
+                            return True
+
+                    elif method["type"] == "name":
+                        btn = window.child_window(title=method["value"], control_type="Button")
+                        if btn.exists(timeout=0.2):
+                            self._click_button(btn)
+                            return True
+
+                    elif method["type"] == "esc_key":
+                        window.set_focus()
+                        from pywinauto.keyboard import send_keys
+                        send_keys("{ESC}")
+                        time.sleep(0.2)
+                        # Pencere hala açık mı?
+                        if not win32gui.IsWindow(hwnd):
+                            return True
+
+                except Exception:
+                    continue
+
+            return False
+
+        except Exception as e:
+            self.logger.debug(f"Popup kapatma hatası: {type(e).__name__}")
+            return False
+
+    def _click_button(self, btn):
+        """Butona tıkla (invoke, click, click_input sırasıyla dene)"""
+        try:
+            btn.invoke()
+        except Exception:
+            try:
+                btn.click()
+            except Exception:
+                btn.click_input()
+        time.sleep(0.2)
+
+
+# Global popup watcher instance (bot dışında da erişilebilir)
+_popup_watcher = None
+
+def get_popup_watcher():
+    """Global popup watcher instance'ını al veya oluştur"""
+    global _popup_watcher
+    if _popup_watcher is None:
+        _popup_watcher = PopupWatcher()
+    return _popup_watcher
+
 # pywinauto hızlandırma - tüm internal timing'leri 2'ye böl
 # Bu, pywinauto'nun kendi bekleme sürelerini optimize eder (element bulma vs.)
 timings.Timings.fast()
 
-# Logging ayarları - Kısa format
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(levelname)s: %(message)s'
-)
+# Logging ayarları - Saat:Dakika:Saniye:Milisaniye formatı
+class MillisecondFormatter(logging.Formatter):
+    """Milisaniye + önceki satırdan geçen süre içeren özel formatter"""
+    _last_time = None
+
+    def formatTime(self, record, datefmt=None):
+        from datetime import datetime
+        ct = datetime.fromtimestamp(record.created)
+        s = ct.strftime("%H:%M:%S")
+        s = f"{s}.{int(record.msecs):03d}"
+
+        # Önceki satırdan geçen süreyi hesapla (her zaman saniye cinsinden)
+        if MillisecondFormatter._last_time is not None:
+            delta = record.created - MillisecondFormatter._last_time
+            s = f"{s} (+{delta:.2f}s)"
+        else:
+            s = f"{s} (start)"
+
+        MillisecondFormatter._last_time = record.created
+        return s
+
+# Root logger'ı temizle ve yeniden yapılandır
+root_logger = logging.getLogger()
+# Eski handler'ları kaldır
+for handler in root_logger.handlers[:]:
+    root_logger.removeHandler(handler)
+
+# Console handler oluştur
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(MillisecondFormatter('%(asctime)s: %(message)s'))
+
+# Dosya handler oluştur (TÜM logları kaydet - Y butonu, konsol, vs)
+import os
+script_dir = os.path.dirname(os.path.abspath(__file__))
+debug_log_path = os.path.join(script_dir, 'botanik_debug.log')
+file_handler = logging.FileHandler(debug_log_path, mode='a', encoding='utf-8')
+file_handler.setFormatter(MillisecondFormatter('%(asctime)s: %(message)s'))
+
+# Root logger'ı yapılandır
+root_logger.setLevel(logging.INFO)
+root_logger.addHandler(console_handler)
+root_logger.addHandler(file_handler)  # Dosyaya da yaz
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +425,7 @@ class RaporTakip:
     Hasta rapor bilgilerini CSV dosyasına kaydeder.
 
     CSV Formatı:
-    Ad Soyad,Telefon,Rapor Tanısı,Bitiş Tarihi,Kayıt Tarihi,Kopyalandı
+    Ad Soyad,Telefon,Rapor Tanısı,Bitiş Tarihi,Kayıt Tarihi,Grup,Kopyalandı
 
     Her rapor ayrı bir satır olarak kaydedilir.
     Bir hastanın birden fazla raporu varsa, hasta bilgileri her satırda tekrar eder.
@@ -68,7 +453,7 @@ class RaporTakip:
             try:
                 with open(self.dosya_yolu, 'w', newline='', encoding='utf-8-sig') as f:
                     writer = csv.writer(f)
-                    writer.writerow(['Ad Soyad', 'Telefon', 'Rapor Tanısı', 'Bitiş Tarihi', 'Kayıt Tarihi', 'Kopyalandı'])
+                    writer.writerow(['Ad Soyad', 'Telefon', 'Rapor Tanısı', 'Bitiş Tarihi', 'Kayıt Tarihi', 'Grup', 'Kopyalandı'])
                 logger.info(f"✓ Rapor takip dosyası oluşturuldu: {self.dosya_yolu}")
             except Exception as e:
                 logger.error(f"CSV dosyası oluşturma hatası: {e}")
@@ -79,21 +464,40 @@ class RaporTakip:
             self._mevcut_kayitlari_yukle()
 
     def _eski_csv_guncelle(self):
-        """Eski CSV dosyalarına 'Kopyalandı' sütunu ekle (migration)"""
+        """Eski CSV dosyalarına 'Grup' ve 'Kopyalandı' sütunlarını ekle (migration)"""
         try:
             with open(self.dosya_yolu, 'r', newline='', encoding='utf-8-sig') as f:
                 reader = csv.DictReader(f)
                 header = reader.fieldnames
 
-                # Kopyalandı sütunu zaten var mı?
-                if 'Kopyalandı' in header:
-                    return  # Güncelleme gerekmez
+                if not header:
+                    return
+
+                # Eksik sütunları tespit et
+                guncellemeler = []
+                if 'Grup' not in header:
+                    guncellemeler.append('Grup')
+                if 'Kopyalandı' not in header:
+                    guncellemeler.append('Kopyalandı')
+
+                # Güncelleme gerekli mi?
+                if not guncellemeler:
+                    return  # Zaten güncel
 
                 # Eski format - tüm satırları oku
                 satirlar = list(reader)
 
-            # Yeni header oluştur
-            yeni_header = list(header) + ['Kopyalandı']
+            # Yeni header oluştur (Grup'u Kayıt Tarihi'nden sonra, Kopyalandı'yı sona ekle)
+            if 'Kayıt Tarihi' in header:
+                kayit_index = header.index('Kayıt Tarihi')
+                yeni_header = list(header[:kayit_index+1])
+                if 'Grup' in guncellemeler:
+                    yeni_header.append('Grup')
+                yeni_header.extend([h for h in header[kayit_index+1:] if h != 'Grup'])
+                if 'Kopyalandı' in guncellemeler:
+                    yeni_header.append('Kopyalandı')
+            else:
+                yeni_header = list(header) + guncellemeler
 
             # Yeni formatta yaz
             with open(self.dosya_yolu, 'w', newline='', encoding='utf-8-sig') as f:
@@ -101,10 +505,13 @@ class RaporTakip:
                 writer.writeheader()
 
                 for row in satirlar:
-                    row['Kopyalandı'] = ''  # Boş olarak ekle
+                    if 'Grup' not in row:
+                        row['Grup'] = ''  # Boş olarak ekle
+                    if 'Kopyalandı' not in row:
+                        row['Kopyalandı'] = ''  # Boş olarak ekle
                     writer.writerow(row)
 
-            logger.info("  ℹ️ CSV dosyası yeni formata güncellendi (Kopyalandı sütunu eklendi)")
+            logger.info(f"  ℹ️ CSV dosyası yeni formata güncellendi ({', '.join(guncellemeler)} sütunu eklendi)")
 
         except Exception as e:
             logger.debug(f"CSV güncelleme hatası (normal olabilir): {e}")
@@ -124,7 +531,7 @@ class RaporTakip:
         except Exception as e:
             logger.debug(f"Mevcut kayıtlar yüklenemedi: {e}")
 
-    def rapor_ekle(self, ad_soyad, telefon, tani, bitis_tarihi):
+    def rapor_ekle(self, ad_soyad, telefon, tani, bitis_tarihi, grup=""):
         """
         Tek bir rapor kaydı ekler.
         Aynı (ad+telefon+tanı+bitiş tarihi) kombinasyonu daha önce eklenmişse atlar.
@@ -152,7 +559,7 @@ class RaporTakip:
 
             with open(self.dosya_yolu, 'a', newline='', encoding='utf-8-sig') as f:
                 writer = csv.writer(f)
-                writer.writerow([ad_soyad, telefon, tani, bitis_tarihi, kayit_tarihi, ""])
+                writer.writerow([ad_soyad, telefon, tani, bitis_tarihi, kayit_tarihi, grup, ""])
 
             # Bu anahtarı kaydet (tekrar yazılmasın)
             self.mevcut_kayitlar.add(kayit_anahtari)
@@ -162,7 +569,7 @@ class RaporTakip:
             logger.error(f"Rapor ekleme hatası: {e}")
             return False
 
-    def toplu_rapor_ekle(self, ad_soyad, telefon, raporlar_listesi):
+    def toplu_rapor_ekle(self, ad_soyad, telefon, raporlar_listesi, grup=""):
         """
         Aynı hasta için birden fazla rapor ekler.
         Aynı bitiş tarihine sahip raporları birleştirip tanıları yan yana dizer.
@@ -190,7 +597,7 @@ class RaporTakip:
             # Tanıları " + " ile birleştir
             birlesik_tani = " + ".join(tanilar)
 
-            if self.rapor_ekle(ad_soyad, telefon, birlesik_tani, bitis_tarihi):
+            if self.rapor_ekle(ad_soyad, telefon, birlesik_tani, bitis_tarihi, grup):
                 kayit_sayisi += 1
             else:
                 atlanan_sayisi += 1
@@ -332,7 +739,57 @@ class BotanikBot:
         self.medula_hwnd = None  # Pencere handle'ı
         self.medula_pid = None   # Process ID
 
-    def timed_sleep(self, key, default=0.1):
+        # ===== İNSAN DAVRANIŞI MODU =====
+        self._insan_davranisi_ayarlar = self._insan_davranisi_yukle()
+        self._insan_modu_aktif = self._insan_modu_kontrol()
+
+        # Oturum başında mod seçimi (hibrit yaklaşım)
+        if self._insan_modu_aktif:
+            logger.info("🧠 İnsan Davranışı Modu: AKTİF")
+            self.timed_sleep = self._insan_modlu_sleep
+            # Thread'leri başlat (dikkat bozucu, yorgunluk)
+            self._dikkat_bozucu_thread = None
+            self._yorgunluk_thread = None
+            self._duraklama_aktif = False  # Dikkat bozucu duraklama durumu
+            self._dinlenme_aktif = False   # Yorgunluk dinlenme durumu
+            self._insan_threadleri_baslat()
+        else:
+            logger.info("⚡ Yalın Mod: AKTİF (maksimum hız)")
+            self.timed_sleep = self._yalin_sleep
+
+        # ===== POPUP WATCHER BAŞLAT =====
+        # Event-driven popup detection - CPU kullanmadan popup'ları yakalar
+        self.popup_watcher = get_popup_watcher()
+        self.popup_watcher.bot = self  # Bot referansı
+        self.popup_watcher.start()
+
+    def _insan_davranisi_yukle(self):
+        """İnsan davranışı ayarlarını JSON'dan yükle"""
+        import json
+        try:
+            with open("insan_davranisi_settings.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {}
+        except Exception as e:
+            logger.warning(f"İnsan davranışı ayarları yüklenemedi: {e}")
+            return {}
+
+    def _insan_modu_kontrol(self):
+        """Herhangi bir insan davranışı özelliği aktif mi?"""
+        if not self._insan_davranisi_ayarlar:
+            return False
+
+        return (
+            self._insan_davranisi_ayarlar.get("ritim_bozucu", {}).get("aktif", False) or
+            self._insan_davranisi_ayarlar.get("dikkat_bozucu", {}).get("aktif", False) or
+            self._insan_davranisi_ayarlar.get("yorgunluk", {}).get("aktif", False) or
+            self._insan_davranisi_ayarlar.get("hata_durumunda_bekle", {}).get("aktif", False) or
+            self._insan_davranisi_ayarlar.get("textbox_122", {}).get("yazmayi_devre_disi_birak", False) or
+            self._insan_davranisi_ayarlar.get("textbox_122", {}).get("ozel_deger_kullan", False)
+        )
+
+    def _yalin_sleep(self, key, default=0.1):
         """
         Ayarlı bekleme süresi + istatistik kaydı
 
@@ -348,21 +805,131 @@ class BotanikBot:
         # İstatistik kaydet
         self.timing.kayit_ekle(key, actual_duration)
 
-    def retry_with_popup_check(self, operation_func, operation_name, max_retries=3):
+    def _insan_modlu_sleep(self, key, default=0.1):
         """
-        UI element bulma/tıklama işlemini 3 kere dene, başarısız olursa popup kontrol et
+        İnsan davranışı modunda bekleme süresi
+
+        Özellikler:
+        - Ritim bozucu: Her adıma random süre ekler
+        - Dikkat bozucu: Periyodik duraklamalar (thread ile)
+        - Yorgunluk: Uzun dinlenme araları (thread ile)
+        """
+        import random
+
+        start_time = time.time()
+        sleep_duration = self.timing.get(key, default)
+
+        # ===== RİTİM BOZUCU =====
+        ritim_ayar = self._insan_davranisi_ayarlar.get("ritim_bozucu", {})
+        if ritim_ayar.get("aktif", False):
+            max_ms = ritim_ayar.get("max_ms", 3000)
+            ek_sure = random.randint(0, max_ms) / 1000.0  # ms → saniye
+            sleep_duration += ek_sure
+
+        # ===== DİKKAT BOZUCU DURAKLAMA KONTROLÜ =====
+        # Thread tarafından _duraklama_aktif=True yapılınca bekle
+        while self._duraklama_aktif:
+            time.sleep(0.1)
+
+        # ===== YORGUNLUK DİNLENME KONTROLÜ =====
+        # Thread tarafından _dinlenme_aktif=True yapılınca bekle
+        while self._dinlenme_aktif:
+            time.sleep(0.1)
+
+        # Normal bekleme
+        time.sleep(sleep_duration)
+        actual_duration = time.time() - start_time
+
+        # İstatistik kaydet
+        self.timing.kayit_ekle(key, actual_duration)
+
+    def _insan_threadleri_baslat(self):
+        """Dikkat bozucu ve yorgunluk thread'lerini başlat"""
+        import threading
+        import random
+
+        # ===== DİKKAT BOZUCU THREAD =====
+        dikkat_ayar = self._insan_davranisi_ayarlar.get("dikkat_bozucu", {})
+        if dikkat_ayar.get("aktif", False):
+            def dikkat_bozucu_dongusu():
+                aralik_max = dikkat_ayar.get("aralik_max_ms", 100000)
+                duraklama_max = dikkat_ayar.get("duraklama_max_ms", 10000)
+
+                while True:
+                    try:
+                        # Random aralık bekle
+                        aralik = random.randint(0, aralik_max) / 1000.0
+                        time.sleep(aralik)
+
+                        # Duraklama başlat
+                        duraklama = random.randint(0, duraklama_max) / 1000.0
+                        logger.debug(f"👀 Dikkat bozucu: {duraklama:.1f}s duraklama")
+                        self._duraklama_aktif = True
+                        time.sleep(duraklama)
+                        self._duraklama_aktif = False
+                    except Exception:
+                        break
+
+            self._dikkat_bozucu_thread = threading.Thread(target=dikkat_bozucu_dongusu, daemon=True)
+            self._dikkat_bozucu_thread.start()
+            logger.info("  → Dikkat bozucu thread başlatıldı")
+
+        # ===== YORGUNLUK THREAD =====
+        yorgunluk_ayar = self._insan_davranisi_ayarlar.get("yorgunluk", {})
+        if yorgunluk_ayar.get("aktif", False):
+            def yorgunluk_dongusu():
+                calisma_min = yorgunluk_ayar.get("calisma_min_ms", 1200000)
+                calisma_max = yorgunluk_ayar.get("calisma_max_ms", 1800000)
+                dinlenme_min = yorgunluk_ayar.get("dinlenme_min_ms", 300000)
+                dinlenme_max = yorgunluk_ayar.get("dinlenme_max_ms", 480000)
+
+                while True:
+                    try:
+                        # Random çalışma süresi
+                        calisma = random.randint(calisma_min, calisma_max) / 1000.0
+                        time.sleep(calisma)
+
+                        # Dinlenme başlat
+                        dinlenme = random.randint(dinlenme_min, dinlenme_max) / 1000.0
+                        logger.info(f"😴 Yorgunluk modu: {dinlenme/60:.1f} dakika dinlenme başlıyor...")
+                        self._dinlenme_aktif = True
+                        time.sleep(dinlenme)
+                        self._dinlenme_aktif = False
+                        logger.info("😊 Dinlenme bitti, çalışmaya devam...")
+                    except Exception:
+                        break
+
+            self._yorgunluk_thread = threading.Thread(target=yorgunluk_dongusu, daemon=True)
+            self._yorgunluk_thread.start()
+            logger.info("  → Yorgunluk thread başlatıldı")
+
+    def retry_with_popup_check(self, operation_func, operation_name, max_retries=5, critical=True):
+        """
+        UI element bulma/tıklama işlemini dene, başarısız olursa:
+        1. KRİTİK POPUP kontrolü (UYARIDIR + REÇETE İÇİN NOT)
+        2. Genel popup kontrolü
+        3. LABA/LAMA penceresi kontrolü
+        4. Popup kapatıldıysa TEKRAR DENE (taskkill YAPMADAN!)
+        5. Hala olmazsa ve critical=True ise SistemselHataException fırlat
+
+        ÖNEMLİ: Popup kapatıldığında program kaldığı yerden devam eder.
+        Taskkill ile yeniden başlatma SADECE popup kontrolü sonrası da başarısızsa yapılır.
 
         Args:
             operation_func: Çalıştırılacak fonksiyon (parametresiz)
             operation_name: İşlem adı (log için)
-            max_retries: Maksimum deneme sayısı
+            max_retries: Maksimum deneme sayısı (varsayılan: 5)
+            critical: True ise başarısızlıkta SistemselHataException fırlatır,
+                     False ise sadece False döner ve devam eder
 
         Returns:
             bool: Başarılıysa True, başarısızsa False
 
         Raises:
-            SistemselHataException: MEDULA'da sistemsel hata tespit edilirse
+            SistemselHataException: MEDULA'da sistemsel hata tespit edilirse (sadece critical=True ise)
         """
+        popup_kapatildi_toplam = 0  # Kapatılan popup sayısı
+
         for deneme in range(1, max_retries + 1):
             try:
                 # ÖNEMLİ: Her denemeden önce sistemsel hata kontrolü yap
@@ -379,20 +946,41 @@ class BotanikBot:
 
                 # Başarısız oldu
                 if deneme < max_retries:
-                    logger.debug(f"⚠ {operation_name} başarısız (Deneme {deneme}/{max_retries})")
+                    logger.warning(f"⚠ {operation_name} başarısız (Deneme {deneme}/{max_retries})")
 
                     # Sistemsel hata kontrolü (başarısız işlem sonrası)
                     if sistemsel_hata_kontrol():
                         logger.error("⚠️ Sistemsel hata tespit edildi, MEDULA yeniden başlatılacak...")
                         raise SistemselHataException("Yazılımsal veya sistemsel bir hata oluştu")
 
-                    # Popup kontrol et ve kapat
+                    # ★ KRİTİK POPUP KONTROLÜ (UYARIDIR + REÇETE İÇİN NOT) ★
+                    try:
+                        if self.kritik_popup_kontrol_ve_kapat():
+                            popup_kapatildi_toplam += 1
+                            logger.info(f"✓ Kritik popup kapatıldı, {operation_name} tekrar deneniyor...")
+                            self.timed_sleep("retry_after_popup", 0.5)
+                    except Exception as e:
+                        logger.debug(f"Kritik popup kontrol hatası: {type(e).__name__}")
+
+                    # Genel popup kontrolü
                     try:
                         if popup_kontrol_ve_kapat():
+                            popup_kapatildi_toplam += 1
                             logger.info(f"✓ Popup kapatıldı, {operation_name} tekrar deneniyor...")
                             self.timed_sleep("retry_after_popup", 0.3)
                     except Exception as e:
-                        logger.debug(f"Popup kontrol hatası: {e}")
+                        logger.debug(f"Popup kontrol hatası: {type(e).__name__}")
+
+                    # 2. denemede LABA/LAMA penceresi kontrolü yap (Giriş butonuna BASMA!)
+                    if deneme == 2:
+                        logger.warning("🔄 LABA/LAMA penceresi kontrolü yapılıyor...")
+                        try:
+                            if self.laba_lama_uyarisini_kapat(max_bekleme=2.0):
+                                popup_kapatildi_toplam += 1
+                                logger.info("✓ LABA/LAMA penceresi kapatıldı")
+                                self.timed_sleep("retry_after_popup", 0.5)
+                        except Exception as e:
+                            logger.debug(f"LABA/LAMA kontrol hatası: {type(e).__name__}")
 
                     # Pencereyi yenile
                     try:
@@ -402,28 +990,328 @@ class BotanikBot:
                         logger.warning(f"Reconnect başarısız: {type(e).__name__}: {e}")
 
                 else:
-                    logger.error(f"❌ {operation_name} başarısız ({max_retries} deneme)")
-                    return False
+                    # ★ SON DENEME - POPUP KONTROLÜ VE EKSTRA ŞANS ★
+                    logger.warning(f"⚠ {operation_name} {max_retries} denemede başarısız, son popup kontrolü yapılıyor...")
+
+                    # Son kez kritik popup kontrolü
+                    popup_kapatildi = False
+                    try:
+                        if self.kritik_popup_kontrol_ve_kapat():
+                            popup_kapatildi = True
+                            popup_kapatildi_toplam += 1
+                            logger.info("✓ Son denemede kritik popup kapatıldı!")
+                    except Exception:
+                        pass
+
+                    try:
+                        if popup_kontrol_ve_kapat():
+                            popup_kapatildi = True
+                            popup_kapatildi_toplam += 1
+                            logger.info("✓ Son denemede popup kapatıldı!")
+                    except Exception:
+                        pass
+
+                    # Popup kapatıldıysa BİR KEZ DAHA DENE (taskkill YAPMADAN!)
+                    if popup_kapatildi:
+                        logger.info(f"🔄 Popup kapatıldı, {operation_name} SON BİR KEZ deneniyor...")
+                        self.timed_sleep("retry_after_popup", 0.5)
+                        try:
+                            self.baglanti_kur("MEDULA", ilk_baglanti=False)
+                            sonuc = operation_func()
+                            if sonuc:
+                                logger.info(f"✅ {operation_name} başarılı (popup kapatıldıktan sonra)")
+                                return True
+                        except Exception as e:
+                            logger.warning(f"Son deneme hatası: {type(e).__name__}")
+
+                    # Gerçekten tüm denemeler başarısız
+                    logger.error(f"❌ {operation_name} başarısız ({max_retries} deneme + {popup_kapatildi_toplam} popup kapatıldı)")
+
+                    if critical:
+                        # Kritik işlem - ANCAK ŞİMDİ MEDULA'yı yeniden başlat
+                        logger.warning("🔄 MEDULA yeniden başlatılıyor (popup kontrolü sonrası da başarısız)...")
+                        raise SistemselHataException(f"{operation_name} tüm denemeler + popup kontrolü sonrası başarısız")
+                    else:
+                        # Kritik değil - sadece False dön ve devam et
+                        logger.warning(f"⚠️ {operation_name} başarısız ama kritik değil, devam ediliyor...")
+                        return False
 
             except SistemselHataException:
                 # Sistemsel hata exception'ını yukarıya fırlat
                 raise
             except Exception as e:
                 if deneme < max_retries:
-                    logger.debug(f"⚠ {operation_name} hata (Deneme {deneme}/{max_retries}): {e}")
+                    logger.warning(f"⚠ {operation_name} hata (Deneme {deneme}/{max_retries}): {type(e).__name__}: {e}")
+
+                    # Hata sonrası da kritik popup kontrolü
+                    try:
+                        if self.kritik_popup_kontrol_ve_kapat():
+                            popup_kapatildi_toplam += 1
+                            logger.info("✓ Hata sonrası popup kapatıldı")
+                    except Exception:
+                        pass
+
                     self.timed_sleep("retry_after_error", 0.3)
                 else:
-                    logger.error(f"❌ {operation_name} hata ({max_retries} deneme): {e}")
-                    return False
+                    logger.error(f"❌ {operation_name} hata ({max_retries} deneme): {type(e).__name__}: {e}")
+
+                    # Son denemede de popup kontrolü
+                    try:
+                        if self.kritik_popup_kontrol_ve_kapat():
+                            popup_kapatildi_toplam += 1
+                            logger.info("✓ Son hata sonrası popup kapatıldı, bir kez daha deneniyor...")
+                            self.timed_sleep("retry_after_popup", 0.5)
+                            try:
+                                sonuc = operation_func()
+                                if sonuc:
+                                    logger.info(f"✅ {operation_name} başarılı (hata sonrası popup kapatıldı)")
+                                    return True
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                    if critical:
+                        raise SistemselHataException(f"{operation_name} tüm denemeler başarısız")
+                    else:
+                        logger.warning(f"⚠️ {operation_name} başarısız ama kritik değil, devam ediliyor...")
+                        return False
 
         return False
+
+    def recete_notu_panelini_kapat(self):
+        """
+        Reçete Notu panelini kapat (ilaç butonunun üzerini kapatıyorsa)
+
+        UIElementInspector bilgileri (4 Aralık 2025):
+        - Panel Başlığı: Name="REÇETE İÇİN NOT", AutomationId="lblNotBaslik"
+        - Kapat Butonu: Name="KAPAT", AutomationId="btnReceteNotuPanelKapat"
+
+        Returns:
+            bool: Panel bulunup kapatıldıysa True, panel yoksa veya kapatılamadıysa False
+        """
+        try:
+            logger.debug("🔍 Reçete notu paneli kontrol ediliyor...")
+
+            # Önce panel başlığını ara (lblNotBaslik veya "REÇETE İÇİN NOT")
+            panel_var = False
+
+            # Method 1: AutomationId ile ara
+            try:
+                panel_baslik = self.main_window.child_window(
+                    auto_id="lblNotBaslik",
+                    control_type="Text"
+                )
+                if panel_baslik.exists(timeout=0.3):
+                    panel_var = True
+                    logger.info("📝 Reçete notu paneli tespit edildi (AutomationId)")
+            except Exception as e:
+                logger.debug(f"Panel AutomationId arama hatası: {type(e).__name__}")
+
+            # Method 2: Name ile ara
+            if not panel_var:
+                try:
+                    panel_baslik = self.main_window.child_window(
+                        title="REÇETE İÇİN NOT",
+                        control_type="Text"
+                    )
+                    if panel_baslik.exists(timeout=0.3):
+                        panel_var = True
+                        logger.info("📝 Reçete notu paneli tespit edildi (Name)")
+                except Exception as e:
+                    logger.debug(f"Panel Name arama hatası: {type(e).__name__}")
+
+            if not panel_var:
+                logger.debug("  → Reçete notu paneli yok")
+                return False
+
+            # Panel var, KAPAT butonunu bul ve tıkla
+            logger.info("📝 Reçete notu paneli kapatılıyor...")
+
+            # Method 1: AutomationId ile kapat butonunu bul
+            try:
+                kapat_btn = self.main_window.child_window(
+                    auto_id="btnReceteNotuPanelKapat",
+                    control_type="Button"
+                )
+                if kapat_btn.exists(timeout=0.3):
+                    try:
+                        kapat_btn.invoke()
+                    except Exception:
+                        try:
+                            kapat_btn.click()
+                        except Exception:
+                            kapat_btn.click_input()
+                    logger.info("✓ Reçete notu paneli kapatıldı (AutomationId)")
+                    time.sleep(0.2)
+                    return True
+            except Exception as e:
+                logger.debug(f"Kapat butonu AutomationId hatası: {type(e).__name__}")
+
+            # Method 2: Name ile kapat butonunu bul
+            try:
+                kapat_btn = self.main_window.child_window(
+                    title="KAPAT",
+                    control_type="Button"
+                )
+                if kapat_btn.exists(timeout=0.3):
+                    try:
+                        kapat_btn.invoke()
+                    except Exception:
+                        try:
+                            kapat_btn.click()
+                        except Exception:
+                            kapat_btn.click_input()
+                    logger.info("✓ Reçete notu paneli kapatıldı (Name)")
+                    time.sleep(0.2)
+                    return True
+            except Exception as e:
+                logger.debug(f"Kapat butonu Name hatası: {type(e).__name__}")
+
+            # Method 3: descendants ile ara
+            try:
+                kapat_btns = self.main_window.descendants(
+                    auto_id="btnReceteNotuPanelKapat",
+                    control_type="Button"
+                )
+                if kapat_btns and len(kapat_btns) > 0:
+                    try:
+                        kapat_btns[0].invoke()
+                    except Exception:
+                        try:
+                            kapat_btns[0].click()
+                        except Exception:
+                            kapat_btns[0].click_input()
+                    logger.info("✓ Reçete notu paneli kapatıldı (descendants)")
+                    time.sleep(0.2)
+                    return True
+            except Exception as e:
+                logger.debug(f"Kapat butonu descendants hatası: {type(e).__name__}")
+
+            logger.warning("⚠ Reçete notu paneli tespit edildi ama kapatılamadı")
+            return False
+
+        except Exception as e:
+            logger.debug(f"Reçete notu paneli kontrol hatası: {type(e).__name__}: {e}")
+            return False
+
+    def uyaridir_popup_kapat(self):
+        """
+        "UYARIDIR..." popup penceresini kapat.
+
+        UIElementInspector bilgileri (9 Aralık 2025):
+        - WindowTitle: "UYARIDIR..."
+        - ClassName: WindowsForms10.Window.8.app.0.134c08f_r8_ad1
+        - Kapat butonu: Name="Kapat", AutomationId="Close"
+
+        Bu popup İlaç, Rapor, Sonraki, Y butonlarını engelleyebilir.
+        Popup kapatılarak program kaldığı yerden devam eder.
+
+        Returns:
+            bool: Popup bulunup kapatıldıysa True, popup yoksa False
+        """
+        try:
+            from pywinauto import Desktop
+
+            desktop = Desktop(backend="uia")
+            windows = desktop.windows()
+
+            for window in windows:
+                try:
+                    window_text = window.window_text()
+
+                    # "UYARIDIR" içeren pencere mi?
+                    if window_text and "UYARIDIR" in window_text:
+                        logger.info(f"⚠️ UYARIDIR popup tespit edildi: '{window_text}'")
+
+                        # Method 1: AutomationId="Close" ile kapat
+                        try:
+                            kapat_btn = window.child_window(auto_id="Close", control_type="Button")
+                            if kapat_btn.exists(timeout=0.3):
+                                try:
+                                    kapat_btn.invoke()
+                                except Exception:
+                                    try:
+                                        kapat_btn.click()
+                                    except Exception:
+                                        kapat_btn.click_input()
+                                logger.info("✅ UYARIDIR popup kapatıldı (AutomationId=Close)")
+                                self.timed_sleep("popup_kapat", 0.3)
+                                return True
+                        except Exception as e:
+                            logger.debug(f"Close butonu AutomationId hatası: {type(e).__name__}")
+
+                        # Method 2: Name="Kapat" ile kapat
+                        try:
+                            kapat_btn = window.child_window(title="Kapat", control_type="Button")
+                            if kapat_btn.exists(timeout=0.3):
+                                try:
+                                    kapat_btn.invoke()
+                                except Exception:
+                                    try:
+                                        kapat_btn.click()
+                                    except Exception:
+                                        kapat_btn.click_input()
+                                logger.info("✅ UYARIDIR popup kapatıldı (Name=Kapat)")
+                                self.timed_sleep("popup_kapat", 0.3)
+                                return True
+                        except Exception as e:
+                            logger.debug(f"Kapat butonu Name hatası: {type(e).__name__}")
+
+                        # Method 3: ESC tuşu ile kapat
+                        try:
+                            window.set_focus()
+                            from pywinauto.keyboard import send_keys
+                            send_keys("{ESC}")
+                            logger.info("✅ UYARIDIR popup kapatıldı (ESC)")
+                            self.timed_sleep("popup_kapat", 0.3)
+                            return True
+                        except Exception as e:
+                            logger.debug(f"ESC ile kapatma hatası: {type(e).__name__}")
+
+                except Exception as e:
+                    continue
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"UYARIDIR popup kontrol hatası: {type(e).__name__}")
+            return False
+
+    def kritik_popup_kontrol_ve_kapat(self):
+        """
+        İlaç/Rapor/Sonraki/Y butonlarını engelleyen kritik popup'ları kontrol et ve kapat.
+
+        Kontrol edilen popup'lar:
+        1. "UYARIDIR..." - AutomationId="Close" veya Name="Kapat"
+        2. "REÇETE İÇİN NOT" - AutomationId="btnReceteNotuPanelKapat" veya Name="KAPAT"
+
+        Bu fonksiyon retry_with_popup_check içinde çağrılır.
+        Popup kapatılırsa program kaldığı yerden devam eder (taskkill YAPMADAN).
+
+        Returns:
+            bool: En az bir popup kapatıldıysa True
+        """
+        kapatilan = False
+
+        # 1. UYARIDIR popup kontrolü
+        if self.uyaridir_popup_kapat():
+            kapatilan = True
+            logger.info("🔄 UYARIDIR popup kapatıldı, devam ediliyor...")
+
+        # 2. REÇETE İÇİN NOT panel kontrolü
+        if self.recete_notu_panelini_kapat():
+            kapatilan = True
+            logger.info("🔄 Reçete notu paneli kapatıldı, devam ediliyor...")
+
+        return kapatilan
 
     def baglanti_kur(self, pencere_basligi="MEDULA", ilk_baglanti=False):
         """
         Medulla programına bağlan (handle cache ile optimize edilmiş - BotTak7'den)
 
         Args:
-            pencere_basligi (str): Medulla penceresinin başlığı
+            pencere_basligi (str): Medulla penceresinin başlığı (MEDULA)
             ilk_baglanti (bool): İlk bağlantı mı? (pencere yerleştirme için)
 
         Returns:
@@ -452,25 +1340,27 @@ class BotanikBot:
                     self.medula_pid = None
 
             if ilk_baglanti:
-                logger.info(f"'{pencere_basligi}' aranıyor...")
+                logger.debug(f"'{pencere_basligi}' aranıyor...")
 
-            # Mevcut pencereye bağlan (birden fazla varsa ilkini al)
+            # Mevcut pencereye bağlan
             from pywinauto import Desktop
-            windows = Desktop(backend="uia").windows()
+            desktop = Desktop(backend="uia")
 
-            medula_window = None
-            for window in windows:
+            # Önce pencereyi bul (UIAWrapper olarak)
+            medula_hwnd = None
+            for window in desktop.windows():
                 try:
                     if pencere_basligi in window.window_text():
-                        medula_window = window
+                        medula_hwnd = window.handle
                         break
                 except Exception as e:
                     logger.debug(f"Pencere kontrolü hatası (devam ediliyor): {e}")
 
-            if medula_window is None:
+            if medula_hwnd is None:
                 raise ElementNotFoundError(f"'{pencere_basligi}' bulunamadı")
 
-            self.main_window = medula_window
+            # WindowSpecification olarak al (child_window() için gerekli!)
+            self.main_window = desktop.window(handle=medula_hwnd)
 
             # ✨ YENİ: Handle ve PID'yi cache'e kaydet (gelecekte hızlı bağlantı için)
             try:
@@ -483,18 +1373,30 @@ class BotanikBot:
             if ilk_baglanti:
                 logger.info("✓ MEDULA'ya bağlandı")
 
-            # Pencereyi sol %80'e yerleştir (sadece ilk bağlantıda)
+            # Pencereyi yerleştir (ayara göre - sadece ilk bağlantıda)
             if ilk_baglanti:
                 try:
+                    from medula_settings import get_medula_settings
+                    medula_settings = get_medula_settings()
+                    yerlesim = medula_settings.get("pencere_yerlesimi", "standart")
+
                     # Ekran çözünürlüğünü al
                     user32 = ctypes.windll.user32
                     screen_width = user32.GetSystemMetrics(0)
                     screen_height = user32.GetSystemMetrics(1)
 
-                    # Sol %80 boyutlandırma - sola tam dayalı
+                    # Yerleşim ayarına göre genişlik belirle
+                    if yerlesim == "genis_medula":
+                        # Geniş MEDULA: %80
+                        medula_width = int(screen_width * 0.80)
+                        logger.info(f"  Geniş MEDULA modu: %80 ({medula_width}px)")
+                    else:
+                        # Standart: %60
+                        medula_width = int(screen_width * 0.60)
+                        logger.info(f"  Standart mod: %60 ({medula_width}px)")
+
                     medula_x = 0  # Sola tam dayalı
                     medula_y = 0  # Üstten başla
-                    medula_width = int(screen_width * 0.8)  # Genişlik %80
                     medula_height = screen_height - 40  # Taskbar için alttan boşluk
 
                     # Pencere handle'ını al
@@ -516,7 +1418,8 @@ class BotanikBot:
                     # İkinci kez ayarla (bazı programlar ilk seferde tam oturmuyor)
                     win32gui.MoveWindow(medula_hwnd, medula_x, medula_y, medula_width, medula_height, True)
 
-                    logger.info(f"✓ MEDULA sol %80'e yerleşti ({medula_width}x{medula_height})")
+                    oran = "4/5" if yerlesim == "genis_medula" else "3/5"
+                    logger.info(f"✓ MEDULA sol {oran}'e yerleşti ({medula_width}x{medula_height})")
 
                 except Exception as e:
                     logger.error(f"Pencere boyutlandırılamadı: {e}", exc_info=True)
@@ -587,7 +1490,7 @@ class BotanikBot:
             bool: Tıklama başarılı ise True
         """
         try:
-            logger.info("İlaç butonu aranıyor...")
+            logger.debug("İlaç butonu aranıyor...")
 
             # OPTIMIZE: Önce child_window() ile hızlı arama
             try:
@@ -595,7 +1498,7 @@ class BotanikBot:
                     auto_id="f:buttonIlacListesi",
                     control_type="Button"
                 )
-                if ilac_button.exists(timeout=0.5):
+                if ilac_button.exists(timeout=0.5):  # Timeout artırıldı: 0.2 → 0.5
                     ilac_button.click_input()
                     logger.info("✓ İlaç butonuna tıklandı (Method 1: auto_id)")
                     self.timed_sleep("ilac_butonu")
@@ -611,7 +1514,7 @@ class BotanikBot:
                     title="İlaç",
                     control_type="Button"
                 )
-                if ilac_button.exists(timeout=0.5):
+                if ilac_button.exists(timeout=0.5):  # Timeout artırıldı: 0.2 → 0.5
                     try:
                         ilac_button.invoke()
                     except Exception as e1:
@@ -684,6 +1587,8 @@ class BotanikBot:
         """
         try:
             baslangic = time.time()
+            check_interval = 0.2  # Optimizasyon: Daha sık kontrol et
+
             while time.time() - baslangic < max_bekleme:
                 # "Kullanılan İlaç Listesi" yazısını ara
                 texts = self.main_window.descendants(control_type="Text")
@@ -691,12 +1596,14 @@ class BotanikBot:
                     try:
                         text_value = text.window_text()
                         if "Kullanılan İlaç Listesi" in text_value or "Kullanilan İlaç Listesi" in text_value:
-                            logger.info("✓ İlaç ekranı yüklendi")
+                            gecen_sure = time.time() - baslangic
+                            logger.info(f"✓ İlaç ekranı yüklendi ({gecen_sure:.2f}s)")
                             return True
                     except Exception as e:
                         logger.debug(f"İlaç ekranı kontrolü hatası: {type(e).__name__}")
 
-                self.timed_sleep("ilac_ekran_bekleme")
+                # Optimizasyon: Sabit kısa interval ile bekle
+                time.sleep(check_interval)
 
             logger.warning("⚠️ İlaç ekranı yüklenemedi")
             return False
@@ -946,8 +1853,18 @@ class BotanikBot:
 
     def laba_lama_uyarisini_kapat(self, max_bekleme=1.5, detayli_log=True):
         """
-        SADECE LABA/LAMA uyarısını "Kapat" butonuna tıklayarak kapat
-        inspect.exe'den: class="#32770", Kapat düğmesi
+        LABA/LAMA uyarısını kapat - Sıralı yöntemler
+
+        inspect.exe bilgileri (2025-12-01):
+        - Pencere: class="#32770", WindowTitle="MEDULA 2.1.201.0 botan  (T)"
+        - Tamam butonu: Name="Tamam", AutomationId="2", ClassName="Button"
+        - Kapat (X) butonu: Name="Kapat", AutomationId="Close"
+
+        Kapatma sırası:
+        1. 3x ESC tuşu
+        2. ENTER tuşu (ESC işe yaramazsa)
+        3. Tamam butonu (ENTER işe yaramazsa)
+        4. X (Kapat) butonu (Tamam işe yaramazsa)
 
         Args:
             max_bekleme: Maksimum bekleme süresi (saniye)
@@ -959,132 +1876,124 @@ class BotanikBot:
         try:
             from pywinauto import Desktop
 
-            if detayli_log:
-                logger.debug(f"🔍 LABA/LAMA uyarısı aranıyor (max {max_bekleme}s)...")
-
-            baslangic = time.time()
-            # LABA/LAMA uyarısı için anahtar ifadeler
-            laba_ifadeler = ("LABA", "LAMA")
-
-            desktop = Desktop(backend="uia")
-
-            while time.time() - baslangic < max_bekleme:
+            def laba_lama_penceresi_bul():
+                """#32770 class'lı LABA/LAMA penceresi bul"""
                 try:
+                    desktop = Desktop(backend="uia")
                     windows = desktop.windows()
-                except Exception:
-                    windows = []
 
-                for window in windows:
-                    try:
-                        # class="#32770" kontrolü
-                        class_name = window.class_name()
-                        if class_name != "#32770":
-                            continue
-                    except Exception as e:
-                        logger.debug(f"LABA class_name kontrolü hatası: {type(e).__name__}")
-                        continue
+                    for window in windows:
+                        try:
+                            class_name = window.class_name()
+                            if class_name != "#32770":
+                                continue
 
-                    # İçerikte LABA/LAMA ifadesi var mı?
-                    try:
-                        texts = window.descendants()
-                        laba_bulundu = any(
-                            any(ifade in (text.window_text() or "").upper() for ifade in laba_ifadeler)
-                            for text in texts
-                        )
-                        if not laba_bulundu:
-                            continue
-                    except Exception as e:
-                        logger.debug(f"LABA/LAMA içerik kontrolü hatası: {type(e).__name__}")
-                        continue
-
-                    if detayli_log:
-                        logger.debug(f"  ✓ LABA/LAMA penceresi bulundu (class=#32770)")
-
-                    logger.info(f"⚠ LABA/LAMA uyarısı bulundu! Kapatılıyor...")
-
-                    # OPTIMIZE: Önce child_window() ile TAMAM butonunu ara (inspect.exe'ye göre "Tamam" var)
-                    try:
-                        tamam_btn = window.child_window(title_re=".*[Tt][Aa][Mm][Aa][Mm].*", control_type="Button")
-                        if tamam_btn.exists(timeout=0.3):
+                            # LABA/LAMA içeriği kontrol et
+                            laba_ifadeler = ("LABA", "LAMA")
                             try:
-                                tamam_btn.invoke()
-                            except Exception as e:
-                                logger.debug(f"tamam_btn.invoke() hatası: {type(e).__name__}")
-                                try:
-                                    tamam_btn.click()
-                                except Exception as e2:
-                                    logger.debug(f"tamam_btn.click() hatası: {type(e2).__name__}")
-                                    tamam_btn.click_input()
-                            logger.info(f"✓ LABA/LAMA uyarısı kapatıldı (Tamam hızlı)")
-                            self.timed_sleep("laba_uyari")
-                            return True
-                    except Exception as e:
-                        logger.debug(f"TAMAM butonu arama hatası: {type(e).__name__}")
-
-                    # OPTIMIZE: Alternatif - KAPAT butonu ara
-                    try:
-                        kapat_btn = window.child_window(title_re=".*[Kk][Aa][Pp][Aa][Tt].*", control_type="Button")
-                        if kapat_btn.exists(timeout=0.3):
-                            try:
-                                kapat_btn.invoke()
-                            except Exception as e:
-                                logger.debug(f"kapat_btn.invoke() hatası: {type(e).__name__}")
-                                try:
-                                    kapat_btn.click()
-                                except Exception as e2:
-                                    logger.debug(f"kapat_btn.click() hatası: {type(e2).__name__}")
-                                    kapat_btn.click_input()
-                            logger.info(f"✓ LABA/LAMA uyarısı kapatıldı (Kapat hızlı)")
-                            self.timed_sleep("laba_uyari")
-                            return True
-                    except Exception as e:
-                        logger.debug(f"KAPAT butonu arama hatası: {type(e).__name__}")
-
-                    # FALLBACK: descendants() ile TAMAM veya KAPAT ara
-                    try:
-                        all_buttons = window.descendants(control_type="Button")
-                        kapat_buttons = [
-                            btn for btn in all_buttons
-                            if (text := btn.window_text()) and (
-                                "TAMAM" in text.upper() or
-                                "KAPAT" in text.upper() or
-                                "OK" in text.upper()
-                            )
-                        ]
-                        if detayli_log:
-                            logger.debug(f"  → {len(kapat_buttons)} Tamam/Kapat butonu bulundu (fallback)")
-
-                        if kapat_buttons:
-                            for btn in kapat_buttons:
-                                try:
+                                texts = window.descendants()
+                                for text in texts:
                                     try:
-                                        btn.invoke()
+                                        text_content = text.window_text() or ""
+                                        if any(ifade in text_content.upper() for ifade in laba_ifadeler):
+                                            return window
                                     except Exception:
-                                        try:
-                                            btn.click()
-                                        except Exception:
-                                            btn.click_input()
-                                    logger.info(f"✓ LABA/LAMA uyarısı kapatıldı (Tamam/Kapat fallback)")
-                                    self.timed_sleep("laba_uyari")
-                                    return True
-                                except Exception:
-                                    continue
+                                        continue
+                            except Exception:
+                                pass
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+                return None
+
+            if detayli_log:
+                logger.debug(f"🔍 LABA/LAMA uyarısı kontrol ediliyor...")
+
+            # Önce LABA/LAMA penceresi var mı kontrol et
+            laba_pencere = laba_lama_penceresi_bul()
+            if not laba_pencere:
+                if detayli_log:
+                    logger.debug("LABA/LAMA penceresi bulunamadı")
+                return False  # Pencere yoksa False döndür
+
+            logger.info("⚠ LABA/LAMA penceresi tespit edildi!")
+
+            # YÖNTEM 1: 3x ESC tuşu
+            logger.info("1️⃣ LABA/LAMA - 3x ESC gönderiliyor...")
+            try:
+                for i in range(3):
+                    send_keys("{ESC}")
+                    time.sleep(0.15)
+                logger.info("✓ 3x ESC gönderildi")
+                time.sleep(0.3)
+
+                # Pencere kapandı mı kontrol et
+                if not laba_lama_penceresi_bul():
+                    logger.info("✓ LABA/LAMA kapatıldı (ESC ile)")
+                    self.timed_sleep("laba_uyari")
+                    return True
+            except Exception as e:
+                logger.debug(f"ESC hatası: {type(e).__name__}")
+
+            # YÖNTEM 2: ENTER tuşu
+            logger.info("2️⃣ LABA/LAMA - ENTER gönderiliyor...")
+            try:
+                laba_pencere = laba_lama_penceresi_bul()
+                if laba_pencere:
+                    try:
+                        laba_pencere.set_focus()
                     except Exception:
                         pass
+                    time.sleep(0.1)
+                send_keys("{ENTER}")
+                logger.info("✓ ENTER gönderildi")
+                time.sleep(0.3)
 
-                    # Son çare: Pencereyi direkt kapat
-                    if detayli_log:
-                        logger.debug(f"  ⚠ Tamam/Kapat butonu bulunamadı, pencereyi kapatmaya çalışıyor...")
-                    try:
-                        window.close()
-                        logger.info(f"✓ LABA/LAMA uyarısı kapatıldı (close)")
+                # Pencere kapandı mı kontrol et
+                if not laba_lama_penceresi_bul():
+                    logger.info("✓ LABA/LAMA kapatıldı (ENTER ile)")
+                    self.timed_sleep("laba_uyari")
+                    return True
+            except Exception as e:
+                logger.debug(f"ENTER hatası: {type(e).__name__}")
+
+            # YÖNTEM 3: Tamam butonu (AutomationId="2")
+            logger.info("3️⃣ LABA/LAMA - Tamam butonu aranıyor...")
+            try:
+                laba_pencere = laba_lama_penceresi_bul()
+                if laba_pencere:
+                    tamam_btn = laba_pencere.child_window(auto_id="2", control_type="Button")
+                    if tamam_btn.exists(timeout=0.2):
+                        try:
+                            tamam_btn.click_input()
+                        except Exception:
+                            tamam_btn.click()
+                        logger.info("✓ LABA/LAMA kapatıldı (Tamam butonu)")
                         self.timed_sleep("laba_uyari")
                         return True
-                    except Exception as e:
-                        logger.debug(f"window.close() hatası (LABA): {type(e).__name__}")
+            except Exception as e:
+                logger.debug(f"Tamam butonu hatası: {type(e).__name__}")
 
-                self.timed_sleep("popup_kapat")
+            # YÖNTEM 4: X (Kapat) butonu (AutomationId="Close")
+            logger.info("4️⃣ LABA/LAMA - X (Kapat) butonu aranıyor...")
+            try:
+                laba_pencere = laba_lama_penceresi_bul()
+                if laba_pencere:
+                    kapat_btn = laba_pencere.child_window(auto_id="Close", control_type="Button")
+                    if kapat_btn.exists(timeout=0.2):
+                        try:
+                            kapat_btn.click_input()
+                        except Exception:
+                            kapat_btn.click()
+                        logger.info("✓ LABA/LAMA kapatıldı (X butonu)")
+                        self.timed_sleep("laba_uyari")
+                        return True
+            except Exception as e:
+                logger.debug(f"Kapat butonu hatası: {type(e).__name__}")
 
+            # Hiçbir yöntem işe yaramadı
+            logger.warning("⚠ LABA/LAMA penceresi kapatılamadı (tüm yöntemler denendi)")
             return False
 
         except Exception as e:
@@ -1240,7 +2149,13 @@ class BotanikBot:
 
     def y_tusuna_tikla(self):
         """
-        Y tuşuna tıkla (CACHE destekli)
+        Y tuşuna tıkla (CACHE destekli) - OPTIMIZE: AutomationId ile arama
+
+        UIElementInspector bilgileri (2 Aralık 2025):
+        - Name: "Y"
+        - AutomationId: "btnPrint"
+        - ControlType: Button
+        - ClassName: WindowsForms10.Window.b.app.0.134c08f_r8_ad1
 
         Returns:
             bool: Tıklama başarılı ise True
@@ -1258,60 +2173,99 @@ class BotanikBot:
                     logger.debug(f"Cache'den Y butonu invoke() hatası: {type(e).__name__}")
                     self._clear_cache_key("y_button")
 
-            # OPTIMIZE: child_window() ile hızlı arama
+            # YÖNTEM 1: AutomationId ile arama (EN HIZLI - WinForms butonu)
             try:
-                y_button = self.main_window.child_window(title="Y", control_type="Button")
-                if y_button.exists(timeout=0.5):
+                y_button = self.main_window.child_window(auto_id="btnPrint", control_type="Button")
+                if y_button.exists(timeout=0.2):
                     self._cache_element("y_button", y_button)  # Cache'e ekle
-                    # Farklı tıklama yöntemlerini dene
                     try:
                         y_button.invoke()
-                        logger.info("✓ Y butonuna tıklandı (hızlı)")
+                        logger.info("✓ Y butonuna tıklandı (AutomationId)")
                     except Exception as e:
                         logger.debug(f"Y butonu invoke() hatası: {type(e).__name__}")
                         try:
                             y_button.click()
-                            logger.info("✓ Y butonuna tıklandı (hızlı)")
+                            logger.info("✓ Y butonuna tıklandı (click)")
                         except Exception as e2:
                             logger.debug(f"Y butonu click() hatası: {type(e2).__name__}")
                             y_button.click_input()
-                            logger.info("✓ Y butonuna tıklandı (hızlı)")
+                            logger.info("✓ Y butonuna tıklandı (click_input)")
 
                     self.timed_sleep("y_butonu")
                     return True
             except Exception as e:
-                logger.debug(f"Y butonu child_window() arama hatası: {type(e).__name__}")
+                logger.debug(f"Y butonu AutomationId arama hatası: {type(e).__name__}")
 
-            # FALLBACK: descendants() ile arama (daha yavaş ama güvenli)
+            # YÖNTEM 2: Name ile arama (FALLBACK)
             try:
-                y_button = self.main_window.descendants(title="Y", control_type="Button")
-                if y_button and len(y_button) > 0:
-                    self._cache_element("y_button", y_button[0])  # Cache'e ekle
+                y_button = self.main_window.child_window(title="Y", control_type="Button")
+                if y_button.exists(timeout=0.3):
+                    self._cache_element("y_button", y_button)
                     try:
-                        y_button[0].invoke()
-                        logger.info("✓ Y butonuna tıklandı (fallback)")
+                        y_button.invoke()
+                        logger.info("✓ Y butonuna tıklandı (Name)")
                     except Exception as e:
-                        logger.debug(f"Y butonu fallback invoke() hatası: {type(e).__name__}")
+                        logger.debug(f"Y butonu Name invoke() hatası: {type(e).__name__}")
+                        y_button.click_input()
+                        logger.info("✓ Y butonuna tıklandı (Name click)")
+                    self.timed_sleep("y_butonu")
+                    return True
+            except Exception as e:
+                logger.debug(f"Y butonu Name arama hatası: {type(e).__name__}")
+
+            # YÖNTEM 3: descendants() ile AutomationId araması (SON ÇARE)
+            try:
+                y_buttons = self.main_window.descendants(auto_id="btnPrint", control_type="Button")
+                if y_buttons and len(y_buttons) > 0:
+                    self._cache_element("y_button", y_buttons[0])
+                    try:
+                        y_buttons[0].invoke()
+                        logger.info("✓ Y butonuna tıklandı (descendants)")
+                    except Exception as e:
+                        logger.debug(f"Y butonu descendants invoke() hatası: {type(e).__name__}")
                         try:
-                            y_button[0].click()
-                            logger.info("✓ Y butonuna tıklandı (fallback)")
+                            y_buttons[0].click()
+                            logger.info("✓ Y butonuna tıklandı (descendants click)")
                         except Exception as e2:
-                            logger.debug(f"Y butonu fallback click() hatası: {type(e2).__name__}")
-                            y_button[0].click_input()
-                            logger.info("✓ Y butonuna tıklandı (fallback)")
+                            logger.debug(f"Y butonu descendants click() hatası: {type(e2).__name__}")
+                            y_buttons[0].click_input()
+                            logger.info("✓ Y butonuna tıklandı (descendants click_input)")
 
                     self.timed_sleep("y_butonu")
                     return True
                 else:
-                    logger.warning("❌ Y butonu yok")
-                    return False
+                    logger.warning("⚠️ Y butonu bulunamadı, ENTER tuşu gönderiliyor (laba/lama popup fallback)...")
+                    try:
+                        send_keys("{ENTER}")
+                        self.timed_sleep("y_butonu")
+                        logger.info("✓ ENTER tuşu gönderildi (Y butonu yerine)")
+                        return True
+                    except Exception as enter_err:
+                        logger.error(f"ENTER tuşu gönderme hatası: {enter_err}")
+                        return False
             except Exception as e:
                 logger.error(f"Y butonu hatası: {e}")
-                return False
+                logger.warning("⚠️ Y butonu arama hatası, ENTER tuşu gönderiliyor...")
+                try:
+                    send_keys("{ENTER}")
+                    self.timed_sleep("y_butonu")
+                    logger.info("✓ ENTER tuşu gönderildi (Y butonu yerine)")
+                    return True
+                except Exception as enter_err:
+                    logger.error(f"ENTER tuşu gönderme hatası: {enter_err}")
+                    return False
 
         except Exception as e:
             logger.error(f"Y tıklama hatası: {e}")
-            return False
+            logger.warning("⚠️ Y butonu işlemi başarısız, ENTER tuşu gönderiliyor...")
+            try:
+                send_keys("{ENTER}")
+                self.timed_sleep("y_butonu")
+                logger.info("✓ ENTER tuşu gönderildi (Y butonu yerine)")
+                return True
+            except Exception as enter_err:
+                logger.error(f"ENTER tuşu gönderme hatası: {enter_err}")
+                return False
 
     def yeni_pencereyi_bul(self, pencere_basligi_iceren="İlaç Listesi"):
         """
@@ -1345,36 +2299,38 @@ class BotanikBot:
 
     def bizden_alinanlarin_sec_tusuna_tikla(self):
         """
-        Bizden Alınmayanları Seç butonuna tıkla
-        OPTIMIZE: child_window() ile direkt arama (hızlı), fallback ile güvenli
+        Bizden Alınmayanları Seç butonuna tıkla - OPTIMIZE: descendants() ile doğrudan arama
+
+        Inspect.exe bilgileri (27 Kasım 2025):
+        - AutomationId: "btnRaporlulariSec"
+        - Name: "Bizden\nAlınmayanları Seç" (çok satırlı)
+        - ControlType: Button
+        - FrameworkId: "WinForm"
+        - IsInvokePatternAvailable: true
 
         Returns:
             bool: Tıklama başarılı ise True
         """
         try:
-            # OPTIMIZE: child_window() ile hızlı arama
+            # YÖNTEM 1: descendants() ile AutomationId araması (EN HIZLI - child_window hep başarısız)
             try:
-                bizden_button = self.main_window.child_window(
-                    title_re=".*Alı[nm].*Seç.*",  # "Alınmayanları Seç" veya "Alınanları Seç"
+                bizden_buttons = self.main_window.descendants(
+                    auto_id="btnRaporlulariSec",
                     control_type="Button"
                 )
-                if bizden_button.exists(timeout=0.5):
+                if bizden_buttons and len(bizden_buttons) > 0:
                     try:
-                        bizden_button.invoke()
-                    except Exception as e:
-                        logger.debug(f"Bizden alınanlar invoke() hatası: {type(e).__name__}")
-                        try:
-                            bizden_button.click()
-                        except Exception as e2:
-                            logger.debug(f"Bizden alınanlar click() hatası: {type(e2).__name__}")
-                            bizden_button.click_input()
-
-                    logger.info("✓ Alınmayanları seç (hızlı)")
-                    return True
+                        bizden_buttons[0].invoke()
+                        logger.info("✓ Alınmayanları seç (AutomationId)")
+                        return True
+                    except Exception:
+                        bizden_buttons[0].click_input()
+                        logger.info("✓ Alınmayanları seç (click)")
+                        return True
             except Exception as e:
-                logger.debug(f"Bizden alınanlar child_window() arama hatası: {type(e).__name__}")
+                logger.debug(f"descendants AutomationId hatası: {type(e).__name__}")
 
-            # FALLBACK: descendants() ile arama (daha yavaş ama güvenli)
+            # Eski FALLBACK: descendants() ile text arama (en son çare)
             try:
                 buttons = self.main_window.descendants(control_type="Button")
                 bizden_button = None
@@ -1410,6 +2366,612 @@ class BotanikBot:
         except Exception as e:
             logger.error(f"Tıklama hatası: {e}")
             return False
+
+    def textboxlara_122_yaz(self):
+        """
+        İlaç Listesi penceresindeki iki textbox'a "122" yaz
+
+        KOORDİNAT KULLANMAZ - pywinauto native metodları kullanır
+        Her çözünürlük ve pencere konumunda çalışır.
+
+        UIElementInspector bilgileri (9 Aralık 2025):
+        - Textbox 1 (- gün): ClassName: WindowsForms10.EDIT.app.0.134c08f_r8_ad1, ~27x14 boyut
+        - Textbox 2 (+ gün): ClassName: WindowsForms10.EDIT.app.0.134c08f_r8_ad1, ~27x14 boyut
+        - WindowTitle: "... İlaç Listesi" (hasta adı + İlaç Listesi)
+        - AutomationId'ler DİNAMİK (her seferinde değişir)
+
+        Tespit Yöntemi:
+        1. İlaç Listesi penceresini bul
+        2. ClassName içinde "EDIT" olan küçük Edit kontrollerini bul
+        3. Y koordinatına göre sırala (üstten alta)
+        4. İlk ikisine sırayla yaz (native click/type_keys ile)
+
+        Returns:
+            bool: Her iki textbox'a da yazma başarılı ise True
+        """
+        from pywinauto.keyboard import send_keys
+        from pywinauto import Desktop
+
+        try:
+            # ===== TEXTBOX 122 AYARLARI KONTROLÜ =====
+            textbox_ayar = self._insan_davranisi_ayarlar.get("textbox_122", {}) if self._insan_modu_aktif else {}
+
+            # Yazma devre dışı mı?
+            if textbox_ayar.get("yazmayi_devre_disi_birak", False):
+                logger.info("📝 Textbox yazma devre dışı (ayarlardan)")
+                return True
+
+            # Özel değer kullan mı?
+            if textbox_ayar.get("ozel_deger_kullan", False):
+                deger_1 = textbox_ayar.get("deger_1", "122")
+                deger_2 = textbox_ayar.get("deger_2", "122")
+                logger.info(f"📝 Textbox'lara özel değerler yazılıyor: '{deger_1}' ve '{deger_2}'")
+            else:
+                deger_1 = "122"
+                deger_2 = "122"
+                logger.info("📝 Textbox'lara 122 yazılıyor (koordinatsız)...")
+
+            # ===== İLAÇ LİSTESİ PENCERESİNİ DESKTOP'TAN BUL =====
+            ilac_listesi_window = None
+            try:
+                windows = Desktop(backend="uia").windows()
+                for window in windows:
+                    try:
+                        window_title = window.window_text()
+                        if "İlaç Listesi" in window_title:
+                            ilac_listesi_window = window
+                            logger.info(f"  → İlaç Listesi penceresi: {window_title}")
+                            break
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.warning(f"  Desktop arama hatası: {type(e).__name__}")
+
+            if not ilac_listesi_window:
+                logger.warning("❌ İlaç Listesi penceresi bulunamadı, main_window kullanılıyor")
+                ilac_listesi_window = self.main_window
+
+            # ===== EDİT KONTROLLERİNİ BUL (SADECE KÜÇÜK OLANLAR) =====
+            # ClassName içinde "EDIT" olanları bul - bu daha güvenilir
+            edit_controls = []
+            try:
+                all_edits = ilac_listesi_window.descendants(control_type="Edit")
+                for edit in all_edits:
+                    try:
+                        # ClassName kontrolü - WindowsForms10.EDIT içermeli
+                        class_name = ""
+                        try:
+                            class_name = edit.element_info.class_name or ""
+                        except Exception:
+                            pass
+
+                        if "EDIT" not in class_name.upper():
+                            continue
+
+                        # Boyut kontrolü - küçük textbox'lar (width < 80, height < 40)
+                        rect = edit.rectangle()
+                        width = rect.width()
+                        height = rect.height()
+
+                        if width > 80 or height > 40:
+                            continue
+
+                        # Bu bir hedef textbox
+                        edit_controls.append({
+                            'element': edit,
+                            'top': rect.top,
+                            'width': width,
+                            'height': height,
+                            'class_name': class_name
+                        })
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.warning(f"  Edit arama hatası: {type(e).__name__}")
+
+            if not edit_controls:
+                logger.warning("❌ EDIT textbox bulunamadı")
+                return False
+
+            logger.info(f"  → {len(edit_controls)} küçük EDIT textbox bulundu")
+
+            # ===== Y KOORDİNATINA GÖRE SIRALA (üstten alta) =====
+            edit_controls.sort(key=lambda x: x['top'])
+
+            # Log: Bulunan textbox'lar
+            for i, info in enumerate(edit_controls[:4]):  # İlk 4'ü göster
+                logger.info(f"    Edit[{i}]: Y={info['top']}, size=({info['width']}x{info['height']})")
+
+            # ===== İLK İKİ TEXTBOX'A NATIVE METODLARLA YAZ =====
+            basarili = 0
+            degerleri = [deger_1, deger_2]
+
+            for i in range(min(2, len(edit_controls))):
+                edit_info = edit_controls[i]
+                edit_element = edit_info['element']
+                yazilacak_deger = degerleri[i]
+
+                logger.info(f"  → Textbox {i+1} (Y:{edit_info['top']}) yazılıyor...")
+
+                try:
+                    # YÖNTEM 1: Native set_focus + type_keys (koordinatsız)
+                    try:
+                        edit_element.set_focus()
+                        time.sleep(0.1)
+                        edit_element.type_keys("^a", with_spaces=True)  # Ctrl+A ile seç
+                        time.sleep(0.05)
+                        edit_element.type_keys(yazilacak_deger, with_spaces=True)
+                        time.sleep(0.1)
+                        basarili += 1
+                        logger.info(f"  ✓ Textbox {i+1}: '{yazilacak_deger}' yazıldı (native)")
+                        continue
+                    except Exception as e1:
+                        logger.debug(f"    Native type_keys hatası: {type(e1).__name__}")
+
+                    # YÖNTEM 2: click_input + send_keys (relative click)
+                    try:
+                        edit_element.click_input()
+                        time.sleep(0.1)
+                        send_keys("^a")
+                        time.sleep(0.05)
+                        send_keys(yazilacak_deger)
+                        time.sleep(0.1)
+                        basarili += 1
+                        logger.info(f"  ✓ Textbox {i+1}: '{yazilacak_deger}' yazıldı (click_input)")
+                        continue
+                    except Exception as e2:
+                        logger.debug(f"    click_input hatası: {type(e2).__name__}")
+
+                    # YÖNTEM 3: set_edit_text (WinForms için)
+                    try:
+                        # Önce mevcut metni temizle
+                        edit_element.set_edit_text("")
+                        time.sleep(0.05)
+                        edit_element.set_edit_text(yazilacak_deger)
+                        time.sleep(0.1)
+                        basarili += 1
+                        logger.info(f"  ✓ Textbox {i+1}: '{yazilacak_deger}' yazıldı (set_edit_text)")
+                        continue
+                    except Exception as e3:
+                        logger.debug(f"    set_edit_text hatası: {type(e3).__name__}")
+
+                except Exception as e:
+                    logger.warning(f"  ❌ Textbox {i+1} hatası: {type(e).__name__}: {e}")
+
+            # ===== SONUÇ DEĞERLENDİRME =====
+            if basarili >= 2:
+                logger.info(f"✓ Her iki textbox'a '{deger_1}'/'{deger_2}' yazıldı")
+                return True
+            elif basarili == 1:
+                # Sadece biri yazıldı, TAB ile diğerine geç
+                logger.warning(f"⚠ Sadece {basarili}/2 textbox'a yazıldı, TAB deneniyor...")
+                try:
+                    send_keys("{TAB}")
+                    time.sleep(0.1)
+                    send_keys("^a")
+                    time.sleep(0.05)
+                    send_keys(deger_2)
+                    time.sleep(0.1)
+                    logger.info(f"  ✓ Textbox 2: '{deger_2}' yazıldı (TAB ile)")
+                    return True
+                except Exception:
+                    pass
+            else:
+                # Hiçbiri yazılamadı, TAB yöntemi dene
+                logger.warning("⚠ Native yöntemler başarısız, TAB yöntemi deneniyor...")
+                if len(edit_controls) >= 1:
+                    return self._textbox_122_native_tab(edit_controls[0]['element'], deger_1, deger_2)
+
+            logger.error("❌ Textbox'lara yazılamadı")
+            return False
+
+        except Exception as e:
+            logger.error(f"Textbox yazma hatası: {type(e).__name__}: {e}")
+            return False
+
+    def _textbox_122_native_tab(self, ilk_edit_element, deger_1="122", deger_2="122"):
+        """
+        TAB tuşu ile iki textbox'a değer yaz (native element kullanarak)
+        KOORDİNAT KULLANMAZ
+        """
+        from pywinauto.keyboard import send_keys
+
+        try:
+            logger.info("  → TAB yöntemi (native): İlk textbox'a odaklanılıyor...")
+
+            # İlk textbox'a odaklan
+            try:
+                ilk_edit_element.set_focus()
+                time.sleep(0.1)
+            except Exception:
+                ilk_edit_element.click_input()
+                time.sleep(0.1)
+
+            # İlk textbox'a değer yaz
+            send_keys("^a")
+            time.sleep(0.05)
+            send_keys(deger_1)
+            time.sleep(0.1)
+            logger.info(f"  ✓ Textbox 1: '{deger_1}' yazıldı")
+
+            # TAB ile ikinci textbox'a geç
+            send_keys("{TAB}")
+            time.sleep(0.1)
+
+            # İkinci textbox'a değer yaz
+            send_keys("^a")
+            time.sleep(0.05)
+            send_keys(deger_2)
+            time.sleep(0.1)
+            logger.info(f"  ✓ Textbox 2: '{deger_2}' yazıldı (TAB ile)")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"TAB yöntemi (native) hatası: {type(e).__name__}: {e}")
+            return False
+
+    def _textboxlara_122_yaz_eski(self):
+        """
+        ESKİ KOORDİNAT TABANLI YÖNTEM - KULLANILMIYOR
+        Farklı çözünürlük/pencere konumunda çalışmaz!
+        """
+        from pywinauto.keyboard import send_keys
+        from pywinauto import Desktop
+        import ctypes
+
+        try:
+            # ===== TEXTBOX 122 AYARLARI KONTROLÜ =====
+            textbox_ayar = self._insan_davranisi_ayarlar.get("textbox_122", {}) if self._insan_modu_aktif else {}
+
+            # Yazma devre dışı mı?
+            if textbox_ayar.get("yazmayi_devre_disi_birak", False):
+                logger.info("📝 Textbox yazma devre dışı (ayarlardan)")
+                return True
+
+            # Özel değer kullan mı?
+            if textbox_ayar.get("ozel_deger_kullan", False):
+                deger_1 = textbox_ayar.get("deger_1", "122")
+                deger_2 = textbox_ayar.get("deger_2", "122")
+                logger.info(f"📝 Textbox'lara özel değerler yazılıyor: '{deger_1}' ve '{deger_2}'")
+            else:
+                deger_1 = "122"
+                deger_2 = "122"
+                logger.info("📝 Textbox'lara 122 yazılıyor...")
+
+            # ===== İLAÇ LİSTESİ PENCERESİNİ DESKTOP'TAN BUL =====
+            ilac_listesi_window = None
+            try:
+                windows = Desktop(backend="uia").windows()
+                for window in windows:
+                    try:
+                        window_title = window.window_text()
+                        if "İlaç Listesi" in window_title:
+                            ilac_listesi_window = window
+                            logger.info(f"  → İlaç Listesi penceresi: {window_title}")
+                            break
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.warning(f"  Desktop arama hatası: {type(e).__name__}")
+
+            if not ilac_listesi_window:
+                logger.warning("❌ İlaç Listesi penceresi bulunamadı, main_window kullanılıyor")
+                ilac_listesi_window = self.main_window
+
+            # ===== EDİT KONTROLLERİNİ BUL VE KOORDİNATLARI HEMEN KAYDET =====
+            edit_controls = ilac_listesi_window.descendants(control_type="Edit")
+
+            if not edit_controls:
+                logger.warning("❌ Edit kontrolleri bulunamadı")
+                return False
+
+            logger.info(f"  → {len(edit_controls)} Edit kontrolü bulundu")
+
+            # ===== TÜM EDİT BİLGİLERİNİ HEMEN TOPLA VE SABİT KOORDİNATLARI KAYDET =====
+            # (rectangle() çağrısı bir kez yapılıp kaydediliyor)
+            # BOYUT FİLTRESİ: Sadece küçük sayısal giriş kutularını al (width < 60, height < 30)
+            # Bu sayede ComboBox'ların Edit kısımları ve büyük metin alanları filtrelenir
+            edit_bilgileri = []
+            for idx, edit in enumerate(edit_controls):
+                try:
+                    rect = edit.rectangle()
+                    # Koordinatları HEMEN sayısal değer olarak kaydet
+                    left = int(rect.left)
+                    top = int(rect.top)
+                    width = int(rect.width())
+                    height = int(rect.height())
+                    center_x = left + (width // 2)
+                    center_y = top + (height // 2)
+
+                    text = ""
+                    try:
+                        text = edit.window_text() if hasattr(edit, 'window_text') else ""
+                    except Exception:
+                        pass
+
+                    logger.info(f"    Edit[{idx}]: Y={top}, size=({width}x{height}), center=({center_x},{center_y}), text='{text}'")
+
+                    # BOYUT FİLTRESİ: Sadece küçük textbox'ları kabul et
+                    # İkinci textbox: 27x14 boyutunda (inspect.exe raporundan)
+                    # Büyük Edit'ler (ComboBox Edit, metin alanları) genellikle > 60 width
+                    if width > 80 or height > 40:
+                        logger.info(f"      → Atlandı (çok büyük: {width}x{height})")
+                        continue
+
+                    bilgi = {
+                        'idx': idx,
+                        'top': top,
+                        'left': left,
+                        'width': width,
+                        'height': height,
+                        'center_x': center_x,
+                        'center_y': center_y,
+                        'text': text
+                    }
+                    edit_bilgileri.append(bilgi)
+                except Exception as e:
+                    logger.debug(f"Edit[{idx}] bilgi hatası: {type(e).__name__}")
+
+            if len(edit_bilgileri) < 2:
+                logger.warning(f"❌ Boyut filtresi sonrası yeterli Edit yok: {len(edit_bilgileri)}")
+                # Fallback: Boyut filtresi olmadan tekrar dene
+                logger.info("  → Fallback: Boyut filtresi kaldırılarak tekrar deneniyor...")
+                edit_bilgileri_fallback = []
+                for idx, edit in enumerate(edit_controls):
+                    try:
+                        rect = edit.rectangle()
+                        left = int(rect.left)
+                        top = int(rect.top)
+                        width = int(rect.width())
+                        height = int(rect.height())
+                        center_x = left + (width // 2)
+                        center_y = top + (height // 2)
+                        text = ""
+                        try:
+                            text = edit.window_text() if hasattr(edit, 'window_text') else ""
+                        except Exception:
+                            pass
+                        bilgi = {
+                            'idx': idx, 'top': top, 'left': left, 'width': width, 'height': height,
+                            'center_x': center_x, 'center_y': center_y, 'text': text
+                        }
+                        edit_bilgileri_fallback.append(bilgi)
+                    except Exception:
+                        pass
+
+                if len(edit_bilgileri_fallback) >= 1:
+                    # Y'ye göre sırala ve TAB yöntemi kullan
+                    edit_bilgileri_fallback.sort(key=lambda x: x['top'])
+                    logger.info(f"  → Fallback: {len(edit_bilgileri_fallback)} Edit bulundu, TAB yöntemi kullanılacak")
+                    return self._textbox_122_tab_yontemi_v2(edit_bilgileri_fallback[0], deger_1, deger_2)
+
+                if len(edit_bilgileri) == 1:
+                    return self._textbox_122_tab_yontemi_v2(edit_bilgileri[0], deger_1, deger_2)
+                return False
+
+            # ===== Y KOORDİNATINA GÖRE SIRALA =====
+            edit_bilgileri.sort(key=lambda x: x['top'])
+
+            # ===== FARKLI KOORDİNATLARI OLAN İLK 2 EDİT'İ SEÇ =====
+            # (Aynı koordinatta olanları atla)
+            secilen_editler = []
+            kullanilan_koordinatlar = set()
+
+            for bilgi in edit_bilgileri:
+                koordinat_key = (bilgi['center_x'], bilgi['center_y'])
+                if koordinat_key not in kullanilan_koordinatlar:
+                    secilen_editler.append(bilgi)
+                    kullanilan_koordinatlar.add(koordinat_key)
+                    if len(secilen_editler) >= 2:
+                        break
+
+            logger.info(f"  → {len(secilen_editler)} farklı koordinatta Edit seçildi")
+
+            for i, bilgi in enumerate(secilen_editler):
+                logger.info(f"    Seçilen Edit {i+1}: Y={bilgi['top']}, size=({bilgi['width']}x{bilgi['height']}), center=({bilgi['center_x']},{bilgi['center_y']})")
+
+            if len(secilen_editler) < 2:
+                logger.warning("⚠ İki farklı koordinatta Edit bulunamadı, TAB yöntemi kullanılacak")
+                return self._textbox_122_tab_yontemi_v2(secilen_editler[0] if secilen_editler else edit_bilgileri[0], deger_1, deger_2)
+
+            # İki Edit'in Y koordinatları farklı mı kontrol et
+            y1 = secilen_editler[0]['top']
+            y2 = secilen_editler[1]['top']
+            logger.info(f"  → Y koordinatları: {y1} vs {y2} (fark: {abs(y1-y2)} piksel)")
+
+            if abs(y1 - y2) < 10:
+                logger.warning(f"⚠ İki Edit'in Y koordinatları çok yakın: {y1} vs {y2}")
+                return self._textbox_122_tab_yontemi_v2(secilen_editler[0], deger_1, deger_2)
+
+            # ===== HER İKİ TEXTBOX'A SABİT KOORDİNATLAR İLE TIKLA VE YAZ =====
+            basarili = 0
+            for i, bilgi in enumerate(secilen_editler[:2]):
+                center_x = bilgi['center_x']
+                center_y = bilgi['center_y']
+                logger.info(f"  → Textbox {i+1} (Y:{bilgi['top']}) tıklanıyor: ({center_x}, {center_y})")
+
+                try:
+                    # Fare pozisyonunu ayarla
+                    ctypes.windll.user32.SetCursorPos(center_x, center_y)
+                    time.sleep(0.1)  # OPT: 0.2 → 0.1
+
+                    # Sol tık
+                    ctypes.windll.user32.mouse_event(2, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
+                    time.sleep(0.03)  # OPT: 0.05 → 0.03
+                    ctypes.windll.user32.mouse_event(4, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
+                    time.sleep(0.15)  # OPT: 0.3 → 0.15
+
+                    # Tüm metni seç ve yaz
+                    send_keys("^a")
+                    time.sleep(0.08)  # OPT: 0.15 → 0.08
+                    yazilacak_deger = deger_1 if i == 0 else deger_2
+                    send_keys(yazilacak_deger)
+                    time.sleep(0.15)  # OPT: 0.3 → 0.15
+
+                    logger.info(f"  ✓ Textbox {i+1}: '{yazilacak_deger}' yazıldı (koordinat: {center_x},{center_y})")
+                    basarili += 1
+
+                except Exception as e:
+                    logger.warning(f"  ❌ Textbox {i+1} hatası: {type(e).__name__}: {e}")
+
+            if basarili >= 2:
+                logger.info(f"✓ Her iki textbox'a '{deger_1}'/'{deger_2}' yazıldı")
+                return True
+            elif basarili >= 1:
+                logger.warning(f"⚠ Sadece {basarili}/2 textbox'a yazıldı, TAB deneniyor...")
+                try:
+                    send_keys("{TAB}")
+                    time.sleep(0.15)  # OPT: 0.25 → 0.15
+                    send_keys("^a")
+                    time.sleep(0.08)  # OPT: 0.15 → 0.08
+                    send_keys(deger_2)
+                    time.sleep(0.1)  # OPT: 0.2 → 0.1
+                    logger.info(f"  ✓ Textbox 2: '{deger_2}' yazıldı (TAB ile)")
+                    return True
+                except Exception:
+                    pass
+                return True
+            else:
+                logger.error("❌ Hiçbir textbox'a yazılamadı")
+                return False
+
+        except Exception as e:
+            logger.error(f"Textbox yazma hatası: {e}")
+            return False
+
+    def _textbox_122_tab_yontemi(self, ilk_edit_tuple):
+        """TAB tuşu ile iki textbox'a 122 yaz"""
+        from pywinauto.keyboard import send_keys
+        import ctypes
+
+        try:
+            y_pos, rect, edit, handle = ilk_edit_tuple
+            center_x = rect.left + (rect.width() // 2)
+            center_y = rect.top + (rect.height() // 2)
+
+            logger.info(f"  → TAB yöntemi: İlk textbox (Y:{y_pos})")
+
+            # İlk textbox'a tıkla
+            ctypes.windll.user32.SetCursorPos(center_x, center_y)
+            time.sleep(0.15)
+            ctypes.windll.user32.mouse_event(2, 0, 0, 0, 0)
+            time.sleep(0.03)
+            ctypes.windll.user32.mouse_event(4, 0, 0, 0, 0)
+            time.sleep(0.25)
+
+            # İlk textbox'a 122 yaz
+            send_keys("^a")
+            time.sleep(0.1)
+            send_keys("122")
+            time.sleep(0.25)
+            logger.info("  ✓ Textbox 1: 122 yazıldı")
+
+            # TAB ile ikinci textbox'a geç
+            send_keys("{TAB}")
+            time.sleep(0.25)
+
+            # İkinci textbox'a 122 yaz
+            send_keys("^a")
+            time.sleep(0.1)
+            send_keys("122")
+            time.sleep(0.2)
+            logger.info("  ✓ Textbox 2: 122 yazıldı (TAB ile)")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"TAB yöntemi hatası: {e}")
+            return False
+
+    def _textbox_122_tab_yontemi_v2(self, ilk_edit_bilgi, deger_1="122", deger_2="122"):
+        """TAB tuşu ile iki textbox'a değer yaz (dict format)"""
+        from pywinauto.keyboard import send_keys
+        import ctypes
+
+        try:
+            center_x = ilk_edit_bilgi['center_x']
+            center_y = ilk_edit_bilgi['center_y']
+
+            logger.info(f"  → TAB yöntemi v2: İlk textbox (Y:{ilk_edit_bilgi['top']})")
+
+            # İlk textbox'a tıkla
+            ctypes.windll.user32.SetCursorPos(center_x, center_y)
+            time.sleep(0.1)  # OPT: 0.2 → 0.1
+            ctypes.windll.user32.mouse_event(2, 0, 0, 0, 0)
+            time.sleep(0.03)  # OPT: 0.05 → 0.03
+            ctypes.windll.user32.mouse_event(4, 0, 0, 0, 0)
+            time.sleep(0.15)  # OPT: 0.3 → 0.15
+
+            # İlk textbox'a değer yaz
+            send_keys("^a")
+            time.sleep(0.08)  # OPT: 0.15 → 0.08
+            send_keys(deger_1)
+            time.sleep(0.15)  # OPT: 0.3 → 0.15
+            logger.info(f"  ✓ Textbox 1: '{deger_1}' yazıldı")
+
+            # TAB ile ikinci textbox'a geç
+            send_keys("{TAB}")
+            time.sleep(0.15)  # OPT: 0.3 → 0.15
+
+            # İkinci textbox'a değer yaz
+            send_keys("^a")
+            time.sleep(0.08)  # OPT: 0.15 → 0.08
+            send_keys(deger_2)
+            time.sleep(0.12)  # OPT: 0.25 → 0.12
+            logger.info(f"  ✓ Textbox 2: '{deger_2}' yazıldı (TAB ile)")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"TAB yöntemi v2 hatası: {e}")
+            return False
+
+    def ilac_secimi_ve_takip_et(self):
+        """
+        Yeni ilaç seçimi akışı - checkbox kontrolü YOK
+
+        Adımlar:
+        1. Textbox'lara "122" yaz
+        2. "Bizden Alınmayanları Seç" butonuna tıkla
+        3. "Seçim satır 1"e sağ tıkla
+        4. "Takip Et" menü öğesine tıkla
+
+        Returns:
+            tuple: (bool: başarılı mı, int: takip edilen ilaç sayısı)
+        """
+        try:
+            # 1. Textbox'lara "122" yaz
+            if not self.textboxlara_122_yaz():
+                logger.warning("⚠ Textbox'lara yazılamadı, devam ediliyor...")
+
+            time.sleep(0.1)  # Kısa bekleme
+
+            # 2. "Bizden Alınmayanları Seç" butonuna tıkla
+            if not self.bizden_alinanlarin_sec_tusuna_tikla():
+                logger.error("❌ Bizden Alınmayanları Seç butonu tıklanamadı")
+                return (False, 0)
+
+            time.sleep(0.3)  # Seçim için kısa bekleme
+
+            # 3-4. Sağ tıkla ve "Takip Et"
+            if not self.ilk_ilaca_sag_tik_ve_takip_et():
+                logger.error("❌ Takip Et tıklanamadı")
+                return (False, 0)
+
+            # Takip edilen ilaç sayısını say
+            try:
+                cells = self.main_window.descendants(control_type="DataItem")
+                takip_sayisi = sum(1 for cell in cells if "Seçim satır" in cell.window_text())
+            except Exception:
+                takip_sayisi = 1
+
+            logger.info(f"✓ İlaç seçimi ve takip tamamlandı ({takip_sayisi} ilaç)")
+            return (True, takip_sayisi)
+
+        except Exception as e:
+            logger.error(f"İlaç seçimi hatası: {e}")
+            return (False, 0)
 
     def ilac_secili_mi_kontrol(self):
         """
@@ -1525,39 +3087,145 @@ class BotanikBot:
 
     def ilac_listesi_penceresini_kapat(self):
         """
-        İlaç Listesi penceresini kapat
-        OPTIMIZE: child_window() ile direkt arama (hızlı), fallback ile güvenli
+        İlaç Listesi penceresini kapat - Geliştirilmiş WindowsForms pencere kapatma
+
+        UIElementInspector bilgileri (1 Aralık 2025):
+        - WindowTitle: "... İlaç Listesi" (hasta adı + İlaç Listesi)
+        - WindowClassName: WindowsForms10.Window.8.app.0.134c08f_r8_ad1
+        - Close Button: AutomationId="Close", Name="Kapat", ControlType=Button
+        - BoundingRect: Tüm pencere boyutu (başlık çubuğu close butonu)
 
         Returns:
             bool: Kapatma başarılı ise True
         """
+        from pywinauto.keyboard import send_keys
+
         try:
-            # OPTIMIZE: child_window() ile hızlı arama
+            logger.info("🔍 İlaç Listesi penceresi kapatılıyor...")
+
+            # YÖNTEM 1: Pencereyi doğrudan close() ile kapat (EN ETKİLİ - WindowsForms için)
             try:
-                kapat_btn = self.main_window.child_window(title="Kapat", control_type="Button")
-                if kapat_btn.exists(timeout=0.5):
-                    kapat_btn.click_input()
-                    logger.info("✓ Pencere kapatıldı (hızlı)")
+                window_title = self.main_window.window_text()
+                if "İlaç Listesi" in window_title:
+                    logger.info(f"  → Pencere bulundu: {window_title}")
+                    self.main_window.close()
+                    logger.info("✓ Pencere kapatıldı (close())")
                     self.timed_sleep("kapat_butonu")
                     return True
-            except Exception as e:
-                logger.debug(f"Operation failed: {type(e).__name__}")
+            except Exception as close_err:
+                logger.debug(f"close() hatası: {type(close_err).__name__}: {close_err}")
 
-            # FALLBACK: descendants() ile arama (daha yavaş ama güvenli)
-            buttons = self.main_window.descendants(control_type="Button")
+            # YÖNTEM 2: Alt+F4 ile kapat (WindowsForms pencereleri için etkili)
+            try:
+                self.main_window.set_focus()
+                time.sleep(0.1)
+                send_keys("%{F4}")  # Alt+F4
+                logger.info("✓ Pencere kapatıldı (Alt+F4)")
+                self.timed_sleep("kapat_butonu")
+                return True
+            except Exception as altf4_err:
+                logger.debug(f"Alt+F4 hatası: {type(altf4_err).__name__}")
 
-            for btn in buttons:
-                try:
-                    btn_name = btn.window_text()
-                    if btn_name == "Kapat":
-                        btn.click_input()
-                        logger.info("✓ Pencere kapatıldı (fallback)")
+            # YÖNTEM 3: ESC tuşu ile kapat (dialog pencereleri için)
+            try:
+                self.main_window.set_focus()
+                time.sleep(0.1)
+                send_keys("{ESC}")
+                logger.info("✓ Pencere kapatıldı (ESC)")
+                self.timed_sleep("kapat_butonu")
+                return True
+            except Exception as esc_err:
+                logger.debug(f"ESC hatası: {type(esc_err).__name__}")
+
+            # YÖNTEM 4: child_window() ile AutomationId araması
+            try:
+                kapat_btn = self.main_window.child_window(
+                    auto_id="Close",
+                    control_type="Button"
+                )
+                if kapat_btn.exists(timeout=0.2):
+                    try:
+                        kapat_btn.invoke()
+                        logger.info("✓ Pencere kapatıldı (child_window)")
                         self.timed_sleep("kapat_butonu")
                         return True
-                except Exception as e:
-                    logger.debug(f"Operation failed: {type(e).__name__}")
+                    except Exception as inv_err:
+                        logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                        try:
+                            kapat_btn.click_input()
+                            logger.info("✓ Pencere kapatıldı (click_input)")
+                            self.timed_sleep("kapat_butonu")
+                            return True
+                        except Exception as clk_err:
+                            logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+            except Exception as e:
+                logger.debug(f"child_window AutomationId hatası: {type(e).__name__}")
 
-            logger.warning("❌ Kapat butonu yok")
+            # YÖNTEM 5: child_window() ile Name araması (FALLBACK)
+            try:
+                kapat_btn = self.main_window.child_window(
+                    title="Kapat",
+                    control_type="Button"
+                )
+                if kapat_btn.exists(timeout=0.2):
+                    try:
+                        kapat_btn.invoke()
+                        logger.info("✓ Pencere kapatıldı (Name)")
+                        self.timed_sleep("kapat_butonu")
+                        return True
+                    except Exception as inv_err:
+                        logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                        try:
+                            kapat_btn.click_input()
+                            logger.info("✓ Pencere kapatıldı (click_input - Name)")
+                            self.timed_sleep("kapat_butonu")
+                            return True
+                        except Exception as clk_err:
+                            logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+            except Exception as e:
+                logger.debug(f"child_window Name hatası: {type(e).__name__}")
+
+            # YÖNTEM 6: descendants() ile son çare (spesifik AutomationId ile)
+            logger.warning("Kapat: önceki yöntemler başarısız, descendants() deneniyor...")
+            try:
+                kapat_buttons = self.main_window.descendants(
+                    auto_id="Close",
+                    control_type="Button"
+                )
+                if kapat_buttons and len(kapat_buttons) > 0:
+                    try:
+                        kapat_buttons[0].invoke()
+                        logger.info("✓ Pencere kapatıldı (descendants)")
+                        self.timed_sleep("kapat_butonu")
+                        return True
+                    except Exception:
+                        kapat_buttons[0].click_input()
+                        logger.info("✓ Pencere kapatıldı (descendants click)")
+                        self.timed_sleep("kapat_butonu")
+                        return True
+            except Exception as e:
+                logger.debug(f"descendants() hatası: {type(e).__name__}")
+
+            # YÖNTEM 7: Desktop'tan İlaç Listesi penceresini bul ve kapat
+            try:
+                from pywinauto import Desktop
+                logger.info("  → Desktop'tan İlaç Listesi penceresi aranıyor...")
+                windows = Desktop(backend="uia").windows()
+                for win in windows:
+                    try:
+                        win_title = win.window_text()
+                        if "İlaç Listesi" in win_title:
+                            logger.info(f"  → İlaç Listesi bulundu: {win_title}")
+                            win.close()
+                            logger.info("✓ Pencere kapatıldı (Desktop search)")
+                            self.timed_sleep("kapat_butonu")
+                            return True
+                    except Exception as win_err:
+                        logger.debug(f"Window kontrol hatası: {type(win_err).__name__}")
+            except Exception as desktop_err:
+                logger.debug(f"Desktop search hatası: {type(desktop_err).__name__}")
+
+            logger.warning("❌ İlaç Listesi penceresi kapatılamadı")
             return False
 
         except Exception as e:
@@ -1566,58 +3234,86 @@ class BotanikBot:
 
     def geri_don_butonuna_tikla(self):
         """
-        Ana Medula ekranında Geri Dön butonuna tıkla (Web kontrolü - CACHE YOK)
-        OPTIMIZE: child_window() ile direkt arama (hızlı), fallback ile güvenli
+        Ana Medula ekranında Geri Dön butonuna tıkla - OPTIMIZE: child_window() ile doğrudan arama
+
+        Inspect.exe bilgileri (27 Kasım 2025):
+        - AutomationId: "form1:buttonGeriDon"
+        - Name: "Geri Dön"
+        - ControlType: Button
+        - IsInvokePatternAvailable: true
 
         Returns:
             bool: Tıklama başarılı ise True
         """
         try:
-            # OPTIMIZE: Önce child_window() ile hızlı arama
+            # YÖNTEM 1: child_window() ile AutomationId araması (EN HIZLI)
             try:
                 geri_don_btn = self.main_window.child_window(
-                    title_re=".*Geri D[öo]n.*",
+                    auto_id="form1:buttonGeriDon",
                     control_type="Button"
                 )
-                if geri_don_btn.exists(timeout=0.5):
+                if geri_don_btn.exists(timeout=0.5):  # Timeout artırıldı: 0.2 → 0.5
                     try:
                         geri_don_btn.invoke()
-                    except Exception as e:
-                        logger.debug(f"First attempt failed: {type(e).__name__}")
-                        try:
-                            geri_don_btn.click()
-                        except Exception as e:
-                            logger.debug(f"Geri dön click() failed: {type(e).__name__}")
-                            geri_don_btn.click_input()
-
-                    logger.info("✓ Geri Dön tıklandı (hızlı)")
-                    self.timed_sleep("geri_don_butonu")
-                    return True
-            except Exception as e:
-                logger.debug(f"Operation failed: {type(e).__name__}")
-
-            # FALLBACK: Eski yöntem (descendants) - daha yavaş ama güvenli
-            buttons = self.main_window.descendants(control_type="Button")
-
-            for btn in buttons:
-                try:
-                    btn_name = btn.window_text()
-                    if "Geri Dön" in btn_name or "Geri Don" in btn_name:
-                        try:
-                            btn.invoke()
-                        except Exception as e:
-                            logger.debug(f"Second attempt failed: {type(e).__name__}")
-                            try:
-                                btn.click()
-                            except Exception as e:
-                                logger.debug(f"Button click() failed: {type(e).__name__}")
-                                btn.click_input()
-
-                        logger.info("✓ Geri Dön tıklandı (fallback)")
+                        logger.info("✓ Geri Dön tıklandı (child_window)")
                         self.timed_sleep("geri_don_butonu")
                         return True
-                except Exception as e:
-                    logger.debug(f"Operation failed: {type(e).__name__}")
+                    except Exception as inv_err:
+                        logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                        try:
+                            geri_don_btn.click_input()
+                            logger.info("✓ Geri Dön tıklandı (click_input)")
+                            self.timed_sleep("geri_don_butonu")
+                            return True
+                        except Exception as clk_err:
+                            logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+            except Exception as e:
+                logger.debug(f"child_window AutomationId hatası: {type(e).__name__}")
+
+            # YÖNTEM 2: child_window() ile Name araması (FALLBACK)
+            try:
+                geri_don_btn = self.main_window.child_window(
+                    title="Geri Dön",
+                    control_type="Button"
+                )
+                if geri_don_btn.exists(timeout=0.5):  # Timeout artırıldı: 0.2 → 0.5
+                    try:
+                        geri_don_btn.invoke()
+                        logger.info("✓ Geri Dön tıklandı (Name)")
+                        self.timed_sleep("geri_don_butonu")
+                        return True
+                    except Exception as inv_err:
+                        logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                        try:
+                            geri_don_btn.click_input()
+                            logger.info("✓ Geri Dön tıklandı (click_input - Name)")
+                            self.timed_sleep("geri_don_butonu")
+                            return True
+                        except Exception as clk_err:
+                            logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+            except Exception as e:
+                logger.debug(f"child_window Name hatası: {type(e).__name__}")
+
+            # YÖNTEM 3: descendants() ile son çare (spesifik AutomationId ile)
+            logger.warning("Geri Dön: child_window() başarısız, descendants() deneniyor...")
+            try:
+                geri_don_buttons = self.main_window.descendants(
+                    auto_id="form1:buttonGeriDon",
+                    control_type="Button"
+                )
+                if geri_don_buttons and len(geri_don_buttons) > 0:
+                    try:
+                        geri_don_buttons[0].invoke()
+                        logger.info("✓ Geri Dön tıklandı (descendants)")
+                        self.timed_sleep("geri_don_butonu")
+                        return True
+                    except Exception:
+                        geri_don_buttons[0].click_input()
+                        logger.info("✓ Geri Dön tıklandı (descendants click)")
+                        self.timed_sleep("geri_don_butonu")
+                        return True
+            except Exception as e:
+                logger.debug(f"descendants() hatası: {type(e).__name__}")
 
             logger.warning("❌ Geri Dön bulunamadı")
             return False
@@ -1628,58 +3324,87 @@ class BotanikBot:
 
     def sonra_butonuna_tikla(self):
         """
-        SONRA > butonuna tıklayarak bir sonraki reçeteye geç (Web kontrolü - CACHE YOK)
-        OPTIMIZE: child_window() ile direkt arama (hızlı), fallback ile güvenli
+        SONRA > butonuna tıklayarak bir sonraki reçeteye geç - OPTIMIZE: child_window() ile doğrudan arama
+
+        Inspect.exe bilgileri (27 Kasım 2025):
+        - AutomationId: "btnSonraki"
+        - Name: "Sonra >"
+        - ControlType: Button
+        - FrameworkId: "WinForm"
+        - IsInvokePatternAvailable: true
 
         Returns:
             bool: Tıklama başarılı ise True
         """
         try:
-            # OPTIMIZE: Önce child_window() ile hızlı arama
+            # YÖNTEM 1: child_window() ile AutomationId araması (EN HIZLI)
             try:
                 sonra_btn = self.main_window.child_window(
-                    title_re=".*Sonra.*>.*",
+                    auto_id="btnSonraki",
                     control_type="Button"
                 )
-                if sonra_btn.exists(timeout=0.5):
+                if sonra_btn.exists(timeout=0.5):  # Timeout artırıldı: 0.2 → 0.5
                     try:
                         sonra_btn.invoke()
-                    except Exception as e:
-                        logger.debug(f"First attempt failed: {type(e).__name__}")
-                        try:
-                            sonra_btn.click()
-                        except Exception as e:
-                            logger.debug(f"Sonra button click() failed: {type(e).__name__}")
-                            sonra_btn.click_input()
-
-                    logger.info("✓ SONRA > Sonraki reçete (hızlı)")
-                    self.timed_sleep("sonra_butonu")
-                    return True
-            except Exception as e:
-                logger.debug(f"Operation failed: {type(e).__name__}")
-
-            # FALLBACK: Eski yöntem (descendants) - daha yavaş ama güvenli
-            buttons = self.main_window.descendants(control_type="Button")
-
-            for btn in buttons:
-                try:
-                    btn_name = btn.window_text()
-                    if "Sonra" in btn_name and ">" in btn_name:
-                        try:
-                            btn.invoke()
-                        except Exception as e:
-                            logger.debug(f"Second attempt failed: {type(e).__name__}")
-                            try:
-                                btn.click()
-                            except Exception as e:
-                                logger.debug(f"Button click() failed: {type(e).__name__}")
-                                btn.click_input()
-
-                        logger.info("✓ SONRA > Sonraki reçete (fallback)")
+                        logger.info("✓ SONRA > Sonraki reçete (child_window)")
                         self.timed_sleep("sonra_butonu")
                         return True
-                except Exception as e:
-                    logger.debug(f"Operation failed: {type(e).__name__}")
+                    except Exception as inv_err:
+                        logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                        try:
+                            sonra_btn.click_input()
+                            logger.info("✓ SONRA > Sonraki reçete (click_input)")
+                            self.timed_sleep("sonra_butonu")
+                            return True
+                        except Exception as clk_err:
+                            logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+            except Exception as e:
+                logger.debug(f"child_window AutomationId hatası: {type(e).__name__}")
+
+            # YÖNTEM 2: child_window() ile Name araması (FALLBACK)
+            try:
+                sonra_btn = self.main_window.child_window(
+                    title="Sonra >",
+                    control_type="Button"
+                )
+                if sonra_btn.exists(timeout=0.5):  # Timeout artırıldı: 0.2 → 0.5
+                    try:
+                        sonra_btn.invoke()
+                        logger.info("✓ SONRA > Sonraki reçete (Name)")
+                        self.timed_sleep("sonra_butonu")
+                        return True
+                    except Exception as inv_err:
+                        logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                        try:
+                            sonra_btn.click_input()
+                            logger.info("✓ SONRA > Sonraki reçete (click_input - Name)")
+                            self.timed_sleep("sonra_butonu")
+                            return True
+                        except Exception as clk_err:
+                            logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+            except Exception as e:
+                logger.debug(f"child_window Name hatası: {type(e).__name__}")
+
+            # YÖNTEM 3: descendants() ile son çare (spesifik AutomationId ile)
+            logger.warning("SONRA: child_window() başarısız, descendants() deneniyor...")
+            try:
+                sonra_buttons = self.main_window.descendants(
+                    auto_id="btnSonraki",
+                    control_type="Button"
+                )
+                if sonra_buttons and len(sonra_buttons) > 0:
+                    try:
+                        sonra_buttons[0].invoke()
+                        logger.info("✓ SONRA > Sonraki reçete (descendants)")
+                        self.timed_sleep("sonra_butonu")
+                        return True
+                    except Exception:
+                        sonra_buttons[0].click_input()
+                        logger.info("✓ SONRA > Sonraki reçete (descendants click)")
+                        self.timed_sleep("sonra_butonu")
+                        return True
+            except Exception as e:
+                logger.debug(f"descendants() hatası: {type(e).__name__}")
 
             logger.warning("❌ SONRA yok (Son reçete)")
             return False
@@ -1688,14 +3413,92 @@ class BotanikBot:
             logger.error(f"SONRA butonuna tıklama hatası: {e}")
             return False
 
-    def recete_no_oku(self, max_deneme=5, bekleme_suresi=0.5):
+    def recete_no_ve_kontrol_birlesik(self, max_deneme=3, bekleme_suresi=0.3):
+        """
+        OPTİMİZE: Reçete numarası okuma + Kayıt kontrolü TEK TARAMADA
+
+        Eski yöntem (2 ayrı tarama):
+        - recete_no_oku() → descendants(Text) → ~1-3 saniye
+        - recete_kaydi_var_mi() → descendants(Text) → ~1-3 saniye
+        TOPLAM: 2-6 saniye
+
+        Yeni yöntem (tek tarama):
+        - TEK descendants(Text) çağrısı → ~1-3 saniye
+        - Aynı anda hem reçete no hem uyarı kontrolü
+        KAZANÇ: %50 hız artışı
+
+        Returns:
+            tuple: (recete_no: str veya None, kayit_var: bool)
+                   recete_no = None ve kayit_var = False → "Reçete kaydı bulunamadı"
+        """
+        for deneme in range(max_deneme):
+            try:
+                # TEK TARAMA - hem reçete no hem uyarı kontrolü
+                texts = self.main_window.descendants(control_type="Text")
+
+                recete_no = None
+                kayit_hatasi = False
+
+                for text in texts:
+                    try:
+                        text_value = text.window_text()
+                        if not text_value:
+                            continue
+
+                        # 1. UYARI KONTROLÜ
+                        if "Reçete kaydı bulunamadı" in text_value:
+                            logger.warning(f"⚠️ '{text_value}'")
+                            kayit_hatasi = True
+                            continue
+
+                        if "Sistem hatası" in text_value:
+                            logger.error(f"❌ MEDULA HATA: '{text_value}'")
+                            kayit_hatasi = True
+                            continue
+
+                        # 2. REÇETE NUMARASI KONTROLÜ
+                        if recete_no is None and 6 <= len(text_value) <= 9:
+                            cleaned = text_value.replace('-', '').replace('_', '')
+                            if cleaned.isalnum() and any(c.isdigit() for c in text_value) and any(c.isalpha() for c in text_value):
+                                recete_no = text_value
+
+                    except Exception:
+                        continue
+
+                # Sonuç
+                if kayit_hatasi:
+                    return (None, False)  # Kayıt yok
+
+                if recete_no:
+                    if deneme == 0:
+                        logger.info(f"✓ Reçete No: {recete_no}")
+                    else:
+                        logger.info(f"✓ Reçete No: {recete_no} ({deneme+1}. denemede)")
+                    return (recete_no, True)
+
+                # Bu denemede bulunamadı
+                if deneme < max_deneme - 1:
+                    logger.debug(f"Reçete no henüz yüklenmedi ({deneme + 1}/{max_deneme})")
+                    time.sleep(bekleme_suresi)
+
+            except Exception as e:
+                logger.debug(f"Birleşik tarama denemesi {deneme + 1} hatası: {type(e).__name__}")
+                if deneme < max_deneme - 1:
+                    time.sleep(bekleme_suresi)
+
+        logger.warning("⚠️ Reçete numarası okunamadı")
+        return (None, True)  # Kayıt var ama no okunamadı
+
+    def recete_no_oku(self, max_deneme=3, bekleme_suresi=0.3):
         """
         Ekrandaki reçete numarasını oku (örn: 3HKE0T4)
-        Inspect'e göre Window 0x1C0D14 ve Name özelliğinden alınır
+
+        OPTİMİZE: Tek text taraması yapılıyor (önceden iki kez yapılıyordu)
+        Bekleme süresi: 0.5 → 0.3, deneme sayısı: 5 → 3
 
         Args:
-            max_deneme: Maksimum deneme sayısı (varsayılan: 5)
-            bekleme_suresi: Her deneme arasında bekleme süresi (varsayılan: 0.5 saniye)
+            max_deneme: Maksimum deneme sayısı (varsayılan: 3)
+            bekleme_suresi: Her deneme arasında bekleme süresi (varsayılan: 0.3 saniye)
 
         Returns:
             str: Reçete numarası, bulunamazsa None
@@ -1704,53 +3507,33 @@ class BotanikBot:
 
         for deneme in range(max_deneme):
             try:
-                # Önce spesifik window ID ile dene
-                try:
-                    # Text kontrollerini ara, Name özelliği içinde reçete numarası olan
-                    texts = self.main_window.descendants(control_type="Text")
-
-                    for text in texts:
-                        try:
-                            # Name özelliğini al
-                            name_prop = text.window_text()
-
-                            # Reçete numarası formatı: 6-8 karakter, alfanumerik
-                            if name_prop and 6 <= len(name_prop) <= 9:
-                                # Sadece harf, rakam içermeli
-                                if name_prop.replace('-', '').replace('_', '').isalnum():
-                                    # En az 1 harf ve 1 rakam olmalı
-                                    if any(c.isdigit() for c in name_prop) and any(c.isalpha() for c in name_prop):
-                                        logger.info(f"✓ Reçete No: {name_prop}")
-                                        return name_prop
-                        except Exception as e:
-                            logger.debug(f"Operation failed: {type(e).__name__}")
-
-                except Exception as e:
-                    logger.debug(f"ID ile arama başarısız: {e}")
-
-                # Alternatif: Tüm text elementlerini tara
+                # Text kontrollerini ara (TEK TARAMA - optimize edildi)
                 texts = self.main_window.descendants(control_type="Text")
 
                 for text in texts:
                     try:
                         text_value = text.window_text()
-                        # Reçete numarası genellikle 7 karakterli alfanumerik kod (örn: 3HKE0T4)
+
+                        # Reçete numarası formatı: 6-9 karakter, alfanumerik
                         if text_value and 6 <= len(text_value) <= 9:
                             # Sadece harf, rakam ve belki tire içermeli
                             cleaned = text_value.replace('-', '').replace('_', '')
                             if cleaned.isalnum() and any(c.isdigit() for c in text_value) and any(c.isalpha() for c in text_value):
-                                logger.info(f"✓ Reçete No: {text_value}")
+                                if deneme == 0:
+                                    logger.info(f"✓ Reçete No: {text_value}")
+                                else:
+                                    logger.info(f"✓ Reçete No: {text_value} ({deneme+1}. denemede)")
                                 return text_value
                     except Exception as e:
-                        logger.debug(f"Operation failed: {type(e).__name__}")
+                        logger.debug(f"Text okuma hatası: {type(e).__name__}")
 
-                # Bu denemede bulunamadı, bir sonraki denemede tekrar dene
+                # Bu denemede bulunamadı
                 if deneme < max_deneme - 1:
-                    logger.debug(f"Reçete numarası henüz yüklenmedi, bekleniyor... ({deneme + 1}/{max_deneme})")
+                    logger.debug(f"Reçete no henüz yüklenmedi ({deneme + 1}/{max_deneme})")
                     time.sleep(bekleme_suresi)
 
             except Exception as e:
-                logger.debug(f"Reçete no okuma denemesi {deneme + 1} hatası: {e}")
+                logger.debug(f"Reçete no okuma denemesi {deneme + 1} hatası: {type(e).__name__}")
                 if deneme < max_deneme - 1:
                     time.sleep(bekleme_suresi)
 
@@ -1778,12 +3561,10 @@ class BotanikBot:
                 "lblAlanYanCariTel"
             ]
 
-            logger.info("=" * 60)
-            logger.info("📞 TELEFON NUMARASI KONTROLÜ BAŞLIYOR...")
-            logger.info("=" * 60)
+            logger.debug("📞 Telefon kontrolü başlatılıyor...")
 
             # Sayfanın yüklenmesini bekle
-            time.sleep(0.5)
+            self.timed_sleep("adim_arasi_bekleme", 0.3)  # Sayfa yüklenme bekleme
 
             bulunan_telefon_sayisi = 0
             control_types = ["Text", "Edit", "Static"]  # Farklı element tiplerini dene
@@ -1792,14 +3573,14 @@ class BotanikBot:
                 telefon_text = ""
                 bulunan_elem_tipi = None
 
-                logger.info(f"\n🔍 Alan kontrol ediliyor: {alan_id}")
+                logger.debug(f"Alan kontrol: {alan_id}")
 
                 try:
                     # Farklı control type'ları dene
                     for ctrl_type in control_types:
                         try:
                             telefon_elems = self.main_window.descendants(auto_id=alan_id, control_type=ctrl_type)
-                            logger.info(f"  ↳ {ctrl_type} tipinde arama: {len(telefon_elems) if telefon_elems else 0} sonuç")
+                            logger.debug(f"{ctrl_type}: {len(telefon_elems) if telefon_elems else 0} sonuç")
 
                             if telefon_elems and len(telefon_elems) > 0:
                                 telefon_elem = telefon_elems[0]
@@ -1809,30 +3590,30 @@ class BotanikBot:
                                 try:
                                     raw_text = telefon_elem.window_text()
                                     telefon_text = raw_text.strip() if raw_text else ""
-                                    logger.info(f"  ↳ window_text(): '{telefon_text}'")
+                                    logger.debug(f"window_text(): '{telefon_text}'")
                                 except Exception as e1:
-                                    logger.info(f"  ↳ window_text() hatası: {e1}")
+                                    logger.debug(f"window_text() hatası: {type(e1).__name__}")
                                     try:
                                         raw_name = telefon_elem.element_info.name
                                         telefon_text = raw_name.strip() if raw_name else ""
-                                        logger.info(f"  ↳ element_info.name: '{telefon_text}'")
+                                        logger.debug(f"element_info.name: '{telefon_text}'")
                                     except Exception as e2:
-                                        logger.info(f"  ↳ element_info.name hatası: {e2}")
+                                        logger.debug(f"element_info.name hatası: {type(e2).__name__}")
                                         telefon_text = ""
 
                                 if telefon_text:  # Telefon bulundu, daha fazla type denemeye gerek yok
-                                    logger.info(f"  ✓ Değer bulundu, diğer tipler denenmeyecek")
+                                    logger.debug(f"Değer bulundu: {alan_id}")
                                     break
                         except Exception as e:
-                            logger.info(f"  ↳ {ctrl_type} arama hatası: {e}")
+                            logger.debug(f"{ctrl_type} arama hatası: {type(e).__name__}")
                             continue
 
                     # Control type bulunamazsa, type kısıtlaması olmadan dene
                     if not telefon_text:
-                        logger.info(f"  ↳ Tip kısıtlaması olmadan deneniyor...")
+                        logger.debug(f"Tip kısıtlaması olmadan deneniyor...")
                         try:
                             telefon_elems = self.main_window.descendants(auto_id=alan_id)
-                            logger.info(f"  ↳ Tip kısıtlamasız arama: {len(telefon_elems) if telefon_elems else 0} sonuç")
+                            logger.debug(f"Tip kısıtlamasız: {len(telefon_elems) if telefon_elems else 0} sonuç")
 
                             if telefon_elems and len(telefon_elems) > 0:
                                 telefon_elem = telefon_elems[0]
@@ -1841,55 +3622,46 @@ class BotanikBot:
                                 try:
                                     raw_text = telefon_elem.window_text()
                                     telefon_text = raw_text.strip() if raw_text else ""
-                                    logger.info(f"  ↳ window_text(): '{telefon_text}'")
+                                    logger.debug(f"window_text(): '{telefon_text}'")
                                 except Exception as e1:
-                                    logger.info(f"  ↳ window_text() hatası: {e1}")
+                                    logger.debug(f"window_text() hatası: {type(e1).__name__}")
                                     try:
                                         raw_name = telefon_elem.element_info.name
                                         telefon_text = raw_name.strip() if raw_name else ""
-                                        logger.info(f"  ↳ element_info.name: '{telefon_text}'")
+                                        logger.debug(f"element_info.name: '{telefon_text}'")
                                     except Exception as e2:
-                                        logger.info(f"  ↳ element_info.name hatası: {e2}")
+                                        logger.debug(f"element_info.name hatası: {type(e2).__name__}")
                                         telefon_text = ""
                         except Exception as e:
-                            logger.info(f"  ↳ Tip kısıtlamasız arama hatası: {e}")
+                            logger.debug(f"Tip kısıtlamasız arama hatası: {type(e).__name__}")
 
-                    logger.info(f"\n📊 {alan_id} SONUÇ:")
-                    logger.info(f"  • Bulunan değer: '{telefon_text}'")
-                    logger.info(f"  • Uzunluk: {len(telefon_text)}")
-                    logger.info(f"  • Element tipi: {bulunan_elem_tipi}")
+                    logger.debug(f"{alan_id}: '{telefon_text}' (len={len(telefon_text)}, tip={bulunan_elem_tipi})")
 
                     # Telefon varsa (boş değilse ve geçerli uzunlukta)
                     # Telefon numaraları genellikle en az 7 karakter (bazı formatlar için)
                     if telefon_text and len(telefon_text) >= 7:
                         # Sadece rakam, boşluk, tire, parantez içeriyorsa geçerli telefon
                         temiz_telefon = telefon_text.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-                        logger.info(f"  • Temizlenmiş: '{temiz_telefon}'")
-                        logger.info(f"  • Rakam var mı: {any(c.isdigit() for c in temiz_telefon)}")
+                        logger.debug(f"Temizlenmiş: '{temiz_telefon}'")
 
                         if temiz_telefon and any(c.isdigit() for c in temiz_telefon):
                             bulunan_telefon_sayisi += 1
-                            logger.info(f"  ✅ GEÇERLİ TELEFON BULUNDU!")
-                            logger.info(f"=" * 60)
-                            logger.info(f"✓ SONUÇ: TELEFON VAR ({alan_id}): {telefon_text}")
-                            logger.info(f"=" * 60)
+                            logger.info(f"✓ Telefon bulundu ({alan_id}): {telefon_text}")
                             return True  # EN AZ BİR TELEFON VARSA HEMEN TRUE DÖN
                         else:
-                            logger.info(f"  ❌ Geçersiz format (rakam yok)")
+                            logger.debug(f"Geçersiz format (rakam yok)")
                     else:
-                        logger.info(f"  ❌ BOŞ veya çok kısa (min 7 karakter)")
+                        logger.debug(f"BOŞ veya çok kısa")
 
                 except Exception as e:
-                    logger.info(f"  ❌ {alan_id} kontrol hatası: {e}")
+                    logger.debug(f"  ❌ {alan_id} kontrol hatası: {e}")
                     import traceback
                     traceback.print_exc()
                     continue
 
             # Auto_ID ile bulunamadıysa, alternatif: Tüm text elementlerini tara
             if bulunan_telefon_sayisi == 0:
-                logger.info("\n" + "=" * 60)
-                logger.info("🔍 ALTERNATİF ARAMA: Tüm text elementlerini tarıyorum...")
-                logger.info("=" * 60)
+                logger.debug("Alternatif arama başlatılıyor...")
 
                 try:
                     import re
@@ -1898,7 +3670,7 @@ class BotanikBot:
 
                     # Tüm text elementlerini al
                     all_texts = self.main_window.descendants(control_type="Text")
-                    logger.info(f"  • Toplam {len(all_texts)} Text elementi bulundu")
+                    logger.debug(f"Toplam {len(all_texts)} Text elementi bulundu")
 
                     # Önce auto_id'li elementleri kontrol et
                     for text_elem in all_texts:
@@ -1922,22 +3694,19 @@ class BotanikBot:
                                         logger.debug(f"Text value read failed: {type(e).__name__}")
                                         text_value = ""
 
-                                logger.info(f"  • Tel içeren ID: {auto_id} = '{text_value}'")
+                                logger.debug(f"Tel ID: {auto_id} = '{text_value}'")
 
                                 if text_value and len(text_value) >= 7:
                                     # Pattern kontrolü
                                     if telefon_pattern.search(text_value) or any(c.isdigit() for c in text_value):
-                                        logger.info(f"  ✅ TELEFON BULUNDU: {auto_id} = '{text_value}'")
-                                        logger.info("=" * 60)
-                                        logger.info(f"✓ SONUÇ: TELEFON VAR (alternatif arama): {text_value}")
-                                        logger.info("=" * 60)
+                                        logger.info(f"✓ Telefon bulundu (alt. arama): {text_value}")
                                         return True
                         except Exception as e:
                             logger.debug(f"Operation failed, continuing: {type(e).__name__}")
                             continue
 
                     # Hala bulunamadıysa, tüm text değerlerini pattern ile kontrol et
-                    logger.info("\n  • Pattern tabanlı arama yapılıyor...")
+                    logger.debug("Pattern tabanlı arama yapılıyor...")
                     for text_elem in all_texts[:100]:  # İlk 100 elementi kontrol et (performans için)
                         try:
                             try:
@@ -1953,22 +3722,17 @@ class BotanikBot:
                                     text_value = ""
 
                             if text_value and telefon_pattern.search(text_value):
-                                logger.info(f"  ✅ TELEFON PATTERN BULUNDU: '{text_value}'")
-                                logger.info("=" * 60)
-                                logger.info(f"✓ SONUÇ: TELEFON VAR (pattern arama): {text_value}")
-                                logger.info("=" * 60)
+                                logger.info(f"✓ Telefon bulundu (pattern arama): {text_value}")
                                 return True
                         except Exception as e:
                             logger.debug(f"Operation failed, continuing: {type(e).__name__}")
                             continue
 
                 except Exception as e:
-                    logger.info(f"  ❌ Alternatif arama hatası: {e}")
+                    logger.debug(f"Alternatif arama hatası: {e}")
 
             # Hiçbir alanda telefon yok
-            logger.info(f"\n" + "=" * 60)
-            logger.info(f"⚠ SONUÇ: TELEFON BULUNAMADI ({bulunan_telefon_sayisi}/4 alan dolu)")
-            logger.info(f"=" * 60)
+            logger.info(f"⚠ Telefon bulunamadı ({bulunan_telefon_sayisi}/4 alan dolu)")
             return False
 
         except Exception as e:
@@ -2011,113 +3775,132 @@ class BotanikBot:
             # Hata durumunda güvenli tarafta kalalım ve devam edelim
             return True
 
+    def recete_kaydi_var_mi_kontrol_hizli(self):
+        """
+        HIZLI: Sadece outputText class'lı elementte "Reçete kaydı bulunamadı" ara
+
+        UIElementInspector bilgileri (2 Aralık 2025):
+        - Name: "Reçete kaydı bulunamadı."
+        - TagName: SPAN
+        - HTML Class: outputText
+        - CSS Selector: .outputText
+
+        Returns:
+            bool: Reçete kaydı VARSA True, YOKSA (uyarı varsa) False
+        """
+        try:
+            # HIZLI: Sadece outputText class'lı SPAN elementlerinde ara
+            spans = self.main_window.descendants(control_type="Text")
+
+            # İlk 10 elementi kontrol et (uyarı genellikle üstte)
+            for i, span in enumerate(spans[:10]):
+                try:
+                    text_value = span.window_text()
+                    if "Reçete kaydı bulunamadı" in text_value:
+                        logger.warning(f"⚠️ '{text_value}'")
+                        return False
+                    if "Sistem hatası" in text_value:
+                        logger.error(f"❌ MEDULA HATA: '{text_value}'")
+                        return False
+                except Exception:
+                    continue
+
+            return True
+
+        except Exception as e:
+            logger.debug(f"Hızlı kontrol hatası: {type(e).__name__}")
+            return True  # Hata durumunda devam et
+
     def recete_sorgu_ac(self):
         """
-        Reçete Sorgu butonuna tıkla (CACHE destekli)
+        Reçete Sorgu butonuna tıkla - SADECE DOĞRU buton!
+
+        DİKKAT: e-Reçete Sorgu (form1:menuHtmlCommandExButton11) KULLANILMAMALI!
+        Sadece Reçete Sorgu (form1:menuHtmlCommandExButton51) kullanılmalı!
+
+        Inspect.exe (30 Kasım 2025):
+        - DOĞRU: AutomationId="form1:menuHtmlCommandExButton51_MOUSE", Name="    Reçete Sorgu"
+        - YANLIŞ: AutomationId="form1:menuHtmlCommandExButton11_MOUSE", Name="    e-Reçete Sorgu"
 
         Returns:
             bool: Tıklama başarılı ise True
         """
         try:
-            logger.info("Reçete Sorgu butonu aranıyor...")
+            logger.info("🔍 Reçete Sorgu butonu aranıyor...")
 
-            # Önce cache'den kontrol et
-            cached_button = self._get_cached_element("recete_sorgu_button")
-            if cached_button:
+            # ÖNEMLİ: Cache'i KULLANMA! Her seferinde yeni ara.
+            self._clear_cache_key("recete_sorgu_button")
+
+            # YÖNTEM 1: AutomationId ile ara (en güvenilir)
+            recete_sorgu_ids = [
+                "form1:menuHtmlCommandExButton51_MOUSE",
+                "form1:menuHtmlCommandExButton51"
+            ]
+            for auto_id in recete_sorgu_ids:
+                for ctrl_type in ["Button", "Image"]:
+                    try:
+                        sorgu_btn = self.main_window.child_window(
+                            auto_id=auto_id,
+                            control_type=ctrl_type
+                        )
+                        if sorgu_btn.exists(timeout=1.5):
+                            logger.info(f"📍 Buton bulundu: {auto_id} ({ctrl_type})")
+                            try:
+                                sorgu_btn.invoke()
+                                logger.info(f"✓ Reçete Sorgu butonu tıklandı (invoke)")
+                                self.timed_sleep("recete_sorgu")
+                                return True
+                            except Exception as inv_err:
+                                logger.debug(f"invoke() hatası: {inv_err}")
+                                try:
+                                    sorgu_btn.click_input()
+                                    logger.info(f"✓ Reçete Sorgu butonu tıklandı (click_input)")
+                                    self.timed_sleep("recete_sorgu")
+                                    return True
+                                except Exception as clk_err:
+                                    logger.warning(f"click_input() hatası: {clk_err}")
+                    except Exception as e:
+                        logger.debug(f"AutomationId {auto_id} ({ctrl_type}) hatası: {e}")
+
+            # YÖNTEM 2: Name ile ara - TAM EŞLEŞMEyle!
+            # DOĞRU: "    Reçete Sorgu" (4 boşluk + Reçete Sorgu)
+            # YANLIŞ: "    e-Reçete Sorgu" (4 boşluk + e-Reçete Sorgu)
+            logger.info("🔍 AutomationId bulunamadı, Name ile aranıyor...")
+            dogru_name = "    Reçete Sorgu"  # 4 boşluk + Reçete Sorgu (TAM EŞLEŞMEYİ!)
+
+            for ctrl_type in ["Button", "Image"]:
                 try:
-                    cached_button.invoke()
-                    logger.info("✓ Reçete Sorgu butonu tıklandı (cache)")
-                    self.timed_sleep("recete_sorgu")
-                    return True
-                except Exception as e:
-                    logger.debug(f"Cache recete_sorgu_button invoke failed: {type(e).__name__}")
-                    self._clear_cache_key("recete_sorgu_button")
+                    sorgu_btn = self.main_window.child_window(
+                        title=dogru_name,  # TAM EŞLEŞMEyle! (title_re değil!)
+                        control_type=ctrl_type
+                    )
+                    if sorgu_btn.exists(timeout=1.5):
+                        # Doğrulama: e-Reçete Sorgu olmadığından emin ol
+                        btn_name = sorgu_btn.window_text()
+                        if "e-Reçete" in btn_name or "e-reçete" in btn_name.lower():
+                            logger.warning(f"⚠ YANLIŞ BUTON TESPİT EDİLDİ: {btn_name} - ATLANIY0R!")
+                            continue
 
-            # Yöntem 1: AutomationId ile ara (OPTIMIZE: control_type eklendi)
-            try:
-                sorgu_button = self.main_window.descendants(auto_id="form1:menuHtmlCommandExButton51_MOUSE", control_type="Button")
-                if sorgu_button and len(sorgu_button) > 0:
-                    self._cache_element("recete_sorgu_button", sorgu_button[0])  # Cache'e ekle
-                    try:
-                        sorgu_button[0].invoke()
-                    except Exception as e:
-                        logger.debug(f"First attempt failed: {type(e).__name__}")
+                        logger.info(f"📍 Name ile bulundu: '{btn_name}' ({ctrl_type})")
                         try:
-                            sorgu_button[0].click()
-                        except Exception as e:
-                            logger.debug(f"Sorgu button click() failed: {type(e).__name__}")
-                            sorgu_button[0].click_input()
-
-                    logger.info("✓ Reçete Sorgu butonu tıklandı (AutomationId)")
-                    self.timed_sleep("recete_sorgu")
-                    return True
-            except Exception as e:
-                logger.debug(f"AutomationId ile bulunamadı: {e}")
-
-            # Yöntem 2: Name ile ara (Control Type 50000)
-            try:
-                buttons = self.main_window.descendants(control_type="Button")
-                for btn in buttons:
-                    try:
-                        btn_name = btn.window_text()
-                        # TAM EŞLEŞİK kontrolü - "e-Reçete Sorgu" gibi yanlış butonları atla
-                        if btn_name:
-                            btn_name_stripped = btn_name.strip()
-                            # Sadece "Reçete Sorgu" veya "Recete Sorgu" olanları al
-                            # "e-Reçete Sorgu", "E-Reçete Sorgu" vb. HARİÇ
-                            if btn_name_stripped == "Reçete Sorgu" or btn_name_stripped == "Recete Sorgu":
-                                self._cache_element("recete_sorgu_button", btn)  # Cache'e ekle
-                                try:
-                                    btn.invoke()
-                                except Exception as e:
-                                    logger.debug(f"Fourth attempt failed: {type(e).__name__}")
-                                    try:
-                                        btn.click()
-                                    except Exception as e:
-                                        logger.debug(f"Button click() failed: {type(e).__name__}")
-                                        btn.click_input()
-
-                                logger.info("✓ Reçete Sorgu butonu tıklandı (Name)")
+                            sorgu_btn.invoke()
+                            logger.info(f"✓ Reçete Sorgu butonu tıklandı (Name invoke)")
+                            self.timed_sleep("recete_sorgu")
+                            return True
+                        except Exception:
+                            try:
+                                sorgu_btn.click_input()
+                                logger.info(f"✓ Reçete Sorgu butonu tıklandı (Name click_input)")
                                 self.timed_sleep("recete_sorgu")
                                 return True
-                    except Exception as e:
-                        logger.debug(f"Operation failed, continuing: {type(e).__name__}")
-                        continue
-            except Exception as e:
-                logger.debug(f"Name ile bulunamadı: {e}")
+                            except Exception as e:
+                                logger.warning(f"Name click hatası: {e}")
+                except Exception as e:
+                    logger.debug(f"Name '{dogru_name}' ({ctrl_type}) hatası: {e}")
 
-            # Yöntem 3: Tüm kontrolleri tara
-            try:
-                all_controls = self.main_window.descendants()
-                for ctrl in all_controls:
-                    try:
-                        ctrl_name = ctrl.window_text()
-                        # TAM EŞLEŞİK kontrolü - "e-Reçete Sorgu" gibi yanlış butonları atla
-                        if ctrl_name:
-                            ctrl_name_stripped = ctrl_name.strip()
-                            # Sadece "Reçete Sorgu" veya "Recete Sorgu" olanları al
-                            if ctrl_name_stripped == "Reçete Sorgu" or ctrl_name_stripped == "Recete Sorgu":
-                                self._cache_element("recete_sorgu_button", ctrl)  # Cache'e ekle
-                                try:
-                                    ctrl.invoke()
-                                except Exception as e:
-                                    logger.debug(f"Fourth attempt failed: {type(e).__name__}")
-                                    try:
-                                        ctrl.click()
-                                    except Exception as e:
-                                        logger.debug(f"Control click() failed: {type(e).__name__}")
-                                        ctrl.click_input()
-
-                                logger.info("✓ Reçete Sorgu butonu tıklandı (Tüm kontroller)")
-                                self.timed_sleep("recete_sorgu")
-                                return True
-                    except Exception as e:
-                        logger.debug(f"Operation failed, continuing: {type(e).__name__}")
-                        continue
-            except Exception as e:
-                logger.debug(f"Tüm kontroller ile bulunamadı: {e}")
-
-            logger.error("❌ Reçete Sorgu butonu bulunamadı (tüm yöntemler denendi)")
+            logger.error("❌ Reçete Sorgu butonu bulunamadı!")
+            logger.error("   Denenenen ID'ler: form1:menuHtmlCommandExButton51_MOUSE")
+            logger.error("   Denenenen Name: '    Reçete Sorgu'")
             return False
 
         except Exception as e:
@@ -2126,84 +3909,484 @@ class BotanikBot:
 
     def ana_sayfaya_don(self):
         """
-        Ana Sayfa butonuna tıkla (Reçete içindeyken sol menü çıkması için) (CACHE destekli)
+        Giriş butonuna tıkla (MEDULA oturumunu yenilemek için) - OPTIMIZE: child_window() ile doğrudan arama
+
+        NOT: Sol menüde "Ana Sayfa" butonu yok. Oturum yenilemek için üst paneldeki
+        "Giriş" butonu kullanılıyor.
+
+        Inspect.exe bilgileri (28 Kasım 2025):
+        - AutomationId: "btnMedulayaGirisYap"
+        - Name: "Giriş"
+        - ControlType: Button
+        - FrameworkId: "WinForm"
+        - IsInvokePatternAvailable: true
 
         Returns:
             bool: Tıklama başarılı ise True
         """
         try:
-            logger.info("Ana Sayfa butonu aranıyor...")
+            logger.debug("Giriş butonu aranıyor (oturum yenileme)...")
 
             # Önce cache'den kontrol et
-            cached_button = self._get_cached_element("ana_sayfa_button")
+            cached_button = self._get_cached_element("giris_button")
             if cached_button:
                 try:
                     cached_button.invoke()
-                    logger.info("✓ Ana Sayfa butonu tıklandı (cache)")
+                    logger.info("✓ Giriş butonu tıklandı (cache)")
                     self.timed_sleep("ana_sayfa")
                     return True
                 except Exception as e:
-                    logger.debug(f"Cache ana_sayfa_button invoke failed: {type(e).__name__}")
-                    self._clear_cache_key("ana_sayfa_button")
+                    logger.debug(f"Cache giris_button invoke failed: {type(e).__name__}")
+                    self._clear_cache_key("giris_button")
 
-            # Yöntem 1: AutomationId ile ara (OPTIMIZE: control_type eklendi, f: öneki eklendi)
+            # YÖNTEM 1: child_window() ile AutomationId araması (EN HIZLI)
             try:
-                ana_sayfa_button = self.main_window.descendants(auto_id="f:buttonAnaSayfa", control_type="Button")
-                if ana_sayfa_button and len(ana_sayfa_button) > 0:
-                    self._cache_element("ana_sayfa_button", ana_sayfa_button[0])  # Cache'e ekle
+                giris_btn = self.main_window.child_window(
+                    auto_id="btnMedulayaGirisYap",
+                    control_type="Button"
+                )
+                if giris_btn.exists(timeout=0.2):
+                    self._cache_element("giris_button", giris_btn)
                     try:
-                        ana_sayfa_button[0].invoke()
-                    except Exception as e:
-                        logger.debug(f"First attempt failed: {type(e).__name__}")
+                        giris_btn.invoke()
+                        logger.info("✓ Giriş butonu tıklandı (child_window)")
+                        self.timed_sleep("ana_sayfa")
+                        return True
+                    except Exception as inv_err:
+                        logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
                         try:
-                            ana_sayfa_button[0].click()
-                        except Exception as e:
-                            logger.debug(f"Ana sayfa button click() failed: {type(e).__name__}")
-                            ana_sayfa_button[0].click_input()
+                            giris_btn.click_input()
+                            logger.info("✓ Giriş butonu tıklandı (click_input)")
+                            self.timed_sleep("ana_sayfa")
+                            return True
+                        except Exception as clk_err:
+                            logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+            except Exception as e:
+                logger.debug(f"child_window AutomationId hatası: {type(e).__name__}")
 
-                    logger.info("✓ Ana Sayfa butonu tıklandı (AutomationId)")
-                    self.timed_sleep("ana_sayfa")
+            # YÖNTEM 2: child_window() ile Name araması (FALLBACK)
+            try:
+                giris_btn = self.main_window.child_window(
+                    title="Giriş",
+                    control_type="Button"
+                )
+                if giris_btn.exists(timeout=0.2):
+                    self._cache_element("giris_button", giris_btn)
+                    try:
+                        giris_btn.invoke()
+                        logger.info("✓ Giriş butonu tıklandı (Name)")
+                        self.timed_sleep("ana_sayfa")
+                        return True
+                    except Exception as inv_err:
+                        logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                        try:
+                            giris_btn.click_input()
+                            logger.info("✓ Giriş butonu tıklandı (click_input - Name)")
+                            self.timed_sleep("ana_sayfa")
+                            return True
+                        except Exception as clk_err:
+                            logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+            except Exception as e:
+                logger.debug(f"child_window Name hatası: {type(e).__name__}")
+
+            # YÖNTEM 3: descendants() ile son çare
+            logger.warning("Giriş: child_window() başarısız, descendants() deneniyor...")
+            try:
+                giris_buttons = self.main_window.descendants(
+                    auto_id="btnMedulayaGirisYap",
+                    control_type="Button"
+                )
+                if giris_buttons and len(giris_buttons) > 0:
+                    self._cache_element("giris_button", giris_buttons[0])
+                    try:
+                        giris_buttons[0].invoke()
+                        logger.info("✓ Giriş butonu tıklandı (descendants)")
+                        self.timed_sleep("ana_sayfa")
+                        return True
+                    except Exception:
+                        giris_buttons[0].click_input()
+                        logger.info("✓ Giriş butonu tıklandı (descendants click)")
+                        self.timed_sleep("ana_sayfa")
+                        return True
+            except Exception as e:
+                logger.debug(f"descendants() hatası: {type(e).__name__}")
+
+            # YÖNTEM 4: PyAutoGUI ile koordinat tıklama (SON ÇARE)
+            # Inspect.exe (29 Kasım 2025): Giriş butonu X: 161, Y: 182, W: 55, H: 23 (pencere koordinatları)
+            logger.warning("Giriş: UIA yöntemleri başarısız, PyAutoGUI koordinat tıklama deneniyor...")
+            try:
+                import pyautogui
+                # Pencere konumunu al
+                window_rect = self.main_window.rectangle()
+                # Buton koordinatları (pencere içi) - inspect.exe bilgilerinden
+                btn_x_offset = 161 + 27  # Buton merkezi (X + Width/2)
+                btn_y_offset = 182 + 11  # Buton merkezi (Y + Height/2)
+                # Ekran koordinatlarına çevir
+                click_x = window_rect.left + btn_x_offset
+                click_y = window_rect.top + btn_y_offset
+
+                pyautogui.click(click_x, click_y)
+                logger.info(f"✓ Giriş butonu tıklandı (PyAutoGUI koordinat: {click_x}, {click_y})")
+                self.timed_sleep("ana_sayfa")
+                return True
+            except Exception as e:
+                logger.error(f"PyAutoGUI koordinat tıklama hatası: {e}")
+
+            logger.error("❌ Giriş butonu bulunamadı")
+            return False
+
+        except Exception as e:
+            logger.error(f"Giriş butonu hatası: {e}")
+            return False
+
+    def cikis_butonuna_tikla(self):
+        """
+        Çıkış Yap butonuna tıkla - oturumu sonlandırmak için
+
+        Inspect.exe (2025-11-30):
+        - Name: "    Çıkış Yap"
+        - AutomationId: form1:menuHtmlCommandExButton01_MOUSE
+        - Konum: X: 6, Y: 50, Width: 165, Height: 20
+
+        Returns:
+            bool: Tıklama başarılı ise True
+        """
+        try:
+            logger.debug("Çıkış Yap butonu aranıyor...")
+
+            # AutomationId ile ara
+            cikis_auto_id = "form1:menuHtmlCommandExButton01_MOUSE"
+
+            for ctrl_type in ["Button", "Image"]:
+                try:
+                    cikis_btn = self.main_window.child_window(
+                        auto_id=cikis_auto_id,
+                        control_type=ctrl_type
+                    )
+                    if cikis_btn.exists(timeout=0.2):
+                        try:
+                            cikis_btn.invoke()
+                            logger.info(f"✓ Çıkış Yap butonu tıklandı ({ctrl_type})")
+                            time.sleep(1)  # Çıkış işlemi için bekle
+                            return True
+                        except Exception as inv_err:
+                            logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                            try:
+                                cikis_btn.click_input()
+                                logger.info(f"✓ Çıkış Yap butonu tıklandı (click_input {ctrl_type})")
+                                time.sleep(1)
+                                return True
+                            except Exception as clk_err:
+                                logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+                except Exception as e:
+                    logger.debug(f"child_window {cikis_auto_id} ({ctrl_type}) hatası: {type(e).__name__}")
+
+            logger.debug("Çıkış Yap butonu bulunamadı (muhtemelen zaten giriş ekranında)")
+            return False
+
+        except Exception as e:
+            logger.debug(f"Çıkış butonu hatası: {e}")
+            return False
+
+    def cikis_butonu_var_mi(self):
+        """
+        Çıkış Yap butonunun mevcut olup olmadığını kontrol et
+
+        Returns:
+            bool: Buton varsa True
+        """
+        try:
+            cikis_auto_id = "form1:menuHtmlCommandExButton01_MOUSE"
+
+            for ctrl_type in ["Button", "Image"]:
+                try:
+                    cikis_btn = self.main_window.child_window(
+                        auto_id=cikis_auto_id,
+                        control_type=ctrl_type
+                    )
+                    if cikis_btn.exists(timeout=0.3):
+                        logger.debug("✓ Çıkış Yap butonu mevcut")
+                        return True
+                except Exception:
+                    pass
+
+            logger.debug("Çıkış Yap butonu mevcut değil")
+            return False
+
+        except Exception:
+            return False
+
+    def giris_butonuna_tikla(self):
+        """
+        Ana penceredeki WinForms 'Giriş' butonuna tıkla
+
+        Inspect.exe (2025-12-10):
+        - Name: "Giriş"
+        - AutomationId: btnMedulayaGirisYap
+        - ClassName: WindowsForms10.Window.b.app.0.134c08f_r8_ad1
+        - ControlType: Button
+
+        Returns:
+            bool: Tıklama başarılı ise True
+        """
+        try:
+            logger.debug("WinForms Giriş butonu aranıyor...")
+
+            # AutomationId ile ara (en güvenilir)
+            giris_auto_id = "btnMedulayaGirisYap"
+
+            try:
+                giris_btn = self.main_window.child_window(
+                    auto_id=giris_auto_id,
+                    control_type="Button"
+                )
+                if giris_btn.exists(timeout=0.5):
+                    try:
+                        giris_btn.invoke()
+                        logger.info("✓ WinForms Giriş butonu tıklandı (invoke)")
+                        self.timed_sleep("giris_butonu", 0.5)
+                        return True
+                    except Exception as inv_err:
+                        logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                        try:
+                            giris_btn.click_input()
+                            logger.info("✓ WinForms Giriş butonu tıklandı (click_input)")
+                            self.timed_sleep("giris_butonu", 0.5)
+                            return True
+                        except Exception as clk_err:
+                            logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+            except Exception as e:
+                logger.debug(f"AutomationId ile arama hatası: {type(e).__name__}")
+
+            # Name ile ara (yedek)
+            try:
+                giris_btn = self.main_window.child_window(
+                    title="Giriş",
+                    control_type="Button"
+                )
+                if giris_btn.exists(timeout=0.3):
+                    giris_btn.click_input()
+                    logger.info("✓ WinForms Giriş butonu tıklandı (Name ile)")
+                    self.timed_sleep("giris_butonu", 0.5)
                     return True
             except Exception as e:
-                logger.debug(f"AutomationId ile bulunamadı: {e}")
+                logger.debug(f"Name ile arama hatası: {type(e).__name__}")
 
-            # Yöntem 2: Name ile ara
+            logger.warning("WinForms Giriş butonu bulunamadı")
+            return False
+
+        except Exception as e:
+            logger.error(f"Giriş butonu hatası: {e}")
+            return False
+
+    def recete_listesi_butonuna_tikla(self):
+        """
+        Web sayfasındaki 'Reçete Listesi' butonuna tıkla
+
+        Inspect.exe (2025-12-10):
+        - Name: "    Reçete Listesi"
+        - AutomationId: form1:menuHtmlCommandExButton31_MOUSE
+        - ControlType: Button
+
+        Returns:
+            bool: Tıklama başarılı ise True
+        """
+        try:
+            logger.debug("Reçete Listesi butonu aranıyor...")
+
+            # AutomationId ile ara
+            recete_auto_id = "form1:menuHtmlCommandExButton31_MOUSE"
+
+            for ctrl_type in ["Button", "Image"]:
+                try:
+                    recete_btn = self.main_window.child_window(
+                        auto_id=recete_auto_id,
+                        control_type=ctrl_type
+                    )
+                    if recete_btn.exists(timeout=0.3):
+                        try:
+                            recete_btn.invoke()
+                            logger.info(f"✓ Reçete Listesi butonu tıklandı ({ctrl_type})")
+                            self.timed_sleep("recete_listesi_butonu", 0.5)
+                            return True
+                        except Exception as inv_err:
+                            logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                            try:
+                                recete_btn.click_input()
+                                logger.info(f"✓ Reçete Listesi butonu tıklandı (click_input {ctrl_type})")
+                                self.timed_sleep("recete_listesi_butonu", 0.5)
+                                return True
+                            except Exception as clk_err:
+                                logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+                except Exception as e:
+                    logger.debug(f"child_window {recete_auto_id} ({ctrl_type}) hatası: {type(e).__name__}")
+
+            # Name ile ara (yedek - boşluklu isim)
             try:
                 buttons = self.main_window.descendants(control_type="Button")
                 for btn in buttons:
                     try:
                         btn_name = btn.window_text()
-                        if btn_name and btn_name.strip() == "Ana Sayfa":
-                            self._cache_element("ana_sayfa_button", btn)  # Cache'e ekle
-                            try:
-                                btn.invoke()
-                            except Exception as e:
-                                logger.debug(f"Third attempt failed: {type(e).__name__}")
-                                try:
-                                    btn.click()
-                                except Exception as e2:
-                                    logger.debug(f"Fourth attempt failed: {type(e2).__name__}")
-                                    btn.click_input()
-
-                            logger.info("✓ Ana Sayfa butonu tıklandı (Name)")
-                            self.timed_sleep("ana_sayfa")
+                        if "Reçete Listesi" in btn_name and "Günlük" not in btn_name:
+                            btn.click_input()
+                            logger.info("✓ Reçete Listesi butonu tıklandı (Name ile)")
+                            self.timed_sleep("recete_listesi_butonu", 0.5)
                             return True
-                    except Exception as e:
-                        logger.debug(f"Operation failed, continuing: {type(e).__name__}")
+                    except Exception:
                         continue
             except Exception as e:
-                logger.debug(f"Name ile bulunamadı: {e}")
+                logger.debug(f"Name ile arama hatası: {type(e).__name__}")
 
-            logger.error("❌ Ana Sayfa butonu bulunamadı")
+            logger.warning("Reçete Listesi butonu bulunamadı")
             return False
 
         except Exception as e:
-            logger.error(f"Ana Sayfa butonu hatası: {e}")
+            logger.error(f"Reçete Listesi butonu hatası: {e}")
+            return False
+
+    def oturum_yenile(self):
+        """
+        MEDULA oturumunu yenile - ComboBox bulunamadığında çağrılır
+
+        Akış:
+        1. Giriş butonuna bas (WinForms)
+        2. Çıkış Yap butonuna bas (Web)
+        3. Giriş butonuna tekrar bas
+        4. Reçete Listesi butonuna bas
+
+        Returns:
+            bool: Yenileme başarılı ise True
+        """
+        try:
+            logger.info("🔄 MEDULA oturumu yenileniyor...")
+
+            # Adım 1: Giriş butonuna bas
+            logger.info("  [1/4] Giriş butonuna basılıyor...")
+            if not self.giris_butonuna_tikla():
+                logger.warning("  Giriş butonu tıklanamadı, devam ediliyor...")
+
+            time.sleep(0.5)
+
+            # Adım 2: Çıkış Yap butonuna bas
+            logger.info("  [2/4] Çıkış Yap butonuna basılıyor...")
+            if not self.cikis_butonuna_tikla():
+                logger.warning("  Çıkış Yap butonu tıklanamadı (muhtemelen zaten giriş ekranında)")
+
+            time.sleep(0.5)
+
+            # Adım 3: Giriş butonuna tekrar bas
+            logger.info("  [3/4] Giriş butonuna tekrar basılıyor...")
+            if not self.giris_butonuna_tikla():
+                logger.error("  Giriş butonu tıklanamadı!")
+                return False
+
+            # Ana sayfanın yüklenmesini bekle
+            time.sleep(2.0)
+
+            # Adım 4: Reçete Listesi butonuna bas
+            logger.info("  [4/4] Reçete Listesi butonuna basılıyor...")
+            if not self.recete_listesi_butonuna_tikla():
+                logger.error("  Reçete Listesi butonu tıklanamadı!")
+                return False
+
+            # Reçete listesi sayfasının yüklenmesini bekle
+            time.sleep(1.5)
+
+            logger.info("✅ Oturum yenileme tamamlandı!")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Oturum yenileme hatası: {e}")
+            return False
+
+    def baska_eczane_uyarisi_var_mi(self):
+        """
+        "XXXX nolu reçete başka bir eczaneye aittir" uyarısını kontrol et.
+
+        UIElementInspector bilgileri (2 Aralık 2025):
+        - Name: "3IBOCLD nolu reçete başka bir eczaneye aittir."
+        - ControlType: Text
+        - TagName: SPAN
+        - HTML Class: outputText
+
+        Returns:
+            bool: Uyarı varsa True, yoksa False
+        """
+        try:
+            # SPAN elementi içinde "başka bir eczaneye aittir" metnini ara
+            ie_server = self.main_window.child_window(class_name="Internet Explorer_Server")
+            if not ie_server.exists(timeout=0.2):
+                return False
+
+            # Tüm Text elementlerini kontrol et
+            text_elements = ie_server.descendants(control_type="Text")
+            for elem in text_elements:
+                try:
+                    text = elem.window_text()
+                    if text and "başka bir eczaneye aittir" in text:
+                        logger.warning(f"⚠️ Başka eczane uyarısı tespit edildi: {text}")
+                        return True
+                except Exception:
+                    continue
+
+            return False
+        except Exception as e:
+            logger.debug(f"Başka eczane kontrolü hatası: {type(e).__name__}")
+            return False
+
+    def medula_oturumu_yenile(self):
+        """
+        MEDULA oturumunu yenile - Çıkış + 3x Giriş
+
+        Akış:
+        1. Çıkış Yap butonu var mı kontrol et
+        2. Varsa Çıkış Yap butonuna bas (oturumu sonlandır)
+        3. 3 kez Giriş butonuna bas (yeni oturum başlat / Ana Sayfa'ya dön)
+
+        Returns:
+            bool: İşlem başarılı ise True
+        """
+        try:
+            logger.info("🔄 Medula oturumu yenileniyor...")
+
+            # 1. Önce Çıkış Yap butonu var mı kontrol et
+            if self.cikis_butonu_var_mi():
+                logger.info("📍 Çıkış Yap butonu bulundu - önce çıkış yapılıyor...")
+                if self.cikis_butonuna_tikla():
+                    logger.info("✓ Çıkış yapıldı")
+                    time.sleep(1)  # Çıkış sonrası bekle
+                else:
+                    logger.warning("⚠ Çıkış butonu tıklanamadı, devam ediliyor...")
+
+            # 2. 3 kez Giriş butonuna bas
+            logger.info("📍 3 kez Giriş butonuna basılıyor...")
+            basarili_tiklamalar = 0
+            for i in range(3):
+                logger.debug(f"Giriş tıklaması {i+1}/3...")
+                if self.ana_sayfaya_don():
+                    basarili_tiklamalar += 1
+                    time.sleep(2)  # 2 saniye bekle
+                else:
+                    logger.warning(f"⚠ {i+1}. Giriş tıklaması başarısız")
+                    time.sleep(1)  # Hata durumunda 1 saniye bekle
+
+            if basarili_tiklamalar > 0:
+                logger.info(f"✓ Medula oturumu yenilendi ({basarili_tiklamalar}/3 başarılı)")
+                return True
+            else:
+                logger.warning("❌ Medula oturumu yenilenemedi (hiçbir tıklama başarılı olmadı)")
+                return False
+
+        except Exception as e:
+            logger.error(f"Medula oturumu yenileme hatası: {e}")
             return False
 
     def recete_no_yaz(self, recete_no):
         """
-        Reçete numarasını giriş alanına yaz
+        Reçete numarasını giriş alanına yaz - SADECE DOĞRU AutomationId ile!
+
+        DİKKAT: form1:textSmartDeger (e-Reçete Sorgu) KULLANILMAMALI!
+        Sadece form1:text2 (Reçete Sorgu) kullanılmalı!
 
         Args:
             recete_no (str): Yazılacak reçete numarası
@@ -2214,11 +4397,18 @@ class BotanikBot:
         try:
             logger.info(f"Reçete numarası yazılıyor: {recete_no}")
 
-            # Yöntem 1: AutomationId ile spesifik alanı bul (form1:text2) (OPTIMIZE: control_type eklendi)
+            # Önce pencereyi yenile (sayfa değişmiş olabilir)
+            self.baglanti_kur("MEDULA", ilk_baglanti=False)
+
+            # DOĞRU: form1:text2 (Reçete Sorgu sayfası)
+            # YANLIŞ: form1:textSmartDeger (e-Reçete Sorgu sayfası) KULLANILMAMALI!
+            recete_auto_id = "form1:text2"
+
             try:
-                recete_no_field = self.main_window.descendants(auto_id="form1:text2", control_type="Edit")
-                if recete_no_field and len(recete_no_field) > 0:
-                    edit = recete_no_field[0]
+                # child_window() kullan (descendants() auto_id desteklemiyor!)
+                edit = self.main_window.child_window(auto_id=recete_auto_id, control_type="Edit")
+                if edit.exists(timeout=2.0):
+                    logger.info(f"📍 Edit alanı bulundu: {recete_auto_id}")
 
                     # Focus'u al
                     edit.set_focus()
@@ -2229,94 +4419,27 @@ class BotanikBot:
                         edit.set_edit_text("")
                         self.timed_sleep("text_clear")
                     except Exception as e:
-                        logger.debug(f"Operation failed: {type(e).__name__}")
+                        logger.debug(f"Temizleme hatası: {type(e).__name__}")
 
                     # Yeni değeri yaz
                     edit.set_edit_text(recete_no)
                     self.timed_sleep("text_write")
 
-                    # Kontrol et
-                    try:
-                        current_value = edit.get_value()
-                        if current_value == recete_no:
-                            logger.info(f"✓ Reçete numarası yazıldı (AutomationId): {recete_no}")
-                            return True
-                    except Exception as e:
-                        logger.debug(f"Operation failed: {type(e).__name__}")
-
-                    # Alternatif kontrol
-                    try:
-                        current_text = edit.window_text()
-                        if current_text == recete_no:
-                            logger.info(f"✓ Reçete numarası yazıldı (AutomationId): {recete_no}")
-                            return True
-                    except Exception as e:
-                        logger.debug(f"Operation failed: {type(e).__name__}")
-
-                    # Yazma işlemi yapıldı ama doğrulama yapılamadı
-                    logger.info(f"✓ Reçete numarası yazıldı (AutomationId, doğrulama yok): {recete_no}")
+                    logger.info(f"✓ Reçete numarası yazıldı: {recete_no}")
                     return True
+                else:
+                    logger.warning(f"⚠ Edit alanı bulunamadı: {recete_auto_id}")
 
             except Exception as e:
-                logger.debug(f"AutomationId ile yazılamadı: {e}")
+                logger.debug(f"AutomationId {recete_auto_id} ile yazılamadı: {type(e).__name__}")
 
-            # Yöntem 2: Control Type 50004 (Edit control) - İLK BOŞ edit alanını bul
-            try:
-                edit_controls = self.main_window.descendants(control_type="Edit")
+            # FALLBACK YÖNTEMLERİ KALDIRILDI!
+            # İlk boş edit alanını bulma, koordinat tıklama gibi yöntemler
+            # yanlış ekranda (e-Reçete Sorgu) yanlış alana yazabilir!
 
-                # İlk BOŞ edit alanını bul (TC kimlik dolu, reçete numarası boş)
-                for i, edit in enumerate(edit_controls):
-                    try:
-                        # Mevcut değeri kontrol et
-                        current_value = ""
-                        try:
-                            current_value = edit.get_value() or ""
-                        except Exception as e:
-                            logger.debug(f"Second attempt failed: {type(e).__name__}")
-                            try:
-                                current_value = edit.window_text() or ""
-                            except Exception as e:
-                                logger.debug(f"Operation failed: {type(e).__name__}")
-
-                        # BOŞ değilse atla
-                        if current_value.strip():
-                            continue
-
-                        # Boş bulundu, buraya yaz
-                        edit.set_focus()
-                        self.timed_sleep("text_focus")
-
-                        # Temizle
-                        edit.set_edit_text("")
-                        self.timed_sleep("text_clear")
-
-                        # Yeni değeri yaz
-                        edit.set_edit_text(recete_no)
-                        self.timed_sleep("text_write")
-
-                        # Kontrol et
-                        try:
-                            current_value = edit.get_value()
-                        except Exception as e:
-                            logger.debug(f"Second attempt failed: {type(e).__name__}")
-                            try:
-                                current_value = edit.window_text()
-                            except Exception as e:
-                                logger.debug(f"Operation failed: {type(e).__name__}")
-
-                        if current_value == recete_no:
-                            logger.info(f"✓ Reçete numarası yazıldı (İlk boş Edit): {recete_no}")
-                            return True
-                    except Exception as e:
-                        logger.debug(f"Operation failed, continuing: {type(e).__name__}")
-                        continue
-
-                logger.error("❌ Reçete numarası alanı bulunamadı")
-                return False
-
-            except Exception as e:
-                logger.error(f"Edit kontrol hatası: {e}")
-                return False
+            logger.error(f"❌ Reçete numarası alanı bulunamadı! ({recete_auto_id})")
+            logger.error("   Muhtemel sebep: Reçete Sorgu sayfasında değil (e-Reçete Sorgu olabilir!)")
+            return False
 
         except Exception as e:
             logger.error(f"Reçete numarası yazma hatası: {e}")
@@ -2324,76 +4447,59 @@ class BotanikBot:
 
     def sorgula_butonuna_tikla(self):
         """
-        Sorgula butonuna tıkla (ÜSTTEKİ Reçete Numarası yanındaki) (CACHE destekli)
+        Sorgula butonuna tıkla - SADECE DOĞRU AutomationId ile!
+
+        DİKKAT: form1:buttonSorgula (e-Reçete Sorgu) KULLANILMAMALI!
+        Sadece form1:buttonReceteNoSorgula (Reçete Sorgu) kullanılmalı!
 
         Returns:
             bool: Tıklama başarılı ise True
         """
         try:
-            logger.info("Sorgula butonu aranıyor...")
+            logger.info("🔍 Sorgula butonu aranıyor...")
 
-            # Önce cache'den kontrol et
-            cached_button = self._get_cached_element("sorgula_button")
-            if cached_button:
+            # Önce pencereyi yenile (sayfa değişmiş olabilir)
+            self.baglanti_kur("MEDULA", ilk_baglanti=False)
+
+            # Cache'i temizle
+            self._clear_cache_key("sorgula_button")
+
+            # DOĞRU: form1:buttonReceteNoSorgula (Reçete Sorgu sayfası)
+            # YANLIŞ: form1:buttonSorgula (e-Reçete Sorgu sayfası) KULLANILMAMALI!
+            sorgula_auto_ids = [
+                "form1:buttonReceteNoSorgula",
+            ]
+
+            for auto_id in sorgula_auto_ids:
                 try:
-                    cached_button.invoke()
-                    logger.info("✓ Sorgula butonu tıklandı (cache)")
-                    self.timed_sleep("sorgula_butonu")
-                    return True
-                except Exception as e:
-                    logger.debug(f"Cache sorgula_button invoke failed: {type(e).__name__}")
-                    self._clear_cache_key("sorgula_button")
-
-            # Yöntem 1: AutomationId ile ara (EN DOĞRUSU) (OPTIMIZE: control_type eklendi)
-            try:
-                sorgula_button = self.main_window.descendants(auto_id="form1:buttonReceteNoSorgula", control_type="Button")
-                if sorgula_button and len(sorgula_button) > 0:
-                    self._cache_element("sorgula_button", sorgula_button[0])  # Cache'e ekle
-                    try:
-                        sorgula_button[0].invoke()
-                    except Exception as e:
-                        logger.debug(f"First attempt failed: {type(e).__name__}")
+                    sorgula_btn = self.main_window.child_window(
+                        auto_id=auto_id,
+                        control_type="Button"
+                    )
+                    if sorgula_btn.exists(timeout=1.0):
                         try:
-                            sorgula_button[0].click()
-                        except Exception as e:
-                            logger.debug(f"Sorgula button click() failed: {type(e).__name__}")
-                            sorgula_button[0].click_input()
-
-                    logger.info("✓ Sorgula butonu tıklandı (AutomationId)")
-                    self.timed_sleep("sorgula_butonu")
-                    return True
-            except Exception as e:
-                logger.debug(f"AutomationId ile bulunamadı: {e}")
-
-            # Yöntem 2: Name="Sorgula" + İLK buton (en üstteki)
-            try:
-                buttons = self.main_window.descendants(control_type="Button")
-                for btn in buttons:
-                    try:
-                        btn_name = btn.window_text()
-                        if btn_name and btn_name.strip() == "Sorgula":
-                            self._cache_element("sorgula_button", btn)  # Cache'e ekle
-                            # İLK "Sorgula" butonunu bul (en üstteki)
-                            try:
-                                btn.invoke()
-                            except Exception as e:
-                                logger.debug(f"Third attempt failed: {type(e).__name__}")
-                                try:
-                                    btn.click()
-                                except Exception as e2:
-                                    logger.debug(f"Fourth attempt failed: {type(e2).__name__}")
-                                    btn.click_input()
-
-                            logger.info("✓ Sorgula butonu tıklandı (İlk Sorgula)")
+                            sorgula_btn.invoke()
+                            logger.info(f"✓ Sorgula butonu tıklandı ({auto_id})")
                             self.timed_sleep("sorgula_butonu")
                             return True
-                    except Exception as e:
-                        logger.debug(f"Operation failed, continuing: {type(e).__name__}")
-                        continue
-            except Exception as e:
-                logger.debug(f"Name ile bulunamadı: {e}")
+                        except Exception as inv_err:
+                            logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                            try:
+                                sorgula_btn.click_input()
+                                logger.info(f"✓ Sorgula butonu tıklandı (click_input: {auto_id})")
+                                self.timed_sleep("sorgula_butonu")
+                                return True
+                            except Exception as clk_err:
+                                logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+                except Exception as e:
+                    logger.debug(f"child_window {auto_id} hatası: {type(e).__name__}")
 
-            logger.error("❌ Sorgula butonu bulunamadı (tüm yöntemler denendi)")
+            # FALLBACK YÖNTEMLERİ KALDIRILDI!
+            # Name="Sorgula" araması, descendants(), koordinat tıklama yanlış butona tıklayabilir.
+            # e-Reçete Sorgu sayfasındaki buttonSorgula ile karışabilir!
+
+            logger.error("❌ Sorgula butonu bulunamadı! (form1:buttonReceteNoSorgula)")
+            logger.error("   Muhtemel sebep: Reçete Sorgu sayfasında değil (e-Reçete Sorgu olabilir!)")
             return False
 
         except Exception as e:
@@ -2416,68 +4522,255 @@ class BotanikBot:
 
     def rapor_butonuna_tikla(self):
         """
-        Rapor butonuna tıkla (AutomationId: f:buttonRaporListesi)
+        Rapor butonuna tıkla - Geliştirilmiş web butonu tıklama
+
+        UIElementInspector bilgileri (1 Aralık 2025):
+        - Name: "Rapor"
+        - HTML Id: "f:buttonRaporListesi"
+        - ControlType: Button
+        - WindowClassName: Internet Explorer_Server
+        - BoundingRectangle: {l:656 t:203 r:731 b:222}
+
+        NOT: Bu buton Reçete Ana Sayfasında (ReceteListe.jsp) bulunur.
+        Geri Dön butonuna tıklandıktan SONRA bu sayfaya geçilir ve buton görünür olur.
 
         Returns:
             bool: Tıklama başarılı ise True
         """
         try:
-            # Önce AutomationId ile hızlı arama
+            logger.info("🔍 Rapor butonu aranıyor...")
+
+            # Pencereye odaklan (hızlı, hata olsa bile devam)
+            try:
+                self.main_window.set_focus()
+            except Exception:
+                pass
+
+            # YÖNTEM 1: child_window() ile hızlı arama (timeout artırıldı: 0.2 → 0.8)
             try:
                 rapor_btn = self.main_window.child_window(
                     auto_id="f:buttonRaporListesi",
                     control_type="Button"
                 )
-                if rapor_btn.exists(timeout=0.5):
+                if rapor_btn.exists(timeout=0.8):
+                    logger.info("  ✓ Rapor butonu bulundu (child_window AutomationId)")
                     try:
                         rapor_btn.invoke()
-                    except Exception as e:
-                        logger.debug(f"First attempt failed: {type(e).__name__}")
-                        try:
-                            rapor_btn.click()
-                        except Exception as e:
-                            logger.debug(f"Rapor button click() failed: {type(e).__name__}")
-                            rapor_btn.click_input()
-
-                    logger.info("✓ Rapor butonu tıklandı (hızlı)")
-                    self.timed_sleep("rapor_button_wait", 0.5)
-                    return True
-            except Exception as e:
-                logger.debug(f"Operation failed: {type(e).__name__}")
-
-            # FALLBACK: İsimle arama
-            buttons = self.main_window.descendants(control_type="Button")
-
-            for btn in buttons:
-                try:
-                    btn_name = btn.window_text()
-                    if btn_name == "Rapor":
-                        try:
-                            btn.invoke()
-                        except Exception as e:
-                            logger.debug(f"Second attempt failed: {type(e).__name__}")
-                            try:
-                                btn.click()
-                            except Exception as e:
-                                logger.debug(f"Button click() failed: {type(e).__name__}")
-                                btn.click_input()
-
-                        logger.info("✓ Rapor butonu tıklandı (fallback)")
-                        self.timed_sleep("rapor_button_wait", 0.5)
+                        logger.info("✅ Rapor butonu tıklandı (invoke)")
+                        self.timed_sleep("rapor_button_wait", 0.1)
                         return True
-                except Exception as e:
-                    logger.debug(f"Operation failed: {type(e).__name__}")
+                    except Exception:
+                        rapor_btn.click_input()
+                        logger.info("✅ Rapor butonu tıklandı (click_input)")
+                        self.timed_sleep("rapor_button_wait", 0.1)
+                        return True
+            except Exception as e:
+                logger.debug(f"  child_window AutomationId hatası: {type(e).__name__}")
 
-            logger.warning("❌ Rapor butonu bulunamadı")
+            # YÖNTEM 2: child_window() ile Name araması (timeout artırıldı: 0.2 → 0.8)
+            try:
+                rapor_btn = self.main_window.child_window(
+                    title="Rapor",
+                    control_type="Button"
+                )
+                if rapor_btn.exists(timeout=0.8):
+                    logger.info("  ✓ Rapor butonu bulundu (child_window Name)")
+                    try:
+                        rapor_btn.invoke()
+                        logger.info("✅ Rapor butonu tıklandı (invoke - Name)")
+                        self.timed_sleep("rapor_button_wait", 0.1)
+                        return True
+                    except Exception:
+                        rapor_btn.click_input()
+                        logger.info("✅ Rapor butonu tıklandı (click_input - Name)")
+                        self.timed_sleep("rapor_button_wait", 0.1)
+                        return True
+            except Exception as e:
+                logger.debug(f"  child_window Name hatası: {type(e).__name__}")
+
+            # YÖNTEM 3: descendants() ile AutomationId araması (YAVAŞ FALLBACK)
+            try:
+                rapor_buttons = self.main_window.descendants(
+                    auto_id="f:buttonRaporListesi",
+                    control_type="Button"
+                )
+                if rapor_buttons and len(rapor_buttons) > 0:
+                    logger.info("  ✓ Rapor butonu bulundu (descendants AutomationId)")
+                    try:
+                        rapor_buttons[0].invoke()
+                        logger.info("✅ Rapor butonu tıklandı (invoke)")
+                        self.timed_sleep("rapor_button_wait", 0.1)
+                        return True
+                    except Exception as inv_err:
+                        logger.debug(f"  invoke() hatası: {type(inv_err).__name__}")
+                        try:
+                            rapor_buttons[0].click_input()
+                            logger.info("✅ Rapor butonu tıklandı (click_input)")
+                            self.timed_sleep("rapor_button_wait", 0.1)
+                            return True
+                        except Exception as clk_err:
+                            logger.warning(f"  click_input() hatası: {type(clk_err).__name__}")
+            except Exception as e:
+                logger.debug(f"  descendants() AutomationId hatası: {type(e).__name__}")
+
+            # YÖNTEM 4: descendants() ile Name araması (FALLBACK)
+            try:
+                rapor_buttons = self.main_window.descendants(
+                    title="Rapor",
+                    control_type="Button"
+                )
+                if rapor_buttons and len(rapor_buttons) > 0:
+                    logger.info("  ✓ Rapor butonu bulundu (descendants Name)")
+                    try:
+                        rapor_buttons[0].invoke()
+                        logger.info("✅ Rapor butonu tıklandı (invoke - Name)")
+                        self.timed_sleep("rapor_button_wait", 0.1)
+                        return True
+                    except Exception as inv_err:
+                        try:
+                            rapor_buttons[0].click_input()
+                            logger.info("✅ Rapor butonu tıklandı (click_input - Name)")
+                            self.timed_sleep("rapor_button_wait", 0.1)
+                            return True
+                        except Exception as clk_err:
+                            logger.warning(f"  Tüm tıklama yöntemleri başarısız: {type(clk_err).__name__}")
+            except Exception as e:
+                logger.debug(f"  descendants() Name hatası: {type(e).__name__}")
+
+            # YÖNTEM 3: Tüm butonları listele ve "Rapor" içereni bul (FALLBACK)
+            try:
+                logger.info("  → Tüm butonlar arasında 'Rapor' aranıyor...")
+                all_buttons = self.main_window.descendants(control_type="Button")
+                logger.info(f"  → Toplam {len(all_buttons)} buton bulundu")
+                for btn in all_buttons:
+                    try:
+                        btn_name = btn.window_text()
+                        if btn_name and "Rapor" in btn_name:
+                            logger.info(f"  ✓ Rapor butonu bulundu: '{btn_name}'")
+                            try:
+                                btn.invoke()
+                                logger.info("✅ Rapor butonu tıklandı (text search)")
+                                self.timed_sleep("rapor_button_wait", 0.1)
+                                return True
+                            except Exception:
+                                btn.click_input()
+                                logger.info("✅ Rapor butonu tıklandı (click_input - text search)")
+                                self.timed_sleep("rapor_button_wait", 0.1)
+                                return True
+                    except Exception as btn_err:
+                        continue
+            except Exception as e:
+                logger.debug(f"  Buton arama hatası: {type(e).__name__}")
+
+            # YÖNTEM 4: from_point() ile koordinattan element bul (koordinat tıklama DEĞİL!)
+            # Butonun koordinatını kullanarak elementi bulup invoke() yapar
+            # UIElementInspector (1 Aralık 2025): Ekran={l:656 t:203 r:731 b:222}, Width=75, Height=19
+            # ÖNEMLİ: Bu koordinatlar IE_Server penceresine göre relative!
+            logger.warning("  UIA aramaları başarısız, from_point() deneniyor...")
+            try:
+                from pywinauto import Desktop
+                desktop = Desktop(backend="uia")
+
+                # Önce IE_Server penceresini bul ve onun koordinatlarını al
+                ie_server_rect = None
+                try:
+                    ie_server = self.main_window.child_window(class_name="Internet Explorer_Server")
+                    if ie_server.exists(timeout=0.2):
+                        ie_server_rect = ie_server.rectangle()
+                        logger.info(f"  → IE_Server rect: left={ie_server_rect.left}, top={ie_server_rect.top}")
+                except Exception:
+                    pass
+
+                # IE_Server bulunamadıysa ana pencereyi kullan
+                if ie_server_rect:
+                    base_rect = ie_server_rect
+                else:
+                    base_rect = self.main_window.rectangle()
+                    logger.info(f"  → Ana pencere rect: left={base_rect.left}, top={base_rect.top}")
+
+                # Buton merkez koordinatı (pencere içi relative)
+                btn_center_x = 289 + 37  # X + Width/2 = 326
+                btn_center_y = 76 + 9    # Y + Height/2 = 85
+
+                # Ekran koordinatına çevir
+                screen_x = base_rect.left + btn_center_x
+                screen_y = base_rect.top + btn_center_y
+
+                logger.info(f"  → from_point() koordinatı: ({screen_x}, {screen_y})")
+
+                # Koordinattan element bul
+                element = desktop.from_point(screen_x, screen_y)
+                if element:
+                    elem_name = element.window_text() if hasattr(element, 'window_text') else ''
+                    logger.info(f"  ✓ Element bulundu: '{elem_name}'")
+
+                    # Rapor butonu mu kontrol et
+                    if "Rapor" in elem_name or elem_name == "":
+                        try:
+                            element.invoke()
+                            logger.info("✅ Rapor butonu tıklandı (from_point + invoke)")
+                            self.timed_sleep("rapor_button_wait", 0.1)
+                            return True
+                        except Exception as inv_err:
+                            logger.debug(f"  invoke hatası: {type(inv_err).__name__}")
+                            try:
+                                element.click_input()
+                                logger.info("✅ Rapor butonu tıklandı (from_point + click_input)")
+                                self.timed_sleep("rapor_button_wait", 0.1)
+                                return True
+                            except Exception as clk_err:
+                                logger.warning(f"  click_input hatası: {type(clk_err).__name__}")
+            except Exception as fp_err:
+                logger.debug(f"  from_point() hatası: {type(fp_err).__name__}: {fp_err}")
+
+            # YÖNTEM 5: Keyboard navigation - TAB ile butona git, ENTER bas (SON ÇARE)
+            logger.warning("  from_point() başarısız, keyboard navigation deneniyor...")
+            try:
+                from pywinauto.keyboard import send_keys
+                # Önce pencereye odaklan
+                self.main_window.set_focus()
+                self.timed_sleep("adim_arasi_bekleme", 0.3)
+
+                # Sayfadaki butonlara TAB ile git
+                # Rapor butonu genellikle ilk butonlardan biri
+                for tab_count in range(10):  # Maksimum 10 TAB
+                    send_keys("{TAB}")
+                    time.sleep(0.1)
+
+                    # Aktif elementin adını kontrol et
+                    try:
+                        focused = self.main_window.get_focus()
+                        if focused:
+                            focused_name = focused.window_text()
+                            logger.debug(f"  TAB {tab_count+1}: '{focused_name}'")
+                            if "Rapor" in focused_name:
+                                logger.info(f"  ✓ Rapor butonuna TAB ile ulaşıldı ({tab_count+1} TAB)")
+                                send_keys("{ENTER}")
+                                logger.info("✅ Rapor butonu tıklandı (TAB + ENTER)")
+                                self.timed_sleep("rapor_button_wait", 0.1)
+                                return True
+                    except Exception:
+                        continue
+
+                logger.warning("  TAB ile Rapor butonuna ulaşılamadı")
+            except Exception as kb_err:
+                logger.debug(f"  Keyboard navigation hatası: {type(kb_err).__name__}")
+
+            # Hiçbir yöntem çalışmadı
+            logger.error("❌ Rapor butonu bulunamadı veya tıklanamadı!")
             return False
 
         except Exception as e:
-            logger.error(f"Rapor butonuna tıklama hatası: {e}")
+            logger.error(f"❌ Rapor butonuna tıklama hatası: {e}", exc_info=True)
             return False
 
     def rapor_listesini_topla(self):
         """
-        Rapor listesi penceresini açar ve hasta rapor bilgilerini toplar
+        Rapor listesi penceresini açar ve hasta rapor bilgilerini toplar.
+
+        Tablo yapısı (HTML'den):
+        - Hak Sahibi Bilgileri: TC, Ad/Soyad, Cinsiyet, Doğum Tarihi
+        - Raporlar tablosu: Rapor Takip No | Rapor No | Başlangıç | Bitiş | Kayıt Şekli | Tanı
 
         Returns:
             dict: {
@@ -2489,128 +4782,436 @@ class BotanikBot:
         """
         try:
             # Rapor butonuna tıkla
+            logger.info("🔵 Rapor butonuna tıklanıyor...")
             if not self.rapor_butonuna_tikla():
+                logger.warning("⚠️ Rapor butonuna tıklanamadı")
                 return None
 
-            # Rapor listesi penceresinin açılmasını bekle
-            self.timed_sleep("rapor_pencere_acilis", 1.5)
+            logger.info("✓ Rapor butonuna tıklandı")
 
-            # Hasta bilgilerini önce ana pencereden al (daha güvenilir)
-            ad_soyad = self.hasta_ad_soyad_oku()
+            # Rapor listesi sayfasının yüklenmesini bekle (RaporListe.jsp)
+            # Bekleme süresi artırıldı çünkü sayfa tamamen yeniden yükleniyor
+            rapor_pencere_acik = False
+            max_bekle = 5  # maksimum 5 saniye bekle
+            for bekle_idx in range(max_bekle * 2):  # 0.5 saniye aralıklarla kontrol
+                self.timed_sleep("rapor_pencere_acilis", 0.5)
+                try:
+                    all_texts = self.main_window.descendants(control_type="Text")
+                    for t in all_texts[:100]:  # İlk 100 text'e bak
+                        try:
+                            text = t.window_text()
+                            # "Rapor Listesi" başlığı veya "Hak Sahibi Bilgileri" rapor sayfası işareti
+                            if "Rapor Listesi" in text:
+                                rapor_pencere_acik = True
+                                logger.info(f"✓ Rapor Listesi sayfası yüklendi ({(bekle_idx+1)*0.5:.1f}s)")
+                                break
+                            # Alternatif: 9 haneli rapor takip numarası var mı?
+                            if text.isdigit() and len(text) == 9:
+                                rapor_pencere_acik = True
+                                logger.info(f"✓ Rapor verisi tespit edildi ({(bekle_idx+1)*0.5:.1f}s)")
+                                break
+                        except Exception as text_err:
+                            logger.debug(f"Text okuma hatası: {type(text_err).__name__}")
+                            continue
+                    if rapor_pencere_acik:
+                        break
+                except Exception as desc_err:
+                    logger.debug(f"Descendants hatası: {type(desc_err).__name__}")
+
+            if not rapor_pencere_acik:
+                logger.warning("⚠️ Rapor Listesi sayfası yüklenemedi, yine de okumayı deneyelim...")
+
+            # Telefon numarasını ana pencereden al
             telefon = self.telefon_numarasi_oku()
-            logger.info(f"📋 Hasta: {ad_soyad} | Tel: {telefon}")
+            logger.info(f"📞 Telefon: {telefon}")
+
+            # Hasta adını "Hak Sahibi Bilgileri" bölümünden al
+            ad_soyad = self._hak_sahibi_adini_oku()
+            logger.info(f"👤 Hasta adı: {ad_soyad}")
 
             # Rapor tablosunu bul ve verileri topla
             raporlar = []
             try:
-                # DataGrid veya Table kontrolünü ana pencerede ara
-                tables = self.main_window.descendants(control_type="DataGrid")
-                if not tables:
-                    tables = self.main_window.descendants(control_type="Table")
+                # YENİ YAKLAŞIM: Rapor tablosundaki satırları doğrudan Text elementlerinden bul
+                # HTML'deki rapor tablosu ID pattern'i: form1:tableExRaporTeshisList:X:textYY
+                # Satır elementleri: text14 (RaporTakipNo), text99 (RaporNo), text98 (Başlangıç), text97 (Bitiş), text96 (Tanı)
 
-                logger.info(f"🔍 Bulunan tablo sayısı: {len(tables)}")
+                all_texts = self.main_window.descendants(control_type="Text")
+                logger.info(f"🔍 Toplam {len(all_texts)} Text elementi bulundu")
 
-                # Atlanan kelimeler (kolon başlıkları ve gereksiz veriler)
-                skip_keywords = [
-                    "Rapor", "Takip", "No", "Tanı", "Başlangıç", "Bitiş", "Tarihi",
-                    "İKİZLER", "ECZANESİ", "Listesi", "Hak", "Sahibi", "Bilgileri",
-                    "Adı", "Soyadı", "İade", "Reçete", "Sorgu", "Düzeltme"
-                ]
-
-                for table_idx, table in enumerate(tables):
+                # Önce "Rapor Listesi" sayfasında mıyız kontrol et
+                rapor_listesi_sayfasi = False
+                for t in all_texts[:100]:
                     try:
-                        # Tablo satırlarını oku (DataItem)
-                        rows = table.descendants(control_type="DataItem")
-                        logger.info(f"  📊 Tablo {table_idx+1}: {len(rows)} satır")
+                        text = t.window_text()
+                        if "Rapor Listesi" in text or "Hak Sahibi Bilgileri" in text:
+                            rapor_listesi_sayfasi = True
+                            logger.info(f"✓ Rapor Listesi sayfası tespit edildi")
+                            break
+                    except Exception as text_err:
+                        logger.debug(f"Rapor listesi text okuma hatası: {type(text_err).__name__}")
+                        continue
 
-                        for row_idx, row in enumerate(rows):
-                            try:
-                                # Her satırdaki hücreleri oku
-                                cells = row.descendants(control_type="Text")
+                if not rapor_listesi_sayfasi:
+                    logger.warning("⚠️ Rapor Listesi sayfası bulunamadı")
 
-                                cell_values = []
-                                for cell in cells:
-                                    try:
-                                        cell_text = cell.window_text()
-                                        if cell_text and cell_text.strip():
-                                            # Skip keywords kontrol
-                                            skip = False
-                                            for keyword in skip_keywords:
-                                                if keyword in cell_text:
-                                                    skip = True
-                                                    break
-                                            if not skip:
-                                                cell_values.append(cell_text.strip())
-                                    except Exception as e:
-                                        logger.debug(f"Cell text parse error: {type(e).__name__}")
+                # Rapor satırlarını topla - Her satır için: RaporTakipNo, RaporNo, Başlangıç, Bitiş, KayıtŞekli, Tanı
+                # Pattern: Ardışık Text elementleri içinde rapor verisi ara
+                rapor_satir_verileri = []
+                current_row = []
 
-                                logger.debug(f"    Satır {row_idx+1}: {cell_values}")
+                for t in all_texts:
+                    try:
+                        text = t.window_text().strip()
+                        if not text:
+                            continue
 
-                                # Rapor bilgilerini parse et
-                                if len(cell_values) >= 1:
-                                    # Tarih içeren değerleri bul (DD/MM/YYYY)
-                                    tarih_idx = -1
-                                    bitis_tarihi = None
-                                    for idx, val in enumerate(cell_values):
-                                        # Tarih: XX/XX/XXXX (en az 8 karakter, 2 adet /)
-                                        if "/" in val and len(val) >= 8 and val.count("/") == 2:
-                                            parts = val.split("/")
-                                            if len(parts) == 3 and all(p.isdigit() for p in parts):
-                                                bitis_tarihi = val
-                                                tarih_idx = idx
-                                                break
+                        # Rapor satırı pattern'i: 9 haneli sayı ile başlayan satırlar (Rapor Takip No)
+                        if text.isdigit() and len(text) == 9:
+                            # Yeni rapor satırı başlangıcı
+                            if current_row and len(current_row) >= 4:
+                                rapor_satir_verileri.append(current_row)
+                            current_row = [text]
+                        elif current_row:
+                            # Mevcut satıra ekle (6-7 hücrelik tablo)
+                            if len(current_row) < 8:
+                                current_row.append(text)
+                    except Exception as row_err:
+                        logger.debug(f"Rapor satır okuma hatası: {type(row_err).__name__}")
+                        continue
 
-                                    # Tanı: Tarihten önceki değerleri birleştir
-                                    if bitis_tarihi:
-                                        if tarih_idx > 0:
-                                            tani_parts = cell_values[:tarih_idx]
-                                            tani = " | ".join(tani_parts)
-                                        else:
-                                            # Tarih ilk değerse, sonraki değerleri al
-                                            tani = " | ".join(cell_values[1:]) if len(cell_values) > 1 else "Belirtilmemiş"
+                # Son satırı ekle
+                if current_row and len(current_row) >= 4:
+                    rapor_satir_verileri.append(current_row)
 
-                                        # Geçerli rapor ekle
-                                        raporlar.append({
-                                            'tani': tani,
-                                            'bitis_tarihi': bitis_tarihi
-                                        })
-                                        logger.info(f"  ✓ Rapor {len(raporlar)}: {tani} | {bitis_tarihi}")
-                            except Exception as row_err:
-                                logger.debug(f"Satır okuma hatası: {row_err}")
-                    except Exception as table_err:
-                        logger.debug(f"Tablo okuma hatası: {table_err}")
+                logger.info(f"📊 {len(rapor_satir_verileri)} potansiyel rapor satırı bulundu")
+
+                # Her satırı parse et
+                for row_idx, row_data in enumerate(rapor_satir_verileri):
+                    try:
+                        logger.info(f"  🔍 Satır {row_idx+1}: {row_data}")
+                        rapor = self._parse_rapor_satiri_v2(row_data)
+                        if rapor:
+                            raporlar.append(rapor)
+                            logger.info(f"  ✓ Rapor {len(raporlar)}: {rapor['tani'][:50]}... | {rapor['bitis_tarihi']}")
+                    except Exception as row_err:
+                        logger.debug(f"Satır okuma hatası: {row_err}")
+
+                # Eğer yeni yöntem başarısız olduysa, eski yöntemi dene
+                if not raporlar:
+                    logger.info("🔄 Alternatif yöntem deneniyor (Table aramasi)...")
+                    raporlar = self._rapor_tablosu_eski_yontem()
+
             except Exception as e:
                 logger.error(f"Rapor tablosu okuma hatası: {e}")
 
-            # Rapor penceresini kapat (ESC)
+            # Rapor sayfasından çıkış - Sonraki butonu ile bir sonraki reçeteye geç
+            # NOT: Geri Dön yerine Sonraki butonuna basılıyor (kullanıcı talebi)
             try:
-                send_keys("{ESC}")
-                self.timed_sleep("pencere_kapatma", 0.3)
-                logger.info("✓ Rapor penceresi kapatıldı")
+                sonraki_clicked = False
+                buttons = self.main_window.descendants(control_type="Button")
+                for btn in buttons:
+                    try:
+                        btn_text = btn.window_text()
+                        # Sonraki veya SONRA butonu ara
+                        if "Sonraki" in btn_text or "SONRA" in btn_text or btn_text == ">":
+                            btn.click_input()
+                            sonraki_clicked = True
+                            logger.info("✓ Rapor sayfasından Sonraki butonu ile çıkıldı")
+                            break
+                    except Exception as btn_err:
+                        logger.debug(f"Sonraki butonu hatası: {type(btn_err).__name__}")
+                        continue
+
+                if not sonraki_clicked:
+                    # NOT: Rapor sayfası ESC ile kapanmaz!
+                    # Sonraki butonu bulunamadıysa sadece uyarı ver
+                    logger.warning("⚠️ Sonraki butonu bulunamadı, rapor sayfası açık kalabilir")
+
+                self.timed_sleep("pencere_kapatma", 0.5)
             except Exception as e:
-                logger.debug(f"Pencere kapatma hatası: {e}")
+                logger.debug(f"Rapor sayfası kapatma hatası: {e}")
 
             # Veri döndür
             if raporlar:
-                logger.info(f"✅ Toplam {len(raporlar)} rapor toplandı")
+                logger.info(f"✅ Toplam {len(raporlar)} rapor toplandı - Hasta: {ad_soyad}")
                 return {
                     'ad_soyad': ad_soyad,
                     'telefon': telefon,
-                    'raporlar': raporlar
+                    'raporlar': raporlar,
+                    'sonraki_basildi': sonraki_clicked  # Sonraki butonu basıldı mı?
                 }
             else:
-                logger.warning("⚠️ Hiç rapor verisi toplanamadı")
-                return None
+                logger.warning(f"⚠️ Hiç rapor verisi toplanamadı - Hasta: {ad_soyad}, Telefon: {telefon}")
+                logger.warning(f"   Tablo sayısı: {len(tables) if 'tables' in locals() else 'bilinmiyor'}")
+                return {
+                    'ad_soyad': ad_soyad,
+                    'telefon': telefon,
+                    'raporlar': [],
+                    'sonraki_basildi': sonraki_clicked  # Sonraki butonu basıldı mı?
+                }
 
         except Exception as e:
-            logger.error(f"❌ Rapor toplama hatası: {e}")
-            # Hata durumunda pencereyi kapatmayı dene
-            try:
-                send_keys("{ESC}")
-                self.timed_sleep("pencere_kapatma", 0.3)
-            except Exception as e:
-                logger.debug(f"ESC kapatma hatası: {e}")
+            logger.error(f"❌ Rapor toplama hatası: {e}", exc_info=True)
+            # NOT: Rapor sayfası ESC ile kapanmaz, sadece hata logla
             return None
+
+    def _hak_sahibi_adini_oku(self):
+        """Hak Sahibi Bilgileri bölümünden hasta adını okur."""
+        try:
+            # Tüm Text elemanlarını tara
+            all_texts = self.main_window.descendants(control_type="Text")
+
+            # Ad ve soyad için aday değerleri topla
+            ad_aday = None
+            soyad_aday = None
+
+            for i, elem in enumerate(all_texts):
+                try:
+                    text = elem.window_text().strip()
+
+                    # "Adı / Soyadı" label'ından sonraki değerleri ara
+                    if "Adı" in text and "Soyadı" in text:
+                        # Sonraki 2-3 Text elemanı ad ve soyad olabilir
+                        for j in range(1, 5):
+                            if i + j < len(all_texts):
+                                next_text = all_texts[i + j].window_text().strip()
+                                # Boş değil, ":" değil, ve kısa bir kelime ise
+                                if next_text and next_text != ":" and len(next_text) < 30:
+                                    # Sayı veya özel karakter içermiyorsa
+                                    if next_text.replace(" ", "").isalpha():
+                                        if not ad_aday:
+                                            ad_aday = next_text
+                                        elif not soyad_aday:
+                                            soyad_aday = next_text
+                                            break
+                        if ad_aday and soyad_aday:
+                            break
+                except Exception:
+                    continue
+
+            if ad_aday and soyad_aday:
+                ad_soyad = f"{ad_aday} {soyad_aday}"
+                logger.info(f"📝 Hasta adı bulundu: {ad_soyad}")
+                return ad_soyad
+
+            logger.debug("Hasta adı bulunamadı, 'Bilinmeyen' kullanılacak")
+            return "Bilinmeyen"
+
+        except Exception as e:
+            logger.debug(f"Hak sahibi adı okuma hatası: {e}")
+            return "Bilinmeyen"
+
+    def _parse_rapor_satiri(self, cell_values):
+        """
+        Rapor tablosu satırını parse eder.
+
+        Esnek parsing: Farklı tablo formatlarını destekler
+        Minimum gereksinim: Tarih ve tanı olması
+        """
+        if not cell_values or len(cell_values) < 2:
+            return None
+
+        # Geçersiz satırları filtrele (uyarı mesajları, header vs.)
+        text_combined = " ".join(cell_values)
+        invalid_patterns = [
+            "Hak sahibi bilgileri", "güncel değil", "SGK Sosyal", "Müstehaklık",
+            "T.C. Kimlik", "Cinsiyeti", "Rapor Takip No", "Başlangıç Tarihi",
+            "Bitiş Tarihi", "Kayıt Şekli", "Adı / Soyadı", "başvurunuz", "Telefon"
+        ]
+        if any(pattern.lower() in text_combined.lower() for pattern in invalid_patterns):
+            return None
+
+        # Geçerli rapor tarihlerini bul (2020 ve sonrası)
+        tarihler = []
+        tarih_indexler = []
+        for idx, val in enumerate(cell_values):
+            if self._is_tarih(val):
+                yil = int(val.split("/")[2])
+                if yil >= 2020:
+                    tarihler.append(val)
+                    tarih_indexler.append(idx)
+
+        if not tarihler:
+            return None
+
+        # DEBUG: Tarih bulunan satırları logla
+        logger.info(f"    📅 Tarihli satır: {cell_values[:4]}...")
+
+        # Bitiş tarihi: İkinci tarih (veya tek varsa o)
+        if len(tarihler) >= 2:
+            bitis_tarihi = tarihler[1]
+            son_tarih_idx = tarih_indexler[1]
+        else:
+            bitis_tarihi = tarihler[0]
+            son_tarih_idx = tarih_indexler[0]
+
+        # Tanı: ICD kodu pattern'ine uyan ilk değeri bul
+        # Veya uzun metin (hastalık açıklaması) olabilir
+        tani = None
+        for val in cell_values:
+            # ICD pattern: "XX.XX - Hastalık" veya "XX.XX.X - Hastalık"
+            if " - " in val and len(val) > 10:
+                # İlk kısım sayı/nokta içermeli
+                first_part = val.split(" - ")[0].strip()
+                if any(c.isdigit() for c in first_part[:5]):
+                    # Elektronik Rapor değilse tanı olarak al
+                    if "Elektronik" not in val and "İmzalı" not in val:
+                        tani = val
+                        break
+
+        # Eğer ICD formatında bulamadıysak, en uzun metni tanı olarak al
+        if not tani:
+            for val in cell_values:
+                # Tarih değilse ve uzunsa tanı olabilir
+                if not self._is_tarih(val) and len(val) > 15 and not val.isdigit():
+                    if "Elektronik" not in val and "İmzalı" not in val:
+                        tani = val
+                        break
+
+        if not tani:
+            logger.debug(f"    ❌ Tanı bulunamadı: {cell_values}")
+            return None
+
+        return {
+            'tani': tani,
+            'bitis_tarihi': bitis_tarihi
+        }
+
+    def _is_tarih(self, val):
+        """Değerin DD/MM/YYYY formatında tarih olup olmadığını kontrol eder."""
+        if not val or "/" not in val:
+            return False
+        parts = val.split("/")
+        if len(parts) != 3:
+            return False
+        try:
+            gun, ay, yil = parts
+            return (len(gun) == 2 and len(ay) == 2 and len(yil) == 4 and
+                    gun.isdigit() and ay.isdigit() and yil.isdigit())
+        except Exception:
+            return False
+
+    def _parse_rapor_satiri_v2(self, row_data):
+        """
+        Yeni rapor satırı parse fonksiyonu.
+
+        row_data yapısı (HTML'den alınan sıra):
+        [0] RaporTakipNo (9 haneli sayı, örn: 500640940)
+        [1] RaporNo (7 haneli sayı, örn: 1469653)
+        [2] Başlangıç Tarihi (DD/MM/YYYY)
+        [3] Bitiş Tarihi (DD/MM/YYYY)
+        [4] Kayıt Şekli (Elektronik İmzalı Rapor)
+        [5] Tanı (07.01.3 - Diabetes Insipitus(E23.2))
+        """
+        if not row_data or len(row_data) < 4:
+            return None
+
+        try:
+            # row_data: ['500640940', '1469653', '14/04/2025', '13/04/2027', 'Elektronik İmzalı Rapor', '07.01.3 - Diabetes Insipitus(E23.2)']
+
+            # Bitiş tarihi bul (tarih formatındaki değerlerden ikincisi)
+            tarihler = [v for v in row_data if self._is_tarih(v)]
+            if len(tarihler) >= 2:
+                bitis_tarihi = tarihler[1]  # İkinci tarih = bitiş tarihi
+            elif len(tarihler) == 1:
+                bitis_tarihi = tarihler[0]
+            else:
+                logger.debug(f"  ❌ Tarih bulunamadı: {row_data}")
+                return None
+
+            # Tanı bul - ICD kodu pattern'i: XX.XX - Hastalık veya XX.XX.X - Hastalık
+            tani = None
+            for val in row_data:
+                # ICD pattern kontrolü
+                if " - " in val and len(val) > 10:
+                    first_part = val.split(" - ")[0].strip()
+                    # İlk kısım sayı/nokta içermeli (örn: 07.01.3, 20.02)
+                    if any(c.isdigit() for c in first_part[:5]):
+                        if "Elektronik" not in val and "İmzalı" not in val:
+                            tani = val
+                            break
+
+            # ICD formatı yoksa, uzun metin ara
+            if not tani:
+                for val in row_data:
+                    if not self._is_tarih(val) and len(val) > 15 and not val.isdigit():
+                        if "Elektronik" not in val and "İmzalı" not in val and "Rapor" not in val:
+                            tani = val
+                            break
+
+            if not tani:
+                logger.debug(f"  ❌ Tanı bulunamadı: {row_data}")
+                return None
+
+            # Bitiş tarihinin güncelliğini kontrol et (geçmemiş olmalı)
+            from datetime import datetime
+            try:
+                bitis_date = datetime.strptime(bitis_tarihi, "%d/%m/%Y")
+                if bitis_date < datetime.now():
+                    logger.debug(f"  ⏰ Süresi geçmiş rapor: {bitis_tarihi}")
+                    # Süresi geçmiş raporları da kaydet ama işaretle
+                    pass
+            except ValueError as date_err:
+                logger.debug(f"Tarih parse hatası ({bitis_tarihi}): {date_err}")
+
+            return {
+                'tani': tani,
+                'bitis_tarihi': bitis_tarihi
+            }
+
+        except Exception as e:
+            logger.debug(f"  ❌ Parse hatası: {e}")
+            return None
+
+    def _rapor_tablosu_eski_yontem(self):
+        """Eski tablo arama yöntemi (fallback)"""
+        raporlar = []
+        try:
+            # Table elementlerini bul
+            tables = self.main_window.descendants(control_type="Table")
+            logger.info(f"  📊 Eski yöntem: {len(tables)} Table bulundu")
+
+            for table_idx, table in enumerate(tables):
+                try:
+                    # Tablonun içindeki tüm Text'leri al
+                    texts = table.descendants(control_type="Text")
+                    text_values = [t.window_text().strip() for t in texts if t.window_text().strip()]
+
+                    # "Rapor Takip No" header'ı var mı kontrol et (doğru tablo mu?)
+                    if not any("Rapor Takip" in v or "Tanı" in v for v in text_values[:20]):
+                        continue
+
+                    logger.info(f"  ✓ Rapor tablosu bulundu (Tablo {table_idx+1})")
+
+                    # Text değerlerini grupla (9 haneli sayı = yeni satır başlangıcı)
+                    current_row = []
+                    for val in text_values:
+                        if val.isdigit() and len(val) == 9:
+                            if current_row and len(current_row) >= 4:
+                                rapor = self._parse_rapor_satiri_v2(current_row)
+                                if rapor:
+                                    raporlar.append(rapor)
+                            current_row = [val]
+                        elif current_row and len(current_row) < 8:
+                            current_row.append(val)
+
+                    # Son satır
+                    if current_row and len(current_row) >= 4:
+                        rapor = self._parse_rapor_satiri_v2(current_row)
+                        if rapor:
+                            raporlar.append(rapor)
+
+                    if raporlar:
+                        break
+
+                except Exception as table_err:
+                    logger.debug(f"  Tablo okuma hatası: {table_err}")
+
+        except Exception as e:
+            logger.debug(f"  Eski yöntem hatası: {e}")
+
+        return raporlar
 
     def hasta_ad_soyad_oku(self):
         """Ana pencereden hasta ad soyad okur"""
@@ -2630,13 +5231,31 @@ class BotanikBot:
     def telefon_numarasi_oku(self):
         """Ana pencereden telefon numarası okur"""
         try:
+            # Önce lblMusteriTelefonu alanını kontrol et (en güvenilir)
+            texts = self.main_window.descendants(control_type="Text")
+            for text in texts:
+                try:
+                    auto_id = text.automation_id() if hasattr(text, 'automation_id') else None
+                    if auto_id and 'Telefon' in auto_id:
+                        text_value = text.window_text()
+                        if text_value:
+                            # "C:(544) 611 1522" gibi formatları temizle
+                            clean_phone = text_value.replace(" ", "").replace("-", "").replace("(", "").replace(")", "").replace("C:", "").replace("c:", "")
+                            if clean_phone.isdigit() and len(clean_phone) >= 10:
+                                logger.debug(f"Telefon bulundu (auto_id): {auto_id} = {clean_phone}")
+                                return clean_phone
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
+
+            # Alternatif: Edit kontrollerinden ara
             edits = self.main_window.descendants(control_type="Edit")
             for edit in edits:
                 try:
                     edit_value = edit.window_text()
                     if edit_value:
-                        clean_phone = edit_value.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+                        clean_phone = edit_value.replace(" ", "").replace("-", "").replace("(", "").replace(")", "").replace("C:", "").replace("c:", "")
                         if clean_phone.isdigit() and len(clean_phone) >= 10:
+                            logger.debug(f"Telefon bulundu (Edit): {clean_phone}")
                             return clean_phone
                 except Exception as e:
                     logger.debug(f"Operation failed: {type(e).__name__}")
@@ -2676,7 +5295,7 @@ class BotanikBot:
             logger.error(f"Bilgi gösterme hatası: {e}")
 
 
-def tek_recete_isle(bot, recete_sira_no, rapor_takip):
+def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=None, stop_check=None, onceden_okunan_recete_no=None, onceki_recete_no=None):
     """
     Tek bir reçete için tüm işlemleri yap
 
@@ -2684,10 +5303,21 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip):
         bot: BotanikBot instance
         recete_sira_no: Reçete sıra numarası (1, 2, 3...)
         rapor_takip: RaporTakip instance (CSV kaydı için)
+        grup: Grup bilgisi (A, B, C) (varsayılan: "")
+        session_logger: SessionLogger instance (oturum logları için, opsiyonel)
+        stop_check: Durdurma kontrolü için callback fonksiyonu (True dönerse işlem durur)
+        onceden_okunan_recete_no: GUI'de zaten okunan reçete numarası (tekrar okumayı önler)
+        onceki_recete_no: Bir önceki işlenen reçete numarası (ardışık aynı reçete kontrolü için)
 
     Returns:
         tuple: (başarı durumu: bool, medula reçete no: str veya None, takip sayısı: int, hata nedeni: str veya None)
     """
+    # Durdurma kontrolü helper fonksiyonu
+    def should_stop():
+        """Stop_check callback varsa kontrol et, True dönerse durulmalı"""
+        if stop_check and callable(stop_check):
+            return stop_check()
+        return False
     recete_baslangic = time.time()
     adim_sureleri = []
 
@@ -2718,43 +5348,71 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip):
         logger.info(f"📋 REÇETE {recete_sira_no} | No: {no_text}")
         baslik_loglandi = True
 
-    # ÖNEMLİ: Her reçete işlemi başlamadan önce "Reçete kaydı bulunamadı" kontrolü yap
-    adim_baslangic = time.time()
-    recete_kaydi_var = bot.recete_kaydi_var_mi_kontrol()
-    log_sure("Reçete kontrolü", adim_baslangic, "recete_kontrol")
-    if not recete_kaydi_var:
-        logger.error("❌ Reçete kaydı yok")
-        log_recete_baslik()
-        return (False, medula_recete_no, takip_sayisi, "Reçete kaydı bulunamadı")
+    # DURDURMA KONTROLÜ - başlangıçta
+    if should_stop():
+        logger.info("⏸ İşlem durduruldu (kullanıcı talebi)")
+        return (False, None, 0, "Kullanıcı tarafından durduruldu")
+
+    # OPTİMİZE: Ardışık aynı reçete kontrolü (SONRA basınca aynı reçete gelirse = "Reçete kaydı bulunamadı")
+    # Sadece aynı reçete numarası geldiğinde hızlı kontrol yap, farklıysa atla
+    if onceki_recete_no and onceden_okunan_recete_no and onceki_recete_no == onceden_okunan_recete_no:
+        # Aynı reçete numarası → "Reçete kaydı bulunamadı" uyarısı var mı kontrol et
+        adim_baslangic = time.time()
+        recete_kaydi_var = bot.recete_kaydi_var_mi_kontrol_hizli()
+        log_sure("Reçete kontrolü (aynı no)", adim_baslangic, "recete_kontrol")
+        if not recete_kaydi_var:
+            logger.error("❌ Reçete kaydı yok (ardışık aynı numara)")
+            log_recete_baslik()
+            return (False, medula_recete_no, takip_sayisi, "Reçete kaydı bulunamadı")
 
     # Reçete notu ve uyarı kontrolü KALDIRILDI - retry mekanizması gerektiğinde yapacak
 
-    medula_recete_no = bot.recete_no_oku()
-    log_recete_baslik(medula_recete_no)
-
-    # Telefon kontrolü (ayar açıksa)
+    # ===== OPTİMİZASYON: TELEFON KONTROLÜ ÖNCE =====
+    # Eğer "telefonsuz_atla" ayarı açıksa, reçete no okumadan ÖNCE telefon kontrol et
+    # Telefon yoksa reçete no okumaya gerek yok, direkt SONRA'ya basılır (zaman kazanımı)
     from medula_settings import get_medula_settings
     medula_settings = get_medula_settings()
     telefonsuz_atla = medula_settings.get("telefonsuz_atla", False)
 
     if telefonsuz_atla:
+        adim_baslangic = time.time()
         telefon_var = bot.telefon_numarasi_kontrol()
+        log_sure("Telefon kontrolü", adim_baslangic, "telefon_kontrol")
+
         if not telefon_var:
-            logger.info("⏭ Telefon numarası yok, hasta atlanıyor...")
-            # Direkt SONRA butonuna bas ve geç (3 deneme + popup kontrolü)
+            logger.info("⏭ Telefon numarası yok, hasta atlanıyor (reçete no okunmadı)...")
+            # Direkt SONRA butonuna bas ve geç (reçete no okumadan!)
             adim_baslangic = time.time()
             sonra = bot.retry_with_popup_check(
                 lambda: bot.sonra_butonuna_tikla(),
-                "SONRA butonu"
+                "SONRA butonu",
+                max_retries=5
             )
             log_sure("Sonra butonu (telefon yok)", adim_baslangic, "sonra_butonu")
             if not sonra:
-                log_recete_baslik()
-                return (False, medula_recete_no, takip_sayisi, "SONRA butonu başarısız (telefon yok)")
+                return (False, None, takip_sayisi, "SONRA butonu başarısız (telefon yok)")
 
             # Başarıyla atlandı, takip sayısı 0
             logger.info(f"✓ Reçete {recete_sira_no} atlandı (telefon yok)")
-            return (True, medula_recete_no, 0, None)  # Başarılı sayılsın ama takip 0
+            return (True, None, 0, None)  # Reçete no = None (okunmadı)
+
+    # ===== REÇETE NUMARASI OKU =====
+    # Reçete numarası zaten GUI'de okunmuşsa tekrar okuma (performans optimizasyonu)
+    if onceden_okunan_recete_no:
+        medula_recete_no = onceden_okunan_recete_no
+    else:
+        # OPTİMİZE: TEK TARAMADA hem reçete no hem bulunamadı kontrolü
+        medula_recete_no, kayit_var = bot.recete_no_ve_kontrol_birlesik()
+        if not kayit_var:
+            logger.error("❌ Reçete kaydı bulunamadı")
+            log_recete_baslik()
+            return (False, medula_recete_no, takip_sayisi, "Reçete kaydı bulunamadı")
+    log_recete_baslik(medula_recete_no)
+
+    # DURDURMA KONTROLÜ - telefon kontrolünden sonra
+    if should_stop():
+        logger.info("⏸ İşlem durduruldu (kullanıcı talebi)")
+        return (False, medula_recete_no, 0, "Kullanıcı tarafından durduruldu")
 
     # Genel muayene uyarısı kontrolü (reçete açıldıktan hemen sonra)
     try:
@@ -2763,25 +5421,31 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip):
     except Exception as e:
         logger.debug(f"Uyarı kontrol hatası: {e}")
 
-    # İlaç butonuna tıkla (3 deneme + popup kontrolü)
+    # İlaç butonuna tıkla (5 deneme + popup kontrolü)
     adim_baslangic = time.time()
     ilac_butonu = bot.retry_with_popup_check(
         lambda: bot.ilac_butonuna_tikla(),
-        "İlaç butonu"
+        "İlaç butonu",
+        max_retries=5
     )
     log_sure("İlaç butonu", adim_baslangic, "ilac_butonu")
     if not ilac_butonu:
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi, "İlaç butonu başarısız")
 
-    # "Kullanılan İlaç Listesi" ekranının yüklenmesini bekle
+    # "Kullanılan İlaç Listesi" ekranının yüklenmesini bekle (5 saniye - yavaş bağlantı için artırıldı)
     adim_baslangic = time.time()
-    ilac_ekrani = bot.ilac_ekrani_yuklendi_mi(max_bekleme=3)
+    ilac_ekrani = bot.ilac_ekrani_yuklendi_mi(max_bekleme=5)
     log_sure("İlaç ekranı yükleme", adim_baslangic, "ilac_ekran_bekleme")
     if not ilac_ekrani:
         logger.error("❌ İlaç ekranı yüklenemedi")
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi, "İlaç ekranı yüklenemedi")
+
+    # DURDURMA KONTROLÜ - ilaç ekranı sonrası
+    if should_stop():
+        logger.info("⏸ İşlem durduruldu (kullanıcı talebi)")
+        return (False, medula_recete_no, 0, "Kullanıcı tarafından durduruldu")
 
     # Y butonuna tıkla
     ana_pencere = bot.main_window
@@ -2804,17 +5468,47 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip):
 
     log_sure("İlaç penceresi bulma", adim_baslangic, "pencere_bulma")
 
-    # İlaç Listesi bulunamadıysa ENTER tuşu ile popup kapat (1. deneme)
+    # İlaç Listesi bulunamadıysa 3x ESC tuşu ile popup kapat ve Y'yi tekrar dene
+    # ===== POPUP WATCHER VARKEN BU KISIM NADIREN ÇALIŞIR =====
+    # Windows Hook popup watcher otomatik olarak popup'ları kapatır
     if not ilac_penceresi_bulundu:
-        logger.info("⚠ İlaç Listesi bulunamadı → 1 saniye bekleyip ENTER basılıyor...")
-        time.sleep(1.0)
+        logger.info("⚠ İlaç Listesi bulunamadı → 3x ESC tuşuna basılıyor (LABA/LAMA uyarısı kapatma)")
+        for i in range(3):
+            send_keys("{ESC}")
+            time.sleep(0.1)  # ESC'ler arası kısa bekleme (OPT: 0.15 → 0.1)
+        logger.info("✓ 3x ESC tuşuna basıldı")
+        time.sleep(bot.timing.get("esc_sonrasi_bekleme", 0.3))  # OPT: 0.5 → timing
+
+        # Y butonuna tekrar tıkla
+        logger.info("🔄 Y tuşuna tekrar basılıyor...")
+        adim_baslangic = time.time()
+        y_butonu = bot.y_tusuna_tikla()
+        log_sure("Y butonu (ESC sonrası)", adim_baslangic, "y_butonu")
+
+        # İlaç Listesi penceresini tekrar ara
+        bekleme_baslangic = time.time()
+        max_bekleme = 0.8  # OPT: 1.0 → 0.8
+
+        while time.time() - bekleme_baslangic < max_bekleme:
+            ilac_penceresi_bulundu = bot.yeni_pencereyi_bul("İlaç Listesi")
+            if ilac_penceresi_bulundu:
+                logger.info("✓ İlaç Listesi bulundu (ESC + Y sonrası)")
+                break
+            time.sleep(bot.timing.get("pencere_bulma"))
+
+        log_sure("İlaç penceresi bulma (ESC sonrası)", adim_baslangic, "pencere_bulma")
+
+    # İlaç Listesi hala bulunamadıysa ENTER tuşu ile popup kapat (2. deneme)
+    if not ilac_penceresi_bulundu:
+        logger.info("⚠ İlaç Listesi hala bulunamadı → ENTER basılıyor...")
+        time.sleep(bot.timing.get("enter_oncesi_bekleme", 0.5))  # OPT: 1.0 → timing
         send_keys("{ENTER}")
         logger.info("✓ ENTER tuşuna basıldı (1. deneme)")
 
         # İlaç Listesi penceresini tekrar ara
         adim_baslangic = time.time()
         bekleme_baslangic = time.time()
-        max_bekleme = 1.0
+        max_bekleme = 0.8  # OPT: 1.0 → 0.8
 
         while time.time() - bekleme_baslangic < max_bekleme:
             ilac_penceresi_bulundu = bot.yeni_pencereyi_bul("İlaç Listesi")
@@ -2825,10 +5519,10 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip):
 
         log_sure("İlaç penceresi bulma (ENTER sonrası)", adim_baslangic, "pencere_bulma")
 
-    # Hala bulunamadıysa ENTER tuşu ile popup kapat (2. deneme)
+    # Hala bulunamadıysa ENTER tuşu ile popup kapat (3. deneme)
     if not ilac_penceresi_bulundu:
-        logger.info("⚠ İlaç Listesi hala bulunamadı → 1 saniye bekleyip tekrar ENTER basılıyor...")
-        time.sleep(1.0)
+        logger.info("⚠ İlaç Listesi hala bulunamadı → tekrar ENTER basılıyor...")
+        time.sleep(bot.timing.get("enter_oncesi_bekleme", 0.5))  # OPT: 1.0 → timing
         send_keys("{ENTER}")
         logger.info("✓ ENTER tuşuna basıldı (2. deneme)")
 
@@ -2857,6 +5551,11 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip):
         logger.error("❌ İlaç Listesi penceresi bulunamadı (2x ENTER + Y sonrası bile)")
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi, "İlaç Listesi penceresi bulunamadı")
+
+    # ===== YENİ AKIŞ: Textbox'lara 122 yaz =====
+    adim_baslangic = time.time()
+    bot.textboxlara_122_yaz()
+    log_sure("Textbox 122 yazma", adim_baslangic, "textbox_yazma")
 
     # "Bizden Alınmayanları Seç" butonunu ara
     adim_baslangic = time.time()
@@ -2901,58 +5600,61 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip):
             log_recete_baslik()
             return (False, medula_recete_no, takip_sayisi, "Bizden Alınmayanları Seç butonu bulunamadı")
 
-    # İlaçların seçilmesini bekle - maksimum 0.6 saniye, ama seçili ilaç bulunca devam et
+    # ===== YENİ AKIŞ: Checkbox kontrolü YOK - direkt sağ tıkla ve Takip Et =====
+    # DURDURMA KONTROLÜ
+    if should_stop():
+        logger.info("⏸ İşlem durduruldu (kullanıcı talebi)")
+        return (False, medula_recete_no, 0, "Kullanıcı tarafından durduruldu")
+
+    # Kısa bekleme - seçim işleminin tamamlanması için
     adim_baslangic = time.time()
-    ilac_var = False
-    pencere_kapandi = False
+    time.sleep(0.3)
 
-    # Kısa bir süre bekleyip tek taramada seçili satır arıyoruz
-    time.sleep(bot.timing.get("ilac_secim_bekleme"))
-    cells = bot.main_window.descendants(control_type="DataItem")
-    for cell in cells:
+    # Direkt sağ tıkla ve "Takip Et" - checkbox kontrolü YOK
+    takip_basarili = bot.ilk_ilaca_sag_tik_ve_takip_et()
+
+    if takip_basarili:
+        # Takip edilen ilaç sayısını say
         try:
-            cell_name = cell.window_text()
-            if "Seçim satır" in cell_name:
-                try:
-                    value = cell.legacy_properties().get('Value', '')
-                    if value == "Seçili":
-                        ilac_var = True
-                        logger.info(f"✓ Seçili ilaç var")
-                        break
-                except Exception as e:
-                    logger.debug(f"Operation failed: {type(e).__name__}")
+            cells = bot.main_window.descendants(control_type="DataItem")
+            takip_sayisi = sum(1 for cell in cells if "Seçim satır" in cell.window_text())
+            logger.info(f"✓ {takip_sayisi} ilaç takip edildi")
         except Exception as e:
-            logger.debug(f"Operation failed: {type(e).__name__}")
-
-    if ilac_var:
-        bot.ilk_ilaca_sag_tik_ve_takip_et()
-        # Takip edilen ilaç sayısını al
-        var_mi, takip_sayisi = bot.ilac_secili_mi_kontrol()
+            logger.debug(f"Takip sayısı alınamadı: {type(e).__name__}")
+            takip_sayisi = 1
     else:
-        var_mi, takip_sayisi = bot.ilac_secili_mi_kontrol()
-        if var_mi:
-            bot.ilk_ilaca_sag_tik_ve_takip_et()
-        else:
-            logger.info("✗ Seçili ilaç yok")
-            logger.info("→ Takip Et atlandı")
-            kapatma_baslangic = time.time()
-            bot.ilac_listesi_penceresini_kapat()
-            log_sure("İlaç penceresi kapatma", kapatma_baslangic, "kapat_butonu")
-            pencere_kapandi = True
+        logger.warning("⚠ Takip Et başarısız - pencere kapatılıyor")
+        takip_sayisi = 0
 
-    log_sure("İlaç seçimi", adim_baslangic, "ilac_secim_bekleme")
+    log_sure("İlaç seçimi ve takip", adim_baslangic, "ilac_secim_bekleme")
 
-    # Her iki durumda da İlaç Listesi penceresini kapat
-    if not pencere_kapandi:
-        adim_baslangic = time.time()
-        bot.ilac_listesi_penceresini_kapat()
-        log_sure("İlaç penceresi kapatma", adim_baslangic, "kapat_butonu")
+    # İlaç Listesi penceresini kapat
+    adim_baslangic = time.time()
+    bot.ilac_listesi_penceresini_kapat()
+    log_sure("İlaç penceresi kapatma", adim_baslangic, "kapat_butonu")
 
     # Ana Medula penceresine geri dön (main_window'u geri yükle)
     bot.main_window = ana_pencere
-    time.sleep(bot.timing.get("genel_gecis"))
 
-    # Geri Dön butonuna tıkla
+    # MEDULA penceresine odaklan ve hazır olmasını bekle
+    try:
+        bot.main_window.set_focus()
+        time.sleep(0.5)  # Pencere odaklanması için bekle
+        logger.info(f"✓ MEDULA penceresine geri dönüldü: {bot.main_window.window_text()}")
+    except Exception as focus_err:
+        logger.warning(f"⚠ MEDULA odaklama hatası: {type(focus_err).__name__}, yeniden bağlanılıyor...")
+        # Yeniden bağlan
+        if not bot.baglanti_kur("MEDULA"):
+            logger.error("❌ MEDULA'ya yeniden bağlanılamadı")
+        else:
+            logger.info("✓ MEDULA'ya yeniden bağlanıldı")
+
+    # DURDURMA KONTROLÜ - geri dön'den önce
+    if should_stop():
+        logger.info("⏸ İşlem durduruldu (kullanıcı talebi)")
+        return (False, medula_recete_no, takip_sayisi, "Kullanıcı tarafından durduruldu")
+
+    # Geri Dön butonuna tıkla (İlaç Listesi → Reçete Ana Sayfasına geçiş)
     adim_baslangic = time.time()
     geri_don = bot.geri_don_butonuna_tikla()
     log_sure("Geri Dön butonu", adim_baslangic, "geri_don_butonu")
@@ -2960,34 +5662,62 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip):
         log_recete_baslik()
         return (False, medula_recete_no, takip_sayisi, "Geri Dön butonu başarısız")
 
-    # Rapor bilgilerini topla ve kaydet (eğer RaporTakip aktifse)
+    # ÖNEMLİ: Rapor toplama işlemi Geri Dön'den SONRA yapılmalı!
+    # Çünkü Rapor butonu (f:buttonRaporListesi) Reçete Ana Sayfasında (ReceteListe.jsp) bulunur.
+    # Geri Dön'e tıklandıktan sonra bu sayfaya geçilir ve Rapor butonu görünür olur.
+    # Rapor toplama sonrası Sonraki butonuna basılıp basılmadığını takip et
+    sonraki_zaten_basildi = False
+
     if rapor_takip:
         try:
+            if session_logger:
+                session_logger.info("🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...")
+
             adim_baslangic = time.time()
             rapor_verileri = bot.rapor_listesini_topla()
             log_sure("Rapor toplama", adim_baslangic, "rapor_toplama")
 
-            if rapor_verileri and rapor_verileri.get('raporlar'):
-                ad_soyad = rapor_verileri.get('ad_soyad', 'Bilinmeyen')
-                telefon = rapor_verileri.get('telefon', '')
-                raporlar = rapor_verileri.get('raporlar', [])
+            if rapor_verileri:
+                # Sonraki butonu basılmış mı kontrol et
+                sonraki_zaten_basildi = rapor_verileri.get('sonraki_basildi', False)
 
-                # Raporları CSV'ye kaydet
-                rapor_takip.toplu_rapor_ekle(ad_soyad, telefon, raporlar)
-                logger.info(f"✓ Hasta raporları kaydedildi: {ad_soyad}")
+                if rapor_verileri.get('raporlar'):
+                    ad_soyad = rapor_verileri.get('ad_soyad', 'Bilinmeyen')
+                    telefon = rapor_verileri.get('telefon', '')
+                    raporlar = rapor_verileri.get('raporlar', [])
+
+                    # Raporları CSV'ye kaydet
+                    rapor_takip.toplu_rapor_ekle(ad_soyad, telefon, raporlar, grup)
+                    logger.info(f"✓ Hasta raporları kaydedildi: {ad_soyad}")
+                    if session_logger:
+                        session_logger.basari(f"✅ {len(raporlar)} rapor CSV'ye kaydedildi - {ad_soyad} ({telefon})")
+                else:
+                    logger.info("Bu hastada rapor bulunamadı")
+                    if session_logger:
+                        session_logger.warning(f"⚠️ Rapor bulunamadı - {rapor_verileri.get('ad_soyad', 'Bilinmeyen')}")
+            else:
+                logger.info("Rapor okuma başarısız")
+                if session_logger:
+                    session_logger.warning("⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)")
         except Exception as e:
             logger.warning(f"Rapor kaydetme hatası (devam ediliyor): {e}")
+            if session_logger:
+                session_logger.error(f"❌ Rapor kaydetme hatası: {e}")
 
-    # SONRA butonuna tıklayarak bir sonraki reçeteye geç (3 deneme + popup kontrolü)
-    adim_baslangic = time.time()
-    sonra = bot.retry_with_popup_check(
-        lambda: bot.sonra_butonuna_tikla(),
-        "SONRA butonu"
-    )
-    log_sure("Sonra butonu", adim_baslangic, "sonra_butonu")
-    if not sonra:
-        log_recete_baslik()
-        return (False, medula_recete_no, takip_sayisi, "SONRA butonu başarısız")
+    # SONRA butonuna tıkla - SADECE rapor toplarken basılmadıysa (5 deneme)
+    if sonraki_zaten_basildi:
+        logger.info("✓ Sonraki butonu rapor sayfasından zaten basıldı, atlanıyor...")
+    else:
+        adim_baslangic = time.time()
+        sonra = bot.retry_with_popup_check(
+            lambda: bot.sonra_butonuna_tikla(),
+            "SONRA butonu",
+            max_retries=5
+        )
+        log_sure("Sonra butonu", adim_baslangic, "sonra_butonu")
+        if not sonra:
+            log_recete_baslik()
+            return (False, medula_recete_no, takip_sayisi, "SONRA butonu başarısız")
 
     # Toplam reçete süresi
     toplam_sure = time.time() - recete_baslangic
@@ -3002,63 +5732,106 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip):
 
 
 def console_pencereyi_ayarla():
-    """Console penceresini sağ alt 1/5'e yerleştir ve buffer ayarla"""
+    """
+    Console penceresini yerleştir (ayara göre):
+    - Standart: 2. dilim (%60-%80 arası)
+    - Geniş MEDULA: GUI arkasında (%80-%100, HWND_BOTTOM)
+    """
     try:
+        from medula_settings import get_medula_settings
+        medula_settings = get_medula_settings()
+        yerlesim = medula_settings.get("pencere_yerlesimi", "standart")
+
+        logger.info(f"🔵 Konsol konumlandırma başlatılıyor... (mod: {yerlesim})")
+
         # Ekran çözünürlüğünü al
         user32 = ctypes.windll.user32
         screen_width = user32.GetSystemMetrics(0)
         screen_height = user32.GetSystemMetrics(1)
+        logger.info(f"  Ekran boyutu: {screen_width}x{screen_height}")
 
-        # Sağ alt 1/5 hesapla (alt 1/3 yükseklik, sağ 1/5 genişlik)
-        console_width = int(screen_width * 1/5)
-        console_height = int(screen_height * 1/3)
-        console_x = int(screen_width * 4/5)  # Sol 4/5'ten sonra başla
-        console_y = int(screen_height * 2/3)  # Üst 2/3'ten sonra başla
+        # Yerleşim ayarına göre konum belirle
+        if yerlesim == "genis_medula":
+            # Geniş MEDULA: Konsol GUI arkasında (%80-%100)
+            console_x = int(screen_width * 0.80)  # %80'den başla
+            console_y = 0
+            console_width = int(screen_width * 0.20)  # %20
+            console_height = screen_height - 40
+            arkada = True
+            logger.info(f"  Geniş MEDULA modu: Konsol GUI arkasına yerleştirilecek")
+        else:
+            # Standart: 2. dilim (%60-%80 arası)
+            console_x = int(screen_width * 0.60)  # %60'tan başla
+            console_y = 0
+            console_width = int(screen_width * 0.20)  # Ekranın %20'si
+            console_height = screen_height - 40
+            arkada = False
+
+        logger.info(f"  Konsol konumu: x={console_x}, y={console_y}, w={console_width}, h={console_height}")
 
         # Console penceresini al
+        logger.info("  Konsol penceresi handle alınıyor...")
         kernel32 = ctypes.windll.kernel32
         console_hwnd = kernel32.GetConsoleWindow()
 
         if console_hwnd:
+            logger.info(f"  ✓ Konsol penceresi bulundu (hwnd={console_hwnd})")
+
             # Console buffer boyutunu artır (daha fazla geçmiş tutmak için)
             try:
-                # Buffer yüksekliğini 9999 satıra ayarla (scroll için)
                 subprocess.run('mode con: lines=9999', shell=True, capture_output=True)
             except Exception as e:
-                logger.debug(f"Operation failed: {type(e).__name__}")
+                logger.debug(f"  Mode con hatası: {type(e).__name__}")
 
             # Pencereyi görünür yap (minimize ise restore et)
+            logger.info("  Konsol penceresi restore ediliyor...")
             win32gui.ShowWindow(console_hwnd, win32con.SW_RESTORE)
-            time.sleep(0.09)  # Console için sabit
+            time.sleep(0.09)
 
-            # Önce SetWindowPos ile sağ tarafa taşı ve en üste getir
-            flags = win32con.SWP_SHOWWINDOW
-            win32gui.SetWindowPos(
-                console_hwnd,
-                win32con.HWND_TOP,
-                console_x, console_y,
-                console_width, console_height,
-                flags
-            )
-            time.sleep(0.045)  # Console için sabit
-
-            # Sonra MoveWindow ile kesin yerleştir
-            win32gui.MoveWindow(console_hwnd, console_x, console_y, console_width, console_height, True)
-            time.sleep(0.045)  # Console için sabit
-
-            # Kontrol et - gerçekten yerleşti mi?
-            rect = win32gui.GetWindowRect(console_hwnd)
-
-            # Eğer hala sol taraftaysa (x < screen_width/2), hata ver
-            if rect[0] < screen_width / 2:
-                logger.error(f"❌ Console sağa gitmedi: x={rect[0]}")
+            # SetWindowPos ile yerleştir
+            if arkada:
+                # GUI arkasına yerleştir (HWND_BOTTOM)
+                logger.info(f"  SetWindowPos ile GUI arkasına konumlandırılıyor...")
+                win32gui.SetWindowPos(
+                    console_hwnd,
+                    win32con.HWND_BOTTOM,
+                    console_x, console_y,
+                    console_width, console_height,
+                    win32con.SWP_SHOWWINDOW
+                )
             else:
-                logger.info(f"✓ Console sağ alt 1/5'e yerleşti")
+                # Önde yerleştir (HWND_TOP)
+                logger.info(f"  SetWindowPos ile konumlandırılıyor...")
+                win32gui.SetWindowPos(
+                    console_hwnd,
+                    win32con.HWND_TOP,
+                    console_x, console_y,
+                    console_width, console_height,
+                    win32con.SWP_SHOWWINDOW
+                )
+            time.sleep(0.045)
+
+            # MoveWindow ile kesin yerleştir
+            logger.info("  MoveWindow ile kesin konumlandırılıyor...")
+            win32gui.MoveWindow(console_hwnd, console_x, console_y, console_width, console_height, True)
+            time.sleep(0.045)
+
+            # Doğrulama: gerçek pozisyonu kontrol et
+            try:
+                gercek_rect = win32gui.GetWindowRect(console_hwnd)
+                logger.info(f"  ✓ Konsol yerleştirildi: x={gercek_rect[0]}, y={gercek_rect[1]}, w={gercek_rect[2]-gercek_rect[0]}, h={gercek_rect[3]-gercek_rect[1]}")
+            except Exception as e:
+                logger.debug(f"  Pozisyon doğrulama hatası: {e}")
+
+            if arkada:
+                logger.info(f"✅ Konsol GUI arkasına yerleştirildi!")
+            else:
+                logger.info(f"✅ Konsol 2. dilime yerleştirildi!")
         else:
-            logger.warning("❌ Console bulunamadı")
+            logger.warning("❌ Konsol penceresi bulunamadı (hwnd=0)")
 
     except Exception as e:
-        logger.error(f"Console ayarlanamadı: {e}", exc_info=True)
+        logger.error(f"❌ Konsol konumlandırma hatası: {e}", exc_info=True)
 
 
 def main():
@@ -3091,6 +5864,7 @@ def main():
     # Reçete döngüsü - SONRA butonu olduğu sürece devam et
     recete_sayisi = 0
     basarili_receteler = 0
+    son_islenen_recete = None  # Son başarıyla işlenen reçete numarası (taskkill sonrası devam için)
 
     while True:
         recete_sayisi += 1
@@ -3098,23 +5872,44 @@ def main():
 
         try:
             # Tek reçete işle
-            basari, medula_no = tek_recete_isle(bot, recete_sayisi)
+            basari, medula_no, takip_sayisi, hata_nedeni = tek_recete_isle(bot, recete_sayisi, bot.rapor_takip)
             logger.info("=" * 40)
             if not basari:
                 # Reçete kaydı bulunamadı veya SONRA butonu bulunamadı - döngüden çık
                 break
             else:
                 basarili_receteler += 1
+                # Son başarılı reçete numarasını kaydet
+                if medula_no:
+                    son_islenen_recete = medula_no
 
         except SistemselHataException as e:
-            # Sistemsel hata tespit edildi - MEDULA'yı yeniden başlat
+            # Sistemsel hata tespit edildi
             logger.error(f"⚠️ Sistemsel hata yakalandı: {e}")
 
-            # MEDULA'yı yeniden başlat ve giriş yap
-            if medula_yeniden_baslat_ve_giris_yap(bot):
-                # Başarıyla yeniden başlatıldı - aynı reçeteyi tekrar dene
-                logger.info(f"🔄 Reçete {recete_sayisi} tekrar işlenecek...")
-                recete_sayisi -= 1  # Sayaç geri alınıyor, çünkü while döngüsü başında tekrar artacak
+            # ===== HATA DURUMUNDA BEKLE KONTROLÜ =====
+            hata_bekle_aktif = False
+            if hasattr(bot, '_insan_davranisi_ayarlar') and bot._insan_davranisi_ayarlar:
+                hata_bekle_aktif = bot._insan_davranisi_ayarlar.get("hata_durumunda_bekle", {}).get("aktif", False)
+
+            if hata_bekle_aktif:
+                # Hata durumunda bekle modu aktif - otomatik yeniden başlatma YAPMA
+                logger.warning("=" * 60)
+                logger.warning("⏸️ HATA DURUMUNDA BEKLE MODU AKTİF")
+                logger.warning("Otomatik yeniden başlatma devre dışı.")
+                logger.warning("Lütfen hatayı manuel olarak düzeltin ve botu yeniden başlatın.")
+                logger.warning("=" * 60)
+                break
+
+            # MEDULA'yı yeniden başlat ve giriş yap (grup bilgisini ve son reçeteyi kullan)
+            # son_islenen_recete ile kaldığı reçeteden devam edecek
+            if medula_yeniden_baslat_ve_giris_yap(bot, grup, son_islenen_recete):
+                # Başarıyla yeniden başlatıldı - aynı reçeteden devam et
+                if son_islenen_recete:
+                    logger.info(f"🔄 Kaldığı reçeteden devam ediliyor: {son_islenen_recete}")
+                else:
+                    logger.info(f"🔄 Reçete {recete_sayisi} tekrar işlenecek...")
+                    recete_sayisi -= 1  # Sayaç geri alınıyor, çünkü while döngüsü başında tekrar artacak
                 time.sleep(2)
                 continue
             else:
@@ -3198,7 +5993,7 @@ def popup_kontrol_ve_kapat():
                 for buton_text in kapat_butonlari:
                     try:
                         buton = window.child_window(title=buton_text, control_type="Button")
-                        if buton.exists(timeout=0.5):
+                        if buton.exists(timeout=0.2):
                             logger.info(f"✓ Popup tespit edildi: '{window_text}', kapatılıyor...")
                             buton.click()
                             time.sleep(0.3)
@@ -3209,7 +6004,7 @@ def popup_kontrol_ve_kapat():
                 # X (Close) butonu ara
                 try:
                     close_button = window.child_window(title="Close", control_type="Button")
-                    if close_button.exists(timeout=0.5):
+                    if close_button.exists(timeout=0.2):
                         logger.info(f"✓ Popup tespit edildi (X): '{window_text}', kapatılıyor...")
                         close_button.click()
                         time.sleep(0.3)
@@ -3288,6 +6083,9 @@ def recete_kaydi_bulunamadi_mi(bot):
     """
     "Reçete kaydı bulunamadı" mesajını kontrol et
 
+    OPTİMİZE: Desktop().windows() taraması kaldırıldı (çok yavaştı!)
+    Sadece bot.main_window'da arama yapılıyor.
+
     Args:
         bot (BotanikBot): Bot instance
 
@@ -3298,38 +6096,32 @@ def recete_kaydi_bulunamadi_mi(bot):
         if not bot.main_window:
             return False
 
-        # "Reçete kaydı bulunamadı." textini ara (OPTIMIZE: timeout 1s → 0.3s)
+        # YÖNTEM 1: child_window ile hızlı arama (0.2s timeout)
         try:
             text_element = bot.main_window.child_window(title_re=".*Reçete kaydı bulunamadı.*", control_type="Text")
-            if text_element.exists(timeout=0.3):
+            if text_element.exists(timeout=0.2):
                 logger.info("✓ 'Reçete kaydı bulunamadı' mesajı tespit edildi - Görev tamamlandı!")
                 return True
         except Exception as e:
-            logger.debug(f"Operation failed: {type(e).__name__}")
+            logger.debug(f"child_window arama hatası: {type(e).__name__}")
 
-        # Alternatif: Internet Explorer_Server içinde ara
+        # YÖNTEM 2: descendants ile ana pencerede arama (Desktop taraması YOK - optimize)
         try:
-            from pywinauto import Desktop
-            desktop = Desktop(backend="uia")
-
-            for window in desktop.windows():
+            texts = bot.main_window.descendants(control_type="Text")
+            for text in texts:
                 try:
-                    if "MEDULA" in window.window_text():
-                        # Tüm text elementlerini tara
-                        texts = window.descendants(control_type="Text")
-                        for text in texts:
-                            raw_text = text.window_text()
-                            if raw_text and "bulunamadı" in raw_text.lower():
-                                logger.info(f"✓ Görev bitişi mesajı: '{raw_text}'")
-                                return True
-                except Exception as e:
-                    logger.debug(f"Operation failed: {type(e).__name__}")
+                    raw_text = text.window_text()
+                    if raw_text and "bulunamadı" in raw_text.lower():
+                        logger.info(f"✓ Görev bitişi mesajı: '{raw_text}'")
+                        return True
+                except Exception:
+                    continue
         except Exception as e:
-            logger.debug(f"Operation failed: {type(e).__name__}")
+            logger.debug(f"descendants arama hatası: {type(e).__name__}")
 
         return False
     except Exception as e:
-        logger.debug(f"Görev bitişi kontrolü hatası: {e}")
+        logger.debug(f"Görev bitişi kontrolü hatası: {type(e).__name__}")
         return False
 
 
@@ -3364,12 +6156,14 @@ def medula_taskkill():
         return False
 
 
-def medula_yeniden_baslat_ve_giris_yap(bot):
+def medula_yeniden_baslat_ve_giris_yap(bot, grup="A", son_recete=None):
     """
     Sistemsel hata durumunda MEDULA'yı yeniden başlatır ve giriş yapar
 
     Args:
         bot: BotanikBot instance
+        grup: Hangi gruba gidileceği ("A", "B" veya "C")
+        son_recete: Son işlenen reçete numarası (varsa bu reçeteden devam edilir)
 
     Returns:
         bool: Başarılıysa True
@@ -3379,6 +6173,9 @@ def medula_yeniden_baslat_ve_giris_yap(bot):
     """
     try:
         from medula_settings import get_medula_settings
+        from timing_settings import get_timing_settings
+
+        timing = get_timing_settings()
 
         logger.info("=" * 60)
         logger.error("🔄 SİSTEMSEL HATA - MEDULA YENİDEN BAŞLATILIYOR...")
@@ -3409,14 +6206,145 @@ def medula_yeniden_baslat_ve_giris_yap(bot):
             logger.error("❌ Bot bağlantısı kurulamadı")
             return False
 
-        # 5. İlk reçeteyi aç (kaldığı yerden devam etmek için)
-        logger.info("4️⃣ İlk reçete açılıyor...")
-        if not ilk_recete_ac(bot):
-            logger.error("❌ İlk reçete açılamadı")
+        # 5. Ana sayfaya git
+        logger.info("⏳ Ana sayfa yüklenmesi bekleniyor...")
+        time.sleep(timing.get("ana_sayfa"))
+
+        # 6. Reçete Listesi'ne git
+        logger.info("4️⃣ Reçete Listesi açılıyor...")
+        try:
+            if not recete_listesi_ac(bot):
+                logger.error("❌ Reçete Listesi açılamadı")
+                return False
+        except SistemselHataException as e:
+            logger.error(f"⚠️ Reçete Listesi açma sırasında sistemsel hata: {e}")
+            logger.warning("🔄 MEDULA bir kez daha yeniden başlatılacak...")
+            # Recursive call - kendini bir kez daha çağır (son_recete ile)
+            return medula_yeniden_baslat_ve_giris_yap(bot, grup, son_recete)
+
+        # 7. Dönem seç (index=2)
+        logger.info("5️⃣ Dönem seçiliyor...")
+        if not donem_sec(bot, index=2):
+            logger.warning("⚠ Dönem 2 seçilemedi, dönem 1 deneniyor...")
+            if not donem_sec(bot, index=1):
+                logger.error("❌ Dönem seçimi başarısız")
+                return False
+
+        # 8. Grup seç
+        logger.info(f"6️⃣ Grup {grup} seçiliyor...")
+        if not grup_butonuna_tikla(bot, grup):
+            logger.error(f"❌ Grup {grup} seçimi başarısız")
             return False
 
+        # Pencereyi yenile
+        bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+
+        # 8.5. Reçete bulunamadı kontrolü
+        logger.info("🔍 Reçete varlığı kontrol ediliyor...")
+        if bulunamadi_mesaji_kontrol(bot):
+            logger.warning(f"⚠ Grup {grup}'da bu dönem için reçete bulunamadı")
+
+            # Farklı dönemler dene
+            donem_bulundu = False
+            for donem_index in [1, 0]:  # Dönem 2 (index 1), Dönem 1 (index 0) dene
+                logger.info(f"🔄 Dönem {donem_index + 1} deneniyor...")
+
+                # Dönem seç
+                if not donem_sec(bot, index=donem_index):
+                    logger.warning(f"⚠ Dönem {donem_index + 1} seçilemedi")
+                    continue
+
+                # Grup seç
+                if not grup_butonuna_tikla(bot, grup):
+                    logger.error(f"❌ Grup {grup} seçimi başarısız")
+                    continue
+
+                # Pencereyi yenile
+                bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+
+                # Tekrar kontrol et
+                if not bulunamadi_mesaji_kontrol(bot):
+                    logger.info(f"✅ Dönem {donem_index + 1}'de reçete bulundu!")
+                    donem_bulundu = True
+                    break
+                else:
+                    logger.warning(f"⚠ Dönem {donem_index + 1}'de de reçete bulunamadı")
+
+            if not donem_bulundu:
+                # Farklı grupları dene
+                logger.warning(f"⚠ Grup {grup}'da hiçbir dönemde reçete bulunamadı, diğer gruplar deneniyor...")
+                for alternatif_grup in ["A", "B", "C"]:
+                    if alternatif_grup == grup:
+                        continue
+
+                    logger.info(f"🔄 Grup {alternatif_grup} deneniyor...")
+
+                    # Dönem seç (index=2)
+                    if not donem_sec(bot, index=2):
+                        if not donem_sec(bot, index=1):
+                            continue
+
+                    # Grup seç
+                    if not grup_butonuna_tikla(bot, alternatif_grup):
+                        continue
+
+                    # Pencereyi yenile
+                    bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+
+                    # Kontrol et
+                    if not bulunamadi_mesaji_kontrol(bot):
+                        logger.info(f"✅ Grup {alternatif_grup}'da reçete bulundu!")
+                        grup = alternatif_grup  # Grubu güncelle
+                        donem_bulundu = True
+                        break
+
+                if not donem_bulundu:
+                    logger.error("❌ Hiçbir grup ve dönemde reçete bulunamadı")
+                    return False
+
+        # 9. Son reçeteye git (varsa) veya ilk reçeteyi aç
+        if son_recete:
+            logger.info(f"7️⃣ Son reçeteye gidiliyor: {son_recete}")
+            # Reçete Sorgu sayfasını aç
+            if not bot.recete_sorgu_ac():
+                logger.warning("⚠ Reçete Sorgu açılamadı, ilk reçete açılıyor...")
+                if not ilk_recete_ac(bot):
+                    logger.error("❌ İlk reçete açılamadı")
+                    return False
+            else:
+                # Reçete numarasını yaz
+                time.sleep(0.5)
+                if not bot.recete_no_yaz(son_recete):
+                    logger.warning(f"⚠ Reçete numarası yazılamadı: {son_recete}")
+                    if not ilk_recete_ac(bot):
+                        logger.error("❌ İlk reçete açılamadı")
+                        return False
+                else:
+                    # Sorgula butonuna tıkla
+                    time.sleep(0.3)
+                    if not bot.sorgula_butonuna_tikla():
+                        logger.warning("⚠ Sorgula butonu tıklanamadı, ilk reçete açılıyor...")
+                        if not ilk_recete_ac(bot):
+                            logger.error("❌ İlk reçete açılamadı")
+                            return False
+                    else:
+                        # Sorgulama başarılı - şimdi listedeki ilk reçeteyi aç
+                        logger.info(f"✓ Reçete sorgulandı: {son_recete}")
+                        time.sleep(0.5)  # Sorgu sonucunun yüklenmesi için bekle
+                        if not ilk_recete_ac(bot):
+                            logger.error("❌ Sorgulanan reçete açılamadı")
+                            return False
+                        logger.info(f"✓ Kaldığı reçete açıldı: {son_recete}")
+        else:
+            logger.info("7️⃣ İlk reçete açılıyor...")
+            if not ilk_recete_ac(bot):
+                logger.error("❌ İlk reçete açılamadı")
+                return False
+
         logger.info("=" * 60)
-        logger.info("✅ MEDULA BAŞARIYLA YENİDEN BAŞLATILDI VE GİRİŞ YAPILDI")
+        logger.info(f"✅ MEDULA BAŞARIYLA YENİDEN BAŞLATILDI - GRUP {grup}")
+        if son_recete:
+            logger.info(f"📍 Kaldığı yerden devam: {son_recete}")
         logger.info("=" * 60)
         time.sleep(2)  # Kullanıcının mesajı görmesi için
 
@@ -3527,7 +6455,7 @@ def medula_giris_yap(medula_settings):
         giris_window = None
         for window in desktop.windows():
             try:
-                if "BotanikEOS" in window.window_text():
+                if "MEDULA" in window.window_text():
                     giris_window = window
                     break
             except Exception as e:
@@ -3541,7 +6469,7 @@ def medula_giris_yap(medula_settings):
 
         # ComboBox'tan kullanıcı seç
         try:
-            logger.info(f"Kullanici combobox aranıyor...")
+            logger.debug("Kullanici combobox aranıyor...")
 
             # Tüm UI elementlerini döngüyle tara ve ComboBox bul
             all_controls = giris_window.descendants()
@@ -3699,13 +6627,13 @@ def recete_listesi_ac(bot):
         logger.info("⏳ Ana sayfa yüklenmesi bekleniyor (2 saniye)...")
         time.sleep(2.0)
 
-        logger.info("🔘 Reçete Listesi butonu aranıyor...")
+        logger.debug("Reçete Listesi butonu aranıyor...")
 
         # "Reçete Listesi" butonunu bul - Tüm butonları tara
         try:
-            logger.info("Tüm butonlar taranıyor...")
+            logger.debug("Tüm butonlar taranıyor...")
             all_buttons = bot.main_window.descendants(control_type="Button")
-            logger.info(f"Toplam {len(all_buttons)} buton bulundu")
+            logger.debug(f"Toplam {len(all_buttons)} buton bulundu")
 
             # Debug: İlk 20 butonun metinlerini logla
             for i, btn in enumerate(all_buttons[:20]):
@@ -3758,20 +6686,21 @@ def recete_listesi_ac(bot):
         except Exception as e:
             logger.debug(f"Title ile bulunamadı: {e}")
 
-        logger.error("❌ Reçete Listesi butonu bulunamadı")
-        return False
+        logger.error("❌ Reçete Listesi butonu bulunamadı - MEDULA yeniden başlatılacak")
+        raise SistemselHataException("Reçete Listesi butonu bulunamadı - MEDULA takıldı olabilir")
     except Exception as e:
-        logger.error(f"❌ Reçete Listesi açma hatası: {e}")
-        return False
+        logger.error(f"❌ Reçete Listesi açma hatası: {e} - MEDULA yeniden başlatılacak")
+        raise SistemselHataException(f"Reçete Listesi açma hatası: {e}")
 
 
-def donem_sec(bot, index=2):
+def donem_sec(bot, index=2, recovery_attempted=False):
     """
     Dönem seçme combobox'ında belirtilen index'i seç (0-based)
 
     Args:
         bot: BotanikBot instance
         index: Seçilecek item indexi (varsayılan: 2 = 3. sıradaki item)
+        recovery_attempted: Oturum yenileme denendi mi? (iç kullanım)
 
     Returns:
         bool: Başarılıysa True
@@ -3814,6 +6743,24 @@ def donem_sec(bot, index=2):
                 logger.info("Tek ComboBox bulundu, o kullanılıyor")
             else:
                 logger.error("Hiç ComboBox bulunamadı")
+
+                # ===== RECOVERY MEKANİZMASI =====
+                if not recovery_attempted:
+                    logger.warning("🔄 Oturum yenileme deneniyor...")
+                    if bot.oturum_yenile():
+                        logger.info("✓ Oturum yenilendi, tekrar deneniyor...")
+                        # Bağlantıyı yenile
+                        bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+                        time.sleep(1.0)
+                        # Recursive çağrı - recovery_attempted=True ile
+                        return donem_sec(bot, index, recovery_attempted=True)
+                    else:
+                        logger.error("❌ Oturum yenileme başarısız! MEDULA yeniden başlatılacak...")
+                        raise SistemselHataException("Oturum yenileme başarısız - ComboBox bulunamadı")
+                else:
+                    # Recovery denendi ama hala ComboBox yok - taskkill gerekli
+                    logger.error("❌ Recovery sonrası da ComboBox bulunamadı! MEDULA yeniden başlatılacak...")
+                    raise SistemselHataException("Recovery sonrası ComboBox bulunamadı")
 
             if donem_combobox:
                 # ComboBox'ın koordinatlarını al
@@ -3882,7 +6829,7 @@ def grup_butonuna_tikla(bot, grup):
             logger.error("❌ Bot bağlantısı yok")
             return False
 
-        logger.info(f"🔘 {grup} grubu butonu aranıyor...")
+        logger.debug(f"{grup} grubu butonu aranıyor...")
 
         # Grup butonunu bul ve tıkla
         grup_mapping = {
@@ -4036,7 +6983,7 @@ def ilk_recete_ac(bot):
                 logger.error("❌ 'Son İşlem Tarihi' label bulunamadı")
 
                 # Alternatif: İlk ListItem'ı dene
-                logger.info("Alternatif yöntem: İlk ListItem aranıyor...")
+                logger.debug("Alternatif yöntem: İlk ListItem aranıyor...")
                 list_items = bot.main_window.descendants(control_type="ListItem")
 
                 if list_items and len(list_items) > 0:
@@ -4064,19 +7011,21 @@ def ilk_recete_ac(bot):
         return False
 
 
-def sonraki_gruba_gec_islemi(bot, sonraki_grup):
+def sonraki_gruba_gec_islemi(bot, sonraki_grup, son_recete=None):
     """
     Grup bittiğinde (Reçete kaydı bulunamadı) sonraki gruba geçiş işlemini yapar
 
     Akış:
     1. Geri Dön butonuna bas → Reçete Sorgu Ekranı'na dön
-    2. Dönem seç (index=2, bulunamadıysa index=1)
-    3. Grup seç (sonraki_grup)
-    4. İlk reçeteyi aç
+    2. Eğer son_recete VARSA:
+       - Reçete Sorgu'ya git → Numara yaz → Sorgula (kaldığı yerden devam)
+    3. Eğer son_recete YOKSA:
+       - Dönem seç → Grup seç → İlk reçeteyi aç (en baştan başla)
 
     Args:
         bot: BotanikBot instance
         sonraki_grup: "A", "B" veya "C"
+        son_recete: Hafızadaki son reçete numarası (varsa)
 
     Returns:
         bool: Başarılıysa True
@@ -4109,71 +7058,109 @@ def sonraki_gruba_gec_islemi(bot, sonraki_grup):
         # Pencereyi yenile
         bot.baglanti_kur("MEDULA", ilk_baglanti=False)
 
-        # 2. Dönem seç (önce index=2, bulunamadıysa index=1)
-        logger.info("2️⃣ Dönem seçiliyor (index=2)...")
-        if not donem_sec(bot, index=2):
-            logger.error("❌ Dönem seçimi başarısız")
-            raise Exception("Dönem seçimi başarısız")
+        # ===== SON REÇETE KONTROLÜ =====
+        if son_recete:
+            # Hafızada reçete var - kaldığı yerden devam et
+            logger.info(f"📍 Hafızada reçete var: {son_recete} - Kaldığı yerden devam ediliyor...")
 
-        logger.info("✓ Dönem seçildi")
-        time.sleep(timing.get("adim_arasi_bekleme"))
+            # 2. Reçete Sorgu'ya git
+            logger.info("2️⃣ Reçete Sorgu açılıyor...")
+            if not bot.recete_sorgu_ac():
+                logger.error("❌ Reçete Sorgu açılamadı")
+                raise Exception("Reçete Sorgu açılamadı")
 
-        # Pencereyi yenile
-        bot.baglanti_kur("MEDULA", ilk_baglanti=False)
-
-        # 3. Grup seç
-        logger.info(f"3️⃣ {sonraki_grup} grubu seçiliyor...")
-        if not grup_butonuna_tikla(bot, sonraki_grup):
-            logger.error(f"❌ {sonraki_grup} grubu seçimi başarısız")
-            raise Exception(f"{sonraki_grup} grubu seçimi başarısız")
-
-        logger.info(f"✓ {sonraki_grup} grubu seçildi ve sorgulandı")
-        time.sleep(timing.get("adim_arasi_bekleme"))
-
-        # Pencereyi yenile
-        bot.baglanti_kur("MEDULA", ilk_baglanti=False)
-
-        # 4. "Bulunamadı" mesajı kontrolü
-        logger.info("4️⃣ Reçete varlığı kontrol ediliyor...")
-        if bulunamadi_mesaji_kontrol(bot):
-            # Mesaj var, 2. dönemi dene (index=1)
-            logger.info("⚠ 3. dönemde reçete yok, 2. dönem deneniyor...")
-
-            # Dönem seç (index=1, yani 2. sıradaki)
-            if not donem_sec(bot, index=1):
-                logger.error("❌ 2. dönem seçimi başarısız")
-                raise Exception("2. dönem seçimi başarısız")
-
-            logger.info("✓ 2. dönem seçildi")
+            logger.info("✓ Reçete Sorgu açıldı")
             time.sleep(timing.get("adim_arasi_bekleme"))
 
             # Pencereyi yenile
             bot.baglanti_kur("MEDULA", ilk_baglanti=False)
 
-            # Grup seç (tekrar)
-            logger.info(f"📁 {sonraki_grup} grubu (2. dönem) seçiliyor...")
+            # 3. Reçete numarası yaz
+            logger.info(f"3️⃣ Reçete numarası yazılıyor: {son_recete}")
+            if not bot.recete_no_yaz(son_recete):
+                logger.error(f"❌ Reçete numarası yazılamadı: {son_recete}")
+                raise Exception(f"Reçete numarası yazılamadı: {son_recete}")
+
+            logger.info(f"✓ Reçete numarası yazıldı: {son_recete}")
+            time.sleep(0.3)
+
+            # 4. Sorgula butonuna tıkla
+            logger.info("4️⃣ Sorgula butonuna tıklanıyor...")
+            if not bot.sorgula_butonuna_tikla():
+                logger.error("❌ Sorgula butonu başarısız")
+                raise Exception("Sorgula butonu başarısız")
+
+            logger.info(f"✓ Reçete açıldı: {son_recete}")
+
+        else:
+            # Hafızada reçete yok - en baştan başla
+            logger.info("📍 Hafızada reçete yok - En baştan başlanıyor...")
+
+            # 2. Dönem seç (önce index=2, bulunamadıysa index=1)
+            logger.info("2️⃣ Dönem seçiliyor (index=2)...")
+            if not donem_sec(bot, index=2):
+                logger.error("❌ Dönem seçimi başarısız")
+                raise Exception("Dönem seçimi başarısız")
+
+            logger.info("✓ Dönem seçildi")
+            time.sleep(timing.get("adim_arasi_bekleme"))
+
+            # Pencereyi yenile
+            bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+
+            # 3. Grup seç
+            logger.info(f"3️⃣ {sonraki_grup} grubu seçiliyor...")
             if not grup_butonuna_tikla(bot, sonraki_grup):
-                logger.error(f"❌ {sonraki_grup} grubu (2. dönem) seçimi başarısız")
-                raise Exception(f"{sonraki_grup} grubu (2. dönem) seçimi başarısız")
+                logger.error(f"❌ {sonraki_grup} grubu seçimi başarısız")
+                raise Exception(f"{sonraki_grup} grubu seçimi başarısız")
 
-            logger.info(f"✓ {sonraki_grup} grubu (2. dönem) seçildi")
+            logger.info(f"✓ {sonraki_grup} grubu seçildi ve sorgulandı")
             time.sleep(timing.get("adim_arasi_bekleme"))
 
             # Pencereyi yenile
             bot.baglanti_kur("MEDULA", ilk_baglanti=False)
 
-            # Tekrar kontrol et
+            # 4. "Bulunamadı" mesajı kontrolü
+            logger.info("4️⃣ Reçete varlığı kontrol ediliyor...")
             if bulunamadi_mesaji_kontrol(bot):
-                logger.error("❌ 2. dönemde de reçete bulunamadı")
-                raise Exception("2. dönemde de reçete bulunamadı")
+                # Mesaj var, 2. dönemi dene (index=1)
+                logger.info("⚠ 3. dönemde reçete yok, 2. dönem deneniyor...")
 
-        # 5. İlk reçeteyi aç
-        logger.info("5️⃣ İlk reçete açılıyor...")
-        if not ilk_recete_ac(bot):
-            logger.error("❌ İlk reçete açılamadı")
-            raise Exception("İlk reçete açılamadı")
+                # Dönem seç (index=1, yani 2. sıradaki)
+                if not donem_sec(bot, index=1):
+                    logger.error("❌ 2. dönem seçimi başarısız")
+                    raise Exception("2. dönem seçimi başarısız")
 
-        logger.info("✓ İlk reçete açıldı")
+                logger.info("✓ 2. dönem seçildi")
+                time.sleep(timing.get("adim_arasi_bekleme"))
+
+                # Pencereyi yenile
+                bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+
+                # Grup seç (tekrar)
+                logger.info(f"📁 {sonraki_grup} grubu (2. dönem) seçiliyor...")
+                if not grup_butonuna_tikla(bot, sonraki_grup):
+                    logger.error(f"❌ {sonraki_grup} grubu (2. dönem) seçimi başarısız")
+                    raise Exception(f"{sonraki_grup} grubu (2. dönem) seçimi başarısız")
+
+                logger.info(f"✓ {sonraki_grup} grubu (2. dönem) seçildi")
+                time.sleep(timing.get("adim_arasi_bekleme"))
+
+                # Pencereyi yenile
+                bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+
+                # Tekrar kontrol et
+                if bulunamadi_mesaji_kontrol(bot):
+                    logger.error("❌ 2. dönemde de reçete bulunamadı")
+                    raise Exception("2. dönemde de reçete bulunamadı")
+
+            # 5. İlk reçeteyi aç
+            logger.info("5️⃣ İlk reçete açılıyor...")
+            if not ilk_recete_ac(bot):
+                logger.error("❌ İlk reçete açılamadı")
+                raise Exception("İlk reçete açılamadı")
+
+            logger.info("✓ İlk reçete açıldı")
 
         # Pencereyi yenile
         bot.baglanti_kur("MEDULA", ilk_baglanti=False)
@@ -4263,8 +7250,11 @@ def medula_ac_ve_giris_yap(medula_settings):
         try:
             giris_window = None
             for window in desktop.windows():
-                if "BotanikEOS" in window.window_text():
+                window_text = window.window_text()
+                # BotanikEOS penceresini bul (giriş ekranı)
+                if "BotanikEOS" in window_text or "MEDULA" in window_text:
                     giris_window = window
+                    logger.info(f"✓ Pencere bulundu: {window_text}")
                     break
 
             if not giris_window:
@@ -4280,104 +7270,207 @@ def medula_ac_ve_giris_yap(medula_settings):
             except Exception as e:
                 logger.debug(f"Pencere focus hatası (devam ediliyor): {e}")
 
-            # ComboBox'a tıkla ve kullanıcı seç (PyAutoGUI ile basit çözüm)
+            # YÖNTEM 1: AutomationId ile doğrudan elementleri bul (inspect.exe bilgileri)
+            # ComboBox: cmbKullanicilar, Şifre: txtSifre, Giriş: btnGirisYap
+            kullanici_combo = None
+            sifre_textbox = None
+            giris_button = None
+
             try:
-                # Tab ile combobox'a git
-                pyautogui.press("tab")
-                time.sleep(0.3)
-
-                # Alt+Down ile dropdown'u aç
-                pyautogui.keyDown("alt")
-                pyautogui.press("down")
-                pyautogui.keyUp("alt")
-                time.sleep(0.5)
-
-                # Giriş yöntemine göre kullanıcı seçimi
-                if giris_yontemi == "kullanici_adi":
-                    # Kullanıcı adı ile arama
-                    if kullanici_adi_giris:
-                        logger.info(f"Kullanıcı adı yazılıyor: {kullanici_adi_giris}")
-                        pyautogui.typewrite(kullanici_adi_giris, interval=0.1)
-                        time.sleep(0.3)
-                        pyautogui.press("enter")
-                        time.sleep(0.5)
-                        logger.info(f"✓ Kullanıcı seçildi (ad: {kullanici_adi_giris})")
-                    else:
-                        logger.warning("Kullanıcı adı girilmemiş, varsayılan kullanıcı seçilecek")
-                        pyautogui.press("enter")
-                        time.sleep(0.5)
+                # ComboBox'ı bul (AutomationId: cmbKullanicilar)
+                kullanici_combo = giris_window.child_window(auto_id="cmbKullanicilar", control_type="ComboBox")
+                if kullanici_combo.exists(timeout=2):
+                    logger.info("✓ Kullanıcı ComboBox bulundu (cmbKullanicilar)")
                 else:
-                    # İndeks ile seçim (mevcut yöntem)
-                    logger.info(f"Combobox'tan {kullanici_ad} seçiliyor (Index: {kullanici_index})...")
-                    for i in range(kullanici_index):
-                        pyautogui.press("down")
-                        time.sleep(0.1)
-
-                    pyautogui.press("enter")  # Seç
-                    time.sleep(0.5)
-                    logger.info(f"✓ {kullanici_ad} seçildi")
+                    kullanici_combo = None
+                    logger.warning("⚠ ComboBox AutomationId ile bulunamadı")
             except Exception as e:
-                logger.warning(f"⚠ ComboBox işlemi başarısız: {e}")
+                logger.debug(f"ComboBox arama hatası: {e}")
+                kullanici_combo = None
 
-            # Şifre textbox'ına yaz
             try:
-                # Kullanıcı seçildikten sonra 2 kez Tab ile şifre alanına git
-                pyautogui.press("tab")
-                time.sleep(0.2)
-                pyautogui.press("tab")
-                time.sleep(0.3)
-                logger.info("✓ Şifre alanına gidildi (2x Tab)")
+                # Şifre TextBox'ı bul (AutomationId: txtSifre)
+                sifre_textbox = giris_window.child_window(auto_id="txtSifre", control_type="Edit")
+                if sifre_textbox.exists(timeout=2):
+                    logger.info("✓ Şifre TextBox bulundu (txtSifre)")
+                else:
+                    sifre_textbox = None
+                    logger.warning("⚠ Şifre TextBox AutomationId ile bulunamadı")
+            except Exception as e:
+                logger.debug(f"Şifre TextBox arama hatası: {e}")
+                sifre_textbox = None
 
-                # Şifre alanını temizle (varsa eski şifre)
-                pyautogui.hotkey('ctrl', 'a')
-                time.sleep(0.1)
-                pyautogui.press('backspace')
-                time.sleep(0.2)
+            try:
+                # Giriş butonu bul (AutomationId: btnGirisYap)
+                giris_button = giris_window.child_window(auto_id="btnGirisYap", control_type="Button")
+                if giris_button.exists(timeout=2):
+                    logger.info("✓ Giriş butonu bulundu (btnGirisYap)")
+                else:
+                    giris_button = None
+                    logger.warning("⚠ Giriş butonu AutomationId ile bulunamadı")
+            except Exception as e:
+                logger.debug(f"Giriş butonu arama hatası: {e}")
+                giris_button = None
 
-                # Şifreyi karakter karakter yaz
-                pyautogui.write(sifre, interval=0.05)
-                time.sleep(0.5)
-                logger.info("✓ Şifre girildi")
+            # Eğer AutomationId ile bulamazsak, ClassName veya Name ile dene
+            if not giris_button:
+                try:
+                    # Name="Giriş" ile dene
+                    giris_button = giris_window.child_window(title="Giriş", control_type="Button")
+                    if giris_button.exists(timeout=1):
+                        logger.info("✓ Giriş butonu bulundu (Name='Giriş')")
+                except Exception as e:
+                    logger.debug(f"Giriş butonu Name ile arama hatası: {e}")
 
-                # ENTER tuşuna bas
+            # ComboBox işlemi (AutomationId ile bulunduysa)
+            if kullanici_combo:
+                try:
+                    kullanici_combo.click_input()
+                    time.sleep(0.3)
+
+                    # Alt+Down ile dropdown'u aç
+                    pyautogui.keyDown("alt")
+                    pyautogui.press("down")
+                    pyautogui.keyUp("alt")
+                    time.sleep(0.5)
+
+                    # Giriş yöntemine göre kullanıcı seçimi
+                    if giris_yontemi == "kullanici_adi":
+                        if kullanici_adi_giris:
+                            logger.info(f"Kullanıcı adı yazılıyor: {kullanici_adi_giris}")
+                            pyautogui.typewrite(kullanici_adi_giris, interval=0.1)
+                            time.sleep(0.3)
+                            pyautogui.press("enter")
+                            time.sleep(0.5)
+                            logger.info(f"✓ Kullanıcı seçildi (ad: {kullanici_adi_giris})")
+                        else:
+                            pyautogui.press("enter")
+                            time.sleep(0.5)
+                    else:
+                        # İndeks ile seçim
+                        logger.info(f"Combobox'tan {kullanici_ad} seçiliyor (Index: {kullanici_index})...")
+                        for i in range(kullanici_index):
+                            pyautogui.press("down")
+                            time.sleep(0.1)
+                        pyautogui.press("enter")
+                        time.sleep(0.5)
+                        logger.info(f"✓ {kullanici_ad} seçildi")
+                except Exception as e:
+                    logger.warning(f"⚠ ComboBox işlemi başarısız: {e}")
+            else:
+                # Fallback: Tab ile combobox'a git (eski yöntem)
+                try:
+                    pyautogui.press("tab")
+                    time.sleep(0.3)
+                    pyautogui.keyDown("alt")
+                    pyautogui.press("down")
+                    pyautogui.keyUp("alt")
+                    time.sleep(0.5)
+
+                    if giris_yontemi == "kullanici_adi":
+                        if kullanici_adi_giris:
+                            pyautogui.typewrite(kullanici_adi_giris, interval=0.1)
+                            time.sleep(0.3)
+                        pyautogui.press("enter")
+                        time.sleep(0.5)
+                    else:
+                        for i in range(kullanici_index):
+                            pyautogui.press("down")
+                            time.sleep(0.1)
+                        pyautogui.press("enter")
+                        time.sleep(0.5)
+                except Exception as e:
+                    logger.warning(f"⚠ ComboBox fallback başarısız: {e}")
+
+            # Şifre girişi (AutomationId ile bulunduysa)
+            if sifre_textbox:
+                try:
+                    sifre_textbox.click_input()
+                    time.sleep(0.3)
+                    sifre_textbox.set_edit_text("")  # Temizle
+                    time.sleep(0.2)
+                    sifre_textbox.type_keys(sifre, with_spaces=True)
+                    time.sleep(0.5)
+                    logger.info("✓ Şifre girildi (AutomationId ile)")
+                except Exception as e:
+                    logger.warning(f"⚠ Şifre girişi AutomationId ile başarısız: {e}, PyAutoGUI deneniyor...")
+                    # Fallback: PyAutoGUI ile şifre yaz
+                    try:
+                        sifre_textbox.click_input()
+                        time.sleep(0.2)
+                        pyautogui.hotkey('ctrl', 'a')
+                        time.sleep(0.1)
+                        pyautogui.press('backspace')
+                        time.sleep(0.2)
+                        pyautogui.write(sifre, interval=0.05)
+                        time.sleep(0.5)
+                        logger.info("✓ Şifre girildi (PyAutoGUI fallback)")
+                    except Exception as e2:
+                        logger.error(f"❌ Şifre girişi tamamen başarısız: {e2}")
+            else:
+                # Fallback: Tab ile şifre alanına git
+                try:
+                    pyautogui.press("tab")
+                    time.sleep(0.2)
+                    pyautogui.press("tab")
+                    time.sleep(0.3)
+                    pyautogui.hotkey('ctrl', 'a')
+                    time.sleep(0.1)
+                    pyautogui.press('backspace')
+                    time.sleep(0.2)
+                    pyautogui.write(sifre, interval=0.05)
+                    time.sleep(0.5)
+                    logger.info("✓ Şifre girildi (Tab fallback)")
+                except Exception as e:
+                    logger.error(f"❌ Şifre girişi fallback başarısız: {e}")
+
+            # Giriş butonu tıklama (AutomationId ile bulunduysa)
+            if giris_button:
+                try:
+                    giris_button.click_input()
+                    logger.info("✓ Giriş butonuna tıklandı (AutomationId ile)")
+                    time.sleep(4)
+                except Exception as e:
+                    logger.warning(f"⚠ Giriş butonu tıklama başarısız: {e}, ENTER deneniyor...")
+                    pyautogui.press("enter")
+                    time.sleep(4)
+            else:
+                # Fallback: ENTER tuşuna bas
+                logger.info("Giriş butonu bulunamadı, ENTER tuşu basılıyor...")
                 pyautogui.press("enter")
                 time.sleep(4)
 
-                # Giriş başarılı mı kontrol et
-                from pywinauto import Desktop
-                desktop = Desktop(backend="uia")
+            # Giriş başarılı mı kontrol et
+            from pywinauto import Desktop
+            desktop = Desktop(backend="uia")
 
-                # 5 saniye boyunca MEDULA ana penceresini bekle
-                medula_bulundu = False
-                for bekleme in range(10):  # 10 * 0.5 = 5 saniye
-                    for window in desktop.windows():
-                        try:
-                            window_text = window.window_text()
-                            if "MEDULA" in window_text and "BotanikEOS" not in window_text:
-                                logger.info("✓ Giriş yapıldı - MEDULA ana penceresi açıldı")
-                                medula_bulundu = True
-                                return True
-                        except Exception as e:
-                            logger.debug(f"Operation failed: {type(e).__name__}")
-                    if medula_bulundu:
-                        break
-                    time.sleep(0.5)
-
-                # Giriş penceresi hala açıksa şifre yanlış demektir
+            # 5 saniye boyunca MEDULA ana penceresini bekle
+            medula_bulundu = False
+            for bekleme in range(10):  # 10 * 0.5 = 5 saniye
                 for window in desktop.windows():
                     try:
-                        if "BotanikEOS" in window.window_text():
-                            logger.error("❌ Giriş başarısız - Şifre yanlış olabilir")
-                            return False
+                        window_text = window.window_text()
+                        if "MEDULA" in window_text:
+                            logger.info("✓ Giriş yapıldı - MEDULA ana penceresi açıldı")
+                            medula_bulundu = True
+                            return True
                     except Exception as e:
                         logger.debug(f"Operation failed: {type(e).__name__}")
+                if medula_bulundu:
+                    break
+                time.sleep(0.5)
 
-                logger.warning("⚠ Giriş durumu belirsiz")
-                return False
+            # Giriş penceresi hala açıksa şifre yanlış demektir
+            for window in desktop.windows():
+                try:
+                    if "MEDULA" in window.window_text():
+                        logger.error("❌ Giriş başarısız - Şifre yanlış olabilir")
+                        return False
+                except Exception as e:
+                    logger.debug(f"Operation failed: {type(e).__name__}")
 
-            except Exception as e:
-                logger.error(f"❌ Şifre girişi başarısız: {e}")
-                return False
+            logger.warning("⚠ Giriş durumu belirsiz")
+            return False
 
         except Exception as e:
             logger.error(f"❌ Giriş işlemi başarısız: {e}")

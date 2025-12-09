@@ -1,0 +1,86 @@
+How found:	Mouse move (1029,198)
+	hwnd=0x00000000011E0AB8 32bit class="Internet Explorer_Server" style=0x56000000 ex=0x0
+Name:	""
+ControlType:	UIA_TextControlTypeId (0xC364)
+LocalizedControlType:	"metin"
+BoundingRectangle:	{l:758 t:190 r:1160 b:205}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	true
+HasKeyboardFocus:	false
+AccessKey:	""
+ProcessId:	13860
+RuntimeId:	[2A.11E0AB8.4.37.F00D.1]
+ProviderDescription:	"[pid:13860,providerId:0x0 Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	false
+HelpText:	""
+IsDialog:	false
+LegacyIAccessible.ChildId:	1
+LegacyIAccessible.DefaultAction:	""
+LegacyIAccessible.Description:	""
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	""
+LegacyIAccessible.Role:	metin (0x29)
+LegacyIAccessible.State:	odaklanabilir (0x100000)
+LegacyIAccessible.Value:	"B Grubu"
+Value.IsReadOnly:	false
+Value.Value:	"B Grubu"
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	false
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	false
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	true
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	"Aç" düğme
+Previous:	[null]
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	"" birleşik giriş kutusu
+	"" öğe
+	"" tablo
+	"" öğe
+	"" tablo
+	"" öğe
+	"" tablo
+	"" öğe
+	"" tablo
+	"Medula Eczane" bölme
+	"https://medeczane.sgk.gov.tr/eczane/faces/pages/recete/KartsizEreceteSorgu.jsp" bölme
+	"" bölme
+	"" bölme
+	"" bölme
+	"MEDULA 2.1.200.0 EMRE GÖKMEN (T)" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

@@ -1,0 +1,89 @@
+How found:	Mouse move (706,165)
+	hwnd=0x0000000000011058 32bit class="Internet Explorer_Server" style=0x56000000 ex=0x0
+Name:	""
+ControlType:	UIA_DataItemControlTypeId (0xC36D)
+LocalizedControlType:	"öğe"
+BoundingRectangle:	{l:651 t:158 r:1429 b:199}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	true
+HasKeyboardFocus:	true
+AccessKey:	""
+ProcessId:	19940
+RuntimeId:	[2A.11058.4.15DE]
+FrameworkId:	"InternetExplorer"
+ProviderDescription:	"[pid:19940,providerId:0x0 Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
+AriaProperties:	""
+LiveSettingProperty:	Off (0)
+IsPassword:	false
+IsRequiredForForm:	false
+IsDataValidForForm:	true
+HelpText:	""
+Orientation:	0
+IsDialog:	false
+GridItem.Column:	0
+GridItem.ColumnSpan:	1
+GridItem.ContainingGrid:	"" tablo
+GridItem.Row:	0
+GridItem.RowSpan:	1
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	""
+LegacyIAccessible.Role:	hücre (0x1D)
+LegacyIAccessible.State:	odaklanmış,odaklanabilir (0x100004)
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	true
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	false
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	true
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	true
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	"  " metin
+LastChild:	"" tablo
+Next:	[null]
+Previous:	[null]
+Other Props:	Object has no additional properties
+Children:	"  " metin
+	"" tablo
+Ancestors:	"" tablo
+	"" öğe
+	"" tablo
+	"" öğe
+	"" tablo
+	"Medula Eczane" bölme
+	"https://medeczane.sgk.gov.tr/eczane/faces/pages/recete/ReceteIslem2.jsp" bölme
+	"" bölme
+	"" bölme
+	"" bölme
+	"MEDULA 2.1.198.0 EMRE GÖKMEN (T)" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

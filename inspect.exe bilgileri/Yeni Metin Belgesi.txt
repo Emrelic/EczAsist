@@ -1,0 +1,55 @@
+🎯 UI Tespit
+------------
+Pencere Adı: MEDULA 2.1.198.0 EMRE GÖKMEN (T)
+Pencere ID: 0x40A1A
+Element Adı: Reçete Listesi
+Element ID: -
+Control Type: Button
+Class Name: -
+Tag: -
+Title: -
+Element Path: Window[MedulaGirisForm]/Pane[webBrowser1]/Pane/Pane/Pane[Medula Eczane]/Table/Custom/Table/Custom/Button[    Reçete Listesi]
+Parent Zinciri: -
+İşlem: Sol tıklama
+
+1) UI Automation
+----------------
+Pencere Adı: MEDULA 2.1.198.0 EMRE GÖKMEN (T)
+Pencere ID: 0x40A1A
+Element Adı: Reçete Listesi
+Element ID: -
+Control Type: Button
+Class Name: -
+Tag: -
+Title: -
+Element Path: Window[MedulaGirisForm]/Pane[webBrowser1]/Pane/Pane/Pane[Medula Eczane]/Table/Custom/Table/Custom/Button[    Reçete Listesi]
+Parent Zinciri: -
+İşlem: Sol tıklama
+
+2) Playwright
+-------------
+Pencere Adı: (Bekleniyor)
+Pencere ID: -
+Element Adı: -
+Element ID: -
+Control Type: -
+Class Name: -
+Tag: -
+Title: -
+Element Path: -
+Parent Zinciri: -
+İşlem: (İşlem bekleniyor)
+
+3) MSHTML / IHTML
+-----------------
+Pencere Adı: (Bekleniyor)
+Pencere ID: -
+Element Adı: -
+Element ID: -
+Control Type: -
+Class Name: -
+Tag: -
+Title: -
+Element Path: -
+Parent Zinciri: -
+İşlem: (İşlem bekleniyor)

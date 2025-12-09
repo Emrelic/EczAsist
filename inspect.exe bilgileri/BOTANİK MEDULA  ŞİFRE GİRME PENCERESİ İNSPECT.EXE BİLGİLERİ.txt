@@ -1,0 +1,88 @@
+How found:	Mouse move (576,287)
+	hwnd=0x0000000000880EBE 32bit class="WindowsForms10.Window.8.app.0.134c08f_r8_ad1" style=0x16CA0000 ex=0x50180
+Name:	"BotanikEOS 2.1.199.0 (T)"
+ControlType:	UIA_WindowControlTypeId (0xC370)
+LocalizedControlType:	"pencere"
+BoundingRectangle:	{l:321 t:161 r:582 b:453}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	true
+HasKeyboardFocus:	false
+AccessKey:	""
+ProcessId:	3536
+RuntimeId:	[2A.880EBE]
+AutomationId:	"SifreSorForm"
+FrameworkId:	"WinForm"
+ClassName:	"WindowsForms10.Window.8.app.0.134c08f_r8_ad1"
+NativeWindowHandle:	0x880EBE
+ProviderDescription:	"[pid:9644,providerId:0x880EBE Main:Nested [pid:3536,providerId:0x880EBE Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	false
+HelpText:	""
+IsDialog:	false
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.DefaultAction:	""
+LegacyIAccessible.Description:	""
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	"BotanikEOS 2.1.199.0 (T)"
+LegacyIAccessible.Role:	istemci (0xA)
+LegacyIAccessible.State:	odaklanabilir (0x100000)
+LegacyIAccessible.Value:	""
+Transform.CanMove:	true
+Transform.CanResize:	false
+Transform.CanRotate:	false
+Window.CanMaximize:	false
+Window.CanMinimize:	true
+Window.IsModal:	false
+Window.IsTopmost:	false
+Window.WindowInteractionState:	ReadyForUserInteraction (2)
+Window.WindowVisualState:	Normal (0)
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	false
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	false
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	true
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	true
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	"" bölme
+LastChild:	(null) başlık çubuğu
+Next:	"Görev Yöneticisi" pencere
+Previous:	"Görev Çubuğu" bölme
+Other Props:	Object has no additional properties
+Children:	"" bölme
+	"" düzenle
+	"" birleşik giriş kutusu
+	"Lüften Kullanıcı Seçiniz" metin
+	"Giriş" düğme
+	"Lüften Şifrenizi Giriniz ve ENTER veya Butona basınız" metin
+	(null) başlık çubuğu
+Ancestors:	"Masaüstü 1" bölme
+	[ No Parent ]

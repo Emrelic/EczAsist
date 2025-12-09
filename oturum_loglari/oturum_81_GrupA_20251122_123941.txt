@@ -1,0 +1,33 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 81
+Grup: A
+Başlangıç: 2025-11-22 12:39:41
+================================================================================
+
+[12:39:41.545] [INFO] Grup A için yeni oturum başlatıldı
+[12:40:25.186] [INFO] 🔵 Rapor toplama başlatılıyor...
+[12:40:41.616] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[12:41:30.459] [INFO] 🔵 Rapor toplama başlatılıyor...
+[12:41:47.692] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[12:42:36.800] [INFO] 🔵 Rapor toplama başlatılıyor...
+[12:42:54.006] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[12:43:34.314] [INFO] 🔵 Rapor toplama başlatılıyor...
+[12:43:55.733] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[12:44:45.544] [INFO] 🔵 Rapor toplama başlatılıyor...
+[12:45:10.633] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-11-22 12:46:07
+Toplam Süre: 6 dakika 25 saniye
+Toplam Reçete: 5
+Toplam Takip: 0
+Ortalama Reçete Süresi: 66.62 saniye
+Yeniden Başlatma: 0 kez
+Taskkill: 0 kez
+================================================================================
+
+[12:46:07.291] Oturum log dosyası kapatıldı.

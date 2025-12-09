@@ -1,0 +1,56 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 521
+Grup: C
+Başlangıç: 2025-12-10 01:59:24
+================================================================================
+
+[01:59:24.286] [INFO] Grup C için yeni oturum başlatıldı
+[01:59:49.660] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:59:58.035] [BAŞARI] ✅ 1 rapor CSV'ye kaydedildi - İBRAHİM AKTAŞ (5388271805)
+[02:00:26.555] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:00:35.111] [WARNING] ⚠️ Rapor bulunamadı - BERAT DEĞİRMENCİOĞLU
+[02:01:02.429] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:01:11.239] [WARNING] ⚠️ Rapor bulunamadı - BEDİA DEĞİRMENCİOĞLU
+[02:01:52.144] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:02:01.382] [BAŞARI] ✅ 3 rapor CSV'ye kaydedildi - SEVİLAY BULUT (5369788598)
+[02:02:26.466] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:02:35.836] [WARNING] ⚠️ Rapor bulunamadı - CÜNEYT URUÇ
+[02:03:01.672] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:03:11.052] [WARNING] ⚠️ Rapor bulunamadı - CÜNEYT URUÇ
+[02:04:16.015] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:04:24.865] [WARNING] ⚠️ Rapor bulunamadı - YAVUZ ÇELİK
+[02:05:04.951] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:05:13.272] [BAŞARI] ✅ 3 rapor CSV'ye kaydedildi - GÜLDEN ZAFER (5305259113)
+[02:05:44.174] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:05:52.564] [BAŞARI] ✅ 1 rapor CSV'ye kaydedildi - HÜLYA GÜMÜŞ (5531029420)
+[02:06:33.565] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:06:42.039] [BAŞARI] ✅ 1 rapor CSV'ye kaydedildi - İBRAHİM AKTAŞ (5388271805)
+[02:07:10.265] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:07:20.231] [WARNING] ⚠️ Rapor bulunamadı - BERAT DEĞİRMENCİOĞLU
+[02:08:13.553] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:08:22.287] [BAŞARI] ✅ 4 rapor CSV'ye kaydedildi - ASEL IRGAN (5449676505)
+[02:08:51.388] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:09:00.216] [BAŞARI] ✅ 6 rapor CSV'ye kaydedildi - MEHMET ÖZDEMİR (5356686667)
+[02:09:29.602] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:09:39.433] [WARNING] ⚠️ Rapor bulunamadı - MERTCAN YAVUZ
+[02:10:08.917] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:10:19.285] [WARNING] ⚠️ Rapor bulunamadı - AYSEL YILMAZ
+[02:11:00.186] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[02:11:09.293] [WARNING] ⚠️ Rapor bulunamadı - EMRULLAH KELOĞLU
+[02:11:30.503] [BAŞARI] Görev başarıyla tamamlandı
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-12-10 02:11:30
+Toplam Süre: 12 dakika 6 saniye
+Toplam Reçete: 26
+Toplam Takip: 187
+Ortalama Reçete Süresi: 27.62 saniye
+Yeniden Başlatma: 0 kez
+Taskkill: 0 kez
+================================================================================
+
+[02:11:30.515] Oturum log dosyası kapatıldı.

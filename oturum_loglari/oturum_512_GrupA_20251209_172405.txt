@@ -1,0 +1,33 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 512
+Grup: A
+Başlangıç: 2025-12-09 17:24:05
+================================================================================
+
+[17:24:05.978] [INFO] Grup A için yeni oturum başlatıldı
+[17:24:34.254] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[17:24:42.356] [BAŞARI] ✅ 10 rapor CSV'ye kaydedildi - GÜLŞEN ÇILGINOĞLU (5301711023)
+[17:25:12.040] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[17:25:19.830] [BAŞARI] ✅ 5 rapor CSV'ye kaydedildi - EMİNE TUFAN (5373063599)
+[17:25:49.568] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[17:25:57.502] [BAŞARI] ✅ 9 rapor CSV'ye kaydedildi - FERİHAN TUĞCU (5366619191)
+[17:26:27.577] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[17:26:35.249] [BAŞARI] ✅ 8 rapor CSV'ye kaydedildi - ÖMER İLBASAN (5334397118)
+[17:27:00.094] [INFO] Yeniden başlatma #1
+[17:27:12.096] [WARNING] Taskkill yapıldı (#1)
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-12-09 17:27:22
+Toplam Süre: 3 dakika 16 saniye
+Toplam Reçete: 4
+Toplam Takip: 53
+Ortalama Reçete Süresi: 38.07 saniye
+Yeniden Başlatma: 1 kez
+Taskkill: 1 kez
+================================================================================
+
+[17:27:22.760] Oturum log dosyası kapatıldı.

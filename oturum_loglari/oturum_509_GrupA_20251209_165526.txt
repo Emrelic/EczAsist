@@ -1,0 +1,28 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 509
+Grup: A
+Başlangıç: 2025-12-09 16:55:26
+================================================================================
+
+[16:55:26.885] [INFO] Grup A için yeni oturum başlatıldı
+[16:55:54.705] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[16:56:02.152] [BAŞARI] ✅ 3 rapor CSV'ye kaydedildi - YUNUS EMRE MARAZ (5541280212)
+[16:56:29.708] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[16:56:37.510] [BAŞARI] ✅ 3 rapor CSV'ye kaydedildi - MUSTAFA KARAKURT (5352949851)
+[16:57:07.023] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-12-09 16:57:15
+Toplam Süre: 1 dakika 48 saniye
+Toplam Reçete: 2
+Toplam Takip: 18
+Ortalama Reçete Süresi: 36.35 saniye
+Yeniden Başlatma: 0 kez
+Taskkill: 0 kez
+================================================================================
+
+[16:57:15.067] Oturum log dosyası kapatıldı.

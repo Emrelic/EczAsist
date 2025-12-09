@@ -1,0 +1,316 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+
+
+
+
+<html>
+<head>
+<title>Medula Eczane</title>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-9">
+<meta name="GENERATOR" content="Rational Software Architect">
+<link rel="stylesheet" type="text/css"
+	href="/eczane/theme/stylesheet.css"
+	title="Style">
+<link rel="stylesheet"
+	href="/eczane/theme/styles.css"
+	type="text/css">
+<script src="/eczane/scripts/medula.js" language="javascript"></script>	
+</head>
+
+	<body bgcolor="#FFFFFF" text="#000000" leftmargin="0" marginwidth="0" topmargin="5" background="/eczane/images/background.gif" onkeydown="onkeydawn();" onload="onlood();">
+	<form id="form1" name="form1" method="post" action="/eczane/faces/pages/haksahibi/RaporListe.jsp" enctype="application/x-www-form-urlencoded" class="form">
+			<table width="100%" border="0" cellspacing="0" cellpadding="0"
+				height="450">
+				<tbody>
+					<tr>
+						<td width="165" valign="top"
+							style="padding-top:5; padding-left:5; padding-right:5; padding-bottom:5;"
+							bgcolor="#EEEEEE">
+						<table width="100%" border="0" cellspacing="1" cellpadding="10"
+							class="menuText" bgcolor="#AFAFAF" style="margin-bottom:4px;">
+							<tr>
+								<td align="center" class="loggedInUserMenu"><span class="outputText">&#304;K&#304;ZLER ECZANES&#304; (18342920)</span></td>
+							</tr>
+						</table>
+						
+
+<script type="text/JavaScript" language="JavaScript" src="/eczane/.ibmjsfres/hxclient_core_v3_1_16.js"></script>
+
+<script type="text/JavaScript" language="JavaScript" src="/eczane/.ibmjsfres/hxclient_S_v3_1_16_tr.js?viewLocale=tr_TR"></script>
+<script type="text/JavaScript" language="JavaScript">
+if (hX_6) hX_6.setResourceServer("/eczane/.ibmjsfres");
+if(hX_6 && hX_6.setLocale) hX_6.setLocale("tr_TR");
+
+</script><table id="form1:menu" class="panelActionbar" border="0" cellspacing="0" cellpadding="0" style="background-color: #637595"><tr><td colspan="2"><span id="form1:menuHtmlOutputText01" style="vertical-align: middle; width: 165px; line-height: 20px" class="headerRow">&#160;&#160;:: Re&#231;ete</span></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;e-Re&#231;ete Sorgu" id="form1:menuHtmlCommandExButton11" name="form1:menuHtmlCommandExButton11" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Re&#231;ete Giri&#351;" id="form1:menuHtmlCommandExButton21" name="form1:menuHtmlCommandExButton21" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Re&#231;ete Listesi" id="form1:menuHtmlCommandExButton31" name="form1:menuHtmlCommandExButton31" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Re&#231;ete Listesi (G&uuml;nl&uuml;k)" id="form1:menuHtmlCommandExButton41" name="form1:menuHtmlCommandExButton41" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Re&#231;ete Sorgu" id="form1:menuHtmlCommandExButton51" name="form1:menuHtmlCommandExButton51" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;&#304;ade Re&#231;ete Sorgu/D&uuml;zeltme" id="form1:menuHtmlCommandExButton61" name="form1:menuHtmlCommandExButton61" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;&#304;la&#231; Bilgisi" id="form1:menuHtmlCommandExButton71" name="form1:menuHtmlCommandExButton71" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Silinmi&#351; Karekod" id="form1:menuHtmlCommandExButton81" name="form1:menuHtmlCommandExButton81" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Manuel Re&#231;ete Giri&#351;" id="form1:menuHtmlCommandExButton91" name="form1:menuHtmlCommandExButton91" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Manuel Re&#231;ete Liste" id="form1:menuHtmlCommandExButton101" name="form1:menuHtmlCommandExButton101" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><span id="form1:menuHtmlOutputText111" style="vertical-align: middle; width: 165px; line-height: 20px" class="headerRow">&#160;&#160;:: Fatura</span></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Fatura Sonland&#305;rma" id="form1:menuHtmlCommandExButton121" name="form1:menuHtmlCommandExButton121" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Eski Fatura Sorgu" id="form1:menuHtmlCommandExButton131" name="form1:menuHtmlCommandExButton131" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Ek Fatura" id="form1:menuHtmlCommandExButton141" name="form1:menuHtmlCommandExButton141" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;&#304;ade/Kesinti Sorgu" id="form1:menuHtmlCommandExButton151" name="form1:menuHtmlCommandExButton151" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Emekli &#304;la&#231; Kat&#305;l&#305;m" id="form1:menuHtmlCommandExButton161" name="form1:menuHtmlCommandExButton161" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><span id="form1:menuHtmlOutputText171" style="vertical-align: middle; width: 165px; line-height: 20px" class="headerRow">&#160;&#160;:: Mesaj</span></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Mesaj G&ouml;r&uuml;nt&uuml;leme" id="form1:menuHtmlCommandExButton181" name="form1:menuHtmlCommandExButton181" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><span id="form1:menuHtmlOutputText191" style="vertical-align: middle; width: 165px; line-height: 20px" class="headerRow">&#160;&#160;:: Kullan&#305;c&#305; &#304;&#351;lemleri</span></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;&#350;ifre De&#287;i&#351;tir" id="form1:menuHtmlCommandExButton201" name="form1:menuHtmlCommandExButton201" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;Bilgi G&uuml;ncelleme" id="form1:menuHtmlCommandExButton211" name="form1:menuHtmlCommandExButton211" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;TBMM Uygulamas&#305;" id="form1:menuHtmlCommandExButton221" name="form1:menuHtmlCommandExButton221" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr><tr><td colspan="2"><input type="image" src="/eczane/theme/button.png" value="&#160;&#160;&#160;&#160;&#199;&#305;k&#305;&#351; Yap" id="form1:menuHtmlCommandExButton231" name="form1:menuHtmlCommandExButton231" style="vertical-align: middle; font-size: 11pt; color: #000000;" /></td></tr></table>
+
+
+
+
+
+
+</td>
+						<td align="center" valign="top" style="padding:10 10 10 10;" class="paragraph" bgcolor="#EEEEEE">
+							
+
+
+
+<br>
+						<table width="790px" bgcolor="#F5F5F5" border="0" cellpadding="5"						
+							cellspacing="0">
+							<tr height="20">
+								<td class="menuHeader">Rapor Listesi</td>
+							</tr>
+							<tr>
+								<td>
+								<table width="100%" cellpadding="1" cellspacing="1"
+									class="borderTable">
+									<tr class="row1">
+										<td class="label"> <table id="form1:box1" class="panelBox"><tr><td><input type="submit" value="Geri D&ouml;n" id="form1:buttonGeriDon" name="form1:buttonGeriDon" style="width: 100px" class="commandExButton" /></td><td><input type="submit" value="Rapor Te&#351;his Parametreleri" id="form1:buttonRaporTeshisParametreleri" name="form1:buttonRaporTeshisParametreleri" class="commandExButton" /></td></tr></table></td>
+									</tr>
+								</table>
+								</td>
+							</tr>							
+							<tr>
+								<td>
+								<table width="100%" cellpadding="1" cellspacing="1"
+									class="borderTable">
+									<tr class="headerRow">
+										<td colspan="7">Hak Sahibi Bilgileri</td>
+									</tr>			
+									<tr class="row1">
+										<td class="label" width="160px">&nbsp;<span id="form1:text9" class="outputText">T.C. Kimlik Numaras&#305;</span></td>
+										<td align="center" width="5px"><strong>:</strong></td>
+										<td class="label">&nbsp;<span id="form1:text18" style="color: blue" class="outputText">11847112****</span></td>
+										<td align="center" width="5px"><strong></strong></td>
+										<td class="label" width="160px">&nbsp;<span id="form1:text4" class="outputText">Ad&#305; / Soyad&#305;</span></td>
+										<td align="center" width="5px"><strong>:</strong></td>
+										<td class="label"><table id="form1:box4" class="panelBox"><tr><td><span id="form1:text7" style="color: blue" class="outputText">MEDET</span></td><td><span id="form1:text6" style="color: blue" class="outputText">DURDA&#286;I</span></td></tr></table></td>
+									</tr>		
+									<tr class="row2">
+										<td class="label" width="160px">&nbsp;<span id="form1:text19" class="outputText">Cinsiyeti</span></td>
+										<td align="center" width="5px"><strong>:</strong></td>
+										<td class="label">&nbsp;<span id="form1:text21" style="color: blue" class="outputText">Erkek</span></td>
+										<td align="center" width="5px"><strong></strong></td>
+										<td class="label" width="160px">&nbsp;<span id="form1:text22" class="outputText">Do&#287;um Tarihi</span></td>
+										<td align="center" width="5px"><strong>:</strong></td>
+										<td class="label">&nbsp;<span id="form1:text23" style="color: blue" class="outputText">01/11/1976</span>
+										</td>
+									</tr>	
+									<tr class="row1">
+										<td class="label" colspan="7">
+											<span id="form1:text5" style="color: blue" class="outputText">- Hak sahibi bilgileri g&uuml;ncel de&#287;il ise re&#231;ete girildi&#287;i zaman g&uuml;ncellenecektir.</span><br>
+										<span id="form1:text12" style="color: blue" class="outputText">- Hatal&#305; bilgileri d&uuml;zelttirmek i&#231;in SGK Sosyal G&uuml;venlik Merkezlerine ba&#351;vurunuz.</span><br>
+										<span id="form1:text11" style="color: blue" class="outputText">- Bilgiler g&#252;ncellenmedi&#287;i takdirde re&#231;ete'yi 'M&#252;stehakl&#305;k sorgusunu ayn&#305; g&#252;n i&#231;in tekrar yap' se&#231;ene&#287;ini i&#351;aretleyerek kaydediniz.</span></td>
+									</tr>																								
+								</table>
+								</td>
+							</tr>
+							<tr>
+								<td>
+								<table width="100%" cellpadding="1" cellspacing="1"
+									class="borderTable">
+									<tr class="headerRow">
+										<td colspan="7">Raporlar</td>
+									</tr>
+									<tr class="row1">
+										<td class="label" colspan="7" align="center"><table id="form1:tableExRaporTeshisList" class="dataTableEx" border="0" cellpadding="2" cellspacing="0" ><thead ><tr ><th class="headerClass" scope="col" ><img src="/eczane/.ibmjsfres/img/1x1.gif" ></img></th><th align="left" class="headerClass" scope="col" ><span id="form1:tableExRaporTeshisList:text1" class="outputText">Rapor Takip No</span></th><th align="left" class="headerClass" scope="col" ><span id="form1:tableExRaporTeshisList:text2" class="outputText">Rapor No</span></th><th align="left" class="headerClass" scope="col" ><span id="form1:tableExRaporTeshisList:text3" class="outputText">Ba&#351;lang&#305;&#231; Tarihi</span></th><th align="left" class="headerClass" scope="col" ><span id="form1:tableExRaporTeshisList:text13" class="outputText">Biti&#351; Tarihi</span></th><th align="left" class="headerClass" scope="col" ><span id="form1:tableExRaporTeshisList:text8" class="outputText">Kay&#305;t &#350;ekli</span></th><th align="left" class="headerClass" scope="col" ><span id="form1:tableExRaporTeshisList:text10" class="outputText">Tan&#305;</span></th></tr>
+</thead><tbody >
+<tr class="rowClass1" ><td ><span id="form1:tableExRaporTeshisList:0:rowActionRaporSec">
+<input type="hidden" id="form1:tableExRaporTeshisList:0:rowActionRaporSec__hidden_action" name="form1:tableExRaporTeshisList:0:rowActionRaporSec__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:0:text14" class="outputText">502843499</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:0:text99" class="outputText">1476532</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:0:text98" class="outputText">29/04/2025</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:0:text97" class="outputText">28/04/2026</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:0:text15" class="outputText">Elektronik &#304;mzal&#305; Rapor</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:0:text96" class="outputText">06.01 - Hepatit B Gastro(B18.1)</span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExRaporTeshisList:1:rowActionRaporSec">
+<input type="hidden" id="form1:tableExRaporTeshisList:1:rowActionRaporSec__hidden_action" name="form1:tableExRaporTeshisList:1:rowActionRaporSec__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:1:text14" class="outputText">501498020</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:1:text99" class="outputText">1472052</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:1:text98" class="outputText">17/04/2025</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:1:text97" class="outputText">16/04/2027</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:1:text15" class="outputText">Elektronik &#304;mzal&#305; Rapor</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:1:text96" class="outputText">03.00 - Kronik Bobrek Hastaliklari(N01- N08*)(N11)(N15-N16)(N18-N19)(N25-N29*)(D63.8*)(Q61.2)(Y83.0)</span></td>
+</tr>
+<tr class="rowClass1" ><td ><span id="form1:tableExRaporTeshisList:2:rowActionRaporSec">
+<input type="hidden" id="form1:tableExRaporTeshisList:2:rowActionRaporSec__hidden_action" name="form1:tableExRaporTeshisList:2:rowActionRaporSec__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:2:text14" class="outputText">501498020</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:2:text99" class="outputText">1472052</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:2:text98" class="outputText">17/04/2025</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:2:text97" class="outputText">16/04/2027</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:2:text15" class="outputText">Elektronik &#304;mzal&#305; Rapor</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:2:text96" class="outputText">04.05 - Arteriyel Hipertansiyon(I10 -I13)(I15)</span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExRaporTeshisList:3:rowActionRaporSec">
+<input type="hidden" id="form1:tableExRaporTeshisList:3:rowActionRaporSec__hidden_action" name="form1:tableExRaporTeshisList:3:rowActionRaporSec__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:3:text14" class="outputText">496144271</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:3:text99" class="outputText">1453898</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:3:text98" class="outputText">06/03/2025</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:3:text97" class="outputText">05/03/2027</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:3:text15" class="outputText">Elektronik &#304;mzal&#305; Rapor</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:3:text96" class="outputText">03.00 - Kronik Bobrek Hastaliklari(N01- N08*)(N11)(N15-N16)(N18-N19)(N25-N29*)(D63.8*)(Q61.2)(Y83.0)</span></td>
+</tr>
+<tr class="rowClass1" ><td ><span id="form1:tableExRaporTeshisList:4:rowActionRaporSec">
+<input type="hidden" id="form1:tableExRaporTeshisList:4:rowActionRaporSec__hidden_action" name="form1:tableExRaporTeshisList:4:rowActionRaporSec__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:4:text14" class="outputText">496144271</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:4:text99" class="outputText">1453898</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:4:text98" class="outputText">06/03/2025</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:4:text97" class="outputText">05/03/2027</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:4:text15" class="outputText">Elektronik &#304;mzal&#305; Rapor</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:4:text96" class="outputText">20.00 - EK- 4/D Listesinde Yer Almayan Hastal&#305;klar</span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExRaporTeshisList:5:rowActionRaporSec">
+<input type="hidden" id="form1:tableExRaporTeshisList:5:rowActionRaporSec__hidden_action" name="form1:tableExRaporTeshisList:5:rowActionRaporSec__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:5:text14" class="outputText">454049878</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:5:text99" class="outputText">1297614</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:5:text98" class="outputText">27/03/2024</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:5:text97" class="outputText">26/03/2026</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:5:text15" class="outputText">Elektronik &#304;mzal&#305; Rapor</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:5:text96" class="outputText">04.08 - Hiperkolesterolemi, Hiperlipidemi(E78)</span></td>
+</tr>
+<tr class="rowClass1" ><td ><span id="form1:tableExRaporTeshisList:6:rowActionRaporSec">
+<input type="hidden" id="form1:tableExRaporTeshisList:6:rowActionRaporSec__hidden_action" name="form1:tableExRaporTeshisList:6:rowActionRaporSec__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:6:text14" class="outputText">454049878</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:6:text99" class="outputText">1297614</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:6:text98" class="outputText">27/03/2024</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:6:text97" class="outputText">26/03/2026</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:6:text15" class="outputText">Elektronik &#304;mzal&#305; Rapor</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:6:text96" class="outputText">03.01 - Organ ve Doku Nakli (Z94)(Y83.0)</span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExRaporTeshisList:7:rowActionRaporSec">
+<input type="hidden" id="form1:tableExRaporTeshisList:7:rowActionRaporSec__hidden_action" name="form1:tableExRaporTeshisList:7:rowActionRaporSec__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:7:text14" class="outputText">454049878</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:7:text99" class="outputText">1297614</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:7:text98" class="outputText">27/03/2024</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:7:text97" class="outputText">26/03/2026</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:7:text15" class="outputText">Elektronik &#304;mzal&#305; Rapor</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:7:text96" class="outputText">04.05 - Arteriyel Hipertansiyon(I10 -I13)(I15)</span></td>
+</tr>
+<tr class="rowClass1" ><td ><span id="form1:tableExRaporTeshisList:8:rowActionRaporSec">
+<input type="hidden" id="form1:tableExRaporTeshisList:8:rowActionRaporSec__hidden_action" name="form1:tableExRaporTeshisList:8:rowActionRaporSec__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:8:text14" class="outputText">278741059</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:8:text99" class="outputText">89259</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:8:text98" class="outputText">30/11/2018</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:8:text97" class="outputText">30/03/2026</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:8:text15" class="outputText">Elektronik Rapor</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:8:text96" class="outputText">07.02.1 - Diabetes Mellitus(E10-E14)</span></td>
+</tr>
+<tr class="rowClass2" ><td ><span id="form1:tableExRaporTeshisList:9:rowActionRaporSec">
+<input type="hidden" id="form1:tableExRaporTeshisList:9:rowActionRaporSec__hidden_action" name="form1:tableExRaporTeshisList:9:rowActionRaporSec__hidden_action" value="false" disabled="disabled" /></span>
+</td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:9:text14" class="outputText">251786868</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:9:text99" class="outputText">15894</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:9:text98" class="outputText">23/02/2018</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:9:text97" class="outputText">30/03/2026</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:9:text15" class="outputText">Elektronik Rapor</span></td>
+<td align="left" ><span id="form1:tableExRaporTeshisList:9:text96" class="outputText">04.08 - Hiperkolesterolemi, Hiperlipidemi(E78)</span></td>
+</tr>
+</tbody>
+</table>
+<br>
+										</td>
+									</tr>
+									<tr class="row1">
+										<td class="label" colspan="7" align="center"><table id="form1:box2" class="panelBox"><tr><td><input type="submit" value="Bitmi&#351; Raporlar&#305; da G&ouml;ster" id="form1:buttonBitmisRaporlariDaGoster" name="form1:buttonBitmisRaporlariDaGoster" class="commandExButton" /></td><td><input type="submit" value="Yeni Kay&#305;t" id="form1:buttonYeniRapor" name="form1:buttonYeniRapor" style="width: 100px" class="commandExButton" /></td></tr></table></td>
+									</tr>
+								</table>
+								</td>
+							</tr>
+							
+						</table>
+						<br>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+			<span style="padding-left:5px" class="outputText">Son &#350;ifre G&uuml;ncelleme Tarihi: </span><span style="font-weight: normal" class="outputText">25/05/2017</span>
+
+
+
+<table width="100%" border="0" cellspacing="0" cellpadding="0" height="23" bgcolor="#333333" style="margin-top:1px;">
+ <tr>
+		
+		<td align="right" >
+			 
+			
+		</td>
+	</tr>
+  <tr> 
+	<td width="200" style="color: #333333">
+		&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+		uygmedecz7
+	</td>
+    <td align="center" class="footerText">Sosyal G&#252;venlik Kurumu &copy; 2010-2025</td>
+	<td width="200" align="right" class="footerText">S&#252;r&#252;m : 1.1175&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+  </tr>  
+</table>
+		<input type="hidden" name="form1_SUBMIT" value="1" /><input type="hidden" name="javax.faces.ViewState" id="javax.faces.ViewState" value="bPOmQb84uD4af0fHv3dC5L68rjP6Ly+OE+FLvaRc0zYdsrKIq+ZUtoP7A3DrVmy4I/IT/w25DBJLvtgfWn0I37X4kMSJRg4MVH0ziGQvKGUIwLZ5yglOKkSFesFCifbeTTJfBfSb48uKb3T/PS63b7G/6leqOpB45gkXn+0plQMHAgbE" /></form>
+<script type="text/javascript" src="/eczane/.ibmjsfres/hxclient_be_v3_1_16.js"></script>
+<script type="text/javascript" src="/eczane/.ibmjsfres/hxclient_im_v3_1_16.js"></script>
+<script type="text/javascript" src="/eczane/.ibmjsfres/hxclient_table_v3_1_16.js"></script>
+<script type="text/javascript">
+hX_6.addComponent("form1:menuHtmlCommandExButton11", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;e-Re&#231;ete Sorgu"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton21", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Re&#231;ete Giri&#351;"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton31", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Re&#231;ete Listesi"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton41", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Re&#231;ete Listesi (G&#252;nl&#252;k)"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton51", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Re&#231;ete Sorgu"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton61", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;&#304;ade Re&#231;ete Sorgu/D&#252;zeltme"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton71", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;&#304;la&#231; Bilgisi"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton81", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Silinmi&#351; Karekod"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton91", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Manuel Re&#231;ete Giri&#351;"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton101", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Manuel Re&#231;ete Liste"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton121", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Fatura Sonland&#305;rma"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton131", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Eski Fatura Sorgu"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton141", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Ek Fatura"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton151", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;&#304;ade/Kesinti Sorgu"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton161", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Emekli &#304;la&#231; Kat&#305;l&#305;m"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton181", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Mesaj G&#246;r&#252;nt&#252;leme"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton201", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;&#350;ifre De&#287;i&#351;tir"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton211", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;Bilgi G&#252;ncelleme"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton221", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;TBMM Uygulamas&#305;"));
+
+hX_6.addComponent("form1:menuHtmlCommandExButton231", new hX_6.JSFImage("normal:url('/eczane/theme/button.png')","moused:url('/eczane/theme/button_highlighted.png')","label:&#160;&#160;&#160;&#160;&#199;&#305;k&#305;&#351; Yap"));
+
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExRaporTeshisList:0:rowActionRaporSec","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExRaporTeshisList:0:rowActionRaporSec__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExRaporTeshisList:1:rowActionRaporSec","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExRaporTeshisList:1:rowActionRaporSec__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExRaporTeshisList:2:rowActionRaporSec","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExRaporTeshisList:2:rowActionRaporSec__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExRaporTeshisList:3:rowActionRaporSec","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExRaporTeshisList:3:rowActionRaporSec__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExRaporTeshisList:4:rowActionRaporSec","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExRaporTeshisList:4:rowActionRaporSec__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExRaporTeshisList:5:rowActionRaporSec","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExRaporTeshisList:5:rowActionRaporSec__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExRaporTeshisList:6:rowActionRaporSec","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExRaporTeshisList:6:rowActionRaporSec__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExRaporTeshisList:7:rowActionRaporSec","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExRaporTeshisList:7:rowActionRaporSec__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExRaporTeshisList:8:rowActionRaporSec","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExRaporTeshisList:8:rowActionRaporSec__hidden_action","input-value:true"));
+hX_6.addBehavior(hX_6.getParentIdByType("form1:tableExRaporTeshisList:9:rowActionRaporSec","TR"),"onclick",new hX_6.JSFBehaviorRowAction("input-id:form1:tableExRaporTeshisList:9:rowActionRaporSec__hidden_action","input-value:true"));
+hX_6.onPageLoad();</script>
+	</body>
+
+</html>

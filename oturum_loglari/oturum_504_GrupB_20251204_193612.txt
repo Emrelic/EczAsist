@@ -1,0 +1,49 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 504
+Grup: B
+Başlangıç: 2025-12-04 19:36:12
+================================================================================
+
+[19:36:12.798] [INFO] Grup B için yeni oturum başlatıldı
+[19:36:37.580] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:36:45.801] [WARNING] ⚠️ Rapor bulunamadı - HIDIR ALTUNTAŞ
+[19:37:24.648] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:37:31.571] [BAŞARI] ✅ 3 rapor CSV'ye kaydedildi - MELTEM ALTINKÖK (5302044063)
+[19:38:00.405] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:38:08.475] [WARNING] ⚠️ Rapor bulunamadı - AYNUR GÜR
+[19:39:20.976] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:39:29.234] [WARNING] ⚠️ Rapor bulunamadı - SEVDA EREZ
+[19:40:19.447] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:40:27.329] [WARNING] ⚠️ Rapor bulunamadı - AYAZ KARAARSLAN
+[19:41:16.380] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:41:24.107] [WARNING] ⚠️ Rapor bulunamadı - KÜBRA ŞENEL DİLLİ
+[19:42:10.208] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:42:17.850] [WARNING] ⚠️ Rapor bulunamadı - MUZAFER KANLISU
+[19:42:54.680] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:43:03.266] [WARNING] ⚠️ Rapor bulunamadı - MUZAFER KANLISU
+[19:44:15.070] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:44:23.515] [WARNING] ⚠️ Rapor bulunamadı - KÜBRA AKSU
+[19:45:12.572] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:45:21.128] [WARNING] ⚠️ Rapor bulunamadı - EYMEN TAŞ
+[19:45:58.436] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:46:05.600] [WARNING] ⚠️ Rapor bulunamadı - RUKİYE KAYA
+[19:46:52.047] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:46:59.031] [BAŞARI] ✅ 2 rapor CSV'ye kaydedildi - HAZAL ELA AYDEMİR (5352402126)
+[19:47:36.804] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[19:47:45.439] [WARNING] ⚠️ Rapor bulunamadı - OKAN BERAT GİRGİN
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-12-04 19:50:50
+Toplam Süre: 14 dakika 37 saniye
+Toplam Reçete: 37
+Toplam Takip: 118
+Ortalama Reçete Süresi: 16.15 saniye
+Yeniden Başlatma: 0 kez
+Taskkill: 0 kez
+================================================================================
+
+[19:50:50.698] Oturum log dosyası kapatıldı.

@@ -1,0 +1,12 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 475
+Grup: B
+Başlangıç: 2025-12-02 20:28:54
+================================================================================
+
+[20:28:54.717] [INFO] Grup B için yeni oturum başlatıldı
+[20:29:20.760] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[20:29:35.456] [WARNING] ⚠️ Rapor bulunamadı - RABİA SONKA
+[20:30:31.242] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...

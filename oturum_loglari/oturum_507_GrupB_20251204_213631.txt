@@ -1,0 +1,38 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 507
+Grup: B
+Başlangıç: 2025-12-04 21:36:31
+================================================================================
+
+[21:36:31.602] [INFO] Grup B için yeni oturum başlatıldı
+[21:39:45.788] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[21:39:55.446] [INFO] 🎂 Doğum günü kaydedildi: ALİ İMRAN ŞAHİN - 20/04/2020
+[21:39:55.448] [WARNING] ⚠️ Rapor bulunamadı - ALİ İMRAN ŞAHİN
+[21:40:48.232] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[21:40:57.328] [INFO] 🎂 Doğum günü kaydedildi: AYŞEGÜL GEDİK - 30/10/1996
+[21:40:57.330] [WARNING] ⚠️ Rapor bulunamadı - AYŞEGÜL GEDİK
+[21:41:26.452] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[21:41:35.283] [INFO] 🎂 Doğum günü kaydedildi: EYMEN HERGÜL - 01/04/2019
+[21:41:35.284] [WARNING] ⚠️ Rapor bulunamadı - EYMEN HERGÜL
+[21:43:06.185] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[21:43:14.865] [INFO] 🎂 Doğum günü kaydedildi: BÜŞRA KOÇ - 22/01/2000
+[21:43:14.869] [BAŞARI] ✅ 1 rapor CSV'ye kaydedildi - BÜŞRA KOÇ (5050692044)
+[21:43:45.588] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[21:43:54.830] [INFO] 🎂 Doğum günü kaydedildi: SULTAN KOÇ - 10/01/1974
+[21:43:54.832] [WARNING] ⚠️ Rapor bulunamadı - SULTAN KOÇ
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-12-04 21:46:35
+Toplam Süre: 10 dakika 3 saniye
+Toplam Reçete: 30
+Toplam Takip: 70
+Ortalama Reçete Süresi: 18.28 saniye
+Yeniden Başlatma: 0 kez
+Taskkill: 0 kez
+================================================================================
+
+[21:46:35.028] Oturum log dosyası kapatıldı.

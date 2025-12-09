@@ -1,0 +1,39 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 147
+Grup: A
+Başlangıç: 2025-12-01 13:30:05
+================================================================================
+
+[13:30:05.271] [INFO] Grup A için yeni oturum başlatıldı
+[13:30:35.079] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete İşlem ekranındayken)...
+[13:30:48.442] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[13:31:22.771] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete İşlem ekranındayken)...
+[13:31:36.086] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[13:32:10.461] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete İşlem ekranındayken)...
+[13:32:23.614] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[13:32:59.720] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete İşlem ekranındayken)...
+[13:33:13.319] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[13:34:00.464] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete İşlem ekranındayken)...
+[13:34:13.909] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[13:34:48.471] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete İşlem ekranındayken)...
+[13:35:02.066] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[13:35:40.323] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete İşlem ekranındayken)...
+[13:35:53.661] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[13:36:40.374] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete İşlem ekranındayken)...
+[13:36:53.884] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-12-01 14:09:55
+Toplam Süre: 39 dakika 50 saniye
+Toplam Reçete: 8
+Toplam Takip: 0
+Ortalama Reçete Süresi: 54.39 saniye
+Yeniden Başlatma: 0 kez
+Taskkill: 1 kez
+================================================================================
+
+[14:09:55.668] Oturum log dosyası kapatıldı.

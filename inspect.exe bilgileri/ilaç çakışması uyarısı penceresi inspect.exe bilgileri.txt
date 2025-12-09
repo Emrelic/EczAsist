@@ -1,0 +1,38 @@
+How found:	Mouse move (901,481)
+	hwnd=0x00051198 32bit class="#32770" style=0x94C801C5 ex=0x10101
+ChildId:	0
+Interfaces:	IEnumVARIANT IOleWindow IAccIdentity
+Impl:	Local oleacc proxy
+AnnotationID:	0100008098110500FEFFFFFF00000000
+Name:	[null]
+Value:	[null]
+Role:	başlık çubuğu (0x1)
+State:	odaklanabilir (0x100000)
+Location:	{l:778, t:458, w:381, h:28}
+Selection:	
+Description:	"Pencere adını görüntüler ve  kullanılan denetimleri içerir"
+Kbshortcut:	[null]
+DefAction:	[Error: hr=0x80020003 - Üye bulunamadı.]
+Help:	[null]
+HelpTopic:	""
+ChildCount:	5
+Window:	0x51198
+FirstChild:	"Kapat" : düğme : normal
+LastChild:	"Kapat" : düğme : normal
+Next:	none : iletişim kutusu : odaklanabilir
+Previous:	"Sistem" : menü çubuğu : görünmez,odaklanabilir
+Left:	"Sistem" : menü çubuğu : görünmez,odaklanabilir
+Up:	[null]
+Right:	[null]
+Down:	none : iletişim kutusu : odaklanabilir
+IsContentElement:	false
+Other Props:	Object has no additional properties
+Children:	"IME" : düğme : görünmez
+	"Simge Durumuna Küçült" : düğme : görünmez
+	"Ekranı Kapla" : düğme : görünmez
+	"Bağlam yardımı" : düğme : görünmez
+	"Kapat" : düğme : normal
+Ancestors:	none : pencere : hareketli,odaklanabilir
+	"Masaüstü 1" : istemci : odaklanabilir
+	"Masaüstü 1" : pencere : odaklanabilir
+	[ No Parent ]

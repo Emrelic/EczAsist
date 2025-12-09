@@ -1,0 +1,85 @@
+How found:	Selected from tree...
+Name:	"Masaüstü 1"
+ControlType:	UIA_PaneControlTypeId (0xC371)
+LocalizedControlType:	"bölme"
+BoundingRectangle:	{l:0 t:0 r:1920 b:1080}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	true
+HasKeyboardFocus:	false
+ProcessId:	12168
+RuntimeId:	[2A.10010]
+FrameworkId:	"Win32"
+ClassName:	"#32769"
+NativeWindowHandle:	0x10010
+ProviderDescription:	"[pid:9644,providerId:0x10010 Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll); Hwnd:Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	false
+IsDialog:	false
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.Name:	"Masaüstü 1"
+LegacyIAccessible.Role:	istemci (0xA)
+LegacyIAccessible.State:	odaklanabilir (0x100000)
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	false
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	false
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	"Inspect  (HWND: 0x00620AD0) UIAccess" pencere
+LastChild:	"Program Manager" bölme
+Next:	[null]
+Previous:	[null]
+Other Props:	Object has no additional properties
+Children:	"Inspect  (HWND: 0x00620AD0) UIAccess" pencere
+	"Windows'u Etkinleştir.Windows'u etkinleştirmek için Ayarlar'a gidin." bölme
+	"Görev Çubuğu" bölme
+	"MEDULA 2.1.198.0 EMRE GÖKMEN (T)" pencere
+	"KULLANILAN İLAÇ LİSTESİ EKRANI.txt - Not Defteri" pencere
+	"*REÇETE SAYFASI.txt - Not Defteri" pencere
+	"Görev Yöneticisi" pencere
+	"Selçuk Ecza WebDepo - Google Chrome" pencere
+	"İndirilenler" pencere
+	"inspect.exe - bin İçindeki Arama Sonuçları" pencere
+	"STOK ÇALIŞMASI.xls  -  Uyumluluk Modu - Excel" pencere
+	"merkez klasör" pencere
+	"GitHub Desktop" bölme
+	"" pencere
+	"net8.0-windows" pencere
+	"*CLAUDE.txt - Not Defteri" pencere
+	"✳ Buton Düzeni" pencere
+	"KASA - Google Chrome" pencere
+	"Inspect.exe yeri - Google Chrome" pencere
+	"WhatsApp" pencere
+	"BotTak5.zip - Google Drive - Kişisel - Microsoft​ Edge" pencere
+	"claude" pencere
+	"Program Manager" bölme
+Ancestors:	[ No Parent ]

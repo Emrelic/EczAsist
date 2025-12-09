@@ -1,0 +1,59 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 85
+Grup: A
+Başlangıç: 2025-11-22 14:32:10
+================================================================================
+
+[14:32:10.625] [INFO] Grup A için yeni oturum başlatıldı
+[14:34:00.828] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:34:20.555] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:34:52.996] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:35:13.480] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:35:46.445] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:36:11.428] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:36:44.557] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:37:08.209] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:37:51.603] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:38:17.889] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:38:50.364] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:39:11.760] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:39:46.383] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:40:07.607] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:40:48.821] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:41:11.554] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:41:43.626] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:42:05.073] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:42:38.400] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:43:00.676] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:43:34.197] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:43:56.326] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:44:29.260] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:44:49.696] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:45:22.801] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:45:42.773] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:46:15.759] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:46:36.487] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:47:11.315] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:47:37.304] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:48:12.100] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:48:36.425] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:49:11.008] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:49:35.316] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[14:50:10.374] [INFO] 🔵 Rapor toplama başlatılıyor...
+[14:50:26.288] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-11-22 14:54:07
+Toplam Süre: 21 dakika 56 saniye
+Toplam Reçete: 17
+Toplam Takip: 0
+Ortalama Reçete Süresi: 57.44 saniye
+Yeniden Başlatma: 2 kez
+Taskkill: 1 kez
+================================================================================
+
+[14:54:07.573] Oturum log dosyası kapatıldı.

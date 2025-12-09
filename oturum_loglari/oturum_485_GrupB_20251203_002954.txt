@@ -1,0 +1,14 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 485
+Grup: B
+Başlangıç: 2025-12-03 00:29:54
+================================================================================
+
+[00:29:54.393] [INFO] Grup B için yeni oturum başlatıldı
+[00:30:21.957] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[00:30:29.869] [WARNING] ⚠️ Rapor bulunamadı - BURCU DEMİRCİ
+[00:30:57.441] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[00:31:04.119] [BAŞARI] ✅ 2 rapor CSV'ye kaydedildi - İSMİHAN IŞIK (5376954583)
+[00:31:39.728] [INFO] Yeniden başlatma #1

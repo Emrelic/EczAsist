@@ -1,0 +1,126 @@
+{
+  "recete_kontrol": {
+    "count": 3180,
+    "total_time": 4012.8555727005005
+  },
+  "uyari_kapat": {
+    "count": 216,
+    "total_time": 321.92114329338074
+  },
+  "ilac_butonu": {
+    "count": 3224,
+    "total_time": 7028.5553596019745
+  },
+  "ilac_ekran_bekleme": {
+    "count": 1743,
+    "total_time": 5828.490240573883
+  },
+  "y_butonu": {
+    "count": 3192,
+    "total_time": 7807.772608041763
+  },
+  "pencere_bulma": {
+    "count": 1715,
+    "total_time": 512.8706710338593
+  },
+  "alinmayanlari_sec": {
+    "count": 1624,
+    "total_time": 738.5453593730927
+  },
+  "kapat_butonu": {
+    "count": 2992,
+    "total_time": 1968.0214998722076
+  },
+  "ilac_secim_bekleme": {
+    "count": 1624,
+    "total_time": 10056.198815822601
+  },
+  "geri_don_butonu": {
+    "count": 3087,
+    "total_time": 4198.5673859119415
+  },
+  "sonra_butonu": {
+    "count": 4674,
+    "total_time": 8656.254181146622
+  },
+  "y_ikinci_deneme": {
+    "count": 24,
+    "total_time": 67.9694344997406
+  },
+  "rapor_toplama": {
+    "count": 1537,
+    "total_time": 21928.810166597366
+  },
+  "pencere_restore": {
+    "count": 384,
+    "total_time": 79.9999794960022
+  },
+  "pencere_move": {
+    "count": 443,
+    "total_time": 70.4834156036377
+  },
+  "recete_sorgu": {
+    "count": 1078,
+    "total_time": 255.2515251636505
+  },
+  "text_focus": {
+    "count": 1113,
+    "total_time": 173.8520622253418
+  },
+  "text_clear": {
+    "count": 1008,
+    "total_time": 97.38478136062622
+  },
+  "text_write": {
+    "count": 953,
+    "total_time": 130.4067132472992
+  },
+  "sorgula_butonu": {
+    "count": 943,
+    "total_time": 212.8361611366272
+  },
+  "sag_tik": {
+    "count": 404,
+    "total_time": 27.382971048355103
+  },
+  "takip_et": {
+    "count": 399,
+    "total_time": 19.54567527770996
+  },
+  "rapor_button_wait": {
+    "count": 1124,
+    "total_time": 2287.7060799598694
+  },
+  "rapor_pencere_acilis": {
+    "count": 1153,
+    "total_time": 2593.8166410923004
+  },
+  "pencere_kapatma": {
+    "count": 1120,
+    "total_time": 2377.122591972351
+  },
+  "retry_after_reconnect": {
+    "count": 628,
+    "total_time": 1780.5417454242706
+  },
+  "ana_sayfa": {
+    "count": 131,
+    "total_time": 48.75529646873474
+  },
+  "buton_hazir_bekleme": {
+    "count": 693,
+    "total_time": 1900.7981760501862
+  },
+  "textbox_yazma": {
+    "count": 380,
+    "total_time": 783.1915016174316
+  },
+  "adim_arasi_bekleme": {
+    "count": 28,
+    "total_time": 8.427374124526978
+  },
+  "telefon_kontrol": {
+    "count": 28,
+    "total_time": 46.56441259384155
+  }
+}

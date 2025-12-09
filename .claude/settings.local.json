@@ -32,7 +32,14 @@
       "Bash(git push:*)",
       "Bash(git checkout:*)",
       "Bash(cmd.exe /c dir \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\*.txt\" /b)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(cmd.exe /c dir \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\botTak birleşmeli\\BotTak3+7\\*.csv\" /b)",
+      "Bash(cmd.exe /c dir \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\botTak birleşmeli\\BotTak3+7\\rapor_takip.csv\")",
+      "Bash(cmd.exe /c dir \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\botTak birleşmeli\\BotTak3+7\\oturum_loglari\\*.txt\" /b /o-d)",
+      "Bash(cmd.exe /c dir \"C:\\Users\\ikizler1\\OneDrive\\Desktop\\botTak birleşmeli\\BotTak3+7\\*.log\" /b)",
+      "Bash(cmd.exe:*)",
+      "Bash(powershell:*)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

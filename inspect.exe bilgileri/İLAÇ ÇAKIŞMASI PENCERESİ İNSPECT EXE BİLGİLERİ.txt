@@ -1,0 +1,83 @@
+How found:	Mouse move (888,556)
+	hwnd=0x000000000002078E 32bit class="Static" style=0x50022080 ex=0x4
+Name:	"REÇETEDEKİ İLAÇ <=> HASTANIN ELİNDEKİ İLAÇ
+ ÇAKIŞMASI VARDIR.
+. Aynısıdır, raporludur, 15 gün çekilmelidir, Tam muadilidir bilmem.
+Bölgesel kararlar değişebilir.
+Kontrol ediniz, Sorunuz soruşturunuz."
+ControlType:	UIA_TextControlTypeId (0xC364)
+LocalizedControlType:	"metin"
+BoundingRectangle:	{l:789 t:509 r:1130 b:576}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	false
+HasKeyboardFocus:	false
+AccessKey:	""
+ProcessId:	12608
+RuntimeId:	[2A.2078E]
+AutomationId:	"65535"
+FrameworkId:	"Win32"
+ClassName:	"Static"
+NativeWindowHandle:	0x2078E
+ProviderDescription:	"[pid:3052,providerId:0x2078E Main:Nested [pid:12608,providerId:0x2078E Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	false
+HelpText:	""
+IsDialog:	false
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.DefaultAction:	""
+LegacyIAccessible.Description:	""
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	"REÇETEDEKİ İLAÇ <=> HASTANIN ELİNDEKİ İLAÇ
+ ÇAKIŞMASI VARDIR.
+. Aynısıdır, raporludur, 15 gün çekilmelidir, Tam muadilidir bilmem.
+Bölgesel kararlar değişebilir.
+Kontrol ediniz, Sorunuz soruşturunuz."
+LegacyIAccessible.Role:	metin (0x29)
+LegacyIAccessible.State:	salt okunur (0x40)
+LegacyIAccessible.Value:	""
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	false
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	false
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	(null) başlık çubuğu
+Previous:	"Tamam" düğme
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	"" iletişim kutusu
+	"MEDULA 2.1.199.0 botan  (T)" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

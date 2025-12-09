@@ -1,0 +1,74 @@
+How found:	Mouse move (423,331)
+	hwnd=0x000000000105074E 32bit class="WindowsForms10.EDIT.app.0.134c08f_r8_ad1" style=0x560100E0 ex=0x200
+Name:	""
+ControlType:	UIA_EditControlTypeId (0xC354)
+LocalizedControlType:	"düzenle"
+BoundingRectangle:	{l:392 t:313 r:514 b:334}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	true
+HasKeyboardFocus:	true
+AccessKey:	""
+ProcessId:	3536
+RuntimeId:	[2A.105074E]
+AutomationId:	"txtSifre"
+FrameworkId:	"WinForm"
+ClassName:	"WindowsForms10.EDIT.app.0.134c08f_r8_ad1"
+NativeWindowHandle:	0x105074E
+ProviderDescription:	"[pid:9644,providerId:0x105074E Main:Nested [pid:3536,providerId:0x105074E Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Nonclient:Microsoft: Non-Client Proxy (unmanaged:uiautomationcore.dll); Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	true
+HelpText:	""
+IsDialog:	false
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.DefaultAction:	""
+LegacyIAccessible.Description:	""
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	""
+LegacyIAccessible.Role:	düzenlenebilir metin (0x2A)
+LegacyIAccessible.State:	odaklanmış,odaklanabilir,korumalı (0x20100004)
+Value.IsReadOnly:	false
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	false
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	false
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	true
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	"" birleşik giriş kutusu
+Previous:	"" bölme
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	"BotanikEOS 2.1.199.0 (T)" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

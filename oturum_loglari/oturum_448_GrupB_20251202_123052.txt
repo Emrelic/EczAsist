@@ -1,0 +1,16 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 448
+Grup: B
+Başlangıç: 2025-12-02 12:30:52
+================================================================================
+
+[12:30:52.357] [INFO] Grup B için yeni oturum başlatıldı
+[12:31:18.495] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[12:31:39.239] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[12:32:06.366] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[12:32:28.089] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[12:32:57.376] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[12:33:18.542] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[12:33:43.135] [INFO] Yeniden başlatma #2

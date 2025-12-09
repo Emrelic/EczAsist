@@ -1,0 +1,89 @@
+How found:	Mouse move (909,512)
+	hwnd=0x000000000004077E 32bit class="Static" style=0x50022080 ex=0x4
+Name:	"LABA-LAMA-İKS kombine kullanım buldum => 
+a) En az 3 ay süreyle inhale kortikosteroid(İKS) ve uzun etkili solunum yolu beta-agonistleri(LABA) ile tedavi edildiği halde yeterli yanıt alınamayan,
+sık atak geçiren(yılda 2 ve üzeri atak veya 1 ve üzeri yatarak tedavi) ve dispnesi olan(mMrc 2 ve üzeri veya CAT skoru 10 ve üzeri)
+orta - ağır kronik obstrüktif akciğer hastalığı(KOAH) olan erişkin hastaların idame tedavisinde kullanılmaları 
+ve bu durumların uzman hekim raporunda belirtilmesi halinde bedelleri Kurumca karşılanır.
+
+ibaresi olmalı
+"
+ControlType:	UIA_TextControlTypeId (0xC364)
+LocalizedControlType:	"metin"
+BoundingRectangle:	{l:774 t:464 r:1145 b:622}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	false
+HasKeyboardFocus:	false
+AccessKey:	""
+ProcessId:	12608
+RuntimeId:	[2A.4077E]
+AutomationId:	"65535"
+FrameworkId:	"Win32"
+ClassName:	"Static"
+NativeWindowHandle:	0x4077E
+ProviderDescription:	"[pid:3052,providerId:0x4077E Main:Nested [pid:12608,providerId:0x4077E Annotation(parent link):Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main:Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]; Hwnd(parent link):Microsoft: HWND Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	false
+HelpText:	""
+IsDialog:	false
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.DefaultAction:	""
+LegacyIAccessible.Description:	""
+LegacyIAccessible.Help:	""
+LegacyIAccessible.KeyboardShortcut:	""
+LegacyIAccessible.Name:	"LABA-LAMA-İKS kombine kullanım buldum => 
+a) En az 3 ay süreyle inhale kortikosteroid(İKS) ve uzun etkili solunum yolu beta-agonistleri(LABA) ile tedavi edildiği halde yeterli yanıt alınamayan,
+sık atak geçiren(yılda 2 ve üzeri atak veya 1 ve üzeri yatarak tedavi) ve dispnesi olan(mMrc 2 ve üzeri veya CAT skoru 10 ve üzeri)
+orta - ağır kronik obstrüktif akciğer hastalığı(KOAH) olan erişkin hastaların idame tedavisinde kullanılmaları 
+ve bu durumların uzman hekim raporunda belirtilmesi halinde bedelleri Kurumca karşılanır.
+
+ibaresi olmalı
+"
+LegacyIAccessible.Role:	metin (0x29)
+LegacyIAccessible.State:	salt okunur (0x40)
+LegacyIAccessible.Value:	""
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	false
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	false
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	false
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	[null]
+LastChild:	[null]
+Next:	(null) başlık çubuğu
+Previous:	"Tamam" düğme
+Other Props:	Object has no additional properties
+Children:	Container has no children
+Ancestors:	"" iletişim kutusu
+	"MEDULA 2.1.199.0 botan  (T)" pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

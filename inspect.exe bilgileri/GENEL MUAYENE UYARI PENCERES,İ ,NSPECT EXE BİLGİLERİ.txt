@@ -1,0 +1,68 @@
+How found:	Mouse move (383,117)
+	hwnd=0x0000000000900CF0 32bit class="WindowsForms10.Window.8.app.0.134c08f_r8_ad1" style=0x16CC0000 ex=0x50108
+ControlType:	UIA_TitleBarControlTypeId (0xC375)
+LocalizedControlType:	"başlık çubuğu"
+BoundingRectangle:	{l:134 t:112 r:741 b:135}
+IsEnabled:	true
+IsOffscreen:	false
+IsKeyboardFocusable:	true
+HasKeyboardFocus:	false
+ProcessId:	13944
+RuntimeId:	[2A.900CF0.3.80000001.900CF0.FFFFFFFE.0]
+AutomationId:	"TitleBar"
+IsContentElement:	false
+ProviderDescription:	"[pid:8460,providerId:0x0 Annotation:Microsoft: Annotation Proxy (unmanaged:uiautomationcore.dll); Main(parent link):Microsoft: MSAA Proxy (unmanaged:uiautomationcore.dll)]"
+IsPassword:	false
+IsDialog:	false
+LegacyIAccessible.ChildId:	0
+LegacyIAccessible.Description:	"Pencere adını görüntüler ve  kullanılan denetimleri içerir"
+LegacyIAccessible.Role:	başlık çubuğu (0x1)
+LegacyIAccessible.State:	odaklanabilir (0x100000)
+LegacyIAccessible.Value:	"UYARIDIR..."
+Value.IsReadOnly:	false
+Value.Value:	"UYARIDIR..."
+IsAnnotationPatternAvailable:	false
+IsDragPatternAvailable:	false
+IsDockPatternAvailable:	false
+IsDropTargetPatternAvailable:	false
+IsExpandCollapsePatternAvailable:	false
+IsGridItemPatternAvailable:	false
+IsGridPatternAvailable:	false
+IsInvokePatternAvailable:	false
+IsItemContainerPatternAvailable:	false
+IsLegacyIAccessiblePatternAvailable:	true
+IsMultipleViewPatternAvailable:	false
+IsObjectModelPatternAvailable:	false
+IsRangeValuePatternAvailable:	false
+IsScrollItemPatternAvailable:	false
+IsScrollPatternAvailable:	false
+IsSelectionItemPatternAvailable:	false
+IsSelectionPatternAvailable:	false
+IsSpreadsheetItemPatternAvailable:	false
+IsSpreadsheetPatternAvailable:	false
+IsStylesPatternAvailable:	false
+IsSynchronizedInputPatternAvailable:	false
+IsTableItemPatternAvailable:	false
+IsTablePatternAvailable:	false
+IsTextChildPatternAvailable:	false
+IsTextEditPatternAvailable:	false
+IsTextPatternAvailable:	false
+IsTextPattern2Available:	false
+IsTogglePatternAvailable:	false
+IsTransformPatternAvailable:	false
+IsTransform2PatternAvailable:	false
+IsValuePatternAvailable:	true
+IsVirtualizedItemPatternAvailable:	false
+IsWindowPatternAvailable:	false
+IsCustomNavigationPatternAvailable:	false
+IsSelectionPattern2Available:	false
+FirstChild:	"Sistem" menü çubuğu
+LastChild:	"Kapat" düğme
+Next:	[null]
+Previous:	"REÇETEDE SADECE GENEL MUAYENE TANISI VARDIR. UYGUN BİR ICD EKLEME GEREKLİ GÖRÜNMEKTEDİR." metin
+Other Props:	Object has no additional properties
+Children:	"Sistem" menü çubuğu
+	"Kapat" düğme
+Ancestors:	"UYARIDIR..." pencere
+	"Masaüstü 1" bölme
+	[ No Parent ]

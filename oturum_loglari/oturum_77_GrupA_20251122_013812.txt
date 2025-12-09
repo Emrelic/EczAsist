@@ -1,0 +1,39 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 77
+Grup: A
+Başlangıç: 2025-11-22 01:38:12
+================================================================================
+
+[01:38:12.214] [INFO] Grup A için yeni oturum başlatıldı
+[01:38:41.470] [INFO] 🔵 Rapor toplama başlatılıyor...
+[01:38:51.208] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[01:39:23.237] [INFO] 🔵 Rapor toplama başlatılıyor...
+[01:39:33.485] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[01:40:06.382] [INFO] 🔵 Rapor toplama başlatılıyor...
+[01:40:16.480] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[01:40:50.911] [INFO] 🔵 Rapor toplama başlatılıyor...
+[01:41:05.896] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[01:41:53.108] [INFO] 🔵 Rapor toplama başlatılıyor...
+[01:42:09.741] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[01:42:43.741] [INFO] 🔵 Rapor toplama başlatılıyor...
+[01:42:55.330] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[01:43:31.284] [INFO] 🔵 Rapor toplama başlatılıyor...
+[01:43:43.055] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[01:44:22.497] [INFO] 🔵 Rapor toplama başlatılıyor...
+[01:44:24.143] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-11-22 01:49:03
+Toplam Süre: 10 dakika 51 saniye
+Toplam Reçete: 8
+Toplam Takip: 0
+Ortalama Reçete Süresi: 49.88 saniye
+Yeniden Başlatma: 0 kez
+Taskkill: 0 kez
+================================================================================
+
+[01:49:03.818] Oturum log dosyası kapatıldı.

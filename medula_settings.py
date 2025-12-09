@@ -82,6 +82,11 @@ class MedulaSettings:
             # Giriş Yöntemi
             "giris_yontemi": "indeks",  # "indeks" veya "kullanici_adi"
             "kullanici_adi_giris": "",  # Kullanıcı adı ile giriş yapılacaksa buraya yazılır
+
+            # Pencere Yerleşimi
+            # "standart": MEDULA %60, Konsol %20, GUI %20 (yan yana)
+            # "genis_medula": MEDULA %80, GUI %20, Konsol GUI arkasında
+            "pencere_yerlesimi": "standart",
         }
 
         self.ayarlar = self.yukle()

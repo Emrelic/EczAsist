@@ -1,0 +1,51 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 520
+Grup: B
+Başlangıç: 2025-12-10 01:11:50
+================================================================================
+
+[01:11:50.137] [INFO] Grup B için yeni oturum başlatıldı
+[01:12:16.560] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:12:24.421] [BAŞARI] ✅ 1 rapor CSV'ye kaydedildi - HATİCE ERDAL (5397840600)
+[01:12:51.879] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:13:01.007] [WARNING] ⚠️ Rapor bulunamadı - BARAN ASİL GÜLEN
+[01:13:30.801] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:13:39.388] [BAŞARI] ✅ 1 rapor CSV'ye kaydedildi - KÜBRA NUR GÜLEN (5446602969)
+[01:14:08.424] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:14:18.171] [WARNING] ⚠️ Rapor bulunamadı - ŞAHİN TOKER
+[01:15:22.900] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:15:32.609] [WARNING] ⚠️ Rapor bulunamadı - ZELİHA TELLİ
+[01:15:59.892] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:16:09.336] [WARNING] ⚠️ Rapor bulunamadı - ABDULLAH TATAROĞLU
+[01:16:49.956] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:16:59.515] [WARNING] ⚠️ Rapor bulunamadı - LİNA AZRA KOÇ
+[01:17:42.441] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:17:51.739] [BAŞARI] ✅ 1 rapor CSV'ye kaydedildi - ÇİĞDEM ÖNOĞUL (5518466236)
+[01:18:44.640] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:18:52.741] [BAŞARI] ✅ 4 rapor CSV'ye kaydedildi - HATİCE TURHAL (5424199042)
+[01:20:01.689] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:20:09.882] [BAŞARI] ✅ 1 rapor CSV'ye kaydedildi - ÖZNUR AKÇIN (5465711066)
+[01:20:53.810] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:21:03.152] [BAŞARI] ✅ 2 rapor CSV'ye kaydedildi - NACİYE TAŞCI (5550489557)
+[01:21:32.582] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:21:42.164] [WARNING] ⚠️ Rapor bulunamadı - HAVVA OKUR
+[01:22:10.764] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:22:19.338] [BAŞARI] ✅ 2 rapor CSV'ye kaydedildi - FERİDE GÜL (5530536497)
+[01:22:49.559] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[01:23:00.051] [WARNING] ⚠️ Rapor bulunamadı - MERYEM OKUR
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-12-10 01:23:02
+Toplam Süre: 11 dakika 12 saniye
+Toplam Reçete: 24
+Toplam Takip: 134
+Ortalama Reçete Süresi: 33.60 saniye
+Yeniden Başlatma: 0 kez
+Taskkill: 1 kez
+================================================================================
+
+[01:23:02.373] Oturum log dosyası kapatıldı.

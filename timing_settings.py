@@ -14,12 +14,15 @@ logger = logging.getLogger(__name__)
 class TimingSettings:
     """Zamanlama ayarlarını yöneten sınıf"""
 
-    def __init__(self, dosya_yolu="timing_settings.json", istatistik_dosya="timing_stats.json"):
+    def __init__(self, dosya_yolu="timing_settings.json", istatistik_dosya="timing_stats.json", profile=None):
         # Dosyayı script'in bulunduğu dizine kaydet
         import os
         script_dir = os.path.dirname(os.path.abspath(__file__))
         self.dosya_yolu = Path(script_dir) / dosya_yolu
         self.istatistik_dosya = Path(script_dir) / istatistik_dosya
+
+        # Profil desteği
+        self.profile = profile  # None = active_profile kullan, "current", "optimum" vs.
 
         # İstatistikler: {anahtar: {"count": 0, "total_time": 0.0}}
         self.istatistikler = self.istatistik_yukle()
@@ -111,19 +114,46 @@ class TimingSettings:
         self.ayarlar = self.yukle()
 
     def yukle(self):
-        """Ayarları JSON dosyasından yükle"""
+        """Ayarları JSON dosyasından yükle (profil desteği ile)"""
         if self.dosya_yolu.exists():
             try:
                 with open(self.dosya_yolu, 'r', encoding='utf-8') as f:
-                    yuklu_ayarlar = json.load(f)
+                    data = json.load(f)
 
-                # Yeni eklenen ayarları da ekle (varsa)
-                for key, value in self.varsayilan_ayarlar.items():
-                    if key not in yuklu_ayarlar:
-                        yuklu_ayarlar[key] = value
+                # Yeni format kontrolü (profil bazlı)
+                if isinstance(data, dict) and "profiles" in data:
+                    # Hangi profili kullanacağız?
+                    if self.profile:
+                        # Manuel belirtilmiş profil
+                        selected_profile = self.profile
+                    else:
+                        # active_profile kullan
+                        selected_profile = data.get("active_profile", "current")
 
-                logger.info("✓ Zamanlama ayarları yüklendi")
-                return yuklu_ayarlar
+                    yuklu_ayarlar = data["profiles"].get(selected_profile, {})
+
+                    if not yuklu_ayarlar:
+                        logger.warning(f"⚠ Profil '{selected_profile}' bulunamadı, varsayılan ayarlar kullanılıyor")
+                        return self.varsayilan_ayarlar.copy()
+
+                    # Yeni eklenen ayarları da ekle (varsa)
+                    for key, value in self.varsayilan_ayarlar.items():
+                        if key not in yuklu_ayarlar:
+                            yuklu_ayarlar[key] = value
+
+                    logger.info(f"✓ Zamanlama ayarları yüklendi (Profil: {selected_profile})")
+                    return yuklu_ayarlar
+                else:
+                    # Eski format (backward compatibility)
+                    yuklu_ayarlar = data
+
+                    # Yeni eklenen ayarları da ekle (varsa)
+                    for key, value in self.varsayilan_ayarlar.items():
+                        if key not in yuklu_ayarlar:
+                            yuklu_ayarlar[key] = value
+
+                    logger.info("✓ Zamanlama ayarları yüklendi (Eski format)")
+                    return yuklu_ayarlar
             except Exception as e:
                 logger.error(f"Ayar yükleme hatası: {e}")
                 return self.varsayilan_ayarlar.copy()
@@ -132,12 +162,48 @@ class TimingSettings:
             return self.varsayilan_ayarlar.copy()
 
     def kaydet(self):
-        """Ayarları JSON dosyasına kaydet"""
+        """Ayarları JSON dosyasına kaydet (profil desteği ile)"""
         try:
-            with open(self.dosya_yolu, 'w', encoding='utf-8') as f:
-                json.dump(self.ayarlar, f, indent=2, ensure_ascii=False)
-            logger.info("✓ Zamanlama ayarları kaydedildi")
-            return True
+            # Önce mevcut dosyayı oku
+            if self.dosya_yolu.exists():
+                with open(self.dosya_yolu, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                # Profil bazlı mı?
+                if isinstance(data, dict) and "profiles" in data:
+                    # Hangi profile kaydedelim?
+                    if self.profile:
+                        selected_profile = self.profile
+                    else:
+                        selected_profile = data.get("active_profile", "current")
+
+                    # Profili güncelle
+                    data["profiles"][selected_profile] = self.ayarlar
+
+                    # Kaydet
+                    with open(self.dosya_yolu, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
+
+                    logger.info(f"✓ Zamanlama ayarları kaydedildi (Profil: {selected_profile})")
+                    return True
+                else:
+                    # Eski format, direkt kaydet
+                    with open(self.dosya_yolu, 'w', encoding='utf-8') as f:
+                        json.dump(self.ayarlar, f, indent=2, ensure_ascii=False)
+                    logger.info("✓ Zamanlama ayarları kaydedildi")
+                    return True
+            else:
+                # Dosya yok, yeni oluştur (profil bazlı)
+                data = {
+                    "active_profile": "current",
+                    "profiles": {
+                        "current": self.ayarlar
+                    }
+                }
+                with open(self.dosya_yolu, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                logger.info("✓ Zamanlama ayarları kaydedildi (Yeni dosya)")
+                return True
         except Exception as e:
             logger.error(f"Ayar kaydetme hatası: {e}")
             return False
@@ -152,6 +218,77 @@ class TimingSettings:
             self.ayarlar[anahtar] = float(deger)
             return True
         return False
+
+    def profil_degistir(self, profil_adi):
+        """
+        Aktif profili değiştir ve ayarları yeniden yükle
+
+        Args:
+            profil_adi: "current", "optimum" gibi profil adı
+
+        Returns:
+            bool: Başarılı ise True
+        """
+        try:
+            # Dosyayı oku
+            if not self.dosya_yolu.exists():
+                logger.error("❌ Ayar dosyası bulunamadı")
+                return False
+
+            with open(self.dosya_yolu, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # Profil bazlı mı?
+            if isinstance(data, dict) and "profiles" in data:
+                # Profil var mı?
+                if profil_adi not in data["profiles"]:
+                    logger.error(f"❌ Profil '{profil_adi}' bulunamadı")
+                    logger.info(f"Mevcut profiller: {', '.join(data['profiles'].keys())}")
+                    return False
+
+                # active_profile'ı güncelle
+                data["active_profile"] = profil_adi
+
+                # Dosyaya kaydet
+                with open(self.dosya_yolu, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+
+                # Ayarları yeniden yükle
+                self.profile = profil_adi
+                self.ayarlar = self.yukle()
+
+                logger.info(f"✓ Profil değiştirildi: {profil_adi}")
+                return True
+            else:
+                logger.error("❌ Dosya profil bazlı değil")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Profil değiştirme hatası: {e}")
+            return False
+
+    def profil_listesi(self):
+        """
+        Mevcut profillerin listesini al
+
+        Returns:
+            list: Profil adları listesi veya None
+        """
+        try:
+            if not self.dosya_yolu.exists():
+                return None
+
+            with open(self.dosya_yolu, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            if isinstance(data, dict) and "profiles" in data:
+                return list(data["profiles"].keys())
+            else:
+                return None
+
+        except Exception as e:
+            logger.error(f"❌ Profil listesi alma hatası: {e}")
+            return None
 
     def varsayilana_don(self):
         """Tüm ayarları varsayılana döndür"""

@@ -1,0 +1,20 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 451
+Grup: B
+Başlangıç: 2025-12-02 13:43:38
+================================================================================
+
+[13:43:38.155] [INFO] Grup B için yeni oturum başlatıldı
+[13:44:21.916] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[13:44:42.680] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[13:45:16.790] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[13:45:36.448] [BAŞARI] ✅ 2 rapor CSV'ye kaydedildi - HALİL YAPICI (5426612394)
+[13:46:11.884] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[13:46:32.296] [BAŞARI] ✅ 2 rapor CSV'ye kaydedildi - EFRAYİM ASAF ÇETİNKAYA (5437205721)
+[13:47:02.094] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[13:47:23.078] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[13:47:53.049] [INFO] 🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...
+[13:48:13.880] [WARNING] ⚠️ Rapor okuma başarısız (rapor butonu tıklanamadı)
+[13:49:41.712] [INFO] Yeniden başlatma #5

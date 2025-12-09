@@ -1,0 +1,31 @@
+================================================================================
+BOTANIK BOT - OTURUM LOGU
+================================================================================
+Oturum ID: 517
+Grup: A
+Başlangıç: 2025-12-09 22:01:57
+================================================================================
+
+[22:01:57.262] [INFO] Grup A için yeni oturum başlatıldı
+[22:02:22.080] [INFO] Yeniden başlatma #1
+[22:02:33.734] [WARNING] Taskkill yapıldı (#1)
+[22:02:47.838] [WARNING] Taskkill yapıldı (#2)
+[22:03:11.774] [WARNING] Taskkill yapıldı (#3)
+[22:03:23.679] [WARNING] Taskkill yapıldı (#4)
+[22:03:49.951] [WARNING] Taskkill yapıldı (#5)
+[22:04:01.790] [WARNING] Taskkill yapıldı (#6)
+[22:04:36.493] [WARNING] Taskkill yapıldı (#7)
+
+================================================================================
+OTURUM ÖZETİ
+================================================================================
+Bitiş: 2025-12-09 22:04:38
+Toplam Süre: 2 dakika 40 saniye
+Toplam Reçete: 0
+Toplam Takip: 0
+Ortalama Reçete Süresi: 0.00 saniye
+Yeniden Başlatma: 1 kez
+Taskkill: 7 kez
+================================================================================
+
+[22:04:38.075] Oturum log dosyası kapatıldı.
