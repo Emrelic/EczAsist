@@ -151,7 +151,7 @@ class KasaYazici:
     def gun_sonu_raporu_olustur(self, kasa_verileri):
         """
         Gün sonu kasa raporu - 80mm termal yazıcı
-        32 karakter/satır, karşılaştırma tablosu ile
+        32 karakter/satır, detaylı format
         """
         gun_isimleri = ["Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz"]
         gun = gun_isimleri[datetime.now().weekday()]
@@ -161,6 +161,7 @@ class KasaYazici:
         W = 32  # 80mm yazıcı = 32 karakter
 
         # Verileri al
+        baslangic = kasa_verileri.get('baslangic_kasasi', 0)
         nakit = kasa_verileri.get('nakit_toplam', 0)
         pos = kasa_verileri.get('pos_toplam', 0)
         iban = kasa_verileri.get('iban_toplam', 0)
@@ -185,8 +186,8 @@ class KasaYazici:
         ayrilan = kasa_verileri.get('ayrilan_para', 0)
 
         def fmt(n):
-            """Sayıyı formatla (7 karakter)"""
-            return f"{n:>7,.0f}"
+            """Sayıyı formatla (6 karakter, sağa dayalı)"""
+            return f"{n:>6,.0f}"
 
         def fark_fmt(n):
             """Farkı formatla (6 karakter, işaretli)"""
@@ -197,43 +198,55 @@ class KasaYazici:
             else:
                 return f"{n:>6,.0f}"
 
+        def row(label, num):
+            """Nokta dolgulu satır"""
+            num_str = f"{num:,.0f}"
+            pad = W - len(label) - len(num_str)
+            return label + "." * max(pad, 1) + num_str
+
         L = []
-        L.append(f"{gun} {tarih} {saat}".center(W))
+
+        # Bölüm 1: Başlık
+        L.append(f"  {gun} {tarih} {saat}")
         L.append("=" * W)
 
-        # Tablo başlık: "       SAYIM  BOTNK   FARK"
-        L.append("       SAYIM  BOTNK   FARK")
+        # Bölüm 2: Başlangıç Kasası
+        L.append(row("BASLANGIC KASASI", baslangic))
         L.append("-" * W)
 
-        # Nakit satırı
-        L.append(f"Nakit {fmt(nakit)} {fmt(botanik_nakit)} {fark_fmt(nakit_fark)}")
-        # POS satırı
-        L.append(f"POS   {fmt(pos)} {fmt(botanik_pos)} {fark_fmt(pos_fark)}")
-        # IBAN satırı
-        L.append(f"IBAN  {fmt(iban)} {fmt(botanik_iban)} {fark_fmt(iban_fark)}")
+        # Bölüm 3: Toplamlar
+        L.append(row("KASA SAYIMI", nakit))
+        L.append(row("POS TOPLAM", pos))
+        L.append(row("IBAN TOPLAM", iban))
         L.append("-" * W)
 
-        # Masraf/Silinen/Alınan (sadece varsa)
+        # Bölüm 4: Düzeltmeler (sadece >0 ise)
         if masraf > 0:
-            L.append(f"Masraf........{fmt(masraf)}")
+            L.append(row("MASRAFLAR", masraf))
         if silinen > 0:
-            L.append(f"Silinen.......{fmt(silinen)}")
+            L.append(row("SILINEN ETKILER", silinen))
         if alinan > 0:
-            L.append(f"Alinan........{fmt(alinan)}")
+            L.append(row("ALINAN PARALAR", alinan))
+        L.append("=" * W)
 
-        # Son Genel vs Botanik Toplam
+        # Bölüm 5: Karşılaştırma Tablosu
+        L.append("      SAYIM BOTANIK   FARK")
         L.append("-" * W)
-        L.append(f"GNLTOP{fmt(son_genel)} {fmt(botanik_toplam)} {fark_fmt(genel_fark)}")
+        L.append(f"Nakit {fmt(nakit)}{fmt(botanik_nakit)}{fark_fmt(nakit_fark)}")
+        L.append(f"POS   {fmt(pos)}{fmt(botanik_pos)}{fark_fmt(pos_fark)}")
+        L.append(f"IBAN  {fmt(iban)}{fmt(botanik_iban)}{fark_fmt(iban_fark)}")
+        L.append("-" * W)
+        L.append(f"TOPLAM{fmt(son_genel)}{fmt(botanik_toplam)}{fark_fmt(genel_fark)}")
         L.append("=" * W)
 
-        # Ertesi gün ve ayrılan
-        L.append(f"ErtesiGun.....{fmt(ertesi_gun)}")
-        L.append(f"Ayrilan.......{fmt(ayrilan)}")
-
-        # Büyük puntoda ayrılan ve tarih
+        # Bölüm 6: Ertesi Gün ve Ayrılan
+        L.append(row("ERTESI GUN", ertesi_gun))
+        L.append(row("AYRILAN", ayrilan))
         L.append("=" * W)
-        L.append(f"AYRILAN: {ayrilan:,.0f}".center(W))
-        L.append(f"{gun} {tarih} {saat}".center(W))
+
+        # Bölüm 7: Büyük punto (metin modunda normal)
+        L.append(f"    AYRILAN: {ayrilan:,.0f}")
+        L.append(f"  {gun} {tarih} {saat}")
 
         # Kesme payı için 3cm boşluk (~6 satır)
         for _ in range(6):
@@ -244,7 +257,7 @@ class KasaYazici:
     def gun_sonu_raporu_olustur_bytes(self, kasa_verileri):
         """
         Gün sonu kasa raporu - ESC/POS 80mm termal
-        32 karakter/satır, karşılaştırma tablosu ile
+        32 karakter/satır, detaylı format
         """
         gun_isimleri = ["Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz"]
         gun = gun_isimleri[datetime.now().weekday()]
@@ -258,6 +271,7 @@ class KasaYazici:
         W = 32  # 80mm = 32 karakter
 
         # Verileri al
+        baslangic = kasa_verileri.get('baslangic_kasasi', 0)
         nakit = kasa_verileri.get('nakit_toplam', 0)
         pos = kasa_verileri.get('pos_toplam', 0)
         iban = kasa_verileri.get('iban_toplam', 0)
@@ -282,8 +296,8 @@ class KasaYazici:
         ayrilan = kasa_verileri.get('ayrilan_para', 0)
 
         def fmt(n):
-            """Sayıyı formatla (7 karakter)"""
-            return f"{n:>7,.0f}"
+            """Sayıyı formatla (6 karakter, sağa dayalı)"""
+            return f"{n:>6,.0f}"
 
         def fark_fmt(n):
             """Farkı formatla (6 karakter, işaretli)"""
@@ -294,46 +308,56 @@ class KasaYazici:
             else:
                 return f"{n:>6,.0f}"
 
+        def row(label, num):
+            """Nokta dolgulu satır"""
+            num_str = f"{num:,.0f}"
+            pad = W - len(label) - len(num_str)
+            return label + "." * max(pad, 1) + num_str
+
         def add(text, bold=False):
             data.extend(FONT_BOLD if bold else FONT_NORMAL)
             data.extend(text.encode('cp857', errors='replace'))
             data.extend(LINE_FEED)
 
-        # Başlık
-        add(f"{gun} {tarih} {saat}".center(W), True)
+        # Bölüm 1: Başlık
+        add(f"  {gun} {tarih} {saat}", True)
         add("=" * W)
 
-        # Tablo başlık
-        add("       SAYIM  BOTNK   FARK", True)
+        # Bölüm 2: Başlangıç Kasası
+        add(row("BASLANGIC KASASI", baslangic), True)
         add("-" * W)
 
-        # Nakit satırı
-        add(f"Nakit {fmt(nakit)} {fmt(botanik_nakit)} {fark_fmt(nakit_fark)}")
-        # POS satırı
-        add(f"POS   {fmt(pos)} {fmt(botanik_pos)} {fark_fmt(pos_fark)}")
-        # IBAN satırı
-        add(f"IBAN  {fmt(iban)} {fmt(botanik_iban)} {fark_fmt(iban_fark)}")
+        # Bölüm 3: Toplamlar
+        add(row("KASA SAYIMI", nakit))
+        add(row("POS TOPLAM", pos))
+        add(row("IBAN TOPLAM", iban))
         add("-" * W)
 
-        # Masraf/Silinen/Alınan (sadece varsa)
+        # Bölüm 4: Düzeltmeler (sadece >0 ise)
         if masraf > 0:
-            add(f"Masraf........{fmt(masraf)}")
+            add(row("MASRAFLAR", masraf))
         if silinen > 0:
-            add(f"Silinen.......{fmt(silinen)}")
+            add(row("SILINEN ETKILER", silinen))
         if alinan > 0:
-            add(f"Alinan........{fmt(alinan)}")
+            add(row("ALINAN PARALAR", alinan))
+        add("=" * W)
 
-        # Son Genel vs Botanik Toplam
+        # Bölüm 5: Karşılaştırma Tablosu
+        add("      SAYIM BOTANIK   FARK", True)
         add("-" * W)
-        add(f"GNLTOP{fmt(son_genel)} {fmt(botanik_toplam)} {fark_fmt(genel_fark)}", True)
+        add(f"Nakit {fmt(nakit)}{fmt(botanik_nakit)}{fark_fmt(nakit_fark)}")
+        add(f"POS   {fmt(pos)}{fmt(botanik_pos)}{fark_fmt(pos_fark)}")
+        add(f"IBAN  {fmt(iban)}{fmt(botanik_iban)}{fark_fmt(iban_fark)}")
+        add("-" * W)
+        add(f"TOPLAM{fmt(son_genel)}{fmt(botanik_toplam)}{fark_fmt(genel_fark)}", True)
         add("=" * W)
 
-        # Ertesi gün ve ayrılan
-        add(f"ErtesiGun.....{fmt(ertesi_gun)}")
-        add(f"Ayrilan.......{fmt(ayrilan)}")
-
-        # Büyük font için AYRILAN ve tarih
+        # Bölüm 6: Ertesi Gün ve Ayrılan
+        add(row("ERTESI GUN", ertesi_gun))
+        add(row("AYRILAN", ayrilan))
         add("=" * W)
+
+        # Bölüm 7: Büyük font için AYRILAN ve tarih
         data.extend(FONT_DOUBLE_WH)
         data.extend(ALIGN_CENTER)
         ayr_str = f"AYRILAN:{ayrilan:,.0f}"

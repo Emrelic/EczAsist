@@ -26,16 +26,17 @@ class KasaWhatsAppRapor:
     def rapor_olustur(self, kasa_verileri):
         """
         Kasa verilerinden WhatsApp mesajı oluştur
-        Monospace font, karşılaştırma tablosu ile
+        Detaylı format, monospace font
         """
         gun_isimleri = ["Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz"]
         gun = gun_isimleri[datetime.now().weekday()]
         tarih = datetime.now().strftime("%d/%m/%Y")
         saat = datetime.now().strftime("%H:%M")
 
-        W = 30  # Satır genişliği (tablo için biraz daha geniş)
+        W = 32  # Satır genişliği
 
         # Verileri al
+        baslangic = kasa_verileri.get('baslangic_kasasi', 0)
         nakit = kasa_verileri.get('nakit_toplam', 0)
         pos = kasa_verileri.get('pos_toplam', 0)
         iban = kasa_verileri.get('iban_toplam', 0)
@@ -60,8 +61,8 @@ class KasaWhatsAppRapor:
         ayrilan = kasa_verileri.get('ayrilan_para', 0)
 
         def fmt(n):
-            """Sayıyı formatla (7 karakter)"""
-            return f"{n:>7,.0f}"
+            """Sayıyı formatla (6 karakter, sağa dayalı)"""
+            return f"{n:>6,.0f}"
 
         def fark_fmt(n):
             """Farkı formatla (6 karakter, işaretli)"""
@@ -73,47 +74,57 @@ class KasaWhatsAppRapor:
                 return f"{n:>6,.0f}"
 
         def row(label, num):
-            """Basit satır formatı"""
+            """Nokta dolgulu satır"""
             num_str = f"{num:,.0f}"
             pad = W - len(label) - len(num_str)
-            if pad < 1:
-                pad = 1
-            return label + "." * pad + num_str
+            return label + "." * max(pad, 1) + num_str
 
         L = []
         L.append("```")  # WhatsApp monospace başlat
-        L.append(f"KASA {gun} {tarih} {saat}")
+
+        # Bölüm 1: Başlık
+        L.append(f"  {gun} {tarih} {saat}")
         L.append("=" * W)
 
-        # Tablo başlık
-        L.append("       SAYIM  BOTNK   FARK")
+        # Bölüm 2: Başlangıç Kasası
+        L.append(row("BASLANGIC KASASI", baslangic))
         L.append("-" * W)
 
-        # Karşılaştırma tablosu
-        L.append(f"Nakit {fmt(nakit)} {fmt(botanik_nakit)} {fark_fmt(nakit_fark)}")
-        L.append(f"POS   {fmt(pos)} {fmt(botanik_pos)} {fark_fmt(pos_fark)}")
-        L.append(f"IBAN  {fmt(iban)} {fmt(botanik_iban)} {fark_fmt(iban_fark)}")
+        # Bölüm 3: Toplamlar
+        L.append(row("KASA SAYIMI", nakit))
+        L.append(row("POS TOPLAM", pos))
+        L.append(row("IBAN TOPLAM", iban))
         L.append("-" * W)
 
-        # Masraf/Silinen/Alınan (sadece varsa)
+        # Bölüm 4: Düzeltmeler (sadece >0 ise)
         if masraf > 0:
-            L.append(f"Masraf........{fmt(masraf)}")
+            L.append(row("MASRAFLAR", masraf))
         if silinen > 0:
-            L.append(f"Silinen.......{fmt(silinen)}")
+            L.append(row("SILINEN ETKILER", silinen))
         if alinan > 0:
-            L.append(f"Alinan........{fmt(alinan)}")
-
-        # Son Genel vs Botanik Toplam
-        L.append("-" * W)
-        L.append(f"GNLTOP{fmt(son_genel)} {fmt(botanik_toplam)} {fark_fmt(genel_fark)}")
+            L.append(row("ALINAN PARALAR", alinan))
         L.append("=" * W)
 
-        # Ertesi gün ve ayrılan
-        L.append(row("ErtesiGun", ertesi_gun))
+        # Bölüm 5: Karşılaştırma Tablosu
+        L.append("      SAYIM BOTANIK   FARK")
+        L.append("-" * W)
+        L.append(f"Nakit {fmt(nakit)}{fmt(botanik_nakit)}{fark_fmt(nakit_fark)}")
+        L.append(f"POS   {fmt(pos)}{fmt(botanik_pos)}{fark_fmt(pos_fark)}")
+        L.append(f"IBAN  {fmt(iban)}{fmt(botanik_iban)}{fark_fmt(iban_fark)}")
+        L.append("-" * W)
+        L.append(f"TOPLAM{fmt(son_genel)}{fmt(botanik_toplam)}{fark_fmt(genel_fark)}")
+        L.append("=" * W)
+
+        # Bölüm 6: Ertesi Gün ve Ayrılan
+        L.append(row("ERTESI GUN", ertesi_gun))
         L.append(row("AYRILAN", ayrilan))
+        L.append("=" * W)
+
+        # Bölüm 7: Büyük punto (WhatsApp'ta büyük font yok, normal göster)
+        L.append(f"    AYRILAN: {ayrilan:,.0f}")
+        L.append(f"  {gun} {tarih} {saat}")
 
         L.append("```")  # WhatsApp monospace bitir
-        L.append(f"{gun} {tarih}")
 
         return "\n".join(L)
 
