@@ -73,6 +73,10 @@ class KasaWhatsAppRapor:
         if alinan > 0:
             L.append(row("Alinan", alinan))
 
+        # Son Genel Toplam (masraf/silinen/alınan dahil)
+        son_genel = genel - masraf - silinen + alinan
+        L.append(row("SON TOPLAM", son_genel))
+
         # Botanik
         L.append("-" * W)
         botanik_nakit = kasa_verileri.get('botanik_nakit', 0)

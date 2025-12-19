@@ -191,6 +191,10 @@ class KasaYazici:
         if alinan > 0:
             L.append(row("Alinan", alinan))
 
+        # Son Genel Toplam
+        son_genel = genel - masraf - silinen + alinan
+        L.append(row("SON TOPLAM", son_genel))
+
         L.append("-" * W)
         botanik_nakit = kasa_verileri.get('botanik_nakit', 0)
         botanik_pos = kasa_verileri.get('botanik_pos', 0)
@@ -213,10 +217,22 @@ class KasaYazici:
         ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
         L.append(row("ErtesiGun", ertesi_gun))
 
-        L.append("=" * W)
+        # Ayrılan para - liste formatında
         ayrilan = kasa_verileri.get('ayrilan_para', 0)
-        L.append(row("AYRILAN", ayrilan))
-        L.append(tarih.center(W))
+        L.append(row("Ayrilan", ayrilan))
+
+        # Büyük puntoda ayrılan ve tarih
+        L.append("=" * W)
+        L.append(f"AYRILAN: {ayrilan:,.0f}".center(W))
+        L.append(f"{tarih} {saat}".center(W))
+
+        # Kesme payı için 3cm boşluk (~6 satır)
+        L.append("")
+        L.append("")
+        L.append("")
+        L.append("")
+        L.append("")
+        L.append("")
 
         return "\n".join(L)
 
@@ -275,6 +291,10 @@ class KasaYazici:
         if alinan > 0:
             add(row("Alinan", alinan))
 
+        # Son Genel Toplam
+        son_genel = genel - masraf - silinen + alinan
+        add(row("SON TOPLAM", son_genel), True)
+
         sep()
         botanik_nakit = kasa_verileri.get('botanik_nakit', 0)
         botanik_pos = kasa_verileri.get('botanik_pos', 0)
@@ -297,20 +317,25 @@ class KasaYazici:
         ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
         add(row("ErtesiGun", ertesi_gun))
 
-        add("=" * W)
+        # Ayrılan para - liste formatında
         ayrilan = kasa_verileri.get('ayrilan_para', 0)
+        add(row("Ayrilan", ayrilan))
 
-        # Büyük font için AYRILAN
+        # Büyük font için AYRILAN ve tarih
+        add("=" * W)
         data.extend(FONT_DOUBLE_WH)
         data.extend(ALIGN_CENTER)
         ayr_str = f"AYRILAN:{ayrilan:,.0f}"
         data.extend(ayr_str.encode('cp857', errors='replace'))
         data.extend(LINE_FEED)
-        data.extend(tarih.encode('cp857', errors='replace'))
+        tarih_saat = f"{tarih} {saat}"
+        data.extend(tarih_saat.encode('cp857', errors='replace'))
         data.extend(LINE_FEED)
 
+        # Kesme payı için 3cm boşluk (~6 satır)
         data.extend(FONT_NORMAL)
-        data.extend(LINE_FEED)
+        for _ in range(6):
+            data.extend(LINE_FEED)
 
         return bytes(data)
 
