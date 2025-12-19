@@ -1471,7 +1471,7 @@ class KasaKapatmaModul:
             btn.grid(row=0, column=i, sticky='ew', padx=2, pady=3)
 
     def ayrilan_cikti_yazdir(self):
-        """Kasa raporu yazdır"""
+        """Kasa raporu yazdır - ESC/POS termal yazıcı"""
         if not YENI_MODULLER_YUKLENDI:
             messagebox.showwarning("Uyarı", "Yazıcı modülü yüklenmedi")
             return
@@ -1483,13 +1483,14 @@ class KasaKapatmaModul:
             # Yazıcı oluştur
             yazici = KasaYazici(self.ayarlar)
 
-            # Gün sonu raporu oluştur
+            # Gün sonu raporu oluştur (metin - yedek için)
             rapor = yazici.gun_sonu_raporu_olustur(kasa_verileri)
 
             # Yazıcı seçim penceresi aç
             def yazdir_callback(secilen_yazici):
                 yazici.yazici_adi = secilen_yazici
-                if yazici.yazdir(rapor):
+                # ESC/POS RAW modu kullan (Notepad değil!)
+                if yazici.kasa_raporu_yazdir(kasa_verileri, secilen_yazici):
                     messagebox.showinfo("Başarılı", "Rapor yazıcıya gönderildi!")
 
             # Önce dosyaya kaydet (yedek)
