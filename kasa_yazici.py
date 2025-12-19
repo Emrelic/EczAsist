@@ -1,6 +1,7 @@
 """
 Botanik Bot - Kasa Termal Yazıcı Desteği
-Termal yazıcıdan kasa raporu ve etiket basma
+80mm Termal yazıcı için optimize edilmiş kasa raporu
+ESC/POS komutları ile büyük font desteği
 """
 
 import tkinter as tk
@@ -13,6 +14,29 @@ from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# ESC/POS Komutları (80mm termal yazıcılar için)
+ESC = b'\x1b'
+GS = b'\x1d'
+
+# Font boyutları
+FONT_NORMAL = ESC + b'\x21\x00'          # Normal font
+FONT_BOLD = ESC + b'\x21\x08'            # Kalın
+FONT_DOUBLE_H = ESC + b'\x21\x10'        # Çift yükseklik
+FONT_DOUBLE_W = ESC + b'\x21\x20'        # Çift genişlik
+FONT_DOUBLE_WH = ESC + b'\x21\x30'       # Çift genişlik + yükseklik
+FONT_LARGE = GS + b'\x21\x11'            # Büyük font (2x2)
+FONT_XLARGE = GS + b'\x21\x22'           # Çok büyük (3x3)
+
+# Hizalama
+ALIGN_LEFT = ESC + b'\x61\x00'
+ALIGN_CENTER = ESC + b'\x61\x01'
+ALIGN_RIGHT = ESC + b'\x61\x02'
+
+# Diğer
+CUT_PAPER = GS + b'\x56\x00'             # Kağıt kes
+LINE_FEED = b'\n'
+INIT_PRINTER = ESC + b'\x40'             # Yazıcıyı sıfırla
 
 
 class KasaYazici:
@@ -126,102 +150,240 @@ class KasaYazici:
 
     def gun_sonu_raporu_olustur(self, kasa_verileri):
         """
-        Gün sonu kasa raporu oluştur
+        Gün sonu kasa raporu oluştur - 80mm termal yazıcı için optimize
+        Kompakt format, minimum kağıt ve yan boşluk
 
         kasa_verileri: dict - Kasa kapatma verileri
         """
         tarih = datetime.now().strftime("%d.%m.%Y")
         saat = datetime.now().strftime("%H:%M")
 
+        # 80mm termal = 32 karakter (standart)
+        W = 32
+
         lines = []
-        lines.append("=" * 40)
-        lines.append("        GUN SONU KASA RAPORU")
-        lines.append("=" * 40)
-        lines.append(f"Tarih: {tarih}  Saat: {saat}")
-        lines.append("-" * 40)
 
-        # Başlangıç kasası
+        # BAŞLIK - Tarih/Saat
+        lines.append("=" * W)
+        lines.append(f"KASA RAPORU {tarih} {saat}")
+        lines.append("=" * W)
+
+        # BAŞLANGIÇ KASASI
         baslangic = kasa_verileri.get('baslangic_kasasi', 0)
-        lines.append(f"Baslangic Kasasi: {baslangic:>18,.2f} TL")
-        lines.append("-" * 40)
+        lines.append(f"Baslangic:{baslangic:>10,.0f}TL")
 
-        # Kasa sayımı
+        # KÜPÜR SAYIMLARI
+        lines.append("")  # Grup arası boşluk
+        kupurler = kasa_verileri.get('kupurler', {})
+        if kupurler:
+            kupur_sirasi = [200, 100, 50, 20, 10, 5, 1, 0.5]
+            for k in kupur_sirasi:
+                adet = kupurler.get(str(k), kupurler.get(k, 0))
+                if adet and int(adet) > 0:
+                    tutar = int(adet) * k
+                    if k >= 1:
+                        lines.append(f"{int(k):>3}TLx{int(adet):>2}={tutar:>7,.0f}TL")
+                    else:
+                        kr = int(k * 100)
+                        lines.append(f"{kr:>2}Krx{int(adet):>2}={tutar:>7,.2f}TL")
+
+        # NAKİT/POS/IBAN TOPLAMLARI
+        lines.append("")  # Grup arası boşluk
         nakit = kasa_verileri.get('nakit_toplam', 0)
         pos = kasa_verileri.get('pos_toplam', 0)
         iban = kasa_verileri.get('iban_toplam', 0)
+        lines.append(f"Nakit:{nakit:>13,.0f}TL")
+        lines.append(f"POS:{pos:>15,.0f}TL")
+        lines.append(f"IBAN:{iban:>14,.0f}TL")
+        genel = kasa_verileri.get('genel_toplam', nakit + pos + iban)
+        lines.append("-" * W)
+        lines.append(f"TOPLAM:{genel:>12,.0f}TL")
 
-        lines.append("KASA SAYIMI:")
-        lines.append(f"  Nakit Toplam:   {nakit:>18,.2f} TL")
-        lines.append(f"  POS Toplam:     {pos:>18,.2f} TL")
-        lines.append(f"  IBAN Toplam:    {iban:>18,.2f} TL")
-        lines.append("-" * 40)
-
-        # Genel toplam
-        genel = kasa_verileri.get('genel_toplam', 0)
-        lines.append(f"GENEL TOPLAM:     {genel:>18,.2f} TL")
-        lines.append("-" * 40)
-
-        # Ek kalemler
+        # EK KALEMLER (sadece varsa)
         masraf = kasa_verileri.get('masraf_toplam', 0)
         silinen = kasa_verileri.get('silinen_toplam', 0)
         alinan = kasa_verileri.get('alinan_toplam', 0)
-
         if masraf > 0 or silinen > 0 or alinan > 0:
-            lines.append("EK KALEMLER:")
+            lines.append("")  # Grup arası boşluk
             if masraf > 0:
-                lines.append(f"  Masraflar:      {masraf:>18,.2f} TL")
+                lines.append(f"Masraf:{masraf:>12,.0f}TL")
             if silinen > 0:
-                lines.append(f"  Silinen Recete: {silinen:>18,.2f} TL")
+                lines.append(f"Silinen:{silinen:>11,.0f}TL")
             if alinan > 0:
-                lines.append(f"  Alinan Para:    {alinan:>18,.2f} TL")
-            lines.append("-" * 40)
+                lines.append(f"Alinan:{alinan:>12,.0f}TL")
 
-        # Son genel toplam
-        son_genel = kasa_verileri.get('son_genel_toplam', genel)
-        lines.append(f"SON GENEL TOPLAM: {son_genel:>18,.2f} TL")
-        lines.append("=" * 40)
-
-        # Botanik verileri
+        # BOTANİK VERİLERİ
+        lines.append("")  # Grup arası boşluk
+        lines.append("-BOTANIK-".center(W, '-'))
         botanik_nakit = kasa_verileri.get('botanik_nakit', 0)
         botanik_pos = kasa_verileri.get('botanik_pos', 0)
         botanik_iban = kasa_verileri.get('botanik_iban', 0)
         botanik_toplam = kasa_verileri.get('botanik_toplam', 0)
+        lines.append(f"Nakit:{botanik_nakit:>13,.0f}TL")
+        lines.append(f"POS:{botanik_pos:>15,.0f}TL")
+        lines.append(f"IBAN:{botanik_iban:>14,.0f}TL")
+        lines.append(f"Toplam:{botanik_toplam:>12,.0f}TL")
 
-        lines.append("BOTANIK VERILERI:")
-        lines.append(f"  Nakit:          {botanik_nakit:>18,.2f} TL")
-        lines.append(f"  POS:            {botanik_pos:>18,.2f} TL")
-        lines.append(f"  IBAN:           {botanik_iban:>18,.2f} TL")
-        lines.append(f"  BOTANIK TOPLAM: {botanik_toplam:>18,.2f} TL")
-        lines.append("-" * 40)
-
-        # Fark
+        # FARK
+        lines.append("")  # Grup arası boşluk
         fark = kasa_verileri.get('fark', 0)
-        fark_text = f"+{fark:,.2f}" if fark > 0 else f"{fark:,.2f}"
-        lines.append(f"FARK:             {fark_text:>18} TL")
-
         if abs(fark) < 0.01:
-            lines.append("                   [TUTTU]")
+            lines.append("***FARK:0 [TUTTU]***".center(W))
         elif fark > 0:
-            lines.append("                   [FAZLA]")
+            lines.append(f"FARK:+{fark:,.0f}TL [FAZLA]".center(W))
         else:
-            lines.append("                   [EKSIK]")
+            lines.append(f"FARK:{fark:,.0f}TL [EKSIK]".center(W))
 
-        lines.append("=" * 40)
-
-        # Ertesi gün kasası
+        # ERTESİ GÜN KASASI
+        lines.append("")  # Grup arası boşluk
         ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
-        lines.append("")
-        lines.append(f"ERTESI GUN KASASI: {ertesi_gun:>17,.2f} TL")
+        lines.append(f"ErtesiGun:{ertesi_gun:>9,.0f}TL")
+        lines.append("=" * W)
 
-        # Ayrılan para
+        # AYRILAN PARA - Büyük font işareti
         ayrilan = kasa_verileri.get('ayrilan_para', 0)
-        if ayrilan > 0:
-            lines.append(f"AYRILAN PARA:      {ayrilan:>17,.2f} TL")
+        lines.append("")
+        lines.append("{{BUYUK}}")
+        lines.append(f"AYRILAN:{ayrilan:,.0f}TL")
+        lines.append("{{/BUYUK}}")
 
-        lines.append("=" * 40)
+        # TARİH - Büyük font
+        lines.append("")
+        lines.append("{{BUYUK}}")
+        lines.append(tarih)
+        lines.append("{{/BUYUK}}")
         lines.append("")
 
         return "\n".join(lines)
+
+    def gun_sonu_raporu_olustur_bytes(self, kasa_verileri):
+        """
+        Gün sonu kasa raporu - ESC/POS binary format
+        80mm termal yazıcı için kompakt format
+        """
+        tarih = datetime.now().strftime("%d.%m.%Y")
+        saat = datetime.now().strftime("%H:%M")
+
+        data = bytearray()
+        data.extend(INIT_PRINTER)
+
+        W = 32  # 80mm = 32 karakter
+
+        def add_text(text, font=FONT_NORMAL, align=ALIGN_LEFT, newline=True):
+            data.extend(font)
+            data.extend(align)
+            data.extend(text.encode('cp857', errors='replace'))
+            if newline:
+                data.extend(LINE_FEED)
+
+        def add_line(text):
+            add_text(text)
+
+        def add_empty():
+            data.extend(LINE_FEED)
+
+        # BAŞLIK
+        add_line("=" * W)
+        add_text(f"KASA RAPORU {tarih} {saat}", FONT_BOLD, ALIGN_CENTER)
+        add_line("=" * W)
+
+        # BAŞLANGIÇ KASASI
+        baslangic = kasa_verileri.get('baslangic_kasasi', 0)
+        add_line(f"Baslangic:{baslangic:>10,.0f}TL")
+
+        # KÜPÜR SAYIMLARI
+        add_empty()
+        kupurler = kasa_verileri.get('kupurler', {})
+        if kupurler:
+            kupur_sirasi = [200, 100, 50, 20, 10, 5, 1, 0.5]
+            for k in kupur_sirasi:
+                adet = kupurler.get(str(k), kupurler.get(k, 0))
+                if adet and int(adet) > 0:
+                    tutar = int(adet) * k
+                    if k >= 1:
+                        add_line(f"{int(k):>3}TLx{int(adet):>2}={tutar:>7,.0f}TL")
+                    else:
+                        kr = int(k * 100)
+                        add_line(f"{kr:>2}Krx{int(adet):>2}={tutar:>7,.2f}TL")
+
+        # NAKİT/POS/IBAN
+        add_empty()
+        nakit = kasa_verileri.get('nakit_toplam', 0)
+        pos = kasa_verileri.get('pos_toplam', 0)
+        iban = kasa_verileri.get('iban_toplam', 0)
+        add_line(f"Nakit:{nakit:>13,.0f}TL")
+        add_line(f"POS:{pos:>15,.0f}TL")
+        add_line(f"IBAN:{iban:>14,.0f}TL")
+        add_line("-" * W)
+        genel = kasa_verileri.get('genel_toplam', nakit + pos + iban)
+        add_text(f"TOPLAM:{genel:>12,.0f}TL", FONT_BOLD)
+
+        # EK KALEMLER
+        masraf = kasa_verileri.get('masraf_toplam', 0)
+        silinen = kasa_verileri.get('silinen_toplam', 0)
+        alinan = kasa_verileri.get('alinan_toplam', 0)
+        if masraf > 0 or silinen > 0 or alinan > 0:
+            add_empty()
+            if masraf > 0:
+                add_line(f"Masraf:{masraf:>12,.0f}TL")
+            if silinen > 0:
+                add_line(f"Silinen:{silinen:>11,.0f}TL")
+            if alinan > 0:
+                add_line(f"Alinan:{alinan:>12,.0f}TL")
+
+        # BOTANİK
+        add_empty()
+        add_text("-BOTANIK-".center(W, '-'), FONT_BOLD)
+        botanik_nakit = kasa_verileri.get('botanik_nakit', 0)
+        botanik_pos = kasa_verileri.get('botanik_pos', 0)
+        botanik_iban = kasa_verileri.get('botanik_iban', 0)
+        botanik_toplam = kasa_verileri.get('botanik_toplam', 0)
+        add_line(f"Nakit:{botanik_nakit:>13,.0f}TL")
+        add_line(f"POS:{botanik_pos:>15,.0f}TL")
+        add_line(f"IBAN:{botanik_iban:>14,.0f}TL")
+        add_text(f"Toplam:{botanik_toplam:>12,.0f}TL", FONT_BOLD)
+
+        # FARK
+        add_empty()
+        fark = kasa_verileri.get('fark', 0)
+        if abs(fark) < 0.01:
+            add_text("***FARK:0 [TUTTU]***".center(W), FONT_BOLD, ALIGN_CENTER)
+        elif fark > 0:
+            add_text(f"FARK:+{fark:,.0f}TL [FAZLA]", FONT_BOLD, ALIGN_CENTER)
+        else:
+            add_text(f"FARK:{fark:,.0f}TL [EKSIK]", FONT_BOLD, ALIGN_CENTER)
+
+        # ERTESİ GÜN KASASI
+        add_empty()
+        ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
+        add_line(f"ErtesiGun:{ertesi_gun:>9,.0f}TL")
+        add_line("=" * W)
+
+        # AYRILAN PARA - EN BÜYÜK FONT
+        ayrilan = kasa_verileri.get('ayrilan_para', 0)
+        add_empty()
+        data.extend(FONT_DOUBLE_WH)
+        data.extend(ALIGN_CENTER)
+        data.extend("AYRILAN".encode('cp857', errors='replace'))
+        data.extend(LINE_FEED)
+        data.extend(FONT_XLARGE)
+        data.extend(ALIGN_CENTER)
+        data.extend(f"{ayrilan:,.0f}TL".encode('cp857', errors='replace'))
+        data.extend(LINE_FEED)
+
+        # TARİH - BÜYÜK FONT
+        add_empty()
+        data.extend(FONT_DOUBLE_WH)
+        data.extend(ALIGN_CENTER)
+        data.extend(tarih.encode('cp857', errors='replace'))
+        data.extend(LINE_FEED)
+
+        # Bitir
+        data.extend(FONT_NORMAL)
+        data.extend(LINE_FEED)
+        data.extend(LINE_FEED)
+
+        return bytes(data)
 
     def yazdir(self, metin, yazici_adi=None):
         """
@@ -276,6 +438,76 @@ class KasaYazici:
             logger.error(f"Yazdırma hatası: {e}")
             messagebox.showerror("Yazici Hatasi", f"Yazdirma sirasinda hata olustu:\n{e}")
             return False
+
+    def termal_yazdir(self, data_bytes, yazici_adi=None):
+        """
+        Binary ESC/POS verisini doğrudan termal yazıcıya gönder
+        80mm termal yazıcılar için optimize
+
+        data_bytes: bytes - ESC/POS formatında veri
+        yazici_adi: str - Yazıcı adı (örn: "\\\\PC\\POS-80")
+        """
+        kullanilacak_yazici = yazici_adi or self.yazici_adi
+
+        if not kullanilacak_yazici:
+            messagebox.showwarning("Uyarı", "Yazıcı seçilmedi!")
+            return False
+
+        try:
+            import win32print
+
+            # Yazıcıyı aç
+            printer_handle = win32print.OpenPrinter(kullanilacak_yazici)
+
+            try:
+                # Yazdırma işini başlat
+                job_info = ("Kasa Raporu", None, "RAW")
+                win32print.StartDocPrinter(printer_handle, 1, job_info)
+                win32print.StartPagePrinter(printer_handle)
+
+                # Veriyi gönder
+                win32print.WritePrinter(printer_handle, data_bytes)
+
+                # Bitir
+                win32print.EndPagePrinter(printer_handle)
+                win32print.EndDocPrinter(printer_handle)
+
+                logger.info(f"Termal yazıcıya gönderildi: {kullanilacak_yazici}")
+                return True
+
+            finally:
+                win32print.ClosePrinter(printer_handle)
+
+        except ImportError:
+            logger.warning("win32print modülü yok, metin modu kullanılıyor")
+            # Fallback: Metin modunda yazdır
+            return self.yazdir(data_bytes.decode('cp857', errors='replace'))
+
+        except Exception as e:
+            logger.error(f"Termal yazdırma hatası: {e}")
+            messagebox.showerror("Yazıcı Hatası", f"Termal yazdırma hatası:\n{e}")
+            return False
+
+    def kasa_raporu_yazdir(self, kasa_verileri, yazici_adi=None):
+        """
+        Kasa raporunu termal yazıcıya gönder
+        Otomatik olarak ESC/POS formatını kullanır
+
+        kasa_verileri: dict - Kasa kapatma verileri
+        yazici_adi: str - Yazıcı adı
+        """
+        try:
+            # ESC/POS formatında rapor oluştur
+            data = self.gun_sonu_raporu_olustur_bytes(kasa_verileri)
+
+            # Termal yazıcıya gönder
+            return self.termal_yazdir(data, yazici_adi)
+
+        except Exception as e:
+            logger.error(f"Rapor yazdırma hatası: {e}")
+            # Fallback: Normal metin modu
+            metin = self.gun_sonu_raporu_olustur(kasa_verileri)
+            return self.yazdir(metin, yazici_adi)
 
     def dosyaya_kaydet(self, metin, dosya_adi=None):
         """
