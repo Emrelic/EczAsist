@@ -26,17 +26,54 @@ class KasaWhatsAppRapor:
     def rapor_olustur(self, kasa_verileri):
         """
         Kasa verilerinden WhatsApp mesajı oluştur
-        Monospace font, rakamlar sağa hizalı
+        Monospace font, karşılaştırma tablosu ile
         """
         gun_isimleri = ["Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz"]
         gun = gun_isimleri[datetime.now().weekday()]
         tarih = datetime.now().strftime("%d/%m/%Y")
         saat = datetime.now().strftime("%H:%M")
 
-        W = 28  # Satır genişliği
+        W = 30  # Satır genişliği (tablo için biraz daha geniş)
+
+        # Verileri al
+        nakit = kasa_verileri.get('nakit_toplam', 0)
+        pos = kasa_verileri.get('pos_toplam', 0)
+        iban = kasa_verileri.get('iban_toplam', 0)
+        genel = kasa_verileri.get('genel_toplam', nakit + pos + iban)
+        masraf = kasa_verileri.get('masraf_toplam', 0)
+        silinen = kasa_verileri.get('silinen_toplam', 0)
+        alinan = kasa_verileri.get('alinan_toplam', 0)
+        son_genel = genel - masraf - silinen + alinan
+
+        botanik_nakit = kasa_verileri.get('botanik_nakit', 0)
+        botanik_pos = kasa_verileri.get('botanik_pos', 0)
+        botanik_iban = kasa_verileri.get('botanik_iban', 0)
+        botanik_toplam = kasa_verileri.get('botanik_toplam', 0)
+
+        # Farklar
+        nakit_fark = nakit - botanik_nakit
+        pos_fark = pos - botanik_pos
+        iban_fark = iban - botanik_iban
+        genel_fark = son_genel - botanik_toplam
+
+        ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
+        ayrilan = kasa_verileri.get('ayrilan_para', 0)
+
+        def fmt(n):
+            """Sayıyı formatla (7 karakter)"""
+            return f"{n:>7,.0f}"
+
+        def fark_fmt(n):
+            """Farkı formatla (6 karakter, işaretli)"""
+            if abs(n) < 0.01:
+                return "     0"
+            elif n > 0:
+                return f"{n:>+6,.0f}"
+            else:
+                return f"{n:>6,.0f}"
 
         def row(label, num):
-            """Etiket sola, rakam sağa hizalı"""
+            """Basit satır formatı"""
             num_str = f"{num:,.0f}"
             pad = W - len(label) - len(num_str)
             if pad < 1:
@@ -44,70 +81,35 @@ class KasaWhatsAppRapor:
             return label + "." * pad + num_str
 
         L = []
-        L.append(f"```")  # WhatsApp monospace başlat
+        L.append("```")  # WhatsApp monospace başlat
         L.append(f"KASA {gun} {tarih} {saat}")
-        L.append("-" * W)
-
-        # Başlangıç
-        baslangic = kasa_verileri.get('baslangic_kasasi', 0)
-        L.append(row("Baslangic", baslangic))
-
-        # Nakit/POS/IBAN
-        nakit = kasa_verileri.get('nakit_toplam', 0)
-        pos = kasa_verileri.get('pos_toplam', 0)
-        iban = kasa_verileri.get('iban_toplam', 0)
-        genel = kasa_verileri.get('genel_toplam', nakit + pos + iban)
-
-        L.append(row("Nakit", nakit))
-        L.append(row("POS", pos))
-        L.append(row("IBAN", iban))
-        L.append(row("TOPLAM", genel))
-
-        # Ek kalemler (sadece varsa)
-        masraf = kasa_verileri.get('masraf_toplam', 0)
-        silinen = kasa_verileri.get('silinen_toplam', 0)
-        alinan = kasa_verileri.get('alinan_toplam', 0)
-
-        if masraf > 0:
-            L.append(row("Masraf", masraf))
-        if silinen > 0:
-            L.append(row("Silinen", silinen))
-        if alinan > 0:
-            L.append(row("Alinan", alinan))
-
-        # Son Genel Toplam (masraf/silinen/alınan dahil)
-        son_genel = genel - masraf - silinen + alinan
-        L.append(row("SON TOPLAM", son_genel))
-
-        # Botanik
-        L.append("-" * W)
-        botanik_nakit = kasa_verileri.get('botanik_nakit', 0)
-        botanik_pos = kasa_verileri.get('botanik_pos', 0)
-        botanik_iban = kasa_verileri.get('botanik_iban', 0)
-        botanik_toplam = kasa_verileri.get('botanik_toplam', 0)
-
-        L.append(row("B.Nakit", botanik_nakit))
-        L.append(row("B.POS", botanik_pos))
-        L.append(row("B.IBAN", botanik_iban))
-        L.append(row("B.Toplam", botanik_toplam))
-
-        # Fark
-        L.append("-" * W)
-        fark = kasa_verileri.get('fark', 0)
-        if abs(fark) < 0.01:
-            L.append(row("FARK", 0) + " OK")
-        elif fark > 0:
-            L.append(row("FARK", fark) + "+")
-        else:
-            L.append(row("FARK", fark))
-
-        # Ertesi gün
-        ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
-        L.append(row("ErtesiGun", ertesi_gun))
-
-        # Ayrılan
         L.append("=" * W)
-        ayrilan = kasa_verileri.get('ayrilan_para', 0)
+
+        # Tablo başlık
+        L.append("       SAYIM  BOTNK   FARK")
+        L.append("-" * W)
+
+        # Karşılaştırma tablosu
+        L.append(f"Nakit {fmt(nakit)} {fmt(botanik_nakit)} {fark_fmt(nakit_fark)}")
+        L.append(f"POS   {fmt(pos)} {fmt(botanik_pos)} {fark_fmt(pos_fark)}")
+        L.append(f"IBAN  {fmt(iban)} {fmt(botanik_iban)} {fark_fmt(iban_fark)}")
+        L.append("-" * W)
+
+        # Masraf/Silinen/Alınan (sadece varsa)
+        if masraf > 0:
+            L.append(f"Masraf........{fmt(masraf)}")
+        if silinen > 0:
+            L.append(f"Silinen.......{fmt(silinen)}")
+        if alinan > 0:
+            L.append(f"Alinan........{fmt(alinan)}")
+
+        # Son Genel vs Botanik Toplam
+        L.append("-" * W)
+        L.append(f"GNLTOP{fmt(son_genel)} {fmt(botanik_toplam)} {fark_fmt(genel_fark)}")
+        L.append("=" * W)
+
+        # Ertesi gün ve ayrılan
+        L.append(row("ErtesiGun", ertesi_gun))
         L.append(row("AYRILAN", ayrilan))
 
         L.append("```")  # WhatsApp monospace bitir

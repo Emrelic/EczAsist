@@ -151,7 +151,7 @@ class KasaYazici:
     def gun_sonu_raporu_olustur(self, kasa_verileri):
         """
         Gün sonu kasa raporu - 80mm termal yazıcı
-        32 karakter/satır, etiket ve değer AYNI SATIRDA
+        32 karakter/satır, karşılaştırma tablosu ile
         """
         gun_isimleri = ["Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz"]
         gun = gun_isimleri[datetime.now().weekday()]
@@ -160,68 +160,75 @@ class KasaYazici:
 
         W = 32  # 80mm yazıcı = 32 karakter
 
-        def row(label, num):
-            num_str = f"{num:,.0f}"
-            pad = W - len(label) - len(num_str)
-            if pad < 1:
-                pad = 1
-            return label + "." * pad + num_str
-
-        L = []
-        L.append(f"{gun} {tarih} {saat}".center(W))
-        L.append("-" * W)
-
-        baslangic = kasa_verileri.get('baslangic_kasasi', 0)
-        L.append(row("Baslangic", baslangic))
-
+        # Verileri al
         nakit = kasa_verileri.get('nakit_toplam', 0)
         pos = kasa_verileri.get('pos_toplam', 0)
         iban = kasa_verileri.get('iban_toplam', 0)
-        L.append(row("Nakit", nakit))
-        L.append(row("POS", pos))
-        L.append(row("IBAN", iban))
         genel = kasa_verileri.get('genel_toplam', nakit + pos + iban)
-        L.append(row("TOPLAM", genel))
-
         masraf = kasa_verileri.get('masraf_toplam', 0)
         silinen = kasa_verileri.get('silinen_toplam', 0)
         alinan = kasa_verileri.get('alinan_toplam', 0)
-        if masraf > 0:
-            L.append(row("Masraf", masraf))
-        if silinen > 0:
-            L.append(row("Silinen", silinen))
-        if alinan > 0:
-            L.append(row("Alinan", alinan))
-
-        # Son Genel Toplam
         son_genel = genel - masraf - silinen + alinan
-        L.append(row("SON TOPLAM", son_genel))
 
-        L.append("-" * W)
         botanik_nakit = kasa_verileri.get('botanik_nakit', 0)
         botanik_pos = kasa_verileri.get('botanik_pos', 0)
         botanik_iban = kasa_verileri.get('botanik_iban', 0)
         botanik_toplam = kasa_verileri.get('botanik_toplam', 0)
-        L.append(row("B.Nakit", botanik_nakit))
-        L.append(row("B.POS", botanik_pos))
-        L.append(row("B.IBAN", botanik_iban))
-        L.append(row("B.Toplam", botanik_toplam))
 
-        L.append("-" * W)
-        fark = kasa_verileri.get('fark', 0)
-        if abs(fark) < 0.01:
-            L.append(row("FARK", 0) + " OK")
-        elif fark > 0:
-            L.append(row("FARK", fark) + "+")
-        else:
-            L.append(row("FARK", fark))
+        # Farklar
+        nakit_fark = nakit - botanik_nakit
+        pos_fark = pos - botanik_pos
+        iban_fark = iban - botanik_iban
+        genel_fark = son_genel - botanik_toplam
 
         ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
-        L.append(row("ErtesiGun", ertesi_gun))
-
-        # Ayrılan para - liste formatında
         ayrilan = kasa_verileri.get('ayrilan_para', 0)
-        L.append(row("Ayrilan", ayrilan))
+
+        def fmt(n):
+            """Sayıyı formatla (7 karakter)"""
+            return f"{n:>7,.0f}"
+
+        def fark_fmt(n):
+            """Farkı formatla (6 karakter, işaretli)"""
+            if abs(n) < 0.01:
+                return "     0"
+            elif n > 0:
+                return f"{n:>+6,.0f}"
+            else:
+                return f"{n:>6,.0f}"
+
+        L = []
+        L.append(f"{gun} {tarih} {saat}".center(W))
+        L.append("=" * W)
+
+        # Tablo başlık: "       SAYIM  BOTNK   FARK"
+        L.append("       SAYIM  BOTNK   FARK")
+        L.append("-" * W)
+
+        # Nakit satırı
+        L.append(f"Nakit {fmt(nakit)} {fmt(botanik_nakit)} {fark_fmt(nakit_fark)}")
+        # POS satırı
+        L.append(f"POS   {fmt(pos)} {fmt(botanik_pos)} {fark_fmt(pos_fark)}")
+        # IBAN satırı
+        L.append(f"IBAN  {fmt(iban)} {fmt(botanik_iban)} {fark_fmt(iban_fark)}")
+        L.append("-" * W)
+
+        # Masraf/Silinen/Alınan (sadece varsa)
+        if masraf > 0:
+            L.append(f"Masraf........{fmt(masraf)}")
+        if silinen > 0:
+            L.append(f"Silinen.......{fmt(silinen)}")
+        if alinan > 0:
+            L.append(f"Alinan........{fmt(alinan)}")
+
+        # Son Genel vs Botanik Toplam
+        L.append("-" * W)
+        L.append(f"GNLTOP{fmt(son_genel)} {fmt(botanik_toplam)} {fark_fmt(genel_fark)}")
+        L.append("=" * W)
+
+        # Ertesi gün ve ayrılan
+        L.append(f"ErtesiGun.....{fmt(ertesi_gun)}")
+        L.append(f"Ayrilan.......{fmt(ayrilan)}")
 
         # Büyük puntoda ayrılan ve tarih
         L.append("=" * W)
@@ -229,19 +236,15 @@ class KasaYazici:
         L.append(f"{gun} {tarih} {saat}".center(W))
 
         # Kesme payı için 3cm boşluk (~6 satır)
-        L.append("")
-        L.append("")
-        L.append("")
-        L.append("")
-        L.append("")
-        L.append("")
+        for _ in range(6):
+            L.append("")
 
         return "\n".join(L)
 
     def gun_sonu_raporu_olustur_bytes(self, kasa_verileri):
         """
         Gün sonu kasa raporu - ESC/POS 80mm termal
-        32 karakter/satır, etiket ve değer AYNI SATIRDA
+        32 karakter/satır, karşılaştırma tablosu ile
         """
         gun_isimleri = ["Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz"]
         gun = gun_isimleri[datetime.now().weekday()]
@@ -254,76 +257,80 @@ class KasaYazici:
 
         W = 32  # 80mm = 32 karakter
 
-        def row(label, num):
-            num_str = f"{num:,.0f}"
-            pad = W - len(label) - len(num_str)
-            if pad < 1:
-                pad = 1
-            return label + "." * pad + num_str
+        # Verileri al
+        nakit = kasa_verileri.get('nakit_toplam', 0)
+        pos = kasa_verileri.get('pos_toplam', 0)
+        iban = kasa_verileri.get('iban_toplam', 0)
+        genel = kasa_verileri.get('genel_toplam', nakit + pos + iban)
+        masraf = kasa_verileri.get('masraf_toplam', 0)
+        silinen = kasa_verileri.get('silinen_toplam', 0)
+        alinan = kasa_verileri.get('alinan_toplam', 0)
+        son_genel = genel - masraf - silinen + alinan
+
+        botanik_nakit = kasa_verileri.get('botanik_nakit', 0)
+        botanik_pos = kasa_verileri.get('botanik_pos', 0)
+        botanik_iban = kasa_verileri.get('botanik_iban', 0)
+        botanik_toplam = kasa_verileri.get('botanik_toplam', 0)
+
+        # Farklar
+        nakit_fark = nakit - botanik_nakit
+        pos_fark = pos - botanik_pos
+        iban_fark = iban - botanik_iban
+        genel_fark = son_genel - botanik_toplam
+
+        ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
+        ayrilan = kasa_verileri.get('ayrilan_para', 0)
+
+        def fmt(n):
+            """Sayıyı formatla (7 karakter)"""
+            return f"{n:>7,.0f}"
+
+        def fark_fmt(n):
+            """Farkı formatla (6 karakter, işaretli)"""
+            if abs(n) < 0.01:
+                return "     0"
+            elif n > 0:
+                return f"{n:>+6,.0f}"
+            else:
+                return f"{n:>6,.0f}"
 
         def add(text, bold=False):
             data.extend(FONT_BOLD if bold else FONT_NORMAL)
             data.extend(text.encode('cp857', errors='replace'))
             data.extend(LINE_FEED)
 
-        def sep():
-            add("-" * W)
-
         # Başlık
         add(f"{gun} {tarih} {saat}".center(W), True)
-        sep()
+        add("=" * W)
 
-        baslangic = kasa_verileri.get('baslangic_kasasi', 0)
-        add(row("Baslangic", baslangic))
+        # Tablo başlık
+        add("       SAYIM  BOTNK   FARK", True)
+        add("-" * W)
 
-        nakit = kasa_verileri.get('nakit_toplam', 0)
-        pos = kasa_verileri.get('pos_toplam', 0)
-        iban = kasa_verileri.get('iban_toplam', 0)
-        add(row("Nakit", nakit))
-        add(row("POS", pos))
-        add(row("IBAN", iban))
-        genel = kasa_verileri.get('genel_toplam', nakit + pos + iban)
-        add(row("TOPLAM", genel), True)
+        # Nakit satırı
+        add(f"Nakit {fmt(nakit)} {fmt(botanik_nakit)} {fark_fmt(nakit_fark)}")
+        # POS satırı
+        add(f"POS   {fmt(pos)} {fmt(botanik_pos)} {fark_fmt(pos_fark)}")
+        # IBAN satırı
+        add(f"IBAN  {fmt(iban)} {fmt(botanik_iban)} {fark_fmt(iban_fark)}")
+        add("-" * W)
 
-        masraf = kasa_verileri.get('masraf_toplam', 0)
-        silinen = kasa_verileri.get('silinen_toplam', 0)
-        alinan = kasa_verileri.get('alinan_toplam', 0)
+        # Masraf/Silinen/Alınan (sadece varsa)
         if masraf > 0:
-            add(row("Masraf", masraf))
+            add(f"Masraf........{fmt(masraf)}")
         if silinen > 0:
-            add(row("Silinen", silinen))
+            add(f"Silinen.......{fmt(silinen)}")
         if alinan > 0:
-            add(row("Alinan", alinan))
+            add(f"Alinan........{fmt(alinan)}")
 
-        # Son Genel Toplam
-        son_genel = genel - masraf - silinen + alinan
-        add(row("SON TOPLAM", son_genel), True)
+        # Son Genel vs Botanik Toplam
+        add("-" * W)
+        add(f"GNLTOP{fmt(son_genel)} {fmt(botanik_toplam)} {fark_fmt(genel_fark)}", True)
+        add("=" * W)
 
-        sep()
-        botanik_nakit = kasa_verileri.get('botanik_nakit', 0)
-        botanik_pos = kasa_verileri.get('botanik_pos', 0)
-        botanik_iban = kasa_verileri.get('botanik_iban', 0)
-        botanik_toplam = kasa_verileri.get('botanik_toplam', 0)
-        add(row("B.Nakit", botanik_nakit))
-        add(row("B.POS", botanik_pos))
-        add(row("B.IBAN", botanik_iban))
-        add(row("B.Toplam", botanik_toplam), True)
-
-        sep()
-        fark = kasa_verileri.get('fark', 0)
-        if abs(fark) < 0.01:
-            add(row("FARK", 0) + " OK", True)
-        elif fark > 0:
-            add(row("FARK", fark) + "+", True)
-        else:
-            add(row("FARK", fark), True)
-
-        ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
-        add(row("ErtesiGun", ertesi_gun))
-
-        # Ayrılan para - liste formatında
-        ayrilan = kasa_verileri.get('ayrilan_para', 0)
-        add(row("Ayrilan", ayrilan))
+        # Ertesi gün ve ayrılan
+        add(f"ErtesiGun.....{fmt(ertesi_gun)}")
+        add(f"Ayrilan.......{fmt(ayrilan)}")
 
         # Büyük font için AYRILAN ve tarih
         add("=" * W)
