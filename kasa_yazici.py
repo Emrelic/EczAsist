@@ -153,6 +153,8 @@ class KasaYazici:
         Gün sonu kasa raporu - 80mm termal yazıcı
         32 karakter/satır, etiket ve değer AYNI SATIRDA
         """
+        gun_isimleri = ["Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz"]
+        gun = gun_isimleri[datetime.now().weekday()]
         tarih = datetime.now().strftime("%d/%m/%Y")
         saat = datetime.now().strftime("%H:%M")
 
@@ -166,7 +168,7 @@ class KasaYazici:
             return label + "." * pad + num_str
 
         L = []
-        L.append(f"{tarih} {saat}".center(W))
+        L.append(f"{gun} {tarih} {saat}".center(W))
         L.append("-" * W)
 
         baslangic = kasa_verileri.get('baslangic_kasasi', 0)
@@ -224,7 +226,7 @@ class KasaYazici:
         # Büyük puntoda ayrılan ve tarih
         L.append("=" * W)
         L.append(f"AYRILAN: {ayrilan:,.0f}".center(W))
-        L.append(f"{tarih} {saat}".center(W))
+        L.append(f"{gun} {tarih} {saat}".center(W))
 
         # Kesme payı için 3cm boşluk (~6 satır)
         L.append("")
@@ -241,6 +243,8 @@ class KasaYazici:
         Gün sonu kasa raporu - ESC/POS 80mm termal
         32 karakter/satır, etiket ve değer AYNI SATIRDA
         """
+        gun_isimleri = ["Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz"]
+        gun = gun_isimleri[datetime.now().weekday()]
         tarih = datetime.now().strftime("%d/%m/%Y")
         saat = datetime.now().strftime("%H:%M")
 
@@ -266,7 +270,7 @@ class KasaYazici:
             add("-" * W)
 
         # Başlık
-        add(f"{tarih} {saat}".center(W), True)
+        add(f"{gun} {tarih} {saat}".center(W), True)
         sep()
 
         baslangic = kasa_verileri.get('baslangic_kasasi', 0)
@@ -328,7 +332,7 @@ class KasaYazici:
         ayr_str = f"AYRILAN:{ayrilan:,.0f}"
         data.extend(ayr_str.encode('cp857', errors='replace'))
         data.extend(LINE_FEED)
-        tarih_saat = f"{tarih} {saat}"
+        tarih_saat = f"{gun} {tarih} {saat}"
         data.extend(tarih_saat.encode('cp857', errors='replace'))
         data.extend(LINE_FEED)
 

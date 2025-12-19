@@ -28,6 +28,8 @@ class KasaWhatsAppRapor:
         Kasa verilerinden WhatsApp mesajı oluştur
         Monospace font, rakamlar sağa hizalı
         """
+        gun_isimleri = ["Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz"]
+        gun = gun_isimleri[datetime.now().weekday()]
         tarih = datetime.now().strftime("%d/%m/%Y")
         saat = datetime.now().strftime("%H:%M")
 
@@ -43,7 +45,7 @@ class KasaWhatsAppRapor:
 
         L = []
         L.append(f"```")  # WhatsApp monospace başlat
-        L.append(f"KASA {tarih} {saat}")
+        L.append(f"KASA {gun} {tarih} {saat}")
         L.append("-" * W)
 
         # Başlangıç
@@ -109,7 +111,7 @@ class KasaWhatsAppRapor:
         L.append(row("AYRILAN", ayrilan))
 
         L.append("```")  # WhatsApp monospace bitir
-        L.append(f"{tarih}")
+        L.append(f"{gun} {tarih}")
 
         return "\n".join(L)
 
