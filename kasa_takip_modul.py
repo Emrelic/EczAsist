@@ -22,6 +22,7 @@ try:
     from kasa_whatsapp import KasaWhatsAppRapor, KasaWhatsAppPenceresi
     from kasa_yazici import KasaYazici, YaziciSecimPenceresi
     from kasa_gecmis import KasaGecmisiPenceresi
+    from kasa_raporlama import KasaRaporlamaPenceresi
     YENI_MODULLER_YUKLENDI = True
 except ImportError as e:
     logger.warning(f"Yeni modüller yüklenemedi: {e}")
@@ -539,6 +540,22 @@ class KasaKapatmaModul:
             command=self.gecmis_goster
         )
         gecmis_btn.pack(side="left", padx=5, pady=12)
+
+        # Raporlar butonu
+        raporlar_btn = tk.Button(
+            sag_frame,
+            text="Raporlar",
+            font=("Arial", 10, "bold"),
+            bg='#9C27B0',
+            fg='white',
+            activebackground='#7B1FA2',
+            cursor='hand2',
+            bd=0,
+            padx=15,
+            pady=5,
+            command=self.raporlar_goster
+        )
+        raporlar_btn.pack(side="left", padx=5, pady=12)
 
         # Tarih/Saat
         self.tarih_label = tk.Label(
@@ -3333,6 +3350,14 @@ class KasaKapatmaModul:
         self.botanik_iban_var.set(sakla_botanik[2])
 
         self.hesaplari_guncelle()
+
+    def raporlar_goster(self):
+        """Raporlama penceresini göster"""
+        if YENI_MODULLER_YUKLENDI:
+            raporlar = KasaRaporlamaPenceresi(self.root, self.cursor, self.conn)
+            raporlar.goster()
+        else:
+            messagebox.showwarning("Uyarı", "Raporlama modülü yüklenmedi")
 
     def gecmis_goster(self):
         """Geçmiş kayıtları göster"""
