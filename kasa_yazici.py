@@ -151,24 +151,21 @@ class KasaYazici:
     def gun_sonu_raporu_olustur(self, kasa_verileri):
         """
         Gün sonu kasa raporu - ULTRA KOMPAKT
-        Etiket + değer aynı satırda, rakamlar sağa hizalı
+        Etiket sola dayalı, rakam sağa dayalı
         """
         tarih = datetime.now().strftime("%d/%m/%Y")
         saat = datetime.now().strftime("%H:%M")
 
-        W = 24  # Toplam satır genişliği
+        W = 24  # Satır genişliği
 
-        # Satır formatı: etiket sola, rakam sağa hizalı (12 karakter rakam alanı)
         def row(label, num):
-            num_str = f"{num:>12,.0f}"  # 12 kar, sağa hizalı, binlik ayraçlı
-            label_w = W - 12
-            return f"{label:<{label_w}}{num_str}"
-
-        def row_txt(label, txt):
-            return f"{label:<12}{txt:>12}"
+            # Etiket sola dayalı, rakam sağa dayalı (toplam W karakter)
+            num_str = f"{num:,.0f}"
+            spaces = W - len(label) - len(num_str)
+            return label + " " * spaces + num_str
 
         L = []
-        L.append(row_txt("Tarih:", f"{tarih} {saat}"))
+        L.append(f"Tarih:{tarih} {saat}".ljust(W))
         L.append("-" * W)
 
         # Başlangıç kasası
@@ -211,17 +208,19 @@ class KasaYazici:
         L.append("-" * W)
         fark = kasa_verileri.get('fark', 0)
         if abs(fark) < 0.01:
-            L.append(row_txt("FARK:", "0 TUTTU"))
+            fark_str = "0 TUTTU"
         elif fark > 0:
-            L.append(row_txt("FARK:", f"+{fark:,.0f}"))
+            fark_str = f"+{fark:,.0f}"
         else:
-            L.append(row_txt("FARK:", f"{fark:,.0f}"))
+            fark_str = f"{fark:,.0f}"
+        spaces = W - len("FARK:") - len(fark_str)
+        L.append("FARK:" + " " * spaces + fark_str)
 
         # Ertesi gün kasası
         ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
         L.append(row("Ertesi Gun:", ertesi_gun))
 
-        # Ayrılan para (büyük font işareti)
+        # Ayrılan para (büyük font)
         L.append("=" * W)
         ayrilan = kasa_verileri.get('ayrilan_para', 0)
         L.append("{{B}}")
@@ -234,7 +233,7 @@ class KasaYazici:
     def gun_sonu_raporu_olustur_bytes(self, kasa_verileri):
         """
         Gün sonu kasa raporu - ESC/POS ULTRA KOMPAKT
-        Etiket + değer aynı satırda, rakamlar sağa hizalı
+        Etiket sola dayalı, rakam sağa dayalı
         """
         tarih = datetime.now().strftime("%d/%m/%Y")
         saat = datetime.now().strftime("%H:%M")
@@ -246,11 +245,9 @@ class KasaYazici:
         W = 24  # Satır genişliği
 
         def row(label, num):
-            num_str = f"{num:>12,.0f}"
-            return f"{label:<12}{num_str}"
-
-        def row_txt(label, txt):
-            return f"{label:<12}{txt:>12}"
+            num_str = f"{num:,.0f}"
+            spaces = W - len(label) - len(num_str)
+            return label + " " * spaces + num_str
 
         def add(text, bold=False):
             data.extend(FONT_BOLD if bold else FONT_NORMAL)
@@ -261,7 +258,7 @@ class KasaYazici:
             add("-" * W)
 
         # Başlık
-        add(row_txt("Tarih:", f"{tarih} {saat}"), True)
+        add(f"Tarih:{tarih} {saat}".ljust(W), True)
         sep()
 
         # Başlangıç kasası
@@ -304,11 +301,13 @@ class KasaYazici:
         sep()
         fark = kasa_verileri.get('fark', 0)
         if abs(fark) < 0.01:
-            add(row_txt("FARK:", "0 TUTTU"), True)
+            fark_str = "0 TUTTU"
         elif fark > 0:
-            add(row_txt("FARK:", f"+{fark:,.0f}"), True)
+            fark_str = f"+{fark:,.0f}"
         else:
-            add(row_txt("FARK:", f"{fark:,.0f}"), True)
+            fark_str = f"{fark:,.0f}"
+        spaces = W - len("FARK:") - len(fark_str)
+        add("FARK:" + " " * spaces + fark_str, True)
 
         # Ertesi gün kasası
         ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
