@@ -1,0 +1,391 @@
+================================================================================
+                    BOTANIK KASA TAKIP - KURULUM REHBERI
+                         Olusturma Tarihi: 17.12.2024
+================================================================================
+
+Bu dokuman, Kasa Takip modulunun Ana Makine ve Terminal olarak kurulumu icin
+gerekli tum adimlari icerir. Gelistirmeler tamamlandiktan sonra bu rehberi
+takip ederek kurulum yapilacaktir.
+
+================================================================================
+                              ICINDEKILER
+================================================================================
+1. GENEL BAKIS
+2. GEREKSINIMLER
+3. ANA MAKINE KURULUMU
+4. TERMINAL KURULUMU
+5. AG AYARLARI
+6. SORUN GIDERME
+7. YAPILAN GELISTIRMELER LISTESI
+
+================================================================================
+                           1. GENEL BAKIS
+================================================================================
+
+MIMARI:
+-------
++------------------+         AG         +------------------+
+|   ANA MAKINE     |<==================>|    TERMINAL      |
+|  (192.168.0.10)  |    HTTP/REST API   | (Diger Bilg.)    |
++------------------+                    +------------------+
+        |                                       |
+        v                                       |
++------------------+                            |
+|   SQLite DB      |                            |
+| kasa_veritabani  |<---------------------------+
+|      .db         |     (Uzaktan Erisim)
++------------------+
+
+CALISMA MODLARI:
+----------------
+1. ANA MAKINE MODU:
+   - Veritabani bu bilgisayarda tutulur
+   - API sunucusu calisir (port 5000)
+   - Diger bilgisayarlar buraya baglanir
+
+2. TERMINAL MODU:
+   - Veritabani tutmaz
+   - Ana makineye API uzerinden baglanir
+   - Ana makine kapali ise calisamaz
+
+================================================================================
+                          2. GEREKSINIMLER
+================================================================================
+
+YAZILIM GEREKSINIMLERI:
+-----------------------
+- Python 3.8 veya uzeri
+- Tkinter (Python ile birlikte gelir)
+- Flask (sadece Ana Makine icin)
+- Flask-CORS (sadece Ana Makine icin)
+- requests (Terminal icin)
+
+FLASK KURULUMU (Sadece Ana Makine):
+-----------------------------------
+Komut satirinda (CMD veya PowerShell):
+
+   python -m pip install flask flask-cors
+
+Eger "pip not recognized" hatasi alirsan:
+
+   python -m pip install flask flask-cors
+
+Hala hata alirsan Python PATH'e eklenmemis demektir:
+   1. Python'u yeniden kur ve "Add to PATH" secenegini isaretle
+   2. Veya tam yolu kullan: C:\Python39\python.exe -m pip install flask flask-cors
+
+REQUESTS KURULUMU (Sadece Terminal):
+------------------------------------
+   python -m pip install requests
+
+================================================================================
+                       3. ANA MAKINE KURULUMU
+================================================================================
+
+ADIM 1: Dosyalari Kopyala
+-------------------------
+Asagidaki dosyalarin ana makinede olmasi gerekir:
+
+  [x] kasa_takip_modul.py          - Ana kasa modulu
+  [x] kasa_wizard.py               - Wizard sistemi
+  [x] kasa_kontrol_listesi.py      - Eksik/Fazla kontrol
+  [x] kasa_whatsapp.py             - WhatsApp entegrasyonu
+  [x] kasa_yazici.py               - Yazici destegi
+  [x] kasa_gecmis.py               - Gecmis kayitlar
+  [x] kasa_api_server.py           - API sunucusu
+  [x] kasa_api_client.py           - API istemcisi
+  [x] kasa_ayarlari.json           - Ayar dosyasi
+  [x] Kasa_API_Sunucu_Baslat.bat   - Manuel baslatma
+  [x] Kasa_API_Sunucu_Arka_Plan.vbs- Arka plan calistirma
+  [x] Kasa_API_Baslangica_Ekle.bat - Otomatik baslatma ayari
+
+ADIM 2: Flask Kurulumu
+----------------------
+CMD veya PowerShell ac ve calistir:
+
+   python -m pip install flask flask-cors
+
+Basarili cikti:
+   Successfully installed flask-x.x.x flask-cors-x.x.x ...
+
+ADIM 3: Ayarlari Yapilandir
+---------------------------
+kasa_ayarlari.json dosyasini ac ve kontrol et:
+
+   {
+     "ana_makine_modu": true,        <-- TRUE olmali
+     "ana_makine_ip": "192.168.0.10", <-- Bu bilgisayarin IP'si
+     "ana_makine_port": 5000,
+     ...
+   }
+
+ADIM 4: API Sunucusunu Test Et
+------------------------------
+1. "Kasa_API_Sunucu_Baslat.bat" dosyasini cift tikla
+2. Asagidaki ciktiyi gormelisin:
+
+   ============================================
+     BOTANIK KASA API SUNUCUSU
+     IP: 192.168.0.10  Port: 5000
+   ============================================
+
+   API Sunucusu baslatiliyor...
+    * Running on http://0.0.0.0:5000
+
+3. Tarayicida http://localhost:5000/api/health adresine git
+4. Su cevabi gormelisin:
+   {"status": "ok", "server": "Botanik Kasa API", ...}
+
+ADIM 5: Windows Baslangicina Ekle
+---------------------------------
+API sunucusunun bilgisayar acildiginda otomatik baslamasi icin:
+
+1. "Kasa_API_Baslangica_Ekle.bat" dosyasini cift tikla
+2. "Basarili!" mesajini gor
+3. Bilgisayari yeniden baslat ve test et
+
+ADIM 6: Guvenlik Duvari Ayari
+-----------------------------
+Diger bilgisayarlarin baglanabilmesi icin:
+
+1. Windows Defender Guvenlik Duvari'ni ac
+2. "Bir uygulamaya guvenlik duvari uzerinden izin ver" tikla
+3. "Ayarlari degistir" tikla
+4. "Baska bir uygulamaya izin ver" tikla
+5. Python.exe dosyasini ekle (genellikle C:\Python39\python.exe)
+6. "Ozel" ve "Genel" kutucuklarini isaretle
+
+Veya CMD'de (Yonetici olarak):
+   netsh advfirewall firewall add rule name="Botanik Kasa API" dir=in action=allow protocol=tcp localport=5000
+
+================================================================================
+                        4. TERMINAL KURULUMU
+================================================================================
+
+ADIM 1: Dosyalari Kopyala
+-------------------------
+Asagidaki dosyalarin terminal bilgisayarda olmasi gerekir:
+
+  [x] kasa_takip_modul.py          - Ana kasa modulu
+  [x] kasa_wizard.py               - Wizard sistemi
+  [x] kasa_kontrol_listesi.py      - Eksik/Fazla kontrol
+  [x] kasa_whatsapp.py             - WhatsApp entegrasyonu
+  [x] kasa_yazici.py               - Yazici destegi
+  [x] kasa_gecmis.py               - Gecmis kayitlar
+  [x] kasa_api_client.py           - API istemcisi
+  [x] kasa_ayarlari.json           - Ayar dosyasi (FARKLI AYARLARLA!)
+
+  NOT: kasa_api_server.py GEREKMEZ (sadece ana makinede)
+
+ADIM 2: Requests Kurulumu
+-------------------------
+CMD veya PowerShell ac ve calistir:
+
+   python -m pip install requests
+
+ADIM 3: Ayarlari Yapilandir
+---------------------------
+YONTEM A - Manuel:
+kasa_ayarlari.json dosyasini ac ve degistir:
+
+   {
+     "ana_makine_modu": false,        <-- FALSE olmali
+     "ana_makine_ip": "192.168.0.10", <-- Ana makinenin IP'si
+     "ana_makine_port": 5000,
+     ...
+   }
+
+YONTEM B - Sablon Kullan:
+1. kasa_ayarlari_terminal.json.ornek dosyasini kopyala
+2. kasa_ayarlari.json olarak yeniden adlandir
+
+YONTEM C - Program Icinden:
+1. Programi calistir
+2. Ayarlar > Ag/Sunucu sekmesine git
+3. "Terminal" secenegini sec
+4. Ana Makine IP: 192.168.0.10
+5. Port: 5000
+6. Kaydet
+
+ADIM 4: Baglanti Testi
+----------------------
+1. ANA MAKINEDE API sunucusunun calistiginden emin ol
+2. Terminal bilgisayarda CMD ac
+3. Calistir: ping 192.168.0.10
+4. Cevap geliyorsa ag baglantisi var
+
+5. Tarayicida dene: http://192.168.0.10:5000/api/health
+6. JSON cevap geliyorsa API erisilebilir
+
+================================================================================
+                          5. AG AYARLARI
+================================================================================
+
+IP ADRESI OGRENME:
+------------------
+CMD'de: ipconfig
+
+Wireless LAN adapter Wi-Fi:
+   IPv4 Address. . . . . . . . . . . : 192.168.0.10  <-- BU IP
+
+AYNI AGDA OLMA:
+---------------
+Her iki bilgisayar da ayni WiFi/Ethernet agina bagli olmali.
+IP adreslerinin ilk 3 bolumu ayni olmali:
+  - Ana Makine:  192.168.0.10
+  - Terminal:    192.168.0.XX (ornegin 192.168.0.15)
+
+STATIK IP AYARLAMA (Onerilen):
+------------------------------
+Ana makinenin IP'si degismesin diye statik IP ayarla:
+
+1. Ag Baglantilari > WiFi > Ozellikler
+2. Internet Protocol Version 4 (TCP/IPv4) > Ozellikler
+3. "Asagidaki IP adresini kullan" sec:
+   - IP adresi: 192.168.0.10
+   - Alt ag maskesi: 255.255.255.0
+   - Varsayilan ag gecidi: 192.168.0.1
+4. DNS sunucusu: 8.8.8.8
+
+================================================================================
+                         6. SORUN GIDERME
+================================================================================
+
+SORUN: "pip not recognized" hatasi
+----------------------------------
+COZUM: python -m pip install ... kullan
+VEYA: Python'u yeniden kur, "Add to PATH" isaretle
+
+SORUN: API sunucusu baslamiyor
+------------------------------
+KONTROL:
+  1. Flask kurulu mu? python -c "import flask"
+  2. Port 5000 baska program tarafindan kullaniliyor mu?
+     netstat -an | findstr 5000
+  3. Hata mesajini oku
+
+SORUN: Terminal ana makineye baglanamyor
+----------------------------------------
+KONTROL:
+  1. Ana makinede API sunucusu calisiyor mu?
+  2. ping 192.168.0.10 cevap veriyor mu?
+  3. Guvenlik duvari port 5000'e izin veriyor mu?
+  4. Ayarlardaki IP adresi dogru mu?
+
+SORUN: "Connection refused" hatasi
+----------------------------------
+COZUM:
+  1. Ana makinede API sunucusunu baslat
+  2. Guvenlik duvarini kontrol et
+  3. IP adresini kontrol et
+
+SORUN: Veriler senkronize olmuyor
+---------------------------------
+KONTROL:
+  1. Her iki bilgisayar da ayni veritabanina mi erisyor?
+  2. API istekleri basarili mi? (Tarayicida test et)
+
+================================================================================
+                    7. YAPILAN GELISTIRMELER LISTESI
+================================================================================
+
+TARIH: 17.12.2024
+
+YENI EKLENEN OZELLIKLER:
+------------------------
+
+1. WIZARD SISTEMI (kasa_wizard.py)
+   - 10 adimli rehberli veri girisi
+   - Her adim icin ayri popup pencere
+   - Progress bar ile ilerleme gosterimi
+   - "YOK" secenegi ile opsiyonel adimlari atlama
+
+   Adimlar:
+   [1] Baslangic Kasasi Kontrolu
+   [2] Aksam Kasa Sayimi
+   [3] POS Raporlari
+   [4] IBAN Raporlari
+   [5] Girilmemis Masraflar (YOK secenegi var)
+   [6] Alinan Paralar (YOK secenegi var)
+   [7] Silinen Recete Etkileri (YOK secenegi var)
+   [8] Botanik Verileri
+   [9] Fark Analizi
+   [10] Ayrilan Para ve Ertesi Gun Kasasi
+
+2. EKSIK/FAZLA KONTROL LISTESI (kasa_kontrol_listesi.py)
+   - Kasa fazla ciktiginda 15 maddelik kontrol listesi
+   - Kasa eksik ciktiginda 24 maddelik kontrol listesi
+   - Tum maddeler isaretlenmeden kapatilamaz
+   - Checkbox ile tek tek onaylama
+
+3. WHATSAPP ENTEGRASYONU (kasa_whatsapp.py)
+   - Otomatik kasa raporu olusturma
+   - wa.me linki ile WhatsApp'a gonderme
+   - Panoya kopyalama secenegi
+   - Ayarlardan telefon numarasi belirleme
+
+4. TERMAL YAZICI DESTEGI (kasa_yazici.py)
+   - Ayrilan para etiketi basma
+   - Gun sonu raporu basma
+   - Sistemdeki yazicilari listeleme
+   - Ayarlardan yazici secimi
+
+5. KASA GECMISI PENCERESI (kasa_gecmis.py)
+   - Takvim gorunumu
+   - Kayitli gunler yesil renkte
+   - Son kayitlar listesi
+   - Detayli kayit goruntuleme
+   - Kupur dokumu gosterimi
+
+6. API SUNUCUSU (kasa_api_server.py)
+   - Flask tabanli REST API
+   - SQLite veritabani yonetimi
+   - Wizard adim kaydetme
+   - Gecmis sorgulama
+   - Coklu terminal destegi
+
+7. API ISTEMCISI (kasa_api_client.py)
+   - Ana makineye HTTP baglantisi
+   - Veri okuma/yazma islemleri
+   - Baglanti testi
+   - Hata yonetimi
+
+8. GELISMIS AYARLAR PENCERESI
+   - 4 sekmeli yapilandirma:
+     * Kupurler: Aktif kupurleri secme
+     * Genel: Wizard modu, fark toleransi
+     * Iletisim: WhatsApp, yazici ayarlari
+     * Ag/Sunucu: Ana makine/Terminal secimi
+
+9. YENI BUTONLAR
+   - "Wizard Baslat" butonu
+   - "WhatsApp" butonu
+   - Gelismis "Gecmis Kayitlar" butonu
+
+GUNCELLENEN AYAR DOSYASI (kasa_ayarlari.json):
+----------------------------------------------
+{
+  "aktif_kupurler": {...},
+  "yonerge_aktif": true/false,      // YENi - Wizard modu
+  "kabul_edilebilir_fark": 10,      // YENI - TL cinsinden tolerans
+  "whatsapp_numara": "",            // YENI - 905xxxxxxxxx formati
+  "ana_makine_modu": true/false,    // YENI - Sunucu/Terminal secimi
+  "ana_makine_ip": "192.168.0.10",  // YENI - Sunucu IP adresi
+  "ana_makine_port": 5000,          // YENI - API portu
+  "yazici_adi": "",                 // YENI - Termal yazici
+  "otomatik_yedekleme": true,       // YENI
+  "yedekleme_saati": "23:59"        // YENI
+}
+
+================================================================================
+                              NOTLAR
+================================================================================
+
+- Bu dokuman gelistirmeler tamamlandiktan sonra kurulum icin kullanilacaktir
+- Ana makine IP adresi: 192.168.0.10 (degisebilir, ipconfig ile kontrol et)
+- API portu: 5000 (degistirilebilir)
+- Sorulariniz icin gelistiriciyle iletisime gecin
+
+================================================================================
+                         DOKUMAN SONU
+================================================================================

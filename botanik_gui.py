@@ -253,9 +253,15 @@ class GrupDurumu:
 class BotanikGUI:
     """Botanik Bot GUI"""
 
-    def __init__(self, root):
+    def __init__(self, root, ana_menu_callback=None):
+        """
+        Args:
+            root: Tkinter root veya Toplevel pencere
+            ana_menu_callback: Ana menüye dönüş callback fonksiyonu (opsiyonel)
+        """
         self.root = root
-        self.root.title("Botanik Bot v3")
+        self.ana_menu_callback = ana_menu_callback
+        self.root.title("Botanik Bot v3 - İlaç Takip")
 
         # Ekran boyutlarını al
         screen_width = self.root.winfo_screenwidth()
@@ -640,10 +646,31 @@ class BotanikGUI:
         main_container = tk.Frame(self.root, bg=self.bg_color)
         main_container.pack(fill="both", expand=True, padx=5, pady=5)
 
+        # Üst bar - Ana Sayfa butonu (eğer callback varsa göster)
+        if self.ana_menu_callback:
+            top_bar = tk.Frame(main_container, bg=self.bg_color)
+            top_bar.pack(fill="x", pady=(0, 5))
+
+            ana_sayfa_btn = tk.Button(
+                top_bar,
+                text="🏠 Ana Sayfa",
+                font=("Arial", 9, "bold"),
+                bg="#1565C0",
+                fg="white",
+                activebackground="#0D47A1",
+                activeforeground="white",
+                cursor="hand2",
+                bd=0,
+                padx=10,
+                pady=5,
+                command=self.ana_sayfaya_don
+            )
+            ana_sayfa_btn.pack(side="left")
+
         # Başlık
         title_label = tk.Label(
             main_container,
-            text="Botanik Bot v3",
+            text="Botanik Bot v3 - İlaç Takip",
             font=("Arial", 12, "bold"),
             bg=self.bg_color,
             fg="white"
@@ -662,11 +689,18 @@ class BotanikGUI:
         ayarlar_sekme = tk.Frame(notebook, bg='#E8F5E9')
         notebook.add(ayarlar_sekme, text="  ⚙ Ayarlar  ")
 
+        # Depo Ekstre Karşılaştırma sekmesi
+        ekstre_sekme = tk.Frame(notebook, bg='#E3F2FD')
+        notebook.add(ekstre_sekme, text="  📊 Ekstre Karşılaştır  ")
+
         # Ana sekme içeriği
         self.create_main_tab(ana_sekme)
 
         # Ayarlar sekmesi içeriği
         self.create_settings_tab(ayarlar_sekme)
+
+        # Ekstre karşılaştırma sekmesi içeriği
+        self.create_ekstre_tab(ekstre_sekme)
 
     def create_main_tab(self, parent):
         """Ana sekme içeriğini oluştur"""
@@ -2874,6 +2908,29 @@ class BotanikGUI:
         except Exception as e:
             self.ayar_durum_label.config(text=f"❌ Hata: {e}", fg='#C62828')
 
+    def ana_sayfaya_don(self):
+        """Ana sayfaya (ana menüye) dön"""
+        from tkinter import messagebox
+
+        # Eğer işlem devam ediyorsa uyar
+        if self.is_running:
+            cevap = messagebox.askyesno(
+                "İşlem Devam Ediyor",
+                "Şu anda bir işlem devam ediyor. Durdurup ana sayfaya dönmek istiyor musunuz?"
+            )
+            if not cevap:
+                return
+            # İşlemi durdur
+            self.stop_requested = True
+            self.is_running = False
+
+        # Pencereyi kapat ve callback'i çağır
+        if self.ana_menu_callback:
+            self.root.destroy()
+            self.ana_menu_callback()
+        else:
+            self.root.destroy()
+
     def istatistikleri_sifirla(self):
         """Tüm istatistikleri sıfırla"""
         from tkinter import messagebox
@@ -4191,6 +4248,1912 @@ Tüm reçeteler başarıyla işlendi!
 
         self.stats_timer_running = False
         self.root.destroy()
+
+    # ==================== DEPO EKSTRE KARŞILAŞTIRMA SEKMESİ ====================
+
+    def create_ekstre_tab(self, parent):
+        """Depo Ekstre Karşılaştırma sekmesi - dosya seçim arayüzü"""
+        main_frame = tk.Frame(parent, bg='#E3F2FD', padx=10, pady=10)
+        main_frame.pack(fill="both", expand=True)
+
+        # Başlık
+        title = tk.Label(
+            main_frame,
+            text="📊 Depo Ekstre Karşılaştırma",
+            font=("Arial", 14, "bold"),
+            bg='#E3F2FD',
+            fg='#1565C0'
+        )
+        title.pack(pady=(5, 2))
+
+        subtitle = tk.Label(
+            main_frame,
+            text="Depo ekstresi ile Eczane otomasyonunu karşılaştırın",
+            font=("Arial", 9),
+            bg='#E3F2FD',
+            fg='#1976D2'
+        )
+        subtitle.pack(pady=(0, 15))
+
+        # Dosya seçim alanları - yan yana
+        files_frame = tk.Frame(main_frame, bg='#E3F2FD')
+        files_frame.pack(fill="x", pady=5)
+        files_frame.columnconfigure(0, weight=1)
+        files_frame.columnconfigure(1, weight=1)
+
+        # Dosya 1 - DEPO EKSTRESİ (Sol)
+        self.ekstre_dosya1_path = tk.StringVar(value="")
+        file1_frame = tk.LabelFrame(
+            files_frame,
+            text="📁 DEPO EKSTRESİ",
+            font=("Arial", 10, "bold"),
+            bg='#BBDEFB',
+            fg='#0D47A1',
+            padx=10,
+            pady=10
+        )
+        file1_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5), pady=5)
+
+        self.drop_area1 = tk.Label(
+            file1_frame,
+            text="📥 Depo Excel dosyasını\nburaya sürükleyin\nveya tıklayarak seçin",
+            font=("Arial", 10),
+            bg='#E3F2FD',
+            fg='#1565C0',
+            relief="groove",
+            bd=2,
+            height=4,
+            cursor="hand2"
+        )
+        self.drop_area1.pack(fill="x", pady=5)
+        self.drop_area1.bind("<Button-1>", lambda e: self.ekstre_dosya_sec(1))
+
+        self.file1_label = tk.Label(
+            file1_frame,
+            textvariable=self.ekstre_dosya1_path,
+            font=("Arial", 8),
+            bg='#BBDEFB',
+            fg='#0D47A1',
+            wraplength=250
+        )
+        self.file1_label.pack(fill="x")
+
+        # Dosya 2 - ECZANE OTOMASYONU (Sağ)
+        self.ekstre_dosya2_path = tk.StringVar(value="")
+        file2_frame = tk.LabelFrame(
+            files_frame,
+            text="📁 ECZANE OTOMASYONU",
+            font=("Arial", 10, "bold"),
+            bg='#BBDEFB',
+            fg='#0D47A1',
+            padx=10,
+            pady=10
+        )
+        file2_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0), pady=5)
+
+        self.drop_area2 = tk.Label(
+            file2_frame,
+            text="📥 Eczane Excel dosyasını\nburaya sürükleyin\nveya tıklayarak seçin",
+            font=("Arial", 10),
+            bg='#E3F2FD',
+            fg='#1565C0',
+            relief="groove",
+            bd=2,
+            height=4,
+            cursor="hand2"
+        )
+        self.drop_area2.pack(fill="x", pady=5)
+        self.drop_area2.bind("<Button-1>", lambda e: self.ekstre_dosya_sec(2))
+
+        self.file2_label = tk.Label(
+            file2_frame,
+            textvariable=self.ekstre_dosya2_path,
+            font=("Arial", 8),
+            bg='#BBDEFB',
+            fg='#0D47A1',
+            wraplength=250
+        )
+        self.file2_label.pack(fill="x")
+
+        # Filtre ayarlarını yükle
+        self.ekstre_filtreler = self._ekstre_filtre_yukle()
+
+        # Butonlar ana frame
+        button_main_frame = tk.Frame(main_frame, bg='#E3F2FD')
+        button_main_frame.pack(fill="x", pady=15)
+
+        # Butonları ortalamak için iç frame
+        button_center_frame = tk.Frame(button_main_frame, bg='#E3F2FD')
+        button_center_frame.pack(expand=True)
+
+        # Karşılaştır butonu (büyük, ortada)
+        self.karsilastir_btn = tk.Button(
+            button_center_frame,
+            text="🔍 KARŞILAŞTIR",
+            font=("Arial", 14, "bold"),
+            bg='#1976D2',
+            fg='white',
+            width=20,
+            height=2,
+            cursor="hand2",
+            activebackground='#1565C0',
+            activeforeground='white',
+            relief="raised",
+            bd=3,
+            command=self.ekstre_karsilastir_pencere_ac
+        )
+        self.karsilastir_btn.pack(side="left", padx=10)
+
+        # Ayarlar butonu (yanında, küçük)
+        self.ekstre_ayarlar_btn = tk.Button(
+            button_center_frame,
+            text="⚙️ Filtre\nAyarları",
+            font=("Arial", 10, "bold"),
+            bg='#FF9800',
+            fg='white',
+            width=10,
+            height=2,
+            cursor="hand2",
+            activebackground='#F57C00',
+            activeforeground='white',
+            relief="raised",
+            bd=2,
+            command=self.ekstre_filtre_ayarlari_ac
+        )
+        self.ekstre_ayarlar_btn.pack(side="left", padx=10)
+
+        # Aktif filtre bilgisi göster
+        self._ekstre_filtre_bilgi_label = tk.Label(
+            button_main_frame,
+            text="",
+            font=("Arial", 9),
+            bg='#E3F2FD',
+            fg='#E65100'
+        )
+        self._ekstre_filtre_bilgi_label.pack(pady=(5, 0))
+        self._ekstre_filtre_bilgi_guncelle()
+
+        # Renk açıklamaları
+        legend_frame = tk.LabelFrame(
+            main_frame,
+            text="🎨 Renk Kodları",
+            font=("Arial", 9, "bold"),
+            bg='#E3F2FD',
+            fg='#1565C0',
+            padx=10,
+            pady=5
+        )
+        legend_frame.pack(fill="x", pady=10)
+
+        legends = [
+            ("🟢 YEŞİL", "Fatura No + Tutar eşleşiyor", "#C8E6C9"),
+            ("🟡 SARI", "Tutar eşleşiyor, Fatura No eşleşmiyor", "#FFF9C4"),
+            ("🟠 TURUNCU", "Fatura No eşleşiyor, Tutar eşleşmiyor", "#FFE0B2"),
+            ("🔴 KIRMIZI", "İkisi de eşleşmiyor", "#FFCDD2"),
+        ]
+
+        for text, desc, color in legends:
+            row = tk.Frame(legend_frame, bg='#E3F2FD')
+            row.pack(fill="x", pady=2)
+            tk.Label(row, text=text, font=("Arial", 9, "bold"), bg=color, width=12).pack(side="left", padx=5)
+            tk.Label(row, text=desc, font=("Arial", 8), bg='#E3F2FD', fg='#333').pack(side="left", padx=5)
+
+        # Sürükle-bırak desteği - ana pencereye bağla
+        self.root.after(100, self._setup_drag_drop)
+
+    def _ekstre_filtre_bilgi_guncelle(self):
+        """Aktif filtre sayısını göster"""
+        if not hasattr(self, '_ekstre_filtre_bilgi_label'):
+            return
+        depo_sayisi = sum(len(v) for v in self.ekstre_filtreler.get('depo', {}).values())
+        eczane_sayisi = sum(len(v) for v in self.ekstre_filtreler.get('eczane', {}).values())
+
+        if depo_sayisi > 0 or eczane_sayisi > 0:
+            text = f"⚠️ Aktif filtre: Depo({depo_sayisi}) | Eczane({eczane_sayisi})"
+            self._ekstre_filtre_bilgi_label.config(text=text, fg='#E65100')
+        else:
+            self._ekstre_filtre_bilgi_label.config(text="✓ Filtre yok - tüm satırlar dahil", fg='#388E3C')
+
+    def _ekstre_filtre_yukle(self):
+        """Kaydedilmiş filtre ayarlarını yükle"""
+        import json
+        import os
+        filtre_dosya = os.path.join(os.path.dirname(__file__), 'ekstre_filtre_ayarlari.json')
+        varsayilan = {
+            'depo': {},      # {'sutun_adi': ['deger1', 'deger2']}
+            'eczane': {},
+            'hatirla': True
+        }
+        try:
+            if os.path.exists(filtre_dosya):
+                with open(filtre_dosya, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.error(f"Filtre ayarları yüklenemedi: {e}")
+        return varsayilan
+
+    def _ekstre_filtre_kaydet(self):
+        """Filtre ayarlarını kaydet"""
+        import json
+        import os
+        filtre_dosya = os.path.join(os.path.dirname(__file__), 'ekstre_filtre_ayarlari.json')
+        try:
+            with open(filtre_dosya, 'w', encoding='utf-8') as f:
+                json.dump(self.ekstre_filtreler, f, ensure_ascii=False, indent=2)
+            logger.info("Filtre ayarları kaydedildi")
+        except Exception as e:
+            logger.error(f"Filtre ayarları kaydedilemedi: {e}")
+
+    def ekstre_filtre_ayarlari_ac(self):
+        """Filtre ayarları penceresini aç"""
+        import pandas as pd
+
+        # Dosyaları kontrol et
+        dosya1 = self.ekstre_dosya1_path.get()
+        dosya2 = self.ekstre_dosya2_path.get()
+
+        if not dosya1 and not dosya2:
+            messagebox.showinfo("Bilgi", "Önce en az bir Excel dosyası yükleyin.\nBöylece sütunları ve değerleri görebilirsiniz.")
+            return
+
+        # Ayarlar penceresi
+        ayar_pencere = tk.Toplevel(self.root)
+        ayar_pencere.title("⚙️ Ekstre Filtre Ayarları")
+        ayar_pencere.geometry("800x600")
+        ayar_pencere.configure(bg='#ECEFF1')
+        ayar_pencere.transient(self.root)
+        ayar_pencere.grab_set()
+
+        # Pencereyi ortala
+        ayar_pencere.update_idletasks()
+        x = (ayar_pencere.winfo_screenwidth() - 800) // 2
+        y = (ayar_pencere.winfo_screenheight() - 600) // 2
+        ayar_pencere.geometry(f"800x600+{x}+{y}")
+
+        # Ana frame
+        main_frame = tk.Frame(ayar_pencere, bg='#ECEFF1')
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Başlık
+        tk.Label(
+            main_frame,
+            text="⚙️ Satır Filtreleme Ayarları",
+            font=("Arial", 14, "bold"),
+            bg='#ECEFF1',
+            fg='#1565C0'
+        ).pack(pady=(0, 5))
+
+        tk.Label(
+            main_frame,
+            text="İşaretlenen değerlere sahip satırlar karşılaştırmada dikkate alınmayacak",
+            font=("Arial", 9),
+            bg='#ECEFF1',
+            fg='#666'
+        ).pack(pady=(0, 10))
+
+        # Notebook (sekmeli panel)
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill="both", expand=True, pady=5)
+
+        # Checkbox değişkenleri saklamak için
+        self._filtre_checkboxes = {'depo': {}, 'eczane': {}}
+
+        # DEPO sekmesi
+        if dosya1:
+            depo_frame = tk.Frame(notebook, bg='#E3F2FD')
+            notebook.add(depo_frame, text="📦 DEPO EKSTRESİ")
+            self._filtre_sekme_olustur(depo_frame, dosya1, 'depo')
+
+        # ECZANE sekmesi
+        if dosya2:
+            eczane_frame = tk.Frame(notebook, bg='#E8F5E9')
+            notebook.add(eczane_frame, text="🏪 ECZANE OTOMASYONU")
+            self._filtre_sekme_olustur(eczane_frame, dosya2, 'eczane')
+
+        # Alt butonlar
+        btn_frame = tk.Frame(main_frame, bg='#ECEFF1')
+        btn_frame.pack(fill="x", pady=10)
+
+        # Hatırla checkbox
+        self._hatirla_var = tk.BooleanVar(value=self.ekstre_filtreler.get('hatirla', True))
+        tk.Checkbutton(
+            btn_frame,
+            text="Ayarları hatırla",
+            variable=self._hatirla_var,
+            bg='#ECEFF1',
+            font=("Arial", 10)
+        ).pack(side="left", padx=10)
+
+        # Kaydet butonu
+        tk.Button(
+            btn_frame,
+            text="💾 Kaydet ve Kapat",
+            font=("Arial", 11, "bold"),
+            bg='#4CAF50',
+            fg='white',
+            width=18,
+            cursor="hand2",
+            command=lambda: self._filtre_kaydet_ve_kapat(ayar_pencere)
+        ).pack(side="right", padx=5)
+
+        # İptal butonu
+        tk.Button(
+            btn_frame,
+            text="❌ İptal",
+            font=("Arial", 10),
+            bg='#f44336',
+            fg='white',
+            width=10,
+            cursor="hand2",
+            command=ayar_pencere.destroy
+        ).pack(side="right", padx=5)
+
+        # Tümünü Temizle butonu
+        tk.Button(
+            btn_frame,
+            text="🗑️ Tümünü Temizle",
+            font=("Arial", 10),
+            bg='#FF9800',
+            fg='white',
+            width=14,
+            cursor="hand2",
+            command=self._filtre_tumunu_temizle
+        ).pack(side="right", padx=5)
+
+    def _filtre_sekme_olustur(self, parent, dosya_yolu, kaynak):
+        """Bir Excel dosyası için filtre sekmesi oluştur"""
+        import pandas as pd
+
+        try:
+            df = pd.read_excel(dosya_yolu)
+        except Exception as e:
+            tk.Label(parent, text=f"Dosya okunamadı: {e}", bg='#FFCDD2').pack(pady=20)
+            return
+
+        # Canvas ve scrollbar
+        canvas = tk.Canvas(parent, bg=parent.cget('bg'), highlightthickness=0)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        scroll_frame = tk.Frame(canvas, bg=parent.cget('bg'))
+
+        scroll_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Mouse wheel scroll
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        # Her sütun için
+        mevcut_filtreler = self.ekstre_filtreler.get(kaynak, {})
+
+        for col in df.columns:
+            # Benzersiz değerleri al (NaN hariç)
+            benzersiz = df[col].dropna().astype(str).unique()
+            benzersiz = sorted([v for v in benzersiz if v and v != 'nan'])
+
+            if len(benzersiz) == 0 or len(benzersiz) > 50:  # Çok fazla değer varsa atla
+                continue
+
+            # Sütun frame
+            col_frame = tk.LabelFrame(
+                scroll_frame,
+                text=f"📋 {col} ({len(benzersiz)} değer)",
+                font=("Arial", 10, "bold"),
+                bg=parent.cget('bg'),
+                padx=5,
+                pady=5
+            )
+            col_frame.pack(fill="x", padx=5, pady=5)
+
+            # Checkbox'ları oluştur
+            self._filtre_checkboxes[kaynak][col] = {}
+            secili_degerler = mevcut_filtreler.get(col, [])
+
+            # Her satırda 4 değer göster
+            row_frame = None
+            for i, deger in enumerate(benzersiz):
+                if i % 4 == 0:
+                    row_frame = tk.Frame(col_frame, bg=parent.cget('bg'))
+                    row_frame.pack(fill="x", pady=1)
+
+                var = tk.BooleanVar(value=(deger in secili_degerler))
+                self._filtre_checkboxes[kaynak][col][deger] = var
+
+                cb = tk.Checkbutton(
+                    row_frame,
+                    text=deger[:25] + "..." if len(deger) > 25 else deger,
+                    variable=var,
+                    bg=parent.cget('bg'),
+                    font=("Arial", 9),
+                    anchor="w",
+                    width=20
+                )
+                cb.pack(side="left", padx=2)
+
+    def _filtre_kaydet_ve_kapat(self, pencere):
+        """Filtre ayarlarını kaydet ve pencereyi kapat"""
+        # Checkbox değerlerini topla
+        for kaynak in ['depo', 'eczane']:
+            self.ekstre_filtreler[kaynak] = {}
+            if kaynak in self._filtre_checkboxes:
+                for col, degerler in self._filtre_checkboxes[kaynak].items():
+                    secili = [d for d, var in degerler.items() if var.get()]
+                    if secili:
+                        self.ekstre_filtreler[kaynak][col] = secili
+
+        self.ekstre_filtreler['hatirla'] = self._hatirla_var.get()
+
+        # Kaydet
+        if self._hatirla_var.get():
+            self._ekstre_filtre_kaydet()
+
+        # Özet göster
+        depo_filtre_sayisi = sum(len(v) for v in self.ekstre_filtreler.get('depo', {}).values())
+        eczane_filtre_sayisi = sum(len(v) for v in self.ekstre_filtreler.get('eczane', {}).values())
+
+        if depo_filtre_sayisi > 0 or eczane_filtre_sayisi > 0:
+            messagebox.showinfo(
+                "Filtreler Kaydedildi",
+                f"Depo: {depo_filtre_sayisi} değer filtrelenecek\n"
+                f"Eczane: {eczane_filtre_sayisi} değer filtrelenecek"
+            )
+
+        # Ana penceredeki filtre bilgisini güncelle
+        self._ekstre_filtre_bilgi_guncelle()
+
+        pencere.destroy()
+
+    def _filtre_tumunu_temizle(self):
+        """Tüm filtreleri temizle"""
+        for kaynak in ['depo', 'eczane']:
+            if kaynak in self._filtre_checkboxes:
+                for col, degerler in self._filtre_checkboxes[kaynak].items():
+                    for var in degerler.values():
+                        var.set(False)
+
+    def _setup_drag_drop(self):
+        """Sürükle-bırak desteğini ayarla - ana pencereye hook"""
+        try:
+            import windnd
+
+            def handle_drop(files):
+                """Ana pencereye bırakılan dosyaları işle"""
+                if not files:
+                    return
+                try:
+                    # Türkçe karakterler için farklı encoding'ler dene
+                    raw = files[0]
+                    if isinstance(raw, bytes):
+                        # Önce cp1254 (Türkçe Windows), sonra diğerleri
+                        for encoding in ['cp1254', 'utf-8', 'latin-1', 'cp1252']:
+                            try:
+                                file_path = raw.decode(encoding)
+                                break
+                            except UnicodeDecodeError:
+                                continue
+                        else:
+                            file_path = raw.decode('utf-8', errors='replace')
+                    else:
+                        file_path = raw
+                    logger.info(f"Dosya bırakıldı: {file_path}")
+
+                    if not file_path.lower().endswith(('.xlsx', '.xls')):
+                        messagebox.showwarning("Uyarı", "Lütfen Excel dosyası (.xlsx, .xls) seçin!")
+                        return
+
+                    # Hangi alana yüklenecek? Boş olana veya ilkine
+                    if not self.ekstre_dosya1_path.get():
+                        self.ekstre_dosya1_path.set(file_path)
+                        self.drop_area1.config(text="✅ Dosya yüklendi", bg='#C8E6C9')
+                        logger.info("Dosya Depo alanına yüklendi")
+                    elif not self.ekstre_dosya2_path.get():
+                        self.ekstre_dosya2_path.set(file_path)
+                        self.drop_area2.config(text="✅ Dosya yüklendi", bg='#C8E6C9')
+                        logger.info("Dosya Eczane alanına yüklendi")
+                    else:
+                        # İkisi de dolu, kullanıcıya sor
+                        secim = messagebox.askyesnocancel(
+                            "Dosya Seçimi",
+                            f"Hangi alana yüklensin?\n\nEvet = Depo Exceli\nHayır = Eczane Exceli\nİptal = Vazgeç"
+                        )
+                        if secim is True:
+                            self.ekstre_dosya1_path.set(file_path)
+                            self.drop_area1.config(text="✅ Dosya yüklendi", bg='#C8E6C9')
+                        elif secim is False:
+                            self.ekstre_dosya2_path.set(file_path)
+                            self.drop_area2.config(text="✅ Dosya yüklendi", bg='#C8E6C9')
+                except Exception as e:
+                    logger.error(f"Drop hatası: {e}")
+
+            # Ana pencereye (root) hook - tüm pencere alanında çalışır
+            windnd.hook_dropfiles(self.root, func=handle_drop)
+            logger.info("Sürükle-bırak desteği aktif (windnd - root window)")
+        except ImportError:
+            logger.info("windnd bulunamadı - sürükle-bırak için tıklama kullanılacak")
+        except Exception as e:
+            logger.error(f"Sürükle-bırak kurulumu hatası: {e}")
+
+    def ekstre_dosya_sec(self, dosya_no):
+        """Dosya seçme dialogu aç"""
+        dosya_yolu = filedialog.askopenfilename(
+            title=f"{'Depo Ekstresi' if dosya_no == 1 else 'Eczane Otomasyonu'} Seçin",
+            filetypes=[
+                ("Excel Dosyaları", "*.xlsx *.xls"),
+                ("Tüm Dosyalar", "*.*")
+            ]
+        )
+        if dosya_yolu:
+            if dosya_no == 1:
+                self.ekstre_dosya1_path.set(dosya_yolu)
+                self.drop_area1.config(text="✅ Dosya yüklendi", bg='#C8E6C9')
+            else:
+                self.ekstre_dosya2_path.set(dosya_yolu)
+                self.drop_area2.config(text="✅ Dosya yüklendi", bg='#C8E6C9')
+
+    def ekstre_karsilastir_pencere_ac(self):
+        """Büyük karşılaştırma penceresini aç"""
+        import pandas as pd
+
+        dosya1 = self.ekstre_dosya1_path.get()  # Depo
+        dosya2 = self.ekstre_dosya2_path.get()  # Eczane
+
+        if not dosya1 or not dosya2:
+            messagebox.showwarning("Uyarı", "Lütfen her iki Excel dosyasını da seçin!")
+            return
+
+        try:
+            # Excel dosyalarını oku
+            df_depo = pd.read_excel(dosya1)
+            df_eczane = pd.read_excel(dosya2)
+
+            # Büyük pencere aç
+            self._ekstre_sonuc_penceresi_olustur(df_depo, df_eczane, dosya1, dosya2)
+
+        except PermissionError as e:
+            dosya_adi = dosya1 if 'DEPO' in str(e).upper() else dosya2
+            dosya_adi = dosya_adi.split('\\')[-1] if '\\' in dosya_adi else dosya_adi.split('/')[-1]
+            messagebox.showerror(
+                "Dosya Erişim Hatası",
+                f"❌ Dosya okunamıyor: {dosya_adi}\n\n"
+                f"Muhtemel sebepler:\n"
+                f"• Dosya şu anda Excel'de açık durumda\n"
+                f"• Dosya başka bir program tarafından kullanılıyor\n"
+                f"• Dosya salt okunur (read-only) olabilir\n\n"
+                f"✅ Çözüm:\n"
+                f"• Excel dosyasını kapatın\n"
+                f"• Dosyanın başka bir programda açık olmadığından emin olun\n"
+                f"• Tekrar deneyin"
+            )
+            logger.error(f"Ekstre dosya erişim hatası: {e}")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Dosya okuma hatası: {str(e)}")
+            logger.error(f"Ekstre dosya okuma hatası: {e}")
+
+    def _ekstre_sonuc_penceresi_olustur(self, df_depo, df_eczane, dosya1_yol, dosya2_yol):
+        """Büyük karşılaştırma sonuç penceresi"""
+        import pandas as pd
+
+        # Yeni pencere oluştur - Optimize edilmiş boyut
+        pencere = tk.Toplevel(self.root)
+        pencere.title("📊 Depo Ekstre Karşılaştırma Sonuçları")
+        pencere.configure(bg='#ECEFF1')
+
+        # Optimal boyut ayarla (bilgileri sığdıracak kadar büyük ama gereksiz değil)
+        window_width = 1000
+        window_height = 800
+
+        # Ekran merkezine konumlandır
+        screen_width = pencere.winfo_screenwidth()
+        screen_height = pencere.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+
+        pencere.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        pencere.minsize(950, 700)  # Minimum boyut belirle
+
+        # Sütun eşleştirmeleri
+        # Depo: Evrak No, Borc, Alacak
+        # Eczane: Fatura No, Fatura Tutarı, İade/Çık Tut
+
+        # Sütunları bul - genişletilmiş arama listeleri
+        depo_fatura_col = self._bul_sutun(df_depo, [
+            'Evrak No', 'EvrakNo', 'EVRAK NO', 'Fatura No', 'FaturaNo', 'FATURA NO',
+            'Belge No', 'BelgeNo', 'BELGE NO', 'Fiş No', 'FişNo', 'FİŞ NO'
+        ])
+        depo_borc_col = self._bul_sutun(df_depo, [
+            'Borc', 'Borç', 'BORC', 'BORÇ', 'Tutar', 'TUTAR',
+            'Borç Tutar', 'BorçTutar', 'BORÇ TUTAR', 'Toplam', 'TOPLAM',
+            'Fatura Tutarı', 'FaturaTutarı', 'FATURA TUTARI', 'Net Tutar', 'NET TUTAR'
+        ])
+        depo_alacak_col = self._bul_sutun(df_depo, [
+            'Alacak', 'ALACAK', 'Alacak Tutar', 'AlacakTutar', 'ALACAK TUTAR',
+            'İade', 'IADE', 'İade Tutar', 'İadeTutar', 'İADE TUTAR'
+        ])
+
+        eczane_fatura_col = self._bul_sutun(df_eczane, [
+            'Fatura No', 'FaturaNo', 'FATURA NO', 'Evrak No', 'EvrakNo', 'EVRAK NO',
+            'Belge No', 'BelgeNo', 'BELGE NO', 'Fiş No', 'FişNo', 'FİŞ NO'
+        ])
+        eczane_borc_col = self._bul_sutun(df_eczane, [
+            'Fatura Tutarı', 'FaturaTutarı', 'FATURA TUTARI', 'Fatura Tutar',
+            'Tutar', 'TUTAR', 'Borç', 'Borc', 'BORÇ', 'BORC',
+            'Toplam', 'TOPLAM', 'Net Tutar', 'NET TUTAR', 'Toplam Tutar', 'TOPLAM TUTAR'
+        ])
+        eczane_alacak_col = self._bul_sutun(df_eczane, [
+            'İade/Çık Tut', 'Iade/Cik Tut', 'İade Tutarı', 'İade/Çıkış Tut',
+            'İade', 'IADE', 'İade Tutar', 'İadeTutar', 'İADE TUTAR', 'Alacak', 'ALACAK'
+        ])
+
+        # Fatura tarihi sütunları
+        depo_tarih_col = self._bul_sutun(df_depo, [
+            'Tarih', 'TARİH', 'Fatura Tarihi', 'FaturaTarihi', 'FATURA TARİHİ',
+            'Evrak Tarihi', 'EvrakTarihi', 'EVRAK TARİHİ', 'İşlem Tarihi', 'İşlemTarihi'
+        ])
+        eczane_tarih_col = self._bul_sutun(df_eczane, [
+            'Tarih', 'TARİH', 'Fatura Tarihi', 'FaturaTarihi', 'FATURA TARİHİ',
+            'Evrak Tarihi', 'EvrakTarihi', 'EVRAK TARİHİ', 'İşlem Tarihi', 'İşlemTarihi'
+        ])
+
+        # Tip/Tür sütunları
+        depo_tip_col = self._bul_sutun(df_depo, [
+            'Tip', 'TİP', 'Tür', 'TÜR', 'İşlem Tipi', 'İşlemTipi', 'İŞLEM TİPİ',
+            'Fiş Tipi', 'FişTipi', 'FİŞ TİPİ', 'Evrak Tipi', 'EvrakTipi'
+        ])
+        eczane_tip_col = self._bul_sutun(df_eczane, [
+            'Tip', 'TİP', 'Tür', 'TÜR', 'İşlem Tipi', 'İşlemTipi', 'İŞLEM TİPİ',
+            'Fiş Tipi', 'FişTipi', 'FİŞ TİPİ', 'Evrak Tipi', 'EvrakTipi'
+        ])
+
+        # Debug: Sütun bilgilerini logla ve kullanıcıya göster
+        logger.info(f"DEPO Sütunları: {list(df_depo.columns)}")
+        logger.info(f"DEPO - Fatura: {depo_fatura_col}, Borç: {depo_borc_col}, Alacak: {depo_alacak_col}")
+        logger.info(f"ECZANE Sütunları: {list(df_eczane.columns)}")
+        logger.info(f"ECZANE - Fatura: {eczane_fatura_col}, Borç: {eczane_borc_col}, Alacak: {eczane_alacak_col}")
+
+        # Sütun eşleşme bilgisini göster
+        print("=" * 60)
+        print("DEPO SÜTUNLARI:", list(df_depo.columns))
+        print(f"  Fatura No -> {depo_fatura_col}")
+        print(f"  Borç/Tutar -> {depo_borc_col}")
+        print(f"  Alacak -> {depo_alacak_col}")
+        print("-" * 60)
+        print("ECZANE SÜTUNLARI:", list(df_eczane.columns))
+        print(f"  Fatura No -> {eczane_fatura_col}")
+        print(f"  Borç/Tutar -> {eczane_borc_col}")
+        print(f"  Alacak -> {eczane_alacak_col}")
+        print("=" * 60)
+
+        # Sütun bulunamadıysa kullanıcıya göster
+        hatalar = []
+        if not depo_fatura_col:
+            hatalar.append(f"DEPO'da Fatura No sütunu bulunamadı.\nMevcut sütunlar: {', '.join(df_depo.columns)}")
+        if not depo_borc_col:
+            hatalar.append(f"DEPO'da Borç/Tutar sütunu bulunamadı.\nMevcut sütunlar: {', '.join(df_depo.columns)}")
+        if not eczane_fatura_col:
+            hatalar.append(f"ECZANE'de Fatura No sütunu bulunamadı.\nMevcut sütunlar: {', '.join(df_eczane.columns)}")
+        if not eczane_borc_col:
+            hatalar.append(f"ECZANE'de Fatura Tutarı sütunu bulunamadı.\nMevcut sütunlar: {', '.join(df_eczane.columns)}")
+
+        if hatalar:
+            messagebox.showerror("Sütun Bulunamadı", "\n\n".join(hatalar))
+            if not depo_fatura_col or not eczane_fatura_col:
+                pencere.destroy()
+                return
+
+        # Filtre fonksiyonu
+        def satir_filtreli_mi(row, kaynak):
+            """Satırın filtrelenip filtrelenmeyeceğini kontrol et"""
+            filtreler = self.ekstre_filtreler.get(kaynak, {})
+            for col, degerler in filtreler.items():
+                if col in row.index:
+                    satir_degeri = str(row[col]).strip() if pd.notna(row[col]) else ""
+                    if satir_degeri in degerler:
+                        return True  # Bu satır filtrelenmeli
+            return False
+
+        # Filtrelenen satır sayısını say ve sakla
+        depo_filtreli = 0
+        eczane_filtreli = 0
+        filtrelenen_depo_satirlar = []
+        filtrelenen_eczane_satirlar = []
+
+        # Verileri hazırla
+        depo_data = {}
+        for _, row in df_depo.iterrows():
+            # Filtre kontrolü
+            if satir_filtreli_mi(row, 'depo'):
+                depo_filtreli += 1
+                # Filtrelenen satırı sakla
+                fatura = str(row[depo_fatura_col]).strip() if pd.notna(row[depo_fatura_col]) else ""
+                borc = float(row[depo_borc_col]) if depo_borc_col and pd.notna(row[depo_borc_col]) else 0
+                alacak = float(row[depo_alacak_col]) if depo_alacak_col and pd.notna(row[depo_alacak_col]) else 0
+                tarih = str(row[depo_tarih_col]).strip() if depo_tarih_col and pd.notna(row[depo_tarih_col]) else ""
+                tip = str(row[depo_tip_col]).strip() if depo_tip_col and pd.notna(row[depo_tip_col]) else ""
+                filtrelenen_depo_satirlar.append((fatura, {'borc': borc, 'alacak': alacak, 'tarih': tarih, 'tip': tip}))
+                continue  # Bu satırı atla
+
+            fatura = str(row[depo_fatura_col]).strip() if pd.notna(row[depo_fatura_col]) else ""
+            if fatura and fatura != 'nan':
+                borc = float(row[depo_borc_col]) if depo_borc_col and pd.notna(row[depo_borc_col]) else 0
+                alacak = float(row[depo_alacak_col]) if depo_alacak_col and pd.notna(row[depo_alacak_col]) else 0
+                tarih = str(row[depo_tarih_col]).strip() if depo_tarih_col and pd.notna(row[depo_tarih_col]) else ""
+                tip = str(row[depo_tip_col]).strip() if depo_tip_col and pd.notna(row[depo_tip_col]) else ""
+                depo_data[fatura] = {'borc': borc, 'alacak': alacak, 'tarih': tarih, 'tip': tip, 'row': row}
+
+        eczane_data = {}
+        for _, row in df_eczane.iterrows():
+            # Filtre kontrolü
+            if satir_filtreli_mi(row, 'eczane'):
+                eczane_filtreli += 1
+                # Filtrelenen satırı sakla
+                fatura = str(row[eczane_fatura_col]).strip() if pd.notna(row[eczane_fatura_col]) else ""
+                borc = float(row[eczane_borc_col]) if eczane_borc_col and pd.notna(row[eczane_borc_col]) else 0
+                alacak = float(row[eczane_alacak_col]) if eczane_alacak_col and pd.notna(row[eczane_alacak_col]) else 0
+                tarih = str(row[eczane_tarih_col]).strip() if eczane_tarih_col and pd.notna(row[eczane_tarih_col]) else ""
+                tip = str(row[eczane_tip_col]).strip() if eczane_tip_col and pd.notna(row[eczane_tip_col]) else ""
+                filtrelenen_eczane_satirlar.append((fatura, {'borc': borc, 'alacak': alacak, 'tarih': tarih, 'tip': tip}))
+                continue  # Bu satırı atla
+
+            fatura = str(row[eczane_fatura_col]).strip() if pd.notna(row[eczane_fatura_col]) else ""
+            if fatura and fatura != 'nan':
+                borc = float(row[eczane_borc_col]) if eczane_borc_col and pd.notna(row[eczane_borc_col]) else 0
+                alacak = float(row[eczane_alacak_col]) if eczane_alacak_col and pd.notna(row[eczane_alacak_col]) else 0
+                tarih = str(row[eczane_tarih_col]).strip() if eczane_tarih_col and pd.notna(row[eczane_tarih_col]) else ""
+                tip = str(row[eczane_tip_col]).strip() if eczane_tip_col and pd.notna(row[eczane_tip_col]) else ""
+                eczane_data[fatura] = {'borc': borc, 'alacak': alacak, 'tarih': tarih, 'tip': tip, 'row': row}
+
+        # Filtre bilgisini logla
+        if depo_filtreli > 0 or eczane_filtreli > 0:
+            logger.info(f"Filtre uygulandı - Depo: {depo_filtreli} satır, Eczane: {eczane_filtreli} satır atlandı")
+
+        # Karşılaştırma yap
+        tum_faturalar = set(depo_data.keys()) | set(eczane_data.keys())
+
+        # Renk kodlaması:
+        # YEŞİL: Fatura No + Tutar eşleşiyor
+        # SARI: Tutar eşleşiyor, Fatura No eşleşmiyor
+        # TURUNCU: Fatura No eşleşiyor, Tutar eşleşmiyor
+        # KIRMIZI: İkisi de eşleşmiyor
+
+        yesil_satirlar = []     # Fatura No + Tutar eşleşiyor
+        sari_satirlar = []      # Tutar eşleşiyor, Fatura No eşleşmiyor
+        turuncu_satirlar = []   # Fatura No eşleşiyor, Tutar eşleşmiyor
+        kirmizi_depo = []       # Depo'da var, hiçbir eşleşme yok
+        kirmizi_eczane = []     # Eczane'de var, hiçbir eşleşme yok
+
+        # Önce fatura numarası bazlı eşleştirme
+        eslesen_faturalar = set()
+        for fatura in tum_faturalar:
+            depo_kayit = depo_data.get(fatura)
+            eczane_kayit = eczane_data.get(fatura)
+
+            if depo_kayit and eczane_kayit:
+                # Fatura numarası eşleşiyor - tutarları karşılaştır
+                eslesen_faturalar.add(fatura)
+
+                # İşlem tipini belirle (BORÇ mu ALACAK mı)
+                depo_is_borc = abs(depo_kayit['borc']) > 0.01
+                eczane_is_borc = abs(eczane_kayit['borc']) > 0.01
+
+                # İşlem tipleri aynı olmalı (borç-borç veya alacak-alacak)
+                if depo_is_borc == eczane_is_borc:
+                    # Tutar hesapla
+                    depo_tutar = depo_kayit['borc'] if depo_is_borc else abs(depo_kayit['alacak'])
+                    eczane_tutar = eczane_kayit['borc'] if eczane_is_borc else abs(eczane_kayit['alacak'])
+                    tutar_esit = abs(depo_tutar - eczane_tutar) < 0.01
+
+                    if tutar_esit:
+                        # YEŞİL: Fatura No + Tutar eşleşiyor (aynı işlem tipi)
+                        yesil_satirlar.append((fatura, depo_kayit, eczane_kayit))
+                    else:
+                        # TURUNCU: Fatura No eşleşiyor, Tutar eşleşmiyor (aynı işlem tipi)
+                        turuncu_satirlar.append((fatura, depo_kayit, eczane_kayit))
+                else:
+                    # TURUNCU: Fatura No eşleşiyor, ama farklı işlem tipi (borç/alacak)
+                    turuncu_satirlar.append((fatura, depo_kayit, eczane_kayit))
+
+        # Eşleşmeyen kayıtlar için tutar bazlı eşleştirme dene
+        eslesmeyen_depo = {f: d for f, d in depo_data.items() if f not in eslesen_faturalar}
+        eslesmeyen_eczane = {f: d for f, d in eczane_data.items() if f not in eslesen_faturalar}
+
+        # Tutar bazlı eşleştirme
+        tutar_eslesen_depo = set()
+        tutar_eslesen_eczane = set()
+
+        # Tarih parse fonksiyonu
+        def parse_tarih(tarih_str):
+            """Tarih string'ini parse et, hata varsa çok eski bir tarih döndür"""
+            if not tarih_str or tarih_str == '' or tarih_str == 'nan':
+                return pd.Timestamp('1900-01-01')
+            try:
+                return pd.to_datetime(tarih_str)
+            except Exception as e:
+                return pd.Timestamp('1900-01-01')
+
+        for depo_fatura, depo_kayit in eslesmeyen_depo.items():
+            if depo_fatura in tutar_eslesen_depo:
+                continue  # Bu depo kaydı zaten eşleşti
+
+            # İşlem tipini belirle
+            depo_is_borc = abs(depo_kayit['borc']) > 0.01
+            depo_tutar = depo_kayit['borc'] if depo_is_borc else abs(depo_kayit['alacak'])
+            depo_tarih = parse_tarih(depo_kayit.get('tarih', ''))
+
+            # Bu depo kaydı için tüm uygun eczane adaylarını bul
+            adaylar = []
+            for eczane_fatura, eczane_kayit in eslesmeyen_eczane.items():
+                if eczane_fatura in tutar_eslesen_eczane:
+                    continue  # Bu eczane kaydı zaten eşleşti
+
+                # İşlem tiplerini belirle
+                eczane_is_borc = abs(eczane_kayit['borc']) > 0.01
+
+                # Sadece aynı işlem tipinde eşleştir (borç-borç veya alacak-alacak)
+                if depo_is_borc == eczane_is_borc:
+                    # Tutar hesapla
+                    eczane_tutar = eczane_kayit['borc'] if eczane_is_borc else abs(eczane_kayit['alacak'])
+
+                    # Tutarlar eşleşiyor mu?
+                    if abs(depo_tutar - eczane_tutar) < 0.01 and depo_tutar > 0:
+                        # Aday olarak ekle (tarih farkını hesapla)
+                        eczane_tarih = parse_tarih(eczane_kayit.get('tarih', ''))
+                        tarih_fark = abs((depo_tarih - eczane_tarih).days)
+                        adaylar.append((tarih_fark, eczane_fatura, eczane_kayit))
+
+            # En yakın tarihli adayı seç
+            if adaylar:
+                # Tarih farkına göre sırala, en küçük fark en başta
+                adaylar.sort(key=lambda x: x[0])
+                en_yakin_tarih_fark, en_yakin_fatura, en_yakin_kayit = adaylar[0]
+
+                # SARI: Tutar eşleşiyor, Fatura No eşleşmiyor (aynı işlem tipi, en yakın tarih)
+                sari_satirlar.append((depo_fatura, en_yakin_fatura, depo_kayit, en_yakin_kayit))
+                tutar_eslesen_depo.add(depo_fatura)
+                tutar_eslesen_eczane.add(en_yakin_fatura)
+
+        # Hiç eşleşmeyenler - KIRMIZI
+        for depo_fatura, depo_kayit in eslesmeyen_depo.items():
+            if depo_fatura not in tutar_eslesen_depo:
+                kirmizi_depo.append((depo_fatura, depo_kayit))
+
+        for eczane_fatura, eczane_kayit in eslesmeyen_eczane.items():
+            if eczane_fatura not in tutar_eslesen_eczane:
+                kirmizi_eczane.append((eczane_fatura, eczane_kayit))
+
+        # Ana frame
+        main_frame = tk.Frame(pencere, bg='#ECEFF1')
+        main_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Başlık
+        header_frame = tk.Frame(main_frame, bg='#ECEFF1')
+        header_frame.pack(fill="x", pady=(0, 5))
+
+        tk.Label(
+            header_frame,
+            text="📊 DEPO - ECZANE EKSTRE KARŞILAŞTIRMA",
+            font=("Arial", 14, "bold"),
+            bg='#ECEFF1',
+            fg='#1565C0'
+        ).pack()
+
+        # Borç bilgileri
+        borc_frame = tk.Frame(header_frame, bg='#ECEFF1')
+        borc_frame.pack(fill="x", pady=(5, 5))
+
+        # Depo'ya göre borç (Depo Excel) - Borç - Alacak
+        depo_toplam_borc = sum(kayit['borc'] for kayit in depo_data.values())
+        depo_toplam_alacak = sum(kayit['alacak'] for kayit in depo_data.values())
+        depo_net_borc = depo_toplam_borc - depo_toplam_alacak
+
+        depo_borc_frame = tk.Frame(borc_frame, bg='#E3F2FD', relief="raised", bd=1)
+        depo_borc_frame.pack(side="left", fill="both", expand=True, padx=3)
+
+        tk.Label(
+            depo_borc_frame,
+            text="📦 Depo Excel'e Göre - Depoya Ödenmesi Gereken",
+            font=("Arial", 9, "bold"),
+            bg='#E3F2FD',
+            fg='#01579B'
+        ).pack(pady=(3, 0))
+
+        tk.Label(
+            depo_borc_frame,
+            text=f"{depo_net_borc:,.2f} ₺",
+            font=("Arial", 12, "bold"),
+            bg='#E3F2FD',
+            fg='#01579B'
+        ).pack(pady=(0, 3))
+
+        # Eczane programına göre borç - Borç - Alacak
+        eczane_toplam_borc = sum(kayit['borc'] for kayit in eczane_data.values())
+        eczane_toplam_alacak = sum(kayit['alacak'] for kayit in eczane_data.values())
+        eczane_net_borc = eczane_toplam_borc - eczane_toplam_alacak
+
+        eczane_borc_frame = tk.Frame(borc_frame, bg='#E8F5E9', relief="raised", bd=1)
+        eczane_borc_frame.pack(side="left", fill="both", expand=True, padx=3)
+
+        tk.Label(
+            eczane_borc_frame,
+            text="🏥 Eczane Programına Göre - Depoya Ödenmesi Gereken",
+            font=("Arial", 9, "bold"),
+            bg='#E8F5E9',
+            fg='#1B5E20'
+        ).pack(pady=(3, 0))
+
+        tk.Label(
+            eczane_borc_frame,
+            text=f"{eczane_net_borc:,.2f} ₺",
+            font=("Arial", 12, "bold"),
+            bg='#E8F5E9',
+            fg='#1B5E20'
+        ).pack(pady=(0, 3))
+
+        # Filtre bilgisi göster
+        if depo_filtreli > 0 or eczane_filtreli > 0:
+            filtre_text = f"⚙️ Filtre uygulandı: Depo'dan {depo_filtreli}, Eczane'den {eczane_filtreli} satır atlandı"
+            tk.Label(
+                header_frame,
+                text=filtre_text,
+                font=("Arial", 9),
+                bg='#FFF3E0',
+                fg='#E65100',
+                padx=10,
+                pady=3
+            ).pack(pady=(5, 0))
+
+        # ===== SCROLLABLE CANVAS İÇİN CONTAINER =====
+        canvas_container = tk.Frame(main_frame, bg='#ECEFF1')
+        canvas_container.pack(fill="both", expand=True)
+
+        # Canvas ve scrollbar
+        canvas = tk.Canvas(canvas_container, bg='#ECEFF1', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(canvas_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg='#ECEFF1')
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Mouse wheel scrolling
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+        # ===== ACCORDION HELPER FUNCTION =====
+        def create_accordion_panel(parent, title, bg_color, fg_color, content_builder):
+            """Genişleyebilen panel oluştur"""
+            # Panel container
+            panel_frame = tk.Frame(parent, bg='#ECEFF1')
+            panel_frame.pack(fill="x", pady=2)
+
+            # Başlık (tıklanabilir)
+            header_frame = tk.Frame(panel_frame, bg=bg_color, cursor="hand2", relief="raised", bd=2)
+            header_frame.pack(fill="x")
+
+            # Açık/kapalı durumu için değişken
+            is_expanded = tk.BooleanVar(value=False)
+            arrow_label = tk.Label(header_frame, text="▶", bg=bg_color, fg=fg_color, font=("Arial", 12, "bold"))
+            arrow_label.pack(side="left", padx=5)
+
+            title_label = tk.Label(header_frame, text=title, bg=bg_color, fg=fg_color,
+                                  font=("Arial", 10, "bold"), anchor="w")
+            title_label.pack(side="left", fill="x", expand=True, padx=5, pady=5)
+
+            # İçerik frame (başlangıçta gizli)
+            content_frame = tk.Frame(panel_frame, bg=bg_color, relief="sunken", bd=2)
+
+            def toggle():
+                if is_expanded.get():
+                    # Kapat
+                    content_frame.pack_forget()
+                    arrow_label.config(text="▶")
+                    is_expanded.set(False)
+                else:
+                    # Aç
+                    content_frame.pack(fill="both", expand=True, padx=2, pady=2)
+                    arrow_label.config(text="▼")
+                    is_expanded.set(True)
+                    # İçeriği sadece ilk açılışta oluştur
+                    if not content_frame.winfo_children():
+                        content_builder(content_frame)
+
+            header_frame.bind("<Button-1>", lambda e: toggle())
+            arrow_label.bind("<Button-1>", lambda e: toggle())
+            title_label.bind("<Button-1>", lambda e: toggle())
+
+            return panel_frame
+
+        # ===== PANEL 1: TÜM KAYITLAR (KONSOLİDE GÖRÜNÜM) =====
+        def build_tum_kayitlar(content_frame):
+            """Tüm kayıtları konsolide görünüm olarak göster"""
+            # Toplamları hesapla
+            yesil_tutar = sum(d['borc'] for _, d, _ in yesil_satirlar)
+            sari_tutar = sum(d['borc'] for _, _, d, _ in sari_satirlar)
+            turuncu_depo_tutar = sum(d['borc'] for _, d, _ in turuncu_satirlar)
+            turuncu_eczane_tutar = sum(e['borc'] for _, _, e in turuncu_satirlar)
+            kirmizi_eczane_tutar = sum((k['borc'] if abs(k['borc']) > 0.01 else abs(k['alacak'])) for _, k in kirmizi_eczane)
+            kirmizi_depo_tutar = sum((k['borc'] if abs(k['borc']) > 0.01 else abs(k['alacak'])) for _, k in kirmizi_depo)
+
+            toplam_kayit = len(yesil_satirlar) + len(sari_satirlar) + len(turuncu_satirlar) + len(kirmizi_eczane) + len(kirmizi_depo)
+
+            # Bilgi label
+            info_label = tk.Label(
+                content_frame,
+                text=f"📋 Toplam {toplam_kayit} kayıt | 🟢 {len(yesil_satirlar)} | 🟡 {len(sari_satirlar)} | 🟠 {len(turuncu_satirlar)} | 🔴 {len(kirmizi_eczane) + len(kirmizi_depo)}",
+                bg='#E3F2FD',
+                font=("Arial", 10, "bold"),
+                fg='#1565C0',
+                padx=10,
+                pady=5
+            )
+            info_label.pack(fill="x", padx=0, pady=5)
+
+            # Treeview - 2 kolonlu (Depo | Eczane) + Tarih ve Tip
+            tree_container = tk.Frame(content_frame, bg='white')
+            tree_container.pack(fill="both", expand=True, padx=0, pady=5)
+
+            # Üst başlık - DEPO TARAFI / ECZANE TARAFI
+            header_frame = tk.Frame(tree_container, bg='white')
+            header_frame.pack(fill="x", side="top")
+
+            # DEPO TARAFI başlığı
+            depo_header = tk.Label(
+                header_frame,
+                text="📦 DEPO TARAFI",
+                font=("Arial", 10, "bold"),
+                bg='#B3E5FC',
+                fg='#01579B',
+                relief="raised",
+                bd=1,
+                padx=3,
+                pady=3
+            )
+            depo_header.pack(side="left", fill="both", expand=True)
+
+            # Ayırıcı
+            sep_header = tk.Label(
+                header_frame,
+                text="║",
+                font=("Arial", 11, "bold"),
+                bg='white',
+                width=2
+            )
+            sep_header.pack(side="left")
+
+            # ECZANE TARAFI başlığı
+            eczane_header = tk.Label(
+                header_frame,
+                text="🏥 ECZANE TARAFI",
+                font=("Arial", 10, "bold"),
+                bg='#C8E6C9',
+                fg='#1B5E20',
+                relief="raised",
+                bd=1,
+                padx=3,
+                pady=3
+            )
+            eczane_header.pack(side="left", fill="both", expand=True)
+
+            # Treeview frame
+            tree_frame = tk.Frame(tree_container, bg='white')
+            tree_frame.pack(fill="both", expand=True)
+
+            tree = ttk.Treeview(
+                tree_frame,
+                columns=("depo_fatura", "depo_tarih", "depo_tip", "depo_tutar", "sep", "eczane_fatura", "eczane_tarih", "eczane_tip", "eczane_tutar"),
+                show="headings",
+                height=15
+            )
+            tree.heading("depo_fatura", text="Fatura No")
+            tree.heading("depo_tarih", text="Tarih")
+            tree.heading("depo_tip", text="Tip")
+            tree.heading("depo_tutar", text="Tutar")
+            tree.heading("sep", text="║")
+            tree.heading("eczane_fatura", text="Fatura No")
+            tree.heading("eczane_tarih", text="Tarih")
+            tree.heading("eczane_tip", text="Tip")
+            tree.heading("eczane_tutar", text="Tutar")
+            tree.column("depo_fatura", width=140, minwidth=140, anchor="w", stretch=False)
+            tree.column("depo_tarih", width=100, minwidth=100, anchor="center", stretch=False)
+            tree.column("depo_tip", width=90, minwidth=90, anchor="center", stretch=False)
+            tree.column("depo_tutar", width=110, minwidth=110, anchor="e", stretch=False)
+            tree.column("sep", width=15, minwidth=15, anchor="center", stretch=False)
+            tree.column("eczane_fatura", width=140, minwidth=140, anchor="w", stretch=False)
+            tree.column("eczane_tarih", width=100, minwidth=100, anchor="center", stretch=False)
+            tree.column("eczane_tip", width=90, minwidth=90, anchor="center", stretch=False)
+            tree.column("eczane_tutar", width=150, minwidth=110, anchor="e", stretch=True)
+
+            tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=tree_scroll.set)
+            tree.pack(side="left", fill="both", expand=True)
+            tree_scroll.pack(side="right", fill="y")
+
+            # Yeşil satırlar - Tam eşleşme
+            for fatura, depo, eczane in yesil_satirlar:
+                tree.insert("", "end", values=(
+                    fatura, depo.get('tarih', ''), depo.get('tip', ''), f"{depo['borc']:,.2f} ₺",
+                    "║",
+                    fatura, eczane.get('tarih', ''), eczane.get('tip', ''), f"{eczane['borc']:,.2f} ₺"
+                ), tags=('yesil',))
+
+            # Sarı satırlar - Tutar eşleşiyor, fatura no eşleşmiyor
+            for depo_fatura, eczane_fatura, depo, eczane in sari_satirlar:
+                tree.insert("", "end", values=(
+                    depo_fatura, depo.get('tarih', ''), depo.get('tip', ''), f"{depo['borc']:,.2f} ₺",
+                    "║",
+                    eczane_fatura, eczane.get('tarih', ''), eczane.get('tip', ''), f"{eczane['borc']:,.2f} ₺"
+                ), tags=('sari', 'sari_fatura'))
+
+            # Turuncu satırlar - Fatura no eşleşiyor, tutar eşleşmiyor
+            for fatura, depo, eczane in turuncu_satirlar:
+                tree.insert("", "end", values=(
+                    fatura, depo.get('tarih', ''), depo.get('tip', ''), f"{depo['borc']:,.2f} ₺",
+                    "║",
+                    fatura, eczane.get('tarih', ''), eczane.get('tip', ''), f"{eczane['borc']:,.2f} ₺"
+                ), tags=('turuncu', 'turuncu_tutar'))
+
+            # Kırmızı satırlar - Eczane'de var, Depo'da yok
+            for fatura, kayit in kirmizi_eczane:
+                tutar = kayit['borc'] if abs(kayit['borc']) > 0.01 else abs(kayit['alacak'])
+                tree.insert("", "end", values=(
+                    "", "", "", "",
+                    "║",
+                    fatura, kayit.get('tarih', ''), kayit.get('tip', ''), f"{tutar:,.2f} ₺"
+                ), tags=('kirmizi',))
+
+            # Kırmızı satırlar - Depo'da var, Eczane'de yok
+            for fatura, kayit in kirmizi_depo:
+                tutar = kayit['borc'] if abs(kayit['borc']) > 0.01 else abs(kayit['alacak'])
+                tree.insert("", "end", values=(
+                    fatura, kayit.get('tarih', ''), kayit.get('tip', ''), f"{tutar:,.2f} ₺",
+                    "║",
+                    "", "", "", ""
+                ), tags=('kirmizi',))
+
+            # Renk yapılandırması
+            tree.tag_configure('yesil', background='#C8E6C9')
+            tree.tag_configure('sari', background='#FFF9C4')
+            tree.tag_configure('turuncu', background='#FFE0B2')
+            tree.tag_configure('kirmizi', background='#FFCDD2')
+
+        tum_kayitlar_count = len(yesil_satirlar) + len(sari_satirlar) + len(turuncu_satirlar) + len(kirmizi_eczane) + len(kirmizi_depo)
+        create_accordion_panel(
+            scrollable_frame,
+            f"📊 TÜM KAYITLAR - KONSOLİDE GÖRÜNÜM ({tum_kayitlar_count} kayıt)",
+            "#E3F2FD",
+            "#0D47A1",
+            build_tum_kayitlar
+        )
+
+        # ===== PANEL 2: YEŞİL (TAM EŞLEŞENLER) =====
+        def build_yesil_panel(content_frame):
+            tree_container = tk.Frame(content_frame, bg='#E8F5E9')
+            tree_container.pack(fill="both", expand=True, padx=0, pady=5)
+
+            # Üst başlık - DEPO TARAFI / ECZANE TARAFI
+            header_frame = tk.Frame(tree_container, bg='white')
+            header_frame.pack(fill="x", side="top")
+
+            # DEPO TARAFI başlığı
+            depo_header = tk.Label(
+                header_frame,
+                text="📦 DEPO TARAFI",
+                font=("Arial", 11, "bold"),
+                bg='#B3E5FC',  # Light blue
+                fg='#01579B',
+                relief="raised",
+                bd=2,
+                padx=5,
+                pady=5
+            )
+            depo_header.pack(side="left", fill="both", expand=True)
+
+            # Ayırıcı
+            sep_header = tk.Label(header_frame, text="║", font=("Arial", 10, "bold"), bg='white', width=2)
+            sep_header.pack(side="left")
+
+            # ECZANE TARAFI başlığı
+            eczane_header = tk.Label(
+                header_frame,
+                text="🏥 ECZANE TARAFI",
+                font=("Arial", 11, "bold"),
+                bg='#C8E6C9',  # Light green
+                fg='#1B5E20',
+                relief="raised",
+                bd=2,
+                padx=5,
+                pady=5
+            )
+            eczane_header.pack(side="left", fill="both", expand=True)
+
+            # Tree frame
+            tree_frame = tk.Frame(tree_container, bg='#E8F5E9')
+            tree_frame.pack(fill="both", expand=True)
+
+            tree = ttk.Treeview(
+                tree_frame,
+                columns=("depo_fatura", "depo_tarih", "depo_tip", "depo_tutar", "sep", "eczane_fatura", "eczane_tarih", "eczane_tip", "eczane_tutar"),
+                show="headings",
+                height=10
+            )
+            tree.heading("depo_fatura", text="Fatura No")
+            tree.heading("depo_tarih", text="Tarih")
+            tree.heading("depo_tip", text="Tip")
+            tree.heading("depo_tutar", text="Tutar")
+            tree.heading("sep", text="║")
+            tree.heading("eczane_fatura", text="Fatura No")
+            tree.heading("eczane_tarih", text="Tarih")
+            tree.heading("eczane_tip", text="Tip")
+            tree.heading("eczane_tutar", text="Tutar")
+
+            tree.column("depo_fatura", width=180, minwidth=180, anchor="center", stretch=False)
+            tree.column("depo_tarih", width=110, minwidth=110, anchor="center", stretch=False)
+            tree.column("depo_tip", width=110, minwidth=110, anchor="center", stretch=False)
+            tree.column("depo_tutar", width=130, minwidth=130, anchor="e", stretch=False)
+            tree.column("sep", width=15, minwidth=15, anchor="center", stretch=False)
+            tree.column("eczane_fatura", width=180, minwidth=180, anchor="center", stretch=False)
+            tree.column("eczane_tarih", width=110, minwidth=110, anchor="center", stretch=False)
+            tree.column("eczane_tip", width=110, minwidth=110, anchor="center", stretch=False)
+            tree.column("eczane_tutar", width=150, minwidth=130, anchor="e", stretch=True)
+
+            tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=tree_scroll.set)
+            tree.pack(side="left", fill="both", expand=True)
+            tree_scroll.pack(side="right", fill="y")
+
+            for fatura, depo, eczane in yesil_satirlar:
+                tree.insert("", "end", values=(
+                    fatura, depo.get('tarih', ''), depo.get('tip', ''), f"{depo['borc']:,.2f} ₺",
+                    "║",
+                    fatura, eczane.get('tarih', ''), eczane.get('tip', ''), f"{eczane['borc']:,.2f} ₺"
+                ), tags=('yesil',))
+            tree.tag_configure('yesil', background='#C8E6C9')
+
+        create_accordion_panel(
+            scrollable_frame,
+            f"🟢 TAM EŞLEŞENLER (Fatura No + Tutar) - {len(yesil_satirlar)} kayıt",
+            "#E8F5E9",
+            "#2E7D32",
+            build_yesil_panel
+        )
+
+        # ===== PANEL 3: SARI (TUTAR EŞLEŞENLER) =====
+        def build_sari_panel(content_frame):
+            tree_container = tk.Frame(content_frame, bg='#FFFDE7')
+            tree_container.pack(fill="both", expand=True, padx=0, pady=5)
+
+            # Üst başlık - DEPO TARAFI / ECZANE TARAFI
+            header_frame = tk.Frame(tree_container, bg='#FFFDE7')
+            header_frame.pack(fill="x", side="top")
+
+            depo_header = tk.Label(
+                header_frame,
+                text="📦 DEPO TARAFI",
+                font=("Arial", 10, "bold"),
+                bg='#B3E5FC',
+                fg='#01579B',
+                relief="raised",
+                bd=1,
+                padx=3,
+                pady=3
+            )
+            depo_header.pack(side="left", fill="both", expand=True)
+
+            sep_header = tk.Label(header_frame, text="║", font=("Arial", 11, "bold"), bg='#FFFDE7', width=2)
+            sep_header.pack(side="left")
+
+            eczane_header = tk.Label(
+                header_frame,
+                text="🏥 ECZANE TARAFI",
+                font=("Arial", 10, "bold"),
+                bg='#C8E6C9',
+                fg='#1B5E20',
+                relief="raised",
+                bd=1,
+                padx=3,
+                pady=3
+            )
+            eczane_header.pack(side="left", fill="both", expand=True)
+
+            # Treeview frame
+            tree_frame = tk.Frame(tree_container, bg='#FFFDE7')
+            tree_frame.pack(fill="both", expand=True)
+
+            tree = ttk.Treeview(
+                tree_frame,
+                columns=("depo_fatura", "depo_tarih", "depo_tip", "depo_tutar", "sep", "eczane_fatura", "eczane_tarih", "eczane_tip", "eczane_tutar"),
+                show="headings",
+                height=10
+            )
+            tree.heading("depo_fatura", text="Fatura No")
+            tree.heading("depo_tarih", text="Tarih")
+            tree.heading("depo_tip", text="Tip")
+            tree.heading("depo_tutar", text="Tutar")
+            tree.heading("sep", text="║")
+            tree.heading("eczane_fatura", text="Fatura No")
+            tree.heading("eczane_tarih", text="Tarih")
+            tree.heading("eczane_tip", text="Tip")
+            tree.heading("eczane_tutar", text="Tutar")
+            tree.column("depo_fatura", width=140, minwidth=140, anchor="w", stretch=False)
+            tree.column("depo_tarih", width=100, minwidth=100, anchor="center", stretch=False)
+            tree.column("depo_tip", width=90, minwidth=90, anchor="center", stretch=False)
+            tree.column("depo_tutar", width=110, minwidth=110, anchor="e", stretch=False)
+            tree.column("sep", width=15, minwidth=15, anchor="center", stretch=False)
+            tree.column("eczane_fatura", width=140, minwidth=140, anchor="w", stretch=False)
+            tree.column("eczane_tarih", width=100, minwidth=100, anchor="center", stretch=False)
+            tree.column("eczane_tip", width=90, minwidth=90, anchor="center", stretch=False)
+            tree.column("eczane_tutar", width=150, minwidth=110, anchor="e", stretch=True)
+
+            tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=tree_scroll.set)
+            tree.pack(side="left", fill="both", expand=True)
+            tree_scroll.pack(side="right", fill="y")
+
+            for depo_fatura, eczane_fatura, depo, eczane in sari_satirlar:
+                tree.insert("", "end", values=(
+                    depo_fatura,
+                    depo.get('tarih', ''),
+                    depo.get('tip', ''),
+                    f"{depo['borc']:,.2f} ₺",
+                    "║",
+                    eczane_fatura,
+                    eczane.get('tarih', ''),
+                    eczane.get('tip', ''),
+                    f"{eczane['borc']:,.2f} ₺"
+                ), tags=('sari',))
+            tree.tag_configure('sari', background='#FFF9C4')
+
+        create_accordion_panel(
+            scrollable_frame,
+            f"🟡 TUTAR EŞLEŞENLER (Fatura No Farklı) - {len(sari_satirlar)} kayıt",
+            "#FFFDE7",
+            "#F9A825",
+            build_sari_panel
+        )
+
+        # ===== PANEL 4: TURUNCU (FATURA NO EŞLEŞENLER) =====
+        def build_turuncu_panel(content_frame):
+            tree_container = tk.Frame(content_frame, bg='#FFF3E0')
+            tree_container.pack(fill="both", expand=True, padx=0, pady=5)
+
+            # Üst başlık - DEPO TARAFI / ECZANE TARAFI
+            header_frame = tk.Frame(tree_container, bg='#FFF3E0')
+            header_frame.pack(fill="x", side="top")
+
+            depo_header = tk.Label(
+                header_frame,
+                text="📦 DEPO TARAFI",
+                font=("Arial", 10, "bold"),
+                bg='#B3E5FC',
+                fg='#01579B',
+                relief="raised",
+                bd=1,
+                padx=3,
+                pady=3
+            )
+            depo_header.pack(side="left", fill="both", expand=True)
+
+            sep_header = tk.Label(header_frame, text="║", font=("Arial", 11, "bold"), bg='#FFF3E0', width=2)
+            sep_header.pack(side="left")
+
+            eczane_header = tk.Label(
+                header_frame,
+                text="🏥 ECZANE TARAFI",
+                font=("Arial", 10, "bold"),
+                bg='#C8E6C9',
+                fg='#1B5E20',
+                relief="raised",
+                bd=1,
+                padx=3,
+                pady=3
+            )
+            eczane_header.pack(side="left", fill="both", expand=True)
+
+            # Treeview frame
+            tree_frame = tk.Frame(tree_container, bg='#FFF3E0')
+            tree_frame.pack(fill="both", expand=True)
+
+            tree = ttk.Treeview(
+                tree_frame,
+                columns=("depo_fatura", "depo_tarih", "depo_tip", "depo_tutar", "sep", "eczane_fatura", "eczane_tarih", "eczane_tip", "eczane_tutar"),
+                show="headings",
+                height=10
+            )
+            tree.heading("depo_fatura", text="Fatura No")
+            tree.heading("depo_tarih", text="Tarih")
+            tree.heading("depo_tip", text="Tip")
+            tree.heading("depo_tutar", text="Tutar")
+            tree.heading("sep", text="║")
+            tree.heading("eczane_fatura", text="Fatura No")
+            tree.heading("eczane_tarih", text="Tarih")
+            tree.heading("eczane_tip", text="Tip")
+            tree.heading("eczane_tutar", text="Tutar")
+            tree.column("depo_fatura", width=140, minwidth=140, anchor="w", stretch=False)
+            tree.column("depo_tarih", width=100, minwidth=100, anchor="center", stretch=False)
+            tree.column("depo_tip", width=90, minwidth=90, anchor="center", stretch=False)
+            tree.column("depo_tutar", width=110, minwidth=110, anchor="e", stretch=False)
+            tree.column("sep", width=15, minwidth=15, anchor="center", stretch=False)
+            tree.column("eczane_fatura", width=140, minwidth=140, anchor="w", stretch=False)
+            tree.column("eczane_tarih", width=100, minwidth=100, anchor="center", stretch=False)
+            tree.column("eczane_tip", width=90, minwidth=90, anchor="center", stretch=False)
+            tree.column("eczane_tutar", width=150, minwidth=110, anchor="e", stretch=True)
+
+            tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=tree_scroll.set)
+            tree.pack(side="left", fill="both", expand=True)
+            tree_scroll.pack(side="right", fill="y")
+
+            for fatura, depo, eczane in turuncu_satirlar:
+                tree.insert("", "end", values=(
+                    fatura,
+                    depo.get('tarih', ''),
+                    depo.get('tip', ''),
+                    f"{depo['borc']:,.2f} ₺",
+                    "║",
+                    fatura,
+                    eczane.get('tarih', ''),
+                    eczane.get('tip', ''),
+                    f"{eczane['borc']:,.2f} ₺"
+                ), tags=('turuncu',))
+            tree.tag_configure('turuncu', background='#FFE0B2')
+
+        create_accordion_panel(
+            scrollable_frame,
+            f"🟠 FATURA NO EŞLEŞENLER (Tutar Farklı) - {len(turuncu_satirlar)} kayıt",
+            "#FFF3E0",
+            "#E65100",
+            build_turuncu_panel
+        )
+
+        # ===== PANEL 5: KIRMIZI (EŞLEŞMEYENLER) =====
+        def build_kirmizi_panel(content_frame):
+            # Konsolide yapı: Sol Depo, Sağ Eczane
+            tree_container = tk.Frame(content_frame, bg='#FFEBEE')
+            tree_container.pack(fill="both", expand=True, padx=0, pady=5)
+
+            # Üst başlık - DEPO TARAFI / ECZANE TARAFI
+            header_frame = tk.Frame(tree_container, bg='#FFEBEE')
+            header_frame.pack(fill="x", side="top")
+
+            depo_header = tk.Label(
+                header_frame,
+                text="📦 DEPO TARAFI",
+                font=("Arial", 10, "bold"),
+                bg='#B3E5FC',
+                fg='#01579B',
+                relief="raised",
+                bd=1,
+                padx=3,
+                pady=3
+            )
+            depo_header.pack(side="left", fill="both", expand=True)
+
+            sep_header = tk.Label(header_frame, text="║", font=("Arial", 11, "bold"), bg='#FFEBEE', width=2)
+            sep_header.pack(side="left")
+
+            eczane_header = tk.Label(
+                header_frame,
+                text="🏥 ECZANE TARAFI",
+                font=("Arial", 10, "bold"),
+                bg='#C8E6C9',
+                fg='#1B5E20',
+                relief="raised",
+                bd=1,
+                padx=3,
+                pady=3
+            )
+            eczane_header.pack(side="left", fill="both", expand=True)
+
+            # Treeview frame
+            tree_frame = tk.Frame(tree_container, bg='#FFEBEE')
+            tree_frame.pack(fill="both", expand=True)
+
+            tree = ttk.Treeview(
+                tree_frame,
+                columns=("depo_fatura", "depo_tarih", "depo_tip", "depo_tutar", "sep", "eczane_fatura", "eczane_tarih", "eczane_tip", "eczane_tutar"),
+                show="headings",
+                height=10
+            )
+            tree.heading("depo_fatura", text="Fatura No")
+            tree.heading("depo_tarih", text="Tarih")
+            tree.heading("depo_tip", text="Tip")
+            tree.heading("depo_tutar", text="Tutar")
+            tree.heading("sep", text="║")
+            tree.heading("eczane_fatura", text="Fatura No")
+            tree.heading("eczane_tarih", text="Tarih")
+            tree.heading("eczane_tip", text="Tip")
+            tree.heading("eczane_tutar", text="Tutar")
+            tree.column("depo_fatura", width=140, minwidth=140, anchor="w", stretch=False)
+            tree.column("depo_tarih", width=100, minwidth=100, anchor="center", stretch=False)
+            tree.column("depo_tip", width=90, minwidth=90, anchor="center", stretch=False)
+            tree.column("depo_tutar", width=110, minwidth=110, anchor="e", stretch=False)
+            tree.column("sep", width=15, minwidth=15, anchor="center", stretch=False)
+            tree.column("eczane_fatura", width=140, minwidth=140, anchor="w", stretch=False)
+            tree.column("eczane_tarih", width=100, minwidth=100, anchor="center", stretch=False)
+            tree.column("eczane_tip", width=90, minwidth=90, anchor="center", stretch=False)
+            tree.column("eczane_tutar", width=150, minwidth=110, anchor="e", stretch=True)
+
+            tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=tree_scroll.set)
+            tree.pack(side="left", fill="both", expand=True)
+            tree_scroll.pack(side="right", fill="y")
+
+            # Depo'da var, Eczane'de yok - sol tarafta göster
+            for fatura, kayit in kirmizi_depo:
+                tutar = kayit['borc'] if abs(kayit['borc']) > 0.01 else abs(kayit['alacak'])
+                tree.insert("", "end", values=(
+                    fatura,
+                    kayit.get('tarih', ''),
+                    kayit.get('tip', ''),
+                    f"{tutar:,.2f} ₺",
+                    "║",
+                    "", "", "", ""
+                ), tags=('kirmizi',))
+
+            # Eczane'de var, Depo'da yok - sağ tarafta göster
+            for fatura, kayit in kirmizi_eczane:
+                tutar = kayit['borc'] if abs(kayit['borc']) > 0.01 else abs(kayit['alacak'])
+                tree.insert("", "end", values=(
+                    "", "", "", "",
+                    "║",
+                    fatura,
+                    kayit.get('tarih', ''),
+                    kayit.get('tip', ''),
+                    f"{tutar:,.2f} ₺"
+                ), tags=('kirmizi',))
+
+            tree.tag_configure('kirmizi', background='#FFCDD2')
+
+        create_accordion_panel(
+            scrollable_frame,
+            f"🔴 EŞLEŞMEYENLER - {len(kirmizi_eczane) + len(kirmizi_depo)} kayıt (Eczane: {len(kirmizi_eczane)}, Depo: {len(kirmizi_depo)})",
+            "#FFEBEE",
+            "#C62828",
+            build_kirmizi_panel
+        )
+
+        # ===== TOPLAMLAR PANELİ =====
+        def build_toplam_panel(content_frame):
+            # Toplamları hesapla
+            yesil_tutar = sum(d['borc'] for _, d, _ in yesil_satirlar)
+            sari_tutar = sum(d['borc'] for _, _, d, _ in sari_satirlar)
+            turuncu_depo_tutar = sum(d['borc'] for _, d, _ in turuncu_satirlar)
+            turuncu_eczane_tutar = sum(e['borc'] for _, _, e in turuncu_satirlar)
+            kirmizi_eczane_tutar = sum((k['borc'] if abs(k['borc']) > 0.01 else abs(k['alacak'])) for _, k in kirmizi_eczane)
+            kirmizi_depo_tutar = sum((k['borc'] if abs(k['borc']) > 0.01 else abs(k['alacak'])) for _, k in kirmizi_depo)
+
+            tree_frame = tk.Frame(content_frame, bg='#E3F2FD')
+            tree_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+            tree = ttk.Treeview(
+                tree_frame,
+                columns=("kategori", "kayit", "tutar"),
+                show="headings",
+                height=6
+            )
+            tree.heading("kategori", text="Kategori")
+            tree.heading("kayit", text="Kayıt Sayısı")
+            tree.heading("tutar", text="Toplam Tutar")
+            tree.column("kategori", width=350)
+            tree.column("kayit", width=120, anchor="center")
+            tree.column("tutar", width=200, anchor="e")
+
+            # Yeşil toplam
+            tree.insert("", "end", values=(
+                "🟢 Fatura No + Tutar Eşleşiyor",
+                len(yesil_satirlar),
+                f"{yesil_tutar:,.2f} ₺"
+            ), tags=('yesil',))
+
+            # Sarı toplam
+            tree.insert("", "end", values=(
+                "🟡 Tutar Eşleşiyor - Fatura No Eşleşmiyor",
+                len(sari_satirlar),
+                f"{sari_tutar:,.2f} ₺"
+            ), tags=('sari',))
+
+            # Turuncu toplam
+            tree.insert("", "end", values=(
+                f"🟠 Fatura No Eşleşiyor - Tutar Eşleşmiyor (Fark: {turuncu_depo_tutar - turuncu_eczane_tutar:,.2f} ₺)",
+                len(turuncu_satirlar),
+                f"Depo: {turuncu_depo_tutar:,.2f} / Eczane: {turuncu_eczane_tutar:,.2f} ₺"
+            ), tags=('turuncu',))
+
+            # Kırmızı toplam - Eczane
+            tree.insert("", "end", values=(
+                "🔴 Eczane'de Var - Eşleşmiyor",
+                len(kirmizi_eczane),
+                f"{kirmizi_eczane_tutar:,.2f} ₺"
+            ), tags=('kirmizi',))
+
+            # Kırmızı toplam - Depo
+            tree.insert("", "end", values=(
+                "🔴 Depo'da Var - Eşleşmiyor",
+                len(kirmizi_depo),
+                f"{kirmizi_depo_tutar:,.2f} ₺"
+            ), tags=('kirmizi',))
+
+            tree.tag_configure('yesil', background='#C8E6C9')
+            tree.tag_configure('sari', background='#FFF9C4')
+            tree.tag_configure('turuncu', background='#FFE0B2')
+            tree.tag_configure('kirmizi', background='#FFCDD2')
+
+            tree.pack(fill="both", expand=True)
+
+        create_accordion_panel(
+            scrollable_frame,
+            "📊 TOPLAMLAR",
+            "#E3F2FD",
+            "#1565C0",
+            build_toplam_panel
+        )
+
+        # ===== PANEL 6: FİLTRELENEN SATIRLAR =====
+        def build_filtrelenen_panel(content_frame):
+            # Konsolide yapı: Sol Depo, Sağ Eczane
+            tree_container = tk.Frame(content_frame, bg='#F5F5F5')
+            tree_container.pack(fill="both", expand=True, padx=0, pady=5)
+
+            # Üst başlık - DEPO TARAFI / ECZANE TARAFI
+            header_frame = tk.Frame(tree_container, bg='white')
+            header_frame.pack(fill="x", side="top")
+
+            # DEPO TARAFI başlığı
+            depo_header = tk.Label(
+                header_frame,
+                text="📦 DEPO TARAFI",
+                font=("Arial", 10, "bold"),
+                bg='#B3E5FC',
+                fg='#01579B',
+                relief="raised",
+                bd=1,
+                padx=3,
+                pady=3
+            )
+            depo_header.pack(side="left", fill="both", expand=True)
+
+            # Ayırıcı
+            sep_header = tk.Label(header_frame, text="║", font=("Arial", 10, "bold"), bg='white', width=2)
+            sep_header.pack(side="left")
+
+            # ECZANE TARAFI başlığı
+            eczane_header = tk.Label(
+                header_frame,
+                text="🏥 ECZANE TARAFI",
+                font=("Arial", 10, "bold"),
+                bg='#C8E6C9',
+                fg='#1B5E20',
+                relief="raised",
+                bd=1,
+                padx=3,
+                pady=3
+            )
+            eczane_header.pack(side="left", fill="both", expand=True)
+
+            # Tree frame
+            tree_frame = tk.Frame(tree_container, bg='#F5F5F5')
+            tree_frame.pack(fill="both", expand=True)
+
+            tree = ttk.Treeview(
+                tree_frame,
+                columns=("depo_fatura", "depo_tarih", "depo_tip", "depo_tutar", "sep", "eczane_fatura", "eczane_tarih", "eczane_tip", "eczane_tutar"),
+                show="headings",
+                height=10
+            )
+            tree.heading("depo_fatura", text="Fatura No")
+            tree.heading("depo_tarih", text="Tarih")
+            tree.heading("depo_tip", text="Tip")
+            tree.heading("depo_tutar", text="Tutar")
+            tree.heading("sep", text="║")
+            tree.heading("eczane_fatura", text="Fatura No")
+            tree.heading("eczane_tarih", text="Tarih")
+            tree.heading("eczane_tip", text="Tip")
+            tree.heading("eczane_tutar", text="Tutar")
+
+            tree.column("depo_fatura", width=140, minwidth=140, anchor="w", stretch=False)
+            tree.column("depo_tarih", width=100, minwidth=100, anchor="center", stretch=False)
+            tree.column("depo_tip", width=90, minwidth=90, anchor="center", stretch=False)
+            tree.column("depo_tutar", width=110, minwidth=110, anchor="e", stretch=False)
+            tree.column("sep", width=15, minwidth=15, anchor="center", stretch=False)
+            tree.column("eczane_fatura", width=140, minwidth=140, anchor="w", stretch=False)
+            tree.column("eczane_tarih", width=100, minwidth=100, anchor="center", stretch=False)
+            tree.column("eczane_tip", width=90, minwidth=90, anchor="center", stretch=False)
+            tree.column("eczane_tutar", width=150, minwidth=110, anchor="e", stretch=True)
+
+            tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=tree_scroll.set)
+            tree.pack(side="left", fill="both", expand=True)
+            tree_scroll.pack(side="right", fill="y")
+
+            # Filtrelenen Depo satırları
+            for fatura, kayit in filtrelenen_depo_satirlar:
+                tutar = kayit['borc'] if abs(kayit['borc']) > 0.01 else abs(kayit['alacak'])
+                tree.insert("", "end", values=(
+                    fatura, kayit.get('tarih', ''), kayit.get('tip', ''), f"{tutar:,.2f} ₺",
+                    "║",
+                    "", "", "", ""
+                ), tags=('filtrelenen',))
+
+            # Filtrelenen Eczane satırları
+            for fatura, kayit in filtrelenen_eczane_satirlar:
+                tutar = kayit['borc'] if abs(kayit['borc']) > 0.01 else abs(kayit['alacak'])
+                tree.insert("", "end", values=(
+                    "", "", "", "",
+                    "║",
+                    fatura, kayit.get('tarih', ''), kayit.get('tip', ''), f"{tutar:,.2f} ₺"
+                ), tags=('filtrelenen',))
+
+            tree.tag_configure('filtrelenen', background='#E0E0E0')
+
+        create_accordion_panel(
+            scrollable_frame,
+            f"⚙️ AYARLAMALAR SAYESİNDE YOK SAYILAN/TASNİF EDİLMEYEN SATIRLAR - {len(filtrelenen_depo_satirlar) + len(filtrelenen_eczane_satirlar)} kayıt (Depo: {len(filtrelenen_depo_satirlar)}, Eczane: {len(filtrelenen_eczane_satirlar)})",
+            "#F5F5F5",
+            "#757575",
+            build_filtrelenen_panel
+        )
+
+        # Butonlar
+        button_frame = tk.Frame(main_frame, bg='#ECEFF1')
+        button_frame.pack(fill="x", pady=5)
+
+        # Sonuçları sakla
+        self.ekstre_sonuclar = {
+            'yesil': yesil_satirlar,
+            'sari': sari_satirlar,
+            'turuncu': turuncu_satirlar,
+            'kirmizi_eczane': kirmizi_eczane,
+            'kirmizi_depo': kirmizi_depo,
+            'df_depo': df_depo,
+            'df_eczane': df_eczane,
+            'depo_fatura_col': depo_fatura_col,
+            'eczane_fatura_col': eczane_fatura_col
+        }
+
+        tk.Button(
+            button_frame,
+            text="📥 Excel'e Aktar",
+            font=("Arial", 11, "bold"),
+            bg='#388E3C',
+            fg='white',
+            width=20,
+            cursor="hand2",
+            command=lambda: self.ekstre_sonuc_excel_aktar_v2(pencere)
+        ).pack(side="left", padx=10)
+
+        tk.Button(
+            button_frame,
+            text="❌ Kapat",
+            font=("Arial", 11),
+            bg='#757575',
+            fg='white',
+            width=15,
+            cursor="hand2",
+            command=pencere.destroy
+        ).pack(side="right", padx=10)
+
+    def _bul_sutun(self, df, alternatifler):
+        """DataFrame'de sütun bul"""
+        for alt in alternatifler:
+            if alt in df.columns:
+                return alt
+        # Kısmi eşleşme
+        for alt in alternatifler:
+            alt_lower = alt.lower().replace(" ", "").replace("_", "").replace("/", "")
+            for col in df.columns:
+                col_lower = col.lower().replace(" ", "").replace("_", "").replace("/", "")
+                if alt_lower in col_lower or col_lower in alt_lower:
+                    return col
+        return None
+
+    def ekstre_sonuc_excel_aktar_v2(self, pencere):
+        """Karşılaştırma sonuçlarını Excel'e aktar - yeni versiyon"""
+        import pandas as pd
+
+        if not hasattr(self, 'ekstre_sonuclar') or not self.ekstre_sonuclar:
+            messagebox.showwarning("Uyarı", "Önce karşılaştırma yapın!")
+            return
+
+        dosya_yolu = filedialog.asksaveasfilename(
+            title="Sonuçları Kaydet",
+            defaultextension=".xlsx",
+            filetypes=[("Excel Dosyası", "*.xlsx")],
+            initialname=f"ekstre_karsilastirma_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        )
+
+        if not dosya_yolu:
+            return
+
+        try:
+            sonuclar = self.ekstre_sonuclar
+
+            with pd.ExcelWriter(dosya_yolu, engine='openpyxl') as writer:
+                # Yeşil - Tam eşleşenler
+                if sonuclar['yesil']:
+                    yesil_data = []
+                    for fatura, depo, eczane in sonuclar['yesil']:
+                        yesil_data.append({
+                            'Fatura No': fatura,
+                            'Borç': depo['borc'],
+                            'Alacak': depo['alacak'],
+                            'Durum': 'Tam Eşleşme'
+                        })
+                    pd.DataFrame(yesil_data).to_excel(writer, sheet_name='Yeşil-Tam Eşleşme', index=False)
+
+                # Turuncu - Kısmi eşleşenler
+                if sonuclar['turuncu']:
+                    turuncu_data = []
+                    for fatura, depo, eczane, borc_esit, alacak_esit in sonuclar['turuncu']:
+                        turuncu_data.append({
+                            'Fatura No': fatura,
+                            'Depo Borç': depo['borc'],
+                            'Eczane Borç': eczane['borc'],
+                            'Depo Alacak': depo['alacak'],
+                            'Eczane Alacak': eczane['alacak'],
+                            'Borç Eşit': 'Evet' if borc_esit else 'Hayır',
+                            'Alacak Eşit': 'Evet' if alacak_esit else 'Hayır'
+                        })
+                    pd.DataFrame(turuncu_data).to_excel(writer, sheet_name='Turuncu-Kısmi Eşleşme', index=False)
+
+                # Kırmızı Sol - Eczane'de var, Depo'da yok
+                if sonuclar['kirmizi_sol']:
+                    kirmizi_sol_data = []
+                    for fatura, kayit in sonuclar['kirmizi_sol']:
+                        kirmizi_sol_data.append({
+                            'Fatura No': fatura,
+                            'Borç (Fatura Tutarı)': kayit['borc'],
+                            'Alacak (İade/Çık)': kayit['alacak']
+                        })
+                    pd.DataFrame(kirmizi_sol_data).to_excel(writer, sheet_name='Eczanede Var-Depoda Yok', index=False)
+
+                # Kırmızı Sağ - Depo'da var, Eczane'de yok
+                if sonuclar['kirmizi_sag']:
+                    kirmizi_sag_data = []
+                    for fatura, kayit in sonuclar['kirmizi_sag']:
+                        kirmizi_sag_data.append({
+                            'Fatura No': fatura,
+                            'Borç': kayit['borc'],
+                            'Alacak': kayit['alacak']
+                        })
+                    pd.DataFrame(kirmizi_sag_data).to_excel(writer, sheet_name='Depoda Var-Eczanede Yok', index=False)
+
+                # Özet
+                ozet_data = {
+                    'Kategori': [
+                        'Tam Eşleşen (Yeşil)',
+                        'Kısmi Eşleşen (Turuncu)',
+                        'Eczanede Var - Depoda Yok (Kırmızı)',
+                        'Depoda Var - Eczanede Yok (Kırmızı)'
+                    ],
+                    'Kayıt Sayısı': [
+                        len(sonuclar['yesil']),
+                        len(sonuclar['turuncu']),
+                        len(sonuclar['kirmizi_sol']),
+                        len(sonuclar['kirmizi_sag'])
+                    ]
+                }
+                pd.DataFrame(ozet_data).to_excel(writer, sheet_name='Özet', index=False)
+
+            messagebox.showinfo("Başarılı", f"Sonuçlar kaydedildi:\n{dosya_yolu}")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Excel kaydedilemedi: {str(e)}")
+            logger.error(f"Excel kaydetme hatası: {e}")
 
 
 def main():

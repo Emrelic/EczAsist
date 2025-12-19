@@ -40,3 +40,40 @@ Thumbs.db
 *.log
 *.json.bak
 grup_durumlari.json
+
+# Database files (contain sensitive data)
+*.db
+
+# Temporary files
+nul
+nul_
+*.tmp
+kasa_rapor_*.txt
+ayrilan_para_etiket.txt
+
+# Session logs (may contain sensitive data)
+oturum_loglari/
+
+# Local settings
+.claude/settings.local.json
+kasa_ayarlari.json
+medula_settings.json
+timing_stats.json
+ekstre_filtre_ayarlari.json
+
+# Backup files
+*.backup
+*.backup_*
+
+# Excel temp files
+~$*.xlsx
+
+# UI Capture screenshots (development only)
+bot takip*caption/
+
+# Large data files
+rapor_takip.csv
+ilac_listesi_temp.xlsx
+
+# Inspect.exe documentation
+inspect.exe bilgileri/

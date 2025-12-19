@@ -3489,6 +3489,331 @@ class BotanikBot:
         logger.warning("⚠️ Reçete numarası okunamadı")
         return (None, True)  # Kayıt var ama no okunamadı
 
+    def recete_sayfasi_hizli_tarama(self, max_deneme=2, bekleme_suresi=0.2):
+        """
+        ULTRA OPTİMİZE: Container-based + Tek Tarama ile TÜM VERİLERİ TOPLA
+
+        İyileştirmeler:
+        1. pnlMedulaBaslik container'ı içinde HEDEFLI arama (telefon + reçete bilgisi)
+        2. Direkt child_window() ile buton araması (descendants yerine)
+        3. Tek geçişte tüm verileri toplama
+
+        Eski yöntem: ~3-4 saniye (ayrı ayrı taramalar)
+        Yeni yöntem: ~0.5-1 saniye (hedefli container arama)
+
+        KAZANIM: %70-80 hız artışı
+
+        Returns:
+            dict: {
+                'recete_no': str veya None,
+                'kayit_var': bool,
+                'telefon_var': bool,
+                'telefon_degeri': str veya None,
+                'ilac_butonu': element veya None (tıklama için hazır referans)
+            }
+        """
+        import re
+        telefon_pattern = re.compile(r'(\+90|0)?[\s\-\(]?[1-9]\d{2}[\s\-\)]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}')
+
+        # Telefon alanları AutomationId'leri
+        telefon_alan_idleri = [
+            "lblMusteriTelefonu",
+            "lblYanCariTelefonu",
+            "lblIlaciAlanTelefonu",
+            "lblAlanYanCariTel"
+        ]
+
+        for deneme in range(max_deneme):
+            try:
+                recete_no = None
+                kayit_hatasi = False
+                telefon_var = False
+                telefon_degeri = None
+                ilac_butonu = None
+
+                # ═══════════════════════════════════════════════════════════════
+                # ADIM 1: pnlMedulaBaslik CONTAINER içinde HEDEFLI ARAMA
+                # Bu container telefon + reçete bilgisini içerir
+                # ═══════════════════════════════════════════════════════════════
+                try:
+                    baslik_panel = self.main_window.child_window(
+                        auto_id="pnlMedulaBaslik",
+                        control_type="Pane"
+                    )
+
+                    if baslik_panel.exists(timeout=0.3):
+                        # Sadece bu container içindeki elementleri tara (çok daha hızlı!)
+                        panel_elements = baslik_panel.descendants()
+
+                        for elem in panel_elements:
+                            try:
+                                text_value = None
+                                auto_id = None
+
+                                try:
+                                    text_value = elem.window_text()
+                                    if text_value:
+                                        text_value = text_value.strip()
+                                except Exception:
+                                    pass
+
+                                try:
+                                    auto_id = elem.element_info.automation_id
+                                except Exception:
+                                    pass
+
+                                if not text_value:
+                                    continue
+
+                                # TELEFON KONTROLÜ (AutomationId ile - en hızlı)
+                                if not telefon_var and auto_id and auto_id in telefon_alan_idleri:
+                                    if len(text_value) >= 7:
+                                        temiz = text_value.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+                                        if temiz and any(c.isdigit() for c in temiz):
+                                            telefon_var = True
+                                            telefon_degeri = text_value
+                                            logger.debug(f"✓ Telefon bulundu ({auto_id}): {text_value}")
+
+                                # KAYIT HATASI KONTROLÜ
+                                if "Reçete kaydı bulunamadı" in text_value:
+                                    logger.warning(f"⚠️ '{text_value}'")
+                                    kayit_hatasi = True
+
+                                if "Sistem hatası" in text_value:
+                                    logger.error(f"❌ MEDULA HATA: '{text_value}'")
+                                    kayit_hatasi = True
+
+                                # REÇETE NUMARASI KONTROLÜ (işlem nolu pattern)
+                                if recete_no is None and "işlemnolu" in text_value:
+                                    # "3HYAKH4 işlemnolu reçete KAYITLI..." formatı
+                                    parts = text_value.split()
+                                    if parts and len(parts[0]) >= 6 and len(parts[0]) <= 9:
+                                        cleaned = parts[0].replace('-', '').replace('_', '')
+                                        if cleaned.isalnum() and any(c.isdigit() for c in parts[0]) and any(c.isalpha() for c in parts[0]):
+                                            recete_no = parts[0]
+
+                                # Alternatif reçete no pattern (direkt 6-9 karakter alfanumerik)
+                                if recete_no is None and 6 <= len(text_value) <= 9:
+                                    cleaned = text_value.replace('-', '').replace('_', '')
+                                    if cleaned.isalnum() and any(c.isdigit() for c in text_value) and any(c.isalpha() for c in text_value):
+                                        # İşlem nolu olmayan ama formata uyan
+                                        recete_no = text_value
+
+                            except Exception:
+                                continue
+                    else:
+                        logger.debug("pnlMedulaBaslik container bulunamadı, fallback yapılıyor...")
+
+                except Exception as e:
+                    logger.debug(f"Container arama hatası: {type(e).__name__}")
+
+                # ═══════════════════════════════════════════════════════════════
+                # ADIM 2: İLAÇ BUTONU - child_window ile HIZLI ARAMA
+                # descendants() yerine direkt arama
+                # ═══════════════════════════════════════════════════════════════
+                try:
+                    ilac_btn = self.main_window.child_window(
+                        auto_id="f:buttonIlacListesi",
+                        control_type="Button"
+                    )
+                    if ilac_btn.exists(timeout=0.2):
+                        ilac_butonu = ilac_btn
+                        logger.debug("✓ İlaç butonu referansı alındı")
+                except Exception:
+                    # Fallback: title ile ara
+                    try:
+                        ilac_btn = self.main_window.child_window(
+                            title="İlaç",
+                            control_type="Button"
+                        )
+                        if ilac_btn.exists(timeout=0.2):
+                            ilac_butonu = ilac_btn
+                            logger.debug("✓ İlaç butonu referansı alındı (title)")
+                    except Exception:
+                        pass
+
+                # ═══════════════════════════════════════════════════════════════
+                # SONUÇ DEĞERLENDİRMESİ
+                # ═══════════════════════════════════════════════════════════════
+                if kayit_hatasi:
+                    return {
+                        'recete_no': None,
+                        'kayit_var': False,
+                        'telefon_var': telefon_var,
+                        'telefon_degeri': telefon_degeri,
+                        'ilac_butonu': None
+                    }
+
+                if recete_no:
+                    if deneme == 0:
+                        logger.info(f"✓ Reçete No: {recete_no}" + (f", Tel: {telefon_degeri}" if telefon_var else ", Tel: YOK"))
+                    else:
+                        logger.info(f"✓ Reçete No: {recete_no} ({deneme+1}. denemede)")
+
+                    return {
+                        'recete_no': recete_no,
+                        'kayit_var': True,
+                        'telefon_var': telefon_var,
+                        'telefon_degeri': telefon_degeri,
+                        'ilac_butonu': ilac_butonu
+                    }
+
+                # Bu denemede bulunamadı - kısa bekle
+                if deneme < max_deneme - 1:
+                    logger.debug(f"Reçete no henüz yüklenmedi ({deneme + 1}/{max_deneme})")
+                    time.sleep(bekleme_suresi)
+
+            except Exception as e:
+                logger.debug(f"Hızlı tarama denemesi {deneme + 1} hatası: {type(e).__name__}")
+                if deneme < max_deneme - 1:
+                    time.sleep(bekleme_suresi)
+
+        # Fallback: Eski yönteme geç
+        logger.debug("Hızlı tarama başarısız, standart yönteme geçiliyor...")
+        return None  # None döndüğünde eski fonksiyon çağrılacak
+
+    def recete_telefon_kontrol_birlesik(self, max_deneme=3, bekleme_suresi=0.3):
+        """
+        SÜPER OPTİMİZE: Reçete No + Telefon Kontrolü + Kayıt Kontrolü TEK TARAMADA
+
+        Eski yöntem (3 ayrı tarama):
+        - recete_no_ve_kontrol_birlesik() → descendants(Text) → ~1.3 saniye
+        - telefon_numarasi_kontrol() → descendants(auto_id) x4 + descendants(Text) → ~1.7 saniye
+        TOPLAM: ~3 saniye
+
+        Yeni yöntem (tek tarama):
+        - TEK descendants() çağrısı ile HER ŞEY
+        - Reçete no, telefon, kayıt hatası aynı anda kontrol
+        KAZANIM: %50-60 hız artışı (~1.5 saniye)
+
+        Returns:
+            dict: {
+                'recete_no': str veya None,
+                'kayit_var': bool,
+                'telefon_var': bool,
+                'telefon_degeri': str veya None
+            }
+        """
+        import re
+        # Türkiye telefon numarası pattern'i
+        telefon_pattern = re.compile(r'(\+90|0)?[\s\-\(]?[1-9]\d{2}[\s\-\)]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}')
+
+        # Telefon alanları AutomationId'leri
+        telefon_alan_idleri = [
+            "lblMusteriTelefonu",
+            "lblYanCariTelefonu",
+            "lblIlaciAlanTelefonu",
+            "lblAlanYanCariTel"
+        ]
+
+        for deneme in range(max_deneme):
+            try:
+                # TEK TARAMA - tüm elementleri al (tip kısıtlaması yok = daha kapsamlı)
+                all_elements = self.main_window.descendants()
+
+                recete_no = None
+                kayit_hatasi = False
+                telefon_var = False
+                telefon_degeri = None
+
+                for elem in all_elements:
+                    try:
+                        # Element bilgilerini al
+                        text_value = None
+                        auto_id = None
+
+                        try:
+                            text_value = elem.window_text()
+                            if text_value:
+                                text_value = text_value.strip()
+                        except Exception:
+                            pass
+
+                        try:
+                            auto_id = elem.element_info.automation_id
+                        except Exception:
+                            pass
+
+                        if not text_value:
+                            continue
+
+                        # 1. TELEFON KONTROLÜ (AutomationId ile)
+                        if not telefon_var and auto_id and auto_id in telefon_alan_idleri:
+                            if len(text_value) >= 7:
+                                temiz = text_value.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+                                if temiz and any(c.isdigit() for c in temiz):
+                                    telefon_var = True
+                                    telefon_degeri = text_value
+                                    logger.info(f"✓ Telefon bulundu ({auto_id}): {text_value}")
+
+                        # 2. KAYIT HATASI KONTROLÜ
+                        if "Reçete kaydı bulunamadı" in text_value:
+                            logger.warning(f"⚠️ '{text_value}'")
+                            kayit_hatasi = True
+
+                        if "Sistem hatası" in text_value:
+                            logger.error(f"❌ MEDULA HATA: '{text_value}'")
+                            kayit_hatasi = True
+
+                        # 3. REÇETE NUMARASI KONTROLÜ
+                        if recete_no is None and 6 <= len(text_value) <= 9:
+                            cleaned = text_value.replace('-', '').replace('_', '')
+                            if cleaned.isalnum() and any(c.isdigit() for c in text_value) and any(c.isalpha() for c in text_value):
+                                recete_no = text_value
+
+                        # 4. TELEFON PATTERN KONTROLÜ (AutomationId bulunamadıysa)
+                        if not telefon_var and auto_id and "Tel" in auto_id:
+                            if len(text_value) >= 7 and telefon_pattern.search(text_value):
+                                telefon_var = True
+                                telefon_degeri = text_value
+                                logger.info(f"✓ Telefon bulundu (pattern, {auto_id}): {text_value}")
+
+                    except Exception:
+                        continue
+
+                # Sonuç değerlendirmesi
+                if kayit_hatasi:
+                    return {
+                        'recete_no': None,
+                        'kayit_var': False,
+                        'telefon_var': telefon_var,
+                        'telefon_degeri': telefon_degeri
+                    }
+
+                if recete_no:
+                    if deneme == 0:
+                        logger.info(f"✓ Reçete No: {recete_no}")
+                    else:
+                        logger.info(f"✓ Reçete No: {recete_no} ({deneme+1}. denemede)")
+
+                    if not telefon_var:
+                        logger.info("⚠ Telefon bulunamadı")
+
+                    return {
+                        'recete_no': recete_no,
+                        'kayit_var': True,
+                        'telefon_var': telefon_var,
+                        'telefon_degeri': telefon_degeri
+                    }
+
+                # Bu denemede reçete no bulunamadı
+                if deneme < max_deneme - 1:
+                    logger.debug(f"Reçete no henüz yüklenmedi ({deneme + 1}/{max_deneme})")
+                    time.sleep(bekleme_suresi)
+
+            except Exception as e:
+                logger.debug(f"Birleşik tarama denemesi {deneme + 1} hatası: {type(e).__name__}")
+                if deneme < max_deneme - 1:
+                    time.sleep(bekleme_suresi)
+
+        logger.warning("⚠️ Reçete numarası okunamadı")
+        return {
+            'recete_no': None,
+            'kayit_var': True,  # Kayıt var ama no okunamadı
+            'telefon_var': telefon_var,
+            'telefon_degeri': telefon_degeri
+        }
+
     def recete_no_oku(self, max_deneme=3, bekleme_suresi=0.3):
         """
         Ekrandaki reçete numarasını oku (örn: 3HKE0T4)
@@ -3907,6 +4232,98 @@ class BotanikBot:
             logger.error(f"Reçete Sorgu butonu hatası: {e}")
             return False
 
+    def recete_sorgu_ac_kademeli(self):
+        """
+        Reçete Sorgu butonunu KADEMELİ KURTARMA ile aç
+
+        Kurtarma Aşamaları:
+        1. Normal arama (recete_sorgu_ac)
+        2. Bulunamazsa → Geri Dön butonuna bas + tekrar ara
+        3. Hala bulunamazsa → Çıkış + 3x Giriş + tekrar ara
+        4. Hala bulunamazsa → False döner (üst seviye taskkill yapacak)
+
+        Returns:
+            bool: Reçete Sorgu butonu başarıyla tıklandıysa True
+        """
+        # ═══════════════════════════════════════════════════════════════
+        # AŞAMA 1: Normal arama
+        # ═══════════════════════════════════════════════════════════════
+        logger.info("🔍 [1/4] Reçete Sorgu butonu aranıyor...")
+        if self.recete_sorgu_ac():
+            return True
+
+        logger.warning("⚠ Reçete Sorgu butonu bulunamadı, kurtarma başlatılıyor...")
+
+        # ═══════════════════════════════════════════════════════════════
+        # AŞAMA 2: Geri Dön butonuna bas + tekrar ara
+        # ═══════════════════════════════════════════════════════════════
+        logger.info("🔄 [2/4] Geri Dön butonuna basılıyor...")
+        try:
+            if self.geri_don_butonuna_tikla():
+                logger.info("✓ Geri Dön butonu tıklandı")
+                time.sleep(1)  # Sayfa yüklenmesi için bekle
+
+                # Tekrar Reçete Sorgu ara
+                logger.info("🔍 Reçete Sorgu tekrar aranıyor...")
+                if self.recete_sorgu_ac():
+                    logger.info("✓ Reçete Sorgu bulundu (Geri Dön sonrası)")
+                    return True
+            else:
+                logger.warning("⚠ Geri Dön butonu bulunamadı")
+        except Exception as e:
+            logger.warning(f"Geri Dön hatası: {type(e).__name__}")
+
+        # ═══════════════════════════════════════════════════════════════
+        # AŞAMA 3: Çıkış + 3x Giriş + tekrar ara
+        # ═══════════════════════════════════════════════════════════════
+        logger.info("🔄 [3/4] Çıkış + 3x Giriş yapılıyor...")
+        try:
+            # Çıkış butonuna bas
+            if self.cikis_butonu_var_mi():
+                logger.info("  → Çıkış Yap butonuna basılıyor...")
+                if self.cikis_butonuna_tikla():
+                    logger.info("  ✓ Çıkış yapıldı")
+                    time.sleep(1)
+                else:
+                    logger.warning("  ⚠ Çıkış butonu tıklanamadı")
+            else:
+                logger.info("  → Çıkış butonu yok (muhtemelen giriş ekranında)")
+
+            # 3 kez Giriş butonuna bas
+            for i in range(3):
+                logger.info(f"  → Giriş butonuna basılıyor ({i+1}/3)...")
+                if self.ana_sayfaya_don():
+                    logger.info(f"  ✓ Giriş butonu tıklandı ({i+1}/3)")
+                    time.sleep(0.5)
+                else:
+                    logger.warning(f"  ⚠ Giriş butonu tıklanamadı ({i+1}/3)")
+                    break
+
+            # Son giriş sonrası biraz bekle
+            time.sleep(1)
+
+            # Pencereyi yenile
+            try:
+                self.baglanti_kur("MEDULA", ilk_baglanti=False)
+            except Exception:
+                pass
+
+            # Tekrar Reçete Sorgu ara
+            logger.info("🔍 Reçete Sorgu tekrar aranıyor...")
+            if self.recete_sorgu_ac():
+                logger.info("✓ Reçete Sorgu bulundu (Çıkış + Giriş sonrası)")
+                return True
+
+        except Exception as e:
+            logger.warning(f"Çıkış + Giriş hatası: {type(e).__name__}")
+
+        # ═══════════════════════════════════════════════════════════════
+        # AŞAMA 4: Tüm kurtarma denemeleri başarısız
+        # ═══════════════════════════════════════════════════════════════
+        logger.error("❌ [4/4] Reçete Sorgu butonu tüm denemelerde bulunamadı!")
+        logger.error("   → Üst seviye taskkill + yeniden başlatma gerekli")
+        return False
+
     def ana_sayfaya_don(self):
         """
         Giriş butonuna tıkla (MEDULA oturumunu yenilemek için) - OPTIMIZE: child_window() ile doğrudan arama
@@ -4043,10 +4460,10 @@ class BotanikBot:
         """
         Çıkış Yap butonuna tıkla - oturumu sonlandırmak için
 
-        Inspect.exe (2025-11-30):
-        - Name: "    Çıkış Yap"
-        - AutomationId: form1:menuHtmlCommandExButton01_MOUSE
-        - Konum: X: 6, Y: 50, Width: 165, Height: 20
+        Inspect.exe (2025-12-12):
+        - Name: "    Çıkış Yap" (4 boşluk + Çıkış Yap)
+        - AutomationId: form1:menuHtmlCommandExButton231_MOUSE
+        - Konum: X: 11, Y: 678, Width: 165, Height: 20
 
         Returns:
             bool: Tıklama başarılı ise True
@@ -4054,32 +4471,61 @@ class BotanikBot:
         try:
             logger.debug("Çıkış Yap butonu aranıyor...")
 
-            # AutomationId ile ara
-            cikis_auto_id = "form1:menuHtmlCommandExButton01_MOUSE"
+            # YÖNTEM 1: AutomationId ile ara (güncel ID)
+            cikis_auto_ids = [
+                "form1:menuHtmlCommandExButton231_MOUSE",  # Yeni ID (2025-12-12)
+                "form1:menuHtmlCommandExButton01_MOUSE"    # Eski ID (fallback)
+            ]
 
+            for cikis_auto_id in cikis_auto_ids:
+                for ctrl_type in ["Button", "Image"]:
+                    try:
+                        cikis_btn = self.main_window.child_window(
+                            auto_id=cikis_auto_id,
+                            control_type=ctrl_type
+                        )
+                        if cikis_btn.exists(timeout=0.3):
+                            try:
+                                cikis_btn.invoke()
+                                logger.info(f"✓ Çıkış Yap butonu tıklandı ({ctrl_type}, {cikis_auto_id})")
+                                time.sleep(1)  # Çıkış işlemi için bekle
+                                return True
+                            except Exception as inv_err:
+                                logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                                try:
+                                    cikis_btn.click_input()
+                                    logger.info(f"✓ Çıkış Yap butonu tıklandı (click_input {ctrl_type})")
+                                    time.sleep(1)
+                                    return True
+                                except Exception as clk_err:
+                                    logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+                    except Exception as e:
+                        logger.debug(f"child_window {cikis_auto_id} ({ctrl_type}) hatası: {type(e).__name__}")
+
+            # YÖNTEM 2: Name ile ara (4 boşluk + Çıkış Yap)
+            cikis_name = "    Çıkış Yap"
             for ctrl_type in ["Button", "Image"]:
                 try:
                     cikis_btn = self.main_window.child_window(
-                        auto_id=cikis_auto_id,
+                        title=cikis_name,
                         control_type=ctrl_type
                     )
-                    if cikis_btn.exists(timeout=0.2):
+                    if cikis_btn.exists(timeout=0.3):
                         try:
                             cikis_btn.invoke()
-                            logger.info(f"✓ Çıkış Yap butonu tıklandı ({ctrl_type})")
-                            time.sleep(1)  # Çıkış işlemi için bekle
+                            logger.info(f"✓ Çıkış Yap butonu tıklandı (Name {ctrl_type})")
+                            time.sleep(1)
                             return True
-                        except Exception as inv_err:
-                            logger.debug(f"invoke() hatası: {type(inv_err).__name__}")
+                        except Exception:
                             try:
                                 cikis_btn.click_input()
-                                logger.info(f"✓ Çıkış Yap butonu tıklandı (click_input {ctrl_type})")
+                                logger.info(f"✓ Çıkış Yap butonu tıklandı (Name click_input)")
                                 time.sleep(1)
                                 return True
-                            except Exception as clk_err:
-                                logger.debug(f"click_input() hatası: {type(clk_err).__name__}")
+                            except Exception:
+                                pass
                 except Exception as e:
-                    logger.debug(f"child_window {cikis_auto_id} ({ctrl_type}) hatası: {type(e).__name__}")
+                    logger.debug(f"Name '{cikis_name}' ({ctrl_type}) hatası: {type(e).__name__}")
 
             logger.debug("Çıkış Yap butonu bulunamadı (muhtemelen zaten giriş ekranında)")
             return False
@@ -4096,19 +4542,36 @@ class BotanikBot:
             bool: Buton varsa True
         """
         try:
-            cikis_auto_id = "form1:menuHtmlCommandExButton01_MOUSE"
+            # Güncel ve eski AutomationId'ler
+            cikis_auto_ids = [
+                "form1:menuHtmlCommandExButton231_MOUSE",  # Yeni ID (2025-12-12)
+                "form1:menuHtmlCommandExButton01_MOUSE"    # Eski ID (fallback)
+            ]
 
-            for ctrl_type in ["Button", "Image"]:
-                try:
-                    cikis_btn = self.main_window.child_window(
-                        auto_id=cikis_auto_id,
-                        control_type=ctrl_type
-                    )
-                    if cikis_btn.exists(timeout=0.3):
-                        logger.debug("✓ Çıkış Yap butonu mevcut")
-                        return True
-                except Exception:
-                    pass
+            for cikis_auto_id in cikis_auto_ids:
+                for ctrl_type in ["Button", "Image"]:
+                    try:
+                        cikis_btn = self.main_window.child_window(
+                            auto_id=cikis_auto_id,
+                            control_type=ctrl_type
+                        )
+                        if cikis_btn.exists(timeout=0.2):
+                            logger.debug(f"✓ Çıkış Yap butonu mevcut ({cikis_auto_id})")
+                            return True
+                    except Exception:
+                        pass
+
+            # Name ile de kontrol et
+            try:
+                cikis_btn = self.main_window.child_window(
+                    title="    Çıkış Yap",
+                    control_type="Button"
+                )
+                if cikis_btn.exists(timeout=0.2):
+                    logger.debug("✓ Çıkış Yap butonu mevcut (Name)")
+                    return True
+            except Exception:
+                pass
 
             logger.debug("Çıkış Yap butonu mevcut değil")
             return False
@@ -4781,9 +5244,15 @@ class BotanikBot:
             None: Veri toplanamadıysa
         """
         try:
-            # Rapor butonuna tıkla
+            # Rapor butonuna tıkla (retry_with_popup_check ile - REÇETE NOTU vb. popup kontrolü)
             logger.info("🔵 Rapor butonuna tıklanıyor...")
-            if not self.rapor_butonuna_tikla():
+            rapor_btn_basarili = self.retry_with_popup_check(
+                lambda: self.rapor_butonuna_tikla(),
+                "Rapor butonu",
+                max_retries=5,
+                critical=False  # Rapor butonu başarısız olursa None döner, sistemsel hata fırlatma
+            )
+            if not rapor_btn_basarili:
                 logger.warning("⚠️ Rapor butonuna tıklanamadı")
                 return None
 
@@ -4795,6 +5264,14 @@ class BotanikBot:
             max_bekle = 5  # maksimum 5 saniye bekle
             for bekle_idx in range(max_bekle * 2):  # 0.5 saniye aralıklarla kontrol
                 self.timed_sleep("rapor_pencere_acilis", 0.5)
+
+                # ★ Her döngüde kritik popup kontrolü (REÇETE NOTU dahil) ★
+                try:
+                    if self.kritik_popup_kontrol_ve_kapat():
+                        logger.info("✓ Rapor bekleme sırasında kritik popup kapatıldı")
+                except Exception:
+                    pass
+
                 try:
                     all_texts = self.main_window.descendants(control_type="Text")
                     for t in all_texts[:100]:  # İlk 100 text'e bak
@@ -5367,21 +5844,115 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
 
     # Reçete notu ve uyarı kontrolü KALDIRILDI - retry mekanizması gerektiğinde yapacak
 
-    # ===== OPTİMİZASYON: TELEFON KONTROLÜ ÖNCE =====
-    # Eğer "telefonsuz_atla" ayarı açıksa, reçete no okumadan ÖNCE telefon kontrol et
-    # Telefon yoksa reçete no okumaya gerek yok, direkt SONRA'ya basılır (zaman kazanımı)
+    # ===== ULTRA OPTİMİZE: CONTAINER-BASED + TEK TARAMA =====
+    # Eski yöntem: telefon_kontrolu() + recete_no_ve_kontrol_birlesik() = ~3-4 saniye
+    # Yeni yöntem: recete_sayfasi_hizli_tarama() = ~0.5-1 saniye (CONTAINER BASED)
     from medula_settings import get_medula_settings
     medula_settings = get_medula_settings()
     telefonsuz_atla = medula_settings.get("telefonsuz_atla", False)
 
-    if telefonsuz_atla:
-        adim_baslangic = time.time()
-        telefon_var = bot.telefon_numarasi_kontrol()
-        log_sure("Telefon kontrolü", adim_baslangic, "telefon_kontrol")
+    # İlaç butonu referansı (hızlı taramadan alınacak)
+    ilac_butonu_ref = None
 
-        if not telefon_var:
-            logger.info("⏭ Telefon numarası yok, hasta atlanıyor (reçete no okunmadı)...")
-            # Direkt SONRA butonuna bas ve geç (reçete no okumadan!)
+    # Reçete numarası zaten GUI'de okunmuşsa tekrar okuma (performans optimizasyonu)
+    if onceden_okunan_recete_no:
+        medula_recete_no = onceden_okunan_recete_no
+        # Sadece telefon kontrolü yap (eğer telefonsuz_atla açıksa)
+        if telefonsuz_atla:
+            adim_baslangic = time.time()
+            # ★ ÖNCE HIZLI TARAMA DENE (container-based) ★
+            hizli_sonuc = bot.recete_sayfasi_hizli_tarama(max_deneme=2, bekleme_suresi=0.15)
+            if hizli_sonuc:
+                telefon_var = hizli_sonuc['telefon_var']
+                onceki_telefon = hizli_sonuc.get('telefon_degeri')
+                ilac_butonu_ref = hizli_sonuc.get('ilac_butonu')
+                log_sure("Telefon kontrolü (hızlı)", adim_baslangic, "telefon_kontrol")
+            else:
+                # Fallback: Eski yöntem
+                birlesik_sonuc = bot.recete_telefon_kontrol_birlesik(max_deneme=2, bekleme_suresi=0.2)
+                telefon_var = birlesik_sonuc['telefon_var']
+                onceki_telefon = birlesik_sonuc.get('telefon_degeri')
+                log_sure("Telefon kontrolü (fallback)", adim_baslangic, "telefon_kontrol")
+
+            if not telefon_var:
+                logger.info("⏭ Telefon numarası yok, hasta atlanıyor...")
+
+                # ÖNCEKİ DEĞERLER - sayfa değişimi kontrolü için
+                onceki_recete = medula_recete_no
+
+                adim_baslangic = time.time()
+                sonra = bot.retry_with_popup_check(
+                    lambda: bot.sonra_butonuna_tikla(),
+                    "SONRA butonu",
+                    max_retries=5
+                )
+                log_sure("Sonra butonu (telefon yok)", adim_baslangic, "sonra_butonu")
+                if not sonra:
+                    return (False, None, takip_sayisi, "SONRA butonu başarısız (telefon yok)")
+
+                # ===== SAYFA DEĞİŞİM KONTROLÜ =====
+                time.sleep(0.3)
+                # Hızlı tarama ile kontrol
+                yeni_sonuc = bot.recete_sayfasi_hizli_tarama(max_deneme=2, bekleme_suresi=0.15)
+                if not yeni_sonuc:
+                    yeni_sonuc = bot.recete_telefon_kontrol_birlesik(max_deneme=2, bekleme_suresi=0.2)
+                yeni_recete = yeni_sonuc.get('recete_no') if yeni_sonuc else None
+                yeni_telefon = yeni_sonuc.get('telefon_degeri') if yeni_sonuc else None
+
+                sayfa_degisti = False
+                if onceki_recete and yeni_recete and onceki_recete != yeni_recete:
+                    sayfa_degisti = True
+                elif onceki_telefon and yeni_telefon and onceki_telefon != yeni_telefon:
+                    sayfa_degisti = True
+                elif not onceki_recete and yeni_recete:
+                    sayfa_degisti = True
+                elif not onceki_telefon and yeni_telefon:
+                    sayfa_degisti = True
+
+                if not sayfa_degisti:
+                    logger.error("❌ SONRA butonuna basıldı ama sayfa değişmedi!")
+                    logger.error(f"   Önceki reçete: {onceki_recete}, Yeni reçete: {yeni_recete}")
+                    return (False, medula_recete_no, takip_sayisi, "Sayfa değişmedi (sonsuz döngü engellendi)")
+
+                logger.info(f"✓ Reçete {recete_sira_no} atlandı (telefon yok)")
+                return (True, None, 0, None)
+    else:
+        # ★ ULTRA OPTİMİZE: CONTAINER-BASED HIZLI TARAMA ★
+        # Reçete no + telefon + ilaç butonu referansı TEK TARAMADA
+        adim_baslangic = time.time()
+
+        # Önce hızlı tarama dene (container-based, ~0.5-1 saniye)
+        hizli_sonuc = bot.recete_sayfasi_hizli_tarama(max_deneme=2, bekleme_suresi=0.15)
+
+        if hizli_sonuc:
+            # Hızlı tarama başarılı
+            medula_recete_no = hizli_sonuc['recete_no']
+            kayit_var = hizli_sonuc['kayit_var']
+            telefon_var = hizli_sonuc['telefon_var']
+            ilac_butonu_ref = hizli_sonuc.get('ilac_butonu')
+            log_sure("Reçete+Telefon+Buton (hızlı)", adim_baslangic, "recete_kontrol")
+        else:
+            # Fallback: Eski yöntem (~1.5 saniye)
+            birlesik_sonuc = bot.recete_telefon_kontrol_birlesik()
+            medula_recete_no = birlesik_sonuc['recete_no']
+            kayit_var = birlesik_sonuc['kayit_var']
+            telefon_var = birlesik_sonuc['telefon_var']
+            log_sure("Reçete+Telefon kontrolü (fallback)", adim_baslangic, "recete_kontrol")
+
+        # Kayıt yok kontrolü
+        if not kayit_var:
+            logger.error("❌ Reçete kaydı bulunamadı")
+            log_recete_baslik()
+            return (False, medula_recete_no, takip_sayisi, "Reçete kaydı bulunamadı")
+
+        # Telefonsuz atla kontrolü
+        if telefonsuz_atla and not telefon_var:
+            logger.info("⏭ Telefon numarası yok, hasta atlanıyor...")
+
+            # ÖNCEKİ DEĞERLER - sayfa değişimi kontrolü için
+            onceki_recete = medula_recete_no
+            onceki_telefon = birlesik_sonuc.get('telefon_degeri')
+
             adim_baslangic = time.time()
             sonra = bot.retry_with_popup_check(
                 lambda: bot.sonra_butonuna_tikla(),
@@ -5390,23 +5961,40 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
             )
             log_sure("Sonra butonu (telefon yok)", adim_baslangic, "sonra_butonu")
             if not sonra:
-                return (False, None, takip_sayisi, "SONRA butonu başarısız (telefon yok)")
+                return (False, medula_recete_no, takip_sayisi, "SONRA butonu başarısız (telefon yok)")
 
-            # Başarıyla atlandı, takip sayısı 0
+            # ===== SAYFA DEĞİŞİM KONTROLÜ =====
+            # SONRA butonuna bastıktan sonra sayfanın gerçekten değişip değişmediğini kontrol et
+            time.sleep(0.3)  # Sayfanın yüklenmesi için kısa bekleme
+            yeni_sonuc = bot.recete_telefon_kontrol_birlesik(max_deneme=2, bekleme_suresi=0.2)
+            yeni_recete = yeni_sonuc.get('recete_no')
+            yeni_telefon = yeni_sonuc.get('telefon_degeri')
+
+            # Sayfa değişmedi mi kontrol et
+            sayfa_degisti = False
+            if onceki_recete and yeni_recete and onceki_recete != yeni_recete:
+                sayfa_degisti = True
+                logger.debug(f"Sayfa değişti: {onceki_recete} → {yeni_recete}")
+            elif onceki_telefon and yeni_telefon and onceki_telefon != yeni_telefon:
+                sayfa_degisti = True
+                logger.debug(f"Telefon değişti: {onceki_telefon} → {yeni_telefon}")
+            elif not onceki_recete and yeni_recete:
+                # Önceki reçete yoktu ama şimdi var - değişmiş demek
+                sayfa_degisti = True
+            elif not onceki_telefon and yeni_telefon:
+                # Önceki telefon yoktu ama şimdi var - değişmiş demek
+                sayfa_degisti = True
+
+            if not sayfa_degisti:
+                # Sayfa değişmedi - muhtemelen bir hata var
+                logger.error("❌ SONRA butonuna basıldı ama sayfa değişmedi!")
+                logger.error(f"   Önceki reçete: {onceki_recete}, Yeni reçete: {yeni_recete}")
+                logger.error(f"   Önceki telefon: {onceki_telefon}, Yeni telefon: {yeni_telefon}")
+                return (False, medula_recete_no, takip_sayisi, "Sayfa değişmedi (sonsuz döngü engellendi)")
+
             logger.info(f"✓ Reçete {recete_sira_no} atlandı (telefon yok)")
-            return (True, None, 0, None)  # Reçete no = None (okunmadı)
+            return (True, medula_recete_no, 0, None)
 
-    # ===== REÇETE NUMARASI OKU =====
-    # Reçete numarası zaten GUI'de okunmuşsa tekrar okuma (performans optimizasyonu)
-    if onceden_okunan_recete_no:
-        medula_recete_no = onceden_okunan_recete_no
-    else:
-        # OPTİMİZE: TEK TARAMADA hem reçete no hem bulunamadı kontrolü
-        medula_recete_no, kayit_var = bot.recete_no_ve_kontrol_birlesik()
-        if not kayit_var:
-            logger.error("❌ Reçete kaydı bulunamadı")
-            log_recete_baslik()
-            return (False, medula_recete_no, takip_sayisi, "Reçete kaydı bulunamadı")
     log_recete_baslik(medula_recete_no)
 
     # DURDURMA KONTROLÜ - telefon kontrolünden sonra
@@ -5422,12 +6010,29 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
         logger.debug(f"Uyarı kontrol hatası: {e}")
 
     # İlaç butonuna tıkla (5 deneme + popup kontrolü)
+    # ★ OPTİMİZASYON: Eğer hızlı taramadan referans varsa direkt kullan ★
     adim_baslangic = time.time()
-    ilac_butonu = bot.retry_with_popup_check(
-        lambda: bot.ilac_butonuna_tikla(),
-        "İlaç butonu",
-        max_retries=5
-    )
+    ilac_butonu = False
+
+    if ilac_butonu_ref:
+        # Referans var - direkt tıkla (arama atlanıyor = ~1-2 saniye kazanç)
+        try:
+            if ilac_butonu_ref.exists(timeout=0.2):
+                ilac_butonu_ref.click_input()
+                ilac_butonu = True
+                logger.info("✓ İlaç butonuna tıklandı (referans ile - hızlı)")
+                bot.timed_sleep("ilac_butonu")
+        except Exception as e:
+            logger.debug(f"Referans tıklama hatası: {type(e).__name__}, fallback yapılıyor...")
+
+    # Referans yoksa veya başarısız olduysa normal yöntemi dene
+    if not ilac_butonu:
+        ilac_butonu = bot.retry_with_popup_check(
+            lambda: bot.ilac_butonuna_tikla(),
+            "İlaç butonu",
+            max_retries=5
+        )
+
     log_sure("İlaç butonu", adim_baslangic, "ilac_butonu")
     if not ilac_butonu:
         log_recete_baslik()
@@ -5447,10 +6052,15 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
         logger.info("⏸ İşlem durduruldu (kullanıcı talebi)")
         return (False, medula_recete_no, 0, "Kullanıcı tarafından durduruldu")
 
-    # Y butonuna tıkla
+    # Y butonuna tıkla (retry_with_popup_check ile - REÇETE NOTU vb. popup kontrolü)
     ana_pencere = bot.main_window
     adim_baslangic = time.time()
-    y_butonu = bot.y_tusuna_tikla()
+    y_butonu = bot.retry_with_popup_check(
+        lambda: bot.y_tusuna_tikla(),
+        "Y butonu",
+        max_retries=5,
+        critical=False  # Y butonu başarısız olursa devam et, aşağıda tekrar denenir
+    )
     log_sure("Y butonu", adim_baslangic, "y_butonu")
 
     # İlaç Listesi penceresini akıllı bekleme ile bul (max 1 saniye)
@@ -5468,21 +6078,36 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
 
     log_sure("İlaç penceresi bulma", adim_baslangic, "pencere_bulma")
 
-    # İlaç Listesi bulunamadıysa 3x ESC tuşu ile popup kapat ve Y'yi tekrar dene
+    # İlaç Listesi bulunamadıysa kritik popup kontrolü yap (REÇETE NOTU dahil)
     # ===== POPUP WATCHER VARKEN BU KISIM NADIREN ÇALIŞIR =====
     # Windows Hook popup watcher otomatik olarak popup'ları kapatır
     if not ilac_penceresi_bulundu:
-        logger.info("⚠ İlaç Listesi bulunamadı → 3x ESC tuşuna basılıyor (LABA/LAMA uyarısı kapatma)")
+        # ★ ÖNCELİKLE KRİTİK POPUP KONTROLÜ (REÇETE NOTU + UYARIDIR) ★
+        logger.info("⚠ İlaç Listesi bulunamadı → Kritik popup kontrolü yapılıyor...")
+        try:
+            if bot.kritik_popup_kontrol_ve_kapat():
+                logger.info("✓ Kritik popup kapatıldı (REÇETE NOTU veya UYARIDIR)")
+                time.sleep(0.3)
+        except Exception as e:
+            logger.debug(f"Kritik popup kontrol hatası: {type(e).__name__}")
+
+        # Ardından ESC tuşları ile diğer popup'ları kapat
+        logger.info("⚠ 3x ESC tuşuna basılıyor (LABA/LAMA uyarısı kapatma)")
         for i in range(3):
             send_keys("{ESC}")
             time.sleep(0.1)  # ESC'ler arası kısa bekleme (OPT: 0.15 → 0.1)
         logger.info("✓ 3x ESC tuşuna basıldı")
         time.sleep(bot.timing.get("esc_sonrasi_bekleme", 0.3))  # OPT: 0.5 → timing
 
-        # Y butonuna tekrar tıkla
+        # Y butonuna tekrar tıkla (popup kontrolü ile)
         logger.info("🔄 Y tuşuna tekrar basılıyor...")
         adim_baslangic = time.time()
-        y_butonu = bot.y_tusuna_tikla()
+        y_butonu = bot.retry_with_popup_check(
+            lambda: bot.y_tusuna_tikla(),
+            "Y butonu (ESC sonrası)",
+            max_retries=3,
+            critical=False
+        )
         log_sure("Y butonu (ESC sonrası)", adim_baslangic, "y_butonu")
 
         # İlaç Listesi penceresini tekrar ara
@@ -5500,6 +6125,14 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
 
     # İlaç Listesi hala bulunamadıysa ENTER tuşu ile popup kapat (2. deneme)
     if not ilac_penceresi_bulundu:
+        # ★ TEKRAR KRİTİK POPUP KONTROLÜ ★
+        try:
+            if bot.kritik_popup_kontrol_ve_kapat():
+                logger.info("✓ Kritik popup kapatıldı (2. kontrol)")
+                time.sleep(0.3)
+        except Exception:
+            pass
+
         logger.info("⚠ İlaç Listesi hala bulunamadı → ENTER basılıyor...")
         time.sleep(bot.timing.get("enter_oncesi_bekleme", 0.5))  # OPT: 1.0 → timing
         send_keys("{ENTER}")
@@ -5521,15 +6154,28 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
 
     # Hala bulunamadıysa ENTER tuşu ile popup kapat (3. deneme)
     if not ilac_penceresi_bulundu:
+        # ★ SON KRİTİK POPUP KONTROLÜ ★
+        try:
+            if bot.kritik_popup_kontrol_ve_kapat():
+                logger.info("✓ Kritik popup kapatıldı (3. kontrol)")
+                time.sleep(0.3)
+        except Exception:
+            pass
+
         logger.info("⚠ İlaç Listesi hala bulunamadı → tekrar ENTER basılıyor...")
         time.sleep(bot.timing.get("enter_oncesi_bekleme", 0.5))  # OPT: 1.0 → timing
         send_keys("{ENTER}")
         logger.info("✓ ENTER tuşuna basıldı (2. deneme)")
 
-        # Y butonuna tekrar tıkla
+        # Y butonuna tekrar tıkla (popup kontrolü ile)
         time.sleep(bot.timing.get("laba_sonrasi_bekleme"))
         adim_baslangic = time.time()
-        y_butonu = bot.y_tusuna_tikla()
+        y_butonu = bot.retry_with_popup_check(
+            lambda: bot.y_tusuna_tikla(),
+            "Y butonu (2. ENTER sonrası)",
+            max_retries=3,
+            critical=False
+        )
         log_sure("Y butonu (2. ENTER sonrası)", adim_baslangic, "y_ikinci_deneme")
 
         # İlaç Listesi penceresini tekrar ara
@@ -6305,9 +6951,9 @@ def medula_yeniden_baslat_ve_giris_yap(bot, grup="A", son_recete=None):
         # 9. Son reçeteye git (varsa) veya ilk reçeteyi aç
         if son_recete:
             logger.info(f"7️⃣ Son reçeteye gidiliyor: {son_recete}")
-            # Reçete Sorgu sayfasını aç
-            if not bot.recete_sorgu_ac():
-                logger.warning("⚠ Reçete Sorgu açılamadı, ilk reçete açılıyor...")
+            # Reçete Sorgu sayfasını aç (KADEMELİ KURTARMA ile)
+            if not bot.recete_sorgu_ac_kademeli():
+                logger.warning("⚠ Reçete Sorgu açılamadı (kademeli kurtarma sonrası), ilk reçete açılıyor...")
                 if not ilk_recete_ac(bot):
                     logger.error("❌ İlk reçete açılamadı")
                     return False
@@ -7063,10 +7709,10 @@ def sonraki_gruba_gec_islemi(bot, sonraki_grup, son_recete=None):
             # Hafızada reçete var - kaldığı yerden devam et
             logger.info(f"📍 Hafızada reçete var: {son_recete} - Kaldığı yerden devam ediliyor...")
 
-            # 2. Reçete Sorgu'ya git
+            # 2. Reçete Sorgu'ya git (KADEMELİ KURTARMA ile)
             logger.info("2️⃣ Reçete Sorgu açılıyor...")
-            if not bot.recete_sorgu_ac():
-                logger.error("❌ Reçete Sorgu açılamadı")
+            if not bot.recete_sorgu_ac_kademeli():
+                logger.error("❌ Reçete Sorgu açılamadı (kademeli kurtarma sonrası)")
                 raise Exception("Reçete Sorgu açılamadı")
 
             logger.info("✓ Reçete Sorgu açıldı")
