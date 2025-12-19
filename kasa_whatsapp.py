@@ -26,91 +26,88 @@ class KasaWhatsAppRapor:
     def rapor_olustur(self, kasa_verileri):
         """
         Kasa verilerinden WhatsApp mesajı oluştur
-
-        kasa_verileri: dict - Kasa kapatma verileri
+        Monospace font, rakamlar sağa hizalı
         """
-        tarih = datetime.now().strftime("%d.%m.%Y")
+        tarih = datetime.now().strftime("%d/%m/%Y")
         saat = datetime.now().strftime("%H:%M")
 
-        # Rapor metni oluştur
-        rapor = []
-        rapor.append("=" * 30)
-        rapor.append("KASA KAPAMA RAPORU")
-        rapor.append("=" * 30)
-        rapor.append(f"Tarih: {tarih}")
-        rapor.append(f"Saat: {saat}")
-        rapor.append("-" * 30)
+        W = 28  # Satır genişliği
 
-        # Başlangıç kasası
+        def row(label, num):
+            """Etiket sola, rakam sağa hizalı"""
+            num_str = f"{num:,.0f}"
+            pad = W - len(label) - len(num_str)
+            if pad < 1:
+                pad = 1
+            return label + "." * pad + num_str
+
+        L = []
+        L.append(f"```")  # WhatsApp monospace başlat
+        L.append(f"KASA {tarih} {saat}")
+        L.append("-" * W)
+
+        # Başlangıç
         baslangic = kasa_verileri.get('baslangic_kasasi', 0)
-        rapor.append(f"Başlangıç Kasası: {baslangic:,.2f} TL")
-        rapor.append("-" * 30)
+        L.append(row("Baslangic", baslangic))
 
-        # Sayım sonuçları
+        # Nakit/POS/IBAN
         nakit = kasa_verileri.get('nakit_toplam', 0)
         pos = kasa_verileri.get('pos_toplam', 0)
         iban = kasa_verileri.get('iban_toplam', 0)
-        genel = kasa_verileri.get('genel_toplam', 0)
+        genel = kasa_verileri.get('genel_toplam', nakit + pos + iban)
 
-        rapor.append("KASA SAYIMI:")
-        rapor.append(f"  Nakit: {nakit:,.2f} TL")
-        rapor.append(f"  POS: {pos:,.2f} TL")
-        rapor.append(f"  IBAN: {iban:,.2f} TL")
-        rapor.append(f"  GENEL TOPLAM: {genel:,.2f} TL")
-        rapor.append("-" * 30)
+        L.append(row("Nakit", nakit))
+        L.append(row("POS", pos))
+        L.append(row("IBAN", iban))
+        L.append(row("TOPLAM", genel))
 
-        # Ek kalemler
+        # Ek kalemler (sadece varsa)
         masraf = kasa_verileri.get('masraf_toplam', 0)
         silinen = kasa_verileri.get('silinen_toplam', 0)
         alinan = kasa_verileri.get('alinan_toplam', 0)
 
-        if masraf > 0 or silinen > 0 or alinan > 0:
-            rapor.append("EK KALEMLER:")
-            if masraf > 0:
-                rapor.append(f"  Masraflar: {masraf:,.2f} TL")
-            if silinen > 0:
-                rapor.append(f"  Silinen Reçete: {silinen:,.2f} TL")
-            if alinan > 0:
-                rapor.append(f"  Alınan Para: {alinan:,.2f} TL")
-            rapor.append("-" * 30)
+        if masraf > 0:
+            L.append(row("Masraf", masraf))
+        if silinen > 0:
+            L.append(row("Silinen", silinen))
+        if alinan > 0:
+            L.append(row("Alinan", alinan))
 
-        # Son genel toplam
-        son_genel = kasa_verileri.get('son_genel_toplam', genel)
-        rapor.append(f"SON GENEL TOPLAM: {son_genel:,.2f} TL")
-        rapor.append("-" * 30)
-
-        # Botanik verileri
+        # Botanik
+        L.append("-" * W)
         botanik_nakit = kasa_verileri.get('botanik_nakit', 0)
         botanik_pos = kasa_verileri.get('botanik_pos', 0)
         botanik_iban = kasa_verileri.get('botanik_iban', 0)
         botanik_toplam = kasa_verileri.get('botanik_toplam', 0)
 
-        rapor.append("BOTANİK VERİLERİ:")
-        rapor.append(f"  Nakit: {botanik_nakit:,.2f} TL")
-        rapor.append(f"  POS: {botanik_pos:,.2f} TL")
-        rapor.append(f"  IBAN: {botanik_iban:,.2f} TL")
-        rapor.append(f"  BOTANİK TOPLAM: {botanik_toplam:,.2f} TL")
-        rapor.append("-" * 30)
+        L.append(row("B.Nakit", botanik_nakit))
+        L.append(row("B.POS", botanik_pos))
+        L.append(row("B.IBAN", botanik_iban))
+        L.append(row("B.Toplam", botanik_toplam))
 
         # Fark
+        L.append("-" * W)
         fark = kasa_verileri.get('fark', 0)
-        fark_text = f"+{fark:,.2f}" if fark > 0 else f"{fark:,.2f}"
-        fark_emoji = "✅" if abs(fark) < 0.01 else "⚠️" if fark > 0 else "❌"
+        if abs(fark) < 0.01:
+            L.append(row("FARK", 0) + " OK")
+        elif fark > 0:
+            L.append(row("FARK", fark) + "+")
+        else:
+            L.append(row("FARK", fark))
 
-        rapor.append(f"FARK: {fark_text} TL {fark_emoji}")
-        rapor.append("=" * 30)
-
-        # Ertesi gün kasası
+        # Ertesi gün
         ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
-        rapor.append(f"ERTESİ GÜN KASASI: {ertesi_gun:,.2f} TL")
+        L.append(row("ErtesiGun", ertesi_gun))
 
-        # Ayrılan para
+        # Ayrılan
+        L.append("=" * W)
         ayrilan = kasa_verileri.get('ayrilan_para', 0)
-        rapor.append(f"AYRILAN PARA: {ayrilan:,.2f} TL")
+        L.append(row("AYRILAN", ayrilan))
 
-        rapor.append("=" * 30)
+        L.append("```")  # WhatsApp monospace bitir
+        L.append(f"{tarih}")
 
-        return "\n".join(rapor)
+        return "\n".join(L)
 
     def whatsapp_gonder(self, mesaj):
         """
