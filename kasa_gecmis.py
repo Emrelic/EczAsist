@@ -319,7 +319,7 @@ class KasaGecmisiPenceresi:
         self.detay_goster(tarih)
 
     def detay_goster(self, tarih):
-        """Seçilen tarihin detayını göster"""
+        """Seçilen tarihin detayını göster - TÜM VERİLER"""
         # Önceki içeriği temizle
         for widget in self.detay_frame.winfo_children():
             widget.destroy()
@@ -340,14 +340,27 @@ class KasaGecmisiPenceresi:
                 ).pack(pady=50)
                 return
 
+            # Sütun isimlerini al
+            self.cursor.execute("PRAGMA table_info(kasa_kapatma)")
+            columns = [col[1] for col in self.cursor.fetchall()]
+
+            # Row'u dict'e çevir
+            data = {}
+            for i, col in enumerate(columns):
+                if i < len(row):
+                    data[col] = row[i]
+
             # Başlık güncelle
             try:
                 dt = datetime.strptime(tarih, "%Y-%m-%d")
-                tarih_gosterim = dt.strftime("%d %B %Y")
+                gun_isimleri = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
+                gun_adi = gun_isimleri[dt.weekday()]
+                tarih_gosterim = f"{gun_adi}, {dt.strftime('%d.%m.%Y')}"
             except Exception:
                 tarih_gosterim = tarih
 
-            self.detay_baslik.config(text=f"Kasa Detayi - {tarih_gosterim}", fg='#1565C0')
+            saat = data.get('saat', '')
+            self.detay_baslik.config(text=f"KASA DETAYI - {tarih_gosterim} {saat}", fg='#1565C0')
 
             # Scroll edilebilir alan
             canvas = tk.Canvas(self.detay_frame, bg='#FAFAFA', highlightthickness=0)
@@ -358,66 +371,160 @@ class KasaGecmisiPenceresi:
             canvas.create_window((0, 0), window=scrollable, anchor="nw")
             canvas.configure(yscrollcommand=scrollbar.set)
 
+            def on_mousewheel(event):
+                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            canvas.bind_all("<MouseWheel>", on_mousewheel)
+
             scrollbar.pack(side="right", fill="y")
             canvas.pack(side="left", fill="both", expand=True)
 
-            # Sütun indeksleri (veritabanı şemasına göre)
-            # id, tarih, saat, baslangic_kasasi, baslangic_kupurler_json,
-            # sayim_toplam, pos_toplam, iban_toplam,
-            # masraf_toplam, silinen_etki_toplam, gun_ici_alinan_toplam,
-            # nakit_toplam, genel_toplam, son_genel_toplam,
-            # botanik_nakit, botanik_pos, botanik_iban, botanik_genel_toplam,
-            # fark, ertesi_gun_kasasi, ertesi_gun_kupurler_json,
-            # detay_json, olusturma_zamani
-
-            # Özet bilgiler
-            ozet_frame = tk.Frame(scrollable, bg='#E3F2FD', padx=15, pady=15)
-            ozet_frame.pack(fill="x", pady=5)
-
-            # Row değerlerini al
-            baslangic = row[3] if len(row) > 3 else 0
-            nakit = row[11] if len(row) > 11 else 0
-            pos = row[6] if len(row) > 6 else 0
-            iban = row[7] if len(row) > 7 else 0
-            genel = row[12] if len(row) > 12 else 0
-            son_genel = row[13] if len(row) > 13 else genel
-            botanik_toplam = row[17] if len(row) > 17 else 0
-            fark = row[18] if len(row) > 18 else 0
-            ertesi_gun = row[19] if len(row) > 19 else 0
-
-            # İki sütunlu gösterim
-            sol = tk.Frame(ozet_frame, bg='#E3F2FD')
-            sol.pack(side="left", fill="both", expand=True)
-
-            sag = tk.Frame(ozet_frame, bg='#E3F2FD')
-            sag.pack(side="left", fill="both", expand=True)
-
-            # Sol sütun
-            self.detay_satir_ekle(sol, "Baslangic Kasasi", baslangic)
-            self.detay_satir_ekle(sol, "Nakit Toplam", nakit)
-            self.detay_satir_ekle(sol, "POS Toplam", pos)
-            self.detay_satir_ekle(sol, "IBAN Toplam", iban)
-            self.detay_satir_ekle(sol, "Genel Toplam", genel, bold=True)
-
-            # Sağ sütun
-            self.detay_satir_ekle(sag, "Son Genel Toplam", son_genel, bold=True)
-            self.detay_satir_ekle(sag, "Botanik Toplam", botanik_toplam)
-
-            fark_renk = '#4CAF50' if abs(fark) < 0.01 else '#F44336' if fark < 0 else '#FF9800'
-            self.detay_satir_ekle(sag, "Fark", fark, renk=fark_renk, bold=True)
-            self.detay_satir_ekle(sag, "Ertesi Gun Kasasi", ertesi_gun, bold=True)
-
-            # Detay JSON varsa küpürleri göster
-            detay_json = row[21] if len(row) > 21 else None
+            # Detay JSON
+            detay = {}
+            detay_json = data.get('detay_json')
             if detay_json:
                 try:
                     detay = json.loads(detay_json)
-                    self.kupurler_goster(scrollable, detay)
                 except json.JSONDecodeError:
                     pass
 
+            # ========== 1) BAŞLANGIÇ KASASI ==========
+            self.bolum_olustur(scrollable, "1) BAŞLANGIÇ KASASI", '#C8E6C9', [
+                ("Başlangıç Kasası Toplam", data.get('baslangic_kasasi', 0), True)
+            ])
+
+            # Manuel başlangıç varsa göster
+            manuel = detay.get('manuel_baslangic', {})
+            if manuel.get('aktif'):
+                self.bilgi_satir(scrollable, f"  * Manuel Giriş: {manuel.get('aciklama', '')}", '#FFF3E0')
+
+            # ========== 2) GÜN SONU SAYIM ==========
+            self.bolum_olustur(scrollable, "2) GÜN SONU NAKİT SAYIMI", '#C8E6C9', [
+                ("Nakit Sayım Toplam", data.get('nakit_toplam', 0), True)
+            ])
+
+            # Küpür detayları
+            sayim_kupurler = detay.get('sayim_kupurler', {})
+            if sayim_kupurler:
+                self.kupurler_detay_goster(scrollable, "Sayım Küpürleri", sayim_kupurler)
+
+            # ========== 3) POS RAPORLARI ==========
+            pos_detay = detay.get('pos', [])
+            pos_satirlari = []
+
+            # EczPOS (ilk 4)
+            eczpos_toplam = 0
+            for i, tutar in enumerate(pos_detay[:4]):
+                if tutar and tutar > 0:
+                    pos_satirlari.append((f"EczPOS {i+1}", tutar, False))
+                    eczpos_toplam += tutar
+            if eczpos_toplam > 0:
+                pos_satirlari.append(("EczPOS Toplam", eczpos_toplam, True))
+
+            # Ingenico (sonraki 4)
+            ingenico_toplam = 0
+            for i, tutar in enumerate(pos_detay[4:8]):
+                if tutar and tutar > 0:
+                    pos_satirlari.append((f"Ingenico {i+1}", tutar, False))
+                    ingenico_toplam += tutar
+            if ingenico_toplam > 0:
+                pos_satirlari.append(("Ingenico Toplam", ingenico_toplam, True))
+
+            pos_satirlari.append(("POS GENEL TOPLAM", data.get('pos_toplam', 0), True))
+            self.bolum_olustur(scrollable, "3) POS RAPORLARI", '#BBDEFB', pos_satirlari)
+
+            # ========== 4) IBAN ==========
+            iban_detay = detay.get('iban', [])
+            iban_satirlari = []
+            for i, tutar in enumerate(iban_detay):
+                if tutar and tutar > 0:
+                    iban_satirlari.append((f"IBAN {i+1}", tutar, False))
+            iban_satirlari.append(("IBAN TOPLAM", data.get('iban_toplam', 0), True))
+            self.bolum_olustur(scrollable, "4) IBAN", '#BBDEFB', iban_satirlari)
+
+            # ========== 5) GİRİLMEYEN MASRAFLAR ==========
+            masraflar = detay.get('masraflar', [])
+            masraf_satirlari = []
+            for i, (tutar, aciklama) in enumerate(masraflar):
+                if tutar and tutar > 0:
+                    masraf_satirlari.append((f"M{i+1}: {aciklama[:20] if aciklama else '-'}", tutar, False))
+            masraf_satirlari.append(("MASRAF TOPLAM", data.get('masraf_toplam', 0), True))
+            self.bolum_olustur(scrollable, "5) GİRİLMEYEN MASRAFLAR (-)", '#FFF3E0', masraf_satirlari)
+
+            # ========== 6) SİLİNEN REÇETE ETKİSİ ==========
+            silinen = detay.get('silinen', [])
+            silinen_satirlari = []
+            for i, (tutar, aciklama) in enumerate(silinen):
+                if tutar and tutar > 0:
+                    silinen_satirlari.append((f"S{i+1}: {aciklama[:20] if aciklama else '-'}", tutar, False))
+            silinen_satirlari.append(("SİLİNEN TOPLAM", data.get('silinen_etki_toplam', 0), True))
+            self.bolum_olustur(scrollable, "6) SİLİNEN REÇETE ETKİSİ (-)", '#FFCDD2', silinen_satirlari)
+
+            # ========== 7) ALINAN PARALAR ==========
+            alinan = detay.get('gun_ici_alinan', [])
+            alinan_satirlari = []
+            for i, (tutar, aciklama) in enumerate(alinan):
+                if tutar and tutar > 0:
+                    alinan_satirlari.append((f"A{i+1}: {aciklama[:20] if aciklama else '-'}", tutar, False))
+            alinan_satirlari.append(("ALINAN TOPLAM", data.get('gun_ici_alinan_toplam', 0), True))
+            self.bolum_olustur(scrollable, "7) ALINAN PARALAR (+)", '#C8E6C9', alinan_satirlari)
+
+            # ========== 8) GENEL TOPLAM ==========
+            self.bolum_olustur(scrollable, "8) GENEL TOPLAM", '#E1BEE7', [
+                ("Nakit + POS + IBAN", data.get('genel_toplam', 0), False),
+                ("SON GENEL TOPLAM", data.get('son_genel_toplam', 0), True)
+            ])
+
+            # ========== 9) BOTANİK - SAYIM KARŞILAŞTIRMA ==========
+            botanik_nakit = data.get('botanik_nakit', 0)
+            botanik_pos = data.get('botanik_pos', 0)
+            botanik_iban = data.get('botanik_iban', 0)
+            botanik_toplam = data.get('botanik_genel_toplam', 0)
+
+            # Düzeltilmiş nakit = nakit + masraf + silinen + alınan
+            duzeltilmis_nakit = (data.get('nakit_toplam', 0) +
+                                data.get('masraf_toplam', 0) +
+                                data.get('silinen_etki_toplam', 0) +
+                                data.get('gun_ici_alinan_toplam', 0))
+            duzeltilmis_toplam = duzeltilmis_nakit + data.get('pos_toplam', 0) + data.get('iban_toplam', 0)
+
+            nakit_fark = duzeltilmis_nakit - botanik_nakit
+            pos_fark = data.get('pos_toplam', 0) - botanik_pos
+            iban_fark = data.get('iban_toplam', 0) - botanik_iban
+            genel_fark = data.get('fark', 0)
+
+            fark_frame = tk.LabelFrame(scrollable, text="9) SAYIM - BOTANİK KARŞILAŞTIRMA",
+                                       font=("Arial", 10, "bold"), bg='#FFF9C4', padx=10, pady=10)
+            fark_frame.pack(fill="x", pady=5, padx=5)
+
+            # Başlık satırı
+            header = tk.Frame(fark_frame, bg='#FFF9C4')
+            header.pack(fill="x")
+            tk.Label(header, text="", width=12, bg='#FFF9C4', font=("Arial", 9, "bold")).pack(side="left")
+            tk.Label(header, text="SAYIM", width=12, bg='#FFF9C4', font=("Arial", 9, "bold")).pack(side="left")
+            tk.Label(header, text="BOTANİK", width=12, bg='#FFF9C4', font=("Arial", 9, "bold")).pack(side="left")
+            tk.Label(header, text="FARK", width=12, bg='#FFF9C4', font=("Arial", 9, "bold")).pack(side="left")
+
+            self.fark_satir(fark_frame, "Nakit", duzeltilmis_nakit, botanik_nakit, nakit_fark)
+            self.fark_satir(fark_frame, "POS", data.get('pos_toplam', 0), botanik_pos, pos_fark)
+            self.fark_satir(fark_frame, "IBAN", data.get('iban_toplam', 0), botanik_iban, iban_fark)
+
+            ttk.Separator(fark_frame, orient='horizontal').pack(fill="x", pady=3)
+            self.fark_satir(fark_frame, "TOPLAM", duzeltilmis_toplam, botanik_toplam, genel_fark, bold=True)
+
+            # ========== 10) ERTESİ GÜN KASASI ==========
+            self.bolum_olustur(scrollable, "10) ERTESİ GÜN KASASI", '#B2DFDB', [
+                ("ERTESİ GÜN KASASI TOPLAM", data.get('ertesi_gun_kasasi', 0), True)
+            ])
+
+            # ========== 11) AYRILAN PARA ==========
+            self.bolum_olustur(scrollable, "11) AYRILAN PARA", '#FFCCBC', [
+                ("AYRILAN PARA TOPLAM", data.get('ayrilan_para', 0), True)
+            ])
+
         except Exception as e:
             logger.error(f"Detay gösterme hatası: {e}")
+            import traceback
+            traceback.print_exc()
             tk.Label(
                 self.detay_frame,
                 text=f"Hata: {e}",
@@ -425,6 +532,65 @@ class KasaGecmisiPenceresi:
                 bg='#FAFAFA',
                 fg='#F44336'
             ).pack(pady=20)
+
+    def bolum_olustur(self, parent, baslik, renk, satirlar):
+        """Bölüm frame oluştur"""
+        frame = tk.LabelFrame(parent, text=baslik, font=("Arial", 10, "bold"),
+                             bg=renk, padx=10, pady=5)
+        frame.pack(fill="x", pady=3, padx=5)
+
+        for etiket, deger, bold in satirlar:
+            row = tk.Frame(frame, bg=renk)
+            row.pack(fill="x", pady=1)
+
+            tk.Label(row, text=etiket, font=("Arial", 9, "bold" if bold else "normal"),
+                    bg=renk, anchor='w', width=25).pack(side="left")
+
+            deger_text = f"{deger:,.2f} TL" if isinstance(deger, (int, float)) else str(deger)
+            tk.Label(row, text=deger_text, font=("Arial", 9, "bold" if bold else "normal"),
+                    bg=renk, anchor='e', width=15).pack(side="right")
+
+    def bilgi_satir(self, parent, metin, renk):
+        """Bilgi satırı ekle"""
+        tk.Label(parent, text=metin, font=("Arial", 9, "italic"),
+                bg=renk, anchor='w').pack(fill="x", padx=10)
+
+    def fark_satir(self, parent, etiket, sayim, botanik, fark, bold=False):
+        """Fark tablosu satırı"""
+        row = tk.Frame(parent, bg='#FFF9C4')
+        row.pack(fill="x", pady=1)
+
+        font = ("Arial", 9, "bold" if bold else "normal")
+
+        tk.Label(row, text=etiket, width=12, bg='#FFF9C4', font=font, anchor='w').pack(side="left")
+        tk.Label(row, text=f"{sayim:,.0f}", width=12, bg='#FFF9C4', font=font).pack(side="left")
+        tk.Label(row, text=f"{botanik:,.0f}", width=12, bg='#FFF9C4', font=font).pack(side="left")
+
+        fark_renk = '#4CAF50' if abs(fark) < 0.01 else '#F44336' if fark < 0 else '#FF9800'
+        fark_text = f"+{fark:,.0f}" if fark > 0 else f"{fark:,.0f}"
+        tk.Label(row, text=fark_text, width=12, bg='#FFF9C4', font=font, fg=fark_renk).pack(side="left")
+
+    def kupurler_detay_goster(self, parent, baslik, kupurler):
+        """Küpür detaylarını göster"""
+        if not kupurler:
+            return
+
+        frame = tk.Frame(parent, bg='#E8F5E9', padx=10, pady=5)
+        frame.pack(fill="x", padx=15)
+
+        kupur_degerleri = [200, 100, 50, 20, 10, 5, 1, 0.5]
+        satir_text = []
+        for deger in kupur_degerleri:
+            adet = kupurler.get(str(deger), kupurler.get(str(int(deger)) if deger >= 1 else str(deger), 0))
+            if adet and adet > 0:
+                if deger >= 1:
+                    satir_text.append(f"{int(deger)}TL x{adet}")
+                else:
+                    satir_text.append(f"50Kr x{adet}")
+
+        if satir_text:
+            tk.Label(frame, text="  ".join(satir_text), font=("Arial", 8),
+                    bg='#E8F5E9', fg='#2E7D32').pack(anchor='w')
 
     def detay_satir_ekle(self, parent, etiket, deger, renk=None, bold=False):
         """Detay satırı ekle"""

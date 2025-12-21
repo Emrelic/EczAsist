@@ -1,7 +1,6 @@
 """
 Botanik Bot - Kasa Kapatma Modülü
 Günlük kasa sayımı, POS, IBAN ve mutabakat işlemleri
-Yeniden tasarlanmış versiyon - Wizard destekli
 """
 
 import tkinter as tk
@@ -17,16 +16,26 @@ logger = logging.getLogger(__name__)
 
 # Yeni modülleri import et
 try:
-    from kasa_wizard import KasaWizard
     from kasa_kontrol_listesi import KasaKontrolListesi
     from kasa_whatsapp import KasaWhatsAppRapor, KasaWhatsAppPenceresi
     from kasa_yazici import KasaYazici, YaziciSecimPenceresi
     from kasa_gecmis import KasaGecmisiPenceresi
     from kasa_raporlama import KasaRaporlamaPenceresi
+    from rapor_ayarlari import RaporAyarlariPenceresi
+    from kasa_email import KasaEmailPenceresi, EmailAyarPenceresi
+    from kasa_yardim import KasaYardimPenceresi
     YENI_MODULLER_YUKLENDI = True
 except ImportError as e:
     logger.warning(f"Yeni modüller yüklenemedi: {e}")
     YENI_MODULLER_YUKLENDI = False
+
+# Botanik veri çekme modülü
+try:
+    from botanik_veri_cek import botanik_verilerini_cek, botanik_penceresi_acik_mi, baslangic_kasasi_kontrol
+    BOTANIK_VERI_MODULU_YUKLENDI = True
+except ImportError as e:
+    logger.warning(f"Botanik veri çekme modülü yüklenemedi: {e}")
+    BOTANIK_VERI_MODULU_YUKLENDI = False
 
 
 class KasaKapatmaModul:
@@ -137,16 +146,28 @@ class KasaKapatmaModul:
         self.para_ayirma_penceresi = None
         self.ertesi_gun_belirlendi = False
         self.ayrilan_para_belirlendi = False
-
-        # Wizard değişkenleri
-        self.wizard = None
-        self.wizard_aktif = False
+        self.kasa_tablo_acik = False
 
         # Yeni veri değişkenleri
         self.ertesi_gun_toplam_data = 0
         self.ertesi_gun_kupurler_data = {}
         self.ayrilan_toplam_data = 0
         self.ayrilan_kupurler_data = {}
+
+        # Tab navigasyonu için entry listesi
+        # Sıra: Sayım -> Masraf -> Silinen -> Alınan -> Botanik -> Sayım (tur)
+        self.tab_order_entries = []
+
+        # Manuel başlangıç kasası değişkenleri
+        self.manuel_baslangic_aktif = False
+        self.manuel_baslangic_tutar = 0
+        self.manuel_baslangic_aciklama = ""
+
+        # Sayım sırası alışveriş değişkenleri
+        self.alisveris_tahsilat_var = tk.StringVar(value="0")
+        self.alisveris_alinan_kupurler = {}  # {deger: adet}
+        self.alisveris_para_ustu = 0
+        self.alisveris_para_ustu_kupurler = {}  # {deger: adet}
 
         # Pencere kapatma
         self.root.protocol("WM_DELETE_WINDOW", self.kapat)
@@ -156,10 +177,6 @@ class KasaKapatmaModul:
 
         self.arayuz_olustur()
         self.hesaplari_guncelle()
-
-        # Wizard modunu kontrol et ve gerekirse başlat
-        if self.ayarlar.get("yonerge_aktif", False) and YENI_MODULLER_YUKLENDI:
-            self.root.after(500, self.wizard_baslat)
 
     def ayarlari_yukle(self):
         """Kasa ayarlarını yükle"""
@@ -197,6 +214,36 @@ class KasaKapatmaModul:
         """Entry'ye tiklandiginda icerigi sec"""
         event.widget.select_range(0, tk.END)
         event.widget.icursor(tk.END)
+
+    def tab_sonraki_entry(self, event):
+        """Tab tuşuna basıldığında sıradaki entry'ye geç"""
+        try:
+            current_widget = event.widget
+            if current_widget in self.tab_order_entries:
+                idx = self.tab_order_entries.index(current_widget)
+                next_idx = (idx + 1) % len(self.tab_order_entries)
+                next_widget = self.tab_order_entries[next_idx]
+                next_widget.focus_set()
+                next_widget.select_range(0, tk.END)
+                return "break"  # Varsayılan Tab davranışını engelle
+        except Exception as e:
+            logger.debug(f"Tab navigasyon: {e}")
+        return None
+
+    def shift_tab_onceki_entry(self, event):
+        """Shift+Tab tuşuna basıldığında önceki entry'ye geç"""
+        try:
+            current_widget = event.widget
+            if current_widget in self.tab_order_entries:
+                idx = self.tab_order_entries.index(current_widget)
+                prev_idx = (idx - 1) % len(self.tab_order_entries)
+                prev_widget = self.tab_order_entries[prev_idx]
+                prev_widget.focus_set()
+                prev_widget.select_range(0, tk.END)
+                return "break"  # Varsayılan Shift+Tab davranışını engelle
+        except Exception as e:
+            logger.debug(f"Shift+Tab navigasyon: {e}")
+        return None
 
     def kupur_aktif_mi(self, deger):
         """Küpürün aktif olup olmadığını kontrol et"""
@@ -274,6 +321,17 @@ class KasaKapatmaModul:
 
             try:
                 self.cursor.execute("ALTER TABLE kasa_kapatma ADD COLUMN ayrilan_kupurler_json TEXT")
+            except sqlite3.OperationalError:
+                pass
+
+            # Manuel başlangıç kasası bilgisi
+            try:
+                self.cursor.execute("ALTER TABLE kasa_kapatma ADD COLUMN manuel_baslangic_tutar REAL DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                self.cursor.execute("ALTER TABLE kasa_kapatma ADD COLUMN manuel_baslangic_aciklama TEXT")
             except sqlite3.OperationalError:
                 pass
 
@@ -362,11 +420,35 @@ class KasaKapatmaModul:
         self.b_bolumu_frame = tk.Frame(ab_frame, bg=self.bg_color)
         self.b_bolumu_frame.grid(row=0, column=1, sticky='nsew', padx=(2, 0))
 
-        # A Bolumu icerigi (1, 2, 3)
-        self.baslangic_kasasi_bolumu_olustur()  # 1)
-        self.gun_sonu_sayim_bolumu_olustur()     # 2)
-        self.pos_bolumu_olustur()               # 3) POS + IBAN
+        # A Bolumu icerigi - 2x2 GRID yapısı (sadece bu alan değişiyor)
+        # Grid yapılandırması: 2 sütun, 2 satır (alt satır daha yüksek)
+        self.a_bolumu_frame.columnconfigure(0, weight=1)  # Sol sütun
+        self.a_bolumu_frame.columnconfigure(1, weight=1)  # Sağ sütun
+        self.a_bolumu_frame.rowconfigure(0, weight=35)    # Üst satır (%35)
+        self.a_bolumu_frame.rowconfigure(1, weight=65)    # Alt satır (%65 - daha yüksek)
+
+        # Sol Üst: 1) BAŞLANGIÇ KASASI
+        self.sol_ust_frame = tk.Frame(self.a_bolumu_frame, bg=self.bg_color)
+        self.sol_ust_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 2), pady=(0, 2))
+
+        # Sağ Üst: 2) AKŞAM KASA SAYIMI
+        self.sag_ust_frame = tk.Frame(self.a_bolumu_frame, bg=self.bg_color)
+        self.sag_ust_frame.grid(row=0, column=1, sticky='nsew', padx=(2, 0), pady=(0, 2))
+
+        # Sol Alt: 3) POS VE IBAN
+        self.sol_alt_frame = tk.Frame(self.a_bolumu_frame, bg=self.bg_color)
+        self.sol_alt_frame.grid(row=1, column=0, sticky='nsew', padx=(0, 2), pady=(2, 0))
+
+        # Sağ Alt: 2-A) SAYIM SIRASI ALIŞVERİŞ VE BOZUK PARA
+        self.sag_alt_frame = tk.Frame(self.a_bolumu_frame, bg=self.bg_color)
+        self.sag_alt_frame.grid(row=1, column=1, sticky='nsew', padx=(2, 0), pady=(2, 0))
+
+        # Bölümleri oluştur
+        self.baslangic_kasasi_bolumu_olustur()  # 1) Sol Üst
+        self.gun_sonu_sayim_bolumu_olustur()    # 2) Sağ Üst
+        self.pos_bolumu_olustur()               # 3) Sol Alt
         self.iban_bolumu_olustur()
+        self.alisveris_bolumu_olustur()         # 2-A) Sağ Alt
 
         # B Bolumu icerigi (4, 5, 6, 7, 8)
         self.masraf_bolumu_olustur()            # 4)
@@ -406,6 +488,70 @@ class KasaKapatmaModul:
         self.arti_eksi_listesi_olustur()       # 10) Sabit liste
         self.kasa_tablosu_olustur()            # 11) Kasa tablosu
         self.alt_butonlar_olustur()            # Butonlar
+
+        # Sayfa açıldığında Botanik verilerini çek (500ms gecikme ile UI yüklenmesini bekle)
+        self.root.after(500, self.botanik_verilerini_otomatik_cek)
+
+    def botanik_verilerini_otomatik_cek(self):
+        """Botanik EOS'tan verileri otomatik çek ve ilgili alanlara yaz"""
+        if not BOTANIK_VERI_MODULU_YUKLENDI:
+            logger.info("Botanik veri modülü yüklenmedi, otomatik çekme atlanıyor")
+            return
+
+        try:
+            # Botanik penceresi açık mı kontrol et
+            if not botanik_penceresi_acik_mi():
+                logger.info("Botanik 'Kasa Kapatma' penceresi açık değil")
+                return
+
+            # Verileri çek
+            veriler = botanik_verilerini_cek()
+
+            if not veriler:
+                logger.warning("Botanik verileri çekilemedi")
+                return
+
+            # Botanik verilerini ilgili alanlara yaz
+            botanik_nakit = veriler.get('nakit', 0)
+            botanik_pos = veriler.get('pos', 0)
+            botanik_iban = veriler.get('iban', 0)
+            botanik_baslangic = veriler.get('baslangic', 0)
+
+            # Botanik alanlarına yaz
+            self.botanik_nakit_var.set(str(int(botanik_nakit)))
+            self.botanik_pos_var.set(str(int(botanik_pos)))
+            self.botanik_iban_var.set(str(int(botanik_iban)))
+
+            # Toplamları güncelle
+            self.botanik_guncelle()
+
+            logger.info(f"Botanik verileri çekildi: Nakit={botanik_nakit}, POS={botanik_pos}, IBAN={botanik_iban}")
+
+            # Başlangıç kasası tutarsızlık kontrolü
+            program_baslangic = self.get_float_value(self.baslangic_toplam_var.get())
+
+            if botanik_baslangic > 0 and program_baslangic > 0:
+                tutarli, mesaj = baslangic_kasasi_kontrol(botanik_baslangic, program_baslangic)
+
+                if not tutarli:
+                    # Uyarı göster
+                    messagebox.showwarning("Başlangıç Kasası Uyarısı", mesaj)
+
+        except Exception as e:
+            logger.error(f"Botanik veri çekme hatası: {e}")
+
+    def botanik_verilerini_yenile(self):
+        """Botanik verilerini manuel olarak yenile (buton için)"""
+        if not BOTANIK_VERI_MODULU_YUKLENDI:
+            messagebox.showwarning("Modül Yok", "Botanik veri çekme modülü yüklenmedi!")
+            return
+
+        if not botanik_penceresi_acik_mi():
+            messagebox.showwarning("Pencere Yok", "Botanik 'Kasa Kapatma' penceresi açık değil!")
+            return
+
+        self.botanik_verilerini_otomatik_cek()
+        messagebox.showinfo("Başarılı", "Botanik verileri güncellendi!")
 
     def ust_bar_olustur(self):
         """Üst bar - başlık ve butonlar"""
@@ -448,37 +594,21 @@ class KasaKapatmaModul:
         )
         ayarlar_btn.pack(side="left", padx=5, pady=12)
 
-        # Wizard Başlat butonu
-        if YENI_MODULLER_YUKLENDI:
-            wizard_btn = tk.Button(
-                sol_frame,
-                text="Wizard Başlat",
-                font=("Arial", 10, "bold"),
-                bg="#FF9800",
-                fg="white",
-                activebackground="#F57C00",
-                cursor="hand2",
-                bd=0,
-                padx=15,
-                pady=5,
-                command=self.wizard_baslat
-            )
-            wizard_btn.pack(side="left", padx=5, pady=12)
-
-        # Kurulum Rehberi butonu
-        rehber_btn = tk.Button(
+        # Yardım butonu (Kullanım Kılavuzu + Geliştirme Notları)
+        yardim_btn = tk.Button(
             sol_frame,
-            text="?",
+            text="Yardım",
             font=("Arial", 10, "bold"),
-            bg="#607D8B",
+            bg="#FF9800",
             fg="white",
-            activebackground="#455A64",
+            activebackground="#F57C00",
             cursor="hand2",
             bd=0,
-            width=3,
-            command=self.kurulum_rehberi_ac
+            padx=15,
+            pady=5,
+            command=self.yardim_penceresi_ac
         )
-        rehber_btn.pack(side="left", padx=5, pady=12)
+        yardim_btn.pack(side="left", padx=5, pady=12)
 
         # Orta - Başlık
         title = tk.Label(
@@ -494,11 +624,11 @@ class KasaKapatmaModul:
         sag_frame = tk.Frame(top_bar, bg=self.header_color)
         sag_frame.pack(side="right", padx=10)
 
-        # WhatsApp butonu
+        # Rapor Gönder butonu (WhatsApp + E-posta)
         if YENI_MODULLER_YUKLENDI:
-            whatsapp_btn = tk.Button(
+            rapor_gonder_btn = tk.Button(
                 sag_frame,
-                text="WhatsApp",
+                text="Rapor Gönder",
                 font=("Arial", 10, "bold"),
                 bg='#25D366',
                 fg='white',
@@ -507,9 +637,9 @@ class KasaKapatmaModul:
                 bd=0,
                 padx=15,
                 pady=5,
-                command=self.whatsapp_rapor_gonder
+                command=self.rapor_gonder_tumu
             )
-            whatsapp_btn.pack(side="left", padx=5, pady=12)
+            rapor_gonder_btn.pack(side="left", padx=5, pady=12)
 
         temizle_btn = tk.Button(
             sag_frame,
@@ -526,9 +656,10 @@ class KasaKapatmaModul:
         )
         temizle_btn.pack(side="left", padx=5, pady=12)
 
-        gecmis_btn = tk.Button(
+        # Kayıtlar butonu (Geçmiş + Raporlar birleşik)
+        kayitlar_btn = tk.Button(
             sag_frame,
-            text="Geçmiş Kayıtlar",
+            text="Kayıtlar",
             font=("Arial", 10, "bold"),
             bg='#2196F3',
             fg='white',
@@ -537,25 +668,9 @@ class KasaKapatmaModul:
             bd=0,
             padx=15,
             pady=5,
-            command=self.gecmis_goster
+            command=self.kayitlar_penceresi_ac
         )
-        gecmis_btn.pack(side="left", padx=5, pady=12)
-
-        # Raporlar butonu
-        raporlar_btn = tk.Button(
-            sag_frame,
-            text="Raporlar",
-            font=("Arial", 10, "bold"),
-            bg='#9C27B0',
-            fg='white',
-            activebackground='#7B1FA2',
-            cursor='hand2',
-            bd=0,
-            padx=15,
-            pady=5,
-            command=self.raporlar_goster
-        )
-        raporlar_btn.pack(side="left", padx=5, pady=12)
+        kayitlar_btn.pack(side="left", padx=5, pady=12)
 
         # Tarih/Saat
         self.tarih_label = tk.Label(
@@ -568,9 +683,9 @@ class KasaKapatmaModul:
         self.tarih_label.pack(side="left", padx=10, pady=12)
 
     def baslangic_kasasi_bolumu_olustur(self):
-        """1) Başlangıç kasası bölümü - sabit görünüm, dolgun"""
+        """1) Başlangıç kasası bölümü - SOL ÜST"""
         frame = tk.LabelFrame(
-            self.a_bolumu_frame,
+            self.sol_ust_frame,
             text="1) BAŞLANGIÇ KASASI",
             font=("Arial", 11, "bold"),
             bg=self.section_colors['baslangic'],
@@ -578,7 +693,7 @@ class KasaKapatmaModul:
             padx=5,
             pady=3
         )
-        frame.pack(fill="both", expand=True, pady=2)
+        frame.pack(fill="both", expand=True)
 
         # Toplam satırı
         toplam_frame = tk.Frame(frame, bg='#A5D6A7')
@@ -591,6 +706,21 @@ class KasaKapatmaModul:
             bg='#A5D6A7',
             fg='#1B5E20'
         ).pack(side="left", padx=5, pady=3)
+
+        # Manuel giriş butonu
+        self.manuel_baslangic_btn = tk.Button(
+            toplam_frame,
+            text="✏",
+            font=("Arial", 10),
+            bg='#FFE082',
+            fg='#E65100',
+            width=2,
+            bd=1,
+            takefocus=False,
+            cursor='hand2',
+            command=self.manuel_baslangic_penceresi_ac
+        )
+        self.manuel_baslangic_btn.pack(side="left", padx=2)
 
         # Toplam değeri
         baslangic_toplam = self.onceki_gun_verisi.get("toplam", 0)
@@ -675,7 +805,8 @@ class KasaKapatmaModul:
             textvariable=var,
             font=("Arial", 10),
             width=5,
-            justify='center'
+            justify='center',
+            takefocus=False
         )
         entry.pack(side="left", padx=3)
         entry.bind('<FocusIn>', self.entry_fokus_secim)
@@ -716,6 +847,12 @@ class KasaKapatmaModul:
 
     def baslangic_toplam_hesapla(self):
         """Başlangıç kasası toplamını hesapla"""
+        # Manuel giriş aktifse onu kullan
+        if self.manuel_baslangic_aktif:
+            self.baslangic_toplam_var.set(f"{self.manuel_baslangic_tutar:,.2f}")
+            self.hesaplari_guncelle()
+            return
+
         toplam = 0
         for deger, var in self.baslangic_kupur_vars.items():
             try:
@@ -726,10 +863,190 @@ class KasaKapatmaModul:
         self.baslangic_toplam_var.set(f"{toplam:,.2f}")
         self.hesaplari_guncelle()
 
+    def manuel_baslangic_penceresi_ac(self):
+        """Manuel başlangıç kasası giriş penceresi"""
+        pencere = tk.Toplevel(self.root)
+        pencere.title("Manuel Başlangıç Kasası Girişi")
+        pencere.geometry("420x320")
+        pencere.transient(self.root)
+        pencere.grab_set()
+        pencere.configure(bg='#FFF8E1')
+        pencere.resizable(False, False)
+
+        # Başlık
+        baslik_frame = tk.Frame(pencere, bg='#FF8F00', height=50)
+        baslik_frame.pack(fill="x")
+        baslik_frame.pack_propagate(False)
+
+        tk.Label(
+            baslik_frame,
+            text="Manuel Başlangıç Kasası",
+            font=("Arial", 13, "bold"),
+            bg='#FF8F00',
+            fg='white'
+        ).pack(expand=True)
+
+        # Uyarı
+        uyari_frame = tk.Frame(pencere, bg='#FFECB3', pady=8)
+        uyari_frame.pack(fill="x", padx=10, pady=10)
+
+        tk.Label(
+            uyari_frame,
+            text="⚠ DİKKAT: Bu işlem normal akışı bozar!\n"
+                 "Sadece zorunlu durumlarda kullanınız.",
+            font=("Arial", 9),
+            bg='#FFECB3',
+            fg='#E65100',
+            justify='center'
+        ).pack(pady=5)
+
+        # Tutar girişi
+        tutar_frame = tk.Frame(pencere, bg='#FFF8E1')
+        tutar_frame.pack(fill="x", padx=20, pady=10)
+
+        tk.Label(
+            tutar_frame,
+            text="Başlangıç Kasası Tutarı (TL):",
+            font=("Arial", 11, "bold"),
+            bg='#FFF8E1',
+            fg='#333'
+        ).pack(anchor='w')
+
+        tutar_var = tk.StringVar(value="0")
+        tutar_entry = tk.Entry(
+            tutar_frame,
+            textvariable=tutar_var,
+            font=("Arial", 14),
+            width=20,
+            justify='right'
+        )
+        tutar_entry.pack(fill="x", pady=5)
+        tutar_entry.focus_set()
+        tutar_entry.select_range(0, tk.END)
+
+        # Açıklama girişi
+        aciklama_frame = tk.Frame(pencere, bg='#FFF8E1')
+        aciklama_frame.pack(fill="x", padx=20, pady=10)
+
+        tk.Label(
+            aciklama_frame,
+            text="Neden manuel giriş yapılıyor? (Zorunlu):",
+            font=("Arial", 11, "bold"),
+            bg='#FFF8E1',
+            fg='#333'
+        ).pack(anchor='w')
+
+        aciklama_text = tk.Text(
+            aciklama_frame,
+            font=("Arial", 10),
+            width=40,
+            height=3,
+            wrap='word'
+        )
+        aciklama_text.pack(fill="x", pady=5)
+
+        # Butonlar
+        buton_frame = tk.Frame(pencere, bg='#FFF8E1', pady=15)
+        buton_frame.pack(fill="x")
+
+        def iptal():
+            pencere.destroy()
+
+        def tamam():
+            try:
+                tutar_str = tutar_var.get().replace(",", ".").replace(" ", "")
+                tutar = float(tutar_str)
+            except ValueError:
+                messagebox.showerror("Hata", "Geçerli bir tutar giriniz!", parent=pencere)
+                return
+
+            aciklama = aciklama_text.get("1.0", tk.END).strip()
+            if not aciklama or len(aciklama) < 5:
+                messagebox.showerror("Hata", "Lütfen neden manuel giriş yaptığınızı açıklayınız!\n(En az 5 karakter)", parent=pencere)
+                return
+
+            # Onay al
+            onay = messagebox.askyesno(
+                "Onay",
+                f"Başlangıç kasası manuel olarak {tutar:,.2f} TL yapılacak.\n\n"
+                f"Açıklama: {aciklama}\n\n"
+                "Onaylıyor musunuz?",
+                parent=pencere
+            )
+
+            if onay:
+                self.manuel_baslangic_aktif = True
+                self.manuel_baslangic_tutar = tutar
+                self.manuel_baslangic_aciklama = aciklama
+
+                # Küpür alanlarını devre dışı bırak görsel olarak
+                self.baslangic_toplam_var.set(f"{tutar:,.2f}")
+
+                # Butonu işaretli göster
+                self.manuel_baslangic_btn.config(bg='#FF5722', fg='white', text="✓")
+
+                # Hesapları güncelle
+                self.hesaplari_guncelle()
+
+                logger.info(f"Manuel başlangıç kasası: {tutar} TL - {aciklama}")
+                pencere.destroy()
+
+                messagebox.showinfo(
+                    "Başarılı",
+                    f"Başlangıç kasası manuel olarak {tutar:,.2f} TL olarak ayarlandı.\n\n"
+                    "Bu bilgi raporlarda saklanacaktır."
+                )
+
+        def sifirla():
+            """Manuel girişi sıfırla, normal moda dön"""
+            self.manuel_baslangic_aktif = False
+            self.manuel_baslangic_tutar = 0
+            self.manuel_baslangic_aciklama = ""
+            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏")
+            self.baslangic_toplam_hesapla()
+            pencere.destroy()
+            messagebox.showinfo("Sıfırlandı", "Manuel giriş iptal edildi.\nNormal küpür hesabına dönüldü.")
+
+        tk.Button(
+            buton_frame,
+            text="İptal",
+            font=("Arial", 10),
+            bg='#9E9E9E',
+            fg='white',
+            width=10,
+            command=iptal
+        ).pack(side="left", padx=20)
+
+        if self.manuel_baslangic_aktif:
+            tk.Button(
+                buton_frame,
+                text="Sıfırla",
+                font=("Arial", 10),
+                bg='#FF5722',
+                fg='white',
+                width=10,
+                command=sifirla
+            ).pack(side="left", padx=5)
+
+        tk.Button(
+            buton_frame,
+            text="Tamam",
+            font=("Arial", 10, "bold"),
+            bg='#4CAF50',
+            fg='white',
+            width=10,
+            command=tamam
+        ).pack(side="right", padx=20)
+
+        # Mevcut değerleri yükle
+        if self.manuel_baslangic_aktif:
+            tutar_var.set(str(self.manuel_baslangic_tutar))
+            aciklama_text.insert("1.0", self.manuel_baslangic_aciklama)
+
     def gun_sonu_sayim_bolumu_olustur(self):
-        """2) Gün sonu kasa sayımı bölümü - dolgun"""
+        """2) Gün sonu kasa sayımı bölümü - SAĞ ÜST"""
         frame = tk.LabelFrame(
-            self.a_bolumu_frame,
+            self.sag_ust_frame,
             text="2) AKŞAM KASA SAYIMI",
             font=("Arial", 11, "bold"),
             bg=self.section_colors['sayim'],
@@ -737,7 +1054,7 @@ class KasaKapatmaModul:
             padx=5,
             pady=3
         )
-        frame.pack(fill="both", expand=True, pady=2)
+        frame.pack(fill="both", expand=True)
 
         # Başlık
         header = tk.Frame(frame, bg='#A5D6A7')
@@ -800,6 +1117,7 @@ class KasaKapatmaModul:
             fg='#C62828',
             width=2,
             bd=0,
+            takefocus=False,
             command=lambda d=deger: self.sayim_adet_degistir(d, -1)
         ).pack(side="left")
 
@@ -816,6 +1134,9 @@ class KasaKapatmaModul:
         entry.pack(side="left", padx=2)
         entry.bind('<KeyRelease>', lambda e, d=deger: self.sayim_satir_guncelle(d))
         entry.bind('<FocusIn>', self.entry_fokus_secim)
+        entry.bind('<Tab>', self.tab_sonraki_entry)
+        entry.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
+        self.tab_order_entries.append(entry)
 
         tk.Button(
             adet_frame,
@@ -825,6 +1146,7 @@ class KasaKapatmaModul:
             fg='#2E7D32',
             width=2,
             bd=0,
+            takefocus=False,
             command=lambda d=deger: self.sayim_adet_degistir(d, 1)
         ).pack(side="left")
 
@@ -861,10 +1183,603 @@ class KasaKapatmaModul:
             self.sayim_toplam_labels[deger].config(text="0,00")
         self.hesaplari_guncelle()
 
+    def alisveris_bolumu_olustur(self):
+        """2-A) Sayım sırası alışveriş ve bozuk para ekleme bölümü - SAĞ ALT"""
+        # Ana çerçeve
+        main_frame = tk.LabelFrame(
+            self.sag_alt_frame,
+            text="2-A) SAYIM SIRASI ALIŞVERİŞ VE BOZUK PARA EKLEME",
+            font=("Arial", 9, "bold"),
+            bg='#FFF3E0',
+            fg='#E65100',
+            padx=3,
+            pady=2
+        )
+        main_frame.pack(fill="both", expand=True)
+
+        # Notebook (sekmeli yapı)
+        style = ttk.Style()
+        style.configure('Alisveris.TNotebook', background='#FFF3E0')
+        style.configure('Alisveris.TNotebook.Tab', padding=[8, 3], font=('Arial', 8, 'bold'))
+
+        self.alisveris_notebook = ttk.Notebook(main_frame, style='Alisveris.TNotebook')
+        self.alisveris_notebook.pack(fill='both', expand=True)
+
+        # === SEKME 1: ALIŞVERİŞ ===
+        self.alisveris_sekmesi_olustur()
+
+        # === SEKME 2: BOZUK PARA EKLEME ===
+        self.bozuk_para_sekmesi_olustur()
+
+    def alisveris_sekmesi_olustur(self):
+        """Alışveriş sekmesi içeriği"""
+        frame = tk.Frame(self.alisveris_notebook, bg='#FFF3E0')
+        self.alisveris_notebook.add(frame, text='Alışveriş')
+
+        # 1) Tahsilat tutarı
+        tahsilat_frame = tk.Frame(frame, bg='#FFF3E0')
+        tahsilat_frame.pack(fill="x", pady=2)
+
+        tk.Label(tahsilat_frame, text="Tahsilat:", font=("Arial", 10, "bold"), bg='#FFF3E0', fg='#E65100').pack(side="left", padx=2)
+        self.alisveris_tahsilat_entry = tk.Entry(tahsilat_frame, textvariable=self.alisveris_tahsilat_var, font=("Arial", 11, "bold"), width=10, justify='right', bg='#FFCC80')
+        self.alisveris_tahsilat_entry.pack(side="right", padx=2)
+
+        # 2) Alınan küpürler başlık
+        tk.Label(frame, text="Müşteriden Alınan:", font=("Arial", 9, "bold"), bg='#FFF3E0', fg='#795548').pack(anchor='w', pady=(3, 1))
+
+        # Küpür butonları
+        kupurler = [200, 100, 50, 20, 10, 5, 1, 0.5]
+        self.alisveris_kupur_btns = {}
+        self.alisveris_kupur_labels = {}
+
+        btn_frame1 = tk.Frame(frame, bg='#FFF3E0')
+        btn_frame1.pack(fill="x", pady=1)
+        btn_frame2 = tk.Frame(frame, bg='#FFF3E0')
+        btn_frame2.pack(fill="x", pady=1)
+
+        for i, kupur in enumerate(kupurler):
+            parent_frame = btn_frame1 if i < 4 else btn_frame2
+            kupur_container = tk.Frame(parent_frame, bg='#FFF3E0')
+            kupur_container.pack(side="left", padx=1)
+
+            kupur_text = f"{kupur:.0f}" if kupur >= 1 else "0,5"
+            btn = tk.Button(kupur_container, text=kupur_text, font=("Arial", 8, "bold"), bg='#FFE0B2', fg='#E65100', width=3, bd=1, cursor='hand2', command=lambda k=kupur: self.alisveris_kupur_ekle(k))
+            btn.pack(side="top")
+            btn.bind('<Button-3>', lambda e, k=kupur: self.alisveris_kupur_azalt(k))
+            self.alisveris_kupur_btns[kupur] = btn
+
+            lbl = tk.Label(kupur_container, text="0", font=("Arial", 8), bg='#FFF3E0', fg='#795548', width=3)
+            lbl.pack(side="top")
+            self.alisveris_kupur_labels[kupur] = lbl
+
+        # 3) Alınan toplam
+        alinan_toplam_frame = tk.Frame(frame, bg='#FFE0B2')
+        alinan_toplam_frame.pack(fill="x", pady=(3, 1))
+        tk.Label(alinan_toplam_frame, text="Alınan:", font=("Arial", 9, "bold"), bg='#FFE0B2', fg='#E65100').pack(side="left", padx=3, pady=2)
+        self.alisveris_alinan_label = tk.Label(alinan_toplam_frame, text="0 TL", font=("Arial", 10, "bold"), bg='#FFE0B2', fg='#E65100')
+        self.alisveris_alinan_label.pack(side="right", padx=3, pady=2)
+
+        # 4) Para Üstü Hesapla butonu
+        tk.Button(frame, text="PARA ÜSTÜ HESAPLA", font=("Arial", 9, "bold"), bg='#2196F3', fg='white', bd=0, cursor='hand2', command=self.alisveris_para_ustu_hesapla).pack(fill="x", pady=3)
+
+        # 5) Para üstü gösterimi
+        para_ustu_frame = tk.Frame(frame, bg='#C8E6C9')
+        para_ustu_frame.pack(fill="x", pady=1)
+        tk.Label(para_ustu_frame, text="Para Üstü:", font=("Arial", 9, "bold"), bg='#C8E6C9', fg='#2E7D32').pack(side="left", padx=3, pady=2)
+        self.alisveris_para_ustu_label = tk.Label(para_ustu_frame, text="0 TL", font=("Arial", 10, "bold"), bg='#C8E6C9', fg='#2E7D32')
+        self.alisveris_para_ustu_label.pack(side="right", padx=3, pady=2)
+
+        # 6) Para üstü küpür detayı
+        self.alisveris_para_ustu_detay = tk.Label(frame, text="", font=("Arial", 8), bg='#FFF3E0', fg='#795548', wraplength=150, justify='left')
+        self.alisveris_para_ustu_detay.pack(fill="x", pady=1)
+
+        # 7) Butonlar
+        btn_frame = tk.Frame(frame, bg='#FFF3E0')
+        btn_frame.pack(fill="x", pady=(3, 1))
+        tk.Button(btn_frame, text="Temizle", font=("Arial", 8), bg='#FFCDD2', fg='#C62828', bd=0, cursor='hand2', command=self.alisveris_temizle).pack(side="left", padx=1)
+        tk.Button(btn_frame, text="Kasaya İşle", font=("Arial", 8, "bold"), bg='#4CAF50', fg='white', bd=0, cursor='hand2', command=self.alisveris_kasaya_isle).pack(side="right", padx=1)
+
+    def bozuk_para_sekmesi_olustur(self):
+        """Bozuk para ekleme sekmesi - YENİ TASARIM"""
+        frame = tk.Frame(self.alisveris_notebook, bg='#E3F2FD')
+        self.alisveris_notebook.add(frame, text='Bozuk Para')
+
+        # Bozuk para değişkenleri
+        self.bozuk_buyuk_kupurler = {}  # {deger: adet}
+        self.bozuk_kucuk_kupurler = {}  # {deger: adet}
+        self.bozuk_buyuk_labels = {}
+        self.bozuk_kucuk_labels = {}
+        self.bozuk_kucuk_entries = {}   # Textbox'lar
+        self.bozuk_kucuk_btns = {}      # Butonlar
+        self.bozuk_textbox_modu = False  # Textbox modunda mı?
+        self.bozuk_ilk_tiklama_yapildi = False  # İlk tıklama yapıldı mı?
+
+        # Üst başlık
+        tk.Label(frame, text="Büyük küpürü bozuk paraya çevir", font=("Arial", 8), bg='#E3F2FD', fg='#1565C0').pack(pady=2)
+
+        # Ana içerik - iki sütun
+        content = tk.Frame(frame, bg='#E3F2FD')
+        content.pack(fill='both', expand=True, padx=2)
+
+        # SOL TARAF - Bozulacak büyük küpürler (200, 100, 50, 20, 10, 5)
+        sol_frame = tk.LabelFrame(content, text="BOZULACAK", font=("Arial", 8, "bold"), bg='#BBDEFB', fg='#1565C0', padx=3, pady=2)
+        sol_frame.pack(side='left', fill='both', expand=True, padx=(0, 2))
+
+        buyuk_kupurler = [200, 100, 50, 20, 10, 5]
+        for kupur in buyuk_kupurler:
+            row = tk.Frame(sol_frame, bg='#BBDEFB')
+            row.pack(fill='x', pady=1)
+
+            btn = tk.Button(row, text=f"{kupur}", font=("Arial", 9, "bold"), bg='#90CAF9', fg='#0D47A1', width=4, cursor='hand2', command=lambda k=kupur: self.bozuk_buyuk_tikla(k))
+            btn.pack(side='left', padx=2)
+            btn.bind('<Button-3>', lambda e, k=kupur: self.bozuk_buyuk_azalt(k))
+
+            lbl = tk.Label(row, text="0", font=("Arial", 9, "bold"), bg='#BBDEFB', fg='#1565C0', width=3)
+            lbl.pack(side='right', padx=2)
+            self.bozuk_buyuk_labels[kupur] = lbl
+            self.bozuk_buyuk_kupurler[kupur] = 0
+
+        # Bozulacak toplam
+        self.bozuk_buyuk_toplam_label = tk.Label(sol_frame, text="TOPLAM: 0 TL", font=("Arial", 9, "bold"), bg='#64B5F6', fg='white')
+        self.bozuk_buyuk_toplam_label.pack(fill='x', pady=(3, 1))
+
+        # SAĞ TARAF - Bozuk paralar (100, 50, 20, 10, 5, 1, 0.50)
+        self.bozuk_sag_frame = tk.LabelFrame(content, text="BOZUK PARA", font=("Arial", 8, "bold"), bg='#C8E6C9', fg='#2E7D32', padx=3, pady=2)
+        self.bozuk_sag_frame.pack(side='right', fill='both', expand=True, padx=(2, 0))
+
+        kucuk_kupurler = [100, 50, 20, 10, 5, 1, 0.50]
+        for kupur in kucuk_kupurler:
+            row = tk.Frame(self.bozuk_sag_frame, bg='#C8E6C9')
+            row.pack(fill='x', pady=1)
+
+            kupur_text = f"{kupur:.2f}" if kupur < 1 else f"{int(kupur)}"
+            btn = tk.Button(row, text=kupur_text, font=("Arial", 8, "bold"), bg='#A5D6A7', fg='#1B5E20', width=4, cursor='hand2', command=lambda k=kupur: self.bozuk_kucuk_tikla(k))
+            btn.pack(side='left', padx=2)
+            btn.bind('<Button-3>', lambda e, k=kupur: self.bozuk_kucuk_azalt(k))
+            self.bozuk_kucuk_btns[kupur] = btn
+
+            # Adet label (başlangıçta görünür)
+            lbl = tk.Label(row, text="0", font=("Arial", 9, "bold"), bg='#C8E6C9', fg='#2E7D32', width=5)
+            lbl.pack(side='right', padx=2)
+            self.bozuk_kucuk_labels[kupur] = lbl
+
+            # Adet entry (başlangıçta gizli) - textbox modu için
+            var = tk.StringVar(value="0")
+            entry = tk.Entry(row, textvariable=var, font=("Arial", 9), width=5, justify='center')
+            entry.bind('<KeyRelease>', lambda e, k=kupur: self.bozuk_entry_degisti(k))
+            self.bozuk_kucuk_entries[kupur] = (entry, var)
+            # Entry başlangıçta pack edilmez
+
+            self.bozuk_kucuk_kupurler[kupur] = 0
+
+        # Bozuk para toplam
+        self.bozuk_kucuk_toplam_label = tk.Label(self.bozuk_sag_frame, text="TOPLAM: 0 TL", font=("Arial", 9, "bold"), bg='#66BB6A', fg='white')
+        self.bozuk_kucuk_toplam_label.pack(fill='x', pady=(3, 1))
+
+        # Alt butonlar
+        alt_frame = tk.Frame(frame, bg='#E3F2FD')
+        alt_frame.pack(fill='x', pady=3)
+
+        tk.Button(alt_frame, text="Temizle", font=("Arial", 8), bg='#FFCDD2', fg='#C62828', cursor='hand2', command=self.bozuk_temizle).pack(side='left', padx=3)
+        tk.Button(alt_frame, text="BOZDUR VE KASAYA EKLE", font=("Arial", 8, "bold"), bg='#4CAF50', fg='white', cursor='hand2', command=self.bozuk_kasaya_ekle).pack(side='right', padx=3)
+
+    def bozuk_buyuk_tikla(self, kupur):
+        """Bozulacak büyük küpüre tıklama"""
+        self.bozuk_buyuk_kupurler[kupur] = self.bozuk_buyuk_kupurler.get(kupur, 0) + 1
+        self.bozuk_buyuk_labels[kupur].config(text=str(self.bozuk_buyuk_kupurler[kupur]))
+        self.bozuk_toplamlari_guncelle()
+
+    def bozuk_buyuk_azalt(self, kupur):
+        """Bozulacak büyük küpürü azalt (sağ tık)"""
+        if self.bozuk_buyuk_kupurler.get(kupur, 0) > 0:
+            self.bozuk_buyuk_kupurler[kupur] -= 1
+            self.bozuk_buyuk_labels[kupur].config(text=str(self.bozuk_buyuk_kupurler[kupur]))
+            self.bozuk_toplamlari_guncelle()
+
+    def bozuk_kucuk_tikla(self, kupur):
+        """Bozuk paraya tıklama - İlk tıklama otomatik, ikinci tıklama textbox modu"""
+        buyuk_toplam = sum(k * a for k, a in self.bozuk_buyuk_kupurler.items())
+
+        if buyuk_toplam <= 0:
+            messagebox.showwarning("Uyarı", "Önce bozulacak küpür seçin!")
+            return
+
+        # Mevcut bozuk para toplamı
+        mevcut_kucuk_toplam = sum(k * a for k, a in self.bozuk_kucuk_kupurler.items())
+        kalan = buyuk_toplam - mevcut_kucuk_toplam
+
+        # İlk tıklama mı?
+        if not self.bozuk_ilk_tiklama_yapildi:
+            # İlk tıklama - otomatik hesapla
+            if kupur > kalan:
+                messagebox.showwarning("Uyarı", f"Kalan tutar ({kalan:.2f} TL) bu küpür ({kupur} TL) için yetersiz!")
+                return
+
+            adet = int(kalan / kupur)
+            if adet > 0:
+                self.bozuk_kucuk_kupurler[kupur] = adet
+                self.bozuk_kucuk_labels[kupur].config(text=str(adet))
+                self.bozuk_ilk_tiklama_yapildi = True
+        else:
+            # İkinci tıklama - textbox moduna geç
+            if not self.bozuk_textbox_modu:
+                self.bozuk_textbox_moduna_gec()
+            # Eğer zaten textbox modundaysa, tıklanan küpürün entry'sine fokusla
+            if kupur in self.bozuk_kucuk_entries:
+                entry, var = self.bozuk_kucuk_entries[kupur]
+                entry.focus_set()
+                entry.select_range(0, tk.END)
+
+        self.bozuk_toplamlari_guncelle()
+
+    def bozuk_textbox_moduna_gec(self):
+        """Label'ları textbox'lara dönüştür"""
+        self.bozuk_textbox_modu = True
+
+        for kupur in self.bozuk_kucuk_kupurler:
+            # Label'ı gizle
+            self.bozuk_kucuk_labels[kupur].pack_forget()
+
+            # Entry'yi göster
+            entry, var = self.bozuk_kucuk_entries[kupur]
+            var.set(str(self.bozuk_kucuk_kupurler[kupur]))
+            entry.pack(side='right', padx=2)
+
+    def bozuk_entry_degisti(self, kupur):
+        """Textbox değeri değiştiğinde"""
+        try:
+            entry, var = self.bozuk_kucuk_entries[kupur]
+            yeni_adet = int(var.get() or 0)
+            if yeni_adet < 0:
+                yeni_adet = 0
+                var.set("0")
+
+            self.bozuk_kucuk_kupurler[kupur] = yeni_adet
+            self.bozuk_toplamlari_guncelle()
+
+            # Aşım kontrolü
+            buyuk_toplam = sum(k * a for k, a in self.bozuk_buyuk_kupurler.items())
+            kucuk_toplam = sum(k * a for k, a in self.bozuk_kucuk_kupurler.items())
+
+            if kucuk_toplam > buyuk_toplam:
+                # Aşım uyarısı - entry'yi kırmızı yap
+                entry.config(bg='#FFCDD2')
+            else:
+                entry.config(bg='white')
+
+        except ValueError:
+            pass
+
+    def bozuk_kucuk_azalt(self, kupur):
+        """Bozuk parayı azalt (sağ tık)"""
+        if self.bozuk_kucuk_kupurler.get(kupur, 0) > 0:
+            self.bozuk_kucuk_kupurler[kupur] -= 1
+            self.bozuk_kucuk_labels[kupur].config(text=str(self.bozuk_kucuk_kupurler[kupur]))
+            self.bozuk_toplamlari_guncelle()
+
+    def bozuk_toplamlari_guncelle(self):
+        """Bozuk para toplamlarını güncelle"""
+        buyuk_toplam = sum(k * a for k, a in self.bozuk_buyuk_kupurler.items())
+        kucuk_toplam = sum(k * a for k, a in self.bozuk_kucuk_kupurler.items())
+
+        self.bozuk_buyuk_toplam_label.config(text=f"TOPLAM: {buyuk_toplam:,.0f} TL")
+
+        # Eşleşme kontrolü ve aşım uyarısı
+        if abs(buyuk_toplam - kucuk_toplam) < 0.01 and buyuk_toplam > 0:
+            self.bozuk_kucuk_toplam_label.config(text=f"TOPLAM: {kucuk_toplam:,.2f} TL ✓", bg='#2E7D32')
+        elif kucuk_toplam > buyuk_toplam:
+            asim = kucuk_toplam - buyuk_toplam
+            self.bozuk_kucuk_toplam_label.config(text=f"AŞIM: +{asim:,.2f} TL!", bg='#C62828')
+        else:
+            kalan = buyuk_toplam - kucuk_toplam
+            if kalan > 0 and kucuk_toplam > 0:
+                self.bozuk_kucuk_toplam_label.config(text=f"KALAN: {kalan:,.2f} TL", bg='#FF9800')
+            else:
+                self.bozuk_kucuk_toplam_label.config(text=f"TOPLAM: {kucuk_toplam:,.2f} TL", bg='#66BB6A')
+
+    def bozuk_temizle(self):
+        """Bozuk para verilerini temizle ve label moduna dön"""
+        # Büyük küpürleri sıfırla
+        for kupur in self.bozuk_buyuk_kupurler:
+            self.bozuk_buyuk_kupurler[kupur] = 0
+            self.bozuk_buyuk_labels[kupur].config(text="0")
+
+        # Küçük küpürleri sıfırla
+        for kupur in self.bozuk_kucuk_kupurler:
+            self.bozuk_kucuk_kupurler[kupur] = 0
+            self.bozuk_kucuk_labels[kupur].config(text="0")
+
+            # Textbox modundan çık - entry'leri gizle, label'ları göster
+            if self.bozuk_textbox_modu:
+                entry, var = self.bozuk_kucuk_entries[kupur]
+                entry.pack_forget()
+                var.set("0")
+                entry.config(bg='white')
+                self.bozuk_kucuk_labels[kupur].pack(side='right', padx=2)
+
+        # Mod bayraklarını sıfırla
+        self.bozuk_textbox_modu = False
+        self.bozuk_ilk_tiklama_yapildi = False
+
+        self.bozuk_toplamlari_guncelle()
+
+    def bozuk_kasaya_ekle(self):
+        """Bozdurulan paraları kasaya işle"""
+        buyuk_toplam = sum(k * a for k, a in self.bozuk_buyuk_kupurler.items())
+        kucuk_toplam = sum(k * a for k, a in self.bozuk_kucuk_kupurler.items())
+
+        if buyuk_toplam <= 0:
+            messagebox.showwarning("Uyarı", "Bozulacak küpür seçilmedi!")
+            return
+
+        if abs(buyuk_toplam - kucuk_toplam) >= 0.01:
+            messagebox.showwarning(
+                "Uyarı",
+                f"Toplamlar eşleşmiyor!\n\n"
+                f"Bozulacak: {buyuk_toplam:,.0f} TL\n"
+                f"Bozuk Para: {kucuk_toplam:,.2f} TL\n"
+                f"Fark: {abs(buyuk_toplam - kucuk_toplam):,.2f} TL"
+            )
+            return
+
+        # Kasadan büyük küpürleri çıkar
+        for kupur, adet in self.bozuk_buyuk_kupurler.items():
+            if adet > 0 and kupur in self.sayim_vars:
+                try:
+                    mevcut = int(self.sayim_vars[kupur].get() or 0)
+                    if mevcut < adet:
+                        messagebox.showerror("Hata", f"Kasada yeterli {kupur} TL yok!\nMevcut: {mevcut}, Gerekli: {adet}")
+                        return
+                except:
+                    pass
+
+        # İşlemi uygula
+        # 1) Büyük küpürleri kasadan çıkar
+        for kupur, adet in self.bozuk_buyuk_kupurler.items():
+            if adet > 0 and kupur in self.sayim_vars:
+                mevcut = int(self.sayim_vars[kupur].get() or 0)
+                self.sayim_vars[kupur].set(str(mevcut - adet))
+
+        # 2) Bozuk paraları kasaya ekle
+        for kupur, adet in self.bozuk_kucuk_kupurler.items():
+            if adet > 0 and kupur in self.sayim_vars:
+                mevcut = int(self.sayim_vars[kupur].get() or 0)
+                self.sayim_vars[kupur].set(str(mevcut + adet))
+
+        # Küpür dökümü mesajı oluştur
+        cikarilan_metin = ""
+        for kupur in [200, 100, 50, 20, 10, 5]:
+            adet = self.bozuk_buyuk_kupurler.get(kupur, 0)
+            if adet > 0:
+                cikarilan_metin += f"  {kupur} TL x {adet} = {kupur * adet:,.0f} TL\n"
+
+        eklenen_metin = ""
+        for kupur in [100, 50, 20, 10, 5, 1, 0.50]:
+            adet = self.bozuk_kucuk_kupurler.get(kupur, 0)
+            if adet > 0:
+                kupur_str = f"{kupur:.2f}" if kupur < 1 else f"{int(kupur)}"
+                eklenen_metin += f"  {kupur_str} TL x {adet} = {kupur * adet:,.2f} TL\n"
+
+        # Hesapları güncelle
+        self.hesaplari_guncelle()
+
+        # Temizle
+        self.bozuk_temizle()
+
+        # Bilgi mesajı
+        messagebox.showinfo(
+            "BOZUM İŞLEMİ TAMAMLANDI",
+            f"Para bozma işlemi kasaya işlendi!\n\n"
+            f"{'='*35}\n"
+            f"KASADAN ÇIKARILAN:\n{cikarilan_metin}\n"
+            f"KASAYA EKLENEN:\n{eklenen_metin}\n"
+            f"{'='*35}\n"
+            f"TOPLAM: {buyuk_toplam:,.0f} TL"
+        )
+
+    def alisveris_kupur_ekle(self, kupur):
+        """Müşteriden alınan küpürü ekle (sol tıklama)"""
+        if kupur not in self.alisveris_alinan_kupurler:
+            self.alisveris_alinan_kupurler[kupur] = 0
+        self.alisveris_alinan_kupurler[kupur] += 1
+        self.alisveris_kupur_labels[kupur].config(text=str(self.alisveris_alinan_kupurler[kupur]))
+        self.alisveris_alinan_guncelle()
+
+    def alisveris_kupur_azalt(self, kupur):
+        """Müşteriden alınan küpürü azalt (sağ tıklama)"""
+        if kupur in self.alisveris_alinan_kupurler and self.alisveris_alinan_kupurler[kupur] > 0:
+            self.alisveris_alinan_kupurler[kupur] -= 1
+            self.alisveris_kupur_labels[kupur].config(text=str(self.alisveris_alinan_kupurler[kupur]))
+            self.alisveris_alinan_guncelle()
+
+    def alisveris_alinan_guncelle(self):
+        """Alınan toplam label'ını güncelle"""
+        alinan_toplam = sum(k * a for k, a in self.alisveris_alinan_kupurler.items())
+        if alinan_toplam == int(alinan_toplam):
+            self.alisveris_alinan_label.config(text=f"{int(alinan_toplam)} TL")
+        else:
+            self.alisveris_alinan_label.config(text=f"{alinan_toplam:.1f} TL")
+
+    def alisveris_para_ustu_hesapla(self):
+        """Para Üstü Hesapla butonu - kasadaki küpürlerden verilecek parayı hesapla"""
+        try:
+            tahsilat_str = self.alisveris_tahsilat_var.get().replace(',', '.')
+            tahsilat = float(tahsilat_str or 0)
+        except ValueError:
+            messagebox.showwarning("Uyarı", "Geçerli bir tahsilat tutarı girin!")
+            return
+
+        # Alınan toplam
+        alinan_toplam = sum(k * a for k, a in self.alisveris_alinan_kupurler.items())
+
+        if alinan_toplam == 0:
+            messagebox.showwarning("Uyarı", "Müşteriden alınan küpür seçin!")
+            return
+
+        # Para üstü hesapla
+        para_ustu = alinan_toplam - tahsilat
+        self.alisveris_para_ustu = para_ustu
+
+        if para_ustu < 0:
+            self.alisveris_para_ustu_label.config(text=f"{para_ustu:.1f} TL", fg='#C62828')
+            self.alisveris_para_ustu_detay.config(text="Yetersiz ödeme!", fg='#C62828')
+            return
+        elif abs(para_ustu) < 0.01:
+            self.alisveris_para_ustu_label.config(text="0 TL", fg='#2E7D32')
+            self.alisveris_para_ustu_detay.config(text="Tam ödeme", fg='#2E7D32')
+            self.alisveris_para_ustu_kupurler = {}
+            return
+
+        # Para üstü göster
+        if para_ustu == int(para_ustu):
+            self.alisveris_para_ustu_label.config(text=f"{int(para_ustu)} TL", fg='#2E7D32')
+        else:
+            self.alisveris_para_ustu_label.config(text=f"{para_ustu:.1f} TL", fg='#2E7D32')
+
+        # Para üstü için kasadan verilecek küpürleri hesapla
+        self.alisveris_para_ustu_kupurler = {}
+        kalan = para_ustu
+
+        # Kasadaki küpürleri al (büyükten küçüğe, 50 kuruş dahil)
+        kupurler = [200, 100, 50, 20, 10, 5, 1, 0.5]
+
+        for kupur in kupurler:
+            if kalan < 0.01:
+                break
+
+            # Kasadaki mevcut adet
+            try:
+                kasadaki = int(self.sayim_vars.get(kupur, tk.StringVar(value="0")).get() or 0)
+            except (ValueError, AttributeError):
+                kasadaki = 0
+
+            # Kaç tane gerekli
+            gerekli = int(kalan / kupur)
+            kullanilacak = min(gerekli, kasadaki)
+
+            if kullanilacak > 0:
+                self.alisveris_para_ustu_kupurler[kupur] = kullanilacak
+                kalan -= kullanilacak * kupur
+                kalan = round(kalan, 2)  # Float hatasını önle
+
+        # Detay göster
+        if kalan >= 0.01:
+            detay = f"Kasada yeterli küpür yok!\nEksik: {kalan:.1f} TL\nManuel düzeltme gerekli"
+            self.alisveris_para_ustu_detay.config(text=detay, fg='#C62828')
+        else:
+            detay_list = []
+            for k, a in sorted(self.alisveris_para_ustu_kupurler.items(), reverse=True):
+                if k >= 1:
+                    detay_list.append(f"{int(k)}x{a}")
+                else:
+                    detay_list.append(f"0,5x{a}")
+            self.alisveris_para_ustu_detay.config(text=" + ".join(detay_list), fg='#2E7D32')
+
+    def alisveris_temizle(self):
+        """Alışveriş verilerini temizle"""
+        self.alisveris_tahsilat_var.set("0")
+        self.alisveris_alinan_kupurler = {}
+        self.alisveris_para_ustu = 0
+        self.alisveris_para_ustu_kupurler = {}
+
+        for kupur, lbl in self.alisveris_kupur_labels.items():
+            lbl.config(text="0")
+
+        self.alisveris_alinan_label.config(text="0 TL")
+        self.alisveris_para_ustu_label.config(text="0 TL", fg='#2E7D32')
+        self.alisveris_para_ustu_detay.config(text="")
+
+    def alisveris_kasaya_isle(self):
+        """Alışverişi kasaya işle - küpürleri güncelle ve nakit artır"""
+        try:
+            tahsilat_str = self.alisveris_tahsilat_var.get().replace(',', '.')
+            tahsilat = float(tahsilat_str or 0)
+        except ValueError:
+            messagebox.showwarning("Uyarı", "Geçerli bir tahsilat tutarı girin!")
+            return
+
+        # Para üstü hesaplanmış mı kontrol
+        if not hasattr(self, 'alisveris_para_ustu_kupurler') or self.alisveris_para_ustu_kupurler is None:
+            messagebox.showwarning("Uyarı", "Önce 'Para Üstü Hesapla' butonuna basın!")
+            return
+
+        # Para üstü kontrolü
+        if self.alisveris_para_ustu < 0:
+            messagebox.showwarning("Uyarı", "Yetersiz ödeme! İşlem yapılamaz.")
+            return
+
+        # Kasada yeterli küpür var mı tekrar kontrol
+        kalan = self.alisveris_para_ustu
+        for kupur in [200, 100, 50, 20, 10, 5, 1, 0.5]:
+            try:
+                kasadaki = int(self.sayim_vars.get(kupur, tk.StringVar(value="0")).get() or 0)
+            except (ValueError, AttributeError):
+                kasadaki = 0
+
+            gerekli = int(kalan / kupur)
+            kullanilacak = min(gerekli, kasadaki)
+            kalan -= kullanilacak * kupur
+            kalan = round(kalan, 2)
+
+        if kalan >= 0.01:
+            cevap = messagebox.askyesno(
+                "Manuel Düzeltme Gerekli",
+                f"Kasada yeterli küpür yok!\n"
+                f"Eksik: {kalan:.1f} TL\n\n"
+                f"Devam etmek istiyor musunuz?"
+            )
+            if not cevap:
+                return
+
+        # 1) Alınan küpürleri kasaya ekle
+        for kupur, adet in self.alisveris_alinan_kupurler.items():
+            if kupur in self.sayim_vars:
+                try:
+                    mevcut = int(self.sayim_vars[kupur].get() or 0)
+                    self.sayim_vars[kupur].set(str(mevcut + adet))
+                    self.sayim_satir_guncelle(kupur)
+                except (ValueError, AttributeError):
+                    pass
+
+        # 2) Para üstü küpürlerini kasadan çıkar
+        for kupur, adet in self.alisveris_para_ustu_kupurler.items():
+            if kupur in self.sayim_vars:
+                try:
+                    mevcut = int(self.sayim_vars[kupur].get() or 0)
+                    self.sayim_vars[kupur].set(str(max(0, mevcut - adet)))
+                    self.sayim_satir_guncelle(kupur)
+                except (ValueError, AttributeError):
+                    pass
+
+        # Botanik'e de işlensin mi sor
+        botanik_cevap = messagebox.askyesno(
+            "Botanik Nakit",
+            f"Tahsilat tutarı ({tahsilat:.2f} TL) Botanik Nakit'e de eklensin mi?"
+        )
+
+        if botanik_cevap:
+            # Botanik nakit değerini artır
+            try:
+                mevcut_botanik = float(self.botanik_nakit_var.get().replace(',', '.') or 0)
+            except ValueError:
+                mevcut_botanik = 0
+
+            yeni_botanik = mevcut_botanik + tahsilat
+            self.botanik_nakit_var.set(str(int(yeni_botanik) if yeni_botanik == int(yeni_botanik) else f"{yeni_botanik:.2f}"))
+            self.hesaplari_guncelle()
+
+        # Temizle ve bilgilendir
+        self.alisveris_temizle()
+
+        if botanik_cevap:
+            messagebox.showinfo("Başarılı", f"Alışveriş kasaya ve Botanik'e işlendi!\nNakit artış: {tahsilat:.2f} TL")
+        else:
+            messagebox.showinfo("Başarılı", f"Alışveriş kasaya işlendi!\nNakit artış: {tahsilat:.2f} TL")
+
     def pos_bolumu_olustur(self):
-        """3) POS ve IBAN raporları bölümü - kompakt üç sütun"""
+        """3) POS ve IBAN raporları bölümü - SOL ALT"""
         frame = tk.LabelFrame(
-            self.a_bolumu_frame,
+            self.sol_alt_frame,
             text="3) POS VE IBAN",
             font=("Arial", 11, "bold"),
             bg=self.section_colors['pos'],
@@ -872,7 +1787,7 @@ class KasaKapatmaModul:
             padx=3,
             pady=2
         )
-        frame.pack(fill="both", expand=True, pady=2)
+        frame.pack(fill="both", expand=True)
 
         # Üç sütunlu yapı
         columns_frame = tk.Frame(frame, bg=self.section_colors['pos'])
@@ -896,6 +1811,9 @@ class KasaKapatmaModul:
             entry.pack(side="right", padx=1)
             entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
             entry.bind('<FocusIn>', self.entry_fokus_secim)
+            entry.bind('<Tab>', self.tab_sonraki_entry)
+            entry.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
+            self.tab_order_entries.append(entry)
 
         # Orta sütun - Ingenico
         orta_frame = tk.Frame(columns_frame, bg=self.section_colors['pos'])
@@ -915,6 +1833,9 @@ class KasaKapatmaModul:
             entry.pack(side="right", padx=1)
             entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
             entry.bind('<FocusIn>', self.entry_fokus_secim)
+            entry.bind('<Tab>', self.tab_sonraki_entry)
+            entry.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
+            self.tab_order_entries.append(entry)
 
         # Sağ sütun - IBAN
         sag_frame = tk.Frame(columns_frame, bg='#E0F7FA')
@@ -934,6 +1855,9 @@ class KasaKapatmaModul:
             entry.pack(side="right", padx=1)
             entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
             entry.bind('<FocusIn>', self.entry_fokus_secim)
+            entry.bind('<Tab>', self.tab_sonraki_entry)
+            entry.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
+            self.tab_order_entries.append(entry)
 
         # Alt toplam satırı - POS ve IBAN toplamları yan yana, aynı hizada
         toplam_frame = tk.Frame(frame, bg='#FFD54F')  # Sari arka plan
@@ -2227,11 +3151,25 @@ class KasaKapatmaModul:
             fg='#2E7D32'
         )
 
+        # Küpür dökümü oluştur
+        kupurler_metin = ""
+        for kupur in self.KUPURLER:
+            deger = kupur["deger"]
+            adet = kalan_kupurler.get(str(deger), 0)
+            if adet > 0:
+                tutar = adet * deger
+                kupurler_metin += f"  {kupur['ad']}: {adet} adet = {tutar:,.0f} TL\n"
+
         messagebox.showinfo(
-            "Başarılı",
-            f"Yarının başlangıç kasası belirlendi!\n\n"
-            f"Toplam: {kalan_toplam:,.2f} TL\n\n"
-            f"Bu değer program tekrar açıldığında başlangıç kasası olarak gelecektir."
+            "ERTESİ GÜN KASASI BELİRLENDİ",
+            f"İŞLEM BAŞARILI!\n"
+            f"{'='*40}\n\n"
+            f"Yarının başlangıç kasası belirlendi.\n\n"
+            f"TOPLAM: {kalan_toplam:,.2f} TL\n\n"
+            f"KÜPÜR DÖKÜMÜ:\n{kupurler_metin}\n"
+            f"{'='*40}\n"
+            f"Bu tutar yarın program açıldığında\n"
+            f"başlangıç kasası olarak gelecektir."
         )
 
     def ayrilan_para_ayir_ve_bas(self):
@@ -2265,6 +3203,27 @@ class KasaKapatmaModul:
         self.ayrilan_para_durum_label.config(
             text=f"Ayrılan Para: {ayrilan_toplam:,.2f} TL",
             fg='#E65100'
+        )
+
+        # Küpür dökümü oluştur
+        kupurler_metin = ""
+        for kupur in self.KUPURLER:
+            deger = kupur["deger"]
+            adet = ayrilan_kupurler.get(str(deger), 0)
+            if adet > 0:
+                tutar = adet * deger
+                kupurler_metin += f"  {kupur['ad']}: {adet} adet = {tutar:,.0f} TL\n"
+
+        # Uyarı penceresi göster
+        messagebox.showinfo(
+            "AYRILAN PARA BELİRLENDİ",
+            f"İŞLEM BAŞARILI!\n"
+            f"{'='*40}\n\n"
+            f"Kasadan ayrılacak para belirlendi.\n\n"
+            f"TOPLAM: {ayrilan_toplam:,.2f} TL\n\n"
+            f"KÜPÜR DÖKÜMÜ:\n{kupurler_metin}\n"
+            f"{'='*40}\n"
+            f"Yazıcı bağlıysa etiket basılacak."
         )
 
         # Termal yazıcıdan etiket bas
@@ -2372,8 +3331,12 @@ class KasaKapatmaModul:
             tutar_entry.pack(side="left", padx=2)
             tutar_entry.bind('<FocusOut>', lambda e, v=tutar_var: self.masraf_uyari_kontrol(v))
             tutar_entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
+            tutar_entry.bind('<FocusIn>', self.entry_fokus_secim)
+            tutar_entry.bind('<Tab>', self.tab_sonraki_entry)
+            tutar_entry.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
+            self.tab_order_entries.append(tutar_entry)
 
-            aciklama_entry = tk.Entry(row, textvariable=aciklama_var, font=("Arial", 9), width=12)
+            aciklama_entry = tk.Entry(row, textvariable=aciklama_var, font=("Arial", 9), width=12, takefocus=False)
             aciklama_entry.pack(side="left", padx=2)
 
         # Masraf Toplam
@@ -2445,8 +3408,12 @@ class KasaKapatmaModul:
             tutar_entry = tk.Entry(row, textvariable=tutar_var, font=("Arial", 10), width=10, justify='right')
             tutar_entry.pack(side="left", padx=2)
             tutar_entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
+            tutar_entry.bind('<FocusIn>', self.entry_fokus_secim)
+            tutar_entry.bind('<Tab>', self.tab_sonraki_entry)
+            tutar_entry.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
+            self.tab_order_entries.append(tutar_entry)
 
-            aciklama_entry = tk.Entry(row, textvariable=aciklama_var, font=("Arial", 9), width=12)
+            aciklama_entry = tk.Entry(row, textvariable=aciklama_var, font=("Arial", 9), width=12, takefocus=False)
             aciklama_entry.pack(side="left", padx=2)
 
         # Silinen Toplam
@@ -2497,8 +3464,12 @@ class KasaKapatmaModul:
             tutar_entry = tk.Entry(row, textvariable=tutar_var, font=("Arial", 10), width=10, justify='right')
             tutar_entry.pack(side="left", padx=2)
             tutar_entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
+            tutar_entry.bind('<FocusIn>', self.entry_fokus_secim)
+            tutar_entry.bind('<Tab>', self.tab_sonraki_entry)
+            tutar_entry.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
+            self.tab_order_entries.append(tutar_entry)
 
-            aciklama_entry = tk.Entry(row, textvariable=aciklama_var, font=("Arial", 9), width=12)
+            aciklama_entry = tk.Entry(row, textvariable=aciklama_var, font=("Arial", 9), width=12, takefocus=False)
             aciklama_entry.pack(side="left", padx=2)
 
         # Alinan Toplam
@@ -2563,6 +3534,9 @@ class KasaKapatmaModul:
         entry1.pack(side="right", padx=5)
         entry1.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
         entry1.bind('<FocusIn>', self.entry_fokus_secim)
+        entry1.bind('<Tab>', self.tab_sonraki_entry)
+        entry1.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
+        self.tab_order_entries.append(entry1)
 
         # Botanik POS
         pos_frame = tk.Frame(frame, bg=self.section_colors['botanik'])
@@ -2573,6 +3547,9 @@ class KasaKapatmaModul:
         entry2.pack(side="right", padx=5)
         entry2.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
         entry2.bind('<FocusIn>', self.entry_fokus_secim)
+        entry2.bind('<Tab>', self.tab_sonraki_entry)
+        entry2.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
+        self.tab_order_entries.append(entry2)
 
         # Botanik IBAN
         iban_frame = tk.Frame(frame, bg=self.section_colors['botanik'])
@@ -2583,6 +3560,9 @@ class KasaKapatmaModul:
         entry3.pack(side="right", padx=5)
         entry3.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
         entry3.bind('<FocusIn>', self.entry_fokus_secim)
+        entry3.bind('<Tab>', self.tab_sonraki_entry)
+        entry3.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
+        self.tab_order_entries.append(entry3)
 
         # Botanik Genel Toplam
         bot_toplam_frame = tk.Frame(frame, bg='#F57F17')
@@ -2592,6 +3572,18 @@ class KasaKapatmaModul:
         self.botanik_toplam_label = tk.Label(bot_toplam_frame, text="0,00", font=("Arial", 11, "bold"),
                                              bg='#F57F17', fg='white')
         self.botanik_toplam_label.pack(side="right", padx=5, pady=2)
+
+        # Botanik'ten Veri Çek butonu
+        yenile_btn = tk.Button(
+            frame,
+            text="Botanik'ten Çek",
+            font=("Arial", 9, "bold"),
+            bg='#4CAF50',
+            fg='white',
+            cursor='hand2',
+            command=self.botanik_verilerini_yenile
+        )
+        yenile_btn.pack(fill="x", pady=(3, 0))
 
     def duzeltilmis_nakit_bolumu_olustur(self):
         """7) Duzeltilmis nakit hesaplama bolumu"""
@@ -2930,7 +3922,16 @@ class KasaKapatmaModul:
                 "gun_ici_alinan": [(self.sayi_al(t), a.get()) for t, a in self.gun_ici_alinan_vars],
                 "ayrilan_kupurler": ayrilan_kupurler,
                 "ertesi_gun_kupurler": ertesi_gun_kupurler,
+                "manuel_baslangic": {
+                    "aktif": self.manuel_baslangic_aktif,
+                    "tutar": self.manuel_baslangic_tutar if self.manuel_baslangic_aktif else 0,
+                    "aciklama": self.manuel_baslangic_aciklama if self.manuel_baslangic_aktif else ""
+                }
             }
+
+            # Manuel başlangıç değerleri
+            manuel_tutar = self.manuel_baslangic_tutar if self.manuel_baslangic_aktif else 0
+            manuel_aciklama = self.manuel_baslangic_aciklama if self.manuel_baslangic_aktif else ""
 
             self.cursor.execute('''
                 INSERT INTO kasa_kapatma (
@@ -2941,8 +3942,9 @@ class KasaKapatmaModul:
                     botanik_nakit, botanik_pos, botanik_iban, botanik_genel_toplam,
                     fark, ertesi_gun_kasasi, ertesi_gun_kupurler_json,
                     ayrilan_para, ayrilan_kupurler_json,
+                    manuel_baslangic_tutar, manuel_baslangic_aciklama,
                     detay_json, olusturma_zamani
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 tarih, saat, baslangic_toplam, json.dumps(baslangic_kupurler, ensure_ascii=False),
                 nakit_toplam, pos_toplam, iban_toplam,
@@ -2951,6 +3953,7 @@ class KasaKapatmaModul:
                 botanik_nakit, botanik_pos, botanik_iban, botanik_toplam,
                 fark, ertesi_gun_kasasi, json.dumps(ertesi_gun_kupurler, ensure_ascii=False),
                 ayrilan_para, json.dumps(ayrilan_kupurler, ensure_ascii=False),
+                manuel_tutar, manuel_aciklama,
                 json.dumps(detay, ensure_ascii=False), olusturma_zamani
             ))
             self.conn.commit()
@@ -3014,6 +4017,13 @@ class KasaKapatmaModul:
         self.ertesi_gun_kupurler_data = {}
         self.ayrilan_toplam_data = 0
         self.ayrilan_kupurler_data = {}
+
+        # Manuel başlangıç kasasını sıfırla
+        self.manuel_baslangic_aktif = False
+        self.manuel_baslangic_tutar = 0
+        self.manuel_baslangic_aciklama = ""
+        if hasattr(self, 'manuel_baslangic_btn'):
+            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏")
 
         # Önceki kayıttan başlangıç kasasını yükle
         onceki_veri = self.onceki_gun_kasasi_yukle()
@@ -3104,28 +4114,6 @@ class KasaKapatmaModul:
         # Tab 2: Genel Ayarlar
         genel_tab = tk.Frame(notebook, bg='#FAFAFA')
         notebook.add(genel_tab, text="Genel")
-
-        # Yönerge (Wizard) ayarı
-        yonerge_frame = tk.LabelFrame(genel_tab, text="Kasa İşleme Yönergesi", font=("Arial", 10, "bold"),
-                                      bg='#FAFAFA', padx=10, pady=10)
-        yonerge_frame.pack(fill="x", padx=10, pady=10)
-
-        yonerge_var = tk.BooleanVar(value=self.ayarlar.get("yonerge_aktif", False))
-        tk.Checkbutton(
-            yonerge_frame,
-            text="Kasa işleme yönergesini kullan (Wizard modu)",
-            variable=yonerge_var,
-            font=("Arial", 10),
-            bg='#FAFAFA'
-        ).pack(anchor='w')
-
-        tk.Label(
-            yonerge_frame,
-            text="Aktif olursa adım adım rehberli veri girişi yapılır",
-            font=("Arial", 9),
-            bg='#FAFAFA',
-            fg='#666'
-        ).pack(anchor='w')
 
         # Kabul edilebilir fark ayarı
         fark_frame = tk.LabelFrame(genel_tab, text="Fark Toleransı", font=("Arial", 10, "bold"),
@@ -3248,6 +4236,69 @@ class KasaKapatmaModul:
         port_var = tk.StringVar(value=str(self.ayarlar.get("ana_makine_port", 5000)))
         tk.Entry(port_row, textvariable=port_var, font=("Arial", 10), width=10).pack(side="left", padx=10)
 
+        # Tab 5: Rapor Ayarları
+        rapor_tab = tk.Frame(notebook, bg='#FAFAFA')
+        notebook.add(rapor_tab, text="Rapor Ayarları")
+
+        # Rapor ayarları açıklama
+        rapor_aciklama = tk.Label(
+            rapor_tab,
+            text="WhatsApp ve Yazıcı raporlarında hangi bilgilerin\ngörüneceğini ayrıntılı olarak ayarlayabilirsiniz.",
+            font=("Arial", 10),
+            bg='#FAFAFA',
+            fg='#666',
+            justify='center'
+        )
+        rapor_aciklama.pack(pady=20)
+
+        # Rapor ayarları butonu
+        def rapor_ayarlarini_ac():
+            if YENI_MODULLER_YUKLENDI:
+                pencere = RaporAyarlariPenceresi(ayar_pencere)
+                pencere.goster()
+
+        tk.Button(
+            rapor_tab,
+            text="Rapor Ayarlarını Düzenle",
+            font=("Arial", 12, "bold"),
+            bg='#1565C0',
+            fg='white',
+            padx=30,
+            pady=15,
+            cursor='hand2',
+            command=rapor_ayarlarini_ac
+        ).pack(pady=20)
+
+        # Bilgi kutusu
+        bilgi_frame = tk.LabelFrame(
+            rapor_tab,
+            text="Ayarlanabilir Bölümler",
+            font=("Arial", 10, "bold"),
+            bg='#E3F2FD',
+            padx=10,
+            pady=10
+        )
+        bilgi_frame.pack(fill="x", padx=20, pady=10)
+
+        bilgiler = [
+            "• Başlangıç kasası (toplam/detay)",
+            "• Gün sonu nakit sayım (toplam/detay)",
+            "• POS raporları ve toplamları",
+            "• IBAN verileri ve toplamları",
+            "• Sayım-Botanik özet tablosu",
+            "• Masraf, silinen, alınan paralar",
+            "• Ertesi gün kasası ve ayrılan para",
+        ]
+
+        for bilgi in bilgiler:
+            tk.Label(
+                bilgi_frame,
+                text=bilgi,
+                font=("Arial", 9),
+                bg='#E3F2FD',
+                anchor='w'
+            ).pack(anchor='w', pady=1)
+
         # Buton frame
         btn_frame = tk.Frame(ayar_pencere, bg='#FAFAFA')
         btn_frame.pack(fill="x", pady=10, padx=20)
@@ -3255,7 +4306,6 @@ class KasaKapatmaModul:
         def kaydet():
             # Tüm ayarları güncelle
             self.ayarlar["aktif_kupurler"] = {k: v.get() for k, v in checkbox_vars.items()}
-            self.ayarlar["yonerge_aktif"] = yonerge_var.get()
             try:
                 self.ayarlar["kabul_edilebilir_fark"] = float(fark_var.get())
             except ValueError:
@@ -3331,6 +4381,12 @@ class KasaKapatmaModul:
         self.botanik_pos_var = tk.StringVar(value="0")
         self.botanik_iban_var = tk.StringVar(value="0")
         self.baslangic_detay_acik = False
+        self.tab_order_entries = []
+
+        # Manuel başlangıç kasasını sıfırla
+        self.manuel_baslangic_aktif = False
+        self.manuel_baslangic_tutar = 0
+        self.manuel_baslangic_aciklama = ""
 
         # Ayarları yeniden yükle
         self.ayarlar = self.ayarlari_yukle()
@@ -3450,25 +4506,6 @@ class KasaKapatmaModul:
         """Pencereyi çalıştır"""
         self.root.mainloop()
 
-    def wizard_baslat(self):
-        """Wizard'ı başlat"""
-        if not YENI_MODULLER_YUKLENDI:
-            messagebox.showwarning("Uyari", "Wizard modulu yuklenemedi!")
-            return
-
-        if self.wizard_aktif:
-            messagebox.showinfo("Bilgi", "Wizard zaten calisıyor!")
-            return
-
-        self.wizard_aktif = True
-        self.wizard = KasaWizard(self.root, self, on_complete=self.wizard_tamamlandi)
-        self.wizard.baslat()
-
-    def wizard_tamamlandi(self):
-        """Wizard tamamlandığında çağrılır"""
-        self.wizard_aktif = False
-        self.hesaplari_guncelle()
-
     def whatsapp_rapor_gonder(self):
         """WhatsApp ile kasa raporu gönder"""
         if not YENI_MODULLER_YUKLENDI:
@@ -3480,6 +4517,29 @@ class KasaKapatmaModul:
 
         # WhatsApp penceresi aç
         pencere = KasaWhatsAppPenceresi(self.root, self.ayarlar, kasa_verileri)
+        pencere.goster()
+
+    def email_rapor_gonder(self):
+        """E-posta ile kasa raporu gönder"""
+        if not YENI_MODULLER_YUKLENDI:
+            messagebox.showwarning("Uyari", "E-posta modulu yuklenemedi!")
+            return
+
+        # Kasa verilerini topla
+        kasa_verileri = self.kasa_verilerini_topla()
+
+        # E-posta penceresi aç
+        pencere = KasaEmailPenceresi(self.root, kasa_verileri)
+        pencere.goster()
+
+    def yardim_goster(self):
+        """Yardım/Kullanım kılavuzu penceresini göster"""
+        if not YENI_MODULLER_YUKLENDI:
+            messagebox.showwarning("Uyari", "Yardım modulu yuklenemedi!")
+            return
+
+        # Yardım penceresi aç
+        pencere = KasaYardimPenceresi(self.root)
         pencere.goster()
 
     def kasa_verilerini_topla(self):
@@ -3548,7 +4608,12 @@ class KasaKapatmaModul:
             'botanik_toplam': botanik_toplam,
             'fark': fark,
             'ertesi_gun_kasasi': ertesi_gun,
-            'ayrilan_para': ayrilan
+            'ayrilan_para': ayrilan,
+            'manuel_baslangic': {
+                'aktif': self.manuel_baslangic_aktif,
+                'tutar': self.manuel_baslangic_tutar if self.manuel_baslangic_aktif else 0,
+                'aciklama': self.manuel_baslangic_aciklama if self.manuel_baslangic_aktif else ""
+            }
         }
 
     def fark_kontrol_penceresi_ac(self):
@@ -3635,6 +4700,390 @@ class KasaKapatmaModul:
         except Exception as e:
             logger.error(f"Rehber açma hatası: {e}")
             messagebox.showerror("Hata", f"Rehber acilamadi: {e}")
+
+    def yardim_penceresi_ac(self):
+        """Yardım penceresi - Kullanım Kılavuzu + Geliştirme Notları birleşik"""
+        pencere = tk.Toplevel(self.root)
+        pencere.title("Yardım")
+        pencere.geometry("700x500")
+        pencere.resizable(True, True)
+        pencere.configure(bg='#F5F5F5')
+        pencere.transient(self.root)
+
+        # Pencereyi ortala
+        pencere.update_idletasks()
+        x = (pencere.winfo_screenwidth() - 700) // 2
+        y = (pencere.winfo_screenheight() - 500) // 2
+        pencere.geometry(f"700x500+{x}+{y}")
+
+        # Notebook (sekmeli yapı)
+        notebook = ttk.Notebook(pencere)
+        notebook.pack(fill='both', expand=True, padx=5, pady=5)
+
+        # SEKME 1: Kullanım Kılavuzu
+        if YENI_MODULLER_YUKLENDI:
+            kilavuz_frame = tk.Frame(notebook, bg='#FFFFFF')
+            notebook.add(kilavuz_frame, text='Kullanım Kılavuzu')
+
+            # Yardım içeriğini göster
+            try:
+                yardim_pencere = KasaYardimPenceresi(kilavuz_frame, embed=True)
+                yardim_pencere.icerik_olustur(kilavuz_frame)
+            except Exception as e:
+                tk.Label(kilavuz_frame, text=f"Kullanım kılavuzu yüklenemedi: {e}",
+                        font=("Arial", 12), bg='#FFFFFF').pack(pady=20)
+
+        # SEKME 2: Geliştirme Notları
+        notlar_frame = tk.Frame(notebook, bg='#FFFFFF')
+        notebook.add(notlar_frame, text='Geliştirme Notları')
+
+        # Dosya butonları
+        btn_frame = tk.Frame(notlar_frame, bg='#FFFFFF')
+        btn_frame.pack(pady=20)
+
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+
+        def ac_dosya(dosya_adi):
+            dosya_yolu = Path(script_dir) / dosya_adi
+            if dosya_yolu.exists():
+                os.startfile(str(dosya_yolu))
+            else:
+                messagebox.showwarning("Dosya Bulunamadı", f"{dosya_adi} bulunamadı.")
+
+        tk.Label(notlar_frame, text="Aşağıdaki dosyaları açabilirsiniz:",
+                font=("Arial", 11), bg='#FFFFFF').pack(pady=10)
+
+        tk.Button(btn_frame, text="Geliştirme Adımları", font=("Arial", 10, "bold"),
+                 bg='#4CAF50', fg='white', padx=20, pady=10,
+                 command=lambda: ac_dosya("GELISTIRME_VE_KURULUM_ADIMLARI.txt")).pack(side="left", padx=10)
+
+        tk.Button(btn_frame, text="Kurulum Rehberi", font=("Arial", 10, "bold"),
+                 bg='#2196F3', fg='white', padx=20, pady=10,
+                 command=lambda: ac_dosya("KURULUM_REHBERI.txt")).pack(side="left", padx=10)
+
+        # Kapat butonu
+        tk.Button(pencere, text="Kapat", font=("Arial", 10, "bold"),
+                 bg='#607D8B', fg='white', padx=30, pady=5,
+                 command=pencere.destroy).pack(pady=10)
+
+    def rapor_gonder_tumu(self):
+        """WhatsApp ve E-posta ile birlikte rapor gönder"""
+        if not YENI_MODULLER_YUKLENDI:
+            messagebox.showwarning("Uyarı", "Rapor modülleri yüklenemedi!")
+            return
+
+        # Seçim penceresi
+        secim = tk.Toplevel(self.root)
+        secim.title("Rapor Gönder")
+        secim.geometry("350x200")
+        secim.resizable(False, False)
+        secim.configure(bg='#F5F5F5')
+        secim.transient(self.root)
+        secim.grab_set()
+
+        # Ortala
+        secim.update_idletasks()
+        x = (secim.winfo_screenwidth() - 350) // 2
+        y = (secim.winfo_screenheight() - 200) // 2
+        secim.geometry(f"350x200+{x}+{y}")
+
+        tk.Label(secim, text="Rapor Gönderme Seçenekleri", font=("Arial", 12, "bold"),
+                bg='#F5F5F5').pack(pady=15)
+
+        btn_frame = tk.Frame(secim, bg='#F5F5F5')
+        btn_frame.pack(pady=10)
+
+        def gonder_whatsapp():
+            secim.destroy()
+            self.whatsapp_rapor_gonder()
+
+        def gonder_email():
+            secim.destroy()
+            self.email_rapor_gonder()
+
+        def gonder_ikisi():
+            secim.destroy()
+            self.whatsapp_rapor_gonder()
+            # Biraz bekle sonra email aç
+            self.root.after(500, self.email_rapor_gonder)
+
+        tk.Button(btn_frame, text="WhatsApp", font=("Arial", 10, "bold"),
+                 bg='#25D366', fg='white', width=12, pady=5,
+                 command=gonder_whatsapp).pack(side="left", padx=5)
+
+        tk.Button(btn_frame, text="E-posta", font=("Arial", 10, "bold"),
+                 bg='#667eea', fg='white', width=12, pady=5,
+                 command=gonder_email).pack(side="left", padx=5)
+
+        tk.Button(secim, text="Her İkisi", font=("Arial", 10, "bold"),
+                 bg='#FF9800', fg='white', width=28, pady=8,
+                 command=gonder_ikisi).pack(pady=10)
+
+        tk.Button(secim, text="İptal", font=("Arial", 9),
+                 bg='#9E9E9E', fg='white', width=10,
+                 command=secim.destroy).pack(pady=5)
+
+    def kayitlar_penceresi_ac(self):
+        """Kayıtlar penceresi - Geçmiş Kayıtlar + Raporlar birleşik"""
+        pencere = tk.Toplevel(self.root)
+        pencere.title("Kayıtlar ve Raporlar")
+        pencere.geometry("1000x650")
+        pencere.resizable(True, True)
+        pencere.configure(bg='#F5F5F5')
+        pencere.transient(self.root)
+
+        # Ortala
+        pencere.update_idletasks()
+        x = (pencere.winfo_screenwidth() - 1000) // 2
+        y = (pencere.winfo_screenheight() - 650) // 2
+        pencere.geometry(f"1000x650+{x}+{y}")
+
+        # Notebook (sekmeli yapı)
+        style = ttk.Style()
+        style.configure('Kayitlar.TNotebook.Tab', font=('Arial', 10, 'bold'), padding=[15, 5])
+
+        notebook = ttk.Notebook(pencere, style='Kayitlar.TNotebook')
+        notebook.pack(fill='both', expand=True, padx=5, pady=5)
+
+        # SEKME 1: Geçmiş Kayıtlar
+        gecmis_frame = tk.Frame(notebook, bg='#FFFFFF')
+        notebook.add(gecmis_frame, text='Geçmiş Kayıtlar')
+        self.gecmis_icerik_olustur(gecmis_frame)
+
+        # SEKME 2: Raporlar
+        raporlar_frame = tk.Frame(notebook, bg='#FFFFFF')
+        notebook.add(raporlar_frame, text='Raporlar')
+        self.raporlar_icerik_olustur(raporlar_frame)
+
+        # Alt butonlar
+        alt_frame = tk.Frame(pencere, bg='#F5F5F5')
+        alt_frame.pack(fill='x', pady=10)
+
+        tk.Button(alt_frame, text="Kapat", font=("Arial", 10, "bold"),
+                 bg='#607D8B', fg='white', padx=30, pady=5,
+                 command=pencere.destroy).pack()
+
+    def gecmis_icerik_olustur(self, parent):
+        """Geçmiş kayıtlar içeriğini oluştur"""
+        try:
+            # Treeview oluştur
+            columns = ('ID', 'Tarih', 'Saat', 'Nakit', 'POS', 'IBAN', 'Genel', 'Son Genel', 'Botanik', 'Fark')
+            tree = ttk.Treeview(parent, columns=columns, show='headings', height=20)
+
+            tree.heading('ID', text='ID')
+            tree.heading('Tarih', text='Tarih')
+            tree.heading('Saat', text='Saat')
+            tree.heading('Nakit', text='Nakit')
+            tree.heading('POS', text='POS')
+            tree.heading('IBAN', text='IBAN')
+            tree.heading('Genel', text='Genel Top.')
+            tree.heading('Son Genel', text='Son Gen.Top.')
+            tree.heading('Botanik', text='Botanik Top.')
+            tree.heading('Fark', text='Fark')
+
+            tree.column('ID', width=40)
+            tree.column('Tarih', width=100)
+            tree.column('Saat', width=70)
+            tree.column('Nakit', width=90)
+            tree.column('POS', width=90)
+            tree.column('IBAN', width=90)
+            tree.column('Genel', width=100)
+            tree.column('Son Genel', width=100)
+            tree.column('Botanik', width=100)
+            tree.column('Fark', width=90)
+
+            # Scrollbar
+            scrollbar = ttk.Scrollbar(parent, orient='vertical', command=tree.yview)
+            tree.configure(yscrollcommand=scrollbar.set)
+
+            tree.pack(side='left', fill='both', expand=True, padx=5, pady=5)
+            scrollbar.pack(side='right', fill='y', pady=5)
+
+            # Verileri yükle
+            self.cursor.execute('''
+                SELECT id, tarih, saat, nakit_toplam, pos_toplam, iban_toplam,
+                       genel_toplam, son_genel_toplam, botanik_genel_toplam, fark
+                FROM kasa_kapatma
+                ORDER BY id DESC
+                LIMIT 100
+            ''')
+            kayitlar = self.cursor.fetchall()
+
+            if not kayitlar:
+                tk.Label(parent, text="Henüz kayıt bulunmuyor.",
+                        font=("Arial", 12), bg='#FFFFFF').pack(pady=50)
+                return
+
+            for row in kayitlar:
+                son_genel = row[7] if row[7] else row[6]
+                tree.insert('', 'end', values=(
+                    row[0],
+                    row[1],
+                    row[2],
+                    f"{row[3]:,.2f}",
+                    f"{row[4]:,.2f}",
+                    f"{row[5]:,.2f}",
+                    f"{row[6]:,.2f}",
+                    f"{son_genel:,.2f}",
+                    f"{row[8]:,.2f}",
+                    f"{row[9]:,.2f}"
+                ))
+
+        except Exception as e:
+            logger.error(f"Geçmiş yükleme hatası: {e}")
+            tk.Label(parent, text=f"Kayıtlar yüklenemedi: {e}",
+                    font=("Arial", 11), bg='#FFFFFF', fg='red').pack(pady=50)
+
+    def raporlar_icerik_olustur(self, parent):
+        """Raporlar içeriğini oluştur"""
+        # Başlık
+        baslik_frame = tk.Frame(parent, bg='#1565C0')
+        baslik_frame.pack(fill='x')
+        tk.Label(baslik_frame, text="RAPOR OLUŞTURMA", font=("Arial", 14, "bold"),
+                bg='#1565C0', fg='white', pady=10).pack()
+
+        # İçerik alanı
+        icerik = tk.Frame(parent, bg='#FFFFFF')
+        icerik.pack(fill='both', expand=True, padx=20, pady=20)
+
+        # Dönem seçimi
+        donem_frame = tk.LabelFrame(icerik, text="Dönem Seçimi", font=("Arial", 11, "bold"),
+                                   bg='#FFFFFF', padx=15, pady=10)
+        donem_frame.pack(fill='x', pady=10)
+
+        btn_frame1 = tk.Frame(donem_frame, bg='#FFFFFF')
+        btn_frame1.pack(pady=10)
+
+        tk.Button(btn_frame1, text="Bugün", font=("Arial", 10, "bold"),
+                 bg='#4CAF50', fg='white', width=12, pady=8,
+                 command=lambda: self.donem_raporu('bugun')).pack(side="left", padx=5)
+
+        tk.Button(btn_frame1, text="Dün", font=("Arial", 10, "bold"),
+                 bg='#8BC34A', fg='white', width=12, pady=8,
+                 command=lambda: self.donem_raporu('dun')).pack(side="left", padx=5)
+
+        tk.Button(btn_frame1, text="Bu Hafta", font=("Arial", 10, "bold"),
+                 bg='#2196F3', fg='white', width=12, pady=8,
+                 command=lambda: self.donem_raporu('hafta')).pack(side="left", padx=5)
+
+        tk.Button(btn_frame1, text="Bu Ay", font=("Arial", 10, "bold"),
+                 bg='#9C27B0', fg='white', width=12, pady=8,
+                 command=lambda: self.donem_raporu('ay')).pack(side="left", padx=5)
+
+        # Rapor türü seçimi
+        tur_frame = tk.LabelFrame(icerik, text="Rapor Türü", font=("Arial", 11, "bold"),
+                                 bg='#FFFFFF', padx=15, pady=10)
+        tur_frame.pack(fill='x', pady=10)
+
+        btn_frame2 = tk.Frame(tur_frame, bg='#FFFFFF')
+        btn_frame2.pack(pady=10)
+
+        tk.Button(btn_frame2, text="Özet Rapor", font=("Arial", 10, "bold"),
+                 bg='#FF9800', fg='white', width=15, pady=8,
+                 command=self.ozet_rapor_olustur).pack(side="left", padx=10)
+
+        tk.Button(btn_frame2, text="Detaylı Rapor", font=("Arial", 10, "bold"),
+                 bg='#E91E63', fg='white', width=15, pady=8,
+                 command=self.detayli_rapor_olustur).pack(side="left", padx=10)
+
+        tk.Button(btn_frame2, text="Karşılaştırma", font=("Arial", 10, "bold"),
+                 bg='#607D8B', fg='white', width=15, pady=8,
+                 command=self.karsilastirma_raporu).pack(side="left", padx=10)
+
+        # Hızlı işlemler
+        hizli_frame = tk.LabelFrame(icerik, text="Hızlı İşlemler", font=("Arial", 11, "bold"),
+                                   bg='#FFFFFF', padx=15, pady=10)
+        hizli_frame.pack(fill='x', pady=10)
+
+        btn_frame3 = tk.Frame(hizli_frame, bg='#FFFFFF')
+        btn_frame3.pack(pady=10)
+
+        tk.Button(btn_frame3, text="Excel'e Aktar", font=("Arial", 10),
+                 bg='#217346', fg='white', width=15, pady=5,
+                 command=self.excel_aktar).pack(side="left", padx=10)
+
+        tk.Button(btn_frame3, text="Yazdır", font=("Arial", 10),
+                 bg='#795548', fg='white', width=15, pady=5,
+                 command=self.rapor_yazdir).pack(side="left", padx=10)
+
+    def donem_raporu(self, donem):
+        """Dönem bazlı rapor"""
+        donem_isimleri = {
+            'bugun': 'Bugün',
+            'dun': 'Dün',
+            'hafta': 'Bu Hafta',
+            'ay': 'Bu Ay'
+        }
+        # Mevcut raporlama penceresini aç
+        if YENI_MODULLER_YUKLENDI:
+            self.raporlar_goster()
+        else:
+            messagebox.showinfo("Rapor", f"{donem_isimleri.get(donem, donem)} raporu hazırlanıyor...")
+
+    def ozet_rapor_olustur(self):
+        """Özet rapor"""
+        if YENI_MODULLER_YUKLENDI:
+            self.raporlar_goster()
+        else:
+            messagebox.showinfo("Bilgi", "Özet rapor hazırlanıyor...")
+
+    def detayli_rapor_olustur(self):
+        """Detaylı rapor"""
+        if YENI_MODULLER_YUKLENDI:
+            self.raporlar_goster()
+        else:
+            messagebox.showinfo("Bilgi", "Detaylı rapor hazırlanıyor...")
+
+    def karsilastirma_raporu(self):
+        """Karşılaştırma raporu"""
+        messagebox.showinfo("Bilgi", "Karşılaştırma raporu özelliği geliştirme aşamasında.")
+
+    def excel_aktar(self):
+        """Excel'e aktar"""
+        try:
+            from datetime import datetime
+            import csv
+
+            # Dosya kaydetme dialogu
+            dosya_adi = f"kasa_raporu_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            dosya_yolu = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                filetypes=[("CSV Dosyası", "*.csv"), ("Tüm Dosyalar", "*.*")],
+                initialfile=dosya_adi
+            )
+
+            if not dosya_yolu:
+                return
+
+            # Verileri al
+            self.cursor.execute('''
+                SELECT tarih, saat, nakit_toplam, pos_toplam, iban_toplam,
+                       genel_toplam, son_genel_toplam, botanik_genel_toplam, fark
+                FROM kasa_kapatma
+                ORDER BY id DESC
+                LIMIT 100
+            ''')
+            kayitlar = self.cursor.fetchall()
+
+            # CSV yaz
+            with open(dosya_yolu, 'w', newline='', encoding='utf-8-sig') as f:
+                writer = csv.writer(f, delimiter=';')
+                writer.writerow(['Tarih', 'Saat', 'Nakit', 'POS', 'IBAN', 'Genel Toplam', 'Son Genel', 'Botanik', 'Fark'])
+                for kayit in kayitlar:
+                    writer.writerow(kayit)
+
+            messagebox.showinfo("Başarılı", f"Rapor kaydedildi:\n{dosya_yolu}")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Excel aktarma hatası: {e}")
+
+    def rapor_yazdir(self):
+        """Rapor yazdır"""
+        # Mevcut yazıcı fonksiyonunu çağır
+        if hasattr(self, 'yazici_isle'):
+            self.yazici_isle()
+        else:
+            messagebox.showinfo("Bilgi", "Yazdırma için 'Gün Sonu Kaydet' butonunu kullanın.")
 
 
 def kasa_takip_ac(ana_menu_callback=None):
