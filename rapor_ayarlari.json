@@ -16,7 +16,7 @@
     "duzeltmeler_toplam": true,
     "botanik_detay": true,
     "botanik_toplam": true,
-    "ertesi_gun_detay": false,
+    "ertesi_gun_detay": true,
     "ertesi_gun_toplam": true,
     "ayrilan_para": true
   },

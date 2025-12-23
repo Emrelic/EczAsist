@@ -1,0 +1,13 @@
+{
+  "smtp_saglayici": "Gmail",
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "smtp_tls": true,
+  "gonderen_email": "ikizler.eczanesi.bagcilar@gmail.com",
+  "gonderen_sifre": "nkkn sqfe kabs tjvw",
+  "alicilar": [
+    "emremre07@gmail.com"
+  ],
+  "konu_sablonu": "Kasa Raporu - {tarih}",
+  "screenshot_ekle": true
+}

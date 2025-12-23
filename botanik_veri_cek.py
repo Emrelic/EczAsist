@@ -39,32 +39,48 @@ def _find_botanik_and_kasa_handles():
 
     botanik_h = None
     kasa_h = None
-
-    # BotanikEOS ana penceresini bul
-    def get_botanik(hwnd, lparam):
-        nonlocal botanik_h
-        title = _get_window_text(hwnd)
-        if BOTANIK_EOS_TITLE_PATTERN in title:
-            botanik_h = hwnd
-            return False
-        return True
+    botanik_windows = []  # Tüm BotanikEOS pencereleri
 
     WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-    user32.EnumWindows(WNDENUMPROC(get_botanik), 0)
 
-    if botanik_h is None:
-        return None, None
-
-    # BotanikEOS içinde Kasa Kapatma child penceresini bul
-    def find_kasa(hwnd, lparam):
-        nonlocal kasa_h
+    # Önce TÜM BotanikEOS pencerelerini topla
+    def collect_botanik(hwnd, lparam):
         title = _get_window_text(hwnd)
-        if title == 'Kasa Kapatma':
-            kasa_h = hwnd
-            return False
+        if title and 'BotanikEOS' in title:
+            botanik_windows.append((hwnd, title))
         return True
 
-    user32.EnumChildWindows(botanik_h, WNDENUMPROC(find_kasa), 0)
+    user32.EnumWindows(WNDENUMPROC(collect_botanik), 0)
+
+    if not botanik_windows:
+        logger.debug("BotanikEOS penceresi bulunamadı")
+        return None, None
+
+    logger.debug(f"Bulunan BotanikEOS pencereleri: {len(botanik_windows)}")
+
+    # Her BotanikEOS penceresinde "Kasa Kapatma" child'ını ara
+    for bot_hwnd, bot_title in botanik_windows:
+        found_kasa = None
+
+        def find_kasa_child(hwnd, lparam):
+            nonlocal found_kasa
+            title = _get_window_text(hwnd)
+            # Sadece "Kasa Kapatma" (bizim programımız "Kasa Kapatma - Günlük Mutabakat")
+            if title == 'Kasa Kapatma':
+                found_kasa = hwnd
+                return False
+            return True
+
+        user32.EnumChildWindows(bot_hwnd, WNDENUMPROC(find_kasa_child), 0)
+
+        if found_kasa:
+            botanik_h = bot_hwnd
+            kasa_h = found_kasa
+            logger.debug(f"Kasa Kapatma bulundu: BotanikEOS='{bot_title}', Kasa handle={found_kasa}")
+            break
+
+    if kasa_h is None:
+        logger.debug("Hiçbir BotanikEOS penceresinde 'Kasa Kapatma' child'ı bulunamadı")
 
     return botanik_h, kasa_h
 

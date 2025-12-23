@@ -41,15 +41,9 @@ class KasaWhatsAppRapor:
 
     def rapor_olustur(self, kasa_verileri, ayarlar=None):
         """
-        Kasa verilerinden WhatsApp mesajı oluştur
-        WhatsApp'a özel format - tek mesajda, satır kesiksiz
-        Tüm noktalarla dolgu, rakamlar sağa hizalı
+        Kasa verilerinden basit WhatsApp mesajı oluştur
+        Standart format - tüm temel veriler
         """
-        # Ayarları yükle
-        if ayarlar is None:
-            rapor_ayarlari = rapor_ayarlarini_yukle()
-            ayarlar = rapor_ayarlari.get("whatsapp", {})
-
         gun_isimleri = ["Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz"]
         gun = gun_isimleri[datetime.now().weekday()]
         tarih = datetime.now().strftime("%d/%m/%Y")
@@ -69,7 +63,7 @@ class KasaWhatsAppRapor:
         botanik_iban = kasa_verileri.get('botanik_iban', 0)
         botanik_toplam = kasa_verileri.get('botanik_toplam', 0)
 
-        # Düzeltilmiş nakit (9 nolu tablo için)
+        # Düzeltilmiş nakit
         duz_nakit = nakit + masraf + silinen + alinan
         duz_toplam = duz_nakit + pos + iban
 
@@ -86,37 +80,23 @@ class KasaWhatsAppRapor:
         manuel_baslangic = kasa_verileri.get('manuel_baslangic', {})
         manuel_aktif = manuel_baslangic.get('aktif', False)
 
-        # ============================================
-        # FORMAT AYARLARI
-        # ============================================
-        W = 32  # Satır genişliği (WhatsApp'ta tek satır)
+        W = 32
 
         def fmt(n):
-            """Sayı formatla (binlik ayraç, virgül)"""
             return f"{n:,.0f}"
 
         def fark_fmt(n):
-            """Fark formatla (+/- işaretli)"""
             if abs(n) < 0.01:
                 return "0"
             return f"+{n:,.0f}" if n > 0 else f"{n:,.0f}"
 
         def satir(etiket, rakam, num_w=10):
-            """
-            Nokta dolgulu satır - rakam sağa hizalı
-            etiket: Sol taraftaki yazı
-            rakam: Sağa hizalanacak sayı
-            num_w: Rakam için ayrılan genişlik
-            """
             num_str = fmt(rakam)
             num_fmt = num_str.rjust(num_w)
             etiket_w = W - num_w
             pad = etiket_w - len(etiket)
             return etiket + "." * max(pad, 1) + num_fmt
 
-        # ============================================
-        # MESAJ OLUŞTUR
-        # ============================================
         L = []
 
         # Başlık
@@ -125,72 +105,314 @@ class KasaWhatsAppRapor:
         L.append("=" * W)
 
         # Ana veriler
-        if ayarlar.get("baslangic_kasasi_toplam", True):
-            lbl = "Baslangic*" if manuel_aktif else "Baslangic"
-            L.append(satir(lbl, baslangic))
-
-        if ayarlar.get("gun_sonu_nakit_toplam", True):
-            L.append(satir("Nakit", nakit))
-
-        if ayarlar.get("pos_toplamlari", True):
-            L.append(satir("POS", pos))
-
-        if ayarlar.get("iban_toplamlari", True):
-            L.append(satir("IBAN", iban))
+        lbl = "Baslangic*" if manuel_aktif else "Baslangic"
+        L.append(satir(lbl, baslangic))
+        L.append(satir("Nakit", nakit))
+        L.append(satir("POS", pos))
+        L.append(satir("IBAN", iban))
 
         L.append("-" * W)
 
         # Düzeltmeler
-        if ayarlar.get("girilmeyen_masraflar", True) and masraf > 0:
+        if masraf > 0:
             L.append(satir("Masraf.(-)", masraf))
-        if ayarlar.get("silinen_etkiler", True) and silinen > 0:
+        if silinen > 0:
             L.append(satir("Silinen(-)", silinen))
-        if ayarlar.get("alinan_paralar", True) and alinan > 0:
+        if alinan > 0:
             L.append(satir("Alinan.(+)", alinan))
 
         L.append("=" * W)
 
-        # ============================================
-        # SAYIM - BOTANİK KARŞILAŞTIRMA TABLOSU
-        # ============================================
-        if ayarlar.get("sayim_botanik_ozet", True):
-            # Sütun genişlikleri: ETK(5) + SAY(8) + BOT(9) + FRK(8) + 2 nokta = 32
+        # Sayım-Botanik tablosu
+        ETK_W = 5
+        SAY_W = 8
+        BOT_W = 9
+        FRK_W = 8
+
+        h = f"{'SAY'.rjust(SAY_W)}.{'BOT'.rjust(BOT_W)}.{'FARK'.rjust(FRK_W)}"
+        L.append(h.rjust(W))
+        L.append("-" * W)
+
+        def tablo(lbl, say, bot, frk):
+            lbl_fmt = (lbl + ".")[:ETK_W].ljust(ETK_W, ".")
+            say_fmt = fmt(say).rjust(SAY_W)
+            bot_fmt = fmt(bot).rjust(BOT_W)
+            frk_fmt = fark_fmt(frk).rjust(FRK_W)
+            return f"{lbl_fmt}{say_fmt}.{bot_fmt}.{frk_fmt}"
+
+        L.append(tablo("Nakt", duz_nakit, botanik_nakit, nakit_fark))
+        L.append(tablo("POS", pos, botanik_pos, pos_fark))
+        L.append(tablo("IBAN", iban, botanik_iban, iban_fark))
+        L.append("-" * W)
+        L.append(f"*{tablo('TOP', duz_toplam, botanik_toplam, genel_fark)}*")
+
+        L.append("=" * W)
+
+        L.append(satir("Ertesi.Gun", ertesi_gun))
+        L.append(satir("*AYRILAN*", ayrilan))
+
+        L.append("=" * W)
+        L.append(f"*{fmt(ayrilan)}.TL*".center(W))
+
+        return "\n".join(L)
+
+    def rapor_olustur_ozellesmis(self, kasa_verileri):
+        """
+        Kasa verilerinden özelleşmiş WhatsApp mesajı oluştur
+        Rapor Ayarları'na göre tüm detayları içerir
+        Yeni yapı: 1-7 arası bölümler
+        """
+        # Ayarları yükle
+        rapor_ayarlari = rapor_ayarlarini_yukle()
+        ayarlar = rapor_ayarlari.get("whatsapp", {})
+
+        gun_isimleri = ["Pzt", "Sal", "Car", "Per", "Cum", "Cmt", "Paz"]
+        gun = gun_isimleri[datetime.now().weekday()]
+        tarih = datetime.now().strftime("%d/%m/%Y")
+        saat = datetime.now().strftime("%H:%M")
+
+        # Verileri al
+        baslangic = kasa_verileri.get('baslangic_kasasi', 0)
+        baslangic_kupurler = kasa_verileri.get('baslangic_kupurler', {})
+        nakit = kasa_verileri.get('nakit_toplam', 0)
+        nakit_kupurler = kasa_verileri.get('nakit_kupurler', {})
+
+        # POS ayrıntılı
+        eczaci_pos_listesi = kasa_verileri.get('eczaci_pos_listesi', [])
+        eczaci_pos_toplam = kasa_verileri.get('eczaci_pos_toplam', 0)
+        ingenico_listesi = kasa_verileri.get('ingenico_listesi', [])
+        ingenico_toplam = kasa_verileri.get('ingenico_toplam', 0)
+        pos = kasa_verileri.get('pos_toplam', 0)
+
+        # IBAN
+        iban_listesi = kasa_verileri.get('iban_listesi', [])
+        iban = kasa_verileri.get('iban_toplam', 0)
+
+        # Düzeltmeler
+        masraf = kasa_verileri.get('masraf_toplam', 0)
+        masraf_listesi = kasa_verileri.get('masraf_listesi', [])
+        silinen = kasa_verileri.get('silinen_toplam', 0)
+        silinen_listesi = kasa_verileri.get('silinen_listesi', [])
+        alinan = kasa_verileri.get('alinan_toplam', 0)
+        alinan_listesi = kasa_verileri.get('alinan_listesi', [])
+        duzeltilmis_nakit = kasa_verileri.get('duzeltilmis_nakit', nakit + masraf + silinen + alinan)
+
+        # Botanik
+        botanik_nakit = kasa_verileri.get('botanik_nakit', 0)
+        botanik_pos = kasa_verileri.get('botanik_pos', 0)
+        botanik_iban = kasa_verileri.get('botanik_iban', 0)
+        botanik_toplam = kasa_verileri.get('botanik_toplam', 0)
+
+        # Farklar
+        duz_toplam = duzeltilmis_nakit + pos + iban
+        nakit_fark = duzeltilmis_nakit - botanik_nakit
+        pos_fark = pos - botanik_pos
+        iban_fark = iban - botanik_iban
+        genel_fark = duz_toplam - botanik_toplam
+
+        # Ertesi gün
+        ertesi_gun = kasa_verileri.get('ertesi_gun_kasasi', 0)
+        ertesi_gun_kupurler = kasa_verileri.get('ertesi_gun_kupurler', {})
+        ayrilan = kasa_verileri.get('ayrilan_para', 0)
+
+        # Manuel başlangıç
+        manuel_baslangic = kasa_verileri.get('manuel_baslangic', {})
+        manuel_aktif = manuel_baslangic.get('aktif', False)
+
+        W = 32
+
+        def fmt(n):
+            return f"{n:,.0f}"
+
+        def fark_fmt(n):
+            if abs(n) < 0.01:
+                return "0"
+            return f"+{n:,.0f}" if n > 0 else f"{n:,.0f}"
+
+        def satir(etiket, rakam, num_w=10):
+            num_str = fmt(rakam)
+            num_fmt = num_str.rjust(num_w)
+            etiket_w = W - num_w
+            pad = etiket_w - len(etiket)
+            return etiket + "." * max(pad, 1) + num_fmt
+
+        def kupurleri_yaz(kupurler):
+            satirlar = []
+            for kupur, adet in kupurler.items():
+                if adet and float(adet) > 0:
+                    try:
+                        kupur_degeri = float(kupur.replace('TL', '').replace('Kr', '').replace(',', '.').strip())
+                        toplam = kupur_degeri * float(adet)
+                        satirlar.append(f"  {kupur}x{int(adet)}={fmt(toplam)}")
+                    except:
+                        pass
+            return satirlar
+
+        L = []
+
+        # Başlık
+        baslik = f"{gun}.{tarih}.{saat}"
+        L.append(f"*{baslik.center(W)}*")
+        L.append("=" * W)
+
+        # =============================================
+        # 1) BAŞLANGIÇ KASASI
+        # =============================================
+        if ayarlar.get("1a_baslangic_detay", False) and baslangic_kupurler:
+            L.append("*1) BASLANGIC KASASI*")
+            L.extend(kupurleri_yaz(baslangic_kupurler))
+
+        if ayarlar.get("1b_baslangic_toplam", True):
+            lbl = "Baslangic*" if manuel_aktif else "Baslangic"
+            L.append(satir(lbl, baslangic))
+
+        # =============================================
+        # 2) AKŞAM KASASI (Gün Sonu Nakit)
+        # =============================================
+        if ayarlar.get("2a_aksam_detay", False) and nakit_kupurler:
+            L.append("-" * W)
+            L.append("*2) AKSAM KASASI*")
+            L.extend(kupurleri_yaz(nakit_kupurler))
+
+        if ayarlar.get("2b_aksam_toplam", True):
+            L.append(satir("Aksam.Kasa", nakit))
+
+        L.append("-" * W)
+
+        # =============================================
+        # 3) POS ve IBAN
+        # =============================================
+        # Eczacı POS
+        if ayarlar.get("3b_eczaci_pos_detay", True):
+            L.append("*Eczaci POS:*")
+            for i, tutar in enumerate(eczaci_pos_listesi, 1):
+                if tutar > 0:
+                    L.append(satir(f"  EczPOS{i}", tutar))
+
+        if ayarlar.get("3b_eczaci_pos_toplam", True) and eczaci_pos_toplam > 0:
+            L.append(satir("EczPOS.Top", eczaci_pos_toplam))
+
+        # Ingenico
+        if ayarlar.get("3b_ingenico_detay", True):
+            L.append("*Ingenico:*")
+            for i, tutar in enumerate(ingenico_listesi, 1):
+                if tutar > 0:
+                    L.append(satir(f"  Ingn{i}", tutar))
+
+        if ayarlar.get("3b_ingenico_toplam", True) and ingenico_toplam > 0:
+            L.append(satir("Ingn.Top", ingenico_toplam))
+
+        # IBAN
+        if ayarlar.get("3b_iban_detay", True):
+            L.append("*IBAN:*")
+            for i, tutar in enumerate(iban_listesi, 1):
+                if tutar > 0:
+                    L.append(satir(f"  IBAN{i}", tutar))
+
+        if ayarlar.get("3b_iban_toplam", True) and iban > 0:
+            L.append(satir("IBAN.Top", iban))
+
+        # POS+IBAN Genel Toplam
+        if ayarlar.get("3a_pos_iban_toplam", True):
+            L.append(satir("*POS+IBAN*", pos + iban))
+
+        L.append("-" * W)
+
+        # =============================================
+        # 4) DÜZELTMELER
+        # =============================================
+        # Masraflar
+        if ayarlar.get("4b_masraflar", True) and masraf_listesi:
+            L.append("*Masraflar:*")
+            for i, tutar in enumerate(masraf_listesi, 1):
+                if tutar > 0:
+                    L.append(satir(f"  Masraf{i}", tutar))
+            if masraf > 0:
+                L.append(satir("Masraf.Top", masraf))
+
+        # Silinen
+        if ayarlar.get("4b_silinen", True) and silinen_listesi:
+            L.append("*Silinen:*")
+            for i, tutar in enumerate(silinen_listesi, 1):
+                if tutar > 0:
+                    L.append(satir(f"  Silinen{i}", tutar))
+            if silinen > 0:
+                L.append(satir("Silinen.Top", silinen))
+
+        # Alınan
+        if ayarlar.get("4b_alinan", True) and alinan_listesi:
+            L.append("*Alinan:*")
+            for i, tutar in enumerate(alinan_listesi, 1):
+                if tutar > 0:
+                    L.append(satir(f"  Alinan{i}", tutar))
+            if alinan > 0:
+                L.append(satir("Alinan.Top", alinan))
+
+        # Düzeltilmiş Nakit Toplamı
+        if ayarlar.get("4a_duzeltilmis_nakit_toplam", True):
+            L.append(satir("*Duz.Nakit*", duzeltilmis_nakit))
+
+        L.append("=" * W)
+
+        # =============================================
+        # 5) BOTANİK EOS
+        # =============================================
+        if ayarlar.get("5b_botanik_detay", False):
+            L.append("*Botanik Detay:*")
+            L.append(satir("  Bot.Nakit", botanik_nakit))
+            L.append(satir("  Bot.POS", botanik_pos))
+            L.append(satir("  Bot.IBAN", botanik_iban))
+
+        if ayarlar.get("5a_botanik_toplam", True):
+            L.append(satir("Botanik.Top", botanik_toplam))
+
+        # =============================================
+        # 6) SAYIM-BOTANİK FARK TABLOSU
+        # =============================================
+        if ayarlar.get("6a_fark_detay", True):
+            L.append("-" * W)
             ETK_W = 5
             SAY_W = 8
             BOT_W = 9
             FRK_W = 8
 
-            # Başlık
             h = f"{'SAY'.rjust(SAY_W)}.{'BOT'.rjust(BOT_W)}.{'FARK'.rjust(FRK_W)}"
             L.append(h.rjust(W))
             L.append("-" * W)
 
             def tablo(lbl, say, bot, frk):
-                """Tablo satırı - tüm sütunlar sağa hizalı, noktalarla ayrılmış"""
                 lbl_fmt = (lbl + ".")[:ETK_W].ljust(ETK_W, ".")
                 say_fmt = fmt(say).rjust(SAY_W)
                 bot_fmt = fmt(bot).rjust(BOT_W)
                 frk_fmt = fark_fmt(frk).rjust(FRK_W)
                 return f"{lbl_fmt}{say_fmt}.{bot_fmt}.{frk_fmt}"
 
-            L.append(tablo("Nakt", duz_nakit, botanik_nakit, nakit_fark))
+            L.append(tablo("Nakt", duzeltilmis_nakit, botanik_nakit, nakit_fark))
             L.append(tablo("POS", pos, botanik_pos, pos_fark))
             L.append(tablo("IBAN", iban, botanik_iban, iban_fark))
             L.append("-" * W)
             L.append(f"*{tablo('TOP', duz_toplam, botanik_toplam, genel_fark)}*")
 
+        if ayarlar.get("6b_fark_ozet", True) and not ayarlar.get("6a_fark_detay", True):
+            # Sadece özet isteniyorsa
+            L.append(satir("*FARK*", genel_fark))
+
         L.append("=" * W)
 
-        # Ertesi gün ve ayrılan
-        if ayarlar.get("ertesi_gun_toplam", True):
+        # =============================================
+        # 7) ERTESİ GÜN KASASI
+        # =============================================
+        if ayarlar.get("7a_ertesi_gun_detay", False) and ertesi_gun_kupurler:
+            L.append("*Ertesi Gun Detay:*")
+            L.extend(kupurleri_yaz(ertesi_gun_kupurler))
+
+        if ayarlar.get("7b_ertesi_gun_toplam", True):
             L.append(satir("Ertesi.Gun", ertesi_gun))
 
-        if ayarlar.get("ayrilan_para", True):
+        if ayarlar.get("7c_ayrilan_para", True):
             L.append(satir("*AYRILAN*", ayrilan))
 
         L.append("=" * W)
-
-        # Son satır - vurgulu
         L.append(f"*{fmt(ayrilan)}.TL*".center(W))
 
         return "\n".join(L)
@@ -383,23 +605,31 @@ class KasaWhatsAppRapor:
             messagebox.showerror("Hata", f"WhatsApp açılırken hata oluştu:\n{e}")
             return False
 
-    def rapor_gonder(self, kasa_verileri):
+    def rapor_gonder(self, kasa_verileri, ozellesmis=False):
         """
         Kasa raporunu WhatsApp ile gönder
 
         kasa_verileri: dict - Kasa kapatma verileri
+        ozellesmis: bool - Rapor Ayarları'na göre mi?
         """
-        mesaj = self.rapor_olustur(kasa_verileri)
+        if ozellesmis:
+            mesaj = self.rapor_olustur_ozellesmis(kasa_verileri)
+        else:
+            mesaj = self.rapor_olustur(kasa_verileri)
         return self.whatsapp_gonder(mesaj)
 
-    def panoya_kopyala(self, kasa_verileri):
+    def panoya_kopyala(self, kasa_verileri, ozellesmis=False):
         """
         Raporu panoya kopyala
 
         kasa_verileri: dict - Kasa kapatma verileri
+        ozellesmis: bool - Rapor Ayarları'na göre mi?
         """
         try:
-            mesaj = self.rapor_olustur(kasa_verileri)
+            if ozellesmis:
+                mesaj = self.rapor_olustur_ozellesmis(kasa_verileri)
+            else:
+                mesaj = self.rapor_olustur(kasa_verileri)
 
             # Tkinter root oluştur (clipboard için gerekli)
             root = tk.Tk()
@@ -427,33 +657,44 @@ class KasaWhatsAppRapor:
 class KasaWhatsAppPenceresi:
     """WhatsApp rapor gönderme penceresi"""
 
-    def __init__(self, parent, ayarlar, kasa_verileri):
+    def __init__(self, parent, ayarlar, kasa_verileri, ozellesmis=False):
         self.parent = parent
         self.ayarlar = ayarlar
         self.kasa_verileri = kasa_verileri
         self.whatsapp = KasaWhatsAppRapor(ayarlar)
         self.pencere = None
         self.screenshot_var = None  # Checkbox değişkeni
+        self.ozellesmis = ozellesmis  # Rapor Ayarları'na göre mi?
 
     def goster(self):
         """WhatsApp penceresi göster"""
         self.pencere = tk.Toplevel(self.parent)
-        self.pencere.title("WhatsApp Rapor Gönder")
+
+        # Özelleşmiş rapor ise farklı başlık
+        if self.ozellesmis:
+            self.pencere.title("Özelleşmiş WhatsApp Rapor")
+            baslik_text = "Özelleşmiş WhatsApp Raporu"
+            baslik_renk = '#1565C0'  # Mavi
+        else:
+            self.pencere.title("WhatsApp Rapor Gönder")
+            baslik_text = "WhatsApp Kasa Raporu"
+            baslik_renk = '#25D366'  # Yeşil
+
         self.pencere.geometry("550x500")
         self.pencere.transient(self.parent)
         self.pencere.grab_set()
         self.pencere.configure(bg='#FAFAFA')
 
         # Başlık
-        baslik_frame = tk.Frame(self.pencere, bg='#25D366', height=50)
+        baslik_frame = tk.Frame(self.pencere, bg=baslik_renk, height=50)
         baslik_frame.pack(fill="x")
         baslik_frame.pack_propagate(False)
 
         tk.Label(
             baslik_frame,
-            text="WhatsApp Kasa Raporu",
+            text=baslik_text,
             font=("Arial", 14, "bold"),
-            bg='#25D366',
+            bg=baslik_renk,
             fg='white'
         ).pack(expand=True)
 
@@ -478,8 +719,11 @@ class KasaWhatsAppPenceresi:
         )
         rapor_text.pack(fill="both", expand=True)
 
-        # Raporu göster
-        rapor = self.whatsapp.rapor_olustur(self.kasa_verileri)
+        # Raporu göster (özelleşmiş veya standart)
+        if self.ozellesmis:
+            rapor = self.whatsapp.rapor_olustur_ozellesmis(self.kasa_verileri)
+        else:
+            rapor = self.whatsapp.rapor_olustur(self.kasa_verileri)
         rapor_text.insert('1.0', rapor)
         rapor_text.config(state='disabled')
 
@@ -510,10 +754,11 @@ class KasaWhatsAppPenceresi:
             screenshot_frame = tk.Frame(self.pencere, bg='#FAFAFA')
             screenshot_frame.pack(fill="x", padx=10, pady=5)
 
-            self.screenshot_var = tk.BooleanVar(value=False)
-
             # Botanik penceresi açık mı kontrol et
             botanik_acik = botanik_penceresi_acik_mi()
+
+            # Botanik açıksa varsayılan olarak işaretli
+            self.screenshot_var = tk.BooleanVar(value=botanik_acik)
 
             screenshot_cb = tk.Checkbutton(
                 screenshot_frame,
@@ -582,8 +827,8 @@ class KasaWhatsAppPenceresi:
             except Exception as e:
                 logger.error(f"Screenshot hatası: {e}")
 
-        # WhatsApp mesajını gönder
-        if self.whatsapp.rapor_gonder(self.kasa_verileri):
+        # WhatsApp mesajını gönder (özelleşmiş veya standart)
+        if self.whatsapp.rapor_gonder(self.kasa_verileri, self.ozellesmis):
             # Screenshot eklendiyse bilgi ver
             if screenshot_eklendi:
                 messagebox.showinfo(

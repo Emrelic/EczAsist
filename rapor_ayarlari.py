@@ -11,75 +11,171 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Varsayılan rapor ayarları
+# Varsayılan rapor ayarları - Yeni detaylı yapı
 VARSAYILAN_RAPOR_AYARLARI = {
     # WhatsApp raporu ayarları
     "whatsapp": {
-        "baslangic_kasasi_toplam": True,
-        "baslangic_kasasi_detay": False,
-        "gun_sonu_nakit_toplam": True,
-        "gun_sonu_nakit_detay": False,
-        "pos_raporlari": True,
-        "pos_toplamlari": True,
-        "iban_verileri": True,
-        "iban_toplamlari": True,
-        "sayim_botanik_ozet": True,
-        "sayim_botanik_detay": False,
-        "girilmeyen_masraflar": True,
-        "silinen_etkiler": True,
-        "alinan_paralar": True,
-        "duzeltmeler_toplam": True,
-        "botanik_detay": False,
-        "botanik_toplam": True,
-        "ertesi_gun_detay": False,
-        "ertesi_gun_toplam": True,
-        "ayrilan_para": True,
+        # 1) BAŞLANGIÇ KASASI
+        "1a_baslangic_detay": False,        # Küpür detayları
+        "1b_baslangic_toplam": True,        # Toplam tutar
+
+        # 2) AKŞAM KASASI (Gün Sonu Nakit Sayım)
+        "2a_aksam_detay": False,            # Küpür detayları
+        "2b_aksam_toplam": True,            # Toplam tutar
+
+        # 3) POS ve IBAN
+        "3a_pos_iban_toplam": True,         # Genel toplam
+        "3b_eczaci_pos_detay": True,        # Eczacı POS 4 satır
+        "3b_eczaci_pos_toplam": True,       # Eczacı POS toplamı
+        "3b_ingenico_detay": True,          # Ingenico 4 satır
+        "3b_ingenico_toplam": True,         # Ingenico toplamı
+        "3b_iban_detay": True,              # IBAN 4 satır
+        "3b_iban_toplam": True,             # IBAN toplamı
+
+        # 4) DÜZELTMELER
+        "4a_duzeltilmis_nakit_toplam": True,  # Düzeltilmiş nakit toplamı
+        "4b_masraflar": True,               # Girilmemiş masraflar (3 satır)
+        "4b_silinen": True,                 # Silinenden etkiler (3 satır)
+        "4b_alinan": True,                  # Alınan paralar (3 satır)
+
+        # 5) BOTANİK EOS
+        "5a_botanik_toplam": True,          # Genel toplam
+        "5b_botanik_detay": False,          # Nakit, POS, IBAN detayları
+
+        # 6) SAYIM-BOTANİK FARK TABLOSU
+        "6a_fark_detay": True,              # Detaylı tablo (Nakit/POS/IBAN satırları)
+        "6b_fark_ozet": True,               # Özet (sadece toplam fark)
+
+        # 7) ERTESİ GÜN KASASI
+        "7a_ertesi_gun_detay": False,       # Küpür detayları
+        "7b_ertesi_gun_toplam": True,       # Toplam tutar
+        "7c_ayrilan_para": True,            # Ayrılan para
     },
     # Yazıcı raporu ayarları
     "yazici": {
-        "baslangic_kasasi_toplam": True,
-        "baslangic_kasasi_detay": True,
-        "gun_sonu_nakit_toplam": True,
-        "gun_sonu_nakit_detay": True,
-        "pos_raporlari": True,
-        "pos_toplamlari": True,
-        "iban_verileri": True,
-        "iban_toplamlari": True,
-        "sayim_botanik_ozet": True,
-        "sayim_botanik_detay": True,
-        "girilmeyen_masraflar": True,
-        "silinen_etkiler": True,
-        "alinan_paralar": True,
-        "duzeltmeler_toplam": True,
-        "botanik_detay": True,
-        "botanik_toplam": True,
-        "ertesi_gun_detay": True,
-        "ertesi_gun_toplam": True,
-        "ayrilan_para": True,
+        # 1) BAŞLANGIÇ KASASI
+        "1a_baslangic_detay": True,
+        "1b_baslangic_toplam": True,
+
+        # 2) AKŞAM KASASI
+        "2a_aksam_detay": True,
+        "2b_aksam_toplam": True,
+
+        # 3) POS ve IBAN
+        "3a_pos_iban_toplam": True,
+        "3b_eczaci_pos_detay": True,
+        "3b_eczaci_pos_toplam": True,
+        "3b_ingenico_detay": True,
+        "3b_ingenico_toplam": True,
+        "3b_iban_detay": True,
+        "3b_iban_toplam": True,
+
+        # 4) DÜZELTMELER
+        "4a_duzeltilmis_nakit_toplam": True,
+        "4b_masraflar": True,
+        "4b_silinen": True,
+        "4b_alinan": True,
+
+        # 5) BOTANİK EOS
+        "5a_botanik_toplam": True,
+        "5b_botanik_detay": True,
+
+        # 6) SAYIM-BOTANİK FARK TABLOSU
+        "6a_fark_detay": True,
+        "6b_fark_ozet": True,
+
+        # 7) ERTESİ GÜN KASASI
+        "7a_ertesi_gun_detay": True,
+        "7b_ertesi_gun_toplam": True,
+        "7c_ayrilan_para": True,
     }
 }
 
-# Ayar açıklamaları (Türkçe)
+# Ayar kategorileri ve açıklamaları (Türkçe) - Gruplu yapı
+AYAR_KATEGORILERI = {
+    "1_baslangic": {
+        "baslik": "1) BAŞLANGIÇ KASASI",
+        "ayarlar": {
+            "1a_baslangic_detay": "Küpür Detayları",
+            "1b_baslangic_toplam": "Toplam Tutar",
+        }
+    },
+    "2_aksam": {
+        "baslik": "2) AKŞAM KASASI (Gün Sonu Nakit)",
+        "ayarlar": {
+            "2a_aksam_detay": "Küpür Detayları",
+            "2b_aksam_toplam": "Toplam Tutar",
+        }
+    },
+    "3_pos_iban": {
+        "baslik": "3) POS ve IBAN",
+        "ayarlar": {
+            "3a_pos_iban_toplam": "Genel Toplam",
+            "3b_eczaci_pos_detay": "Eczacı POS Detay (4 satır)",
+            "3b_eczaci_pos_toplam": "Eczacı POS Toplamı",
+            "3b_ingenico_detay": "Ingenico Detay (4 satır)",
+            "3b_ingenico_toplam": "Ingenico Toplamı",
+            "3b_iban_detay": "IBAN Detay (4 satır)",
+            "3b_iban_toplam": "IBAN Toplamı",
+        }
+    },
+    "4_duzeltmeler": {
+        "baslik": "4) DÜZELTMELER",
+        "ayarlar": {
+            "4a_duzeltilmis_nakit_toplam": "Düzeltilmiş Nakit Toplamı",
+            "4b_masraflar": "Girilmemiş Masraflar (3 satır)",
+            "4b_silinen": "Silinenden Etkiler (3 satır)",
+            "4b_alinan": "Alınan Paralar (3 satır)",
+        }
+    },
+    "5_botanik": {
+        "baslik": "5) BOTANİK EOS",
+        "ayarlar": {
+            "5a_botanik_toplam": "Genel Toplam",
+            "5b_botanik_detay": "Detay (Nakit/POS/IBAN)",
+        }
+    },
+    "6_fark": {
+        "baslik": "6) SAYIM-BOTANİK FARK TABLOSU",
+        "ayarlar": {
+            "6a_fark_detay": "Detaylı Tablo",
+            "6b_fark_ozet": "Özet (Sadece Toplam)",
+        }
+    },
+    "7_ertesi": {
+        "baslik": "7) ERTESİ GÜN KASASI",
+        "ayarlar": {
+            "7a_ertesi_gun_detay": "Küpür Detayları",
+            "7b_ertesi_gun_toplam": "Toplam Tutar",
+            "7c_ayrilan_para": "Ayrılan Para",
+        }
+    },
+}
+
+# Eski format için uyumluluk - düz liste
 AYAR_ACIKLAMALARI = {
-    "baslangic_kasasi_toplam": "Başlangıç Kasası Toplamı",
-    "baslangic_kasasi_detay": "Başlangıç Kasası Detayı (küpürler)",
-    "gun_sonu_nakit_toplam": "Gün Sonu Nakit Toplamı",
-    "gun_sonu_nakit_detay": "Gün Sonu Nakit Detayı (küpürler)",
-    "pos_raporlari": "POS Raporları",
-    "pos_toplamlari": "POS Toplamları",
-    "iban_verileri": "IBAN Verileri",
-    "iban_toplamlari": "IBAN Toplamları",
-    "sayim_botanik_ozet": "Sayım-Botanik Özet Tablosu",
-    "sayim_botanik_detay": "Sayım-Botanik Detaylı Tablo",
-    "girilmeyen_masraflar": "Girilmeyen Masraflar",
-    "silinen_etkiler": "Silinenden Etkiler",
-    "alinan_paralar": "Alınan Paralar Verileri",
-    "duzeltmeler_toplam": "Düzeltmeler Toplamı (masraf+silinen+alınan)",
-    "botanik_detay": "Botanik Verileri Detaylı",
-    "botanik_toplam": "Botanik Verileri Genel Toplam",
-    "ertesi_gun_detay": "Ertesi Gün Kasası Detaylı",
-    "ertesi_gun_toplam": "Ertesi Gün Kasası Toplam",
-    "ayrilan_para": "Ayrılan Para",
+    "1a_baslangic_detay": "1A) Başlangıç Kasası Detayı",
+    "1b_baslangic_toplam": "1B) Başlangıç Kasası Toplamı",
+    "2a_aksam_detay": "2A) Akşam Kasası Detayı",
+    "2b_aksam_toplam": "2B) Akşam Kasası Toplamı",
+    "3a_pos_iban_toplam": "3A) POS+IBAN Genel Toplam",
+    "3b_eczaci_pos_detay": "3B) Eczacı POS Detay",
+    "3b_eczaci_pos_toplam": "3B) Eczacı POS Toplam",
+    "3b_ingenico_detay": "3B) Ingenico Detay",
+    "3b_ingenico_toplam": "3B) Ingenico Toplam",
+    "3b_iban_detay": "3B) IBAN Detay",
+    "3b_iban_toplam": "3B) IBAN Toplam",
+    "4a_duzeltilmis_nakit_toplam": "4A) Düzeltilmiş Nakit Toplam",
+    "4b_masraflar": "4B) Girilmemiş Masraflar",
+    "4b_silinen": "4B) Silinenden Etkiler",
+    "4b_alinan": "4B) Alınan Paralar",
+    "5a_botanik_toplam": "5A) Botanik Genel Toplam",
+    "5b_botanik_detay": "5B) Botanik Detay",
+    "6a_fark_detay": "6A) Fark Tablosu Detaylı",
+    "6b_fark_ozet": "6B) Fark Tablosu Özet",
+    "7a_ertesi_gun_detay": "7A) Ertesi Gün Detay",
+    "7b_ertesi_gun_toplam": "7B) Ertesi Gün Toplam",
+    "7c_ayrilan_para": "7C) Ayrılan Para",
 }
 
 

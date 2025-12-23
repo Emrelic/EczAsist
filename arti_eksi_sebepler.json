@@ -1,0 +1,170 @@
+{
+  "eksik": [
+    [
+      "Başlangıç kasası eksik",
+      "Bir önceki gün başlangıç kasası eksik hesaplanmış olabilir mi? Kontrol edilmeli."
+    ],
+    [
+      "Akşam kasası yanlış sayıldı",
+      "Akşam kasası yanlış sayılmıştır."
+    ],
+    [
+      "Dünkü satış/POS işlenmedi",
+      "Dün akşamdan yapılan satış, POS raporu vesaire işlenmemiştir. Veya iki parçalı veya ikinci pos raporu işlenmemiştir"
+    ],
+    [
+      "Satış parası alınmadı",
+      "Yapılan satışın parası alınmamıştır."
+    ],
+    [
+      "Veresiye işlenmedi",
+      "Veresiye satışın veresiye işlemi işlenmemiştir."
+    ],
+    [
+      "2. POS raporu unutuldu",
+      "İkinci POS cihazı kullanılmış fakat raporu alınması unutulmuş."
+    ],
+    [
+      "Para alındı satış bugün",
+      "Bir önceki gün satışın parası alınmış fakat satış bugün yapılmıştır."
+    ],
+    [
+      "Mükerrer satış kaydı",
+      "Mükerrer satış kaydı işlenmiştir. Aynı satış iki kere işlenmiştir"
+    ],
+    [
+      "İndirim işlenmedi",
+      "İndirim/iskonto sisteme işlenmemiştir."
+    ],
+    [
+      "Masraf işlenmedi",
+      "Masraflar işlenmemiştir."
+    ],
+    [
+      "Silinmesi gereken reçete",
+      "Hsatanın almaktan vazgeçtiği silinmesi gereken fakat sistemde unutulmuş reçete varlığı."
+    ],
+    [
+      "Alınan para işlenmedi",
+      "Gün içi eczacının aldığı para işlenmemiş veya yanlış işlenmiştir."
+    ],
+    [
+      "Kasadan para alındı",
+      "Gün içi çeşitli sebeplerle kasadan para alınması.\nMasraf işlenmeden kasadan herhangibir para alınması asla olmamalıdır."
+    ],
+    [
+      "Tedarikçi ödemesi",
+      "Kasadan tedarikçi firmaya ödeme yapılmış fakat masraf işlenmemiştir."
+    ],
+    [
+      "Bozuk para sorunu",
+      "Bozuk para bozmak için kasadan bütün para alınmış fakat bozuklar kasadan başka yere konmuştur."
+    ],
+    [
+      "Emanet parekende satıldı",
+      "Emanet verilmesi gereken ürün sehven parekende satılarak işlenmiştir."
+    ],
+    [
+      "IBAN işlenmedi",
+      "IBAN'a atılan para vardır ama IBAN olarak işlenmemiştir."
+    ],
+    [
+      "Komplike satış karışıklığı",
+      "Birden fazla reçete ve tahsilatın düzgün yapılmaması. iki üç reçete getiren ve reçetesinde ödenmeyen ilaçlar bulunan ve /veya aynı anda parekende satış yaptıran hastanın bir veya iki parça ilacının ödemesinin alınmamış olması"
+    ],
+    [
+      "Hasta borcu yok iddiası",
+      "Hastanın borcu olmadığını iddia etmesi ve haklı olması. Hsatanın kendi borcunu para vermeden sistemden sildirmesi"
+    ],
+    [
+      "Depo/personel ödemesi",
+      "Depoya personele yada tedarikçiye yapılan ödemelerin cari hareketten nakit olarak işlenmiş olması."
+    ],
+    [
+      "Takas işlenmedi",
+      "Başka eczanelere yapılan takas parası kasadan verilmiş ama kayıtlara işlenmemiştir."
+    ],
+    [
+      "Emanet satıldı para yok",
+      "Emanetin satılması fakat para kasaya konmamıştır."
+    ],
+    [
+      "İskonto karışıklığı",
+      "İskonto, yuvarlama ve ödeme seçenekleri birbirine karıştırılmıştır."
+    ],
+    [
+      "Geçmiş reçete sistemi bozdu",
+      "Son işlem tarihi bugün olan geçmiş reçetelerin sistemi bozması."
+    ],
+    [
+      "Fiş satış iptali yapılmış fakat sisteme düzgün işlenmemiştir.",
+      "Hastanın kredi kartına geri ödeme yapılmış veya satış iptal edilmiştir"
+    ],
+    [
+      "Bugün işlenen satış işleminin parası yarın alınacak ise",
+      "Ödemesi yarın alınacak satışın satış işlemi yapılmış fakat veresiyeye atılması unutulmuş."
+    ]
+  ],
+  "fazla": [
+    [
+      "Başlangıç kasası hatası",
+      "Bir önceki gün başlangıç kasası doğru mu? Kontrol edilmeli."
+    ],
+    [
+      "Akşam kasası hatası",
+      "Akşam kasası doğru sayılmış mı? Kontrol edilmeli."
+    ],
+    [
+      "Bekleyen satış var",
+      "Satış ekranlarında bekleyen veya gün içi satışı unutulan ürün var mı?"
+    ],
+    [
+      "Veresiye tahsilatı",
+      "İşlenmesi unutulan veresiye tahsilatı durumu var mı?"
+    ],
+    [
+      "Bozuk para eklendi",
+      "Bozuk para eklenmiş ama kasadan bütün para alınması unutulmuş."
+    ],
+    [
+      "Kapora alındı",
+      "Kapora alınmış kasaya konmuştur. Alınan kaporalar bir not kağıdı eşliğinde kasadan ayrı bir yere konulmalı ve  satışın tümü yapılacağı zaman sistemden düşülmelidir"
+    ],
+    [
+      "Majistral düşülmedi",
+      "Majistral yapılıp parasının alınması fakat satış işleminin sistemden düşülmemesi."
+    ],
+    [
+      "Strip/bez farkı",
+      "Strip, bez farkı hastadan alınmış fakat işlenmemiş."
+    ],
+    [
+      "Takas parası",
+      "Başka eczane ile takas yapılıp parası kasaya konmuş."
+    ],
+    [
+      "Fiş iptali",
+      "Fiş iptali yapılmış olabilir mi?"
+    ],
+    [
+      "Aktarılmayan reçete",
+      "Aktarılmayan reçete var mı?"
+    ],
+    [
+      "Para üstü eksik",
+      "Para üstü eksik verilmiş olabilir mi?"
+    ],
+    [
+      "İade parası",
+      "İade yapılmış parası kasadan verilmemiş."
+    ],
+    [
+      "Mal fazlası satışı",
+      "Ölü karekod veya mal fazlası ürün satışı yapılmış fakat sistemden düşülmemiştir"
+    ],
+    [
+      "Dünkü satış parası bugün",
+      "Bir önceki gün satışı yapılmış fakat parası bugün alınmıştır. bu durum dünkü kasanın eksik vermesi sonucunuda doğurur"
+    ]
+  ]
+}

@@ -11,9 +11,94 @@ import webbrowser
 class KasaYardimPenceresi:
     """Kullanım kılavuzu ve yardım penceresi"""
 
-    def __init__(self, parent):
+    def __init__(self, parent, embed=False):
         self.parent = parent
         self.pencere = None
+        self.embed = embed
+        self.scroll_frame = None
+
+    def icerik_olustur(self, parent_frame):
+        """Embed modunda içerik oluştur (sekmeli yapı için)"""
+        # Ana içerik frame
+        main_frame = tk.Frame(parent_frame, bg='#f5f5f5')
+        main_frame.pack(fill='both', expand=True, padx=5, pady=5)
+
+        # Sol menü
+        menu_frame = tk.Frame(main_frame, bg='white', width=180)
+        menu_frame.pack(side='left', fill='y', padx=(0, 5))
+        menu_frame.pack_propagate(False)
+
+        tk.Label(
+            menu_frame,
+            text="Konular",
+            font=('Arial', 11, 'bold'),
+            bg='white',
+            pady=8
+        ).pack(fill='x')
+
+        # Menü butonları
+        konular = [
+            ("Genel Bakış", self.genel_bakis),
+            ("Kasa Açılış", self.kasa_acilis),
+            ("Gün Sonu Sayım", self.gun_sonu_sayim),
+            ("POS ve IBAN", self.pos_iban),
+            ("Botanik Entegrasyonu", self.botanik_entegrasyon),
+            ("Düzeltmeler", self.duzeltmeler),
+            ("Raporlar", self.raporlar),
+            ("WhatsApp Gönderimi", self.whatsapp),
+            ("E-posta Gönderimi", self.email),
+            ("Yazıcı Ayarları", self.yazici),
+            ("Geçmiş Kayıtlar", self.gecmis),
+            ("Kısayollar", self.kisayollar),
+        ]
+
+        self.menu_butonlar = []
+        for konu, fonksiyon in konular:
+            btn = tk.Button(
+                menu_frame,
+                text=konu,
+                font=('Arial', 9),
+                bg='white',
+                fg='#333',
+                bd=0,
+                anchor='w',
+                padx=10,
+                pady=6,
+                cursor='hand2',
+                command=fonksiyon,
+                activebackground='#e8f4fc'
+            )
+            btn.pack(fill='x')
+            self.menu_butonlar.append(btn)
+
+        # Sağ içerik alanı
+        self.icerik_frame = tk.Frame(main_frame, bg='white')
+        self.icerik_frame.pack(side='right', fill='both', expand=True)
+
+        # Scrollable içerik
+        self.canvas = tk.Canvas(self.icerik_frame, bg='white', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.icerik_frame, orient='vertical', command=self.canvas.yview)
+        self.scroll_frame = tk.Frame(self.canvas, bg='white')
+
+        self.scroll_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+
+        self.canvas.create_window((0, 0), window=self.scroll_frame, anchor='nw')
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+
+        self.canvas.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+
+        # Mouse wheel scroll
+        def on_mousewheel(event):
+            self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        self.canvas.bind("<MouseWheel>", on_mousewheel)
+        self.scroll_frame.bind("<MouseWheel>", on_mousewheel)
+
+        # İlk sayfa
+        self.genel_bakis()
 
     def goster(self):
         """Yardım penceresini göster"""
