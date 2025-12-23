@@ -354,6 +354,163 @@ def screenshot_clipboard_kopyala(dosya_yolu: str) -> bool:
         return False
 
 
+def botanik_baslangic_kupurlerini_cek() -> Optional[Dict[str, int]]:
+    """
+    Botanik EOS Kasa Kapatma penceresinden başlangıç kasası küpür adetlerini çeker
+
+    Returns:
+        Dict with keys: 200, 100, 50, 20, 10, 5, 1, 0.5 (küpür değerleri)
+        None if window not found or error
+    """
+    try:
+        import comtypes
+        import comtypes.client
+
+        # Pencere handle'larını bul
+        botanik_h, kasa_h = _find_botanik_and_kasa_handles()
+
+        if botanik_h is None:
+            logger.warning("BotanikEOS penceresi bulunamadı")
+            return None
+
+        if kasa_h is None:
+            logger.warning("Kasa Kapatma penceresi bulunamadı")
+            return None
+
+        logger.info(f"Küpür çekme - BotanikEOS: {botanik_h}, Kasa Kapatma: {kasa_h}")
+
+        # UI Automation COM interface'i yükle
+        comtypes.client.GetModule('UIAutomationCore.dll')
+        from comtypes.gen.UIAutomationClient import (
+            IUIAutomation, IUIAutomationValuePattern,
+            TreeScope_Descendants
+        )
+
+        # UIA nesnesi oluştur
+        uia = comtypes.client.CreateObject(
+            '{ff48dba4-60ef-4201-aa87-54103eef594e}',
+            interface=IUIAutomation
+        )
+
+        # Kasa Kapatma handle'ından element al
+        kasa_elem = uia.ElementFromHandle(kasa_h)
+        logger.info(f"Kasa Kapatma element alındı: {kasa_elem.CurrentName}")
+
+        # Tüm child elementleri al
+        condition = uia.CreateTrueCondition()
+        children = kasa_elem.FindAll(TreeScope_Descendants, condition)
+
+        # Edit kontrolleri topla (position ile)
+        edit_controls = []
+
+        for i in range(children.Length):
+            elem = children.GetElement(i)
+            try:
+                ctrl_type = elem.CurrentControlType
+                # ControlType.Edit = 50004
+                if ctrl_type == 50004:
+                    rect = elem.CurrentBoundingRectangle
+                    x, y = rect.left, rect.top
+
+                    # Value al
+                    try:
+                        vp = elem.GetCurrentPattern(10002)  # UIA_ValuePatternId
+                        if vp:
+                            value_pattern = vp.QueryInterface(IUIAutomationValuePattern)
+                            text = value_pattern.CurrentValue
+                            if text is not None:
+                                edit_controls.append({
+                                    'x': x,
+                                    'y': y,
+                                    'value': str(text).strip()
+                                })
+                                logger.debug(f"Edit control: x={x}, y={y}, value='{text}'")
+                    except:
+                        # Name'den dene
+                        name = elem.CurrentName
+                        if name:
+                            edit_controls.append({
+                                'x': x,
+                                'y': y,
+                                'value': str(name).strip()
+                            })
+            except:
+                continue
+
+        logger.info(f"Toplam {len(edit_controls)} Edit control bulundu")
+
+        if len(edit_controls) < 8:
+            logger.warning(f"Yeterli Edit control bulunamadı: {len(edit_controls)}")
+            return None
+
+        # X koordinatına göre iki sütuna ayır
+        # Sol sütun: 200, 100, 50, 20, 10, 5 (6 adet)
+        # Sağ sütun: 1, 0.5 (2 adet)
+
+        # X değerlerini analiz et
+        x_values = sorted(set(ec['x'] for ec in edit_controls))
+
+        if len(x_values) < 2:
+            logger.warning("İki sütun bulunamadı")
+            return None
+
+        # İlk iki benzersiz X değeri (sol ve sağ sütun)
+        left_x = x_values[0]
+        right_x = x_values[1] if len(x_values) > 1 else x_values[0]
+
+        # Tolerans ile sütunlara ayır
+        tolerance = 50
+        left_column = [ec for ec in edit_controls if abs(ec['x'] - left_x) < tolerance]
+        right_column = [ec for ec in edit_controls if abs(ec['x'] - right_x) < tolerance and ec not in left_column]
+
+        # Y'ye göre sırala
+        left_column.sort(key=lambda e: e['y'])
+        right_column.sort(key=lambda e: e['y'])
+
+        logger.info(f"Sol sütun: {len(left_column)}, Sağ sütun: {len(right_column)}")
+
+        # Küpür değerleri eşle
+        # Sol sütun: 200, 100, 50, 20, 10, 5
+        # Sağ sütun: 1, 0.5
+        left_denominations = [200, 100, 50, 20, 10, 5]
+        right_denominations = [1, 0.5]
+
+        kupurler = {}
+
+        for i, denom in enumerate(left_denominations):
+            if i < len(left_column):
+                try:
+                    val = int(float(left_column[i]['value'].replace(',', '.')))
+                    kupurler[denom] = val
+                    logger.info(f"Küpür {denom} TL: {val} adet")
+                except:
+                    kupurler[denom] = 0
+            else:
+                kupurler[denom] = 0
+
+        for i, denom in enumerate(right_denominations):
+            if i < len(right_column):
+                try:
+                    val = int(float(right_column[i]['value'].replace(',', '.')))
+                    kupurler[denom] = val
+                    logger.info(f"Küpür {denom} TL: {val} adet")
+                except:
+                    kupurler[denom] = 0
+            else:
+                kupurler[denom] = 0
+
+        return kupurler
+
+    except ImportError as e:
+        logger.error(f"Gerekli modül yüklü değil: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Botanik küpür çekme hatası: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 # Test için
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

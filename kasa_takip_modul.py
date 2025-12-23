@@ -31,7 +31,7 @@ except ImportError as e:
 
 # Botanik veri çekme modülü
 try:
-    from botanik_veri_cek import botanik_verilerini_cek, botanik_penceresi_acik_mi, baslangic_kasasi_kontrol
+    from botanik_veri_cek import botanik_verilerini_cek, botanik_penceresi_acik_mi, baslangic_kasasi_kontrol, botanik_baslangic_kupurlerini_cek
     BOTANIK_VERI_MODULU_YUKLENDI = True
 except ImportError as e:
     logger.warning(f"Botanik veri çekme modülü yüklenemedi: {e}")
@@ -796,48 +796,39 @@ class KasaKapatmaModul:
             pady=3
         )
         frame.pack(fill="both", expand=True)
+        self.baslangic_frame = frame  # Referansı sakla
 
-        # Toplam satırı
-        toplam_frame = tk.Frame(frame, bg='#A5D6A7')
-        toplam_frame.pack(fill="x", pady=2)
-
-        tk.Label(
-            toplam_frame,
-            text="Başlangıç Kasası:",
-            font=("Arial", 13, "bold"),
-            bg='#A5D6A7',
-            fg='#1B5E20'
-        ).pack(side="left", padx=5, pady=3)
+        # Üst buton satırı (Manuel giriş ve Botanikten Çek)
+        buton_frame = tk.Frame(frame, bg='#A5D6A7')
+        buton_frame.pack(fill="x", pady=2)
 
         # Manuel giriş butonu
         self.manuel_baslangic_btn = tk.Button(
-            toplam_frame,
-            text="✏",
-            font=("Arial", 10),
+            buton_frame,
+            text="✏ Elle Gir",
+            font=("Arial", 9),
             bg='#FFE082',
             fg='#E65100',
-            width=2,
             bd=1,
             takefocus=False,
             cursor='hand2',
             command=self.manuel_baslangic_penceresi_ac
         )
-        self.manuel_baslangic_btn.pack(side="left", padx=2)
+        self.manuel_baslangic_btn.pack(side="left", padx=5, pady=3)
 
-        # Toplam değeri
-        baslangic_toplam = self.onceki_gun_verisi.get("toplam", 0)
-        self.baslangic_toplam_var = tk.StringVar(value=f"{baslangic_toplam:,.2f}")
-
-        self.baslangic_toplam_label = tk.Label(
-            toplam_frame,
-            textvariable=self.baslangic_toplam_var,
-            font=("Arial", 14, "bold"),
-            bg='#A5D6A7',
-            fg='#1B5E20',
-            width=12,
-            anchor='e'
+        # Botanikten Çek butonu
+        self.botanikten_cek_btn = tk.Button(
+            buton_frame,
+            text="Botanikten Çek",
+            font=("Arial", 9),
+            bg='#2196F3',
+            fg='white',
+            bd=1,
+            takefocus=False,
+            cursor='hand2',
+            command=self.botanikten_baslangic_kasasi_cek
         )
-        self.baslangic_toplam_label.pack(side="right", padx=5, pady=3)
+        self.botanikten_cek_btn.pack(side="left", padx=5, pady=3)
 
         # Detay container - sabit görünür
         self.baslangic_detay_container = tk.Frame(frame, bg=self.section_colors['baslangic'])
@@ -853,6 +844,32 @@ class KasaKapatmaModul:
 
         # Detayı hemen oluştur (sabit görünüm)
         self.baslangic_detay_olustur_sabit()
+
+        # ALT TOPLAM SATIRI (küpürlerden sonra)
+        toplam_frame = tk.Frame(frame, bg='#2E7D32')
+        toplam_frame.pack(fill="x", pady=(5, 2))
+
+        tk.Label(
+            toplam_frame,
+            text="TOPLAM:",
+            font=("Arial", 12, "bold"),
+            bg='#2E7D32',
+            fg='white'
+        ).pack(side="left", padx=10, pady=5)
+
+        baslangic_toplam = self.onceki_gun_verisi.get("toplam", 0)
+        self.baslangic_toplam_var = tk.StringVar(value=f"{baslangic_toplam:,.2f}")
+
+        self.baslangic_toplam_label = tk.Label(
+            toplam_frame,
+            textvariable=self.baslangic_toplam_var,
+            font=("Arial", 14, "bold"),
+            bg='#2E7D32',
+            fg='white',
+            width=12,
+            anchor='e'
+        )
+        self.baslangic_toplam_label.pack(side="right", padx=10, pady=5)
 
     def baslangic_detay_toggle(self):
         """Başlangıç kasası detayını aç/kapa - artık kullanılmıyor (sabit görünüm)"""
@@ -965,11 +982,75 @@ class KasaKapatmaModul:
         self.baslangic_toplam_var.set(f"{toplam:,.2f}")
         self.hesaplari_guncelle()
 
+    def botanikten_baslangic_kasasi_cek(self):
+        """Botanik Kasa Kapatma penceresinden başlangıç kasası küpürlerini çek"""
+        if not BOTANIK_VERI_MODULU_YUKLENDI:
+            messagebox.showwarning("Uyarı", "Botanik veri çekme modülü yüklenemedi!")
+            return
+
+        try:
+            # Küpürleri çek
+            kupurler = botanik_baslangic_kupurlerini_cek()
+
+            if kupurler is None:
+                messagebox.showwarning(
+                    "Uyarı",
+                    "Botanik 'Kasa Kapatma' penceresi bulunamadı!\n\n"
+                    "Lütfen Botanik EOS'ta 'Kasa Kapatma' penceresinin açık olduğundan emin olun."
+                )
+                return
+
+            # Önizleme göster
+            onizleme = "Botanik'ten çekilen küpür adetleri:\n\n"
+            toplam = 0
+            for deger in [200, 100, 50, 20, 10, 5, 1, 0.5]:
+                adet = kupurler.get(deger, 0)
+                tutar = adet * deger
+                toplam += tutar
+                onizleme += f"  {deger} TL x {adet} = {tutar:,.2f} TL\n"
+
+            onizleme += f"\n{'─'*30}\n"
+            onizleme += f"  TOPLAM: {toplam:,.2f} TL"
+
+            onay = messagebox.askyesno(
+                "Botanikten Çekilen Veriler",
+                onizleme + "\n\nBu değerleri başlangıç kasasına aktarmak istiyor musunuz?",
+                icon='question'
+            )
+
+            if not onay:
+                return
+
+            # Değerleri başlangıç kasası alanlarına yaz
+            for deger, var in self.baslangic_kupur_vars.items():
+                adet = kupurler.get(deger, 0)
+                var.set(str(adet))
+
+            # Manuel modu kapat (normal küpür moduna dön)
+            self.manuel_baslangic_aktif = False
+            self.manuel_baslangic_tutar = 0
+            self.manuel_baslangic_aciklama = ""
+            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏ Elle Gir")
+
+            # Toplamı hesapla
+            self.baslangic_toplam_hesapla()
+
+            messagebox.showinfo(
+                "Başarılı",
+                f"Botanik'ten başlangıç kasası verileri aktarıldı.\n\nToplam: {toplam:,.2f} TL"
+            )
+
+            logger.info(f"Botanikten başlangıç kasası çekildi: {toplam} TL")
+
+        except Exception as e:
+            logger.error(f"Botanikten veri çekme hatası: {e}")
+            messagebox.showerror("Hata", f"Veri çekme hatası:\n{str(e)}")
+
     def manuel_baslangic_penceresi_ac(self):
         """Manuel başlangıç kasası giriş penceresi"""
         pencere = tk.Toplevel(self.root)
         pencere.title("Manuel Başlangıç Kasası Girişi")
-        pencere.geometry("420x320")
+        pencere.geometry("450x380")
         pencere.transient(self.root)
         pencere.grab_set()
         pencere.configure(bg='#FFF8E1')
@@ -1085,7 +1166,7 @@ class KasaKapatmaModul:
                 self.baslangic_toplam_var.set(f"{tutar:,.2f}")
 
                 # Butonu işaretli göster
-                self.manuel_baslangic_btn.config(bg='#FF5722', fg='white', text="✓")
+                self.manuel_baslangic_btn.config(bg='#FF5722', fg='white', text="✓ Manuel")
 
                 # Hesapları güncelle
                 self.hesaplari_guncelle()
@@ -1104,7 +1185,7 @@ class KasaKapatmaModul:
             self.manuel_baslangic_aktif = False
             self.manuel_baslangic_tutar = 0
             self.manuel_baslangic_aciklama = ""
-            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏")
+            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏ Elle Gir")
             self.baslangic_toplam_hesapla()
             pencere.destroy()
             messagebox.showinfo("Sıfırlandı", "Manuel giriş iptal edildi.\nNormal küpür hesabına dönüldü.")
@@ -1132,7 +1213,7 @@ class KasaKapatmaModul:
 
         tk.Button(
             buton_frame,
-            text="Tamam",
+            text="Kaydet",
             font=("Arial", 10, "bold"),
             bg='#4CAF50',
             fg='white',
@@ -4380,7 +4461,7 @@ class KasaKapatmaModul:
         self.manuel_baslangic_tutar = 0
         self.manuel_baslangic_aciklama = ""
         if hasattr(self, 'manuel_baslangic_btn'):
-            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏")
+            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏ Elle Gir")
 
         # Önceki kayıttan başlangıç kasasını yükle
         onceki_veri = self.onceki_gun_kasasi_yukle()
