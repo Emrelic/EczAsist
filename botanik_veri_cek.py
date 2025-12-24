@@ -354,9 +354,57 @@ def screenshot_clipboard_kopyala(dosya_yolu: str) -> bool:
         return False
 
 
+def _find_baslangic_kasasi_handle():
+    """Başlangıç Kasası pencere handle'ını bul"""
+    user32 = ctypes.windll.user32
+    baslangic_h = None
+
+    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+
+    def find_baslangic(hwnd, lparam):
+        nonlocal baslangic_h
+        title = _get_window_text(hwnd)
+        # "Başlangıç Kasası" penceresini ara
+        if title and 'Başlangıç Kasası' in title:
+            baslangic_h = hwnd
+            logger.debug(f"Başlangıç Kasası penceresi bulundu: handle={hwnd}, title='{title}'")
+            return False  # Aramayı durdur
+        return True
+
+    user32.EnumWindows(WNDENUMPROC(find_baslangic), 0)
+
+    if baslangic_h is None:
+        # BotanikEOS altında child olarak ara
+        botanik_windows = []
+
+        def collect_botanik(hwnd, lparam):
+            title = _get_window_text(hwnd)
+            if title and 'BotanikEOS' in title:
+                botanik_windows.append((hwnd, title))
+            return True
+
+        user32.EnumWindows(WNDENUMPROC(collect_botanik), 0)
+
+        for bot_hwnd, bot_title in botanik_windows:
+            def find_child(hwnd, lparam):
+                nonlocal baslangic_h
+                title = _get_window_text(hwnd)
+                if title and 'Başlangıç Kasası' in title:
+                    baslangic_h = hwnd
+                    return False
+                return True
+
+            user32.EnumChildWindows(bot_hwnd, WNDENUMPROC(find_child), 0)
+            if baslangic_h:
+                break
+
+    return baslangic_h
+
+
 def botanik_baslangic_kupurlerini_cek() -> Optional[Dict[str, int]]:
     """
-    Botanik EOS Kasa Kapatma penceresinden başlangıç kasası küpür adetlerini çeker
+    Botanik EOS 'Başlangıç Kasası' penceresinden küpür adetlerini çeker
+    AutomationId kullanarak txttl200, txttl100, vb. alanlardan değer okur
 
     Returns:
         Dict with keys: 200, 100, 50, 20, 10, 5, 1, 0.5 (küpür değerleri)
@@ -366,18 +414,14 @@ def botanik_baslangic_kupurlerini_cek() -> Optional[Dict[str, int]]:
         import comtypes
         import comtypes.client
 
-        # Pencere handle'larını bul
-        botanik_h, kasa_h = _find_botanik_and_kasa_handles()
+        # Başlangıç Kasası penceresini bul
+        baslangic_h = _find_baslangic_kasasi_handle()
 
-        if botanik_h is None:
-            logger.warning("BotanikEOS penceresi bulunamadı")
+        if baslangic_h is None:
+            logger.warning("Başlangıç Kasası penceresi bulunamadı")
             return None
 
-        if kasa_h is None:
-            logger.warning("Kasa Kapatma penceresi bulunamadı")
-            return None
-
-        logger.info(f"Küpür çekme - BotanikEOS: {botanik_h}, Kasa Kapatma: {kasa_h}")
+        logger.info(f"Başlangıç Kasası handle: {baslangic_h}")
 
         # UI Automation COM interface'i yükle
         comtypes.client.GetModule('UIAutomationCore.dll')
@@ -392,112 +436,80 @@ def botanik_baslangic_kupurlerini_cek() -> Optional[Dict[str, int]]:
             interface=IUIAutomation
         )
 
-        # Kasa Kapatma handle'ından element al
-        kasa_elem = uia.ElementFromHandle(kasa_h)
-        logger.info(f"Kasa Kapatma element alındı: {kasa_elem.CurrentName}")
+        # Başlangıç Kasası handle'ından element al
+        baslangic_elem = uia.ElementFromHandle(baslangic_h)
+        logger.info(f"Başlangıç Kasası element alındı: {baslangic_elem.CurrentName}")
 
         # Tüm child elementleri al
         condition = uia.CreateTrueCondition()
-        children = kasa_elem.FindAll(TreeScope_Descendants, condition)
+        children = baslangic_elem.FindAll(TreeScope_Descendants, condition)
+        logger.info(f"Toplam {children.Length} element bulundu")
 
-        # Edit kontrolleri topla (position ile)
-        edit_controls = []
+        # AutomationId -> Küpür değeri eşlemesi
+        automation_id_map = {
+            'txttl200': 200,
+            'txttl100': 100,
+            'txttl50': 50,
+            'txttl20': 20,
+            'txttl10': 10,
+            'txttl5': 5,
+            'txttl1': 1,
+            'txtkr50': 0.5,  # 50 kuruş = 0.5 TL
+        }
 
+        kupurler = {200: 0, 100: 0, 50: 0, 20: 0, 10: 0, 5: 0, 1: 0, 0.5: 0}
+
+        # Elementleri tara ve AutomationId ile eşleştir
         for i in range(children.Length):
             elem = children.GetElement(i)
             try:
-                ctrl_type = elem.CurrentControlType
-                # ControlType.Edit = 50004
-                if ctrl_type == 50004:
-                    rect = elem.CurrentBoundingRectangle
-                    x, y = rect.left, rect.top
+                automation_id = elem.CurrentAutomationId
+                if automation_id and automation_id in automation_id_map:
+                    kupur_degeri = automation_id_map[automation_id]
 
-                    # Value al
-                    try:
-                        vp = elem.GetCurrentPattern(10002)  # UIA_ValuePatternId
-                        if vp:
-                            value_pattern = vp.QueryInterface(IUIAutomationValuePattern)
-                            text = value_pattern.CurrentValue
-                            if text is not None:
-                                edit_controls.append({
-                                    'x': x,
-                                    'y': y,
-                                    'value': str(text).strip()
-                                })
-                                logger.debug(f"Edit control: x={x}, y={y}, value='{text}'")
-                    except:
-                        # Name'den dene
-                        name = elem.CurrentName
-                        if name:
-                            edit_controls.append({
-                                'x': x,
-                                'y': y,
-                                'value': str(name).strip()
-                            })
-            except:
+                    # Child element'ten değeri al (parent Edit, child gerçek değer)
+                    child_condition = uia.CreateTrueCondition()
+                    child_elems = elem.FindAll(TreeScope_Descendants, child_condition)
+
+                    value = None
+
+                    # Önce child'lardan değer al
+                    for j in range(child_elems.Length):
+                        child = child_elems.GetElement(j)
+                        try:
+                            child_name = child.CurrentName
+                            if child_name and child_name.strip():
+                                value = child_name.strip()
+                                break
+                        except:
+                            continue
+
+                    # Child'dan alamadıysak parent'tan dene
+                    if value is None:
+                        try:
+                            vp = elem.GetCurrentPattern(10002)  # UIA_ValuePatternId
+                            if vp:
+                                value_pattern = vp.QueryInterface(IUIAutomationValuePattern)
+                                value = value_pattern.CurrentValue
+                        except:
+                            pass
+
+                    # Değeri sayıya çevir
+                    if value:
+                        try:
+                            val = int(float(str(value).replace(',', '.').strip()))
+                            kupurler[kupur_degeri] = val
+                            logger.info(f"Küpür {kupur_degeri} TL ({automation_id}): {val} adet")
+                        except ValueError:
+                            logger.debug(f"Değer dönüştürülemedi: {value}")
+
+            except Exception as e:
+                logger.debug(f"Element okuma hatası: {e}")
                 continue
 
-        logger.info(f"Toplam {len(edit_controls)} Edit control bulundu")
-
-        if len(edit_controls) < 8:
-            logger.warning(f"Yeterli Edit control bulunamadı: {len(edit_controls)}")
-            return None
-
-        # X koordinatına göre iki sütuna ayır
-        # Sol sütun: 200, 100, 50, 20, 10, 5 (6 adet)
-        # Sağ sütun: 1, 0.5 (2 adet)
-
-        # X değerlerini analiz et
-        x_values = sorted(set(ec['x'] for ec in edit_controls))
-
-        if len(x_values) < 2:
-            logger.warning("İki sütun bulunamadı")
-            return None
-
-        # İlk iki benzersiz X değeri (sol ve sağ sütun)
-        left_x = x_values[0]
-        right_x = x_values[1] if len(x_values) > 1 else x_values[0]
-
-        # Tolerans ile sütunlara ayır
-        tolerance = 50
-        left_column = [ec for ec in edit_controls if abs(ec['x'] - left_x) < tolerance]
-        right_column = [ec for ec in edit_controls if abs(ec['x'] - right_x) < tolerance and ec not in left_column]
-
-        # Y'ye göre sırala
-        left_column.sort(key=lambda e: e['y'])
-        right_column.sort(key=lambda e: e['y'])
-
-        logger.info(f"Sol sütun: {len(left_column)}, Sağ sütun: {len(right_column)}")
-
-        # Küpür değerleri eşle
-        # Sol sütun: 200, 100, 50, 20, 10, 5
-        # Sağ sütun: 1, 0.5
-        left_denominations = [200, 100, 50, 20, 10, 5]
-        right_denominations = [1, 0.5]
-
-        kupurler = {}
-
-        for i, denom in enumerate(left_denominations):
-            if i < len(left_column):
-                try:
-                    val = int(float(left_column[i]['value'].replace(',', '.')))
-                    kupurler[denom] = val
-                    logger.info(f"Küpür {denom} TL: {val} adet")
-                except:
-                    kupurler[denom] = 0
-            else:
-                kupurler[denom] = 0
-
-        for i, denom in enumerate(right_denominations):
-            if i < len(right_column):
-                try:
-                    val = int(float(right_column[i]['value'].replace(',', '.')))
-                    kupurler[denom] = val
-                    logger.info(f"Küpür {denom} TL: {val} adet")
-                except:
-                    kupurler[denom] = 0
-            else:
-                kupurler[denom] = 0
+        # Sonuçları logla
+        toplam = sum(k * v for k, v in kupurler.items())
+        logger.info(f"Toplam küpür değeri: {toplam} TL")
 
         return kupurler
 
@@ -509,6 +521,144 @@ def botanik_baslangic_kupurlerini_cek() -> Optional[Dict[str, int]]:
         import traceback
         traceback.print_exc()
         return None
+
+
+def botanik_baslangic_kasasina_yaz(kupurler: Dict[float, int]) -> Tuple[bool, str]:
+    """
+    Botanik EOS 'Başlangıç Kasası' penceresine küpür değerlerini yazar ve kaydeder
+
+    Args:
+        kupurler: Dict with keys like 200, 100, 50, 20, 10, 5, 1, 0.5 (küpür değerleri)
+                  ve values olarak adet sayıları
+
+    Returns:
+        Tuple[bool, str]: (başarılı mı, mesaj)
+    """
+    try:
+        import comtypes
+        from comtypes.client import CreateObject
+
+        # COM başlat
+        comtypes.CoInitialize()
+
+        # UI Automation
+        UIA_E_ELEMENTNOTAVAILABLE = -2147220991
+
+        uia = CreateObject("{ff48dba4-60ef-4201-aa87-54103eef594e}")
+
+        # Pattern IDs
+        UIA_ValuePatternId = 10002
+        UIA_InvokePatternId = 10000
+
+        # TreeScope
+        TreeScope_Descendants = 4
+
+        # Başlangıç Kasası penceresini bul
+        baslangic_h = _find_baslangic_kasasi_handle()
+
+        if baslangic_h is None:
+            return False, "Botanik 'Başlangıç Kasası' penceresi bulunamadı!\n\nLütfen Botanik'te Başlangıç Kasası sayfasını açın."
+
+        logger.info(f"Başlangıç Kasası handle: {baslangic_h}")
+
+        # Element al
+        baslangic_elem = uia.ElementFromHandle(baslangic_h)
+        logger.info(f"Başlangıç Kasası element alındı: {baslangic_elem.CurrentName}")
+
+        # Tüm child elementleri al
+        condition = uia.CreateTrueCondition()
+        children = baslangic_elem.FindAll(TreeScope_Descendants, condition)
+
+        # Küpür değeri -> AutomationId eşlemesi (tersine)
+        kupur_to_automation = {
+            200: 'txttl200',
+            100: 'txttl100',
+            50: 'txttl50',
+            20: 'txttl20',
+            10: 'txttl10',
+            5: 'txttl5',
+            1: 'txttl1',
+            0.5: 'txtkr50',
+        }
+
+        # Elementleri dict'e topla
+        element_map = {}
+        kaydet_btn = None
+
+        for i in range(children.Length):
+            elem = children.GetElement(i)
+            try:
+                automation_id = elem.CurrentAutomationId
+                if automation_id:
+                    element_map[automation_id] = elem
+                    if automation_id == 'btnKaydet':
+                        kaydet_btn = elem
+            except:
+                continue
+
+        # Değerleri yaz
+        yazilan_sayac = 0
+        for kupur_degeri, adet in kupurler.items():
+            automation_id = kupur_to_automation.get(kupur_degeri)
+            if automation_id and automation_id in element_map:
+                elem = element_map[automation_id]
+                try:
+                    # ValuePattern ile değer yaz
+                    vp = elem.GetCurrentPattern(UIA_ValuePatternId)
+                    if vp:
+                        from comtypes.gen.UIAutomationClient import IUIAutomationValuePattern
+                        value_pattern = vp.QueryInterface(IUIAutomationValuePattern)
+                        value_pattern.SetValue(str(int(adet)))
+                        logger.info(f"Yazıldı: {kupur_degeri} TL ({automation_id}) = {adet} adet")
+                        yazilan_sayac += 1
+                except Exception as e:
+                    logger.warning(f"Değer yazılamadı {automation_id}: {e}")
+
+        if yazilan_sayac == 0:
+            return False, "Hiçbir değer yazılamadı!"
+
+        # Kaydet butonuna bas
+        if kaydet_btn is None:
+            # Manuel olarak bul
+            for automation_id, elem in element_map.items():
+                if 'kaydet' in automation_id.lower() or 'save' in automation_id.lower():
+                    kaydet_btn = elem
+                    break
+
+        if kaydet_btn:
+            try:
+                ip = kaydet_btn.GetCurrentPattern(UIA_InvokePatternId)
+                if ip:
+                    from comtypes.gen.UIAutomationClient import IUIAutomationInvokePattern
+                    invoke_pattern = ip.QueryInterface(IUIAutomationInvokePattern)
+                    invoke_pattern.Invoke()
+                    logger.info("Kaydet butonuna basıldı")
+                else:
+                    # Alternatif: tıklama
+                    import time
+                    time.sleep(0.2)
+                    # SetFocus ve Enter tuşu
+                    kaydet_btn.SetFocus()
+                    import ctypes
+                    ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0)  # Enter key down
+                    ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0)  # Enter key up
+            except Exception as e:
+                logger.warning(f"Kaydet butonuna basılamadı: {e}")
+                return True, f"{yazilan_sayac} değer yazıldı.\n\nKaydet butonuna manuel basmanız gerekiyor."
+        else:
+            return True, f"{yazilan_sayac} değer yazıldı.\n\nKaydet butonuna manuel basmanız gerekiyor."
+
+        toplam = sum(k * v for k, v in kupurler.items())
+        return True, f"Başlangıç kasası Botanik'e işlendi!\n\n{yazilan_sayac} küpür değeri yazıldı.\nToplam: {toplam:,.2f} TL"
+
+    except ImportError as e:
+        logger.error(f"Gerekli modül yüklü değil: {e}")
+        return False, f"Gerekli modül yüklü değil: {e}"
+    except Exception as e:
+        logger.error(f"Botanik'e yazma hatası: {e}")
+        import traceback
+        traceback.print_exc()
+        return False, f"Hata: {e}"
 
 
 # Test için

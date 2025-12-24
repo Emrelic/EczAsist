@@ -37,6 +37,15 @@ except ImportError as e:
     logger.warning(f"Botanik veri çekme modülü yüklenemedi: {e}")
     BOTANIK_VERI_MODULU_YUKLENDI = False
 
+# Kasa konfigurasyon ve API modulu
+try:
+    from kasa_config import config_yukle, makine_tipi_al, terminal_mi, ana_makine_ip_al, api_port_al, argumanlardan_config_al
+    from kasa_api_client import KasaAPIClient
+    KASA_API_MODULU_YUKLENDI = True
+except ImportError as e:
+    logger.warning(f"Kasa API modülü yüklenemedi: {e}")
+    KASA_API_MODULU_YUKLENDI = False
+
 
 class KasaKapatmaModul:
     """Kasa Kapatma - Günlük Mutabakat Sistemi"""
@@ -63,14 +72,54 @@ class KasaKapatmaModul:
     def __init__(self, root=None, ana_menu_callback=None):
         self.ana_menu_callback = ana_menu_callback
 
+        # Veritabanı bağlantısı (başlangıçta None)
+        self.conn = None
+        self.cursor = None
+
+        # API Client (Terminal modu icin)
+        self.api_client = None
+        self.terminal_modu = False
+
+        if KASA_API_MODULU_YUKLENDI:
+            config = argumanlardan_config_al()
+            if config.get("makine_tipi") == "terminal":
+                self.terminal_modu = True
+                ip = config.get("ana_makine_ip", "127.0.0.1")
+                port = config.get("api_port", 5000)
+                self.api_client = KasaAPIClient(host=ip, port=port)
+                logger.info(f"Terminal modu aktif - Ana Makine: {ip}:{port}")
+
         if root is None:
             self.root = tk.Tk()
         else:
             self.root = root
 
-        self.root.title("Kasa Kapatma - Günlük Mutabakat")
+        # DPI Awareness - Windows ölçekleme sorununu çöz
+        try:
+            from ctypes import windll
+            windll.shcore.SetProcessDpiAwareness(1)  # System DPI aware
+        except:
+            pass  # Windows 7 veya hata durumunda atla
 
-        # Tam ekran
+        # Pencere basligi (terminal modunda farkli)
+        if self.terminal_modu:
+            self.root.title("Kasa Kapatma - Terminal Modu")
+        else:
+            self.root.title("Kasa Kapatma - Günlük Mutabakat")
+
+        # Ekran boyutunu al ve pencereyi ayarla
+        ekran_genislik = self.root.winfo_screenwidth()
+        ekran_yukseklik = self.root.winfo_screenheight()
+
+        # Pencere boyutunu ekrana göre ayarla (ekranın %95'i)
+        pencere_genislik = int(ekran_genislik * 0.95)
+        pencere_yukseklik = int(ekran_yukseklik * 0.90)
+
+        # Pencereyi ortala
+        x = (ekran_genislik - pencere_genislik) // 2
+        y = (ekran_yukseklik - pencere_yukseklik) // 2 - 30
+
+        self.root.geometry(f"{pencere_genislik}x{pencere_yukseklik}+{x}+{y}")
         self.root.state('zoomed')
         self.root.resizable(True, True)
 
@@ -118,6 +167,7 @@ class KasaKapatmaModul:
         # Değişkenler
         # Başlangıç kasası küpürleri
         self.baslangic_kupur_vars = {}
+        self.baslangic_entry_list = []  # Tab navigasyonu için başlangıç kasası entry'leri
         self.baslangic_detay_acik = False
         self.baslangic_detay_frame = None
 
@@ -178,25 +228,67 @@ class KasaKapatmaModul:
         self.arayuz_olustur()
         self.hesaplari_guncelle()
 
+    def varsayilan_gorunum_ayarlari(self):
+        """Varsayılan görünüm ayarlarını döndür"""
+        return {
+            "punto_boyutu": 11,           # Genel yazı boyutu (9-14)
+            "baslik_yuksekligi": 100,     # Üst bar yüksekliği (70-140)
+            "buton_yuksekligi": 3,        # Alt butonların yüksekliği (2-5)
+            "tablo_satir_yuksekligi": 28, # Tablo satır yüksekliği (20-40)
+            "hucre_padding": 3,           # Hücre iç boşluğu (1-8)
+            "bolum_padding": 3,           # Bölüm iç boşluğu (2-8)
+        }
+
     def ayarlari_yukle(self):
         """Kasa ayarlarını yükle"""
+        # Varsayılan olarak pasif olan küpürler (kullanılmayanlar)
+        pasif_kupurler = {5000, 2000, 1000, 500, 0.25, 0.10, 0.05}
+
+        def varsayilan_aktiflik(deger):
+            """Küpürün varsayılan aktiflik durumunu döndür"""
+            return deger not in pasif_kupurler
+
+        # Varsayılan görünüm ayarları
+        varsayilan_gorunum = self.varsayilan_gorunum_ayarlari()
+
         try:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             ayar_dosyasi = Path(script_dir) / "kasa_ayarlari.json"
 
             if ayar_dosyasi.exists():
                 with open(ayar_dosyasi, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    ayarlar = json.load(f)
+                # Eksik görünüm ayarlarını varsayılanlarla tamamla
+                eksik_var = False
+                for key, value in varsayilan_gorunum.items():
+                    if key not in ayarlar:
+                        ayarlar[key] = value
+                        eksik_var = True
+                # Eksik ayarlar varsa dosyaya kaydet
+                if eksik_var:
+                    with open(ayar_dosyasi, 'w', encoding='utf-8') as f:
+                        json.dump(ayarlar, f, ensure_ascii=False, indent=2)
+                return ayarlar
             else:
-                # Varsayılan ayarlar
+                # Varsayılan ayarlar - kullanılmayan küpürler pasif
                 varsayilan = {
-                    "aktif_kupurler": {str(k["deger"]): True for k in self.KUPURLER}
+                    "aktif_kupurler": {
+                        self.kupur_key(k["deger"]): varsayilan_aktiflik(k["deger"])
+                        for k in self.KUPURLER
+                    },
+                    **varsayilan_gorunum
                 }
                 self.ayarlari_kaydet(varsayilan)
                 return varsayilan
         except Exception as e:
             logger.error(f"Ayar yükleme hatası: {e}")
-            return {"aktif_kupurler": {str(k["deger"]): True for k in self.KUPURLER}}
+            return {
+                "aktif_kupurler": {
+                    self.kupur_key(k["deger"]): varsayilan_aktiflik(k["deger"])
+                    for k in self.KUPURLER
+                },
+                **varsayilan_gorunum
+            }
 
     def ayarlari_kaydet(self, ayarlar=None):
         """Kasa ayarlarını kaydet"""
@@ -209,6 +301,31 @@ class KasaKapatmaModul:
                 json.dump(ayarlar, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.error(f"Ayar kaydetme hatası: {e}")
+
+    # ===== GÖRÜNÜM AYARLARI YARDIMCI FONKSİYONLARI =====
+    def get_punto(self, offset=0):
+        """Punto boyutunu al (offset ile büyütme/küçültme)"""
+        return self.ayarlar.get("punto_boyutu", 11) + offset
+
+    def get_baslik_yuksekligi(self):
+        """Başlık yüksekliğini al"""
+        return self.ayarlar.get("baslik_yuksekligi", 100)
+
+    def get_buton_yuksekligi(self):
+        """Buton yüksekliğini al"""
+        return self.ayarlar.get("buton_yuksekligi", 3)
+
+    def get_tablo_satir_yuksekligi(self):
+        """Tablo satır yüksekliğini al"""
+        return self.ayarlar.get("tablo_satir_yuksekligi", 28)
+
+    def get_hucre_padding(self):
+        """Hücre padding değerini al"""
+        return self.ayarlar.get("hucre_padding", 3)
+
+    def get_bolum_padding(self):
+        """Bölüm padding değerini al"""
+        return self.ayarlar.get("bolum_padding", 3)
 
     def sebepleri_yukle(self):
         """Artı/Eksi sebeplerini JSON dosyasından yükle"""
@@ -294,6 +411,25 @@ class KasaKapatmaModul:
         """Tab tuşuna basıldığında sıradaki entry'ye geç"""
         try:
             current_widget = event.widget
+
+            # Başlangıç kasası entry'lerinde
+            if current_widget in self.baslangic_entry_list:
+                idx = self.baslangic_entry_list.index(current_widget)
+                if idx == len(self.baslangic_entry_list) - 1:
+                    # Son entry -> Akşam kasası (sayım) ilk entry'sine git
+                    if self.tab_order_entries:
+                        next_widget = self.tab_order_entries[0]
+                        next_widget.focus_set()
+                        next_widget.select_range(0, tk.END)
+                        return "break"
+                else:
+                    # Sonraki başlangıç kasası entry'sine git
+                    next_widget = self.baslangic_entry_list[idx + 1]
+                    next_widget.focus_set()
+                    next_widget.select_range(0, tk.END)
+                    return "break"
+
+            # Akşam kasası (sayım) ve diğer entry'lerde
             if current_widget in self.tab_order_entries:
                 idx = self.tab_order_entries.index(current_widget)
                 next_idx = (idx + 1) % len(self.tab_order_entries)
@@ -309,8 +445,34 @@ class KasaKapatmaModul:
         """Shift+Tab tuşuna basıldığında önceki entry'ye geç"""
         try:
             current_widget = event.widget
+
+            # Başlangıç kasası entry'lerinde
+            if current_widget in self.baslangic_entry_list:
+                idx = self.baslangic_entry_list.index(current_widget)
+                if idx == 0:
+                    # İlk entry -> Akşam kasası (sayım) son entry'sine git
+                    if self.tab_order_entries:
+                        prev_widget = self.tab_order_entries[-1]
+                        prev_widget.focus_set()
+                        prev_widget.select_range(0, tk.END)
+                        return "break"
+                else:
+                    # Önceki başlangıç kasası entry'sine git
+                    prev_widget = self.baslangic_entry_list[idx - 1]
+                    prev_widget.focus_set()
+                    prev_widget.select_range(0, tk.END)
+                    return "break"
+
+            # Akşam kasası (sayım) ve diğer entry'lerde
             if current_widget in self.tab_order_entries:
                 idx = self.tab_order_entries.index(current_widget)
+                if idx == 0:
+                    # İlk entry -> Başlangıç kasası son entry'sine git
+                    if self.baslangic_entry_list:
+                        prev_widget = self.baslangic_entry_list[-1]
+                        prev_widget.focus_set()
+                        prev_widget.select_range(0, tk.END)
+                        return "break"
                 prev_idx = (idx - 1) % len(self.tab_order_entries)
                 prev_widget = self.tab_order_entries[prev_idx]
                 prev_widget.focus_set()
@@ -338,9 +500,33 @@ class KasaKapatmaModul:
 
     def db_baglantisi_kur(self):
         """Veritabanı bağlantısını kur ve tabloları oluştur"""
+        # Terminal modunda API bağlantısını kontrol et
+        if self.terminal_modu and self.api_client:
+            success, result = self.api_client.baglanti_test()
+            if success:
+                logger.info("Terminal: Ana makineye bağlantı başarılı")
+            else:
+                logger.error(f"Terminal: Ana makineye bağlanılamadı - {result}")
+                messagebox.showerror(
+                    "Bağlantı Hatası",
+                    f"Ana makineye bağlanılamadı!\n\n{result}\n\n"
+                    "Lütfen ana makinenin çalıştığından emin olun."
+                )
+
         try:
+            # Veritabanını AppData klasörüne kaydet (Program Files yazma izni sorunu için)
+            appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+            db_klasor = Path(appdata) / "BotanikKasa"
+            db_klasor.mkdir(parents=True, exist_ok=True)
+            self.db_yolu = db_klasor / "oturum_raporlari.db"
+
+            # Eski konumda veritabanı varsa taşı
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            self.db_yolu = Path(script_dir) / "oturum_raporlari.db"
+            eski_db = Path(script_dir) / "oturum_raporlari.db"
+            if eski_db.exists() and not self.db_yolu.exists():
+                import shutil
+                shutil.copy2(str(eski_db), str(self.db_yolu))
+                logger.info(f"Veritabanı taşındı: {eski_db} -> {self.db_yolu}")
             self.conn = sqlite3.connect(str(self.db_yolu), check_same_thread=False)
             self.cursor = self.conn.cursor()
 
@@ -414,10 +600,15 @@ class KasaKapatmaModul:
             logger.info("Kasa kapatma DB tabloları oluşturuldu")
 
         except Exception as e:
-            logger.error(f"Kasa DB hatası: {e}")
+            import traceback
+            hata_detay = traceback.format_exc()
+            logger.error(f"Kasa DB hatası: {e}\n{hata_detay}")
+            messagebox.showerror("Veritabanı Hatası", f"Veritabanı bağlantısı kurulamadı!\n\nHata: {e}\n\nYol: {self.db_yolu if hasattr(self, 'db_yolu') else 'bilinmiyor'}")
 
     def onceki_gun_kasasi_yukle(self):
         """Bir önceki kapatmadan ertesi gün kasasını yükle"""
+        if self.cursor is None:
+            return
         try:
             self.cursor.execute('''
                 SELECT ertesi_gun_kasasi, ertesi_gun_kupurler_json, detay_json
@@ -622,8 +813,8 @@ class KasaKapatmaModul:
             self.botanik_pos_var.set(str(int(botanik_pos)))
             self.botanik_iban_var.set(str(int(botanik_iban)))
 
-            # Toplamları güncelle
-            self.botanik_guncelle()
+            # Toplamları güncelle (alt toplam dahil)
+            self.hesaplari_guncelle()
 
             logger.info(f"Botanik verileri çekildi: Nakit={botanik_nakit}, POS={botanik_pos}, IBAN={botanik_iban}")
 
@@ -655,7 +846,10 @@ class KasaKapatmaModul:
 
     def ust_bar_olustur(self):
         """Üst bar - başlık ve butonlar"""
-        top_bar = tk.Frame(self.root, bg=self.header_color, height=120)
+        baslik_yuk = self.get_baslik_yuksekligi()
+        punto = self.get_punto()
+
+        top_bar = tk.Frame(self.root, bg=self.header_color, height=baslik_yuk)
         top_bar.pack(fill="x")
         top_bar.pack_propagate(False)
 
@@ -663,58 +857,62 @@ class KasaKapatmaModul:
         sol_frame = tk.Frame(top_bar, bg=self.header_color)
         sol_frame.pack(side="left", padx=10)
 
+        # Buton padding hesapla (başlık yüksekliğine göre)
+        btn_pady_ic = max(4, (baslik_yuk - 70) // 10)
+        btn_pady_dis = max(8, (baslik_yuk - 70) // 5)
+
         if self.ana_menu_callback:
             ana_sayfa_btn = tk.Button(
                 sol_frame,
                 text="Ana Sayfa",
-                font=("Arial", 13, "bold"),
+                font=("Arial", punto + 1, "bold"),
                 bg="#0D47A1",
                 fg="white",
                 activebackground="#1565C0",
                 cursor="hand2",
                 bd=0,
-                padx=20,
-                pady=10,
+                padx=12,
+                pady=btn_pady_ic,
                 command=self.ana_sayfaya_don
             )
-            ana_sayfa_btn.pack(side="left", padx=5, pady=20)
+            ana_sayfa_btn.pack(side="left", padx=5, pady=btn_pady_dis)
 
         ayarlar_btn = tk.Button(
             sol_frame,
             text="Ayarlar",
-            font=("Arial", 13, "bold"),
+            font=("Arial", punto + 1, "bold"),
             bg="#0D47A1",
             fg="white",
             activebackground="#1565C0",
             cursor="hand2",
             bd=0,
-            padx=20,
-            pady=10,
+            padx=12,
+            pady=btn_pady_ic,
             command=self.ayarlar_penceresi_ac
         )
-        ayarlar_btn.pack(side="left", padx=5, pady=20)
+        ayarlar_btn.pack(side="left", padx=5, pady=btn_pady_dis)
 
         # Yardım butonu (Kullanım Kılavuzu + Geliştirme Notları)
         yardim_btn = tk.Button(
             sol_frame,
             text="Yardım",
-            font=("Arial", 13, "bold"),
+            font=("Arial", punto + 1, "bold"),
             bg="#FF9800",
             fg="white",
             activebackground="#F57C00",
             cursor="hand2",
             bd=0,
-            padx=20,
-            pady=10,
+            padx=12,
+            pady=btn_pady_ic,
             command=self.yardim_penceresi_ac
         )
-        yardim_btn.pack(side="left", padx=5, pady=20)
+        yardim_btn.pack(side="left", padx=5, pady=btn_pady_dis)
 
         # Orta - Başlık
         title = tk.Label(
             top_bar,
             text="KASA KAPATMA / GÜNLÜK MUTABAKAT",
-            font=("Arial", 20, "bold"),
+            font=("Arial", punto + 7, "bold"),
             bg=self.header_color,
             fg='white'
         )
@@ -729,7 +927,7 @@ class KasaKapatmaModul:
             rapor_gonder_btn = tk.Button(
                 sag_frame,
                 text="Özelleşmiş Rapor",
-                font=("Arial", 13, "bold"),
+                font=("Arial", punto + 1, "bold"),
                 bg='#1565C0',
                 fg='white',
                 activebackground='#0D47A1',
@@ -737,52 +935,52 @@ class KasaKapatmaModul:
                 bd=2,
                 relief='solid',
                 highlightthickness=0,
-                padx=20,
-                pady=10,
+                padx=12,
+                pady=btn_pady_ic,
                 command=self.ozellesmis_rapor_gonder
             )
-            rapor_gonder_btn.pack(side="left", padx=5, pady=20)
+            rapor_gonder_btn.pack(side="left", padx=5, pady=btn_pady_dis)
 
         temizle_btn = tk.Button(
             sag_frame,
             text="Temizle",
-            font=("Arial", 13, "bold"),
+            font=("Arial", punto + 1, "bold"),
             bg='#F44336',
             fg='white',
             activebackground='#D32F2F',
             cursor='hand2',
             bd=0,
-            padx=20,
-            pady=10,
+            padx=12,
+            pady=btn_pady_ic,
             command=self.temizle
         )
-        temizle_btn.pack(side="left", padx=5, pady=20)
+        temizle_btn.pack(side="left", padx=5, pady=btn_pady_dis)
 
         # Kayıtlar butonu (Geçmiş + Raporlar birleşik)
         kayitlar_btn = tk.Button(
             sag_frame,
             text="Kayıtlar",
-            font=("Arial", 13, "bold"),
+            font=("Arial", punto + 1, "bold"),
             bg='#2196F3',
             fg='white',
             activebackground='#1976D2',
             cursor='hand2',
             bd=0,
-            padx=20,
-            pady=10,
+            padx=12,
+            pady=btn_pady_ic,
             command=self.kayitlar_penceresi_ac
         )
-        kayitlar_btn.pack(side="left", padx=5, pady=20)
+        kayitlar_btn.pack(side="left", padx=5, pady=btn_pady_dis)
 
         # Tarih/Saat
         self.tarih_label = tk.Label(
             sag_frame,
             text=datetime.now().strftime("%d.%m.%Y %H:%M"),
-            font=("Arial", 13),
+            font=("Arial", punto + 1),
             bg=self.header_color,
             fg='#B3E5FC'
         )
-        self.tarih_label.pack(side="left", padx=10, pady=20)
+        self.tarih_label.pack(side="left", padx=10, pady=btn_pady_dis)
 
     def baslangic_kasasi_bolumu_olustur(self):
         """1) Başlangıç kasası bölümü - SOL ÜST"""
@@ -881,12 +1079,15 @@ class KasaKapatmaModul:
         for widget in self.baslangic_detay_container.winfo_children():
             widget.destroy()
 
+        punto = self.get_punto()
+        hucre_pad = self.get_hucre_padding()
+
         # Başlık
         header = tk.Frame(self.baslangic_detay_container, bg='#2E7D32')
-        header.pack(fill="x", pady=2)
-        tk.Label(header, text="Küpür", font=("Arial", 12, "bold"), bg='#2E7D32', fg='white', width=8).pack(side="left", padx=2, pady=4)
-        tk.Label(header, text="Adet", font=("Arial", 12, "bold"), bg='#2E7D32', fg='white', width=6).pack(side="left", padx=2, pady=4)
-        tk.Label(header, text="Toplam", font=("Arial", 12, "bold"), bg='#2E7D32', fg='white', width=10).pack(side="left", padx=2, pady=4)
+        header.pack(fill="x", pady=1)
+        tk.Label(header, text="Küpür", font=("Arial", punto, "bold"), bg='#2E7D32', fg='white', width=8).pack(side="left", padx=hucre_pad, pady=hucre_pad)
+        tk.Label(header, text="Adet", font=("Arial", punto, "bold"), bg='#2E7D32', fg='white', width=6).pack(side="left", padx=hucre_pad, pady=hucre_pad)
+        tk.Label(header, text="Toplam", font=("Arial", punto, "bold"), bg='#2E7D32', fg='white', width=10).pack(side="left", padx=hucre_pad, pady=hucre_pad)
 
         # Küpür satırları
         for kupur in self.KUPURLER:
@@ -899,19 +1100,22 @@ class KasaKapatmaModul:
 
     def baslangic_kupur_satiri_olustur_sabit(self, kupur):
         """Başlangıç kasası küpür satırı - dolgun"""
+        punto = self.get_punto()
+        hucre_pad = self.get_hucre_padding()
+
         deger = kupur["deger"]
         row = tk.Frame(self.baslangic_detay_container, bg=self.section_colors['baslangic'])
-        row.pack(fill="x", pady=2)
+        row.pack(fill="x", pady=1)
 
         tk.Label(
             row,
             text=kupur["aciklama"],
-            font=("Arial", 12, "bold"),
+            font=("Arial", punto, "bold"),
             bg=self.section_colors['baslangic'],
             fg='#1B5E20',
             width=8,
             anchor='w'
-        ).pack(side="left", padx=3)
+        ).pack(side="left", padx=hucre_pad)
 
         # Adet entry
         var = self.baslangic_kupur_vars.get(deger)
@@ -922,13 +1126,15 @@ class KasaKapatmaModul:
         entry = tk.Entry(
             row,
             textvariable=var,
-            font=("Arial", 12, "bold"),
+            font=("Arial", punto, "bold"),
             width=6,
-            justify='center',
-            takefocus=False
+            justify='center'
         )
-        entry.pack(side="left", padx=3)
+        entry.pack(side="left", padx=hucre_pad)
         entry.bind('<FocusIn>', self.entry_fokus_secim)
+        entry.bind('<Tab>', self.tab_sonraki_entry)
+        entry.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
+        self.baslangic_entry_list.append(entry)
 
         # Satır toplamı
         try:
@@ -940,13 +1146,13 @@ class KasaKapatmaModul:
         toplam_label = tk.Label(
             row,
             text=f"{toplam:,.2f}",
-            font=("Arial", 12, "bold"),
+            font=("Arial", punto, "bold"),
             bg=self.section_colors['baslangic'],
             fg='#1565C0',
             width=10,
             anchor='e'
         )
-        toplam_label.pack(side="left", padx=3)
+        toplam_label.pack(side="left", padx=hucre_pad)
 
         # Değişiklik izleme
         def guncelle(*args):
@@ -1228,23 +1434,27 @@ class KasaKapatmaModul:
 
     def gun_sonu_sayim_bolumu_olustur(self):
         """2) Gün sonu kasa sayımı bölümü - SAĞ ÜST"""
+        punto = self.get_punto()
+        hucre_pad = self.get_hucre_padding()
+        bolum_pad = self.get_bolum_padding()
+
         frame = tk.LabelFrame(
             self.sag_ust_frame,
             text="2) AKŞAM KASA SAYIMI",
-            font=("Arial", 11, "bold"),
+            font=("Arial", punto, "bold"),
             bg=self.section_colors['sayim'],
             fg='#1B5E20',
-            padx=5,
-            pady=3
+            padx=bolum_pad,
+            pady=bolum_pad
         )
         frame.pack(fill="both", expand=True)
 
         # Başlık
         header = tk.Frame(frame, bg='#2E7D32')
-        header.pack(fill="x", pady=2)
-        tk.Label(header, text="Küpür", font=("Arial", 12, "bold"), bg='#2E7D32', fg='white', width=7).pack(side="left", padx=2, pady=4)
-        tk.Label(header, text="Adet", font=("Arial", 12, "bold"), bg='#2E7D32', fg='white', width=8).pack(side="left", padx=2, pady=4)
-        tk.Label(header, text="Toplam", font=("Arial", 12, "bold"), bg='#2E7D32', fg='white', width=10).pack(side="left", padx=2, pady=4)
+        header.pack(fill="x", pady=1)
+        tk.Label(header, text="Küpür", font=("Arial", punto, "bold"), bg='#2E7D32', fg='white', width=7).pack(side="left", padx=hucre_pad, pady=hucre_pad)
+        tk.Label(header, text="Adet", font=("Arial", punto, "bold"), bg='#2E7D32', fg='white', width=8).pack(side="left", padx=hucre_pad, pady=hucre_pad)
+        tk.Label(header, text="Toplam", font=("Arial", punto, "bold"), bg='#2E7D32', fg='white', width=10).pack(side="left", padx=hucre_pad, pady=hucre_pad)
 
         # Küpür satırları
         for kupur in self.KUPURLER:
@@ -1253,40 +1463,43 @@ class KasaKapatmaModul:
 
         # Sayım toplamı
         toplam_frame = tk.Frame(frame, bg=self.ara_toplam_bg)
-        toplam_frame.pack(fill="x", pady=(3, 0))
+        toplam_frame.pack(fill="x", pady=(2, 0))
 
         tk.Label(
             toplam_frame,
             text="SAYIM TOP:",
-            font=("Arial", 13, "bold"),
+            font=("Arial", punto + 1, "bold"),
             bg=self.ara_toplam_bg,
             fg=self.ara_toplam_fg
-        ).pack(side="left", padx=5, pady=3)
+        ).pack(side="left", padx=hucre_pad, pady=hucre_pad)
 
         self.sayim_toplam_label = tk.Label(
             toplam_frame,
             text="0,00 TL",
-            font=("Arial", 14, "bold"),
+            font=("Arial", punto + 2, "bold"),
             bg=self.ara_toplam_bg,
             fg=self.ara_toplam_fg
         )
-        self.sayim_toplam_label.pack(side="right", padx=5, pady=3)
+        self.sayim_toplam_label.pack(side="right", padx=hucre_pad, pady=hucre_pad)
 
     def sayim_kupur_satiri_olustur(self, parent, kupur):
         """Sayım küpür satırı - dolgun"""
+        punto = self.get_punto()
+        hucre_pad = self.get_hucre_padding()
+
         deger = kupur["deger"]
         row = tk.Frame(parent, bg=self.section_colors['sayim'])
-        row.pack(fill="x", pady=2)
+        row.pack(fill="x", pady=1)
 
         tk.Label(
             row,
             text=kupur["aciklama"],
-            font=("Arial", 12, "bold"),
+            font=("Arial", punto + 1, "bold"),
             bg=self.section_colors['sayim'],
             fg='#1B5E20',
             width=7,
             anchor='w'
-        ).pack(side="left", padx=3)
+        ).pack(side="left", padx=hucre_pad)
 
         # Adet frame (artı/eksi butonları ile)
         adet_frame = tk.Frame(row, bg=self.section_colors['sayim'])
@@ -1295,7 +1508,7 @@ class KasaKapatmaModul:
         tk.Button(
             adet_frame,
             text="-",
-            font=("Arial", 11, "bold"),
+            font=("Arial", punto, "bold"),
             bg='#FFCDD2',
             fg='#C62828',
             width=2,
@@ -1310,7 +1523,7 @@ class KasaKapatmaModul:
         entry = tk.Entry(
             adet_frame,
             textvariable=var,
-            font=("Arial", 12, "bold"),
+            font=("Arial", punto + 1, "bold"),
             width=6,
             justify='center'
         )
@@ -1324,7 +1537,7 @@ class KasaKapatmaModul:
         tk.Button(
             adet_frame,
             text="+",
-            font=("Arial", 11, "bold"),
+            font=("Arial", punto, "bold"),
             bg='#C8E6C9',
             fg='#2E7D32',
             width=2,
@@ -1337,13 +1550,13 @@ class KasaKapatmaModul:
         toplam_label = tk.Label(
             row,
             text="0,00",
-            font=("Arial", 12, "bold"),
+            font=("Arial", punto + 1, "bold"),
             bg=self.section_colors['sayim'],
             fg='#1565C0',
             width=10,
             anchor='e'
         )
-        toplam_label.pack(side="left", padx=3)
+        toplam_label.pack(side="left", padx=hucre_pad)
         self.sayim_toplam_labels[deger] = toplam_label
 
     def sayim_adet_degistir(self, deger, miktar):
@@ -1961,14 +2174,18 @@ class KasaKapatmaModul:
 
     def pos_bolumu_olustur(self):
         """3) POS ve IBAN raporları bölümü - SOL ALT"""
+        punto = self.get_punto()
+        hucre_pad = self.get_hucre_padding()
+        bolum_pad = self.get_bolum_padding()
+
         frame = tk.LabelFrame(
             self.sol_alt_frame,
             text="3) POS VE IBAN",
-            font=("Arial", 11, "bold"),
+            font=("Arial", punto, "bold"),
             bg=self.section_colors['pos'],
             fg='#0D47A1',
-            padx=3,
-            pady=2
+            padx=bolum_pad,
+            pady=bolum_pad
         )
         frame.pack(fill="both", expand=True)
 
@@ -1980,18 +2197,18 @@ class KasaKapatmaModul:
         sol_frame = tk.Frame(columns_frame, bg=self.section_colors['pos'])
         sol_frame.pack(side="left", fill="both", expand=True, padx=1)
 
-        tk.Label(sol_frame, text="EczPOS", font=("Arial", 11, "bold"),
-                bg='#BBDEFB', fg='#0D47A1').pack(fill="x", pady=2)
+        tk.Label(sol_frame, text="EczPOS", font=("Arial", punto, "bold"),
+                bg='#BBDEFB', fg='#0D47A1').pack(fill="x", pady=1)
 
         for i in range(4):
             row = tk.Frame(sol_frame, bg=self.section_colors['pos'])
             row.pack(fill="x", pady=1)
-            tk.Label(row, text=f"{i+1}:", font=("Arial", 10, "bold"),
+            tk.Label(row, text=f"{i+1}:", font=("Arial", punto - 1, "bold"),
                     bg=self.section_colors['pos'], fg=self.detay_fg, width=2, anchor='w').pack(side="left")
             var = tk.StringVar(value="0")
             self.pos_vars.append(var)
-            entry = tk.Entry(row, textvariable=var, font=("Arial", 11), width=8, justify='right')
-            entry.pack(side="right", padx=2)
+            entry = tk.Entry(row, textvariable=var, font=("Arial", punto), width=8, justify='right')
+            entry.pack(side="right", padx=hucre_pad)
             entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
             entry.bind('<FocusIn>', self.entry_fokus_secim)
             entry.bind('<Tab>', self.tab_sonraki_entry)
@@ -2002,18 +2219,18 @@ class KasaKapatmaModul:
         orta_frame = tk.Frame(columns_frame, bg=self.section_colors['pos'])
         orta_frame.pack(side="left", fill="both", expand=True, padx=1)
 
-        tk.Label(orta_frame, text="Ingenico", font=("Arial", 11, "bold"),
-                bg='#BBDEFB', fg='#0D47A1').pack(fill="x", pady=2)
+        tk.Label(orta_frame, text="Ingenico", font=("Arial", punto, "bold"),
+                bg='#BBDEFB', fg='#0D47A1').pack(fill="x", pady=1)
 
         for i in range(4):
             row = tk.Frame(orta_frame, bg=self.section_colors['pos'])
             row.pack(fill="x", pady=1)
-            tk.Label(row, text=f"{i+1}:", font=("Arial", 10, "bold"),
+            tk.Label(row, text=f"{i+1}:", font=("Arial", punto - 1, "bold"),
                     bg=self.section_colors['pos'], fg=self.detay_fg, width=2, anchor='w').pack(side="left")
             var = tk.StringVar(value="0")
             self.pos_vars.append(var)
-            entry = tk.Entry(row, textvariable=var, font=("Arial", 11), width=8, justify='right')
-            entry.pack(side="right", padx=2)
+            entry = tk.Entry(row, textvariable=var, font=("Arial", punto), width=8, justify='right')
+            entry.pack(side="right", padx=hucre_pad)
             entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
             entry.bind('<FocusIn>', self.entry_fokus_secim)
             entry.bind('<Tab>', self.tab_sonraki_entry)
@@ -2024,18 +2241,18 @@ class KasaKapatmaModul:
         sag_frame = tk.Frame(columns_frame, bg='#E0F7FA')
         sag_frame.pack(side="left", fill="both", expand=True, padx=1)
 
-        tk.Label(sag_frame, text="IBAN", font=("Arial", 11, "bold"),
-                bg='#B2EBF2', fg='#00695C').pack(fill="x", pady=2)
+        tk.Label(sag_frame, text="IBAN", font=("Arial", punto, "bold"),
+                bg='#B2EBF2', fg='#00695C').pack(fill="x", pady=1)
 
         for i in range(4):
             row = tk.Frame(sag_frame, bg='#E0F7FA')
             row.pack(fill="x", pady=1)
-            tk.Label(row, text=f"{i+1}:", font=("Arial", 10, "bold"),
+            tk.Label(row, text=f"{i+1}:", font=("Arial", punto - 1, "bold"),
                     bg='#E0F7FA', fg=self.detay_fg, width=2, anchor='w').pack(side="left")
             var = tk.StringVar(value="0")
             self.iban_vars.append(var)
-            entry = tk.Entry(row, textvariable=var, font=("Arial", 11), width=8, justify='right')
-            entry.pack(side="right", padx=2)
+            entry = tk.Entry(row, textvariable=var, font=("Arial", punto), width=8, justify='right')
+            entry.pack(side="right", padx=hucre_pad)
             entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
             entry.bind('<FocusIn>', self.entry_fokus_secim)
             entry.bind('<Tab>', self.tab_sonraki_entry)
@@ -2044,25 +2261,25 @@ class KasaKapatmaModul:
 
         # Alt toplam satırı - POS ve IBAN toplamları yan yana, aynı hizada
         toplam_frame = tk.Frame(frame, bg='#FFD54F')  # Sari arka plan
-        toplam_frame.pack(fill="x", pady=(2, 0))
+        toplam_frame.pack(fill="x", pady=(1, 0))
 
         # POS Toplam (sol taraf - 2/3)
         pos_toplam_container = tk.Frame(toplam_frame, bg='#FFD54F')
         pos_toplam_container.pack(side="left", fill="x", expand=True)
-        tk.Label(pos_toplam_container, text="POS TOP:", font=("Arial", 11, "bold"),
-                bg='#FFD54F', fg='#0D47A1').pack(side="left", padx=2, pady=3)
-        self.pos_toplam_label = tk.Label(pos_toplam_container, text="0,00", font=("Arial", 12, "bold"),
+        tk.Label(pos_toplam_container, text="POS TOP:", font=("Arial", punto, "bold"),
+                bg='#FFD54F', fg='#0D47A1').pack(side="left", padx=hucre_pad, pady=hucre_pad)
+        self.pos_toplam_label = tk.Label(pos_toplam_container, text="0,00", font=("Arial", punto + 1, "bold"),
                                          bg='#FFD54F', fg='#0D47A1')
-        self.pos_toplam_label.pack(side="right", padx=2, pady=3)
+        self.pos_toplam_label.pack(side="right", padx=hucre_pad, pady=hucre_pad)
 
         # IBAN Toplam (sag taraf - 1/3)
         iban_toplam_container = tk.Frame(toplam_frame, bg='#80DEEA')
         iban_toplam_container.pack(side="left", fill="x", expand=True)
-        tk.Label(iban_toplam_container, text="IBAN:", font=("Arial", 11, "bold"),
-                bg='#80DEEA', fg='#00695C').pack(side="left", padx=2, pady=3)
-        self.iban_toplam_label = tk.Label(iban_toplam_container, text="0,00", font=("Arial", 12, "bold"),
+        tk.Label(iban_toplam_container, text="IBAN:", font=("Arial", punto, "bold"),
+                bg='#80DEEA', fg='#00695C').pack(side="left", padx=hucre_pad, pady=hucre_pad)
+        self.iban_toplam_label = tk.Label(iban_toplam_container, text="0,00", font=("Arial", punto + 1, "bold"),
                                           bg='#80DEEA', fg='#00695C')
-        self.iban_toplam_label.pack(side="right", padx=2, pady=3)
+        self.iban_toplam_label.pack(side="right", padx=hucre_pad, pady=hucre_pad)
 
         # Eski label'lar icin uyumluluk (hesaplari_guncelle'de kullaniliyor)
         self.eczpos_toplam_label = tk.Label(frame)  # Gizli
@@ -2074,6 +2291,10 @@ class KasaKapatmaModul:
 
     def karsilastirma_tablosu_olustur(self):
         """6) Karşılaştırma tablosu - Sayım vs Botanik - dolgun tasarım"""
+        punto = self.get_punto()
+        hucre_pad = self.get_hucre_padding()
+        bolum_pad = self.get_bolum_padding()
+
         # Ana container - tüm alanı kapla
         container = tk.Frame(self.tablo_frame, bg=self.bg_color)
         container.pack(fill="both", expand=True)
@@ -2082,19 +2303,19 @@ class KasaKapatmaModul:
         frame = tk.LabelFrame(
             container,
             text="6) SAYIM / BOTANİK KARŞILAŞTIRMA",
-            font=("Arial", 12, "bold"),
+            font=("Arial", punto + 1, "bold"),
             bg='#FFFFFF',
             fg='#1A237E',
             bd=2,
             relief='groove',
-            padx=5,
-            pady=3
+            padx=bolum_pad,
+            pady=bolum_pad
         )
         frame.pack(fill="both", expand=True)
 
         # Grid ile hizalı tablo - tüm alanı kapla
         tablo = tk.Frame(frame, bg='#FFFFFF')
-        tablo.pack(fill="both", expand=True, pady=2)
+        tablo.pack(fill="both", expand=True, pady=1)
 
         # Grid sütunlarını eşit genişlikte yay
         tablo.columnconfigure(0, weight=2)
@@ -2106,65 +2327,65 @@ class KasaKapatmaModul:
             tablo.rowconfigure(i, weight=1)
 
         # Başlık satırı - daha büyük ve vurgulu
-        tk.Label(tablo, text="", font=("Arial", 13, "bold"),
-                bg='#5C6BC0', fg='white', padx=8, pady=6).grid(row=0, column=0, sticky='nsew', padx=1, pady=1)
-        tk.Label(tablo, text="SAYIM", font=("Arial", 14, "bold"),
-                bg='#2196F3', fg='white', padx=8, pady=6).grid(row=0, column=1, sticky='nsew', padx=1, pady=1)
-        tk.Label(tablo, text="BOTANİK", font=("Arial", 14, "bold"),
-                bg='#FF9800', fg='white', padx=8, pady=6).grid(row=0, column=2, sticky='nsew', padx=1, pady=1)
-        tk.Label(tablo, text="FARK", font=("Arial", 14, "bold"),
-                bg='#607D8B', fg='white', padx=8, pady=6).grid(row=0, column=3, sticky='nsew', padx=1, pady=1)
+        tk.Label(tablo, text="", font=("Arial", punto + 2, "bold"),
+                bg='#5C6BC0', fg='white', padx=hucre_pad + 2, pady=hucre_pad).grid(row=0, column=0, sticky='nsew', padx=1, pady=1)
+        tk.Label(tablo, text="SAYIM", font=("Arial", punto + 3, "bold"),
+                bg='#2196F3', fg='white', padx=hucre_pad + 2, pady=hucre_pad).grid(row=0, column=1, sticky='nsew', padx=1, pady=1)
+        tk.Label(tablo, text="BOTANİK", font=("Arial", punto + 3, "bold"),
+                bg='#FF9800', fg='white', padx=hucre_pad + 2, pady=hucre_pad).grid(row=0, column=2, sticky='nsew', padx=1, pady=1)
+        tk.Label(tablo, text="FARK", font=("Arial", punto + 3, "bold"),
+                bg='#607D8B', fg='white', padx=hucre_pad + 2, pady=hucre_pad).grid(row=0, column=3, sticky='nsew', padx=1, pady=1)
 
         # Nakit satırı - daha büyük
-        tk.Label(tablo, text="Düzeltilmiş Nakit", font=("Arial", 12, "bold"),
-                bg='#E8F5E9', fg='#2E7D32', padx=8, pady=6, anchor='w').grid(row=1, column=0, sticky='nsew', padx=1, pady=1)
-        self.duzeltilmis_nakit_label = tk.Label(tablo, text="0,00", font=("Arial", 14, "bold"),
-                bg='#BBDEFB', fg='#1565C0', padx=8, pady=6, anchor='e')
+        tk.Label(tablo, text="Düzeltilmiş Nakit", font=("Arial", punto + 1, "bold"),
+                bg='#E8F5E9', fg='#2E7D32', padx=hucre_pad + 2, pady=hucre_pad, anchor='w').grid(row=1, column=0, sticky='nsew', padx=1, pady=1)
+        self.duzeltilmis_nakit_label = tk.Label(tablo, text="0,00", font=("Arial", punto + 3, "bold"),
+                bg='#BBDEFB', fg='#1565C0', padx=hucre_pad + 2, pady=hucre_pad, anchor='e')
         self.duzeltilmis_nakit_label.grid(row=1, column=1, sticky='nsew', padx=1, pady=1)
-        self.botanik_nakit_gosterge = tk.Label(tablo, text="0,00", font=("Arial", 14, "bold"),
-                bg='#FFE0B2', fg='#E65100', padx=8, pady=6, anchor='e')
+        self.botanik_nakit_gosterge = tk.Label(tablo, text="0,00", font=("Arial", punto + 3, "bold"),
+                bg='#FFE0B2', fg='#E65100', padx=hucre_pad + 2, pady=hucre_pad, anchor='e')
         self.botanik_nakit_gosterge.grid(row=1, column=2, sticky='nsew', padx=1, pady=1)
-        self.nakit_fark_label = tk.Label(tablo, text="0,00", font=("Arial", 14, "bold"),
-                bg='#ECEFF1', fg='#455A64', padx=8, pady=6, anchor='e')
+        self.nakit_fark_label = tk.Label(tablo, text="0,00", font=("Arial", punto + 3, "bold"),
+                bg='#ECEFF1', fg='#455A64', padx=hucre_pad + 2, pady=hucre_pad, anchor='e')
         self.nakit_fark_label.grid(row=1, column=3, sticky='nsew', padx=1, pady=1)
 
         # POS satırı - daha büyük
-        tk.Label(tablo, text="POS Toplam", font=("Arial", 12, "bold"),
-                bg='#E3F2FD', fg='#1565C0', padx=8, pady=6, anchor='w').grid(row=2, column=0, sticky='nsew', padx=1, pady=1)
-        self.ozet_pos_label = tk.Label(tablo, text="0,00", font=("Arial", 14, "bold"),
-                bg='#BBDEFB', fg='#1565C0', padx=8, pady=6, anchor='e')
+        tk.Label(tablo, text="POS Toplam", font=("Arial", punto + 1, "bold"),
+                bg='#E3F2FD', fg='#1565C0', padx=hucre_pad + 2, pady=hucre_pad, anchor='w').grid(row=2, column=0, sticky='nsew', padx=1, pady=1)
+        self.ozet_pos_label = tk.Label(tablo, text="0,00", font=("Arial", punto + 3, "bold"),
+                bg='#BBDEFB', fg='#1565C0', padx=hucre_pad + 2, pady=hucre_pad, anchor='e')
         self.ozet_pos_label.grid(row=2, column=1, sticky='nsew', padx=1, pady=1)
-        self.botanik_pos_gosterge = tk.Label(tablo, text="0,00", font=("Arial", 14, "bold"),
-                bg='#FFE0B2', fg='#E65100', padx=8, pady=6, anchor='e')
+        self.botanik_pos_gosterge = tk.Label(tablo, text="0,00", font=("Arial", punto + 3, "bold"),
+                bg='#FFE0B2', fg='#E65100', padx=hucre_pad + 2, pady=hucre_pad, anchor='e')
         self.botanik_pos_gosterge.grid(row=2, column=2, sticky='nsew', padx=1, pady=1)
-        self.pos_fark_label = tk.Label(tablo, text="0,00", font=("Arial", 14, "bold"),
-                bg='#ECEFF1', fg='#455A64', padx=8, pady=6, anchor='e')
+        self.pos_fark_label = tk.Label(tablo, text="0,00", font=("Arial", punto + 3, "bold"),
+                bg='#ECEFF1', fg='#455A64', padx=hucre_pad + 2, pady=hucre_pad, anchor='e')
         self.pos_fark_label.grid(row=2, column=3, sticky='nsew', padx=1, pady=1)
 
         # IBAN satırı - daha büyük
-        tk.Label(tablo, text="IBAN Toplam", font=("Arial", 12, "bold"),
-                bg='#E0F2F1', fg='#00695C', padx=8, pady=6, anchor='w').grid(row=3, column=0, sticky='nsew', padx=1, pady=1)
-        self.ozet_iban_label = tk.Label(tablo, text="0,00", font=("Arial", 14, "bold"),
-                bg='#BBDEFB', fg='#1565C0', padx=8, pady=6, anchor='e')
+        tk.Label(tablo, text="IBAN Toplam", font=("Arial", punto + 1, "bold"),
+                bg='#E0F2F1', fg='#00695C', padx=hucre_pad + 2, pady=hucre_pad, anchor='w').grid(row=3, column=0, sticky='nsew', padx=1, pady=1)
+        self.ozet_iban_label = tk.Label(tablo, text="0,00", font=("Arial", punto + 3, "bold"),
+                bg='#BBDEFB', fg='#1565C0', padx=hucre_pad + 2, pady=hucre_pad, anchor='e')
         self.ozet_iban_label.grid(row=3, column=1, sticky='nsew', padx=1, pady=1)
-        self.botanik_iban_gosterge = tk.Label(tablo, text="0,00", font=("Arial", 14, "bold"),
-                bg='#FFE0B2', fg='#E65100', padx=8, pady=6, anchor='e')
+        self.botanik_iban_gosterge = tk.Label(tablo, text="0,00", font=("Arial", punto + 3, "bold"),
+                bg='#FFE0B2', fg='#E65100', padx=hucre_pad + 2, pady=hucre_pad, anchor='e')
         self.botanik_iban_gosterge.grid(row=3, column=2, sticky='nsew', padx=1, pady=1)
-        self.iban_fark_label = tk.Label(tablo, text="0,00", font=("Arial", 14, "bold"),
-                bg='#ECEFF1', fg='#455A64', padx=8, pady=6, anchor='e')
+        self.iban_fark_label = tk.Label(tablo, text="0,00", font=("Arial", punto + 3, "bold"),
+                bg='#ECEFF1', fg='#455A64', padx=hucre_pad + 2, pady=hucre_pad, anchor='e')
         self.iban_fark_label.grid(row=3, column=3, sticky='nsew', padx=1, pady=1)
 
         # GENEL TOPLAM satırı - en vurgulu
-        tk.Label(tablo, text="GENEL TOPLAM", font=("Arial", 14, "bold"),
-                bg='#3F51B5', fg='white', padx=8, pady=8, anchor='w').grid(row=4, column=0, sticky='nsew', padx=1, pady=1)
-        self.genel_toplam_label = tk.Label(tablo, text="0,00", font=("Arial", 16, "bold"),
-                bg='#42A5F5', fg='#FFEB3B', padx=8, pady=8, anchor='e')
+        tk.Label(tablo, text="GENEL TOPLAM", font=("Arial", punto + 3, "bold"),
+                bg='#3F51B5', fg='white', padx=hucre_pad + 2, pady=hucre_pad + 2, anchor='w').grid(row=4, column=0, sticky='nsew', padx=1, pady=1)
+        self.genel_toplam_label = tk.Label(tablo, text="0,00", font=("Arial", punto + 5, "bold"),
+                bg='#42A5F5', fg='#FFEB3B', padx=hucre_pad + 2, pady=hucre_pad + 2, anchor='e')
         self.genel_toplam_label.grid(row=4, column=1, sticky='nsew', padx=1, pady=1)
-        self.botanik_toplam_gosterge = tk.Label(tablo, text="0,00", font=("Arial", 16, "bold"),
-                bg='#E65100', fg='#FFEB3B', padx=8, pady=8, anchor='e')
+        self.botanik_toplam_gosterge = tk.Label(tablo, text="0,00", font=("Arial", punto + 5, "bold"),
+                bg='#E65100', fg='#FFEB3B', padx=hucre_pad + 2, pady=hucre_pad + 2, anchor='e')
         self.botanik_toplam_gosterge.grid(row=4, column=2, sticky='nsew', padx=1, pady=1)
-        self.genel_fark_label = tk.Label(tablo, text="0,00", font=("Arial", 16, "bold"),
-                bg='#37474F', fg='#FFEB3B', padx=8, pady=8, anchor='e')
+        self.genel_fark_label = tk.Label(tablo, text="0,00", font=("Arial", punto + 5, "bold"),
+                bg='#37474F', fg='#FFEB3B', padx=hucre_pad + 2, pady=hucre_pad + 2, anchor='e')
         self.genel_fark_label.grid(row=4, column=3, sticky='nsew', padx=1, pady=1)
 
         # Özet labellar için placeholder (hesaplari_guncelle'de kullanılıyor)
@@ -2753,9 +2974,10 @@ class KasaKapatmaModul:
         alt_etiket_frame = tk.Frame(frame, bg='#E8EAF6')
         alt_etiket_frame.pack(fill="x", side="bottom", pady=(5, 1))
 
-        # İki etiketi eşit genişlikte yan yana göstermek için grid kullan
-        alt_etiket_frame.columnconfigure(0, weight=1, uniform="etiket")
-        alt_etiket_frame.columnconfigure(1, weight=1, uniform="etiket")
+        # Üç öğeyi yan yana göstermek için grid kullan
+        alt_etiket_frame.columnconfigure(0, weight=2, uniform="etiket")
+        alt_etiket_frame.columnconfigure(1, weight=2, uniform="etiket")
+        alt_etiket_frame.columnconfigure(2, weight=1, uniform="etiket")
 
         # Yarının Başlangıç Kasası etiketi - yeşil - sol taraftaki Genel Toplam ile aynı yükseklik
         self.c_kalan_toplam_label = tk.Label(alt_etiket_frame, text="Yarının Başlangıç Kasası: 0 TL",
@@ -2765,7 +2987,22 @@ class KasaKapatmaModul:
         # Ayrılan Para etiketi - turuncu - sol taraftaki Genel Toplam ile aynı yükseklik
         self.c_ayrilan_toplam_label = tk.Label(alt_etiket_frame, text="Ayrılan Para: 0 TL",
                                                font=("Arial", 16, "bold"), bg='#FF9800', fg='white', pady=22, padx=8)
-        self.c_ayrilan_toplam_label.grid(row=0, column=1, sticky='nsew', padx=(1, 0), pady=1)
+        self.c_ayrilan_toplam_label.grid(row=0, column=1, sticky='nsew', padx=(1, 1), pady=1)
+
+        # Botanik'e İşle butonu - mavi
+        self.botanik_isle_btn = tk.Button(
+            alt_etiket_frame,
+            text="Ertesi Gün Kasasını\nBotanik'e İşle",
+            font=("Arial", 11, "bold"),
+            bg='#1565C0',
+            fg='white',
+            activebackground='#0D47A1',
+            cursor='hand2',
+            bd=2,
+            relief='raised',
+            command=self.ertesi_gun_kasasini_botanige_isle
+        )
+        self.botanik_isle_btn.grid(row=0, column=2, sticky='nsew', padx=(1, 0), pady=1)
 
         # Ayrilan adet toplam - gizli (kod uyumlulugu icin)
         self.c_ayrilan_adet_toplam_label = tk.Label(frame, text="0")
@@ -2914,35 +3151,36 @@ class KasaKapatmaModul:
     def alt_butonlar_olustur(self):
         """Alt butonlar - sag bolumun en altinda, numarali ve alta yapisik"""
         # Butonlar tum genisligi kaplayacak sekilde grid ile yerlestirilecek
-        # 8-13 arasi numaralar - 8 en solda
+        # 4 buton - eşit genişlikte
         butonlar = [
             ("8) Artı/Eksi Sebepler", '#C62828', self.arti_eksi_popup_ac),
-            ("9) Ertesi Gün Kasası Kaydet", '#4CAF50', self.ertesi_gun_kasasi_isle),
-            ("10) Ayrılan Para İşle", '#FF9800', self.ayrilan_para_isle),
-            ("11) WhatsApp ve Email Gönder", '#25D366', self.rapor_gonder_tumu),
-            ("12) Yazdır", '#2196F3', self.ayrilan_cikti_yazdir),
-            ("13) Kaydet", '#1565C0', self.kaydet),
+            ("9) WhatsApp ve Email Gönder", '#25D366', self.rapor_gonder_tumu),
+            ("10) Yazdır", '#2196F3', self.ayrilan_cikti_yazdir),
+            ("11) Kaydet", '#1565C0', self.kaydet),
         ]
 
-        # 6 sutun esit genislikte
-        for i in range(6):
+        # 4 sutun esit genislikte
+        for i in range(4):
             self.butonlar_frame.columnconfigure(i, weight=1, uniform="butonkolon")
+
+        buton_yuk = self.get_buton_yuksekligi()
+        punto = self.get_punto()
 
         for i, (text, color, command) in enumerate(butonlar):
             btn = tk.Button(
                 self.butonlar_frame,
                 text=text,
-                font=("Arial", 13, "bold"),
+                font=("Arial", punto + 1, "bold"),
                 bg=color,
                 fg='white',
                 activebackground=color,
                 cursor='hand2',
                 bd=2,
                 relief='raised',
-                height=4,
+                height=buton_yuk,
                 command=command
             )
-            btn.grid(row=0, column=i, sticky='ew', padx=2, pady=3)
+            btn.grid(row=0, column=i, sticky='ew', padx=2, pady=2)
 
     def ayrilan_cikti_yazdir(self):
         """Kasa raporu yazdır - ESC/POS termal yazıcı"""
@@ -3838,113 +4076,117 @@ class KasaKapatmaModul:
 
     def birlesik_masraf_silinen_alinan_bolumu_olustur(self):
         """4) DÜZELTMELER - 4a, 4b, 4c alt alta, her biri 2 satır"""
+        punto = self.get_punto()
+        hucre_pad = self.get_hucre_padding()
+        bolum_pad = self.get_bolum_padding()
+
         # Ana LabelFrame
         ana_frame = tk.LabelFrame(
             self.b_bolumu_frame,
             text="4) DÜZELTMELER",
-            font=("Arial", 11, "bold"),
+            font=("Arial", punto, "bold"),
             bg='#ECEFF1',
             fg='#37474F',
-            padx=3,
-            pady=2
+            padx=bolum_pad,
+            pady=bolum_pad
         )
-        ana_frame.pack(fill="both", expand=True, padx=2, pady=2)
+        ana_frame.pack(fill="both", expand=True, padx=1, pady=1)
 
         # ===== 4a) GİRİLMEMİŞ MASRAFLAR =====
         masraf_header = tk.Frame(ana_frame, bg=self.section_colors['masraf'])
         masraf_header.pack(fill="x", pady=(0, 1))
-        tk.Label(masraf_header, text="4a) Girilmemiş Masraf", font=("Arial", 9, "bold"),
-                bg=self.section_colors['masraf'], fg='#E65100').pack(side="left", padx=3)
-        self.masraf_toplam_label = tk.Label(masraf_header, text="0,00", font=("Arial", 9, "bold"),
+        tk.Label(masraf_header, text="4a) Girilmemiş Masraf", font=("Arial", punto - 2, "bold"),
+                bg=self.section_colors['masraf'], fg='#E65100').pack(side="left", padx=hucre_pad)
+        self.masraf_toplam_label = tk.Label(masraf_header, text="0,00", font=("Arial", punto - 2, "bold"),
                 bg=self.section_colors['masraf'], fg='#E65100')
-        self.masraf_toplam_label.pack(side="right", padx=3)
+        self.masraf_toplam_label.pack(side="right", padx=hucre_pad)
 
         # Masraf satırları (3 satır ALT ALTA)
         for i in range(3):
             masraf_row = tk.Frame(ana_frame, bg=self.section_colors['masraf'])
             masraf_row.pack(fill="x", pady=1)
-            tk.Label(masraf_row, text=f"M{i+1}:", font=("Arial", 9),
-                    bg=self.section_colors['masraf'], fg=self.detay_fg).pack(side="left", padx=2)
+            tk.Label(masraf_row, text=f"M{i+1}:", font=("Arial", punto - 2),
+                    bg=self.section_colors['masraf'], fg=self.detay_fg).pack(side="left", padx=hucre_pad)
             tutar_var = tk.StringVar(value="0")
             aciklama_var = tk.StringVar(value="")
             self.masraf_vars.append((tutar_var, aciklama_var))
-            tutar_entry = tk.Entry(masraf_row, textvariable=tutar_var, font=("Arial", 9), width=8, justify='right')
-            tutar_entry.pack(side="left", padx=2)
+            tutar_entry = tk.Entry(masraf_row, textvariable=tutar_var, font=("Arial", punto - 2), width=8, justify='right')
+            tutar_entry.pack(side="left", padx=hucre_pad)
             tutar_entry.bind('<FocusOut>', lambda e, v=tutar_var: self.masraf_uyari_kontrol(v))
             tutar_entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
             tutar_entry.bind('<FocusIn>', self.entry_fokus_secim)
             tutar_entry.bind('<Tab>', self.tab_sonraki_entry)
             tutar_entry.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
             self.tab_order_entries.append(tutar_entry)
-            aciklama_entry = tk.Entry(masraf_row, textvariable=aciklama_var, font=("Arial", 8), width=12, takefocus=False)
-            aciklama_entry.pack(side="left", padx=2, fill="x", expand=True)
+            aciklama_entry = tk.Entry(masraf_row, textvariable=aciklama_var, font=("Arial", punto - 3), width=12, takefocus=False)
+            aciklama_entry.pack(side="left", padx=hucre_pad, fill="x", expand=True)
 
         # ===== 4b) SİLİNEN REÇETE ETKİSİ =====
         silinen_header = tk.Frame(ana_frame, bg=self.section_colors['silinen'])
-        silinen_header.pack(fill="x", pady=(3, 1))
-        tk.Label(silinen_header, text="4b) Silinen Reçete Etkisi", font=("Arial", 9, "bold"),
-                bg=self.section_colors['silinen'], fg='#AD1457').pack(side="left", padx=3)
-        self.silinen_toplam_label = tk.Label(silinen_header, text="0,00", font=("Arial", 9, "bold"),
+        silinen_header.pack(fill="x", pady=(2, 1))
+        tk.Label(silinen_header, text="4b) Silinen Reçete Etkisi", font=("Arial", punto - 2, "bold"),
+                bg=self.section_colors['silinen'], fg='#AD1457').pack(side="left", padx=hucre_pad)
+        self.silinen_toplam_label = tk.Label(silinen_header, text="0,00", font=("Arial", punto - 2, "bold"),
                 bg=self.section_colors['silinen'], fg='#AD1457')
-        self.silinen_toplam_label.pack(side="right", padx=3)
+        self.silinen_toplam_label.pack(side="right", padx=hucre_pad)
 
         # Silinen satırları (3 satır ALT ALTA)
         for i in range(3):
             silinen_row = tk.Frame(ana_frame, bg=self.section_colors['silinen'])
             silinen_row.pack(fill="x", pady=1)
-            tk.Label(silinen_row, text=f"S{i+1}:", font=("Arial", 9),
-                    bg=self.section_colors['silinen'], fg=self.detay_fg).pack(side="left", padx=2)
+            tk.Label(silinen_row, text=f"S{i+1}:", font=("Arial", punto - 2),
+                    bg=self.section_colors['silinen'], fg=self.detay_fg).pack(side="left", padx=hucre_pad)
             tutar_var = tk.StringVar(value="0")
             aciklama_var = tk.StringVar(value="")
             self.silinen_vars.append((tutar_var, aciklama_var))
-            tutar_entry = tk.Entry(silinen_row, textvariable=tutar_var, font=("Arial", 9), width=8, justify='right')
-            tutar_entry.pack(side="left", padx=2)
+            tutar_entry = tk.Entry(silinen_row, textvariable=tutar_var, font=("Arial", punto - 2), width=8, justify='right')
+            tutar_entry.pack(side="left", padx=hucre_pad)
             tutar_entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
             tutar_entry.bind('<FocusIn>', self.entry_fokus_secim)
             tutar_entry.bind('<Tab>', self.tab_sonraki_entry)
             tutar_entry.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
             self.tab_order_entries.append(tutar_entry)
-            aciklama_entry = tk.Entry(silinen_row, textvariable=aciklama_var, font=("Arial", 8), width=12, takefocus=False)
-            aciklama_entry.pack(side="left", padx=2, fill="x", expand=True)
+            aciklama_entry = tk.Entry(silinen_row, textvariable=aciklama_var, font=("Arial", punto - 3), width=12, takefocus=False)
+            aciklama_entry.pack(side="left", padx=hucre_pad, fill="x", expand=True)
 
         # ===== 4c) GÜN İÇİ ALINMIŞ PARALAR =====
         alinan_header = tk.Frame(ana_frame, bg=self.section_colors['alinan'])
-        alinan_header.pack(fill="x", pady=(3, 1))
-        tk.Label(alinan_header, text="4c) Gün İçi Alınmış Paralar", font=("Arial", 9, "bold"),
-                bg=self.section_colors['alinan'], fg='#C62828').pack(side="left", padx=3)
-        self.alinan_toplam_label = tk.Label(alinan_header, text="0,00", font=("Arial", 9, "bold"),
+        alinan_header.pack(fill="x", pady=(2, 1))
+        tk.Label(alinan_header, text="4c) Gün İçi Alınmış Paralar", font=("Arial", punto - 2, "bold"),
+                bg=self.section_colors['alinan'], fg='#C62828').pack(side="left", padx=hucre_pad)
+        self.alinan_toplam_label = tk.Label(alinan_header, text="0,00", font=("Arial", punto - 2, "bold"),
                 bg=self.section_colors['alinan'], fg='#C62828')
-        self.alinan_toplam_label.pack(side="right", padx=3)
+        self.alinan_toplam_label.pack(side="right", padx=hucre_pad)
 
         # Alınan satırları (3 satır ALT ALTA)
         for i in range(3):
             alinan_row = tk.Frame(ana_frame, bg=self.section_colors['alinan'])
             alinan_row.pack(fill="x", pady=1)
-            tk.Label(alinan_row, text=f"A{i+1}:", font=("Arial", 9),
-                    bg=self.section_colors['alinan'], fg=self.detay_fg).pack(side="left", padx=2)
+            tk.Label(alinan_row, text=f"A{i+1}:", font=("Arial", punto - 2),
+                    bg=self.section_colors['alinan'], fg=self.detay_fg).pack(side="left", padx=hucre_pad)
             tutar_var = tk.StringVar(value="0")
             aciklama_var = tk.StringVar(value="")
             self.gun_ici_alinan_vars.append((tutar_var, aciklama_var))
-            tutar_entry = tk.Entry(alinan_row, textvariable=tutar_var, font=("Arial", 9), width=8, justify='right')
-            tutar_entry.pack(side="left", padx=2)
+            tutar_entry = tk.Entry(alinan_row, textvariable=tutar_var, font=("Arial", punto - 2), width=8, justify='right')
+            tutar_entry.pack(side="left", padx=hucre_pad)
             tutar_entry.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
             tutar_entry.bind('<FocusIn>', self.entry_fokus_secim)
             tutar_entry.bind('<Tab>', self.tab_sonraki_entry)
             tutar_entry.bind('<Shift-Tab>', self.shift_tab_onceki_entry)
             self.tab_order_entries.append(tutar_entry)
-            aciklama_entry = tk.Entry(alinan_row, textvariable=aciklama_var, font=("Arial", 8), width=12, takefocus=False)
-            aciklama_entry.pack(side="left", padx=2, fill="x", expand=True)
+            aciklama_entry = tk.Entry(alinan_row, textvariable=aciklama_var, font=("Arial", punto - 3), width=12, takefocus=False)
+            aciklama_entry.pack(side="left", padx=hucre_pad, fill="x", expand=True)
 
         # ===== DÜZELTİLMİŞ NAKİT TOPLAMI - en dibe dayalı =====
         duzeltme_frame = tk.Frame(ana_frame, bg='#303F9F')
-        duzeltme_frame.pack(fill="x", side="bottom", pady=(5, 0))
+        duzeltme_frame.pack(fill="x", side="bottom", pady=(3, 0))
 
         # Düzeltilmiş Nakit Toplam satırı
-        tk.Label(duzeltme_frame, text="DÜZELTİLMİŞ NAKİT:", font=("Arial", 10, "bold"),
-                bg='#303F9F', fg='white').pack(side="left", padx=3, pady=3)
-        self.c_duzeltilmis_nakit_label = tk.Label(duzeltme_frame, text="0,00", font=("Arial", 11, "bold"),
+        tk.Label(duzeltme_frame, text="DÜZELTİLMİŞ NAKİT:", font=("Arial", punto - 1, "bold"),
+                bg='#303F9F', fg='white').pack(side="left", padx=hucre_pad, pady=hucre_pad)
+        self.c_duzeltilmis_nakit_label = tk.Label(duzeltme_frame, text="0,00", font=("Arial", punto, "bold"),
                 bg='#303F9F', fg='#FFEB3B')
-        self.c_duzeltilmis_nakit_label.pack(side="right", padx=3, pady=3)
+        self.c_duzeltilmis_nakit_label.pack(side="right", padx=hucre_pad, pady=hucre_pad)
 
         # Gizli label'lar (hesaplari_guncelle için)
         self.c_nakit_toplam_label = tk.Label(ana_frame, text="0")
@@ -3987,43 +4229,50 @@ class KasaKapatmaModul:
 
     def b_ozet_bolumu_olustur(self):
         """B Bölümü özet - Formül açıklaması (SON GENEL TOPLAM artık A bölümünde yan yana)"""
+        punto = self.get_punto()
+        hucre_pad = self.get_hucre_padding()
+
         frame = tk.Frame(
             self.b_bolumu_frame,
             bg=self.section_colors['ozet'],
-            padx=10,
-            pady=5
+            padx=hucre_pad,
+            pady=hucre_pad
         )
-        frame.pack(fill="x", pady=5)
+        frame.pack(fill="x", pady=2)
 
         # Formül açıklaması
         tk.Label(
             frame,
             text="SON GENEL = GENEL TOPLAM + Masraf + Silinen + Alınan",
-            font=("Arial", 9, "italic"),
+            font=("Arial", punto - 2, "italic"),
             bg=self.section_colors['ozet'],
             fg='#666'
         ).pack(anchor='center')
 
     def botanik_bolumu_olustur(self):
         """8) Botanik EOS verileri"""
+        punto = self.get_punto()
+        hucre_pad = self.get_hucre_padding()
+        bolum_pad = self.get_bolum_padding()
+
         frame = tk.LabelFrame(
             self.botanik_frame,
             text="5) BOTANİK EOS VERİLERİ",
-            font=("Arial", 11, "bold"),
+            font=("Arial", punto, "bold"),
             bg=self.section_colors['botanik'],
             fg='#F57F17',
-            padx=5,
-            pady=3
+            padx=bolum_pad,
+            pady=bolum_pad
         )
-        frame.pack(fill="both", expand=True, pady=2)
+        frame.pack(fill="both", expand=True, pady=1)
 
         # Botanik Nakit
         nakit_frame = tk.Frame(frame, bg=self.section_colors['botanik'])
-        nakit_frame.pack(fill="x", pady=2)
-        tk.Label(nakit_frame, text="Nakit:", font=("Arial", 12, "bold"),
+        nakit_frame.pack(fill="x", pady=1)
+        tk.Label(nakit_frame, text="Nakit:", font=("Arial", punto + 1, "bold"),
                 bg=self.section_colors['botanik'], width=6, anchor='w').pack(side="left")
-        entry1 = tk.Entry(nakit_frame, textvariable=self.botanik_nakit_var, font=("Arial", 12), width=12, justify='right')
-        entry1.pack(side="right", padx=5)
+        entry1 = tk.Entry(nakit_frame, textvariable=self.botanik_nakit_var, font=("Arial", punto + 1), width=12, justify='right')
+        entry1.pack(side="right", padx=hucre_pad)
         entry1.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
         entry1.bind('<FocusIn>', self.entry_fokus_secim)
         entry1.bind('<Tab>', self.tab_sonraki_entry)
@@ -4032,11 +4281,11 @@ class KasaKapatmaModul:
 
         # Botanik POS
         pos_frame = tk.Frame(frame, bg=self.section_colors['botanik'])
-        pos_frame.pack(fill="x", pady=2)
-        tk.Label(pos_frame, text="POS:", font=("Arial", 12, "bold"),
+        pos_frame.pack(fill="x", pady=1)
+        tk.Label(pos_frame, text="POS:", font=("Arial", punto + 1, "bold"),
                 bg=self.section_colors['botanik'], width=6, anchor='w').pack(side="left")
-        entry2 = tk.Entry(pos_frame, textvariable=self.botanik_pos_var, font=("Arial", 12), width=12, justify='right')
-        entry2.pack(side="right", padx=5)
+        entry2 = tk.Entry(pos_frame, textvariable=self.botanik_pos_var, font=("Arial", punto + 1), width=12, justify='right')
+        entry2.pack(side="right", padx=hucre_pad)
         entry2.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
         entry2.bind('<FocusIn>', self.entry_fokus_secim)
         entry2.bind('<Tab>', self.tab_sonraki_entry)
@@ -4045,11 +4294,11 @@ class KasaKapatmaModul:
 
         # Botanik IBAN
         iban_frame = tk.Frame(frame, bg=self.section_colors['botanik'])
-        iban_frame.pack(fill="x", pady=2)
-        tk.Label(iban_frame, text="IBAN:", font=("Arial", 12, "bold"),
+        iban_frame.pack(fill="x", pady=1)
+        tk.Label(iban_frame, text="IBAN:", font=("Arial", punto + 1, "bold"),
                 bg=self.section_colors['botanik'], width=6, anchor='w').pack(side="left")
-        entry3 = tk.Entry(iban_frame, textvariable=self.botanik_iban_var, font=("Arial", 12), width=12, justify='right')
-        entry3.pack(side="right", padx=5)
+        entry3 = tk.Entry(iban_frame, textvariable=self.botanik_iban_var, font=("Arial", punto + 1), width=12, justify='right')
+        entry3.pack(side="right", padx=hucre_pad)
         entry3.bind('<KeyRelease>', lambda e: self.hesaplari_guncelle())
         entry3.bind('<FocusIn>', self.entry_fokus_secim)
         entry3.bind('<Tab>', self.tab_sonraki_entry)
@@ -4058,24 +4307,24 @@ class KasaKapatmaModul:
 
         # Botanik Genel Toplam
         bot_toplam_frame = tk.Frame(frame, bg='#F57F17')
-        bot_toplam_frame.pack(fill="x", pady=(3, 0))
-        tk.Label(bot_toplam_frame, text="BOTANIK TOPLAM:", font=("Arial", 12, "bold"),
-                bg='#F57F17', fg='white').pack(side="left", padx=5, pady=3)
-        self.botanik_toplam_label = tk.Label(bot_toplam_frame, text="0,00", font=("Arial", 13, "bold"),
+        bot_toplam_frame.pack(fill="x", pady=(2, 0))
+        tk.Label(bot_toplam_frame, text="BOTANIK TOPLAM:", font=("Arial", punto + 1, "bold"),
+                bg='#F57F17', fg='white').pack(side="left", padx=hucre_pad, pady=hucre_pad)
+        self.botanik_toplam_label = tk.Label(bot_toplam_frame, text="0,00", font=("Arial", punto + 2, "bold"),
                                              bg='#F57F17', fg='white')
-        self.botanik_toplam_label.pack(side="right", padx=5, pady=3)
+        self.botanik_toplam_label.pack(side="right", padx=hucre_pad, pady=hucre_pad)
 
         # Botanik'ten Veri Çek butonu
         yenile_btn = tk.Button(
             frame,
             text="Botanik'ten Çek",
-            font=("Arial", 11, "bold"),
+            font=("Arial", punto, "bold"),
             bg='#4CAF50',
             fg='white',
             cursor='hand2',
             command=self.botanik_verilerini_yenile
         )
-        yenile_btn.pack(fill="x", pady=(5, 0))
+        yenile_btn.pack(fill="x", pady=(hucre_pad, 0))
 
     def duzeltilmis_nakit_bolumu_olustur(self):
         """7) Duzeltilmis nakit hesaplama bolumu - ESKİ FONKSİYON (kullanılmıyor)"""
@@ -4098,6 +4347,71 @@ class KasaKapatmaModul:
         if not self.kasa_tablo_acik:
             self.para_ayirma_tablosu_goster()
         messagebox.showinfo("Ertesi Gün Kasası", "Kasa sayım tablosundan ertesi gün kasasını belirleyip işleyebilirsiniz.")
+
+    def ertesi_gun_kasasini_botanige_isle(self):
+        """Ertesi gün kasasını (KALAN sütunu) Botanik Başlangıç Kasası'na yaz"""
+        try:
+            # Önce kullanıcıya bilgi ver
+            sonuc = messagebox.askokcancel(
+                "Botanik'e İşle",
+                "Bu işlem, tablodaki KALAN sütunundaki değerleri\n"
+                "Botanik 'Başlangıç Kasası' penceresine yazacak ve kaydedecektir.\n\n"
+                "⚠️ Botanik programında 'Başlangıç Kasası' sayfasını açtığınızdan emin olun!\n\n"
+                "Devam etmek istiyor musunuz?"
+            )
+
+            if not sonuc:
+                return
+
+            # KALAN değerlerini topla
+            kalan_kupurler = {}
+
+            if hasattr(self, 'c_slider_vars') and hasattr(self, 'sayim_vars'):
+                for deger in [200, 100, 50, 20, 10, 5, 1, 0.5]:
+                    try:
+                        # Sayım adedi
+                        sayim_adet = 0
+                        if deger in self.sayim_vars:
+                            sayim_adet = int(self.sayim_vars[deger].get() or 0)
+
+                        # Ayrılan adedi
+                        ayrilan_adet = 0
+                        if deger in self.c_slider_vars:
+                            ayrilan_adet = self.c_slider_vars[deger].get()
+
+                        # Kalan = Sayım - Ayrılan
+                        kalan_adet = sayim_adet - ayrilan_adet
+
+                        if kalan_adet > 0:
+                            kalan_kupurler[deger] = kalan_adet
+                    except (ValueError, KeyError):
+                        pass
+
+            if not kalan_kupurler:
+                messagebox.showwarning(
+                    "Uyarı",
+                    "Aktarılacak değer bulunamadı!\n\n"
+                    "Lütfen önce kasa sayımını yapın ve KALAN sütununda değer olduğundan emin olun."
+                )
+                return
+
+            # Toplam hesapla
+            toplam = sum(k * v for k, v in kalan_kupurler.items())
+
+            # Botanik'e yaz
+            from botanik_veri_cek import botanik_baslangic_kasasina_yaz
+            basarili, mesaj = botanik_baslangic_kasasina_yaz(kalan_kupurler)
+
+            if basarili:
+                messagebox.showinfo("Başarılı", mesaj)
+            else:
+                messagebox.showerror("Hata", mesaj)
+
+        except ImportError as e:
+            messagebox.showerror("Hata", f"Botanik modülü yüklenemedi: {e}")
+        except Exception as e:
+            logger.error(f"Botanik'e işleme hatası: {e}")
+            messagebox.showerror("Hata", f"İşlem hatası: {e}")
 
     def ayrilan_para_yazdir(self):
         """15) Ayrılan para çıktısı yazdır"""
@@ -4277,6 +4591,11 @@ class KasaKapatmaModul:
 
     def kaydet(self):
         """Kasa kapatma verilerini kaydet"""
+        # Veritabanı bağlantı kontrolü
+        if self.cursor is None or self.conn is None:
+            messagebox.showerror("Hata", "Veritabanı bağlantısı kurulamadı!\nProgram yeniden başlatılmalı.")
+            return
+
         # Gün içi alınan açıklama kontrolü
         if not self.gun_ici_alinan_kontrol():
             return
@@ -4408,15 +4727,21 @@ class KasaKapatmaModul:
             )
             logger.info(f"Kasa kapatma kaydedildi: {tarih} {saat}")
 
+            # Başarılı kayıt sonrası formu temizle (onay sormadan)
+            self.temizle_onaysiz()
+
         except Exception as e:
             logger.error(f"Kasa kaydetme hatası: {e}")
             messagebox.showerror("Hata", f"Kaydetme hatasi: {e}")
 
     def temizle(self):
-        """Tüm alanları temizle"""
+        """Tüm alanları temizle (onay ile)"""
         if not messagebox.askyesno("Onay", "Tum alanlari temizlemek istiyor musunuz?"):
             return
+        self.temizle_onaysiz()
 
+    def temizle_onaysiz(self):
+        """Tüm alanları temizle (onay sormadan - kayıt sonrası için)"""
         # Sayım
         for var in self.sayim_vars.values():
             var.set("0")
@@ -4737,11 +5062,118 @@ class KasaKapatmaModul:
                 anchor='w'
             ).pack(anchor='w', pady=1)
 
+        # Tab 6: Görünüm Ayarları
+        gorunum_tab = tk.Frame(notebook, bg='#FAFAFA')
+        notebook.add(gorunum_tab, text="Görünüm")
+
+        # Başlık
+        tk.Label(
+            gorunum_tab,
+            text="Ekran Düzeni Ayarları",
+            font=("Arial", 12, "bold"),
+            bg='#FAFAFA'
+        ).pack(pady=10)
+
+        tk.Label(
+            gorunum_tab,
+            text="Programın ekrana sığması için boyutları ayarlayın.\nDaha fazla küpür seçildiğinde değerleri küçültebilirsiniz.",
+            font=("Arial", 9),
+            bg='#FAFAFA',
+            fg='#666',
+            justify='center'
+        ).pack(pady=5)
+
+        # Görünüm ayarları frame
+        gorunum_frame = tk.Frame(gorunum_tab, bg='#FAFAFA')
+        gorunum_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        # Görünüm değişkenleri
+        varsayilan = self.varsayilan_gorunum_ayarlari()
+
+        punto_var = tk.IntVar(value=self.ayarlar.get("punto_boyutu", varsayilan["punto_boyutu"]))
+        baslik_var = tk.IntVar(value=self.ayarlar.get("baslik_yuksekligi", varsayilan["baslik_yuksekligi"]))
+        buton_var = tk.IntVar(value=self.ayarlar.get("buton_yuksekligi", varsayilan["buton_yuksekligi"]))
+        tablo_var = tk.IntVar(value=self.ayarlar.get("tablo_satir_yuksekligi", varsayilan["tablo_satir_yuksekligi"]))
+        hucre_var = tk.IntVar(value=self.ayarlar.get("hucre_padding", varsayilan["hucre_padding"]))
+        bolum_var = tk.IntVar(value=self.ayarlar.get("bolum_padding", varsayilan["bolum_padding"]))
+
+        def ayar_satiri_olustur(parent, label_text, variable, min_val, max_val, aciklama):
+            """Slider ile ayar satırı oluştur"""
+            row = tk.Frame(parent, bg='#FAFAFA')
+            row.pack(fill="x", pady=5)
+
+            tk.Label(row, text=label_text, font=("Arial", 10, "bold"),
+                    bg='#FAFAFA', width=20, anchor='w').pack(side="left")
+
+            # Değer label
+            deger_label = tk.Label(row, text=str(variable.get()), font=("Arial", 10, "bold"),
+                                   bg='#E3F2FD', width=4)
+            deger_label.pack(side="right", padx=5)
+
+            # Slider
+            def slider_degisti(val):
+                variable.set(int(float(val)))
+                deger_label.config(text=str(int(float(val))))
+
+            slider = tk.Scale(row, from_=min_val, to=max_val, orient="horizontal",
+                             variable=variable, command=slider_degisti,
+                             length=150, showvalue=False, bg='#FAFAFA',
+                             highlightthickness=0, troughcolor='#BBDEFB')
+            slider.pack(side="right", padx=5)
+
+            # Açıklama
+            tk.Label(row, text=aciklama, font=("Arial", 8),
+                    bg='#FAFAFA', fg='#888').pack(side="right", padx=10)
+
+        # Ayar satırları
+        ayar_satiri_olustur(gorunum_frame, "Yazı Boyutu:", punto_var, 9, 14, "9=Küçük, 14=Büyük")
+        ayar_satiri_olustur(gorunum_frame, "Başlık Yüksekliği:", baslik_var, 70, 140, "70=Kısa, 140=Uzun")
+        ayar_satiri_olustur(gorunum_frame, "Alt Buton Yüksekliği:", buton_var, 2, 5, "2=Kısa, 5=Uzun")
+        ayar_satiri_olustur(gorunum_frame, "Tablo Satır Yüks.:", tablo_var, 20, 40, "20=Sıkışık, 40=Geniş")
+        ayar_satiri_olustur(gorunum_frame, "Hücre İç Boşluğu:", hucre_var, 1, 8, "1=Yok, 8=Geniş")
+        ayar_satiri_olustur(gorunum_frame, "Bölüm İç Boşluğu:", bolum_var, 2, 8, "2=Sıkışık, 8=Geniş")
+
+        # Varsayılana dön butonu
+        def varsayilana_don():
+            vars = self.varsayilan_gorunum_ayarlari()
+            punto_var.set(vars["punto_boyutu"])
+            baslik_var.set(vars["baslik_yuksekligi"])
+            buton_var.set(vars["buton_yuksekligi"])
+            tablo_var.set(vars["tablo_satir_yuksekligi"])
+            hucre_var.set(vars["hucre_padding"])
+            bolum_var.set(vars["bolum_padding"])
+
+        tk.Button(
+            gorunum_frame,
+            text="Varsayılana Dön",
+            font=("Arial", 10),
+            bg='#FF9800',
+            fg='white',
+            padx=15,
+            pady=5,
+            cursor='hand2',
+            command=varsayilana_don
+        ).pack(pady=15)
+
+        # İpucu
+        ipucu_frame = tk.LabelFrame(gorunum_tab, text="İpucu", font=("Arial", 9, "bold"),
+                                    bg='#FFF3E0', padx=10, pady=5)
+        ipucu_frame.pack(fill="x", padx=20, pady=5)
+
+        tk.Label(
+            ipucu_frame,
+            text="Çok küpür seçildiğinde ekrana sığdırmak için:\n• Yazı boyutunu 9-10 yapın\n• Başlık yüksekliğini 70-80 yapın\n• Tablo satır yüksekliğini 20-24 yapın",
+            font=("Arial", 9),
+            bg='#FFF3E0',
+            fg='#E65100',
+            justify='left'
+        ).pack(anchor='w')
+
         # Buton frame
         btn_frame = tk.Frame(ayar_pencere, bg='#FAFAFA')
         btn_frame.pack(fill="x", pady=10, padx=20)
 
-        def kaydet():
+        def kaydet(mesaj_goster=True):
             # Tüm ayarları güncelle
             self.ayarlar["aktif_kupurler"] = {k: v.get() for k, v in checkbox_vars.items()}
             try:
@@ -4756,14 +5188,27 @@ class KasaKapatmaModul:
                 self.ayarlar["ana_makine_port"] = int(port_var.get())
             except ValueError:
                 self.ayarlar["ana_makine_port"] = 5000
+
+            # Görünüm ayarlarını kaydet
+            self.ayarlar["punto_boyutu"] = punto_var.get()
+            self.ayarlar["baslik_yuksekligi"] = baslik_var.get()
+            self.ayarlar["buton_yuksekligi"] = buton_var.get()
+            self.ayarlar["tablo_satir_yuksekligi"] = tablo_var.get()
+            self.ayarlar["hucre_padding"] = hucre_var.get()
+            self.ayarlar["bolum_padding"] = bolum_var.get()
+
             self.ayarlari_kaydet()
-            messagebox.showinfo("Kaydedildi", "Ayarlar kaydedildi!")
+            if mesaj_goster:
+                messagebox.showinfo("Kaydedildi", "Ayarlar kaydedildi!")
 
         def kaydet_ve_uygula():
-            kaydet()
+            # Önce kaydet (mesaj göstermeden)
+            kaydet(mesaj_goster=False)
+            # Pencereyi kapat
             ayar_pencere.destroy()
-            # Arayüzü yeniden oluştur
-            self.arayuzu_yenile()
+            # Arayüzü yeniden oluştur (ayarlar zaten self.ayarlar'da güncel)
+            self.arayuzu_yenile(dosyadan_yukle=False)
+            messagebox.showinfo("Uygulandı", "Ayarlar kaydedildi ve uygulandı!")
 
         tk.Button(
             btn_frame,
@@ -4795,8 +5240,12 @@ class KasaKapatmaModul:
             command=ayar_pencere.destroy
         ).pack(side="right", padx=5)
 
-    def arayuzu_yenile(self):
-        """Arayüzü yeniden oluştur"""
+    def arayuzu_yenile(self, dosyadan_yukle=True):
+        """Arayüzü yeniden oluştur
+
+        Args:
+            dosyadan_yukle: True ise ayarları dosyadan yükle, False ise mevcut self.ayarlar kullan
+        """
         # Mevcut değerleri sakla
         sakla_pos = [v.get() for v in self.pos_vars]
         sakla_iban = [v.get() for v in self.iban_vars]
@@ -4820,14 +5269,16 @@ class KasaKapatmaModul:
         self.botanik_iban_var = tk.StringVar(value="0")
         self.baslangic_detay_acik = False
         self.tab_order_entries = []
+        self.baslangic_entry_list = []
 
         # Manuel başlangıç kasasını sıfırla
         self.manuel_baslangic_aktif = False
         self.manuel_baslangic_tutar = 0
         self.manuel_baslangic_aciklama = ""
 
-        # Ayarları yeniden yükle
-        self.ayarlar = self.ayarlari_yukle()
+        # Ayarları yeniden yükle (sadece dosyadan_yukle=True ise)
+        if dosyadan_yukle:
+            self.ayarlar = self.ayarlari_yukle()
 
         # Arayüzü yeniden oluştur
         self.arayuz_olustur()

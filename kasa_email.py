@@ -20,8 +20,20 @@ from typing import Optional, Dict, List
 
 logger = logging.getLogger(__name__)
 
-# Ayar dosyası
-EMAIL_AYAR_DOSYASI = os.path.join(os.path.dirname(__file__), "email_ayarlari.json")
+# Ayar dosyası - AppData klasörüne kaydet (Program Files yazma izni sorunu için)
+def get_email_ayar_dosyasi():
+    appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+    klasor = os.path.join(appdata, "BotanikKasa")
+    os.makedirs(klasor, exist_ok=True)
+    yeni_yol = os.path.join(klasor, "email_ayarlari.json")
+    # Eski konumda varsa taşı
+    eski_yol = os.path.join(os.path.dirname(__file__), "email_ayarlari.json")
+    if os.path.exists(eski_yol) and not os.path.exists(yeni_yol):
+        import shutil
+        shutil.copy2(eski_yol, yeni_yol)
+    return yeni_yol
+
+EMAIL_AYAR_DOSYASI = get_email_ayar_dosyasi()
 
 # Önceden tanımlı SMTP sunucuları
 SMTP_SUNUCULARI = {
