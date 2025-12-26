@@ -4,13 +4,33 @@ Ana Makine / Terminal ayarlarini yonetir
 """
 
 import os
+import sys
 import json
 import logging
 
 logger = logging.getLogger(__name__)
 
+def get_config_path():
+    """Config dosyasinin yolunu bul - kurulum dizinini kullan"""
+    # Oncelik 1: Calistirilan script'in dizini (frozen exe veya py)
+    if getattr(sys, 'frozen', False):
+        # PyInstaller ile paketlenmis
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        # Normal Python - ana script'in dizini
+        base_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+
+    config_path = os.path.join(base_dir, "kasa_config.json")
+
+    # Eger bulunamazsa, bu dosyanin dizinine bak
+    if not os.path.exists(config_path):
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kasa_config.json")
+
+    logger.debug(f"Config dosya yolu: {config_path}")
+    return config_path
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(SCRIPT_DIR, "kasa_config.json")
+CONFIG_FILE = get_config_path()
 
 # Varsayilan konfigurasyon
 DEFAULT_CONFIG = {

@@ -2,6 +2,7 @@
 Botanik Bot - Kasa API Server
 Ana makine üzerinde çalışan REST API sunucusu
 Terminal makineler bu API üzerinden veri okur/yazar
+Veritabanı: AppData/BotanikKasa/oturum_raporlari.db (ana uygulama ile aynı)
 """
 
 import json
@@ -21,80 +22,111 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# Veritabanı yolu
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = Path(SCRIPT_DIR) / "kasa_veritabani.db"
+# Veritabanı yolu - Ana uygulama ile AYNI veritabanı
+def get_db_path():
+    """Ana uygulama ile aynı veritabanı yolunu döndür"""
+    appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+    db_klasor = Path(appdata) / "BotanikKasa"
+    db_klasor.mkdir(parents=True, exist_ok=True)
+    return db_klasor / "oturum_raporlari.db"
+
+DB_PATH = None  # Lazy initialization
 
 
 def get_db_connection():
     """Veritabanı bağlantısı al"""
+    global DB_PATH
+    if DB_PATH is None:
+        DB_PATH = get_db_path()
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_database():
-    """Veritabanı tablolarını oluştur"""
+    """Veritabanı tablolarını oluştur - Ana uygulama ile AYNI şema"""
+    global DB_PATH
+    DB_PATH = get_db_path()
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Kasa kapatma tablosu
+    # kasa_kapatma tablosu - Ana uygulama ile AYNI
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS kasa_gunluk (
+        CREATE TABLE IF NOT EXISTS kasa_kapatma (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TEXT NOT NULL UNIQUE,
+            tarih TEXT NOT NULL,
+            saat TEXT NOT NULL,
             baslangic_kasasi REAL DEFAULT 0,
             baslangic_kupurler_json TEXT,
             sayim_toplam REAL DEFAULT 0,
-            sayim_kupurler_json TEXT,
             pos_toplam REAL DEFAULT 0,
-            pos_detay_json TEXT,
             iban_toplam REAL DEFAULT 0,
-            iban_detay_json TEXT,
             masraf_toplam REAL DEFAULT 0,
-            masraf_detay_json TEXT,
             silinen_etki_toplam REAL DEFAULT 0,
-            silinen_detay_json TEXT,
-            alinan_para_toplam REAL DEFAULT 0,
-            alinan_detay_json TEXT,
+            gun_ici_alinan_toplam REAL DEFAULT 0,
+            nakit_toplam REAL DEFAULT 0,
+            genel_toplam REAL DEFAULT 0,
+            son_genel_toplam REAL DEFAULT 0,
             botanik_nakit REAL DEFAULT 0,
             botanik_pos REAL DEFAULT 0,
             botanik_iban REAL DEFAULT 0,
             botanik_genel_toplam REAL DEFAULT 0,
-            nakit_toplam REAL DEFAULT 0,
-            genel_toplam REAL DEFAULT 0,
-            son_genel_toplam REAL DEFAULT 0,
             fark REAL DEFAULT 0,
-            fark_kontrol_yapildi INTEGER DEFAULT 0,
-            fark_kontrol_json TEXT,
             ertesi_gun_kasasi REAL DEFAULT 0,
             ertesi_gun_kupurler_json TEXT,
             ayrilan_para REAL DEFAULT 0,
             ayrilan_kupurler_json TEXT,
-            wizard_tamamlandi INTEGER DEFAULT 0,
-            wizard_adim INTEGER DEFAULT 0,
-            durum TEXT DEFAULT 'devam_ediyor',
-            olusturma_zamani TEXT NOT NULL,
-            guncelleme_zamani TEXT
+            manuel_baslangic_tutar REAL DEFAULT 0,
+            manuel_baslangic_aciklama TEXT,
+            detay_json TEXT,
+            olusturma_zamani TEXT NOT NULL
         )
     ''')
 
-    # Kasa geçmişi tablosu (arşiv)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS kasa_arsiv (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            gunluk_id INTEGER,
-            tarih TEXT NOT NULL,
-            ozet_json TEXT,
-            rapor_metni TEXT,
-            olusturma_zamani TEXT NOT NULL,
-            FOREIGN KEY (gunluk_id) REFERENCES kasa_gunluk(id)
-        )
-    ''')
+    # Eksik kolonları kontrol et ve ekle (eski veritabanları için)
+    cursor.execute("PRAGMA table_info(kasa_kapatma)")
+    mevcut_kolonlar = {col[1] for col in cursor.fetchall()}
+
+    eksik_kolonlar = [
+        ("saat", "TEXT DEFAULT '00:00:00'"),
+        ("nakit_toplam", "REAL DEFAULT 0"),
+        ("ayrilan_para", "REAL DEFAULT 0"),
+        ("ayrilan_kupurler_json", "TEXT"),
+        ("manuel_baslangic_tutar", "REAL DEFAULT 0"),
+        ("manuel_baslangic_aciklama", "TEXT"),
+        ("detay_json", "TEXT"),
+        ("ertesi_gun_kupurler_json", "TEXT"),
+        ("baslangic_kupurler_json", "TEXT"),
+        ("gun_ici_alinan_toplam", "REAL DEFAULT 0"),
+        ("olusturma_zamani", "TEXT"),
+        ("baslangic_kasasi", "REAL DEFAULT 0"),
+        ("sayim_toplam", "REAL DEFAULT 0"),
+        ("pos_toplam", "REAL DEFAULT 0"),
+        ("iban_toplam", "REAL DEFAULT 0"),
+        ("masraf_toplam", "REAL DEFAULT 0"),
+        ("silinen_etki_toplam", "REAL DEFAULT 0"),
+        ("genel_toplam", "REAL DEFAULT 0"),
+        ("son_genel_toplam", "REAL DEFAULT 0"),
+        ("botanik_nakit", "REAL DEFAULT 0"),
+        ("botanik_pos", "REAL DEFAULT 0"),
+        ("botanik_iban", "REAL DEFAULT 0"),
+        ("botanik_genel_toplam", "REAL DEFAULT 0"),
+        ("fark", "REAL DEFAULT 0"),
+        ("ertesi_gun_kasasi", "REAL DEFAULT 0"),
+    ]
+
+    for kolon_adi, kolon_tipi in eksik_kolonlar:
+        if kolon_adi not in mevcut_kolonlar:
+            try:
+                cursor.execute(f"ALTER TABLE kasa_kapatma ADD COLUMN {kolon_adi} {kolon_tipi}")
+                logger.info(f"Eksik kolon eklendi: {kolon_adi}")
+            except Exception as e:
+                logger.warning(f"Kolon eklenemedi {kolon_adi}: {e}")
 
     conn.commit()
     conn.close()
-    logger.info("Veritabanı tabloları oluşturuldu")
+    logger.info(f"Veritabanı hazır: {DB_PATH}")
 
 
 # API Endpoints
@@ -105,194 +137,95 @@ def health_check():
     return jsonify({
         'status': 'ok',
         'timestamp': datetime.now().isoformat(),
-        'server': 'Botanik Kasa API'
+        'server': 'Botanik Kasa API',
+        'db_path': str(DB_PATH)
     })
-
-
-@app.route('/api/kasa/bugun', methods=['GET'])
-def bugunun_kasasi():
-    """Bugünün kasa verisini getir"""
-    tarih = datetime.now().strftime("%Y-%m-%d")
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT * FROM kasa_gunluk WHERE tarih = ?', (tarih,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if row:
-        return jsonify({
-            'success': True,
-            'data': dict(row)
-        })
-    else:
-        return jsonify({
-            'success': True,
-            'data': None,
-            'message': 'Bugun icin kayit yok'
-        })
-
-
-@app.route('/api/kasa/tarih/<tarih>', methods=['GET'])
-def tarihe_gore_kasa(tarih):
-    """Belirli bir tarihin kasa verisini getir"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT * FROM kasa_gunluk WHERE tarih = ?', (tarih,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if row:
-        return jsonify({
-            'success': True,
-            'data': dict(row)
-        })
-    else:
-        return jsonify({
-            'success': False,
-            'message': f'{tarih} icin kayit bulunamadi'
-        })
 
 
 @app.route('/api/kasa/kaydet', methods=['POST'])
 def kasa_kaydet():
-    """Kasa verisini kaydet veya güncelle"""
+    """Kasa verisini kaydet"""
     try:
         data = request.get_json()
         tarih = data.get('tarih', datetime.now().strftime("%Y-%m-%d"))
+        saat = data.get('saat', datetime.now().strftime("%H:%M:%S"))
 
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Mevcut kayıt var mı kontrol et
-        cursor.execute('SELECT id FROM kasa_gunluk WHERE tarih = ?', (tarih,))
-        existing = cursor.fetchone()
-
-        if existing:
-            # Güncelle
-            update_fields = []
-            update_values = []
-
-            for key, value in data.items():
-                if key != 'tarih' and key != 'id':
-                    update_fields.append(f"{key} = ?")
-                    if isinstance(value, (dict, list)):
-                        update_values.append(json.dumps(value, ensure_ascii=False))
-                    else:
-                        update_values.append(value)
-
-            update_fields.append("guncelleme_zamani = ?")
-            update_values.append(datetime.now().isoformat())
-            update_values.append(tarih)
-
-            query = f"UPDATE kasa_gunluk SET {', '.join(update_fields)} WHERE tarih = ?"
-            cursor.execute(query, update_values)
-
-            message = "Kasa verisi guncellendi"
-        else:
-            # Yeni kayıt
-            columns = ['tarih', 'olusturma_zamani']
-            values = [tarih, datetime.now().isoformat()]
-
-            for key, value in data.items():
-                if key != 'tarih':
-                    columns.append(key)
-                    if isinstance(value, (dict, list)):
-                        values.append(json.dumps(value, ensure_ascii=False))
-                    else:
-                        values.append(value)
-
-            placeholders = ', '.join(['?' for _ in columns])
-            query = f"INSERT INTO kasa_gunluk ({', '.join(columns)}) VALUES ({placeholders})"
-            cursor.execute(query, values)
-
-            message = "Yeni kasa kaydi olusturuldu"
+        # Yeni kayıt ekle
+        cursor.execute('''
+            INSERT INTO kasa_kapatma (
+                tarih, saat, baslangic_kasasi, baslangic_kupurler_json,
+                sayim_toplam, pos_toplam, iban_toplam,
+                masraf_toplam, silinen_etki_toplam, gun_ici_alinan_toplam,
+                nakit_toplam, genel_toplam, son_genel_toplam,
+                botanik_nakit, botanik_pos, botanik_iban, botanik_genel_toplam,
+                fark, ertesi_gun_kasasi, ertesi_gun_kupurler_json,
+                ayrilan_para, ayrilan_kupurler_json,
+                manuel_baslangic_tutar, manuel_baslangic_aciklama,
+                detay_json, olusturma_zamani
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            tarih, saat,
+            data.get('baslangic_kasasi', 0),
+            data.get('baslangic_kupurler_json', '{}'),
+            data.get('sayim_toplam', 0),
+            data.get('pos_toplam', 0),
+            data.get('iban_toplam', 0),
+            data.get('masraf_toplam', 0),
+            data.get('silinen_etki_toplam', 0),
+            data.get('gun_ici_alinan_toplam', data.get('alinan_para_toplam', 0)),
+            data.get('nakit_toplam', 0),
+            data.get('genel_toplam', 0),
+            data.get('son_genel_toplam', 0),
+            data.get('botanik_nakit', 0),
+            data.get('botanik_pos', 0),
+            data.get('botanik_iban', 0),
+            data.get('botanik_genel_toplam', 0),
+            data.get('fark', 0),
+            data.get('ertesi_gun_kasasi', 0),
+            data.get('ertesi_gun_kupurler_json', '{}'),
+            data.get('ayrilan_para', 0),
+            data.get('ayrilan_kupurler_json', '{}'),
+            data.get('manuel_baslangic_tutar', 0),
+            data.get('manuel_baslangic_aciklama', ''),
+            data.get('detay_json', '{}'),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
 
         conn.commit()
+        kayit_id = cursor.lastrowid
         conn.close()
 
+        logger.info(f"Kasa kaydedildi: {tarih} - ID: {kayit_id}")
         return jsonify({
             'success': True,
-            'message': message
+            'message': 'Kasa verisi kaydedildi',
+            'id': kayit_id
         })
 
     except Exception as e:
-        logger.error(f"Kasa kaydetme hatası: {e}")
+        import traceback
+        hata_detay = traceback.format_exc()
+        logger.error(f"Kasa kaydetme hatası: {e}\n{hata_detay}")
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/kasa/wizard/adim', methods=['POST'])
-def wizard_adim_kaydet():
-    """Wizard adımını kaydet"""
-    try:
-        data = request.get_json()
-        tarih = data.get('tarih', datetime.now().strftime("%Y-%m-%d"))
-        adim = data.get('adim', 0)
-        adim_verisi = data.get('veri', {})
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Mevcut kaydı kontrol et veya oluştur
-        cursor.execute('SELECT id, wizard_adim FROM kasa_gunluk WHERE tarih = ?', (tarih,))
-        existing = cursor.fetchone()
-
-        if not existing:
-            cursor.execute('''
-                INSERT INTO kasa_gunluk (tarih, wizard_adim, olusturma_zamani)
-                VALUES (?, ?, ?)
-            ''', (tarih, adim, datetime.now().isoformat()))
-            conn.commit()
-
-        # Adım verisini güncelle
-        update_query = "UPDATE kasa_gunluk SET wizard_adim = ?, guncelleme_zamani = ?"
-        update_values = [adim, datetime.now().isoformat()]
-
-        # Adıma göre ilgili alanları güncelle
-        for key, value in adim_verisi.items():
-            if isinstance(value, (dict, list)):
-                update_query += f", {key} = ?"
-                update_values.append(json.dumps(value, ensure_ascii=False))
-            else:
-                update_query += f", {key} = ?"
-                update_values.append(value)
-
-        update_query += " WHERE tarih = ?"
-        update_values.append(tarih)
-
-        cursor.execute(update_query, update_values)
-        conn.commit()
-        conn.close()
-
-        return jsonify({
-            'success': True,
-            'message': f'Adim {adim} kaydedildi'
-        })
-
-    except Exception as e:
-        logger.error(f"Wizard adım kaydetme hatası: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
+            'error': str(e),
+            'detay': hata_detay
         }), 500
 
 
 @app.route('/api/kasa/onceki-gun', methods=['GET'])
 def onceki_gun_kasasi():
-    """Bir önceki günün ertesi gün kasasını getir"""
+    """Bir önceki kapatmadan ertesi gün kasasını getir"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT ertesi_gun_kasasi, ertesi_gun_kupurler_json, tarih
-        FROM kasa_gunluk
-        WHERE durum = 'tamamlandi'
-        ORDER BY tarih DESC
+        SELECT ertesi_gun_kasasi, ertesi_gun_kupurler_json, detay_json, tarih
+        FROM kasa_kapatma
+        ORDER BY id DESC
         LIMIT 1
     ''')
     row = cursor.fetchone()
@@ -306,10 +239,18 @@ def onceki_gun_kasasi():
             except json.JSONDecodeError:
                 pass
 
+        # Eski format desteği
+        if not kupurler and row['detay_json']:
+            try:
+                detay = json.loads(row['detay_json'])
+                kupurler = detay.get("sayim", {})
+            except json.JSONDecodeError:
+                pass
+
         return jsonify({
             'success': True,
             'data': {
-                'toplam': row['ertesi_gun_kasasi'],
+                'toplam': row['ertesi_gun_kasasi'] or 0,
                 'kupurler': kupurler,
                 'tarih': row['tarih']
             }
@@ -335,19 +276,20 @@ def kasa_gecmisi():
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT id, tarih, baslangic_kasasi, sayim_toplam, pos_toplam, iban_toplam,
-               masraf_toplam, silinen_etki_toplam, alinan_para_toplam,
-               genel_toplam, son_genel_toplam, botanik_genel_toplam, fark,
-               ertesi_gun_kasasi, ayrilan_para, durum
-        FROM kasa_gunluk
-        ORDER BY tarih DESC
+        SELECT id, tarih, saat, baslangic_kasasi, sayim_toplam, pos_toplam, iban_toplam,
+               masraf_toplam, silinen_etki_toplam, gun_ici_alinan_toplam,
+               nakit_toplam, genel_toplam, son_genel_toplam,
+               botanik_nakit, botanik_pos, botanik_iban, botanik_genel_toplam,
+               fark, ertesi_gun_kasasi, ayrilan_para, olusturma_zamani
+        FROM kasa_kapatma
+        ORDER BY id DESC
         LIMIT ? OFFSET ?
     ''', (limit, offset))
 
     rows = cursor.fetchall()
 
     # Toplam kayıt sayısı
-    cursor.execute('SELECT COUNT(*) FROM kasa_gunluk')
+    cursor.execute('SELECT COUNT(*) FROM kasa_kapatma')
     total = cursor.fetchone()[0]
 
     conn.close()
@@ -361,79 +303,75 @@ def kasa_gecmisi():
     })
 
 
-@app.route('/api/kasa/arsivle', methods=['POST'])
-def kasa_arsivle():
-    """Günlük kasa verisini arşivle"""
-    try:
-        data = request.get_json()
-        tarih = data.get('tarih')
+@app.route('/api/kasa/detay/<int:kayit_id>', methods=['GET'])
+def kasa_detay(kayit_id):
+    """Belirli bir kaydın detayını getir"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-        if not tarih:
-            return jsonify({
-                'success': False,
-                'error': 'Tarih gerekli'
-            }), 400
+    cursor.execute('SELECT * FROM kasa_kapatma WHERE id = ?', (kayit_id,))
+    row = cursor.fetchone()
+    conn.close()
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Günlük kaydı al
-        cursor.execute('SELECT * FROM kasa_gunluk WHERE tarih = ?', (tarih,))
-        row = cursor.fetchone()
-
-        if not row:
-            conn.close()
-            return jsonify({
-                'success': False,
-                'error': 'Kayit bulunamadi'
-            }), 404
-
-        # Özet oluştur
-        ozet = {
-            'baslangic_kasasi': row['baslangic_kasasi'],
-            'sayim_toplam': row['sayim_toplam'],
-            'pos_toplam': row['pos_toplam'],
-            'iban_toplam': row['iban_toplam'],
-            'genel_toplam': row['genel_toplam'],
-            'son_genel_toplam': row['son_genel_toplam'],
-            'botanik_genel_toplam': row['botanik_genel_toplam'],
-            'fark': row['fark'],
-            'ertesi_gun_kasasi': row['ertesi_gun_kasasi'],
-            'ayrilan_para': row['ayrilan_para']
-        }
-
-        # Arşive ekle
-        cursor.execute('''
-            INSERT INTO kasa_arsiv (gunluk_id, tarih, ozet_json, olusturma_zamani)
-            VALUES (?, ?, ?, ?)
-        ''', (row['id'], tarih, json.dumps(ozet, ensure_ascii=False), datetime.now().isoformat()))
-
-        # Durumu güncelle
-        cursor.execute('''
-            UPDATE kasa_gunluk SET durum = 'tamamlandi', wizard_tamamlandi = 1
-            WHERE tarih = ?
-        ''', (tarih,))
-
-        conn.commit()
-        conn.close()
-
+    if row:
         return jsonify({
             'success': True,
-            'message': 'Kasa arsivlendi'
+            'data': dict(row)
         })
-
-    except Exception as e:
-        logger.error(f"Arşivleme hatası: {e}")
+    else:
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
+            'error': 'Kayit bulunamadi'
+        }), 404
+
+
+@app.route('/api/kasa/tarih/<tarih>', methods=['GET'])
+def tarihe_gore_kasa(tarih):
+    """Belirli bir tarihin kasa kayıtlarını getir"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT * FROM kasa_kapatma
+        WHERE tarih = ?
+        ORDER BY id DESC
+    ''', (tarih,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    return jsonify({
+        'success': True,
+        'data': [dict(row) for row in rows]
+    })
+
+
+@app.route('/api/kasa/son-kayit', methods=['GET'])
+def son_kayit():
+    """En son kaydı getir"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT * FROM kasa_kapatma ORDER BY id DESC LIMIT 1')
+    row = cursor.fetchone()
+    conn.close()
+
+    if row:
+        return jsonify({
+            'success': True,
+            'data': dict(row)
+        })
+    else:
+        return jsonify({
+            'success': True,
+            'data': None
+        })
 
 
 def run_server(host='0.0.0.0', port=5000):
     """API sunucusunu başlat"""
     init_database()
     logger.info(f"Kasa API sunucusu başlatılıyor: http://{host}:{port}")
+    logger.info(f"Veritabanı: {DB_PATH}")
     app.run(host=host, port=port, debug=False, threaded=True)
 
 
@@ -446,6 +384,7 @@ def start_server_thread(host='0.0.0.0', port=5000):
     )
     server_thread.start()
     logger.info(f"Kasa API sunucusu thread olarak başlatıldı: http://{host}:{port}")
+    logger.info(f"Veritabanı: {DB_PATH}")
     return server_thread
 
 

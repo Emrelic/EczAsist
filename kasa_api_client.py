@@ -19,6 +19,8 @@ class KasaAPIClient:
         self.base_url = f"http://{host}:{port}/api"
         self.timeout = timeout
         self.connected = False
+        self.host = host
+        self.port = port
 
     def baglanti_test(self):
         """Sunucuya bağlantı testi yap"""
@@ -29,8 +31,10 @@ class KasaAPIClient:
             )
             if response.status_code == 200:
                 self.connected = True
+                data = response.json()
                 logger.info(f"API sunucusuna bağlandı: {self.base_url}")
-                return True, response.json()
+                logger.info(f"Sunucu DB: {data.get('db_path', 'bilinmiyor')}")
+                return True, data
             else:
                 self.connected = False
                 return False, f"HTTP {response.status_code}"
@@ -45,36 +49,6 @@ class KasaAPIClient:
             self.connected = False
             return False, str(e)
 
-    def bugunun_kasasini_al(self):
-        """Bugünün kasa verisini al"""
-        try:
-            response = requests.get(
-                f"{self.base_url}/kasa/bugun",
-                timeout=self.timeout
-            )
-            if response.status_code == 200:
-                return True, response.json()
-            else:
-                return False, f"HTTP {response.status_code}"
-        except Exception as e:
-            logger.error(f"Bugünün kasası alınamadı: {e}")
-            return False, str(e)
-
-    def tarihe_gore_kasa_al(self, tarih):
-        """Belirli bir tarihin kasa verisini al"""
-        try:
-            response = requests.get(
-                f"{self.base_url}/kasa/tarih/{tarih}",
-                timeout=self.timeout
-            )
-            if response.status_code == 200:
-                return True, response.json()
-            else:
-                return False, f"HTTP {response.status_code}"
-        except Exception as e:
-            logger.error(f"Tarihli kasa alınamadı: {e}")
-            return False, str(e)
-
     def kasa_kaydet(self, data):
         """Kasa verisini kaydet"""
         try:
@@ -86,30 +60,14 @@ class KasaAPIClient:
             if response.status_code == 200:
                 return True, response.json()
             else:
-                return False, f"HTTP {response.status_code}"
+                # Hata durumunda JSON response'u parse et
+                try:
+                    error_data = response.json()
+                    return False, error_data
+                except:
+                    return False, f"HTTP {response.status_code}"
         except Exception as e:
             logger.error(f"Kasa kaydedilemedi: {e}")
-            return False, str(e)
-
-    def wizard_adim_kaydet(self, adim, veri, tarih=None):
-        """Wizard adımını kaydet"""
-        try:
-            data = {
-                'tarih': tarih or datetime.now().strftime("%Y-%m-%d"),
-                'adim': adim,
-                'veri': veri
-            }
-            response = requests.post(
-                f"{self.base_url}/kasa/wizard/adim",
-                json=data,
-                timeout=self.timeout
-            )
-            if response.status_code == 200:
-                return True, response.json()
-            else:
-                return False, f"HTTP {response.status_code}"
-        except Exception as e:
-            logger.error(f"Wizard adımı kaydedilemedi: {e}")
             return False, str(e)
 
     def onceki_gun_kasasi_al(self):
@@ -143,12 +101,11 @@ class KasaAPIClient:
             logger.error(f"Kasa geçmişi alınamadı: {e}")
             return False, str(e)
 
-    def kasa_arsivle(self, tarih):
-        """Kasa verisini arşivle"""
+    def kasa_detay_al(self, kayit_id):
+        """Belirli bir kaydın detayını al"""
         try:
-            response = requests.post(
-                f"{self.base_url}/kasa/arsivle",
-                json={'tarih': tarih},
+            response = requests.get(
+                f"{self.base_url}/kasa/detay/{kayit_id}",
                 timeout=self.timeout
             )
             if response.status_code == 200:
@@ -156,7 +113,37 @@ class KasaAPIClient:
             else:
                 return False, f"HTTP {response.status_code}"
         except Exception as e:
-            logger.error(f"Arşivleme hatası: {e}")
+            logger.error(f"Kasa detayı alınamadı: {e}")
+            return False, str(e)
+
+    def tarihe_gore_kasa_al(self, tarih):
+        """Belirli bir tarihin kasa kayıtlarını al"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/kasa/tarih/{tarih}",
+                timeout=self.timeout
+            )
+            if response.status_code == 200:
+                return True, response.json()
+            else:
+                return False, f"HTTP {response.status_code}"
+        except Exception as e:
+            logger.error(f"Tarihli kasa alınamadı: {e}")
+            return False, str(e)
+
+    def son_kayit_al(self):
+        """En son kaydı al"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/kasa/son-kayit",
+                timeout=self.timeout
+            )
+            if response.status_code == 200:
+                return True, response.json()
+            else:
+                return False, f"HTTP {response.status_code}"
+        except Exception as e:
+            logger.error(f"Son kayıt alınamadı: {e}")
             return False, str(e)
 
 

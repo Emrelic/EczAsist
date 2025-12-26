@@ -1,6 +1,7 @@
 """
 Botanik Bot - Kasa Geçmişi Modülü
 Geçmiş kasa kayıtlarını görüntüleme ve takvim
+Terminal modunda API üzerinden veri çeker
 """
 
 import tkinter as tk
@@ -16,17 +17,20 @@ logger = logging.getLogger(__name__)
 class KasaGecmisiPenceresi:
     """Kasa Geçmişi Görüntüleme Penceresi"""
 
-    def __init__(self, parent, db_cursor, db_conn):
+    def __init__(self, parent, db_cursor, db_conn, api_client=None):
         """
         parent: Ana pencere
         db_cursor: Veritabanı cursor
         db_conn: Veritabanı connection
+        api_client: Terminal modunda API client (opsiyonel)
         """
         self.parent = parent
         self.cursor = db_cursor
         self.conn = db_conn
+        self.api_client = api_client  # Terminal modunda kullanılır
         self.pencere = None
         self.secili_tarih = None
+        self.gecmis_cache = []  # API'den çekilen veriler için cache
 
     def goster(self):
         """Kasa geçmişi penceresini göster"""
@@ -224,8 +228,19 @@ class KasaGecmisiPenceresi:
                     btn.grid(row=row_idx+1, column=col_idx, padx=1, pady=1)
 
     def kayitli_tarihleri_al(self):
-        """Kayıtlı tarihleri al"""
+        """Kayıtlı tarihleri al - Terminal modunda API'den"""
         try:
+            # Terminal modunda API'den al
+            if self.api_client:
+                success, result = self.api_client.kasa_gecmisi_al(limit=365)
+                if success and result.get('success'):
+                    self.gecmis_cache = result.get('data', [])
+                    return {row.get('tarih') for row in self.gecmis_cache if row.get('tarih')}
+                else:
+                    logger.warning("Terminal: Kayıtlı tarihler API'den alınamadı")
+                    return set()
+
+            # Ana makine modunda yerel DB'den al
             self.cursor.execute('SELECT DISTINCT tarih FROM kasa_kapatma')
             rows = self.cursor.fetchall()
             return {row[0] for row in rows}
@@ -270,18 +285,35 @@ class KasaGecmisiPenceresi:
         self.son_kayitlari_yukle()
 
     def son_kayitlari_yukle(self):
-        """Son kayıtları yükle"""
+        """Son kayıtları yükle - Terminal modunda API'den"""
         try:
             self.tree.delete(*self.tree.get_children())
 
-            self.cursor.execute('''
-                SELECT tarih, genel_toplam, fark
-                FROM kasa_kapatma
-                ORDER BY id DESC
-                LIMIT 30
-            ''')
+            rows = []
 
-            for row in self.cursor.fetchall():
+            # Terminal modunda API'den al
+            if self.api_client:
+                success, result = self.api_client.kasa_gecmisi_al(limit=30)
+                if success and result.get('success'):
+                    for row_data in result.get('data', []):
+                        rows.append((
+                            row_data.get('tarih'),
+                            row_data.get('genel_toplam', 0),
+                            row_data.get('fark', 0)
+                        ))
+                else:
+                    logger.warning("Terminal: Son kayıtlar API'den alınamadı")
+            else:
+                # Ana makine modunda yerel DB'den al
+                self.cursor.execute('''
+                    SELECT tarih, genel_toplam, fark
+                    FROM kasa_kapatma
+                    ORDER BY id DESC
+                    LIMIT 30
+                ''')
+                rows = self.cursor.fetchall()
+
+            for row in rows:
                 tarih = row[0]
                 genel = row[1] or 0
                 fark = row[2] or 0
@@ -325,12 +357,36 @@ class KasaGecmisiPenceresi:
             widget.destroy()
 
         try:
-            self.cursor.execute('''
-                SELECT * FROM kasa_kapatma WHERE tarih = ?
-            ''', (tarih,))
-            row = self.cursor.fetchone()
+            data = None
 
-            if not row:
+            # Terminal modunda API'den al
+            if self.api_client:
+                success, result = self.api_client.tarihe_gore_kasa_al(tarih)
+                if success and result.get('success'):
+                    kayitlar = result.get('data', [])
+                    if kayitlar:
+                        data = kayitlar[0]  # İlk kaydı al
+                else:
+                    logger.warning(f"Terminal: {tarih} için kayıt API'den alınamadı")
+            else:
+                # Ana makine modunda yerel DB'den al
+                self.cursor.execute('''
+                    SELECT * FROM kasa_kapatma WHERE tarih = ?
+                ''', (tarih,))
+                row = self.cursor.fetchone()
+
+                if row:
+                    # Sütun isimlerini al
+                    self.cursor.execute("PRAGMA table_info(kasa_kapatma)")
+                    columns = [col[1] for col in self.cursor.fetchall()]
+
+                    # Row'u dict'e çevir
+                    data = {}
+                    for i, col in enumerate(columns):
+                        if i < len(row):
+                            data[col] = row[i]
+
+            if not data:
                 tk.Label(
                     self.detay_frame,
                     text="Bu tarih icin kayit bulunamadi",
@@ -339,16 +395,6 @@ class KasaGecmisiPenceresi:
                     fg='#F44336'
                 ).pack(pady=50)
                 return
-
-            # Sütun isimlerini al
-            self.cursor.execute("PRAGMA table_info(kasa_kapatma)")
-            columns = [col[1] for col in self.cursor.fetchall()]
-
-            # Row'u dict'e çevir
-            data = {}
-            for i, col in enumerate(columns):
-                if i < len(row):
-                    data[col] = row[i]
 
             # Başlık güncelle
             try:

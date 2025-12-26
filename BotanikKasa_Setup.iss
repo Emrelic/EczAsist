@@ -2,7 +2,7 @@
 ; Bu dosyayi Inno Setup ile derleyerek Setup.exe olusturabilirsiniz
 
 #define MyAppName "Botanik Kasa Modulu"
-#define MyAppVersion "1.0"
+#define MyAppVersion "3.5"
 #define MyAppPublisher "Botanik Eczane"
 #define MyAppExeName "KASA_BASLAT.bat"
 
@@ -25,14 +25,8 @@ PrivilegesRequired=admin
 [Languages]
 Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
 
-[Types]
-Name: "anamakine"; Description: "Ana Makine Kurulumu (Server - Veritabani burada)"
-Name: "terminal"; Description: "Terminal Kurulumu (Client - Ana makineye baglanir)"
-
 [Components]
-Name: "main"; Description: "Program Dosyalari"; Types: anamakine terminal; Flags: fixed
-Name: "server"; Description: "API Server (Ana Makine)"; Types: anamakine
-Name: "client"; Description: "Terminal Modu"; Types: terminal
+Name: "main"; Description: "Program Dosyalari"; Flags: fixed
 
 [Files]
 ; Ana program dosyalari
@@ -65,6 +59,8 @@ Name: "{commondesktop}\Botanik Kasa"; Filename: "{app}\KASA_BASLAT.bat"; Working
 [Run]
 ; Python paketlerini kur (python -m pip kullan)
 Filename: "cmd.exe"; Parameters: "/c python -m pip install flask flask-cors requests comtypes pywin32 Pillow --quiet"; StatusMsg: "Python paketleri kuruluyor (bu birkaç dakika surebilir)..."; Flags: runhidden waituntilterminated
+; Ana makine icin Windows Firewall kurali ekle (5000 portu)
+Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""BotanikKasa API"" dir=in action=allow protocol=tcp localport=5000"; StatusMsg: "Firewall kurali ekleniyor..."; Flags: runhidden waituntilterminated
 
 [Code]
 var
@@ -97,6 +93,9 @@ end;
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
+  // Component secim sayfasini atla (tek secim var)
+  if PageID = wpSelectComponents then
+    Result := True;
   // Terminal secilmediyse IP sayfasini atla
   if PageID = IPAdresPage.ID then
     Result := MakineTipiPage.Values[0]; // Ana Makine secildiyse atla
@@ -152,8 +151,58 @@ begin
 end;
 
 function InitializeSetup(): Boolean;
+var
+  UninstallString: String;
+  UninstallPath: String;
+  ResultCode: Integer;
+  ProgramKurulu: Boolean;
 begin
   Result := True;
+  ProgramKurulu := False;
+  UninstallString := '';
+
+  // Yontem 1: Kurulum dizininde unins000.exe var mi kontrol et (en guvenilir)
+  UninstallPath := ExpandConstant('{autopf}\BotanikKasa\unins000.exe');
+  if FileExists(UninstallPath) then
+  begin
+    ProgramKurulu := True;
+    UninstallString := '"' + UninstallPath + '"';
+  end;
+
+  // Yontem 2: Registry'den kontrol (HKLM 64-bit)
+  if not ProgramKurulu then
+    if RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{B0TAN1K-KASA-M0DUL-2024-SETUP}_is1', 'UninstallString', UninstallString) then
+      ProgramKurulu := True;
+
+  // Yontem 3: Registry'den kontrol (HKLM 32-bit)
+  if not ProgramKurulu then
+    if RegQueryStringValue(HKLM32, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{B0TAN1K-KASA-M0DUL-2024-SETUP}_is1', 'UninstallString', UninstallString) then
+      ProgramKurulu := True;
+
+  // Yontem 4: Registry'den kontrol (HKCU)
+  if not ProgramKurulu then
+    if RegQueryStringValue(HKCU, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{B0TAN1K-KASA-M0DUL-2024-SETUP}_is1', 'UninstallString', UninstallString) then
+      ProgramKurulu := True;
+
+  if ProgramKurulu then
+  begin
+    // Program kurulu - sadece kaldir, yeniden kurma
+    if MsgBox('Botanik Kasa Modulu zaten kurulu!' + #13#10 + #13#10 +
+              'Programi kaldirmak istiyor musunuz?' + #13#10 + #13#10 +
+              '(Yeniden kurmak icin Setup''i tekrar calistirin)',
+              mbConfirmation, MB_YESNO) = IDYES then
+    begin
+      // Programi kaldir
+      if UninstallString <> '' then
+        Exec('cmd.exe', '/c ' + UninstallString + ' /SILENT', '', SW_SHOW, ewWaitUntilTerminated, ResultCode);
+
+      MsgBox('Program basariyla kaldirildi!' + #13#10 + #13#10 +
+             'Yeniden kurmak icin Setup dosyasini tekrar calistirin.',
+             mbInformation, MB_OK);
+    end;
+    // Her iki durumda da kurulumu durdur
+    Result := False;
+  end;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);

@@ -76,9 +76,11 @@ class KasaKapatmaModul:
         self.conn = None
         self.cursor = None
 
-        # API Client (Terminal modu icin)
+        # API Client (Terminal ve Ana makine icin)
         self.api_client = None
         self.terminal_modu = False
+        self.ana_makine_api_modu = False  # Ana makine de API kullanacak
+        self.api_server_thread = None
 
         if KASA_API_MODULU_YUKLENDI:
             config = argumanlardan_config_al()
@@ -88,6 +90,22 @@ class KasaKapatmaModul:
                 port = config.get("api_port", 5000)
                 self.api_client = KasaAPIClient(host=ip, port=port)
                 logger.info(f"Terminal modu aktif - Ana Makine: {ip}:{port}")
+            elif config.get("makine_tipi") == "ana_makine":
+                # Ana makine modunda API server'ı başlat
+                try:
+                    from kasa_api_server import start_server_thread
+                    port = config.get("api_port", 5000)
+                    self.api_server_thread = start_server_thread(host='0.0.0.0', port=port)
+                    logger.info(f"Ana makine: API Server başlatıldı - Port: {port}")
+                    # Ana makine de API client kullanacak (tek merkezi DB için)
+                    import time
+                    time.sleep(0.5)  # Server'ın başlamasını bekle
+                    self.api_client = KasaAPIClient(host='127.0.0.1', port=port)
+                    self.ana_makine_api_modu = True  # Ana makine de API kullanıyor
+                    logger.info(f"Ana makine: API Client oluşturuldu - localhost:{port}")
+                except Exception as e:
+                    logger.error(f"API Server başlatılamadı: {e}")
+                    self.ana_makine_api_modu = False
 
         if root is None:
             self.root = tk.Tk()
@@ -101,9 +119,11 @@ class KasaKapatmaModul:
         except:
             pass  # Windows 7 veya hata durumunda atla
 
-        # Pencere basligi (terminal modunda farkli)
+        # Pencere basligi (mod bazli)
         if self.terminal_modu:
             self.root.title("Kasa Kapatma - Terminal Modu")
+        elif self.ana_makine_api_modu:
+            self.root.title("Kasa Kapatma - Ana Makine (API)")
         else:
             self.root.title("Kasa Kapatma - Günlük Mutabakat")
 
@@ -500,18 +520,40 @@ class KasaKapatmaModul:
 
     def db_baglantisi_kur(self):
         """Veritabanı bağlantısını kur ve tabloları oluştur"""
-        # Terminal modunda API bağlantısını kontrol et
+        # Terminal modunda API bağlantısını kontrol et - YEREL DB KURMA
         if self.terminal_modu and self.api_client:
             success, result = self.api_client.baglanti_test()
             if success:
                 logger.info("Terminal: Ana makineye bağlantı başarılı")
+                logger.info("Terminal: Yerel veritabanı kullanılmayacak - tüm veriler API üzerinden")
+                # Terminal modunda yerel DB bağlantısı kurmuyoruz
+                # self.conn ve self.cursor None kalacak
+                # Tüm okuma/yazma işlemleri API üzerinden yapılacak
+                return
             else:
                 logger.error(f"Terminal: Ana makineye bağlanılamadı - {result}")
                 messagebox.showerror(
                     "Bağlantı Hatası",
                     f"Ana makineye bağlanılamadı!\n\n{result}\n\n"
-                    "Lütfen ana makinenin çalıştığından emin olun."
+                    "Lütfen ana makinenin çalıştığından emin olun.\n\n"
+                    "Program yerel modda çalışacak."
                 )
+                # Bağlantı başarısız - terminal modunu kapat
+                self.terminal_modu = False
+                self.api_client = None
+
+        # Ana makine API modunda da yerel DB kullanmıyoruz - tüm işlemler API üzerinden
+        if self.ana_makine_api_modu and self.api_client:
+            success, result = self.api_client.baglanti_test()
+            if success:
+                logger.info("Ana makine: API bağlantısı başarılı - tüm veriler API üzerinden")
+                # Ana makine de API üzerinden çalışacak
+                # self.conn ve self.cursor None kalacak
+                return
+            else:
+                logger.error(f"Ana makine: API bağlantısı başarısız - {result}")
+                self.ana_makine_api_modu = False
+                self.api_client = None
 
         try:
             # Veritabanını AppData klasörüne kaydet (Program Files yazma izni sorunu için)
@@ -529,6 +571,7 @@ class KasaKapatmaModul:
                 logger.info(f"Veritabanı taşındı: {eski_db} -> {self.db_yolu}")
             self.conn = sqlite3.connect(str(self.db_yolu), check_same_thread=False)
             self.cursor = self.conn.cursor()
+            logger.info(f"Veritabanı bağlantısı kuruldu: {self.db_yolu}")
 
             # Kasa kapatma tablosu - güncellenmiş şema
             self.cursor.execute('''
@@ -607,8 +650,26 @@ class KasaKapatmaModul:
 
     def onceki_gun_kasasi_yukle(self):
         """Bir önceki kapatmadan ertesi gün kasasını yükle"""
+        # API modu (Terminal veya Ana makine) - API üzerinden al
+        if self.api_client:
+            try:
+                success, result = self.api_client.onceki_gun_kasasi_al()
+                if success and result.get('success'):
+                    data = result.get('data', {})
+                    toplam = data.get('toplam', 0)
+                    kupurler = data.get('kupurler', {})
+                    logger.info(f"Önceki gün kasası API'den yüklendi: {toplam}")
+                    return {"toplam": toplam, "kupurler": kupurler}
+                else:
+                    logger.warning("Önceki gün kasası API'den alınamadı")
+                    return {"toplam": 0, "kupurler": {}}
+            except Exception as e:
+                logger.error(f"Terminal: Önceki gün kasası API hatası: {e}")
+                return {"toplam": 0, "kupurler": {}}
+
+        # Ana makine modunda yerel veritabanından al
         if self.cursor is None:
-            return
+            return {"toplam": 0, "kupurler": {}}
         try:
             self.cursor.execute('''
                 SELECT ertesi_gun_kasasi, ertesi_gun_kupurler_json, detay_json
@@ -808,10 +869,10 @@ class KasaKapatmaModul:
             botanik_iban = veriler.get('iban', 0)
             botanik_baslangic = veriler.get('baslangic', 0)
 
-            # Botanik alanlarına yaz
-            self.botanik_nakit_var.set(str(int(botanik_nakit)))
-            self.botanik_pos_var.set(str(int(botanik_pos)))
-            self.botanik_iban_var.set(str(int(botanik_iban)))
+            # Botanik alanlarına yaz (2 ondalık basamak formatında)
+            self.botanik_nakit_var.set(f"{botanik_nakit:.2f}")
+            self.botanik_pos_var.set(f"{botanik_pos:.2f}")
+            self.botanik_iban_var.set(f"{botanik_iban:.2f}")
 
             # Toplamları güncelle (alt toplam dahil)
             self.hesaplari_guncelle()
@@ -996,37 +1057,59 @@ class KasaKapatmaModul:
         frame.pack(fill="both", expand=True)
         self.baslangic_frame = frame  # Referansı sakla
 
-        # Üst buton satırı (Manuel giriş ve Botanikten Çek)
+        # Üst buton satırı - 3 eşit büyüklükte buton
         buton_frame = tk.Frame(frame, bg='#A5D6A7')
         buton_frame.pack(fill="x", pady=2)
 
-        # Manuel giriş butonu
+        # Grid - Elle Gir küçük, diğerleri büyük
+        buton_frame.columnconfigure(0, weight=2)  # Elle Gir - küçük
+        buton_frame.columnconfigure(1, weight=4)  # Botanikten Çek - büyük
+        buton_frame.columnconfigure(2, weight=4)  # Botaniğe Aktar - büyük
+
+        # 1. Elle Gir butonu (küçük)
         self.manuel_baslangic_btn = tk.Button(
             buton_frame,
-            text="✏ Elle Gir",
-            font=("Arial", 9),
+            text="✏ Elle",
+            font=("Arial", 9, "bold"),
             bg='#FFE082',
             fg='#E65100',
-            bd=1,
+            bd=2,
+            relief='raised',
             takefocus=False,
             cursor='hand2',
             command=self.manuel_baslangic_penceresi_ac
         )
-        self.manuel_baslangic_btn.pack(side="left", padx=5, pady=3)
+        self.manuel_baslangic_btn.grid(row=0, column=0, sticky='nsew', padx=2, pady=3)
 
-        # Botanikten Çek butonu
+        # 2. Botanikten Veri Çek butonu (büyük)
         self.botanikten_cek_btn = tk.Button(
             buton_frame,
-            text="Botanikten Çek",
-            font=("Arial", 9),
+            text="📥 Botanik'ten Çek",
+            font=("Arial", 9, "bold"),
             bg='#2196F3',
             fg='white',
-            bd=1,
+            bd=2,
+            relief='raised',
             takefocus=False,
             cursor='hand2',
             command=self.botanikten_baslangic_kasasi_cek
         )
-        self.botanikten_cek_btn.pack(side="left", padx=5, pady=3)
+        self.botanikten_cek_btn.grid(row=0, column=1, sticky='nsew', padx=2, pady=3)
+
+        # 3. Botaniğe Veri Aktar butonu (büyük)
+        self.botanik_isle_btn = tk.Button(
+            buton_frame,
+            text="📤 Botanik'e Aktar",
+            font=("Arial", 9, "bold"),
+            bg='#1565C0',
+            fg='white',
+            bd=2,
+            relief='raised',
+            takefocus=False,
+            cursor='hand2',
+            command=self.ertesi_gun_kasasini_botanige_isle
+        )
+        self.botanik_isle_btn.grid(row=0, column=2, sticky='nsew', padx=2, pady=3)
 
         # Detay container - sabit görünür
         self.baslangic_detay_container = tk.Frame(frame, bg=self.section_colors['baslangic'])
@@ -1236,7 +1319,7 @@ class KasaKapatmaModul:
             self.manuel_baslangic_aktif = False
             self.manuel_baslangic_tutar = 0
             self.manuel_baslangic_aciklama = ""
-            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏ Elle Gir")
+            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏ Elle")
 
             # Toplamı hesapla
             self.baslangic_toplam_hesapla()
@@ -1391,7 +1474,7 @@ class KasaKapatmaModul:
             self.manuel_baslangic_aktif = False
             self.manuel_baslangic_tutar = 0
             self.manuel_baslangic_aciklama = ""
-            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏ Elle Gir")
+            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏ Elle")
             self.baslangic_toplam_hesapla()
             pencere.destroy()
             messagebox.showinfo("Sıfırlandı", "Manuel giriş iptal edildi.\nNormal küpür hesabına dönüldü.")
@@ -2975,34 +3058,18 @@ class KasaKapatmaModul:
         alt_etiket_frame.pack(fill="x", side="bottom", pady=(5, 1))
 
         # Üç öğeyi yan yana göstermek için grid kullan
-        alt_etiket_frame.columnconfigure(0, weight=2, uniform="etiket")
-        alt_etiket_frame.columnconfigure(1, weight=2, uniform="etiket")
-        alt_etiket_frame.columnconfigure(2, weight=1, uniform="etiket")
+        alt_etiket_frame.columnconfigure(0, weight=1, uniform="etiket")
+        alt_etiket_frame.columnconfigure(1, weight=1, uniform="etiket")
 
-        # Yarının Başlangıç Kasası etiketi - yeşil - sol taraftaki Genel Toplam ile aynı yükseklik
+        # Yarının Başlangıç Kasası etiketi - yeşil - yayılmış
         self.c_kalan_toplam_label = tk.Label(alt_etiket_frame, text="Yarının Başlangıç Kasası: 0 TL",
                                              font=("Arial", 16, "bold"), bg='#4CAF50', fg='white', pady=22, padx=8)
         self.c_kalan_toplam_label.grid(row=0, column=0, sticky='nsew', padx=(0, 1), pady=1)
 
-        # Ayrılan Para etiketi - turuncu - sol taraftaki Genel Toplam ile aynı yükseklik
+        # Ayrılan Para etiketi - turuncu - yayılmış
         self.c_ayrilan_toplam_label = tk.Label(alt_etiket_frame, text="Ayrılan Para: 0 TL",
                                                font=("Arial", 16, "bold"), bg='#FF9800', fg='white', pady=22, padx=8)
-        self.c_ayrilan_toplam_label.grid(row=0, column=1, sticky='nsew', padx=(1, 1), pady=1)
-
-        # Botanik'e İşle butonu - mavi
-        self.botanik_isle_btn = tk.Button(
-            alt_etiket_frame,
-            text="Ertesi Gün Kasasını\nBotanik'e İşle",
-            font=("Arial", 11, "bold"),
-            bg='#1565C0',
-            fg='white',
-            activebackground='#0D47A1',
-            cursor='hand2',
-            bd=2,
-            relief='raised',
-            command=self.ertesi_gun_kasasini_botanige_isle
-        )
-        self.botanik_isle_btn.grid(row=0, column=2, sticky='nsew', padx=(1, 0), pady=1)
+        self.c_ayrilan_toplam_label.grid(row=0, column=1, sticky='nsew', padx=(1, 0), pady=1)
 
         # Ayrilan adet toplam - gizli (kod uyumlulugu icin)
         self.c_ayrilan_adet_toplam_label = tk.Label(frame, text="0")
@@ -4349,58 +4416,85 @@ class KasaKapatmaModul:
         messagebox.showinfo("Ertesi Gün Kasası", "Kasa sayım tablosundan ertesi gün kasasını belirleyip işleyebilirsiniz.")
 
     def ertesi_gun_kasasini_botanige_isle(self):
-        """Ertesi gün kasasını (KALAN sütunu) Botanik Başlangıç Kasası'na yaz"""
+        """Başlangıç Kasası verilerini Botanik'e aktar
+
+        Eğer Kaydet'e basılmışsa (1. Başlangıç Kasası dolu ise) → oradan aktar
+        Eğer Kaydet'e basılmamışsa ama 7) tabloda KALAN var ise → KALAN'dan aktar
+        """
         try:
+            aktarilacak_kupurler = {}
+            kaynak = ""
+
+            # Önce 1) Başlangıç Kasası bölümündeki değerleri kontrol et
+            baslangic_toplam = 0
+            if hasattr(self, 'baslangic_kupur_vars'):
+                for deger in [200, 100, 50, 20, 10, 5, 1, 0.5]:
+                    try:
+                        if deger in self.baslangic_kupur_vars:
+                            adet = int(self.baslangic_kupur_vars[deger].get() or 0)
+                            if adet > 0:
+                                aktarilacak_kupurler[deger] = adet
+                                baslangic_toplam += adet * deger
+                    except (ValueError, KeyError):
+                        pass
+
+            # Eğer Başlangıç Kasası'nda değer varsa oradan aktar
+            if baslangic_toplam > 0:
+                kaynak = "1) Başlangıç Kasası"
+            else:
+                # Başlangıç Kasası boşsa, 7) tablodaki KALAN sütunundan al
+                aktarilacak_kupurler = {}
+                if hasattr(self, 'c_slider_vars') and hasattr(self, 'sayim_vars'):
+                    for deger in [200, 100, 50, 20, 10, 5, 1, 0.5]:
+                        try:
+                            # Sayım adedi
+                            sayim_adet = 0
+                            if deger in self.sayim_vars:
+                                sayim_adet = int(self.sayim_vars[deger].get() or 0)
+
+                            # Ayrılan adedi
+                            ayrilan_adet = 0
+                            if deger in self.c_slider_vars:
+                                ayrilan_adet = self.c_slider_vars[deger].get()
+
+                            # Kalan = Sayım - Ayrılan
+                            kalan_adet = sayim_adet - ayrilan_adet
+
+                            if kalan_adet > 0:
+                                aktarilacak_kupurler[deger] = kalan_adet
+                        except (ValueError, KeyError):
+                            pass
+                kaynak = "7) Ertesi Gün Kasası / Ayrılan Para tablosu (KALAN sütunu)"
+
+            if not aktarilacak_kupurler:
+                messagebox.showwarning(
+                    "Uyarı",
+                    "Aktarılacak değer bulunamadı!\n\n"
+                    "Lütfen önce:\n"
+                    "• Kaydet'e basarak başlangıç kasasını oluşturun, veya\n"
+                    "• 7) tablosunda KALAN sütununda değer olduğundan emin olun."
+                )
+                return
+
+            # Toplam hesapla
+            toplam = sum(k * v for k, v in aktarilacak_kupurler.items())
+
             # Önce kullanıcıya bilgi ver
             sonuc = messagebox.askokcancel(
-                "Botanik'e İşle",
-                "Bu işlem, tablodaki KALAN sütunundaki değerleri\n"
-                "Botanik 'Başlangıç Kasası' penceresine yazacak ve kaydedecektir.\n\n"
-                "⚠️ Botanik programında 'Başlangıç Kasası' sayfasını açtığınızdan emin olun!\n\n"
+                "Botanik'e Başlangıç Kasası Verisi Aktar",
+                f"Bu işlem, {kaynak} bölümündeki değerleri\n"
+                f"Botanik 'Başlangıç Kasası' penceresine yazacak ve kaydedecektir.\n\n"
+                f"Aktarılacak Toplam: {toplam:,.2f} TL\n\n"
+                f"⚠️ Botanik programında 'Başlangıç Kasası' sayfasını açtığınızdan emin olun!\n\n"
                 "Devam etmek istiyor musunuz?"
             )
 
             if not sonuc:
                 return
 
-            # KALAN değerlerini topla
-            kalan_kupurler = {}
-
-            if hasattr(self, 'c_slider_vars') and hasattr(self, 'sayim_vars'):
-                for deger in [200, 100, 50, 20, 10, 5, 1, 0.5]:
-                    try:
-                        # Sayım adedi
-                        sayim_adet = 0
-                        if deger in self.sayim_vars:
-                            sayim_adet = int(self.sayim_vars[deger].get() or 0)
-
-                        # Ayrılan adedi
-                        ayrilan_adet = 0
-                        if deger in self.c_slider_vars:
-                            ayrilan_adet = self.c_slider_vars[deger].get()
-
-                        # Kalan = Sayım - Ayrılan
-                        kalan_adet = sayim_adet - ayrilan_adet
-
-                        if kalan_adet > 0:
-                            kalan_kupurler[deger] = kalan_adet
-                    except (ValueError, KeyError):
-                        pass
-
-            if not kalan_kupurler:
-                messagebox.showwarning(
-                    "Uyarı",
-                    "Aktarılacak değer bulunamadı!\n\n"
-                    "Lütfen önce kasa sayımını yapın ve KALAN sütununda değer olduğundan emin olun."
-                )
-                return
-
-            # Toplam hesapla
-            toplam = sum(k * v for k, v in kalan_kupurler.items())
-
             # Botanik'e yaz
             from botanik_veri_cek import botanik_baslangic_kasasina_yaz
-            basarili, mesaj = botanik_baslangic_kasasina_yaz(kalan_kupurler)
+            basarili, mesaj = botanik_baslangic_kasasina_yaz(aktarilacak_kupurler)
 
             if basarili:
                 messagebox.showinfo("Başarılı", mesaj)
@@ -4591,8 +4685,15 @@ class KasaKapatmaModul:
 
     def kaydet(self):
         """Kasa kapatma verilerini kaydet"""
-        # Veritabanı bağlantı kontrolü
-        if self.cursor is None or self.conn is None:
+        # API modu kontrolü (Terminal veya Ana makine API modu)
+        if self.api_client:
+            # API client var, bağlantı testi yap
+            success, _ = self.api_client.baglanti_test()
+            if not success:
+                messagebox.showerror("Hata", "API sunucusuna bağlantı yok!\nProgram yeniden başlatılmalı.")
+                return
+        elif self.cursor is None or self.conn is None:
+            # API yok ve yerel DB de yok
             messagebox.showerror("Hata", "Veritabanı bağlantısı kurulamadı!\nProgram yeniden başlatılmalı.")
             return
 
@@ -4690,30 +4791,81 @@ class KasaKapatmaModul:
             manuel_tutar = self.manuel_baslangic_tutar if self.manuel_baslangic_aktif else 0
             manuel_aciklama = self.manuel_baslangic_aciklama if self.manuel_baslangic_aktif else ""
 
-            self.cursor.execute('''
-                INSERT INTO kasa_kapatma (
-                    tarih, saat, baslangic_kasasi, baslangic_kupurler_json,
-                    sayim_toplam, pos_toplam, iban_toplam,
-                    masraf_toplam, silinen_etki_toplam, gun_ici_alinan_toplam,
+            # API modu (Terminal veya Ana makine) - API üzerinden kaydet
+            if self.api_client:
+                api_data = {
+                    'tarih': tarih,
+                    'saat': saat,
+                    'baslangic_kasasi': baslangic_toplam,
+                    'baslangic_kupurler_json': json.dumps(baslangic_kupurler, ensure_ascii=False),
+                    'sayim_toplam': nakit_toplam,
+                    'sayim_kupurler_json': json.dumps(sayim_kupurler, ensure_ascii=False),
+                    'pos_toplam': pos_toplam,
+                    'pos_detay_json': json.dumps([self.sayi_al(v) for v in self.pos_vars], ensure_ascii=False),
+                    'iban_toplam': iban_toplam,
+                    'iban_detay_json': json.dumps([self.sayi_al(v) for v in self.iban_vars], ensure_ascii=False),
+                    'masraf_toplam': masraf_toplam,
+                    'masraf_detay_json': json.dumps([(self.sayi_al(t), a.get()) for t, a in self.masraf_vars], ensure_ascii=False),
+                    'silinen_etki_toplam': silinen_toplam,
+                    'silinen_detay_json': json.dumps([(self.sayi_al(t), a.get()) for t, a in self.silinen_vars], ensure_ascii=False),
+                    'alinan_para_toplam': alinan_toplam,
+                    'alinan_detay_json': json.dumps([(self.sayi_al(t), a.get()) for t, a in self.gun_ici_alinan_vars], ensure_ascii=False),
+                    'nakit_toplam': nakit_toplam,
+                    'genel_toplam': genel_toplam,
+                    'son_genel_toplam': son_genel_toplam,
+                    'botanik_nakit': botanik_nakit,
+                    'botanik_pos': botanik_pos,
+                    'botanik_iban': botanik_iban,
+                    'botanik_genel_toplam': botanik_toplam,
+                    'fark': fark,
+                    'ertesi_gun_kasasi': ertesi_gun_kasasi,
+                    'ertesi_gun_kupurler_json': json.dumps(ertesi_gun_kupurler, ensure_ascii=False),
+                    'ayrilan_para': ayrilan_para,
+                    'ayrilan_kupurler_json': json.dumps(ayrilan_kupurler, ensure_ascii=False),
+                    'manuel_baslangic_tutar': manuel_tutar,
+                    'manuel_baslangic_aciklama': manuel_aciklama,
+                    'detay_json': json.dumps(detay, ensure_ascii=False)
+                }
+                success, result = self.api_client.kasa_kaydet(api_data)
+                if not success:
+                    # Detaylı hata mesajı
+                    if isinstance(result, dict):
+                        hata_msg = result.get('error', str(result))
+                        detay = result.get('detay', '')
+                        if detay:
+                            hata_msg += f"\n\nDetay:\n{detay[:500]}"
+                    else:
+                        hata_msg = str(result)
+                    messagebox.showerror("API Hatası", f"Ana makineye kaydedilemedi!\n\n{hata_msg}")
+                    logger.error(f"API kaydetme hatası: {result}")
+                    return
+                logger.info(f"Kasa verisi API üzerinden kaydedildi - {tarih}")
+            else:
+                # Fallback: API yoksa yerel veritabanına kaydet
+                self.cursor.execute('''
+                    INSERT INTO kasa_kapatma (
+                        tarih, saat, baslangic_kasasi, baslangic_kupurler_json,
+                        sayim_toplam, pos_toplam, iban_toplam,
+                        masraf_toplam, silinen_etki_toplam, gun_ici_alinan_toplam,
+                        nakit_toplam, genel_toplam, son_genel_toplam,
+                        botanik_nakit, botanik_pos, botanik_iban, botanik_genel_toplam,
+                        fark, ertesi_gun_kasasi, ertesi_gun_kupurler_json,
+                        ayrilan_para, ayrilan_kupurler_json,
+                        manuel_baslangic_tutar, manuel_baslangic_aciklama,
+                        detay_json, olusturma_zamani
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    tarih, saat, baslangic_toplam, json.dumps(baslangic_kupurler, ensure_ascii=False),
+                    nakit_toplam, pos_toplam, iban_toplam,
+                    masraf_toplam, silinen_toplam, alinan_toplam,
                     nakit_toplam, genel_toplam, son_genel_toplam,
-                    botanik_nakit, botanik_pos, botanik_iban, botanik_genel_toplam,
-                    fark, ertesi_gun_kasasi, ertesi_gun_kupurler_json,
-                    ayrilan_para, ayrilan_kupurler_json,
-                    manuel_baslangic_tutar, manuel_baslangic_aciklama,
-                    detay_json, olusturma_zamani
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                tarih, saat, baslangic_toplam, json.dumps(baslangic_kupurler, ensure_ascii=False),
-                nakit_toplam, pos_toplam, iban_toplam,
-                masraf_toplam, silinen_toplam, alinan_toplam,
-                nakit_toplam, genel_toplam, son_genel_toplam,
-                botanik_nakit, botanik_pos, botanik_iban, botanik_toplam,
-                fark, ertesi_gun_kasasi, json.dumps(ertesi_gun_kupurler, ensure_ascii=False),
-                ayrilan_para, json.dumps(ayrilan_kupurler, ensure_ascii=False),
-                manuel_tutar, manuel_aciklama,
-                json.dumps(detay, ensure_ascii=False), olusturma_zamani
-            ))
-            self.conn.commit()
+                    botanik_nakit, botanik_pos, botanik_iban, botanik_toplam,
+                    fark, ertesi_gun_kasasi, json.dumps(ertesi_gun_kupurler, ensure_ascii=False),
+                    ayrilan_para, json.dumps(ayrilan_kupurler, ensure_ascii=False),
+                    manuel_tutar, manuel_aciklama,
+                    json.dumps(detay, ensure_ascii=False), olusturma_zamani
+                ))
+                self.conn.commit()
 
             messagebox.showinfo(
                 "Kaydedildi",
@@ -4786,7 +4938,7 @@ class KasaKapatmaModul:
         self.manuel_baslangic_tutar = 0
         self.manuel_baslangic_aciklama = ""
         if hasattr(self, 'manuel_baslangic_btn'):
-            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏ Elle Gir")
+            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏ Elle")
 
         # Önceki kayıttan başlangıç kasasını yükle
         onceki_veri = self.onceki_gun_kasasi_yukle()
@@ -4956,28 +5108,37 @@ class KasaKapatmaModul:
         ag_tab = tk.Frame(notebook, bg='#FAFAFA')
         notebook.add(ag_tab, text="Ağ/Sunucu")
 
-        # Ana makine modu
-        mod_frame = tk.LabelFrame(ag_tab, text="Çalışma Modu", font=("Arial", 10, "bold"),
+        # kasa_config.json'dan mevcut ayarları oku
+        ag_config = {}
+        if KASA_API_MODULU_YUKLENDI:
+            ag_config = config_yukle()
+
+        # Mevcut mod bilgisi
+        mevcut_mod = ag_config.get("makine_tipi", "standalone")
+        mod_aciklama = {
+            "ana_makine": "Ana Makine (Sunucu)",
+            "terminal": "Terminal (Client)",
+            "standalone": "Bağımsız Çalışma"
+        }
+
+        mod_frame = tk.LabelFrame(ag_tab, text="Çalışma Modu (Kurulumda Belirlendi)", font=("Arial", 10, "bold"),
                                   bg='#FAFAFA', padx=10, pady=10)
         mod_frame.pack(fill="x", padx=10, pady=10)
 
-        ana_makine_var = tk.BooleanVar(value=self.ayarlar.get("ana_makine_modu", True))
-        tk.Radiobutton(
+        tk.Label(
             mod_frame,
-            text="Ana Makine (Sunucu) - Veritabanı burada tutulur",
-            variable=ana_makine_var,
-            value=True,
-            font=("Arial", 10),
-            bg='#FAFAFA'
-        ).pack(anchor='w')
+            text=f"Mevcut Mod: {mod_aciklama.get(mevcut_mod, mevcut_mod)}",
+            font=("Arial", 11, "bold"),
+            bg='#FAFAFA',
+            fg='#1565C0'
+        ).pack(anchor='w', pady=5)
 
-        tk.Radiobutton(
+        tk.Label(
             mod_frame,
-            text="Terminal - Ana makineye bağlanır",
-            variable=ana_makine_var,
-            value=False,
-            font=("Arial", 10),
-            bg='#FAFAFA'
+            text="(Mod değişikliği için programı yeniden kurmanız gerekir)",
+            font=("Arial", 9),
+            bg='#FAFAFA',
+            fg='#666'
         ).pack(anchor='w')
 
         # Sunucu ayarları
@@ -4989,15 +5150,121 @@ class KasaKapatmaModul:
         ip_row.pack(fill="x", pady=2)
         tk.Label(ip_row, text="Ana Makine IP:", font=("Arial", 10),
                 bg='#FAFAFA', width=15, anchor='w').pack(side="left")
-        ip_var = tk.StringVar(value=self.ayarlar.get("ana_makine_ip", "192.168.1.100"))
-        tk.Entry(ip_row, textvariable=ip_var, font=("Arial", 10), width=20).pack(side="left", padx=10)
+        # kasa_config.json'dan IP'yi oku
+        config_ip = ag_config.get("ana_makine_ip", "127.0.0.1")
+        ip_var = tk.StringVar(value=config_ip)
+        ip_entry = tk.Entry(ip_row, textvariable=ip_var, font=("Arial", 10), width=20)
+        ip_entry.pack(side="left", padx=10)
+        # Terminal modunda düzenlenebilir, ana makinede salt okunur
+        if mevcut_mod == "ana_makine":
+            ip_entry.config(state='readonly')
 
         port_row = tk.Frame(sunucu_frame, bg='#FAFAFA')
         port_row.pack(fill="x", pady=2)
         tk.Label(port_row, text="Port:", font=("Arial", 10),
                 bg='#FAFAFA', width=15, anchor='w').pack(side="left")
-        port_var = tk.StringVar(value=str(self.ayarlar.get("ana_makine_port", 5000)))
-        tk.Entry(port_row, textvariable=port_var, font=("Arial", 10), width=10).pack(side="left", padx=10)
+        config_port = ag_config.get("api_port", 5000)
+        port_var = tk.StringVar(value=str(config_port))
+        port_entry = tk.Entry(port_row, textvariable=port_var, font=("Arial", 10), width=10)
+        port_entry.pack(side="left", padx=10)
+
+        # Bu makinenin IP adresi (Ana makine için önemli)
+        def get_local_ip():
+            import socket
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                ip = s.getsockname()[0]
+                s.close()
+                return ip
+            except:
+                return "Bulunamadı"
+
+        ip_bilgi_frame = tk.LabelFrame(ag_tab, text="Bu Makinenin Bilgileri", font=("Arial", 10, "bold"),
+                                       bg='#E8F5E9', padx=10, pady=10)
+        ip_bilgi_frame.pack(fill="x", padx=10, pady=10)
+
+        bu_ip = get_local_ip()
+        tk.Label(
+            ip_bilgi_frame,
+            text=f"Bu makinenin IP adresi: {bu_ip}",
+            font=("Arial", 11, "bold"),
+            bg='#E8F5E9',
+            fg='#2E7D32'
+        ).pack(anchor='w')
+
+        if mevcut_mod == "ana_makine":
+            tk.Label(
+                ip_bilgi_frame,
+                text=f"Terminal kurulumunda bu IP'yi kullanın: {bu_ip}",
+                font=("Arial", 10),
+                bg='#E8F5E9',
+                fg='#1565C0'
+            ).pack(anchor='w', pady=5)
+
+        # Bağlantı durumu göster
+        durum_frame = tk.LabelFrame(ag_tab, text="Bağlantı Durumu", font=("Arial", 10, "bold"),
+                                    bg='#FAFAFA', padx=10, pady=10)
+        durum_frame.pack(fill="x", padx=10, pady=10)
+
+        durum_label = tk.Label(durum_frame, text="Kontrol ediliyor...", font=("Arial", 10), bg='#FAFAFA')
+        durum_label.pack(anchor='w')
+
+        def baglanti_kontrol():
+            if self.api_client:
+                success, result = self.api_client.baglanti_test()
+                if success:
+                    durum_label.config(text="✓ API Sunucusuna bağlı", fg='green')
+                else:
+                    durum_label.config(text=f"✗ Bağlantı hatası: {result}", fg='red')
+            else:
+                durum_label.config(text="API client yok (yerel mod)", fg='orange')
+
+        baglanti_kontrol()
+
+        btn_frame = tk.Frame(durum_frame, bg='#FAFAFA')
+        btn_frame.pack(fill='x', pady=5)
+
+        tk.Button(btn_frame, text="Bağlantıyı Test Et", font=("Arial", 10, "bold"),
+                  bg='#4CAF50', fg='white', padx=15, pady=5,
+                  command=baglanti_kontrol).pack(side='left', padx=5)
+
+        def detayli_test():
+            import socket
+            test_sonuc = []
+
+            # 1. Localhost testi
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(3)
+                result = sock.connect_ex(('127.0.0.1', config_port))
+                sock.close()
+                if result == 0:
+                    test_sonuc.append("✓ Localhost:5000 - AÇIK")
+                else:
+                    test_sonuc.append("✗ Localhost:5000 - KAPALI")
+            except Exception as e:
+                test_sonuc.append(f"✗ Localhost hatası: {e}")
+
+            # 2. API testi
+            if self.api_client:
+                success, result = self.api_client.baglanti_test()
+                if success:
+                    test_sonuc.append(f"✓ API Sunucusu - BAĞLANDI")
+                    if isinstance(result, tuple) and len(result) > 1:
+                        test_sonuc.append(f"  DB: {result[1].get('db_path', 'bilinmiyor')}")
+                else:
+                    test_sonuc.append(f"✗ API Hatası: {result}")
+
+            # 3. Config bilgisi
+            test_sonuc.append(f"\nConfig: {mevcut_mod}")
+            test_sonuc.append(f"Hedef IP: {config_ip}:{config_port}")
+
+            messagebox.showinfo("Bağlantı Testi", "\n".join(test_sonuc))
+
+        tk.Button(btn_frame, text="Detaylı Test", font=("Arial", 10),
+                  bg='#2196F3', fg='white', padx=15, pady=5,
+                  command=detayli_test).pack(side='left', padx=5)
 
         # Tab 5: Rapor Ayarları
         rapor_tab = tk.Frame(notebook, bg='#FAFAFA')
@@ -5182,12 +5449,18 @@ class KasaKapatmaModul:
                 self.ayarlar["kabul_edilebilir_fark"] = 10
             self.ayarlar["whatsapp_numara"] = whatsapp_var.get()
             self.ayarlar["yazici_adi"] = yazici_var.get()
-            self.ayarlar["ana_makine_modu"] = ana_makine_var.get()
-            self.ayarlar["ana_makine_ip"] = ip_var.get()
-            try:
-                self.ayarlar["ana_makine_port"] = int(port_var.get())
-            except ValueError:
-                self.ayarlar["ana_makine_port"] = 5000
+
+            # IP ve Port değişikliklerini kasa_config.json'a kaydet (terminal modunda)
+            if KASA_API_MODULU_YUKLENDI and mevcut_mod == "terminal":
+                from kasa_config import config_kaydet
+                yeni_config = ag_config.copy()
+                yeni_config["ana_makine_ip"] = ip_var.get()
+                try:
+                    yeni_config["api_port"] = int(port_var.get())
+                except ValueError:
+                    yeni_config["api_port"] = 5000
+                config_kaydet(yeni_config)
+                logger.info(f"Ağ ayarları güncellendi: {ip_var.get()}:{port_var.get()}")
 
             # Görünüm ayarlarını kaydet
             self.ayarlar["punto_boyutu"] = punto_var.get()
@@ -5307,8 +5580,11 @@ class KasaKapatmaModul:
     def gecmis_goster(self):
         """Geçmiş kayıtları göster"""
         if YENI_MODULLER_YUKLENDI:
-            # Yeni gelişmiş geçmiş penceresi
-            gecmis = KasaGecmisiPenceresi(self.root, self.cursor, self.conn)
+            # Yeni gelişmiş geçmiş penceresi - API client varsa geç (terminal ve ana makine)
+            gecmis = KasaGecmisiPenceresi(
+                self.root, self.cursor, self.conn,
+                api_client=self.api_client  # Hem terminal hem ana makine API modunda
+            )
             gecmis.goster()
         else:
             # Eski basit treeview
