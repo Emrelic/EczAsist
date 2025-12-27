@@ -1,6 +1,14 @@
-pywinauto
-pyautogui
-pillow
-pywin32
-gspread
-oauth2client
+# Botanik Takip - Kasa ve Ekstre Modulu Gereksinimleri
+# Kurulum: pip install -r requirements.txt
+
+# API Server/Client (Ana Makine - Terminal iletisimi)
+flask>=2.0.0
+flask-cors>=3.0.0
+requests>=2.25.0
+
+# Windows UI Automation (Botanik EOS veri cekme)
+comtypes>=1.1.0
+pywin32>=300
+
+# Gorsel islemler
+Pillow>=8.0.0
