@@ -482,8 +482,34 @@ class AnaMenu:
 
     def mf_analiz_ac(self):
         """MF Analiz modülünü aç"""
-        messagebox.showinfo("Bilgi", "MF Analiz Simülatörü henüz geliştirme aşamasında.")
-        # TODO: MF analiz modülü eklenecek
+        try:
+            self.root.withdraw()
+
+            from nf_analiz_gui import NFAnalizGUI
+
+            # Yeni pencere oluştur
+            mf_root = tk.Toplevel()
+            mf_root.title("MF Analiz - Nakit Fiyat Simulasyonu")
+            mf_root.state('zoomed')
+
+            # Ana menüye dönüş callback'i
+            def ana_menuye_don():
+                self.root.deiconify()
+
+            # Pencere kapatma
+            mf_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(mf_root))
+
+            # NFAnalizGUI'yi başlat
+            app = NFAnalizGUI(mf_root)
+
+        except ImportError as e:
+            logger.error(f"MF Analiz import hatası: {e}")
+            messagebox.showerror("Hata", "MF Analiz modülü yüklenemedi.")
+            self.root.deiconify()
+        except Exception as e:
+            logger.error(f"MF Analiz açma hatası: {e}")
+            messagebox.showerror("Hata", f"MF Analiz modülü açılamadı:\n{e}")
+            self.root.deiconify()
 
     def kullanici_yonetimi_ac(self):
         """Kullanıcı Yönetimi modülünü aç"""
