@@ -14,6 +14,8 @@ from tkcalendar import DateEntry
 import threading
 import time
 import copy
+import json
+import os
 
 
 class SenaryoVerileri:
@@ -65,6 +67,33 @@ class MFAnalizGUI:
     """MF Analiz ana penceresi - Coklu senaryo destekli"""
 
     MAX_SENARYO = 5
+    AYARLAR_DOSYA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mf_analiz_ayarlar.json")
+    FATURA_SENET_DOSYA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fatura_senet_kayitlari.json")
+
+    # Varsayilan degerler (ayarlar dosyasi yoksa kullanilir)
+    VARSAYILAN_DEGERLER = {
+        "stok": "100",
+        "aylik_sarf": "30",
+        "depocu_fiyat": "100.00",
+        "kamu_fiyat": "120.00",
+        "piyasa_fiyat": "150.00",
+        "ilac_farki": "0.00",
+        "alim_adet": "100",
+        "mf_bedava": "10",
+        "vade_gun": "90",
+        "zam_orani": "0",
+        "mevduat_faizi": "45",
+        "kredi_faizi": "65",
+        "pos_komisyon": "2.75",
+        "blokeli_gun": "30",
+        "pos_modu": "blokeli",
+        "sgk_elden_orani": "70/30",
+        "raporlu_raporsuz_orani": "30/70",
+        "emekli_calisan_orani": "40/60",
+        "nakit_pos_orani": "40/60",
+        "muayene_tahsilat_orani": "10",
+        "banka_baslangic": "50000"
+    }
 
     def __init__(self, root=None, ana_menu_callback=None):
         self.ana_menu_callback = ana_menu_callback
@@ -118,7 +147,16 @@ class MFAnalizGUI:
         self.senaryo_trees = {}
         self.senaryo_tabs = {}
 
+        # Kayitli ayarlari yukle
+        self.kayitli_ayarlar = self._ayarlari_yukle()
+
+        # Fatura/Senet kayitlari
+        self.fatura_senet_kayitlari = self._fatura_senet_yukle()
+
         self._arayuz_olustur()
+
+        # Vadesi gelen kayitlar icin uyari goster
+        self.root.after(500, self._vade_uyari_kontrol)
 
     def _arayuz_olustur(self):
         """Ana arayuzu olustur"""
@@ -151,6 +189,19 @@ class MFAnalizGUI:
             bg=self.colors['bg']
         )
         baslik.pack(side=tk.LEFT, padx=10)
+
+        # Ayarlar butonu
+        ayarlar_btn = tk.Button(
+            baslik_frame,
+            text="Ayarlar",
+            font=('Segoe UI', 10, 'bold'),
+            bg='#607D8B',
+            fg='white',
+            relief='flat',
+            cursor='hand2',
+            command=self._ayarlar_penceresi_ac
+        )
+        ayarlar_btn.pack(side=tk.RIGHT, padx=5)
 
         # Sekme ekleme butonu
         ekle_btn = tk.Button(
@@ -233,41 +284,42 @@ class MFAnalizGUI:
         self.senaryo_frames[idx] = tab_frame
 
     def _degiskenler_olustur(self):
-        """Bir senaryo icin tum degiskenleri olustur"""
+        """Bir senaryo icin tum degiskenleri olustur - ayarlardan degerler yuklenir"""
+        ayar = self.kayitli_ayarlar  # Kisa referans
         return {
             # A) Eczane Durumu
-            'stok': tk.StringVar(value="100"),
-            'aylik_sarf': tk.StringVar(value="30"),
+            'stok': tk.StringVar(value=ayar.get("stok", "100")),
+            'aylik_sarf': tk.StringVar(value=ayar.get("aylik_sarf", "30")),
             'bugun_tarihi': tk.StringVar(value=datetime.now().strftime("%d.%m.%Y")),
 
             # B) Ilac Verileri
-            'depocu_fiyat': tk.StringVar(value="100.00"),
-            'kamu_fiyat': tk.StringVar(value="120.00"),
-            'piyasa_fiyat': tk.StringVar(value="150.00"),
-            'ilac_farki': tk.StringVar(value="0.00"),
+            'depocu_fiyat': tk.StringVar(value=ayar.get("depocu_fiyat", "100.00")),
+            'kamu_fiyat': tk.StringVar(value=ayar.get("kamu_fiyat", "120.00")),
+            'piyasa_fiyat': tk.StringVar(value=ayar.get("piyasa_fiyat", "150.00")),
+            'ilac_farki': tk.StringVar(value=ayar.get("ilac_farki", "0.00")),
 
             # C) Satin Alma
-            'alim_adet': tk.StringVar(value="100"),    # Ana mal adedi
-            'mf_bedava': tk.StringVar(value="10"),     # Mal fazlasi (bedava)
+            'alim_adet': tk.StringVar(value=ayar.get("alim_adet", "100")),    # Ana mal adedi
+            'mf_bedava': tk.StringVar(value=ayar.get("mf_bedava", "10")),     # Mal fazlasi (bedava)
             'alim_tarihi': tk.StringVar(value=datetime.now().strftime("%d.%m.%Y")),
-            'vade_gun': tk.StringVar(value="90"),
+            'vade_gun': tk.StringVar(value=ayar.get("vade_gun", "90")),
 
             # D) Dis Etkenler
             'zam_tarihi': tk.StringVar(value=""),
-            'zam_orani': tk.StringVar(value="0"),
-            'mevduat_faizi': tk.StringVar(value="45"),  # Yillik %
-            'kredi_faizi': tk.StringVar(value="65"),      # Yillik %
-            'pos_komisyon': tk.StringVar(value="2.75"),   # Ertesi gun %
-            'blokeli_gun': tk.StringVar(value="30"),      # Blokeli kac gun
-            'pos_modu': tk.StringVar(value="blokeli"),    # blokeli veya ertesi_gun
+            'zam_orani': tk.StringVar(value=ayar.get("zam_orani", "0")),
+            'mevduat_faizi': tk.StringVar(value=ayar.get("mevduat_faizi", "45")),  # Yillik %
+            'kredi_faizi': tk.StringVar(value=ayar.get("kredi_faizi", "65")),      # Yillik %
+            'pos_komisyon': tk.StringVar(value=ayar.get("pos_komisyon", "2.75")),   # Ertesi gun %
+            'blokeli_gun': tk.StringVar(value=ayar.get("blokeli_gun", "30")),      # Blokeli kac gun
+            'pos_modu': tk.StringVar(value=ayar.get("pos_modu", "blokeli")),    # blokeli veya ertesi_gun
 
             # E) Eczane Profili
-            'sgk_elden_orani': tk.StringVar(value="70/30"),      # SGK/Elden satış oranı
-            'raporlu_raporsuz_orani': tk.StringVar(value="30/70"), # Raporlu/Raporsuz oranı
-            'emekli_calisan_orani': tk.StringVar(value="40/60"),  # Emekli/Çalışan oranı
-            'nakit_pos_orani': tk.StringVar(value="40/60"),       # Nakit/POS oranı
-            'muayene_tahsilat_orani': tk.StringVar(value="10"),   # Muayene/Tahsilat yüzdesi
-            'banka_baslangic': tk.StringVar(value="50000"),
+            'sgk_elden_orani': tk.StringVar(value=ayar.get("sgk_elden_orani", "70/30")),      # SGK/Elden satis orani
+            'raporlu_raporsuz_orani': tk.StringVar(value=ayar.get("raporlu_raporsuz_orani", "30/70")), # Raporlu/Raporsuz orani
+            'emekli_calisan_orani': tk.StringVar(value=ayar.get("emekli_calisan_orani", "40/60")),  # Emekli/Calisan orani
+            'nakit_pos_orani': tk.StringVar(value=ayar.get("nakit_pos_orani", "40/60")),       # Nakit/POS orani
+            'muayene_tahsilat_orani': tk.StringVar(value=ayar.get("muayene_tahsilat_orani", "10")),   # Muayene/Tahsilat yuzdesi
+            'banka_baslangic': tk.StringVar(value=ayar.get("banka_baslangic", "50000")),
         }
 
     def _parametre_panelleri_olustur(self, parent, idx):
@@ -802,6 +854,347 @@ class MFAnalizGUI:
         # Ozet labels icin bos dict (popup acildiginda doldurulacak)
         self.ozet_labels = {}
         self.en_karli_label = None
+
+        # === FATURA/SENET TAKIP BOLUMU ===
+        self._fatura_senet_paneli_olustur(parent)
+
+    def _fatura_senet_paneli_olustur(self, parent):
+        """Fatura ve Senet takip paneli - ikili gorunum (sol: senet, sag: fatura)"""
+        fs_frame = tk.Frame(parent, bg=self.colors['panel_bg'], pady=5)
+        fs_frame.pack(fill=tk.X, pady=(2, 0))
+
+        # ========== SOL: SENET BOLUMU ==========
+        senet_frame = tk.Frame(fs_frame, bg=self.colors['card_bg'], bd=1, relief='solid')
+        senet_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 5))
+
+        # Senet baslik
+        senet_header = tk.Frame(senet_frame, bg='#9b59b6', height=25)
+        senet_header.pack(fill=tk.X)
+        senet_header.pack_propagate(False)
+        tk.Label(senet_header, text="SENETLER (Depo)", font=('Segoe UI', 9, 'bold'),
+                fg='white', bg='#9b59b6').pack(side=tk.LEFT, padx=10)
+        tk.Button(senet_header, text="+", font=('Segoe UI', 8, 'bold'),
+                 bg='#00d26a', fg='white', relief='flat', cursor='hand2', width=3,
+                 command=lambda: self._fatura_senet_ekle_popup('Senet')).pack(side=tk.RIGHT, padx=2)
+        tk.Button(senet_header, text="-", font=('Segoe UI', 8, 'bold'),
+                 bg='#ff6b6b', fg='white', relief='flat', cursor='hand2', width=3,
+                 command=lambda: self._fatura_senet_sil('Senet')).pack(side=tk.RIGHT, padx=2)
+
+        # Senet listesi (3 satir)
+        self.senet_labels = []
+        for i in range(3):
+            row = tk.Frame(senet_frame, bg=self.colors['card_bg'])
+            row.pack(fill=tk.X, padx=5, pady=1)
+            lbl = tk.Label(row, text=f"Senet {i+1}: -", font=('Segoe UI', 9),
+                          fg=self.colors['text_dim'], bg=self.colors['card_bg'], anchor='w')
+            lbl.pack(fill=tk.X)
+            self.senet_labels.append(lbl)
+
+        # Senet toplam
+        senet_toplam_frame = tk.Frame(senet_frame, bg=self.colors['accent2'])
+        senet_toplam_frame.pack(fill=tk.X, pady=(2, 0))
+        self.senet_toplam_label = tk.Label(senet_toplam_frame, text="TOPLAM: 0,00 ₺",
+                                          font=('Segoe UI', 9, 'bold'),
+                                          fg='white', bg=self.colors['accent2'])
+        self.senet_toplam_label.pack(pady=2)
+
+        # ========== SAG: FATURA BOLUMU ==========
+        fatura_frame = tk.Frame(fs_frame, bg=self.colors['card_bg'], bd=1, relief='solid')
+        fatura_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 10))
+
+        # Fatura baslik
+        fatura_header = tk.Frame(fatura_frame, bg='#17a2b8', height=25)
+        fatura_header.pack(fill=tk.X)
+        fatura_header.pack_propagate(False)
+        tk.Label(fatura_header, text="FATURALAR (SGK)", font=('Segoe UI', 9, 'bold'),
+                fg='white', bg='#17a2b8').pack(side=tk.LEFT, padx=10)
+        tk.Button(fatura_header, text="+", font=('Segoe UI', 8, 'bold'),
+                 bg='#00d26a', fg='white', relief='flat', cursor='hand2', width=3,
+                 command=lambda: self._fatura_senet_ekle_popup('Fatura')).pack(side=tk.RIGHT, padx=2)
+        tk.Button(fatura_header, text="-", font=('Segoe UI', 8, 'bold'),
+                 bg='#ff6b6b', fg='white', relief='flat', cursor='hand2', width=3,
+                 command=lambda: self._fatura_senet_sil('Fatura')).pack(side=tk.RIGHT, padx=2)
+
+        # Fatura listesi (3 satir)
+        self.fatura_labels = []
+        for i in range(3):
+            row = tk.Frame(fatura_frame, bg=self.colors['card_bg'])
+            row.pack(fill=tk.X, padx=5, pady=1)
+            lbl = tk.Label(row, text=f"Fatura {i+1}: -", font=('Segoe UI', 9),
+                          fg=self.colors['text_dim'], bg=self.colors['card_bg'], anchor='w')
+            lbl.pack(fill=tk.X)
+            self.fatura_labels.append(lbl)
+
+        # Fatura toplam
+        fatura_toplam_frame = tk.Frame(fatura_frame, bg=self.colors['accent2'])
+        fatura_toplam_frame.pack(fill=tk.X, pady=(2, 0))
+        self.fatura_toplam_label = tk.Label(fatura_toplam_frame, text="TOPLAM: 0,00 ₺",
+                                           font=('Segoe UI', 9, 'bold'),
+                                           fg='white', bg=self.colors['accent2'])
+        self.fatura_toplam_label.pack(pady=2)
+
+        # Paneli guncelle
+        self._fatura_senet_tabloyu_guncelle()
+
+    def _fatura_senet_tabloyu_guncelle(self):
+        """Fatura/Senet panelini guncelle - ikili gorunum"""
+        bugun = datetime.now().date()
+
+        # Senet ve Faturalari ayir
+        senetler = [k for k in self.fatura_senet_kayitlari if k.get('tur') == 'Senet']
+        faturalar = [k for k in self.fatura_senet_kayitlari if k.get('tur') == 'Fatura']
+
+        # Senetleri guncelle
+        senet_toplam = 0
+        for i, lbl in enumerate(self.senet_labels):
+            if i < len(senetler):
+                kayit = senetler[i]
+                tutar = kayit.get('tutar', 0)
+                vade = kayit.get('vade', '')
+                senet_toplam += tutar
+
+                # Vade durumuna gore renk
+                try:
+                    vade_tarih = datetime.strptime(vade, '%d.%m.%Y').date()
+                    gun_fark = (vade_tarih - bugun).days
+                    if gun_fark < 0:
+                        renk = '#ff6b6b'  # Gecikmi - kirmizi
+                    elif gun_fark <= 7:
+                        renk = '#ffc107'  # Yakin - sari
+                    else:
+                        renk = self.colors['text']
+                except:
+                    renk = self.colors['text']
+
+                lbl.config(text=f"{i+1}. {tutar:,.2f} ₺  |  {vade}", fg=renk)
+            else:
+                lbl.config(text=f"{i+1}. -", fg=self.colors['text_dim'])
+
+        self.senet_toplam_label.config(text=f"TOPLAM: {senet_toplam:,.2f} ₺")
+
+        # Faturalari guncelle
+        fatura_toplam = 0
+        for i, lbl in enumerate(self.fatura_labels):
+            if i < len(faturalar):
+                kayit = faturalar[i]
+                tutar = kayit.get('tutar', 0)
+                vade = kayit.get('vade', '')
+                fatura_toplam += tutar
+
+                # Vade durumuna gore renk
+                try:
+                    vade_tarih = datetime.strptime(vade, '%d.%m.%Y').date()
+                    gun_fark = (vade_tarih - bugun).days
+                    if gun_fark < 0:
+                        renk = '#ff6b6b'  # Gecikmi - kirmizi
+                    elif gun_fark <= 7:
+                        renk = '#ffc107'  # Yakin - sari
+                    else:
+                        renk = self.colors['text']
+                except:
+                    renk = self.colors['text']
+
+                lbl.config(text=f"{i+1}. {tutar:,.2f} ₺  |  {vade}", fg=renk)
+            else:
+                lbl.config(text=f"{i+1}. -", fg=self.colors['text_dim'])
+
+        self.fatura_toplam_label.config(text=f"TOPLAM: {fatura_toplam:,.2f} ₺")
+
+    def _fatura_senet_ekle_popup(self, tur='Fatura'):
+        """Yeni fatura/senet ekleme popup penceresi"""
+        # Hesap turu otomatik belirlenir
+        hesap = 'SGK' if tur == 'Fatura' else 'Depo'
+
+        popup = tk.Toplevel(self.root)
+        popup.title(f"{tur} Ekle ({hesap})")
+        popup.geometry("320x200")
+        popup.configure(bg=self.colors['panel_bg'])
+        popup.transient(self.root)
+        popup.grab_set()
+
+        # Baslik
+        baslik_renk = '#17a2b8' if tur == 'Fatura' else '#9b59b6'
+        tk.Label(popup, text=f"YENİ {tur.upper()} ({hesap})", font=('Segoe UI', 12, 'bold'),
+                fg=baslik_renk, bg=self.colors['panel_bg']).pack(pady=(15, 10))
+
+        # Tutar
+        row1 = tk.Frame(popup, bg=self.colors['panel_bg'])
+        row1.pack(fill=tk.X, padx=20, pady=10)
+        tk.Label(row1, text="Tutar (₺):", font=('Segoe UI', 10),
+                fg=self.colors['text'], bg=self.colors['panel_bg'], width=12, anchor='w').pack(side=tk.LEFT)
+        tutar_var = tk.StringVar(value="0.00")
+        tutar_entry = tk.Entry(row1, textvariable=tutar_var, font=('Segoe UI', 11),
+                bg=self.colors['entry_bg'], fg=self.colors['text'],
+                relief='flat', width=15, justify='right')
+        tutar_entry.pack(side=tk.RIGHT)
+        tutar_entry.focus_set()
+        tutar_entry.select_range(0, tk.END)
+
+        # Vade tarihi
+        row2 = tk.Frame(popup, bg=self.colors['panel_bg'])
+        row2.pack(fill=tk.X, padx=20, pady=10)
+        tk.Label(row2, text="Vade Tarihi:", font=('Segoe UI', 10),
+                fg=self.colors['text'], bg=self.colors['panel_bg'], width=12, anchor='w').pack(side=tk.LEFT)
+        vade_var = tk.StringVar(value=datetime.now().strftime("%d.%m.%Y"))
+        DateEntry(row2, textvariable=vade_var, font=('Segoe UI', 10), width=13,
+                 date_pattern='dd.mm.yyyy', locale='tr_TR').pack(side=tk.RIGHT)
+
+        # Butonlar
+        btn_frame = tk.Frame(popup, bg=self.colors['panel_bg'])
+        btn_frame.pack(pady=15)
+
+        def kaydet():
+            try:
+                tutar = float(tutar_var.get().replace(',', '.'))
+                if tutar <= 0:
+                    raise ValueError
+            except:
+                messagebox.showerror("Hata", "Geçerli bir tutar girin!", parent=popup)
+                return
+
+            yeni_kayit = {
+                'tur': tur,
+                'hesap': hesap,
+                'tutar': tutar,
+                'vade': vade_var.get()
+            }
+            self.fatura_senet_kayitlari.append(yeni_kayit)
+            self._fatura_senet_kaydet()
+            self._fatura_senet_tabloyu_guncelle()
+            popup.destroy()
+
+        tk.Button(btn_frame, text="Kaydet", font=('Segoe UI', 10, 'bold'),
+                 bg=self.colors['success'], fg='white', relief='flat',
+                 cursor='hand2', width=10, command=kaydet).pack(side=tk.LEFT, padx=10)
+
+        tk.Button(btn_frame, text="İptal", font=('Segoe UI', 10, 'bold'),
+                 bg=self.colors['danger'], fg='white', relief='flat',
+                 cursor='hand2', width=10, command=popup.destroy).pack(side=tk.LEFT, padx=10)
+
+        # Pencereyi ortala
+        popup.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (popup.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (popup.winfo_height() // 2)
+        popup.geometry(f"+{x}+{y}")
+
+    def _fatura_senet_sil(self, tur='Fatura'):
+        """Belirtilen turdeki kayitlardan birini sil"""
+        # Ilgili kayitlari filtrele
+        kayitlar = [(i, k) for i, k in enumerate(self.fatura_senet_kayitlari) if k.get('tur') == tur]
+
+        if not kayitlar:
+            messagebox.showinfo("Bilgi", f"Silinecek {tur.lower()} kaydı bulunamadı!")
+            return
+
+        if len(kayitlar) == 1:
+            # Tek kayit varsa direkt sil
+            if messagebox.askyesno("Onay", f"{tur} kaydını silmek istediğinize emin misiniz?\n\n"
+                                  f"Tutar: {kayitlar[0][1]['tutar']:,.2f} ₺\n"
+                                  f"Vade: {kayitlar[0][1]['vade']}"):
+                del self.fatura_senet_kayitlari[kayitlar[0][0]]
+                self._fatura_senet_kaydet()
+                self._fatura_senet_tabloyu_guncelle()
+        else:
+            # Birden fazla kayit varsa secim penceresi ac
+            self._silme_secim_penceresi(tur, kayitlar)
+
+    def _silme_secim_penceresi(self, tur, kayitlar):
+        """Birden fazla kayit varsa silmek icin secim penceresi"""
+        popup = tk.Toplevel(self.root)
+        popup.title(f"{tur} Sil")
+        popup.geometry("350x200")
+        popup.configure(bg=self.colors['panel_bg'])
+        popup.transient(self.root)
+        popup.grab_set()
+
+        baslik_renk = '#17a2b8' if tur == 'Fatura' else '#9b59b6'
+        tk.Label(popup, text=f"SİLİNECEK {tur.upper()} SEÇİN", font=('Segoe UI', 11, 'bold'),
+                fg=baslik_renk, bg=self.colors['panel_bg']).pack(pady=10)
+
+        # Listbox
+        listbox_frame = tk.Frame(popup, bg=self.colors['panel_bg'])
+        listbox_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+
+        listbox = tk.Listbox(listbox_frame, font=('Segoe UI', 10),
+                            bg=self.colors['card_bg'], fg=self.colors['text'],
+                            selectbackground=baslik_renk, selectforeground='white',
+                            height=4)
+        listbox.pack(fill=tk.BOTH, expand=True)
+
+        for idx, kayit in kayitlar:
+            listbox.insert(tk.END, f"{kayit['tutar']:,.2f} ₺  |  Vade: {kayit['vade']}")
+
+        # Butonlar
+        btn_frame = tk.Frame(popup, bg=self.colors['panel_bg'])
+        btn_frame.pack(pady=10)
+
+        def sil_secili():
+            secim = listbox.curselection()
+            if not secim:
+                messagebox.showwarning("Uyarı", "Lütfen silmek için bir kayıt seçin!", parent=popup)
+                return
+
+            gercek_idx = kayitlar[secim[0]][0]
+            del self.fatura_senet_kayitlari[gercek_idx]
+            self._fatura_senet_kaydet()
+            self._fatura_senet_tabloyu_guncelle()
+            popup.destroy()
+
+        tk.Button(btn_frame, text="Sil", font=('Segoe UI', 10, 'bold'),
+                 bg=self.colors['danger'], fg='white', relief='flat',
+                 cursor='hand2', width=8, command=sil_secili).pack(side=tk.LEFT, padx=10)
+
+        tk.Button(btn_frame, text="İptal", font=('Segoe UI', 10, 'bold'),
+                 bg=self.colors['accent2'], fg='white', relief='flat',
+                 cursor='hand2', width=8, command=popup.destroy).pack(side=tk.LEFT, padx=10)
+
+        # Pencereyi ortala
+        popup.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (popup.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (popup.winfo_height() // 2)
+        popup.geometry(f"+{x}+{y}")
+
+    def _fatura_senet_yukle(self):
+        """Fatura/Senet kayitlarini JSON dosyasından yukle"""
+        try:
+            if os.path.exists(self.FATURA_SENET_DOSYA):
+                with open(self.FATURA_SENET_DOSYA, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Fatura/Senet kayitlari yuklenirken hata: {e}")
+        return []
+
+    def _fatura_senet_kaydet(self):
+        """Fatura/Senet kayitlarini JSON dosyasina kaydet"""
+        try:
+            with open(self.FATURA_SENET_DOSYA, 'w', encoding='utf-8') as f:
+                json.dump(self.fatura_senet_kayitlari, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"Fatura/Senet kayitlari kaydedilirken hata: {e}")
+
+    def _vade_uyari_kontrol(self):
+        """Vadesi gelen veya gecen kayitlar icin uyari goster"""
+        if not self.fatura_senet_kayitlari:
+            return
+
+        bugun = datetime.now().date()
+        uyari_listesi = []
+
+        for kayit in self.fatura_senet_kayitlari:
+            try:
+                vade_tarih = datetime.strptime(kayit.get('vade', ''), '%d.%m.%Y').date()
+                gun_fark = (vade_tarih - bugun).days
+
+                if gun_fark < 0:
+                    uyari_listesi.append(f"⚠️ GECİKMİŞ: {kayit['tur']} ({kayit['hesap']}) - {kayit['tutar']:,.2f} ₺ - Vade: {kayit['vade']}")
+                elif gun_fark <= 7:
+                    uyari_listesi.append(f"⏰ YAKIN: {kayit['tur']} ({kayit['hesap']}) - {kayit['tutar']:,.2f} ₺ - Vade: {kayit['vade']} ({gun_fark} gün)")
+            except:
+                pass
+
+        if uyari_listesi:
+            mesaj = "FATURA / SENET VADE UYARISI\n\n" + "\n".join(uyari_listesi)
+            messagebox.showwarning("Vade Uyarısı", mesaj)
 
     def _karsilastirma_ac(self):
         """Karsilastirma tablosunu popup pencerede ac"""
@@ -1715,6 +2108,176 @@ class MFAnalizGUI:
         x = (popup.winfo_screenwidth() // 2) - (width // 2)
         y = (popup.winfo_screenheight() // 2) - (height // 2)
         popup.geometry(f'{width}x{height}+{x}+{y}')
+
+    # ==================== AYARLAR FONKSIYONLARI ====================
+
+    def _ayarlari_yukle(self):
+        """Ayarlar dosyasindan degerleri yukle"""
+        try:
+            if os.path.exists(self.AYARLAR_DOSYA):
+                with open(self.AYARLAR_DOSYA, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return data.get("varsayilan_degerler", self.VARSAYILAN_DEGERLER.copy())
+        except Exception as e:
+            print(f"Ayarlar yuklenirken hata: {e}")
+        return self.VARSAYILAN_DEGERLER.copy()
+
+    def _ayarlari_kaydet(self, yeni_ayarlar):
+        """Ayarlari JSON dosyasina kaydet"""
+        try:
+            data = {"varsayilan_degerler": yeni_ayarlar}
+            with open(self.AYARLAR_DOSYA, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            self.kayitli_ayarlar = yeni_ayarlar.copy()
+            return True
+        except Exception as e:
+            print(f"Ayarlar kaydedilirken hata: {e}")
+            return False
+
+    def _ayarlar_penceresi_ac(self):
+        """Ayarlar penceresini ac"""
+        ayar_pencere = tk.Toplevel(self.root)
+        ayar_pencere.title("MF Analiz - Varsayilan Ayarlar")
+        ayar_pencere.geometry("700x650")
+        ayar_pencere.configure(bg=self.colors['bg'])
+        ayar_pencere.resizable(False, False)
+
+        # Modal yap
+        ayar_pencere.transient(self.root)
+        ayar_pencere.grab_set()
+
+        # Baslik
+        baslik_frame = tk.Frame(ayar_pencere, bg=self.colors['accent'], height=50)
+        baslik_frame.pack(fill=tk.X)
+        baslik_frame.pack_propagate(False)
+        tk.Label(baslik_frame, text="VARSAYILAN DEGERLER AYARLARI",
+                font=('Segoe UI', 14, 'bold'), fg='white',
+                bg=self.colors['accent']).pack(expand=True)
+
+        # Icerik scroll
+        canvas = tk.Canvas(ayar_pencere, bg=self.colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(ayar_pencere, orient="vertical", command=canvas.yview)
+        scroll_frame = tk.Frame(canvas, bg=self.colors['bg'])
+
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Ayar degiskenleri
+        ayar_vars = {}
+
+        # Kategori sirasi ve basliklari
+        kategoriler = [
+            ("A) Eczane Durumu", [
+                ("stok", "Stok (adet)"),
+                ("aylik_sarf", "Aylik Sarf (adet)")
+            ]),
+            ("B) Ilac Verileri", [
+                ("depocu_fiyat", "Depocu Fiyat (TL)"),
+                ("kamu_fiyat", "Kamu Fiyat (TL)"),
+                ("piyasa_fiyat", "Piyasa Fiyat (TL)"),
+                ("ilac_farki", "Ilac Farki (TL)")
+            ]),
+            ("C) Satin Alma", [
+                ("alim_adet", "Alim Adet"),
+                ("mf_bedava", "MF Bedava"),
+                ("vade_gun", "Vade (gun)")
+            ]),
+            ("D) Dis Etkenler", [
+                ("zam_orani", "Zam Orani (%)"),
+                ("mevduat_faizi", "Mevduat Faizi (Yillik %)"),
+                ("kredi_faizi", "Kredi Faizi (Yillik %)"),
+                ("pos_komisyon", "POS Komisyon (%)"),
+                ("blokeli_gun", "Blokeli Gun"),
+                ("pos_modu", "POS Modu (blokeli/ertesi_gun)")
+            ]),
+            ("E) Eczane Profili", [
+                ("sgk_elden_orani", "SGK/Elden Orani"),
+                ("raporlu_raporsuz_orani", "Raporlu/Raporsuz Orani"),
+                ("emekli_calisan_orani", "Emekli/Calisan Orani"),
+                ("nakit_pos_orani", "Nakit/POS Orani"),
+                ("muayene_tahsilat_orani", "Muayene Tahsilat (%)"),
+                ("banka_baslangic", "Banka Baslangic (TL)")
+            ])
+        ]
+
+        for kategori_baslik, alanlar in kategoriler:
+            # Kategori basligi
+            kat_frame = tk.Frame(scroll_frame, bg=self.colors['card_bg'], bd=1, relief='solid')
+            kat_frame.pack(fill=tk.X, padx=10, pady=5)
+
+            kat_header = tk.Frame(kat_frame, bg=self.colors['accent2'])
+            kat_header.pack(fill=tk.X)
+            tk.Label(kat_header, text=kategori_baslik, font=('Segoe UI', 11, 'bold'),
+                    fg='white', bg=self.colors['accent2'], pady=5).pack(anchor='w', padx=10)
+
+            kat_content = tk.Frame(kat_frame, bg=self.colors['card_bg'], padx=10, pady=10)
+            kat_content.pack(fill=tk.X)
+
+            for key, label in alanlar:
+                row = tk.Frame(kat_content, bg=self.colors['card_bg'])
+                row.pack(fill=tk.X, pady=3)
+
+                tk.Label(row, text=label + ":", font=('Segoe UI', 10),
+                        fg=self.colors['text_dim'], bg=self.colors['card_bg'],
+                        width=25, anchor='w').pack(side=tk.LEFT)
+
+                var = tk.StringVar(value=self.kayitli_ayarlar.get(key, self.VARSAYILAN_DEGERLER.get(key, "")))
+                ayar_vars[key] = var
+
+                entry = tk.Entry(row, textvariable=var, font=('Segoe UI', 11),
+                               bg=self.colors['entry_bg'], fg=self.colors['text'],
+                               relief='flat', width=20, justify='center')
+                entry.pack(side=tk.RIGHT)
+
+        # Butonlar
+        btn_frame = tk.Frame(ayar_pencere, bg=self.colors['bg'], pady=15)
+        btn_frame.pack(fill=tk.X)
+
+        def kaydet_ve_kapat():
+            yeni_ayarlar = {key: var.get() for key, var in ayar_vars.items()}
+            if self._ayarlari_kaydet(yeni_ayarlar):
+                messagebox.showinfo("Basarili", "Ayarlar kaydedildi!\n\nYeni senaryolarda bu degerler kullanilacak.",
+                                   parent=ayar_pencere)
+                ayar_pencere.destroy()
+            else:
+                messagebox.showerror("Hata", "Ayarlar kaydedilemedi!", parent=ayar_pencere)
+
+        def varsayilana_dondur():
+            if messagebox.askyesno("Onay", "Tum degerler varsayilana donecek. Emin misiniz?",
+                                  parent=ayar_pencere):
+                for key, var in ayar_vars.items():
+                    var.set(self.VARSAYILAN_DEGERLER.get(key, ""))
+
+        kaydet_btn = tk.Button(btn_frame, text="Kaydet ve Kapat",
+                              font=('Segoe UI', 11, 'bold'),
+                              bg=self.colors['success'], fg='white',
+                              relief='flat', cursor='hand2', width=18,
+                              command=kaydet_ve_kapat)
+        kaydet_btn.pack(side=tk.LEFT, padx=20)
+
+        varsayilan_btn = tk.Button(btn_frame, text="Varsayilana Don",
+                                  font=('Segoe UI', 11, 'bold'),
+                                  bg=self.colors['warning'], fg='black',
+                                  relief='flat', cursor='hand2', width=18,
+                                  command=varsayilana_dondur)
+        varsayilan_btn.pack(side=tk.LEFT, padx=10)
+
+        iptal_btn = tk.Button(btn_frame, text="Iptal",
+                             font=('Segoe UI', 11, 'bold'),
+                             bg=self.colors['danger'], fg='white',
+                             relief='flat', cursor='hand2', width=12,
+                             command=ayar_pencere.destroy)
+        iptal_btn.pack(side=tk.RIGHT, padx=20)
+
+        # Pencereyi ortala
+        ayar_pencere.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (ayar_pencere.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (ayar_pencere.winfo_height() // 2)
+        ayar_pencere.geometry(f"+{x}+{y}")
 
     def run(self):
         """Uygulamayi calistir"""
