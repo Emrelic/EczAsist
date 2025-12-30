@@ -40,7 +40,11 @@ class SenaryoVerileri:
 
         # ========== DİĞER HESAPLAR ==========
         self.kredi_karti_bekleyen = {} # {odeme_tarihi: tutar} - Blokeli POS
-        self.emekli_katilim_bekleyen = {} # {odeme_tarihi: tutar} - Emekli katilim payi
+        self.emekli_katilim_bekleyen = {} # {odeme_tarihi: tutar} - Emekli katilim payi (gunluk birikim)
+        self.emekli_katilim_alacak = {}   # {odeme_tarihi: tutar} - SGK'ya yazilmis emekli k.p. alacagi
+
+        # ========== KREDİ TAKİBİ ==========
+        self.kredi_borclari = {}  # {cekilis_tarihi: {'tutar': x, 'kalan': y}} - Bankadan cekilen krediler
 
         # Gunluk veriler (data grid icin)
         self.gunluk_veriler = []
@@ -59,6 +63,8 @@ class SenaryoVerileri:
         self.depo_borc = {}
         self.kredi_karti_bekleyen = {}
         self.emekli_katilim_bekleyen = {}
+        self.emekli_katilim_alacak = {}
+        self.kredi_borclari = {}
         self.gunluk_veriler = []
         self.ozet = {}
 
@@ -139,7 +145,9 @@ class MFAnalizGUI:
         self.simulasyon_calisyor = False
         self.simulasyon_thread = None
         self.mevcut_gun = 0
+        self.son_simulasyon_tarihi = None  # Simülasyondaki son tarih
         self.uyari_bekliyor = False  # Uyarı gösterilirken True
+        self.gunluk_bildirimler = []  # Gün içi hesap hareketleri
 
         # Widget referanslari
         self.senaryo_frames = {}
@@ -460,18 +468,31 @@ class MFAnalizGUI:
                 bg=self.colors['entry_bg'], fg=self.colors['success'],
                 relief='flat', width=8, justify='center').pack(side=tk.RIGHT)
 
-        # Alim Tarihi - Takvim
+        # Alim Tarihi - Takvim + Son Tarih Butonu
         row2 = tk.Frame(content, bg=self.colors['card_bg'])
         row2.pack(fill=tk.X, pady=4)
         tk.Label(row2, text="Alim Tarihi:", font=('Segoe UI', 10),
                 fg=self.colors['text_dim'], bg=self.colors['card_bg'], width=12, anchor='w').pack(side=tk.LEFT)
-        DateEntry(row2, textvariable=vars['alim_tarihi'],
+
+        # Sağ taraf container (tarih + buton)
+        tarih_container = tk.Frame(row2, bg=self.colors['card_bg'])
+        tarih_container.pack(side=tk.RIGHT)
+
+        # Son tarihi getir butonu
+        son_tarih_btn = tk.Button(tarih_container, text="◄",
+                                  font=('Segoe UI', 8, 'bold'),
+                                  bg=self.colors['info'], fg='white',
+                                  relief='flat', cursor='hand2', width=2,
+                                  command=lambda v=vars: self._son_tarihi_getir(v))
+        son_tarih_btn.pack(side=tk.LEFT, padx=(0, 3))
+
+        DateEntry(tarih_container, textvariable=vars['alim_tarihi'],
                  font=('Segoe UI', 10), width=10,
                  background='#0f3460', foreground='white',
                  headersbackground='#e94560', headersforeground='white',
                  selectbackground='#e94560', selectforeground='white',
                  normalbackground='#1a1a2e', normalforeground='white',
-                 date_pattern='dd.mm.yyyy', locale='tr_TR').pack(side=tk.RIGHT)
+                 date_pattern='dd.mm.yyyy', locale='tr_TR').pack(side=tk.LEFT)
 
         # Vade
         row3 = tk.Frame(content, bg=self.colors['card_bg'])
@@ -481,6 +502,13 @@ class MFAnalizGUI:
         tk.Entry(row3, textvariable=vars['vade_gun'], font=('Segoe UI', 11),
                 bg=self.colors['entry_bg'], fg=self.colors['text'],
                 relief='flat', width=8, justify='center').pack(side=tk.RIGHT)
+
+    def _son_tarihi_getir(self, vars):
+        """Simülasyondaki son tarihi Alım Tarihi alanına getirir"""
+        if self.son_simulasyon_tarihi:
+            vars['alim_tarihi'].set(self.son_simulasyon_tarihi.strftime("%d.%m.%Y"))
+        else:
+            messagebox.showinfo("Bilgi", "Henüz simülasyon başlatılmadı.\nÖnce simülasyonu başlatın.")
 
     def _format_decimal(self, var):
         """Fiyat degerini 2 ondalik basamakli formata cevir"""
@@ -711,10 +739,10 @@ class MFAnalizGUI:
         # Kolonlar
         columns = (
             'gun', 'tarih', 'stok', 'satis', 'kasa', 'banka',
-            'sgk_acik', 'sgk_kesin', 'muayene_borc',
+            'sgk_acik', 'sgk_kesin',
             'depo_acik', 'depo_kesin',
-            'pos_bekleyen', 'emk_bekleyen', 'banka_borc',
-            'faiz_gelir', 'faiz_gider', 'ozkaynak'
+            'pos_bekleyen', 'emk_bekleyen', 'emk_alacak',
+            'kredi_borc', 'faiz_gelir', 'faiz_gider', 'ozkaynak'
         )
 
         tree = ttk.Treeview(container, columns=columns, show='headings',
@@ -730,12 +758,12 @@ class MFAnalizGUI:
             'banka': ('Banka', 70),
             'sgk_acik': ('SGK Açk', 65),
             'sgk_kesin': ('SGK Ksn', 65),
-            'muayene_borc': ('Mua Brç', 60),
             'depo_acik': ('Dpo Açk', 65),
             'depo_kesin': ('Dpo Ksn', 65),
             'pos_bekleyen': ('POS Bkl', 60),
             'emk_bekleyen': ('Emk Bkl', 60),
-            'banka_borc': ('Bnk Brç', 60),
+            'emk_alacak': ('Emk Alc', 60),
+            'kredi_borc': ('Kredi', 60),
             'faiz_gelir': ('Fz Glr', 50),
             'faiz_gider': ('Fz Gdr', 50),
             'ozkaynak': ('Özkynk', 75)
@@ -753,6 +781,283 @@ class MFAnalizGUI:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.senaryo_trees[idx] = tree
+
+    def _birlesik_hesap_paneli_olustur(self, parent):
+        """Butonların altına birleşik hesap durumu paneli - 4 kategori yan yana, satır satır detay"""
+        # Referanslar
+        self.hesap_treeler = {}
+        self.hesap_toplamlari = {}
+
+        # Ana container - mavi arka plan
+        hesap_frame = tk.Frame(parent, bg=self.colors['panel_bg'])
+        hesap_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # 4 sütunlu grid
+        for i in range(4):
+            hesap_frame.columnconfigure(i, weight=1)
+        hesap_frame.rowconfigure(0, weight=1)
+
+        # Kategori tanımları: (başlık, renk, tip, alacak_mi)
+        kategoriler = [
+            ('SGK FATURALARI', '#0f3460', 'sgk', True),
+            ('DEPO SENETLERİ', '#8b4513', 'depo', False),
+            ('EMEKLİ KATILIM PAYI', '#2e7d32', 'emekli', True),
+            ('BANKA KREDİLERİ', '#c62828', 'kredi', False),
+        ]
+
+        for col, (baslik, renk, tip, alacak_mi) in enumerate(kategoriler):
+            # Kategori kartı
+            kart = tk.Frame(hesap_frame, bg=self.colors['card_bg'], bd=1, relief='solid')
+            kart.grid(row=0, column=col, sticky='nsew', padx=3, pady=3)
+
+            # Başlık
+            header = tk.Frame(kart, bg=renk, height=28)
+            header.pack(fill=tk.X)
+            header.pack_propagate(False)
+            tk.Label(header, text=baslik, font=('Segoe UI', 10, 'bold'),
+                    fg='white', bg=renk).pack(expand=True)
+
+            # Liste container
+            list_frame = tk.Frame(kart, bg=self.colors['card_bg'])
+            list_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+
+            # Mini treeview
+            columns = ('vade', 'tutar')
+            tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=5)
+
+            tree.heading('vade', text='Vade')
+            tree.heading('tutar', text='Tutar')
+            tree.column('vade', width=85, anchor='center')
+            tree.column('tutar', width=90, anchor='e')
+
+            # Tag renkleri
+            tree.tag_configure('acik', foreground='#ffc107')
+            tree.tag_configure('kesin', foreground='#17a2b8')
+
+            # Scrollbar
+            scrollbar = ttk.Scrollbar(list_frame, orient='vertical', command=tree.yview)
+            tree.configure(yscrollcommand=scrollbar.set)
+
+            tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            self.hesap_treeler[tip] = tree
+
+            # Alt toplam satırı
+            toplam_frame = tk.Frame(kart, bg=self.colors['accent2'], padx=5, pady=4)
+            toplam_frame.pack(fill=tk.X)
+
+            renk_toplam = self.colors['success'] if alacak_mi else self.colors['danger']
+            toplam_lbl = tk.Label(toplam_frame, text="TOPLAM: 0.00 TL",
+                                 font=('Segoe UI', 9, 'bold'),
+                                 fg=renk_toplam, bg=self.colors['accent2'])
+            toplam_lbl.pack()
+
+            self.hesap_toplamlari[tip] = toplam_lbl
+
+    def _panel_detay_goster(self, tip, idx, renk, baslik):
+        """Panel detaylarını popup'ta göster - vadeli liste"""
+        if idx not in self.senaryolar:
+            return
+
+        senaryo = self.senaryolar[idx]
+
+        popup = tk.Toplevel(self.root)
+        popup.title(f"{baslik} - Detay")
+        popup.geometry("500x400")
+        popup.configure(bg=self.colors['panel_bg'])
+        popup.transient(self.root)
+
+        # Başlık
+        header = tk.Frame(popup, bg=renk, height=40)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
+        tk.Label(header, text=baslik, font=('Segoe UI', 14, 'bold'),
+                fg='white', bg=renk).pack(expand=True)
+
+        # Liste container
+        list_frame = tk.Frame(popup, bg=self.colors['panel_bg'])
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+
+        # Treeview
+        columns = ('vade', 'tutar', 'durum')
+        tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=12)
+
+        tree.heading('vade', text='Vade Tarihi')
+        tree.heading('tutar', text='Tutar')
+        tree.heading('durum', text='Durum')
+
+        tree.column('vade', width=120, anchor='center')
+        tree.column('tutar', width=150, anchor='e')
+        tree.column('durum', width=150, anchor='center')
+
+        # Verileri doldur
+        toplam = 0
+
+        if tip == 'sgk':
+            # Açık hesaplar (fatura kesilmemiş)
+            for ay_key, tutar in sorted(senaryo.sgk_acik_hesap.items()):
+                tree.insert('', 'end', values=(
+                    f"{ay_key} (Açık)",
+                    f"{tutar:,.2f} TL",
+                    "Fatura Bekliyor"
+                ), tags=('acik',))
+                toplam += tutar
+            # Kesinleşmiş alacaklar
+            for vade, tutar in sorted(senaryo.sgk_alacak.items()):
+                tree.insert('', 'end', values=(
+                    vade.strftime('%d.%m.%Y'),
+                    f"{tutar:,.2f} TL",
+                    "Tahsilat Bekliyor"
+                ), tags=('kesin',))
+                toplam += tutar
+
+        elif tip == 'depo':
+            # Açık hesaplar (senet kesilmemiş)
+            for ay_key, tutar in sorted(senaryo.depo_acik_hesap.items()):
+                tree.insert('', 'end', values=(
+                    f"{ay_key} (Açık)",
+                    f"{tutar:,.2f} TL",
+                    "Senet Bekliyor"
+                ), tags=('acik',))
+                toplam += tutar
+            # Kesinleşmiş borçlar
+            for vade, tutar in sorted(senaryo.depo_borc.items()):
+                tree.insert('', 'end', values=(
+                    vade.strftime('%d.%m.%Y'),
+                    f"{tutar:,.2f} TL",
+                    "Ödeme Bekliyor"
+                ), tags=('kesin',))
+                toplam += tutar
+
+        elif tip == 'emekli':
+            # Bekleyen (ay içi birikim)
+            for key, tutar in sorted(senaryo.emekli_katilim_bekleyen.items()):
+                if isinstance(key, str):
+                    tree.insert('', 'end', values=(
+                        f"{key} (Birikim)",
+                        f"{tutar:,.2f} TL",
+                        "SGK'ya Yazılacak"
+                    ), tags=('acik',))
+                    toplam += tutar
+            # SGK'ya yazılmış alacaklar
+            for vade, tutar in sorted(senaryo.emekli_katilim_alacak.items()):
+                tree.insert('', 'end', values=(
+                    vade.strftime('%d.%m.%Y'),
+                    f"{tutar:,.2f} TL",
+                    "Tahsilat Bekliyor"
+                ), tags=('kesin',))
+                toplam += tutar
+
+        elif tip == 'kredi':
+            # Krediler
+            for cekilis, data in sorted(senaryo.kredi_borclari.items()):
+                if data['kalan'] > 0:
+                    tree.insert('', 'end', values=(
+                        cekilis.strftime('%d.%m.%Y'),
+                        f"{data['kalan']:,.2f} TL",
+                        f"Çekilen: {data['tutar']:,.2f}"
+                    ), tags=('kesin',))
+                    toplam += data['kalan']
+
+        # Tag renkleri
+        tree.tag_configure('acik', foreground='#ffc107')
+        tree.tag_configure('kesin', foreground='#17a2b8')
+
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(list_frame, orient='vertical', command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Toplam
+        toplam_frame = tk.Frame(popup, bg=self.colors['accent2'], padx=15, pady=10)
+        toplam_frame.pack(fill=tk.X, padx=15, pady=5)
+
+        renk_toplam = self.colors['success'] if tip in ['sgk', 'emekli'] else self.colors['danger']
+        tk.Label(toplam_frame, text=f"TOPLAM: {toplam:,.2f} TL",
+                font=('Segoe UI', 12, 'bold'),
+                fg=renk_toplam, bg=self.colors['accent2']).pack()
+
+        # Kapat butonu
+        tk.Button(popup, text="KAPAT", font=('Segoe UI', 10, 'bold'),
+                 bg=self.colors['danger'], fg='white', relief='flat',
+                 cursor='hand2', width=12, command=popup.destroy).pack(pady=10)
+
+    def _ozet_panelleri_guncelle(self, idx, senaryo):
+        """Birleşik hesap durumu panellerini güncelle"""
+        if not hasattr(self, 'hesap_treeler'):
+            return
+
+        treeler = self.hesap_treeler
+        toplamlari = self.hesap_toplamlari
+
+        # ========== SGK ==========
+        if 'sgk' in treeler:
+            tree = treeler['sgk']
+            tree.delete(*tree.get_children())
+            toplam = 0
+
+            # Açık hesaplar (fatura kesilmemiş) - biriken alacaklar
+            for ay_key, tutar in sorted(senaryo.sgk_acik_hesap.items()):
+                tree.insert('', 'end', values=(f"{ay_key} (Brkm)", f"{tutar:,.2f}"), tags=('acik',))
+                toplam += tutar
+            # Kesinleşmiş alacaklar
+            for vade, tutar in sorted(senaryo.sgk_alacak.items()):
+                tree.insert('', 'end', values=(vade.strftime('%d.%m.%Y'), f"{tutar:,.2f}"), tags=('kesin',))
+                toplam += tutar
+
+            toplamlari['sgk'].config(text=f"TOPLAM: {toplam:,.2f} TL")
+
+        # ========== DEPO ==========
+        if 'depo' in treeler:
+            tree = treeler['depo']
+            tree.delete(*tree.get_children())
+            toplam = 0
+
+            # Açık hesaplar (senet kesilmemiş) - biriken borçlar
+            for ay_key, tutar in sorted(senaryo.depo_acik_hesap.items()):
+                tree.insert('', 'end', values=(f"{ay_key} (Brkm)", f"{tutar:,.2f}"), tags=('acik',))
+                toplam += tutar
+            # Kesinleşmiş borçlar (senet kesilmiş)
+            for vade, tutar in sorted(senaryo.depo_borc.items()):
+                tree.insert('', 'end', values=(vade.strftime('%d.%m.%Y'), f"{tutar:,.2f}"), tags=('kesin',))
+                toplam += tutar
+
+            toplamlari['depo'].config(text=f"TOPLAM: {toplam:,.2f} TL")
+
+        # ========== EMEKLİ K.P. ==========
+        if 'emekli' in treeler:
+            tree = treeler['emekli']
+            tree.delete(*tree.get_children())
+            toplam = 0
+
+            # Bekleyen (ay içi birikim)
+            for key, tutar in sorted(senaryo.emekli_katilim_bekleyen.items()):
+                if isinstance(key, str):
+                    tree.insert('', 'end', values=(f"{key} (Brkm)", f"{tutar:,.2f}"), tags=('acik',))
+                    toplam += tutar
+            # SGK'ya yazılmış alacaklar
+            for vade, tutar in sorted(senaryo.emekli_katilim_alacak.items()):
+                tree.insert('', 'end', values=(vade.strftime('%d.%m.%Y'), f"{tutar:,.2f}"), tags=('kesin',))
+                toplam += tutar
+
+            toplamlari['emekli'].config(text=f"TOPLAM: {toplam:,.2f} TL")
+
+        # ========== KREDİ ==========
+        if 'kredi' in treeler:
+            tree = treeler['kredi']
+            tree.delete(*tree.get_children())
+            toplam = 0
+
+            # Krediler
+            for cekilis, data in sorted(senaryo.kredi_borclari.items()):
+                if data['kalan'] > 0:
+                    tree.insert('', 'end', values=(cekilis.strftime('%d.%m.%Y'), f"{data['kalan']:,.2f}"), tags=('kesin',))
+                    toplam += data['kalan']
+
+            toplamlari['kredi'].config(text=f"TOPLAM: {toplam:,.2f} TL")
 
     def _sonraki_sekmeye_kopyala(self, idx):
         """Mevcut sekmenin verilerini sonraki sekmeye kopyala"""
@@ -855,8 +1160,8 @@ class MFAnalizGUI:
         self.ozet_labels = {}
         self.en_karli_label = None
 
-        # === FATURA/SENET TAKIP BOLUMU ===
-        self._fatura_senet_paneli_olustur(parent)
+        # === DETAYLI HESAP DURUMU PANELİ (En altta) ===
+        self._birlesik_hesap_paneli_olustur(parent)
 
     def _fatura_senet_paneli_olustur(self, parent):
         """Fatura ve Senet takip paneli - ikili gorunum (sol: senet, sag: fatura)"""
@@ -1223,8 +1528,8 @@ class MFAnalizGUI:
         tablo_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
 
         # Basliklar
-        basliklar = ['', 'Kasa', 'Mal', 'Banka', 'SGK Açk', 'SGK Ksn', 'Mua Brç',
-                    'Dpo Açk', 'Dpo Ksn', 'POS Bkl', 'Emk Bkl', 'Bnk Brç',
+        basliklar = ['', 'Kasa', 'Mal', 'Banka', 'SGK Açk', 'SGK Ksn',
+                    'Dpo Açk', 'Dpo Ksn', 'POS Bkl', 'Emk Bkl', 'Emk Alc', 'Kredi',
                     'Fz Glr', 'Fz Gdr', 'ÖZKYNK']
 
         for col, baslik_text in enumerate(basliklar):
@@ -1417,6 +1722,7 @@ class MFAnalizGUI:
             if not self._senaryo_baslat(idx):
                 return False
         self.mevcut_gun = 0
+        self.son_simulasyon_tarihi = None
         return True
 
     def _bir_gun_hesapla(self, idx):
@@ -1429,6 +1735,7 @@ class MFAnalizGUI:
 
         gun = self.mevcut_gun
         mevcut_tarih = d['bugun'] + timedelta(days=gun)
+        self.son_simulasyon_tarihi = mevcut_tarih  # Son tarihi kaydet
 
         # ============ ALIM KONTROLÜ (Satıştan önce!) ============
         # Her gün UI'daki güncel alım değerlerini kontrol et
@@ -1469,11 +1776,43 @@ class MFAnalizGUI:
             d['banka'] += d['kasa']
             d['kasa'] = 0
 
-        # Zam kontrolu
-        if d['zam_tarihi'] and mevcut_tarih >= d['zam_tarihi']:
-            d['kamu_fiyat'] *= (1 + d['zam_orani'])
-            d['piyasa_fiyat'] *= (1 + d['zam_orani'])
-            d['zam_tarihi'] = None
+        # Zam kontrolu - her gün vars'tan zam tarihini kontrol et (yeni zam girilmiş olabilir)
+        vars = self.senaryo_vars[idx]
+        if vars['zam_tarihi'].get().strip():
+            try:
+                yeni_zam_tarihi = datetime.strptime(vars['zam_tarihi'].get(), "%d.%m.%Y")
+                yeni_zam_orani = float(vars['zam_orani'].get()) / 100
+                # Zam tarihi geldiyse ve bu zam daha önce uygulanmadıysa
+                if mevcut_tarih >= yeni_zam_tarihi and d.get('son_uygulanan_zam') != yeni_zam_tarihi:
+                    zam_carpani = 1 + yeni_zam_orani
+                    eski_depocu = d['depocu_fiyat']
+                    eski_kamu = d['kamu_fiyat']
+                    eski_piyasa = d['piyasa_fiyat']
+                    eski_fark = d['ilac_farki']
+
+                    d['depocu_fiyat'] *= zam_carpani
+                    d['kamu_fiyat'] *= zam_carpani
+                    d['piyasa_fiyat'] *= zam_carpani
+                    d['ilac_farki'] *= zam_carpani
+
+                    # GUI textbox'ları güncelle
+                    vars['depocu_fiyat'].set(f"{d['depocu_fiyat']:.2f}")
+                    vars['kamu_fiyat'].set(f"{d['kamu_fiyat']:.2f}")
+                    vars['piyasa_fiyat'].set(f"{d['piyasa_fiyat']:.2f}")
+                    vars['ilac_farki'].set(f"{d['ilac_farki']:.2f}")
+
+                    # Bildirim ekle
+                    self._bildirim_ekle('zam', yeni_zam_orani * 100,
+                        f"ZAM UYGULANDI (%{yeni_zam_orani*100:.1f})\n"
+                        f"DSF: {eski_depocu:.2f} → {d['depocu_fiyat']:.2f}\n"
+                        f"KSF: {eski_kamu:.2f} → {d['kamu_fiyat']:.2f}\n"
+                        f"PSF: {eski_piyasa:.2f} → {d['piyasa_fiyat']:.2f}\n"
+                        f"Fark: {eski_fark:.2f} → {d['ilac_farki']:.2f}",
+                        '#ff9800')
+
+                    d['son_uygulanan_zam'] = yeni_zam_tarihi  # Bu zamı bir daha uygulama
+            except:
+                pass
 
         # ============ STOK KONTROLÜ VE SATIŞ ============
         tarih_str = mevcut_tarih.strftime("%d.%m.%Y")
@@ -1603,12 +1942,12 @@ class MFAnalizGUI:
             senaryo.muayene_acik_borc[ay_key] = 0
         senaryo.muayene_acik_borc[ay_key] += muayene_tutar
 
-        # ============ EMEKLI KATILIM (2 ay sonra, ay sonu) ============
-        # Ornegin Ocak satisi -> 31 Mart
-        emekli_odeme = (mevcut_tarih.replace(day=1) + relativedelta(months=3)) - timedelta(days=1)
-        if emekli_odeme not in senaryo.emekli_katilim_bekleyen:
-            senaryo.emekli_katilim_bekleyen[emekli_odeme] = 0
-        senaryo.emekli_katilim_bekleyen[emekli_odeme] += emekli_katilim
+        # ============ EMEKLI KATILIM (ay içi birikir, ay başında SGK'ya yazılır) ============
+        # Emekli katılım payı ay içinde birikir, ayın 1'inde SGK'ya alacak olarak yazılır
+        emekli_ay_key = mevcut_tarih.strftime("%Y-%m")
+        if emekli_ay_key not in senaryo.emekli_katilim_bekleyen:
+            senaryo.emekli_katilim_bekleyen[emekli_ay_key] = 0
+        senaryo.emekli_katilim_bekleyen[emekli_ay_key] += emekli_katilim
 
         # ============ AYIN 1'İ İŞLEMLERİ (Fatura & Senet Kesimi) ============
         if mevcut_tarih.day == 1:
@@ -1619,80 +1958,181 @@ class MFAnalizGUI:
             sgk_fatura_tutar = 0
             muayene_borc_tutar = 0
             depo_senet_tutar = 0
+            emekli_kp_tutar = 0
 
-            # --- SGK Fatura Kesimi (önceki ay açık hesap -> kesinleşmiş alacak) ---
+            # --- Muayene Borcu (SGK faturasından mahsup edilecek) ---
+            if onceki_ay_key in senaryo.muayene_acik_borc:
+                muayene_borc_tutar = senaryo.muayene_acik_borc.pop(onceki_ay_key)
+
+            # --- SGK Fatura Kesimi (önceki ay açık hesap - muayene mahsubu = net alacak) ---
             if onceki_ay_key in senaryo.sgk_acik_hesap:
-                sgk_fatura_tutar = senaryo.sgk_acik_hesap.pop(onceki_ay_key)
-                # 90 gün sonra tahsil edilecek (15'inde)
-                tahsil_tarihi = mevcut_tarih + timedelta(days=90)
-                # Ayın 15'ine yuvarla
+                sgk_brut = senaryo.sgk_acik_hesap.pop(onceki_ay_key)
+                # Muayene tutarı SGK'dan mahsup edilir
+                sgk_fatura_tutar = sgk_brut - muayene_borc_tutar
+                # 75 gün sonra tahsil edilecek (ayın 15'inde)
+                tahsil_tarihi = mevcut_tarih + timedelta(days=75)
                 tahsil_tarihi = tahsil_tarihi.replace(day=15)
                 if tahsil_tarihi not in senaryo.sgk_alacak:
                     senaryo.sgk_alacak[tahsil_tarihi] = 0
                 senaryo.sgk_alacak[tahsil_tarihi] += sgk_fatura_tutar
+                # Bildirim ekle
+                ay_adi = onceki_ay.strftime("%B")
+                self._bildirim_ekle('sgk_fatura', sgk_fatura_tutar,
+                    f"SGK Faturası Kesildi ({ay_adi}) - Tahsil: {tahsil_tarihi.strftime('%d.%m.%Y')}",
+                    '#17a2b8')
 
-            # --- Muayene Borcu Kesimi (önceki ay açık -> kesinleşmiş borç) ---
-            if onceki_ay_key in senaryo.muayene_acik_borc:
-                muayene_borc_tutar = senaryo.muayene_acik_borc.pop(onceki_ay_key)
-                # SGK alacağından mahsup edilecek (aynı tarihte)
-                tahsil_tarihi = mevcut_tarih + timedelta(days=90)
-                tahsil_tarihi = tahsil_tarihi.replace(day=15)
-                if tahsil_tarihi not in senaryo.muayene_borc:
-                    senaryo.muayene_borc[tahsil_tarihi] = 0
-                senaryo.muayene_borc[tahsil_tarihi] += muayene_borc_tutar
+            # --- Emekli Katılım Payı (SGK'ya alacak olarak yazılır) ---
+            # Önceki ayda biriken emekli katılım payları
+            emekli_kp_tutar = 0
+            for tarih_key in list(senaryo.emekli_katilim_bekleyen.keys()):
+                if isinstance(tarih_key, str) and tarih_key == onceki_ay_key:
+                    emekli_kp_tutar += senaryo.emekli_katilim_bekleyen.pop(tarih_key)
 
-            # --- Depo Senet Kesimi (önceki ay açık hesap -> kesinleşmiş borç) ---
+            if emekli_kp_tutar > 0:
+                # Ayın son günü vadeli (yaklaşık 60 gün sonra)
+                # Örn: 1 Şubat'ta yazılır -> 31 Mart vadeli
+                vade_tarihi = (mevcut_tarih.replace(day=1) + relativedelta(months=2)) - timedelta(days=1)
+                if vade_tarihi not in senaryo.emekli_katilim_alacak:
+                    senaryo.emekli_katilim_alacak[vade_tarihi] = 0
+                senaryo.emekli_katilim_alacak[vade_tarihi] += emekli_kp_tutar
+                # Bildirim ekle
+                self._bildirim_ekle('emekli_kp_yaz', emekli_kp_tutar,
+                    f"Emekli K.P. SGK'ya Yazıldı - Vade: {vade_tarihi.strftime('%d.%m.%Y')}",
+                    '#2e7d32')
+
+            # --- Depo Senet Kesimi (SGK tahsilat tarihiyle aynı gün ödeme) ---
             if onceki_ay_key in senaryo.depo_acik_hesap:
                 depo_senet_tutar = senaryo.depo_acik_hesap.pop(onceki_ay_key)
-                # Vade: ayın 15'i + 90 gün
-                odeme_tarihi = mevcut_tarih + timedelta(days=d['vade'])
+                # SGK ile aynı tarihte ödeme (önce SGK yatar, sonra depo ödenir)
+                odeme_tarihi = mevcut_tarih + timedelta(days=75)
                 odeme_tarihi = odeme_tarihi.replace(day=15)
                 if odeme_tarihi not in senaryo.depo_borc:
                     senaryo.depo_borc[odeme_tarihi] = 0
                 senaryo.depo_borc[odeme_tarihi] += depo_senet_tutar
+                # Bildirim ekle
+                ay_adi = onceki_ay.strftime("%B")
+                self._bildirim_ekle('depo_senet', depo_senet_tutar,
+                    f"Depo Senedi Kesildi ({ay_adi}) - Ödeme: {odeme_tarihi.strftime('%d.%m.%Y')}",
+                    '#8b4513')
 
-            # --- POPUP PENCERELER ---
-            if sgk_fatura_tutar > 0 or depo_senet_tutar > 0:
-                self._ay_basi_popup_goster(mevcut_tarih, onceki_ay,
-                                          sgk_fatura_tutar, muayene_borc_tutar, depo_senet_tutar,
-                                          d['vade'])
+            # --- BİLDİRİMLERİ GÖSTER (ay başı işlemleri) ---
+            if self.gunluk_bildirimler:
+                self._bildirimleri_goster(mevcut_tarih)
 
-        # Kredi karti tahsilatlari
+        # Kredi karti tahsilatlari (Blokeli POS)
         for tarih in list(senaryo.kredi_karti_bekleyen.keys()):
             if tarih <= mevcut_tarih:
-                d['banka'] += senaryo.kredi_karti_bekleyen.pop(tarih)
+                pos_tutar = senaryo.kredi_karti_bekleyen.pop(tarih)
+                d['banka'] += pos_tutar
+                # Bildirim ekle
+                self._bildirim_ekle('pos_tahsil', pos_tutar,
+                    "POS Blokesi Çözüldü - Bankaya Yatırıldı",
+                    self.colors['success'])
 
-        # Emekli katilim tahsilatlari
-        for tarih in list(senaryo.emekli_katilim_bekleyen.keys()):
+        # Emekli Katılım Payı Alacağı tahsilatları (SGK'dan gelen)
+        for tarih in list(senaryo.emekli_katilim_alacak.keys()):
             if tarih <= mevcut_tarih:
-                d['banka'] += senaryo.emekli_katilim_bekleyen.pop(tarih)
+                emk_tutar = senaryo.emekli_katilim_alacak.pop(tarih)
+                d['banka'] += emk_tutar
+                # Bildirim ekle
+                self._bildirim_ekle('emekli_tahsil', emk_tutar,
+                    "Emekli Katılım Payı Tahsil Edildi (SGK'dan)",
+                    self.colors['success'])
 
-        # SGK tahsilatlari (muayene borcu mahsup edilir)
+        # ============ SGK + DEPO İŞLEMLERİ (Aynı gün, sıralı) ============
+        # Önce SGK tahsil edilir, sonra depo ödenir (hesap eksiye düşmesin)
         for tarih in list(senaryo.sgk_alacak.keys()):
             if tarih <= mevcut_tarih:
+                # 1) SGK tahsilatı bankaya girer
                 sgk_tahsilat = senaryo.sgk_alacak.pop(tarih)
-                # Aynı tarihteki muayene borcunu düş (mahsuplaşma)
-                muayene_kesinti = senaryo.muayene_borc.pop(tarih, 0)
-                net_tahsilat = sgk_tahsilat - muayene_kesinti
-                d['banka'] += net_tahsilat
+                d['banka'] += sgk_tahsilat
+                # Bildirim ekle
+                self._bildirim_ekle('sgk_tahsil', sgk_tahsilat,
+                    "SGK Fatura Tahsilatı - Bankaya Yatırıldı",
+                    self.colors['success'])
 
-        # Depo odemeleri
+                # 2) Aynı tarihteki depo borcu ödenir
+                if tarih in senaryo.depo_borc:
+                    depo_odeme = senaryo.depo_borc.pop(tarih)
+                    if d['banka'] >= depo_odeme:
+                        d['banka'] -= depo_odeme
+                        # Bildirim ekle
+                        self._bildirim_ekle('depo_odeme', depo_odeme,
+                            "Depo Senedi Ödendi - Bankadan Çıkış",
+                            self.colors['danger'])
+                    else:
+                        # Eksik kısım için bankadan kredi çekilir
+                        eksik = depo_odeme - d['banka']
+                        onceki_banka = d['banka']
+                        d['banka'] = 0
+                        d['banka_borc'] += eksik
+                        # Kredi kaydı tut
+                        if mevcut_tarih not in senaryo.kredi_borclari:
+                            senaryo.kredi_borclari[mevcut_tarih] = {'tutar': 0, 'kalan': 0}
+                        senaryo.kredi_borclari[mevcut_tarih]['tutar'] += eksik
+                        senaryo.kredi_borclari[mevcut_tarih]['kalan'] += eksik
+                        # Bildirimler ekle
+                        if onceki_banka > 0:
+                            self._bildirim_ekle('depo_odeme', onceki_banka,
+                                "Depo Senedi Kısmi Ödeme - Bankadan Çıkış",
+                                self.colors['danger'])
+                        self._bildirim_ekle('kredi_cek', eksik,
+                            f"BANKADAN KREDİ ÇEKİLDİ - Depo ödemesi için",
+                            self.colors['warning'])
+                        self._bildirim_ekle('depo_odeme', eksik,
+                            "Depo Senedi Kalan Ödeme - Krediden",
+                            self.colors['danger'])
+
+        # SGK tarihi dışında kalan depo ödemeleri (olmamalı ama güvenlik için)
         for tarih in list(senaryo.depo_borc.keys()):
             if tarih <= mevcut_tarih:
                 borc = senaryo.depo_borc.pop(tarih)
                 if d['banka'] >= borc:
                     d['banka'] -= borc
+                    self._bildirim_ekle('depo_odeme', borc,
+                        "Depo Senedi Ödendi - Bankadan Çıkış",
+                        self.colors['danger'])
                 else:
-                    # Eksik kisim icin kredi
                     eksik = borc - d['banka']
+                    onceki_banka = d['banka']
                     d['banka'] = 0
                     d['banka_borc'] += eksik
+                    if mevcut_tarih not in senaryo.kredi_borclari:
+                        senaryo.kredi_borclari[mevcut_tarih] = {'tutar': 0, 'kalan': 0}
+                    senaryo.kredi_borclari[mevcut_tarih]['tutar'] += eksik
+                    senaryo.kredi_borclari[mevcut_tarih]['kalan'] += eksik
+                    if onceki_banka > 0:
+                        self._bildirim_ekle('depo_odeme', onceki_banka,
+                            "Depo Senedi Kısmi Ödeme - Bankadan Çıkış",
+                            self.colors['danger'])
+                    self._bildirim_ekle('kredi_cek', eksik,
+                        f"BANKADAN KREDİ ÇEKİLDİ - Depo ödemesi için",
+                        self.colors['warning'])
 
-        # Banka borcu odeme (kasada/bankada para varsa)
+        # ============ KREDİ OTOMATİK ÖDEME ============
+        # Banka bakiyesi pozitife geçince kredi otomatik ödenir
         if d['banka_borc'] > 0 and d['banka'] > 0:
             odeme = min(d['banka_borc'], d['banka'])
             d['banka'] -= odeme
             d['banka_borc'] -= odeme
+            # Bildirim ekle
+            self._bildirim_ekle('kredi_ode', odeme,
+                "Banka Kredisi Otomatik Ödendi",
+                '#9c27b0')
+            # Kredi kayıtlarını güncelle (FIFO - ilk çekilen ilk ödenir)
+            kalan_odeme = odeme
+            for kredi_tarih in sorted(senaryo.kredi_borclari.keys()):
+                if kalan_odeme <= 0:
+                    break
+                kredi = senaryo.kredi_borclari[kredi_tarih]
+                if kredi['kalan'] > 0:
+                    bu_odeme = min(kredi['kalan'], kalan_odeme)
+                    kredi['kalan'] -= bu_odeme
+                    kalan_odeme -= bu_odeme
+
+        # ============ TAHSİLAT/ÖDEME BİLDİRİMLERİNİ GÖSTER ============
+        if self.gunluk_bildirimler:
+            self._bildirimleri_goster(mevcut_tarih)
 
         # Faiz hesaplari
         if d['banka'] > 0:
@@ -1709,30 +2149,37 @@ class MFAnalizGUI:
         # Açık ve Kesin hesapları ayrı hesapla
         sgk_acik_toplam = sum(senaryo.sgk_acik_hesap.values())      # Fatura kesilmemiş
         sgk_kesin_toplam = sum(senaryo.sgk_alacak.values())         # Fatura kesilmiş
-        muayene_borc_toplam = sum(senaryo.muayene_acik_borc.values()) + sum(senaryo.muayene_borc.values())  # SGK'ya borç
+        muayene_borc_toplam = sum(senaryo.muayene_acik_borc.values())  # Mahsup bekleyen (ay içi)
         depo_acik_toplam = sum(senaryo.depo_acik_hesap.values())    # Senet kesilmemiş
         depo_kesin_toplam = sum(senaryo.depo_borc.values())         # Senet kesilmiş
         pos_bekleyen_toplam = sum(senaryo.kredi_karti_bekleyen.values())  # Blokeli POS
-        emk_bekleyen_toplam = sum(senaryo.emekli_katilim_bekleyen.values())
+        # Emekli katılım: ay içi bekleyen + SGK'ya yazılmış alacak
+        emk_bekleyen_toplam = sum(v for k, v in senaryo.emekli_katilim_bekleyen.items() if isinstance(k, str))
+        emk_alacak_toplam = sum(senaryo.emekli_katilim_alacak.values())  # SGK'ya yazılmış
+        # Kredi borçları toplamı
+        kredi_toplam = sum(k['kalan'] for k in senaryo.kredi_borclari.values())
 
-        # Stok degeri
-        mal_degeri = d['stok'] * d['birim_maliyet']
+        # Stok degeri (güncel depocu fiyatı ile)
+        mal_degeri = d['stok'] * d['depocu_fiyat']
 
         # Ozkaynak (tüm alacaklar - tüm borçlar)
-        # SGK net alacak = SGK alacak - Muayene borcu
         sgk_toplam = sgk_acik_toplam + sgk_kesin_toplam
         depo_toplam = depo_acik_toplam + depo_kesin_toplam
-        aktifler = d['kasa'] + d['banka'] + sgk_toplam + pos_bekleyen_toplam + emk_bekleyen_toplam + mal_degeri
-        pasifler = depo_toplam + muayene_borc_toplam + d['banka_borc']
+        emk_toplam = emk_bekleyen_toplam + emk_alacak_toplam
+        # Aktifler: Kasa + Banka + SGK Alacak + POS Bekleyen + Emekli K.P. + Mal
+        # NOT: SGK'dan muayene mahsup edildiği için sgk_toplam zaten net değer
+        aktifler = d['kasa'] + d['banka'] + sgk_toplam + pos_bekleyen_toplam + emk_toplam + mal_degeri
+        # Pasifler: Depo Borç + Banka Kredisi (muayene artık mahsup edildiği için borç değil)
+        pasifler = depo_toplam + d['banka_borc']
         ozkaynak = aktifler - pasifler
 
         # Data grid'e ekle
         self._satir_ekle(idx, gun + 1, mevcut_tarih, d['stok'], satis_miktari,
                         d['kasa'], d['banka'],
-                        sgk_acik_toplam, sgk_kesin_toplam, muayene_borc_toplam,
+                        sgk_acik_toplam, sgk_kesin_toplam,
                         depo_acik_toplam, depo_kesin_toplam,
-                        pos_bekleyen_toplam, emk_bekleyen_toplam, d['banka_borc'],
-                        d['toplam_faiz_gelir'], d['toplam_faiz_gider'], ozkaynak)
+                        pos_bekleyen_toplam, emk_bekleyen_toplam, emk_alacak_toplam,
+                        kredi_toplam, d['toplam_faiz_gelir'], d['toplam_faiz_gider'], ozkaynak)
 
         # Ozet guncelle
         senaryo.ozet = {
@@ -1741,25 +2188,29 @@ class MFAnalizGUI:
             'banka': d['banka'],
             'sgk_acik': sgk_acik_toplam,
             'sgk_kesin': sgk_kesin_toplam,
-            'muayene_borc': muayene_borc_toplam,
             'depo_acik': depo_acik_toplam,
             'depo_kesin': depo_kesin_toplam,
             'pos_bekleyen': pos_bekleyen_toplam,
             'emk_bekleyen': emk_bekleyen_toplam,
+            'emk_alacak': emk_alacak_toplam,
+            'kredi_borc': kredi_toplam,
             'banka_borc': d['banka_borc'],
             'faiz_gelir': d['toplam_faiz_gelir'],
             'faiz_gider': d['toplam_faiz_gider'],
             'ozkaynak': ozkaynak,
         }
 
+        # Özet panelleri güncelle
+        self._ozet_panelleri_guncelle(idx, senaryo)
+
         # Her zaman devam et - kullanıcı alım ekleyebilir
         return True
 
     def _satir_ekle(self, idx, gun, tarih, stok, satis, kasa, banka,
-                   sgk_acik, sgk_kesin, muayene_borc,
+                   sgk_acik, sgk_kesin,
                    depo_acik, depo_kesin,
-                   pos_bekleyen, emk_bekleyen, banka_borc,
-                   faiz_gelir, faiz_gider, ozkaynak):
+                   pos_bekleyen, emk_bekleyen, emk_alacak,
+                   kredi_borc, faiz_gelir, faiz_gider, ozkaynak):
         """Data grid'e satir ekle"""
         if idx in self.senaryo_trees:
             tree = self.senaryo_trees[idx]
@@ -1772,12 +2223,12 @@ class MFAnalizGUI:
                 f"{banka:.2f}",
                 f"{sgk_acik:.2f}",
                 f"{sgk_kesin:.2f}",
-                f"{muayene_borc:.2f}",
                 f"{depo_acik:.2f}",
                 f"{depo_kesin:.2f}",
                 f"{pos_bekleyen:.2f}",
                 f"{emk_bekleyen:.2f}",
-                f"{banka_borc:.2f}",
+                f"{emk_alacak:.2f}",
+                f"{kredi_borc:.2f}",
                 f"{faiz_gelir:.2f}",
                 f"{faiz_gider:.2f}",
                 f"{ozkaynak:.2f}"
@@ -1808,12 +2259,12 @@ class MFAnalizGUI:
                     ozet.get('banka', 0),
                     ozet.get('sgk_acik', 0),
                     ozet.get('sgk_kesin', 0),
-                    ozet.get('muayene_borc', 0),
                     ozet.get('depo_acik', 0),
                     ozet.get('depo_kesin', 0),
                     ozet.get('pos_bekleyen', 0),
                     ozet.get('emk_bekleyen', 0),
-                    ozet.get('banka_borc', 0),
+                    ozet.get('emk_alacak', 0),
+                    ozet.get('kredi_borc', 0),
                     ozet.get('faiz_gelir', 0),
                     ozet.get('faiz_gider', 0),
                     ozet.get('ozkaynak', 0),
@@ -1957,6 +2408,7 @@ class MFAnalizGUI:
         """Tum verileri sifirla"""
         self.simulasyon_calisyor = False
         self.mevcut_gun = 0
+        self.son_simulasyon_tarihi = None
         self.mevcut_gun_label.config(text="0")
 
         # Tum senaryolari sifirla
@@ -1975,12 +2427,162 @@ class MFAnalizGUI:
         if self.en_karli_label:
             self.en_karli_label.config(text="")
 
-    def _ay_basi_popup_goster(self, mevcut_tarih, onceki_ay, sgk_fatura, muayene_borc, depo_senet, vade):
+    # ==================== HESAP HAREKETİ BİLDİRİM SİSTEMİ ====================
+
+    def _bildirim_ekle(self, tip, tutar, aciklama, renk='#17a2b8'):
+        """Günlük bildirimlere yeni hareket ekle"""
+        self.gunluk_bildirimler.append({
+            'tip': tip,
+            'tutar': tutar,
+            'aciklama': aciklama,
+            'renk': renk
+        })
+
+    def _bildirimleri_goster(self, tarih):
+        """Biriken bildirimleri popup'ta göster ve listeyi temizle"""
+        if not self.gunluk_bildirimler:
+            return
+
+        # Simülasyon duraklatılsın
+        self.uyari_bekliyor = True
+
+        popup = tk.Toplevel(self.root)
+        popup.title(f"HESAP HAREKETLERİ - {tarih.strftime('%d.%m.%Y')}")
+        popup.geometry("550x450")
+        popup.configure(bg=self.colors['panel_bg'])
+        popup.transient(self.root)
+        popup.grab_set()
+
+        # Başlık
+        baslik = tk.Label(popup,
+                         text=f"📊 {tarih.strftime('%d.%m.%Y')} TARİHLİ HESAP HAREKETLERİ",
+                         font=('Segoe UI', 14, 'bold'),
+                         fg=self.colors['accent'], bg=self.colors['panel_bg'])
+        baslik.pack(pady=15)
+
+        # Scrollable container
+        canvas_frame = tk.Frame(popup, bg=self.colors['panel_bg'])
+        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+
+        canvas = tk.Canvas(canvas_frame, bg=self.colors['panel_bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['panel_bg'])
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Toplam hesapları
+        toplam_giris = 0
+        toplam_cikis = 0
+
+        # Her bildirim için kart oluştur
+        for bildirim in self.gunluk_bildirimler:
+            kart = tk.Frame(scrollable_frame, bg=self.colors['card_bg'], bd=1, relief='solid')
+            kart.pack(fill=tk.X, pady=3, padx=5)
+
+            # Sol: tip ikonu ve açıklama
+            sol = tk.Frame(kart, bg=self.colors['card_bg'])
+            sol.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10, pady=8)
+
+            # İkon belirle
+            ikon_map = {
+                'sgk_fatura': '📄',
+                'depo_senet': '📝',
+                'emekli_kp_yaz': '💰',
+                'sgk_tahsil': '✅',
+                'depo_odeme': '💳',
+                'emekli_tahsil': '💵',
+                'kredi_cek': '🏦',
+                'kredi_ode': '✔️',
+                'pos_tahsil': '💳',
+                'zam': '📈',
+            }
+            ikon = ikon_map.get(bildirim['tip'], '📌')
+
+            tk.Label(sol, text=f"{ikon} {bildirim['aciklama']}",
+                    font=('Segoe UI', 10),
+                    fg=self.colors['text'], bg=self.colors['card_bg'],
+                    anchor='w').pack(side=tk.LEFT)
+
+            # Sağ: tutar
+            sag = tk.Frame(kart, bg=self.colors['card_bg'])
+            sag.pack(side=tk.RIGHT, padx=10, pady=8)
+
+            # Tutar rengi (giriş yeşil, çıkış kırmızı)
+            tutar_renk = bildirim['renk']
+            tutar_text = f"{bildirim['tutar']:,.2f} TL"
+
+            # Giriş/çıkış hesabı
+            if bildirim['tip'] in ['sgk_tahsil', 'emekli_tahsil', 'pos_tahsil', 'kredi_cek']:
+                toplam_giris += bildirim['tutar']
+                tutar_text = f"+{tutar_text}"
+            elif bildirim['tip'] in ['depo_odeme', 'kredi_ode']:
+                toplam_cikis += bildirim['tutar']
+                tutar_text = f"-{tutar_text}"
+
+            tk.Label(sag, text=tutar_text,
+                    font=('Segoe UI', 11, 'bold'),
+                    fg=tutar_renk, bg=self.colors['card_bg']).pack(side=tk.RIGHT)
+
+        # Özet satırı
+        ozet_frame = tk.Frame(popup, bg=self.colors['accent2'], padx=15, pady=10)
+        ozet_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        ozet_row = tk.Frame(ozet_frame, bg=self.colors['accent2'])
+        ozet_row.pack(fill=tk.X)
+
+        if toplam_giris > 0:
+            tk.Label(ozet_row, text=f"Toplam Giriş: +{toplam_giris:,.2f} TL",
+                    font=('Segoe UI', 10, 'bold'),
+                    fg=self.colors['success'], bg=self.colors['accent2']).pack(side=tk.LEFT, padx=10)
+
+        if toplam_cikis > 0:
+            tk.Label(ozet_row, text=f"Toplam Çıkış: -{toplam_cikis:,.2f} TL",
+                    font=('Segoe UI', 10, 'bold'),
+                    fg=self.colors['danger'], bg=self.colors['accent2']).pack(side=tk.LEFT, padx=10)
+
+        net = toplam_giris - toplam_cikis
+        net_renk = self.colors['success'] if net >= 0 else self.colors['danger']
+        net_text = f"+{net:,.2f}" if net >= 0 else f"{net:,.2f}"
+        tk.Label(ozet_row, text=f"Net: {net_text} TL",
+                font=('Segoe UI', 10, 'bold'),
+                fg=net_renk, bg=self.colors['accent2']).pack(side=tk.RIGHT, padx=10)
+
+        # Tamam butonu
+        def kapat():
+            self.uyari_bekliyor = False
+            popup.destroy()
+
+        tamam_btn = tk.Button(popup, text="TAMAM",
+                             font=('Segoe UI', 11, 'bold'),
+                             bg=self.colors['info'], fg='white',
+                             relief='flat', cursor='hand2', width=15,
+                             command=kapat)
+        tamam_btn.pack(pady=15)
+
+        # Bildirimleri temizle
+        self.gunluk_bildirimler = []
+
+        # Pencere kapatılınca da flag sıfırlansın
+        popup.protocol("WM_DELETE_WINDOW", kapat)
+
+        # Pencereyi bekle
+        popup.wait_window()
+
+    def _ay_basi_popup_goster(self, mevcut_tarih, onceki_ay, sgk_fatura, muayene_borc, depo_senet, emekli_kp, vade):
         """Ayın 1'inde SGK fatura ve Depo senet bilgilerini popup pencerede göster"""
         # Ana popup pencere
         popup = tk.Toplevel(self.root)
         popup.title(f"AY BAŞI BİLDİRİMİ - {mevcut_tarih.strftime('%d.%m.%Y')}")
-        popup.geometry("600x450")
+        popup.geometry("600x550")
         popup.configure(bg=self.colors['panel_bg'])
         popup.transient(self.root)
         popup.grab_set()
@@ -2038,14 +2640,14 @@ class MFAnalizGUI:
                 tk.Label(row3, text=f"{net_alacak:,.2f} TL", font=('Segoe UI', 12, 'bold'),
                         fg=self.colors['info'], bg=self.colors['card_bg']).pack(side=tk.RIGHT)
 
-            # Tahsil tarihi
-            tahsil_tarihi = mevcut_tarih + timedelta(days=90)
+            # Tahsil tarihi (75 gün)
+            tahsil_tarihi = mevcut_tarih + timedelta(days=75)
             tahsil_tarihi = tahsil_tarihi.replace(day=15)
             row4 = tk.Frame(sgk_content, bg=self.colors['card_bg'])
             row4.pack(fill=tk.X, pady=5)
             tk.Label(row4, text="Tahsil Tarihi:", font=('Segoe UI', 11),
                     fg=self.colors['text_dim'], bg=self.colors['card_bg']).pack(side=tk.LEFT)
-            tk.Label(row4, text=f"📅 {tahsil_tarihi.strftime('%d.%m.%Y')} (~90 gün)",
+            tk.Label(row4, text=f"📅 {tahsil_tarihi.strftime('%d.%m.%Y')} (75 gün)",
                     font=('Segoe UI', 11, 'bold'),
                     fg=self.colors['warning'], bg=self.colors['card_bg']).pack(side=tk.RIGHT)
 
@@ -2072,14 +2674,47 @@ class MFAnalizGUI:
             tk.Label(row1, text=f"{depo_senet:,.2f} TL", font=('Segoe UI', 12, 'bold'),
                     fg=self.colors['danger'], bg=self.colors['card_bg']).pack(side=tk.RIGHT)
 
-            # Ödeme tarihi
-            odeme_tarihi = mevcut_tarih + timedelta(days=vade)
+            # Ödeme tarihi (SGK ile aynı gün - 75 gün)
+            odeme_tarihi = mevcut_tarih + timedelta(days=75)
             odeme_tarihi = odeme_tarihi.replace(day=15)
             row2 = tk.Frame(depo_content, bg=self.colors['card_bg'])
             row2.pack(fill=tk.X, pady=5)
             tk.Label(row2, text="Ödeme Tarihi:", font=('Segoe UI', 11),
                     fg=self.colors['text_dim'], bg=self.colors['card_bg']).pack(side=tk.LEFT)
-            tk.Label(row2, text=f"📅 {odeme_tarihi.strftime('%d.%m.%Y')} ({vade} gün vade)",
+            tk.Label(row2, text=f"📅 {odeme_tarihi.strftime('%d.%m.%Y')} (SGK ile aynı gün)",
+                    font=('Segoe UI', 11, 'bold'),
+                    fg=self.colors['warning'], bg=self.colors['card_bg']).pack(side=tk.RIGHT)
+
+        # ==================== EMEKLİ KATILIM PAYI BÖLÜMÜ ====================
+        if emekli_kp > 0:
+            emk_frame = tk.Frame(container, bg=self.colors['card_bg'], bd=2, relief='solid')
+            emk_frame.pack(fill=tk.X, pady=10)
+
+            emk_header = tk.Frame(emk_frame, bg='#2e7d32', height=35)
+            emk_header.pack(fill=tk.X)
+            emk_header.pack_propagate(False)
+            tk.Label(emk_header, text="💰 EMEKLİ KATILIM PAYI SGK'YA YAZILDI",
+                    font=('Segoe UI', 12, 'bold'),
+                    fg='white', bg='#2e7d32').pack(expand=True)
+
+            emk_content = tk.Frame(emk_frame, bg=self.colors['card_bg'], padx=15, pady=15)
+            emk_content.pack(fill=tk.X)
+
+            # Tutar
+            row1 = tk.Frame(emk_content, bg=self.colors['card_bg'])
+            row1.pack(fill=tk.X, pady=5)
+            tk.Label(row1, text="Emekli K.P. Alacağı:", font=('Segoe UI', 11),
+                    fg=self.colors['text_dim'], bg=self.colors['card_bg']).pack(side=tk.LEFT)
+            tk.Label(row1, text=f"{emekli_kp:,.2f} TL", font=('Segoe UI', 12, 'bold'),
+                    fg=self.colors['success'], bg=self.colors['card_bg']).pack(side=tk.RIGHT)
+
+            # Vade tarihi (ayın son günü, yaklaşık 60 gün)
+            vade_tarihi = (mevcut_tarih.replace(day=1) + relativedelta(months=2)) - timedelta(days=1)
+            row2 = tk.Frame(emk_content, bg=self.colors['card_bg'])
+            row2.pack(fill=tk.X, pady=5)
+            tk.Label(row2, text="Tahsil Tarihi:", font=('Segoe UI', 11),
+                    fg=self.colors['text_dim'], bg=self.colors['card_bg']).pack(side=tk.LEFT)
+            tk.Label(row2, text=f"📅 {vade_tarihi.strftime('%d.%m.%Y')} (ayın son günü)",
                     font=('Segoe UI', 11, 'bold'),
                     fg=self.colors['warning'], bg=self.colors['card_bg']).pack(side=tk.RIGHT)
 
@@ -2088,7 +2723,8 @@ class MFAnalizGUI:
         bilgi_frame.pack(fill=tk.X, pady=15)
         tk.Label(bilgi_frame,
                 text="ℹ️ Açık hesaplar kesinleşmiş hesaplara dönüştürüldü.\n" +
-                     "SGK alacağından muayene borcu mahsup edilecektir.",
+                     "SGK faturasından muayene borcu mahsup edilmiştir.\n" +
+                     "Depo ödemesi SGK tahsilatı ile aynı gün yapılacaktır.",
                 font=('Segoe UI', 10),
                 fg=self.colors['text'], bg=self.colors['accent2'],
                 justify='center').pack()
