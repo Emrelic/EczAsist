@@ -48,6 +48,9 @@ class SenaryoVerileri:
         # ========== KREDİ TAKİBİ ==========
         self.kredi_borclari = {}  # {cekilis_tarihi: {'tutar': x, 'kalan': y}} - Bankadan cekilen krediler
 
+        # ========== HAREKET LOGLARI ==========
+        self.hareket_loglari = []  # [{'tarih': x, 'tip': y, 'aciklama': z, 'tutar': t}]
+
         # Gunluk veriler (data grid icin)
         self.gunluk_veriler = []
 
@@ -67,6 +70,7 @@ class SenaryoVerileri:
         self.emekli_katilim_bekleyen = {}
         self.emekli_katilim_alacak = {}
         self.kredi_borclari = {}
+        self.hareket_loglari = []
         self.gunluk_veriler = []
         self.ozet = {}
 
@@ -273,9 +277,35 @@ class MFAnalizGUI:
 
         self._parametre_panelleri_olustur(param_frame, idx)
 
-        # Kopyala butonu
+        # Kopyala ve Sil butonları
         kopyala_frame = tk.Frame(tab_frame, bg=self.colors['panel_bg'])
         kopyala_frame.pack(fill=tk.X, padx=5)
+
+        # Sil butonu (solda)
+        sil_btn = tk.Button(
+            kopyala_frame,
+            text="Bu Senaryoyu Sil",
+            font=('Segoe UI', 10, 'bold'),
+            bg=self.colors['danger'],
+            fg='white',
+            relief='flat',
+            cursor='hand2',
+            command=lambda i=idx: self._senaryo_sil(i)
+        )
+        sil_btn.pack(side=tk.LEFT, padx=10, pady=5)
+
+        # Log penceresi butonu
+        log_btn = tk.Button(
+            kopyala_frame,
+            text="Hareket Logları",
+            font=('Segoe UI', 10, 'bold'),
+            bg='#8e44ad',
+            fg='white',
+            relief='flat',
+            cursor='hand2',
+            command=lambda i=idx: self._hareket_log_penceresi(i)
+        )
+        log_btn.pack(side=tk.LEFT, padx=5, pady=5)
 
         kopyala_btn = tk.Button(
             kopyala_frame,
@@ -1121,6 +1151,119 @@ class MFAnalizGUI:
 
         messagebox.showinfo("Bilgi", f"Veriler Senaryo {sonraki_idx + 1}'e kopyalandi!")
 
+    def _senaryo_sil(self, idx):
+        """Senaryo sekmesini sil"""
+        if self.aktif_senaryo_sayisi <= 1:
+            messagebox.showwarning("Uyari", "En az bir senaryo olmali!")
+            return
+
+        if not messagebox.askyesno("Onay", f"Senaryo {idx + 1} silinecek. Emin misiniz?"):
+            return
+
+        # Sekmeyi notebook'tan kaldir
+        if idx in self.senaryo_tabs:
+            self.notebook.forget(self.senaryo_tabs[idx])
+
+        # Verileri temizle
+        if idx in self.senaryolar:
+            del self.senaryolar[idx]
+        if idx in self.senaryo_vars:
+            del self.senaryo_vars[idx]
+        if idx in self.senaryo_tabs:
+            del self.senaryo_tabs[idx]
+        if idx in self.senaryo_frames:
+            del self.senaryo_frames[idx]
+        if idx in self.senaryo_trees:
+            del self.senaryo_trees[idx]
+
+        self.aktif_senaryo_sayisi -= 1
+
+        # Ilk sekmeyi sec
+        if self.notebook.tabs():
+            self.notebook.select(0)
+
+        messagebox.showinfo("Bilgi", f"Senaryo {idx + 1} silindi!")
+
+    def _hareket_log_penceresi(self, idx):
+        """Senaryo icin hareket loglarini gosteren pencere"""
+        senaryo = self.senaryolar.get(idx)
+        if not senaryo:
+            messagebox.showwarning("Uyari", "Senaryo bulunamadi!")
+            return
+
+        # Pencere olustur
+        log_win = tk.Toplevel(self.root)
+        log_win.title(f"Senaryo {idx + 1} - Hareket Loglari")
+        log_win.geometry("700x500")
+        log_win.configure(bg=self.colors['bg'])
+
+        # Baslik
+        header = tk.Frame(log_win, bg='#8e44ad', height=40)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
+        tk.Label(header, text=f"SENARYO {idx + 1} - HAREKET LOGLARI",
+                font=('Segoe UI', 12, 'bold'), fg='white', bg='#8e44ad').pack(expand=True)
+
+        # Log listesi (Treeview)
+        tree_frame = tk.Frame(log_win, bg=self.colors['bg'])
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        columns = ('tarih', 'tip', 'aciklama', 'tutar')
+        tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=20)
+
+        tree.heading('tarih', text='Tarih')
+        tree.heading('tip', text='Tip')
+        tree.heading('aciklama', text='Aciklama')
+        tree.heading('tutar', text='Tutar')
+
+        tree.column('tarih', width=100, anchor='center')
+        tree.column('tip', width=120, anchor='center')
+        tree.column('aciklama', width=300, anchor='w')
+        tree.column('tutar', width=120, anchor='e')
+
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(tree_frame, orient='vertical', command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        # Loglari yukle
+        if hasattr(senaryo, 'hareket_loglari'):
+            for log in senaryo.hareket_loglari:
+                tree.insert('', 'end', values=(
+                    log.get('tarih', ''),
+                    log.get('tip', ''),
+                    log.get('aciklama', ''),
+                    f"{log.get('tutar', 0):,.2f} TL"
+                ))
+
+        # Temizle butonu
+        btn_frame = tk.Frame(log_win, bg=self.colors['bg'])
+        btn_frame.pack(fill=tk.X, pady=10)
+
+        def temizle():
+            if hasattr(senaryo, 'hareket_loglari'):
+                senaryo.hareket_loglari.clear()
+            for item in tree.get_children():
+                tree.delete(item)
+
+        tk.Button(btn_frame, text="Loglari Temizle",
+                 font=('Segoe UI', 10, 'bold'),
+                 bg=self.colors['danger'], fg='white',
+                 relief='flat', cursor='hand2',
+                 command=temizle).pack(side=tk.LEFT, padx=20)
+
+        tk.Button(btn_frame, text="Kapat",
+                 font=('Segoe UI', 10, 'bold'),
+                 bg=self.colors['secondary'], fg='white',
+                 relief='flat', cursor='hand2',
+                 command=log_win.destroy).pack(side=tk.RIGHT, padx=20)
+
+        # Pencereyi referans olarak sakla (guncelleme icin)
+        if not hasattr(self, 'log_pencereleri'):
+            self.log_pencereleri = {}
+        self.log_pencereleri[idx] = {'window': log_win, 'tree': tree}
+
     def _kontrol_paneli_olustur(self, parent):
         """Ortak kontrol paneli"""
         kontrol_frame = tk.Frame(parent, bg=self.colors['accent2'], pady=8)
@@ -1193,7 +1336,7 @@ class MFAnalizGUI:
         self.hesaplayici_btn.pack(side=tk.LEFT, padx=5)
 
         # Mal Bitisine Kadar Oynat butonu
-        self.mal_bitis_btn = tk.Button(inner, text="MAL BİTİŞİNE KADAR",
+        self.mal_bitis_btn = tk.Button(inner, text="MAL BİTİŞİ",
                                        bg='#e67e22', fg='white',
                                        command=self._mal_bitisine_kadar_popup, **btn_style)
         self.mal_bitis_btn.pack(side=tk.LEFT, padx=5)
@@ -2094,7 +2237,7 @@ class MFAnalizGUI:
                 ay_adi = onceki_ay.strftime("%B")
                 self._bildirim_ekle('sgk_fatura', sgk_fatura_tutar,
                     f"SGK Faturası Kesildi ({ay_adi}) - Tahsil: {tahsil_tarihi.strftime('%d.%m.%Y')}",
-                    '#17a2b8')
+                    '#17a2b8', senaryo=senaryo, tarih=mevcut_tarih)
 
             # --- Emekli Katılım Payı (SGK'ya alacak olarak yazılır) ---
             # Önceki ayda biriken emekli katılım payları
@@ -2113,7 +2256,7 @@ class MFAnalizGUI:
                 # Bildirim ekle
                 self._bildirim_ekle('emekli_kp_yaz', emekli_kp_tutar,
                     f"Emekli K.P. SGK'ya Yazıldı - Vade: {vade_tarihi.strftime('%d.%m.%Y')}",
-                    '#2e7d32')
+                    '#2e7d32', senaryo=senaryo, tarih=mevcut_tarih)
 
             # --- Depo Senet Kesimi (SGK tahsilat tarihiyle aynı gün ödeme) ---
             if onceki_ay_key in senaryo.depo_acik_hesap:
@@ -2128,7 +2271,7 @@ class MFAnalizGUI:
                 ay_adi = onceki_ay.strftime("%B")
                 self._bildirim_ekle('depo_senet', depo_senet_tutar,
                     f"Depo Senedi Kesildi ({ay_adi}) - Ödeme: {odeme_tarihi.strftime('%d.%m.%Y')}",
-                    '#8b4513')
+                    '#8b4513', senaryo=senaryo, tarih=mevcut_tarih)
 
             # --- BİLDİRİMLERİ GÖSTER (ay başı işlemleri) ---
             if self.gunluk_bildirimler:
@@ -2142,7 +2285,7 @@ class MFAnalizGUI:
                 # Bildirim ekle
                 self._bildirim_ekle('pos_tahsil', pos_tutar,
                     "POS Blokesi Çözüldü - Bankaya Yatırıldı",
-                    self.colors['success'])
+                    self.colors['success'], senaryo=senaryo, tarih=mevcut_tarih)
 
         # Emekli Katılım Payı Alacağı tahsilatları (SGK'dan gelen)
         for tarih in list(senaryo.emekli_katilim_alacak.keys()):
@@ -2152,7 +2295,7 @@ class MFAnalizGUI:
                 # Bildirim ekle
                 self._bildirim_ekle('emekli_tahsil', emk_tutar,
                     "Emekli Katılım Payı Tahsil Edildi (SGK'dan)",
-                    self.colors['success'])
+                    self.colors['success'], senaryo=senaryo, tarih=mevcut_tarih)
 
         # ============ SGK + DEPO İŞLEMLERİ (Aynı gün, sıralı) ============
         # Önce SGK tahsil edilir, sonra depo ödenir (hesap eksiye düşmesin)
@@ -2164,7 +2307,7 @@ class MFAnalizGUI:
                 # Bildirim ekle
                 self._bildirim_ekle('sgk_tahsil', sgk_tahsilat,
                     "SGK Fatura Tahsilatı - Bankaya Yatırıldı",
-                    self.colors['success'])
+                    self.colors['success'], senaryo=senaryo, tarih=mevcut_tarih)
 
                 # 2) Aynı tarihteki depo borcu ödenir
                 if tarih in senaryo.depo_borc:
@@ -2174,7 +2317,7 @@ class MFAnalizGUI:
                         # Bildirim ekle
                         self._bildirim_ekle('depo_odeme', depo_odeme,
                             "Depo Senedi Ödendi - Bankadan Çıkış",
-                            self.colors['danger'])
+                            self.colors['danger'], senaryo=senaryo, tarih=mevcut_tarih)
                     else:
                         # Eksik kısım için bankadan kredi çekilir
                         eksik = depo_odeme - d['banka']
@@ -2190,13 +2333,13 @@ class MFAnalizGUI:
                         if onceki_banka > 0:
                             self._bildirim_ekle('depo_odeme', onceki_banka,
                                 "Depo Senedi Kısmi Ödeme - Bankadan Çıkış",
-                                self.colors['danger'])
+                                self.colors['danger'], senaryo=senaryo, tarih=mevcut_tarih)
                         self._bildirim_ekle('kredi_cek', eksik,
                             f"BANKADAN KREDİ ÇEKİLDİ - Depo ödemesi için",
-                            self.colors['warning'])
+                            self.colors['warning'], senaryo=senaryo, tarih=mevcut_tarih)
                         self._bildirim_ekle('depo_odeme', eksik,
                             "Depo Senedi Kalan Ödeme - Krediden",
-                            self.colors['danger'])
+                            self.colors['danger'], senaryo=senaryo, tarih=mevcut_tarih)
 
         # SGK tarihi dışında kalan depo ödemeleri (olmamalı ama güvenlik için)
         for tarih in list(senaryo.depo_borc.keys()):
@@ -2206,7 +2349,7 @@ class MFAnalizGUI:
                     d['banka'] -= borc
                     self._bildirim_ekle('depo_odeme', borc,
                         "Depo Senedi Ödendi - Bankadan Çıkış",
-                        self.colors['danger'])
+                        self.colors['danger'], senaryo=senaryo, tarih=mevcut_tarih)
                 else:
                     eksik = borc - d['banka']
                     onceki_banka = d['banka']
@@ -2219,10 +2362,10 @@ class MFAnalizGUI:
                     if onceki_banka > 0:
                         self._bildirim_ekle('depo_odeme', onceki_banka,
                             "Depo Senedi Kısmi Ödeme - Bankadan Çıkış",
-                            self.colors['danger'])
+                            self.colors['danger'], senaryo=senaryo, tarih=mevcut_tarih)
                     self._bildirim_ekle('kredi_cek', eksik,
                         f"BANKADAN KREDİ ÇEKİLDİ - Depo ödemesi için",
-                        self.colors['warning'])
+                        self.colors['warning'], senaryo=senaryo, tarih=mevcut_tarih)
 
         # ============ KREDİ OTOMATİK ÖDEME ============
         # Banka bakiyesi TÜM BORCU kapatacak kadar olunca kredi ödenir
@@ -2235,7 +2378,7 @@ class MFAnalizGUI:
             # Bildirim ekle
             self._bildirim_ekle('kredi_ode', odeme,
                 "BANKA KREDİSİ TAMAMEN ÖDENDİ",
-                '#9c27b0')
+                '#9c27b0', senaryo=senaryo, tarih=mevcut_tarih)
 
         # ============ TAHSİLAT/ÖDEME BİLDİRİMLERİNİ GÖSTER ============
         if self.gunluk_bildirimler:
@@ -2550,14 +2693,24 @@ class MFAnalizGUI:
 
     # ==================== HESAP HAREKETİ BİLDİRİM SİSTEMİ ====================
 
-    def _bildirim_ekle(self, tip, tutar, aciklama, renk='#17a2b8'):
-        """Günlük bildirimlere yeni hareket ekle"""
+    def _bildirim_ekle(self, tip, tutar, aciklama, renk='#17a2b8', senaryo=None, tarih=None):
+        """Günlük bildirimlere yeni hareket ekle ve senaryo loguna kaydet"""
         self.gunluk_bildirimler.append({
             'tip': tip,
             'tutar': tutar,
             'aciklama': aciklama,
             'renk': renk
         })
+
+        # Senaryo loguna da kaydet
+        if senaryo and hasattr(senaryo, 'hareket_loglari'):
+            tarih_str = tarih.strftime('%d.%m.%Y') if tarih else ''
+            senaryo.hareket_loglari.append({
+                'tarih': tarih_str,
+                'tip': tip,
+                'aciklama': aciklama,
+                'tutar': tutar
+            })
 
     def _bildirimleri_goster(self, tarih):
         """Biriken bildirimleri popup'ta göster ve listeyi temizle"""
