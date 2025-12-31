@@ -16,6 +16,8 @@ import time
 import copy
 import json
 import os
+import calendar
+import math
 
 
 class SenaryoVerileri:
@@ -148,6 +150,10 @@ class MFAnalizGUI:
         self.son_simulasyon_tarihi = None  # Simülasyondaki son tarih
         self.uyari_bekliyor = False  # Uyarı gösterilirken True
         self.gunluk_bildirimler = []  # Gün içi hesap hareketleri
+        self.senaryo_duraklatildi = {}  # {idx: True/False} - Her senaryo için ayrı duraklatma
+        self.stok_uyari_gosterildi = {}  # {idx: True/False} - Stok uyarısı gösterildi mi
+        self.mal_bitis_senaryosu = None  # Hangi senaryonun mal bitişinde durulacak (idx)
+        self.mal_bitis_modu = False  # Mal bitişine kadar oynat modu aktif mi
 
         # Widget referanslari
         self.senaryo_frames = {}
@@ -311,6 +317,8 @@ class MFAnalizGUI:
             'mf_bedava': tk.StringVar(value=ayar.get("mf_bedava", "10")),     # Mal fazlasi (bedava)
             'alim_tarihi': tk.StringVar(value=datetime.now().strftime("%d.%m.%Y")),
             'vade_gun': tk.StringVar(value=ayar.get("vade_gun", "90")),
+            'otomatik_alim': tk.BooleanVar(value=False),  # Mal bitince otomatik alim
+            'bir_sifir_alim': tk.BooleanVar(value=False),  # 1+0 alim (aylik bazda, sarkitmasiz)
 
             # D) Dis Etkenler
             'zam_tarihi': tk.StringVar(value=""),
@@ -502,6 +510,36 @@ class MFAnalizGUI:
         tk.Entry(row3, textvariable=vars['vade_gun'], font=('Segoe UI', 11),
                 bg=self.colors['entry_bg'], fg=self.colors['text'],
                 relief='flat', width=8, justify='center').pack(side=tk.RIGHT)
+
+        # Otomatik Alım Checkbox
+        row4 = tk.Frame(content, bg=self.colors['card_bg'])
+        row4.pack(fill=tk.X, pady=6)
+        tk.Checkbutton(row4, text="Otomatik Alim",
+                      variable=vars['otomatik_alim'],
+                      font=('Segoe UI', 10, 'bold'),
+                      fg=self.colors['success'], bg=self.colors['card_bg'],
+                      selectcolor=self.colors['entry_bg'],
+                      activebackground=self.colors['card_bg'],
+                      activeforeground=self.colors['success'],
+                      cursor='hand2').pack(side=tk.LEFT)
+        tk.Label(row4, text="(Mal bitince tekrar al)",
+                font=('Segoe UI', 8), fg=self.colors['text_dim'],
+                bg=self.colors['card_bg']).pack(side=tk.LEFT, padx=5)
+
+        # 1+0 Alım Checkbox (ayın sonuna kadar yetecek kadar)
+        row5 = tk.Frame(content, bg=self.colors['card_bg'])
+        row5.pack(fill=tk.X, pady=4)
+        tk.Checkbutton(row5, text="1+0 Alim",
+                      variable=vars['bir_sifir_alim'],
+                      font=('Segoe UI', 10, 'bold'),
+                      fg='#e67e22', bg=self.colors['card_bg'],
+                      selectcolor=self.colors['entry_bg'],
+                      activebackground=self.colors['card_bg'],
+                      activeforeground='#e67e22',
+                      cursor='hand2').pack(side=tk.LEFT)
+        tk.Label(row5, text="(Ay sonuna yetecek kadar)",
+                font=('Segoe UI', 8), fg=self.colors['text_dim'],
+                bg=self.colors['card_bg']).pack(side=tk.LEFT, padx=5)
 
     def _son_tarihi_getir(self, vars):
         """Simülasyondaki son tarihi Alım Tarihi alanına getirir"""
@@ -1148,6 +1186,18 @@ class MFAnalizGUI:
                                         command=self._karsilastirma_ac, **btn_style)
         self.karsilastir_btn.pack(side=tk.LEFT, padx=5)
 
+        # Basit Hesaplayici butonu
+        self.hesaplayici_btn = tk.Button(inner, text="HESAPLAYICI",
+                                        bg='#0ea5e9', fg='white',
+                                        command=self._basit_hesaplayici_ac, **btn_style)
+        self.hesaplayici_btn.pack(side=tk.LEFT, padx=5)
+
+        # Mal Bitisine Kadar Oynat butonu
+        self.mal_bitis_btn = tk.Button(inner, text="MAL BİTİŞİNE KADAR",
+                                       bg='#e67e22', fg='white',
+                                       command=self._mal_bitisine_kadar_popup, **btn_style)
+        self.mal_bitis_btn.pack(side=tk.LEFT, padx=5)
+
         # Mevcut gun
         tk.Label(inner, text="Mevcut Gun:", font=('Segoe UI', 9),
                 fg=self.colors['text'], bg=self.colors['accent2']).pack(side=tk.LEFT, padx=(20, 5))
@@ -1770,6 +1820,10 @@ class MFAnalizGUI:
                     d['yapilan_alimlar'] = set()
                 d['yapilan_alimlar'].add(yapildi_key)
 
+                # Alım yapıldı - stok uyarı durumunu sıfırla (tekrar devam edebilsin)
+                self.stok_uyari_gosterildi[idx] = False
+                self.senaryo_duraklatildi[idx] = False
+
         # ============ GÜNÜN BAŞI: Dünkü kasa → Banka ============
         # Ertesi gün mantığı: Dün kasaya giren para bugün bankaya yatar
         if d['kasa'] > 0:
@@ -1856,17 +1910,80 @@ class MFAnalizGUI:
                 self.uyari_bekliyor = False
                 self.root.after(0, lambda: self._butonlari_ayarla(False))
             elif d['stok'] <= d['gunluk_sarf']:
-                # Yarın bitecek uyarısı (simülasyon devam eder)
-                self.uyari_bekliyor = True
-                messagebox.showwarning(
-                    f"Senaryo {idx+1} - STOK UYARI",
-                    f"⚠️ YARIN STOK BİTECEK!\n\n"
-                    f"Tarih: {tarih_str}\n"
-                    f"Kalan stok: {d['stok']}\n"
-                    f"Günlük sarf: {d['gunluk_sarf']}\n\n"
-                    f"DEPODAN ALIM YAPIN!"
-                )
-                self.uyari_bekliyor = False
+                # Yarın stok bitecek - Otomatik alım kontrolü
+                vars = self.senaryo_vars[idx]
+                otomatik_alim = vars['otomatik_alim'].get()
+
+                # "Mal bitişine kadar" modunda mıyız ve bu senaryo durdurulacak mı?
+                durdurulacak = self.mal_bitis_modu and self.mal_bitis_senaryosu == idx
+
+                if durdurulacak:
+                    # Bu senaryo bitince durdur
+                    if not self.stok_uyari_gosterildi.get(idx, False):
+                        self.stok_uyari_gosterildi[idx] = True
+                        self.senaryo_duraklatildi[idx] = True
+                        self.simulasyon_calisyor = False
+                        self.uyari_bekliyor = True
+                        messagebox.showinfo(
+                            f"Senaryo {idx+1} - MAL BİTTİ",
+                            f"🛑 SENARYO {idx+1} MALI BİTTİ!\n\n"
+                            f"Tarih: {tarih_str}\n"
+                            f"Simülasyon durduruldu."
+                        )
+                        self.uyari_bekliyor = False
+                        self.root.after(0, lambda: self._butonlari_ayarla(False))
+                elif otomatik_alim:
+                    # Otomatik alım yap
+                    bir_sifir_modu = vars['bir_sifir_alim'].get()
+
+                    if bir_sifir_modu:
+                        # 1+0 Alım: Ayın sonuna kadar yetecek kadar al
+                        ayin_son_gunu = calendar.monthrange(mevcut_tarih.year, mevcut_tarih.month)[1]
+                        kalan_gun = ayin_son_gunu - mevcut_tarih.day + 1  # Bugün dahil
+                        gereken_stok = kalan_gun * d['gunluk_sarf']
+                        eksik = gereken_stok - d['stok']
+                        alim_adet = math.ceil(eksik) if eksik > 0 else 0
+                        mf_bedava = 0  # 1+0'da bedava mal yok
+                        toplam_alim = alim_adet
+                    else:
+                        # Normal alım: Ayarlardaki miktar
+                        alim_adet = self._int_parse(vars['alim_adet'].get())
+                        mf_bedava = self._int_parse(vars['mf_bedava'].get())
+                        toplam_alim = alim_adet + mf_bedava
+
+                    if toplam_alim > 0:
+                        # Stok ekle
+                        d['stok'] += toplam_alim
+
+                        # Depo borcuna ekle
+                        depo_borc = alim_adet * d['depocu_fiyat']
+                        ay_key = mevcut_tarih.strftime("%Y-%m")
+                        if ay_key not in senaryo.depo_acik_hesap:
+                            senaryo.depo_acik_hesap[ay_key] = 0
+                        senaryo.depo_acik_hesap[ay_key] += depo_borc
+
+                        # Uyarı durumunu sıfırla
+                        self.stok_uyari_gosterildi[idx] = False
+                        self.senaryo_duraklatildi[idx] = False
+                else:
+                    # Otomatik alım yok, simülasyonu durdur
+                    if not self.stok_uyari_gosterildi.get(idx, False):
+                        self.stok_uyari_gosterildi[idx] = True
+                        self.senaryo_duraklatildi[idx] = True
+                        self.simulasyon_calisyor = False
+                        self.uyari_bekliyor = True
+                        messagebox.showwarning(
+                            f"Senaryo {idx+1} - STOK UYARI",
+                            f"⚠️ YARIN STOK BİTECEK!\n\n"
+                            f"Tarih: {tarih_str}\n"
+                            f"Kalan stok: {d['stok']}\n"
+                            f"Günlük sarf: {d['gunluk_sarf']}\n\n"
+                            f"SİMÜLASYON DURDU!\n"
+                            f"Senaryo {idx+1} için DEPODAN ALIM YAPIN,\n"
+                            f"sonra tekrar OYNAT'a basın."
+                        )
+                        self.uyari_bekliyor = False
+                        self.root.after(0, lambda: self._butonlari_ayarla(False))
 
         # ============ ELDEN SATISLAR (PSF uzerinden) ============
         elden_ciro = satis_miktari * d['piyasa_fiyat'] * d['elden_oran']
@@ -2110,25 +2227,17 @@ class MFAnalizGUI:
                         self.colors['warning'])
 
         # ============ KREDİ OTOMATİK ÖDEME ============
-        # Banka bakiyesi pozitife geçince kredi otomatik ödenir
-        if d['banka_borc'] > 0 and d['banka'] > 0:
-            odeme = min(d['banka_borc'], d['banka'])
+        # Banka bakiyesi TÜM BORCU kapatacak kadar olunca kredi ödenir
+        if d['banka_borc'] > 0 and d['banka'] >= d['banka_borc']:
+            odeme = d['banka_borc']  # Tüm borcu öde
             d['banka'] -= odeme
-            d['banka_borc'] -= odeme
+            d['banka_borc'] = 0
+            # Kredi borçları kaydını temizle
+            senaryo.kredi_borclari.clear()
             # Bildirim ekle
             self._bildirim_ekle('kredi_ode', odeme,
-                "Banka Kredisi Otomatik Ödendi",
+                "BANKA KREDİSİ TAMAMEN ÖDENDİ",
                 '#9c27b0')
-            # Kredi kayıtlarını güncelle (FIFO - ilk çekilen ilk ödenir)
-            kalan_odeme = odeme
-            for kredi_tarih in sorted(senaryo.kredi_borclari.keys()):
-                if kalan_odeme <= 0:
-                    break
-                kredi = senaryo.kredi_borclari[kredi_tarih]
-                if kredi['kalan'] > 0:
-                    bu_odeme = min(kredi['kalan'], kalan_odeme)
-                    kredi['kalan'] -= bu_odeme
-                    kalan_odeme -= bu_odeme
 
         # ============ TAHSİLAT/ÖDEME BİLDİRİMLERİNİ GÖSTER ============
         if self.gunluk_bildirimler:
@@ -2355,12 +2464,20 @@ class MFAnalizGUI:
             if not self.simulasyon_calisyor:
                 break
 
-            # Herhangi bir senaryoda stok bittiyse dur
+            # Herhangi bir senaryoda stok bittiyse veya duraklatıldıysa dur
+            # (1 gün önceden uyarı _bir_gun_hesapla içinde verilir ve simülasyon durdurulur)
             stok_bitti = False
             for idx in range(self.aktif_senaryo_sayisi):
-                if self.senaryolar[idx].durum and self.senaryolar[idx].durum.get('stok', 0) <= 0:
-                    stok_bitti = True
-                    break
+                d = self.senaryolar[idx].durum
+                if d:
+                    # Stok tamamen bittiyse
+                    if d.get('stok', 0) <= 0:
+                        stok_bitti = True
+                        break
+                    # Senaryo duraklatıldıysa (1 gün önceden uyarı verildi)
+                    if self.senaryo_duraklatildi.get(idx, False):
+                        stok_bitti = True
+                        break
 
             if stok_bitti:
                 self.simulasyon_calisyor = False
@@ -2411,6 +2528,12 @@ class MFAnalizGUI:
         self.son_simulasyon_tarihi = None
         self.mevcut_gun_label.config(text="0")
 
+        # Senaryo durum değişkenlerini sıfırla
+        self.senaryo_duraklatildi = {}
+        self.stok_uyari_gosterildi = {}
+        self.mal_bitis_modu = False
+        self.mal_bitis_senaryosu = None
+
         # Tum senaryolari sifirla
         for idx in self.senaryolar:
             self.senaryolar[idx].sifirla()
@@ -2443,11 +2566,20 @@ class MFAnalizGUI:
         if not self.gunluk_bildirimler:
             return
 
+        # Sadece kredi ile ilgili bildirimler varsa popup göster
+        kredi_bildirimleri = [b for b in self.gunluk_bildirimler
+                             if b['tip'] in ('kredi_cek', 'kredi_ode')]
+
+        if not kredi_bildirimleri:
+            # Kredi bildirimi yoksa popup açma, listeyi temizle
+            self.gunluk_bildirimler = []
+            return
+
         # Simülasyon duraklatılsın
         self.uyari_bekliyor = True
 
         popup = tk.Toplevel(self.root)
-        popup.title(f"HESAP HAREKETLERİ - {tarih.strftime('%d.%m.%Y')}")
+        popup.title(f"KREDİ İŞLEMİ - {tarih.strftime('%d.%m.%Y')}")
         popup.geometry("550x450")
         popup.configure(bg=self.colors['panel_bg'])
         popup.transient(self.root)
@@ -2483,8 +2615,8 @@ class MFAnalizGUI:
         toplam_giris = 0
         toplam_cikis = 0
 
-        # Her bildirim için kart oluştur
-        for bildirim in self.gunluk_bildirimler:
+        # Sadece kredi bildirimleri için kart oluştur
+        for bildirim in kredi_bildirimleri:
             kart = tk.Frame(scrollable_frame, bg=self.colors['card_bg'], bd=1, relief='solid')
             kart.pack(fill=tk.X, pady=3, padx=5)
 
@@ -2914,6 +3046,428 @@ class MFAnalizGUI:
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (ayar_pencere.winfo_width() // 2)
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (ayar_pencere.winfo_height() // 2)
         ayar_pencere.geometry(f"+{x}+{y}")
+
+    def _mal_bitisine_kadar_popup(self):
+        """Mal bitisine kadar oynat - senaryo secim popup'i"""
+        # En az bir senaryo var mi kontrol et
+        if not self.senaryolar:
+            messagebox.showwarning("Uyari", "Henuz bir senaryo eklenmemis!")
+            return
+
+        popup = tk.Toplevel(self.root)
+        popup.title("Mal Bitisine Kadar Oynat")
+        popup.configure(bg=self.colors['bg'])
+        popup.transient(self.root)
+        popup.grab_set()
+
+        # Baslik
+        header = tk.Frame(popup, bg='#e67e22', height=40)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
+        tk.Label(header, text="MAL BİTİŞİNE KADAR OYNAT",
+                font=('Segoe UI', 12, 'bold'), fg='white', bg='#e67e22').pack(expand=True)
+
+        # Aciklama
+        aciklama = tk.Label(popup, text="Hangi senaryonun mali bitince simülasyon dursun?\n"
+                                        "(Diger senaryolar otomatik alim yapacak)",
+                           font=('Segoe UI', 10), fg=self.colors['text'], bg=self.colors['bg'],
+                           justify='center')
+        aciklama.pack(pady=15)
+
+        # Senaryo secim alani
+        secim_frame = tk.Frame(popup, bg=self.colors['panel_bg'], bd=1, relief='solid')
+        secim_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        # Senaryo radio butonlari
+        secim_var = tk.IntVar(value=-1)  # Secili senaryo indexi
+
+        for idx, senaryo in enumerate(self.senaryolar):
+            vars = self.senaryo_vars.get(idx, {})
+            isim = vars.get('isim', tk.StringVar(value=f"Senaryo {idx+1}")).get()
+            stok = vars.get('baslangic_stok', tk.StringVar(value="0")).get()
+            sarf = vars.get('gunluk_sarf', tk.StringVar(value="0")).get()
+
+            row = tk.Frame(secim_frame, bg=self.colors['panel_bg'])
+            row.pack(fill=tk.X, padx=10, pady=5)
+
+            rb = tk.Radiobutton(row, text=f"{isim} (Stok: {stok}, Günlük Sarf: {sarf})",
+                               variable=secim_var, value=idx,
+                               font=('Segoe UI', 11), fg=self.colors['text'],
+                               bg=self.colors['panel_bg'], selectcolor=self.colors['entry_bg'],
+                               activebackground=self.colors['panel_bg'],
+                               activeforeground=self.colors['accent'],
+                               cursor='hand2')
+            rb.pack(side=tk.LEFT, padx=5)
+
+        # Butonlar
+        btn_frame = tk.Frame(popup, bg=self.colors['bg'])
+        btn_frame.pack(fill=tk.X, pady=15)
+
+        def baslat():
+            secilen = secim_var.get()
+            if secilen < 0:
+                messagebox.showwarning("Uyari", "Lütfen bir senaryo seçin!")
+                return
+
+            popup.destroy()
+
+            # Diger senaryolarin otomatik alim'ini ac
+            for idx in self.senaryo_vars:
+                if idx != secilen:
+                    self.senaryo_vars[idx]['otomatik_alim'].set(True)
+                else:
+                    # Secilen senaryonun otomatik alimini kapat
+                    self.senaryo_vars[idx]['otomatik_alim'].set(False)
+
+            # Mal bitis modunu aktifle
+            self.mal_bitis_senaryosu = secilen
+            self.mal_bitis_modu = True
+
+            # Simulasyonu baslat
+            self._sonuna_kadar_oynat()
+
+        baslat_btn = tk.Button(btn_frame, text="OYNAT",
+                              font=('Segoe UI', 11, 'bold'),
+                              bg='#00d26a', fg='white', relief='flat',
+                              cursor='hand2', width=15, command=baslat)
+        baslat_btn.pack(side=tk.LEFT, padx=20)
+
+        iptal_btn = tk.Button(btn_frame, text="İptal",
+                             font=('Segoe UI', 11, 'bold'),
+                             bg=self.colors['danger'], fg='white', relief='flat',
+                             cursor='hand2', width=15, command=popup.destroy)
+        iptal_btn.pack(side=tk.RIGHT, padx=20)
+
+        # Pencereyi ortala
+        popup.update_idletasks()
+        w = max(400, popup.winfo_reqwidth())
+        h = popup.winfo_reqheight()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (w // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (h // 2)
+        popup.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _basit_hesaplayici_ac(self):
+        """Basit MF Hesaplayici penceresini ac"""
+        hesap_win = tk.Toplevel(self.root)
+        hesap_win.title("MF Hesaplayici - Alim Karsilastirma")
+        hesap_win.geometry("900x700")
+        hesap_win.configure(bg=self.colors['bg'])
+        hesap_win.transient(self.root)
+
+        # Renk paleti
+        c = self.colors
+
+        # ===== ÜST KISIM: GİRDİ PARAMETRELERİ =====
+        girdi_frame = tk.LabelFrame(hesap_win, text=" Parametreler ",
+                                    font=('Segoe UI', 11, 'bold'),
+                                    fg=c['text'], bg=c['panel_bg'],
+                                    relief='flat', bd=2)
+        girdi_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        # Satir 1: Stok, Sarf, Gun
+        row1 = tk.Frame(girdi_frame, bg=c['panel_bg'])
+        row1.pack(fill=tk.X, padx=10, pady=8)
+
+        tk.Label(row1, text="Mevcut Stok:", font=('Segoe UI', 10),
+                fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
+        stok_var = tk.StringVar(value="5")
+        tk.Entry(row1, textvariable=stok_var, font=('Segoe UI', 10),
+                bg=c['entry_bg'], fg=c['text'], relief='flat', width=8).pack(side=tk.LEFT, padx=(0, 20))
+
+        tk.Label(row1, text="Aylik Sarf:", font=('Segoe UI', 10),
+                fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
+        sarf_var = tk.StringVar(value="10")
+        tk.Entry(row1, textvariable=sarf_var, font=('Segoe UI', 10),
+                bg=c['entry_bg'], fg=c['text'], relief='flat', width=8).pack(side=tk.LEFT, padx=(0, 20))
+
+        tk.Label(row1, text="Ayin Gunu:", font=('Segoe UI', 10),
+                fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
+        gun_var = tk.StringVar(value=str(datetime.now().day))
+        tk.Entry(row1, textvariable=gun_var, font=('Segoe UI', 10),
+                bg=c['entry_bg'], fg=c['text'], relief='flat', width=6).pack(side=tk.LEFT, padx=(0, 20))
+
+        # Satir 2: Fiyat, Faiz
+        row2 = tk.Frame(girdi_frame, bg=c['panel_bg'])
+        row2.pack(fill=tk.X, padx=10, pady=8)
+
+        tk.Label(row2, text="Depocu Fiyat (TL):", font=('Segoe UI', 10),
+                fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
+        fiyat_var = tk.StringVar(value="100")
+        tk.Entry(row2, textvariable=fiyat_var, font=('Segoe UI', 10),
+                bg=c['entry_bg'], fg=c['text'], relief='flat', width=10).pack(side=tk.LEFT, padx=(0, 20))
+
+        tk.Label(row2, text="Yillik Faiz (%):", font=('Segoe UI', 10),
+                fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
+        faiz_var = tk.StringVar(value="45")
+        tk.Entry(row2, textvariable=faiz_var, font=('Segoe UI', 10),
+                bg=c['entry_bg'], fg=c['text'], relief='flat', width=8).pack(side=tk.LEFT, padx=(0, 20))
+
+        tk.Label(row2, text="SGK Vadesi (gun):", font=('Segoe UI', 10),
+                fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
+        vade_var = tk.StringVar(value="75")
+        tk.Entry(row2, textvariable=vade_var, font=('Segoe UI', 10),
+                bg=c['entry_bg'], fg=c['text'], relief='flat', width=6).pack(side=tk.LEFT)
+
+        # Satir 3: Zam bilgileri
+        row3 = tk.Frame(girdi_frame, bg=c['panel_bg'])
+        row3.pack(fill=tk.X, padx=10, pady=8)
+
+        tk.Label(row3, text="Beklenen Zam (%):", font=('Segoe UI', 10),
+                fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
+        zam_var = tk.StringVar(value="0")
+        tk.Entry(row3, textvariable=zam_var, font=('Segoe UI', 10),
+                bg=c['entry_bg'], fg=c['text'], relief='flat', width=8).pack(side=tk.LEFT, padx=(0, 20))
+
+        tk.Label(row3, text="Zam Kac Gun Sonra:", font=('Segoe UI', 10),
+                fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
+        zam_gun_var = tk.StringVar(value="30")
+        tk.Entry(row3, textvariable=zam_gun_var, font=('Segoe UI', 10),
+                bg=c['entry_bg'], fg=c['text'], relief='flat', width=6).pack(side=tk.LEFT)
+
+        # ===== ORTA KISIM: MF ŞARTLARI =====
+        mf_frame = tk.LabelFrame(hesap_win, text=" MF Sartlari (Al + Bedava) ",
+                                font=('Segoe UI', 11, 'bold'),
+                                fg=c['text'], bg=c['panel_bg'],
+                                relief='flat', bd=2)
+        mf_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        mf_inner = tk.Frame(mf_frame, bg=c['panel_bg'])
+        mf_inner.pack(fill=tk.X, padx=10, pady=8)
+
+        # Varsayilan MF sartlari
+        varsayilan_mf = [
+            (1, 0), (5, 1), (10, 3), (20, 7), (50, 25), (100, 60)
+        ]
+
+        mf_vars = []  # [(al_var, bedava_var), ...]
+
+        for i, (al, bedava) in enumerate(varsayilan_mf):
+            frame = tk.Frame(mf_inner, bg=c['panel_bg'])
+            frame.pack(side=tk.LEFT, padx=10)
+
+            al_var = tk.StringVar(value=str(al))
+            bedava_var = tk.StringVar(value=str(bedava))
+
+            tk.Entry(frame, textvariable=al_var, font=('Segoe UI', 9),
+                    bg=c['entry_bg'], fg=c['text'], relief='flat',
+                    width=4, justify='center').pack(side=tk.LEFT)
+            tk.Label(frame, text="+", font=('Segoe UI', 10, 'bold'),
+                    fg=c['accent'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=2)
+            tk.Entry(frame, textvariable=bedava_var, font=('Segoe UI', 9),
+                    bg=c['entry_bg'], fg=c['text'], relief='flat',
+                    width=4, justify='center').pack(side=tk.LEFT)
+
+            mf_vars.append((al_var, bedava_var))
+
+        # ===== HESAPLA BUTONU =====
+        btn_frame = tk.Frame(hesap_win, bg=c['bg'])
+        btn_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        def hesapla():
+            try:
+                # Parametreleri al
+                mevcut_stok = int(stok_var.get())
+                aylik_sarf = float(sarf_var.get())
+                ayin_gunu = int(gun_var.get())
+                depocu_fiyat = float(fiyat_var.get().replace(',', '.'))
+                yillik_faiz = float(faiz_var.get().replace(',', '.')) / 100
+                sgk_vade_gun = int(vade_var.get())
+                zam_orani = float(zam_var.get().replace(',', '.')) / 100
+                zam_gun_sonra = int(zam_gun_var.get())
+
+                aylik_faiz = yillik_faiz / 12
+                gunluk_sarf = aylik_sarf / 30
+
+                # Bu ay kalan gun
+                kalan_gun = 30 - ayin_gunu + 1
+                bu_ay_gereken = gunluk_sarf * kalan_gun
+
+                # Sonuc tablosunu temizle
+                for item in sonuc_tree.get_children():
+                    sonuc_tree.delete(item)
+
+                en_karli = None
+                en_karli_net = float('-inf')
+                sonuclar = []
+
+                for al_var, bedava_var in mf_vars:
+                    try:
+                        al = int(al_var.get())
+                        bedava = int(bedava_var.get())
+                    except:
+                        continue
+
+                    if al <= 0:
+                        continue
+
+                    toplam_gelen = al + bedava
+                    yeni_stok = mevcut_stok + toplam_gelen
+                    odenen_para = al * depocu_fiyat
+                    birim_maliyet = odenen_para / toplam_gelen
+
+                    # Stok kac gun yeter
+                    stok_gun = yeni_stok / gunluk_sarf if gunluk_sarf > 0 else 999
+                    stok_ay = stok_gun / 30
+
+                    # Bu ay kullanilacak miktar
+                    bu_ay_kullanim = min(yeni_stok, bu_ay_gereken)
+                    ertesi_ay_stok = yeni_stok - bu_ay_kullanim
+
+                    # Fazla stok hesabi (ertesi aylara taşan)
+                    # Normal: bu ay için bu ay al, ertesi ay için ertesi ay al
+                    # Fazla: ertesi ayların malını şimdiden aldık
+                    fazla_ay = max(0, (ertesi_ay_stok / aylik_sarf) if aylik_sarf > 0 else 0)
+
+                    # Fazla stok için erken ödeme maliyeti - HER AY AYRI HESAP
+                    # 1. ayın malı → 1 ay erken, 2. ayın malı → 2 ay erken, ...
+                    if fazla_ay > 0 and aylik_sarf > 0:
+                        faiz_kaybi = 0
+                        kalan_fazla = ertesi_ay_stok
+                        ay_sayaci = 1
+
+                        while kalan_fazla > 0:
+                            # Bu ay için ne kadar stok var
+                            bu_ay_stok = min(kalan_fazla, aylik_sarf)
+                            bu_ay_deger = bu_ay_stok * birim_maliyet
+
+                            # Bu ayın malı için erken ödeme süresi = ay_sayaci ay
+                            bu_ay_faiz = bu_ay_deger * ay_sayaci * aylik_faiz
+                            faiz_kaybi += bu_ay_faiz
+
+                            kalan_fazla -= bu_ay_stok
+                            ay_sayaci += 1
+
+                            # Sonsuz döngü koruması
+                            if ay_sayaci > 120:  # 10 yıl max
+                                break
+                    else:
+                        faiz_kaybi = 0
+
+                    # MF kazanci
+                    mf_kazanc = bedava * depocu_fiyat
+                    mf_oran = (bedava / toplam_gelen) * 100 if toplam_gelen > 0 else 0
+
+                    # Zam kazanci (zam oncesi alim)
+                    if zam_orani > 0 and stok_gun > zam_gun_sonra:
+                        # Zam sonrasi satilacak miktar
+                        zam_sonrasi_gun = stok_gun - zam_gun_sonra
+                        zam_sonrasi_adet = min(zam_sonrasi_gun * gunluk_sarf, yeni_stok)
+                        zam_kazanc = zam_sonrasi_adet * depocu_fiyat * zam_orani
+                    else:
+                        zam_kazanc = 0
+
+                    # Net kazanc
+                    net_kazanc = mf_kazanc + zam_kazanc - faiz_kaybi
+
+                    # Sonuclari kaydet
+                    sonuclar.append({
+                        'sart': f"{al}+{bedava}",
+                        'birim': birim_maliyet,
+                        'mf_oran': mf_oran,
+                        'stok_ay': stok_ay,
+                        'faiz_kaybi': faiz_kaybi,
+                        'mf_kazanc': mf_kazanc,
+                        'zam_kazanc': zam_kazanc,
+                        'net': net_kazanc
+                    })
+
+                    if net_kazanc > en_karli_net:
+                        en_karli_net = net_kazanc
+                        en_karli = f"{al}+{bedava}"
+
+                # Tabloya ekle
+                for s in sonuclar:
+                    tag = 'karli' if s['sart'] == en_karli else ''
+                    if s['net'] < 0:
+                        tag = 'zarali'
+
+                    sonuc_tree.insert('', 'end', values=(
+                        s['sart'],
+                        f"{s['birim']:.2f} TL",
+                        f"%{s['mf_oran']:.1f}",
+                        f"{s['stok_ay']:.1f} ay",
+                        f"{s['faiz_kaybi']:.2f} TL",
+                        f"{s['mf_kazanc']:.2f} TL",
+                        f"{s['zam_kazanc']:.2f} TL",
+                        f"{s['net']:+.2f} TL"
+                    ), tags=(tag,))
+
+                # En karli etiketi guncelle
+                if en_karli:
+                    if en_karli_net > 0:
+                        en_karli_label.config(
+                            text=f"EN KARLI: {en_karli} → {en_karli_net:+.2f} TL",
+                            fg=c['success'])
+                    elif en_karli_net < 0:
+                        en_karli_label.config(
+                            text=f"EN AZ ZARARLI: {en_karli} → {en_karli_net:+.2f} TL",
+                            fg=c['warning'])
+                    else:
+                        en_karli_label.config(
+                            text=f"NÖTR: {en_karli} → 0 TL",
+                            fg=c['text'])
+                else:
+                    en_karli_label.config(text="", fg=c['text'])
+
+            except Exception as e:
+                messagebox.showerror("Hata", f"Hesaplama hatasi: {e}")
+
+        tk.Button(btn_frame, text="HESAPLA", font=('Segoe UI', 12, 'bold'),
+                 bg=c['success'], fg='white', relief='flat', cursor='hand2',
+                 width=15, command=hesapla).pack(pady=5)
+
+        # ===== ALT KISIM: SONUÇ TABLOSU =====
+        sonuc_frame = tk.LabelFrame(hesap_win, text=" Sonuclar ",
+                                    font=('Segoe UI', 11, 'bold'),
+                                    fg=c['text'], bg=c['panel_bg'],
+                                    relief='flat', bd=2)
+        sonuc_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # Treeview
+        columns = ('sart', 'birim', 'mf_oran', 'stok', 'faiz', 'mf_kazanc', 'zam_kazanc', 'net')
+        sonuc_tree = ttk.Treeview(sonuc_frame, columns=columns, show='headings', height=8)
+
+        sonuc_tree.heading('sart', text='Alim Sarti')
+        sonuc_tree.heading('birim', text='Birim Maliyet')
+        sonuc_tree.heading('mf_oran', text='MF Orani')
+        sonuc_tree.heading('stok', text='Stok Suresi')
+        sonuc_tree.heading('faiz', text='Faiz Kaybi')
+        sonuc_tree.heading('mf_kazanc', text='MF Kazanc')
+        sonuc_tree.heading('zam_kazanc', text='Zam Kazanc')
+        sonuc_tree.heading('net', text='NET KAZANC')
+
+        sonuc_tree.column('sart', width=80, anchor='center')
+        sonuc_tree.column('birim', width=100, anchor='center')
+        sonuc_tree.column('mf_oran', width=80, anchor='center')
+        sonuc_tree.column('stok', width=80, anchor='center')
+        sonuc_tree.column('faiz', width=90, anchor='center')
+        sonuc_tree.column('mf_kazanc', width=90, anchor='center')
+        sonuc_tree.column('zam_kazanc', width=90, anchor='center')
+        sonuc_tree.column('net', width=100, anchor='center')
+
+        # Tag renkleri
+        sonuc_tree.tag_configure('karli', background='#1a472a', foreground='#4ade80')
+        sonuc_tree.tag_configure('zarali', background='#4a1a1a', foreground='#f87171')
+
+        sonuc_tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # En karli etiketi
+        en_karli_label = tk.Label(sonuc_frame, text="", font=('Segoe UI', 14, 'bold'),
+                                 fg=c['success'], bg=c['panel_bg'])
+        en_karli_label.pack(pady=10)
+
+        # ===== AÇIKLAMA =====
+        aciklama_frame = tk.Frame(hesap_win, bg=c['bg'])
+        aciklama_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        aciklama = """Hesaplama Mantigi:
+• MF Kazanc = Bedava Adet × Depocu Fiyat
+• Faiz Kaybi = Fazla Stok Degeri × Ortalama Erken Sure × Aylik Faiz
+• Zam Kazanc = Zam Sonrasi Satilacak Adet × Fiyat × Zam Orani
+• NET = MF Kazanc + Zam Kazanc - Faiz Kaybi"""
+
+        tk.Label(aciklama_frame, text=aciklama, font=('Segoe UI', 9),
+                fg=c['text_dim'], bg=c['bg'], justify='left').pack(anchor='w')
 
     def run(self):
         """Uygulamayi calistir"""
