@@ -1894,23 +1894,9 @@ class MFAnalizGUI:
             d['stok'] -= satis_miktari
             d['stok'] = max(0, d['stok'])  # Asla eksiye düşmesin
 
-            # Satış sonrası kontroller
-            if d['stok'] == 0:
-                # Stok tam bitti - simülasyonu durdur
-                self.simulasyon_calisyor = False
-                self.uyari_bekliyor = True
-                messagebox.showwarning(
-                    f"Senaryo {idx+1} - STOK UYARI",
-                    f"⚠️ STOK SIFIRA DÜŞTÜ!\n\n"
-                    f"Tarih: {tarih_str}\n"
-                    f"Gün: {gun + 1}\n\n"
-                    f"Simülasyon durdu!\n"
-                    f"DEPODAN MAL ALIN, sonra tekrar OYNAT'a basın."
-                )
-                self.uyari_bekliyor = False
-                self.root.after(0, lambda: self._butonlari_ayarla(False))
-            elif d['stok'] <= d['gunluk_sarf']:
-                # Yarın stok bitecek - Otomatik alım kontrolü
+            # Satış sonrası kontroller - Stok kritik seviyede mi?
+            if d['stok'] <= d['gunluk_sarf']:
+                # Stok bitti veya yarın bitecek - Otomatik alım kontrolü
                 vars = self.senaryo_vars[idx]
                 otomatik_alim = vars['otomatik_alim'].get()
 
@@ -1966,22 +1952,34 @@ class MFAnalizGUI:
                         self.stok_uyari_gosterildi[idx] = False
                         self.senaryo_duraklatildi[idx] = False
                 else:
-                    # Otomatik alım yok, simülasyonu durdur
+                    # Otomatik alım yok - duruma göre uyarı ver
                     if not self.stok_uyari_gosterildi.get(idx, False):
                         self.stok_uyari_gosterildi[idx] = True
                         self.senaryo_duraklatildi[idx] = True
                         self.simulasyon_calisyor = False
                         self.uyari_bekliyor = True
-                        messagebox.showwarning(
-                            f"Senaryo {idx+1} - STOK UYARI",
-                            f"⚠️ YARIN STOK BİTECEK!\n\n"
-                            f"Tarih: {tarih_str}\n"
-                            f"Kalan stok: {d['stok']}\n"
-                            f"Günlük sarf: {d['gunluk_sarf']}\n\n"
-                            f"SİMÜLASYON DURDU!\n"
-                            f"Senaryo {idx+1} için DEPODAN ALIM YAPIN,\n"
-                            f"sonra tekrar OYNAT'a basın."
-                        )
+
+                        if d['stok'] == 0:
+                            messagebox.showwarning(
+                                f"Senaryo {idx+1} - STOK UYARI",
+                                f"⚠️ STOK SIFIRA DÜŞTÜ!\n\n"
+                                f"Tarih: {tarih_str}\n"
+                                f"Gün: {gun + 1}\n\n"
+                                f"Simülasyon durdu!\n"
+                                f"DEPODAN MAL ALIN, sonra tekrar OYNAT'a basın."
+                            )
+                        else:
+                            messagebox.showwarning(
+                                f"Senaryo {idx+1} - STOK UYARI",
+                                f"⚠️ YARIN STOK BİTECEK!\n\n"
+                                f"Tarih: {tarih_str}\n"
+                                f"Kalan stok: {d['stok']:.2f}\n"
+                                f"Günlük sarf: {d['gunluk_sarf']:.2f}\n\n"
+                                f"SİMÜLASYON DURDU!\n"
+                                f"Senaryo {idx+1} için DEPODAN ALIM YAPIN,\n"
+                                f"sonra tekrar OYNAT'a basın."
+                            )
+
                         self.uyari_bekliyor = False
                         self.root.after(0, lambda: self._butonlari_ayarla(False))
 
