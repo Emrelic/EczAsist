@@ -898,9 +898,9 @@ class MFAnalizGUI:
             tree.column('vade', width=85, anchor='center')
             tree.column('tutar', width=90, anchor='e')
 
-            # Tag renkleri
-            tree.tag_configure('acik', foreground='#ffc107')
-            tree.tag_configure('kesin', foreground='#17a2b8')
+            # Tag renkleri - koyu tonlar okunabilirlik için
+            tree.tag_configure('acik', foreground='#333333')
+            tree.tag_configure('kesin', foreground='#000000')
 
             # Scrollbar
             scrollbar = ttk.Scrollbar(list_frame, orient='vertical', command=tree.yview)
@@ -1028,9 +1028,9 @@ class MFAnalizGUI:
                     ), tags=('kesin',))
                     toplam += data['kalan']
 
-        # Tag renkleri
-        tree.tag_configure('acik', foreground='#ffc107')
-        tree.tag_configure('kesin', foreground='#17a2b8')
+        # Tag renkleri - koyu tonlar okunabilirlik için
+        tree.tag_configure('acik', foreground='#333333')
+        tree.tag_configure('kesin', foreground='#000000')
 
         # Scrollbar
         scrollbar = ttk.Scrollbar(list_frame, orient='vertical', command=tree.yview)
