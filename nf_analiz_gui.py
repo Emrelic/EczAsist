@@ -3429,9 +3429,8 @@ class MFAnalizGUI:
                 aylik_faiz = yillik_faiz / 12
                 gunluk_sarf = aylik_sarf / 30
 
-                # Bu ay kalan gun
-                kalan_gun = 30 - ayin_gunu + 1
-                bu_ay_gereken = gunluk_sarf * kalan_gun
+                # Zam kac ay sonra
+                zam_ay_sonra = zam_gun_sonra / 30 if zam_gun_sonra > 0 else 999
 
                 # Sonuc tablosunu temizle
                 for item in sonuc_tree.get_children():
@@ -3456,59 +3455,45 @@ class MFAnalizGUI:
                     odenen_para = al * depocu_fiyat
                     birim_maliyet = odenen_para / toplam_gelen
 
-                    # Stok kac gun yeter
-                    stok_gun = yeni_stok / gunluk_sarf if gunluk_sarf > 0 else 999
-                    stok_ay = stok_gun / 30
+                    # Stok kac ay yeter
+                    stok_ay = (yeni_stok / aylik_sarf) if aylik_sarf > 0 else 999
+                    toplam_ay = int(stok_ay) + (1 if stok_ay % 1 > 0 else 0)  # Yukarı yuvarla
 
-                    # Bu ay kullanilacak miktar
-                    bu_ay_kullanim = min(yeni_stok, bu_ay_gereken)
-                    ertesi_ay_stok = yeni_stok - bu_ay_kullanim
-
-                    # Fazla stok hesabi (ertesi aylara taşan)
-                    # Normal: bu ay için bu ay al, ertesi ay için ertesi ay al
-                    # Fazla: ertesi ayların malını şimdiden aldık
-                    fazla_ay = max(0, (ertesi_ay_stok / aylik_sarf) if aylik_sarf > 0 else 0)
-
-                    # Fazla stok için erken ödeme maliyeti - HER AY AYRI HESAP
-                    # 1. ayın malı → 1 ay erken, 2. ayın malı → 2 ay erken, ...
-                    if fazla_ay > 0 and aylik_sarf > 0:
-                        faiz_kaybi = 0
-                        kalan_fazla = ertesi_ay_stok
-                        ay_sayaci = 1
-
-                        while kalan_fazla > 0:
-                            # Bu ay için ne kadar stok var
-                            bu_ay_stok = min(kalan_fazla, aylik_sarf)
-                            bu_ay_deger = bu_ay_stok * birim_maliyet
-
-                            # Bu ayın malı için erken ödeme süresi = ay_sayaci ay
-                            bu_ay_faiz = bu_ay_deger * ay_sayaci * aylik_faiz
-                            faiz_kaybi += bu_ay_faiz
-
-                            kalan_fazla -= bu_ay_stok
-                            ay_sayaci += 1
-
-                            # Sonsuz döngü koruması
-                            if ay_sayaci > 120:  # 10 yıl max
-                                break
-                    else:
-                        faiz_kaybi = 0
-
-                    # MF kazanci
-                    mf_kazanc = bedava * depocu_fiyat
+                    # MF oranı
                     mf_oran = (bedava / toplam_gelen) * 100 if toplam_gelen > 0 else 0
 
-                    # Zam kazanci (zam oncesi alim)
-                    if zam_orani > 0 and stok_gun > zam_gun_sonra:
-                        # Zam sonrasi satilacak miktar
-                        zam_sonrasi_gun = stok_gun - zam_gun_sonra
-                        zam_sonrasi_adet = min(zam_sonrasi_gun * gunluk_sarf, yeni_stok)
-                        zam_kazanc = zam_sonrasi_adet * depocu_fiyat * zam_orani
-                    else:
-                        zam_kazanc = 0
+                    # ===== NPV HESAPLAMASI =====
+                    # Senaryo A: MF'siz - her ay ihtiyac kadar al
+                    # Senaryo B: MF'li - bugun toplu al
+                    # Kazanc = NPV_A - NPV_B
 
-                    # Net kazanc
-                    net_kazanc = mf_kazanc + zam_kazanc - faiz_kaybi
+                    # Senaryo A: Her ay aylik_sarf kadar al (toplam_ay boyunca)
+                    npv_mfsiz = 0
+                    kalan_ihtiyac = yeni_stok  # MF'li senaryodaki toplam stok kadar ihtiyac
+                    for ay in range(toplam_ay):
+                        # Bu ay ne kadar alinacak
+                        bu_ay_alim = min(aylik_sarf, kalan_ihtiyac)
+                        if bu_ay_alim <= 0:
+                            break
+
+                        # Zam sonrasi mi?
+                        if zam_orani > 0 and ay >= zam_ay_sonra:
+                            fiyat = depocu_fiyat * (1 + zam_orani)
+                        else:
+                            fiyat = depocu_fiyat
+
+                        # Bu ayki odemenin bugunku degeri
+                        odeme = bu_ay_alim * fiyat
+                        iskonto_faktor = (1 + aylik_faiz) ** ay
+                        npv_mfsiz += odeme / iskonto_faktor
+
+                        kalan_ihtiyac -= bu_ay_alim
+
+                    # Senaryo B: Bugun toplu odeme (MF'li)
+                    npv_mfli = odenen_para  # Bugun odeniyor, iskonto yok
+
+                    # Net kazanc = MF'siz maliyet - MF'li maliyet
+                    net_kazanc = npv_mfsiz - npv_mfli
 
                     # Sonuclari kaydet
                     sonuclar.append({
@@ -3516,9 +3501,8 @@ class MFAnalizGUI:
                         'birim': birim_maliyet,
                         'mf_oran': mf_oran,
                         'stok_ay': stok_ay,
-                        'faiz_kaybi': faiz_kaybi,
-                        'mf_kazanc': mf_kazanc,
-                        'zam_kazanc': zam_kazanc,
+                        'npv_mfsiz': npv_mfsiz,
+                        'npv_mfli': npv_mfli,
                         'net': net_kazanc
                     })
 
@@ -3537,9 +3521,8 @@ class MFAnalizGUI:
                         f"{s['birim']:.2f} TL",
                         f"%{s['mf_oran']:.1f}",
                         f"{s['stok_ay']:.1f} ay",
-                        f"{s['faiz_kaybi']:.2f} TL",
-                        f"{s['mf_kazanc']:.2f} TL",
-                        f"{s['zam_kazanc']:.2f} TL",
+                        f"{s['npv_mfsiz']:.2f} TL",
+                        f"{s['npv_mfli']:.2f} TL",
                         f"{s['net']:+.2f} TL"
                     ), tags=(tag,))
 
@@ -3575,26 +3558,24 @@ class MFAnalizGUI:
         sonuc_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         # Treeview
-        columns = ('sart', 'birim', 'mf_oran', 'stok', 'faiz', 'mf_kazanc', 'zam_kazanc', 'net')
+        columns = ('sart', 'birim', 'mf_oran', 'stok', 'npv_mfsiz', 'npv_mfli', 'net')
         sonuc_tree = ttk.Treeview(sonuc_frame, columns=columns, show='headings', height=8)
 
         sonuc_tree.heading('sart', text='Alim Sarti')
         sonuc_tree.heading('birim', text='Birim Maliyet')
         sonuc_tree.heading('mf_oran', text='MF Orani')
         sonuc_tree.heading('stok', text='Stok Suresi')
-        sonuc_tree.heading('faiz', text='Faiz Kaybi')
-        sonuc_tree.heading('mf_kazanc', text='MF Kazanc')
-        sonuc_tree.heading('zam_kazanc', text='Zam Kazanc')
+        sonuc_tree.heading('npv_mfsiz', text="MF'siz Maliyet")
+        sonuc_tree.heading('npv_mfli', text="MF'li Maliyet")
         sonuc_tree.heading('net', text='NET KAZANC')
 
         sonuc_tree.column('sart', width=80, anchor='center')
         sonuc_tree.column('birim', width=100, anchor='center')
         sonuc_tree.column('mf_oran', width=80, anchor='center')
         sonuc_tree.column('stok', width=80, anchor='center')
-        sonuc_tree.column('faiz', width=90, anchor='center')
-        sonuc_tree.column('mf_kazanc', width=90, anchor='center')
-        sonuc_tree.column('zam_kazanc', width=90, anchor='center')
-        sonuc_tree.column('net', width=100, anchor='center')
+        sonuc_tree.column('npv_mfsiz', width=110, anchor='center')
+        sonuc_tree.column('npv_mfli', width=110, anchor='center')
+        sonuc_tree.column('net', width=110, anchor='center')
 
         # Tag renkleri
         sonuc_tree.tag_configure('karli', background='#1a472a', foreground='#4ade80')
@@ -3611,11 +3592,11 @@ class MFAnalizGUI:
         aciklama_frame = tk.Frame(hesap_win, bg=c['bg'])
         aciklama_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        aciklama = """Hesaplama Mantigi:
-• MF Kazanc = Bedava Adet × Depocu Fiyat
-• Faiz Kaybi = Fazla Stok Degeri × Ortalama Erken Sure × Aylik Faiz
-• Zam Kazanc = Zam Sonrasi Satilacak Adet × Fiyat × Zam Orani
-• NET = MF Kazanc + Zam Kazanc - Faiz Kaybi"""
+        aciklama = """Hesaplama Mantigi (NPV - Net Bugunku Deger):
+• MF'siz Maliyet = Her ay ayri alim yapilsa odenecek toplam paranin bugunku degeri
+• MF'li Maliyet = Bugun toplu odenen tutar (iskonto yok)
+• NET KAZANC = MF'siz Maliyet - MF'li Maliyet
+• Zam varsa: MF'siz senaryoda zam sonrasi fiyat artar, MF'li senaryoda etkilenmez"""
 
         tk.Label(aciklama_frame, text=aciklama, font=('Segoe UI', 9),
                 fg=c['text_dim'], bg=c['bg'], justify='left').pack(anchor='w')
