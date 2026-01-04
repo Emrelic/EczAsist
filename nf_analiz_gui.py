@@ -3432,6 +3432,29 @@ class MFAnalizGUI:
                 # Zam kac ay sonra
                 zam_ay_sonra = zam_gun_sonra / 30 if zam_gun_sonra > 0 else 999
 
+                # ===== MEVCUT STOK FAIZ KAYBI =====
+                # Mevcut stok icin: Her ay ayri alsaydik vs tumu bugun alinmis
+                # Fark = faiz kaybi (erken odeme maliyeti)
+                mevcut_stok_kaybi = 0
+                if mevcut_stok > 0 and aylik_sarf > 0:
+                    mevcut_stok_ay_tam = int(mevcut_stok / aylik_sarf) + (1 if (mevcut_stok / aylik_sarf) % 1 > 0 else 0)
+
+                    # Her ay ayri alsaydik maliyeti (NPV)
+                    npv_mevcut_ayri = 0
+                    kalan = mevcut_stok
+                    for ay in range(mevcut_stok_ay_tam):
+                        bu_ay = min(aylik_sarf, kalan)
+                        if bu_ay <= 0:
+                            break
+                        npv_mevcut_ayri += (bu_ay * depocu_fiyat) / ((1 + aylik_faiz) ** ay)
+                        kalan -= bu_ay
+
+                    # Tumu bugun alinmis maliyeti
+                    npv_mevcut_toplu = mevcut_stok * depocu_fiyat
+
+                    # Kayip = toplu - ayri (pozitif deger = kayip)
+                    mevcut_stok_kaybi = npv_mevcut_toplu - npv_mevcut_ayri
+
                 # Sonuc tablosunu temizle
                 for item in sonuc_tree.get_children():
                     sonuc_tree.delete(item)
@@ -3455,22 +3478,33 @@ class MFAnalizGUI:
                     odenen_para = al * depocu_fiyat
                     birim_maliyet = odenen_para / toplam_gelen
 
-                    # Stok kac ay yeter
+                    # Stok kac ay yeter (toplam)
                     stok_ay = (yeni_stok / aylik_sarf) if aylik_sarf > 0 else 999
-                    toplam_ay = int(stok_ay) + (1 if stok_ay % 1 > 0 else 0)  # Yukarı yuvarla
+
+                    # Mevcut stok kac ay yeter
+                    mevcut_stok_ay = (mevcut_stok / aylik_sarf) if aylik_sarf > 0 else 0
+
+                    # Yeni alim kac ay yetecek
+                    yeni_alim_ay = (toplam_gelen / aylik_sarf) if aylik_sarf > 0 else 0
+                    yeni_alim_ay_tam = int(yeni_alim_ay) + (1 if yeni_alim_ay % 1 > 0 else 0)
 
                     # MF oranı
                     mf_oran = (bedava / toplam_gelen) * 100 if toplam_gelen > 0 else 0
 
                     # ===== NPV HESAPLAMASI =====
-                    # Senaryo A: MF'siz - her ay ihtiyac kadar al
+                    # Mevcut stok zaten alindi (sunk cost) - sadece yeni alim karsilastirilir
+                    # Senaryo A: MF'siz - mevcut stok bittikten sonra her ay ihtiyac kadar al
                     # Senaryo B: MF'li - bugun toplu al
                     # Kazanc = NPV_A - NPV_B
 
-                    # Senaryo A: Her ay aylik_sarf kadar al (toplam_ay boyunca)
+                    # Senaryo A: Mevcut stok bittikten sonra her ay alim
                     npv_mfsiz = 0
-                    kalan_ihtiyac = yeni_stok  # MF'li senaryodaki toplam stok kadar ihtiyac
-                    for ay in range(toplam_ay):
+                    kalan_ihtiyac = toplam_gelen  # Sadece yeni alim kadar ihtiyac
+                    baslangic_ay = int(mevcut_stok_ay)  # Mevcut stok bittikten sonra
+
+                    for i in range(yeni_alim_ay_tam):
+                        ay = baslangic_ay + i  # Mevcut stok bittikten sonraki aylar
+
                         # Bu ay ne kadar alinacak
                         bu_ay_alim = min(aylik_sarf, kalan_ihtiyac)
                         if bu_ay_alim <= 0:
@@ -3492,8 +3526,11 @@ class MFAnalizGUI:
                     # Senaryo B: Bugun toplu odeme (MF'li)
                     npv_mfli = odenen_para  # Bugun odeniyor, iskonto yok
 
-                    # Net kazanc = MF'siz maliyet - MF'li maliyet
-                    net_kazanc = npv_mfsiz - npv_mfli
+                    # Yeni alim kazanci/kaybi
+                    yeni_alim_kazanc = npv_mfsiz - npv_mfli
+
+                    # Net kazanc = Yeni alim kazanci - Mevcut stok kaybi
+                    net_kazanc = yeni_alim_kazanc - mevcut_stok_kaybi
 
                     # Sonuclari kaydet
                     sonuclar.append({
@@ -3503,6 +3540,7 @@ class MFAnalizGUI:
                         'stok_ay': stok_ay,
                         'npv_mfsiz': npv_mfsiz,
                         'npv_mfli': npv_mfli,
+                        'mevcut_stok_kaybi': mevcut_stok_kaybi,
                         'net': net_kazanc
                     })
 
@@ -3542,6 +3580,13 @@ class MFAnalizGUI:
                             fg=c['text'])
                 else:
                     en_karli_label.config(text="", fg=c['text'])
+
+                # Mevcut stok kaybi etiketi guncelle
+                if mevcut_stok_kaybi > 0:
+                    mevcut_stok_kaybi_label.config(
+                        text=f"(Mevcut stok faiz kaybi: {mevcut_stok_kaybi:.2f} TL - net kazanca dahil)")
+                else:
+                    mevcut_stok_kaybi_label.config(text="")
 
             except Exception as e:
                 messagebox.showerror("Hata", f"Hesaplama hatasi: {e}")
@@ -3586,17 +3631,22 @@ class MFAnalizGUI:
         # En karli etiketi
         en_karli_label = tk.Label(sonuc_frame, text="", font=('Segoe UI', 14, 'bold'),
                                  fg=c['success'], bg=c['panel_bg'])
-        en_karli_label.pack(pady=10)
+        en_karli_label.pack(pady=(10, 2))
+
+        # Mevcut stok kaybi etiketi
+        mevcut_stok_kaybi_label = tk.Label(sonuc_frame, text="", font=('Segoe UI', 10),
+                                          fg=c['text_dim'], bg=c['panel_bg'])
+        mevcut_stok_kaybi_label.pack(pady=(0, 10))
 
         # ===== AÇIKLAMA =====
         aciklama_frame = tk.Frame(hesap_win, bg=c['bg'])
         aciklama_frame.pack(fill=tk.X, padx=10, pady=5)
 
         aciklama = """Hesaplama Mantigi (NPV - Net Bugunku Deger):
-• MF'siz Maliyet = Her ay ayri alim yapilsa odenecek toplam paranin bugunku degeri
-• MF'li Maliyet = Bugun toplu odenen tutar (iskonto yok)
-• NET KAZANC = MF'siz Maliyet - MF'li Maliyet
-• Zam varsa: MF'siz senaryoda zam sonrasi fiyat artar, MF'li senaryoda etkilenmez"""
+• MF'siz Maliyet = Mevcut stok bittikten sonra her ay alim yapilsa odenecek paranin bugunku degeri
+• MF'li Maliyet = Bugun toplu odenen tutar
+• Mevcut Stok Kaybi = Fazla stok icin erken odeme maliyeti (net kazanca dahil)
+• NET KAZANC = (MF'siz - MF'li) - Mevcut Stok Kaybi"""
 
         tk.Label(aciklama_frame, text=aciklama, font=('Segoe UI', 9),
                 fg=c['text_dim'], bg=c['bg'], justify='left').pack(anchor='w')
