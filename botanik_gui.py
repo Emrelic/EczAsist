@@ -70,6 +70,88 @@ root_logger.addHandler(console_handler)
 logger = logging.getLogger(__name__)
 
 
+class RenkliReceteYonetici:
+    """Renkli reçete listesini yönetir (yeşil/kırmızı reçeteli ilaçlar)"""
+
+    def __init__(self):
+        self.recete_listesi = set()  # Hızlı arama için set kullan
+        self.dosya_adi = None
+        self.yukleme_tarihi = None
+        self.toplam_kayit = 0
+
+    def excel_yukle(self, dosya_yolu: str) -> tuple:
+        """
+        Excel dosyasından renkli reçete listesini yükle.
+
+        Returns:
+            tuple: (basari, mesaj, kayit_sayisi)
+        """
+        try:
+            import pandas as pd
+
+            df = pd.read_excel(dosya_yolu)
+
+            # ReceteNo sütunu var mı kontrol et
+            if 'ReceteNo' not in df.columns:
+                return (False, "Excel'de 'ReceteNo' sütunu bulunamadı!", 0)
+
+            # Mevcut listeyi temizle
+            self.recete_listesi.clear()
+
+            # ReceteNo'ları işle (birden fazla olabilir: "ABC123 / DEF456")
+            for idx, row in df.iterrows():
+                recete_no = str(row['ReceteNo']).strip()
+                if recete_no and recete_no != 'nan':
+                    # " / " ile ayrılmış birden fazla reçete olabilir
+                    parcalar = recete_no.split(' / ')
+                    for parca in parcalar:
+                        parca = parca.strip()
+                        if parca:
+                            self.recete_listesi.add(parca)
+
+            self.dosya_adi = Path(dosya_yolu).name
+            self.yukleme_tarihi = datetime.now()
+            self.toplam_kayit = len(self.recete_listesi)
+
+            return (True, f"Yüklendi: {self.toplam_kayit} reçete", self.toplam_kayit)
+
+        except ImportError:
+            return (False, "pandas veya openpyxl kütüphanesi yüklü değil!", 0)
+        except Exception as e:
+            return (False, f"Hata: {str(e)}", 0)
+
+    def recete_var_mi(self, recete_no: str) -> bool:
+        """
+        Verilen reçete numarasının listede olup olmadığını kontrol et.
+
+        Args:
+            recete_no: Kontrol edilecek reçete numarası
+
+        Returns:
+            bool: Listede varsa True
+        """
+        if not recete_no:
+            return False
+        return recete_no.strip() in self.recete_listesi
+
+    def liste_yuklu_mu(self) -> bool:
+        """Liste yüklenmiş mi?"""
+        return len(self.recete_listesi) > 0
+
+    def temizle(self):
+        """Listeyi temizle"""
+        self.recete_listesi.clear()
+        self.dosya_adi = None
+        self.yukleme_tarihi = None
+        self.toplam_kayit = 0
+
+    def durum_bilgisi(self) -> str:
+        """Mevcut durum bilgisini döndür"""
+        if not self.liste_yuklu_mu():
+            return "Yüklü değil"
+        return f"{self.dosya_adi} ({self.toplam_kayit} reçete)"
+
+
 class GrupDurumu:
     """Grup durumlarını JSON dosyasında sakla"""
 
@@ -80,6 +162,32 @@ class GrupDurumu:
         self.dosya_yolu = Path(script_dir) / dosya_yolu
         self.veriler = self.yukle()
 
+    def _varsayilan_grup_yapisi(self):
+        """Bir grup için varsayılan veri yapısı"""
+        return {
+            # Üçlü hafıza sistemi - her fonksiyon için ayrı son reçete
+            "son_recete_ilac_takip": "",
+            "son_recete_rapor_toplama": "",
+            "son_recete_rapor_kontrol": "",
+            # Eski uyumluluk için (genel son reçete - en gerideki)
+            "son_recete": "",
+            # İstatistikler
+            "toplam_recete": 0,
+            "toplam_takip": 0,
+            "toplam_takipli_recete": 0,
+            "toplam_sure": 0.0,
+            "bitti_tarihi": None,
+            "bitti_recete_sayisi": None
+        }
+
+    def _varsayilan_fonksiyon_ayarlari(self):
+        """Fonksiyon ayarları için varsayılan yapı"""
+        return {
+            "ilac_takip_aktif": True,
+            "rapor_toplama_aktif": True,
+            "rapor_kontrol_aktif": True
+        }
+
     def yukle(self):
         """JSON dosyasından verileri yükle"""
         guncellendi = False
@@ -89,8 +197,12 @@ class GrupDurumu:
                     veriler = json.load(f)
 
                     # Eski dosyaları yeni formata güncelle (backwards compatibility)
-                    for grup in ["A", "B", "C"]:
-                        if grup in veriler:
+                    for grup in ["A", "B", "C", "GK"]:
+                        if grup not in veriler:
+                            # Yeni grup ekle (GK için)
+                            veriler[grup] = self._varsayilan_grup_yapisi()
+                            guncellendi = True
+                        else:
                             # Eksik alanları ekle
                             if "toplam_takipli_recete" not in veriler[grup]:
                                 veriler[grup]["toplam_takipli_recete"] = 0
@@ -101,11 +213,33 @@ class GrupDurumu:
                             if "bitti_recete_sayisi" not in veriler[grup]:
                                 veriler[grup]["bitti_recete_sayisi"] = None
                                 guncellendi = True
+                            # Üçlü hafıza sistemi alanları
+                            if "son_recete_ilac_takip" not in veriler[grup]:
+                                veriler[grup]["son_recete_ilac_takip"] = veriler[grup].get("son_recete", "")
+                                guncellendi = True
+                            if "son_recete_rapor_toplama" not in veriler[grup]:
+                                veriler[grup]["son_recete_rapor_toplama"] = veriler[grup].get("son_recete", "")
+                                guncellendi = True
+                            if "son_recete_rapor_kontrol" not in veriler[grup]:
+                                veriler[grup]["son_recete_rapor_kontrol"] = ""
+                                guncellendi = True
 
                     # aktif_mod alanı yoksa ekle
                     if "aktif_mod" not in veriler:
                         veriler["aktif_mod"] = None
                         guncellendi = True
+
+                    # Fonksiyon ayarları yoksa ekle
+                    if "fonksiyon_ayarlari" not in veriler:
+                        veriler["fonksiyon_ayarlari"] = self._varsayilan_fonksiyon_ayarlari()
+                        guncellendi = True
+                    else:
+                        # Eksik fonksiyon ayarlarını ekle
+                        varsayilan = self._varsayilan_fonksiyon_ayarlari()
+                        for key, value in varsayilan.items():
+                            if key not in veriler["fonksiyon_ayarlari"]:
+                                veriler["fonksiyon_ayarlari"][key] = value
+                                guncellendi = True
 
                     # Eğer güncelleme yapıldıysa dosyaya kaydet
                     if guncellendi:
@@ -124,34 +258,12 @@ class GrupDurumu:
 
         # Varsayılan yapı
         return {
-            "aktif_mod": None,  # "tumunu_kontrol", "A", "B", "C" veya None
-            "A": {
-                "son_recete": "",
-                "toplam_recete": 0,
-                "toplam_takip": 0,
-                "toplam_takipli_recete": 0,
-                "toplam_sure": 0.0,
-                "bitti_tarihi": None,
-                "bitti_recete_sayisi": None
-            },
-            "B": {
-                "son_recete": "",
-                "toplam_recete": 0,
-                "toplam_takip": 0,
-                "toplam_takipli_recete": 0,
-                "toplam_sure": 0.0,
-                "bitti_tarihi": None,
-                "bitti_recete_sayisi": None
-            },
-            "C": {
-                "son_recete": "",
-                "toplam_recete": 0,
-                "toplam_takip": 0,
-                "toplam_takipli_recete": 0,
-                "toplam_sure": 0.0,
-                "bitti_tarihi": None,
-                "bitti_recete_sayisi": None
-            }
+            "aktif_mod": None,  # "tumunu_kontrol", "A", "B", "C", "GK" veya None
+            "fonksiyon_ayarlari": self._varsayilan_fonksiyon_ayarlari(),
+            "A": self._varsayilan_grup_yapisi(),
+            "B": self._varsayilan_grup_yapisi(),
+            "C": self._varsayilan_grup_yapisi(),
+            "GK": self._varsayilan_grup_yapisi()
         }
 
     def kaydet(self):
@@ -249,6 +361,141 @@ class GrupDurumu:
             self.veriler[grup]["bitti_recete_sayisi"] = None
             self.kaydet()
 
+    # ===== ÜÇLü HAFIZA SİSTEMİ =====
+    def son_recete_al_fonksiyon(self, grup, fonksiyon):
+        """
+        Belirli bir fonksiyon için son reçete numarasını al
+
+        Args:
+            grup: "A", "B", "C" veya "GK"
+            fonksiyon: "ilac_takip", "rapor_toplama" veya "rapor_kontrol"
+        """
+        alan_adi = f"son_recete_{fonksiyon}"
+        return self.veriler.get(grup, {}).get(alan_adi, "")
+
+    def son_recete_guncelle_fonksiyon(self, grup, fonksiyon, recete_no):
+        """
+        Belirli bir fonksiyon için son reçete numarasını güncelle
+
+        Args:
+            grup: "A", "B", "C" veya "GK"
+            fonksiyon: "ilac_takip", "rapor_toplama" veya "rapor_kontrol"
+            recete_no: Reçete numarası
+        """
+        if grup in self.veriler:
+            alan_adi = f"son_recete_{fonksiyon}"
+            self.veriler[grup][alan_adi] = recete_no
+            # Genel son_recete'yi de güncelle (en gerideki)
+            self._genel_son_recete_guncelle(grup)
+            self.kaydet()
+
+    def _genel_son_recete_guncelle(self, grup):
+        """Genel son_recete'yi aktif fonksiyonların en geridekindenAL"""
+        if grup not in self.veriler:
+            return
+
+        # Aktif fonksiyonların son reçetelerini al
+        aktif_receteler = []
+        ayarlar = self.fonksiyon_ayarlari_al()
+
+        if ayarlar.get("ilac_takip_aktif", True):
+            recete = self.veriler[grup].get("son_recete_ilac_takip", "")
+            if recete:
+                aktif_receteler.append(recete)
+
+        if ayarlar.get("rapor_toplama_aktif", True):
+            recete = self.veriler[grup].get("son_recete_rapor_toplama", "")
+            if recete:
+                aktif_receteler.append(recete)
+
+        if ayarlar.get("rapor_kontrol_aktif", True):
+            recete = self.veriler[grup].get("son_recete_rapor_kontrol", "")
+            if recete:
+                aktif_receteler.append(recete)
+
+        # En gerideki reçeteyi bul (en küçük numara)
+        if aktif_receteler:
+            # Reçete numaraları string, sayısal karşılaştırma için
+            try:
+                en_gerideki = min(aktif_receteler, key=lambda x: int(x) if x.isdigit() else float('inf'))
+                self.veriler[grup]["son_recete"] = en_gerideki
+            except (ValueError, TypeError):
+                # Sayısal olmayan reçete numaraları için string karşılaştırma
+                self.veriler[grup]["son_recete"] = min(aktif_receteler)
+
+    def en_gerideki_recete_al(self, grup):
+        """
+        Aktif fonksiyonlar arasından en gerideki reçete numarasını al
+
+        Args:
+            grup: "A", "B", "C" veya "GK"
+
+        Returns:
+            tuple: (recete_no, fonksiyon_adi) veya ("", None)
+        """
+        if grup not in self.veriler:
+            return ("", None)
+
+        ayarlar = self.fonksiyon_ayarlari_al()
+        receteler = []  # [(recete_no, fonksiyon_adi), ...]
+
+        if ayarlar.get("ilac_takip_aktif", True):
+            recete = self.veriler[grup].get("son_recete_ilac_takip", "")
+            if recete:
+                receteler.append((recete, "ilac_takip"))
+
+        if ayarlar.get("rapor_toplama_aktif", True):
+            recete = self.veriler[grup].get("son_recete_rapor_toplama", "")
+            if recete:
+                receteler.append((recete, "rapor_toplama"))
+
+        if ayarlar.get("rapor_kontrol_aktif", True):
+            recete = self.veriler[grup].get("son_recete_rapor_kontrol", "")
+            if recete:
+                receteler.append((recete, "rapor_kontrol"))
+
+        if not receteler:
+            return ("", None)
+
+        # En gerideki (en küçük numara)
+        try:
+            en_gerideki = min(receteler, key=lambda x: int(x[0]) if x[0].isdigit() else float('inf'))
+            return en_gerideki
+        except (ValueError, TypeError):
+            return min(receteler, key=lambda x: x[0])
+
+    # ===== FONKSİYON AYARLARI =====
+    def fonksiyon_ayarlari_al(self):
+        """Fonksiyon ayarlarını al"""
+        return self.veriler.get("fonksiyon_ayarlari", self._varsayilan_fonksiyon_ayarlari())
+
+    def fonksiyon_ayari_al(self, ayar_adi):
+        """Tek bir fonksiyon ayarını al"""
+        ayarlar = self.fonksiyon_ayarlari_al()
+        varsayilan = self._varsayilan_fonksiyon_ayarlari()
+        return ayarlar.get(ayar_adi, varsayilan.get(ayar_adi, True))
+
+    def fonksiyon_ayari_guncelle(self, ayar_adi, deger):
+        """Tek bir fonksiyon ayarını güncelle"""
+        if "fonksiyon_ayarlari" not in self.veriler:
+            self.veriler["fonksiyon_ayarlari"] = self._varsayilan_fonksiyon_ayarlari()
+        self.veriler["fonksiyon_ayarlari"][ayar_adi] = deger
+        self.kaydet()
+
+    def fonksiyon_ayarlari_guncelle(self, ayarlar):
+        """Tüm fonksiyon ayarlarını güncelle"""
+        if "fonksiyon_ayarlari" not in self.veriler:
+            self.veriler["fonksiyon_ayarlari"] = {}
+        self.veriler["fonksiyon_ayarlari"].update(ayarlar)
+        self.kaydet()
+
+    # ===== GRUP SIFIRLAMA (GÜNCELLENMİŞ) =====
+    def grup_sifirla_v2(self, grup):
+        """Grubu sıfırla (ay sonu) - Üçlü hafıza dahil"""
+        if grup in self.veriler:
+            self.veriler[grup] = self._varsayilan_grup_yapisi()
+            self.kaydet()
+
 
 class BotanikGUI:
     """Botanik Bot GUI"""
@@ -302,6 +549,9 @@ class BotanikGUI:
         self.son_kopyalama_tarihi = None
         self.son_kopyalama_button = None
 
+        # Renkli reçete yönetici (yeşil/kırmızı reçeteli ilaçlar)
+        self.renkli_recete = RenkliReceteYonetici()
+
         # Bot
         self.bot = None
         self.automation_thread = None
@@ -310,11 +560,11 @@ class BotanikGUI:
 
         # Seçili grup
         self.secili_grup = tk.StringVar(value="")
-        self.aktif_grup = None  # Şu anda çalışan grup (A/B/C)
+        self.aktif_grup = None  # Şu anda çalışan grup (A/B/C/GK)
 
-        # Tümünü Kontrol Et (A→B→C) değişkenleri
+        # Tümünü Kontrol Et (C→A→B→GK) değişkenleri
         self.tumu_kontrol_aktif = False  # Tümünü kontrol modu aktif mi?
-        self.tumu_kontrol_grup_sirasi = ["A", "B", "C"]  # Sıralı gruplar
+        self.tumu_kontrol_grup_sirasi = ["C", "A", "B", "GK"]  # Sıralı gruplar (C'den başla)
         self.tumu_kontrol_mevcut_index = 0  # Şu anda hangi grup işleniyor (index)
 
         # Oturum istatistikleri
@@ -720,11 +970,12 @@ class BotanikGUI:
         groups_frame = tk.Frame(main_frame, bg=self.bg_color)
         groups_frame.pack(fill="x", pady=(0, 10))
 
-        # 3 Grup (A, B, C)
+        # 4 Grup (C, A, B, GK) - C'den başlayarak sıralı
         grup_isimleri = {
             "A": "Raporlu",
             "B": "Normal",
-            "C": "İş Yeri"
+            "C": "İş Yeri",
+            "GK": "Geçici Koruma"
         }
 
         self.grup_labels = {}
@@ -734,7 +985,7 @@ class BotanikGUI:
         self.grup_bitti_labels = {}  # ✅ BİTTİ bilgi labelları
         self.grup_frames = {}  # Grup frame'leri (renk değiştirmek için)
 
-        for grup in ["A", "B", "C"]:
+        for grup in ["C", "A", "B", "GK"]:
             # Grup container
             grup_outer = tk.Frame(groups_frame, bg=self.bg_color)
             grup_outer.pack(fill="x", pady=3)
@@ -922,6 +1173,36 @@ class BotanikGUI:
         )
         self.son_kopyalama_button.pack(fill="x", pady=(5, 5))
 
+        # Renkli Reçete Listesi Yükle Butonu
+        renkli_frame = tk.Frame(main_frame, bg=self.bg_color)
+        renkli_frame.pack(fill="x", pady=(5, 5))
+
+        self.renkli_recete_button = tk.Button(
+            renkli_frame,
+            text="🔴🟢 Renkli Reçete Yükle",
+            font=("Arial", 9, "bold"),
+            bg="#9C27B0",
+            fg="white",
+            activebackground="#7B1FA2",
+            relief="raised",
+            bd=2,
+            command=self.renkli_recete_yukle
+        )
+        self.renkli_recete_button.pack(fill="x")
+
+        # Renkli Reçete Durum Label
+        self.renkli_recete_label = tk.Label(
+            renkli_frame,
+            text="Yüklü değil",
+            font=("Arial", 7),
+            bg="#E1BEE7",
+            fg="#4A148C",
+            anchor="center",
+            padx=5,
+            pady=2
+        )
+        self.renkli_recete_label.pack(fill="x")
+
         # Görev Raporları Butonu
         report_btn_frame = tk.Frame(main_frame, bg=self.bg_color)
         report_btn_frame.pack(fill="x", pady=(0, 5))
@@ -1033,7 +1314,7 @@ class BotanikGUI:
 
     def load_grup_verileri(self):
         """Başlangıçta grup verilerini yükle"""
-        for grup in ["A", "B", "C"]:
+        for grup in ["C", "A", "B", "GK"]:
             son_recete = self.grup_durumu.son_recete_al(grup)
             if son_recete:
                 self.grup_labels[grup].config(text=son_recete)
@@ -1106,7 +1387,7 @@ class BotanikGUI:
             logger.info(f"Aktif mod: {grup}")
 
         # Tüm grupların rengini normale çevir (açık yeşil)
-        for g in ["A", "B", "C"]:
+        for g in ["C", "A", "B", "GK"]:
             if g in self.grup_frames:
                 # Ana frame
                 self.grup_frames[g]['main'].config(bg="#E8F5E9")
@@ -1702,6 +1983,51 @@ class BotanikGUI:
         self.log_ekle(f"Grup {grup} sıfırlandı")
         logger.info(f"Grup {grup} sıfırlandı")
 
+    def renkli_recete_yukle(self):
+        """Renkli reçete listesini Excel'den yükle"""
+        dosya_yolu = filedialog.askopenfilename(
+            title="Renkli Reçete Listesi Seçin",
+            filetypes=[
+                ("Excel dosyaları", "*.xlsx *.xls"),
+                ("Tüm dosyalar", "*.*")
+            ],
+            initialdir=Path.home() / "Desktop"
+        )
+
+        if not dosya_yolu:
+            return  # Kullanıcı iptal etti
+
+        # Excel'i yükle
+        basari, mesaj, kayit_sayisi = self.renkli_recete.excel_yukle(dosya_yolu)
+
+        if basari:
+            self.renkli_recete_label.config(
+                text=self.renkli_recete.durum_bilgisi(),
+                bg="#C8E6C9",  # Yeşil - başarılı
+                fg="#1B5E20"
+            )
+            self.log_ekle(f"✅ Renkli reçete: {mesaj}")
+            logger.info(f"Renkli reçete listesi yüklendi: {mesaj}")
+        else:
+            self.renkli_recete_label.config(
+                text="Yükleme hatası!",
+                bg="#FFCDD2",  # Kırmızı - hata
+                fg="#C62828"
+            )
+            self.log_ekle(f"❌ Renkli reçete: {mesaj}")
+            logger.error(f"Renkli reçete yükleme hatası: {mesaj}")
+            messagebox.showerror("Hata", mesaj)
+
+    def renkli_recete_temizle(self):
+        """Renkli reçete listesini temizle"""
+        self.renkli_recete.temizle()
+        self.renkli_recete_label.config(
+            text="Yüklü değil",
+            bg="#E1BEE7",
+            fg="#4A148C"
+        )
+        self.log_ekle("🗑️ Renkli reçete listesi temizlendi")
+
     def csv_temizle_kopyala(self):
         """Kopyalanmamış + geçerli raporları CSV olarak kaydet ve panoya kopyala"""
         try:
@@ -1860,27 +2186,217 @@ class BotanikGUI:
         self.log_text.see(tk.END)
 
     def create_settings_tab(self, parent):
-        """Ayarlar sekmesi içeriğini oluştur - Üç alt sekme ile"""
+        """Ayarlar sekmesi içeriğini oluştur - Dört alt sekme ile"""
         # Alt sekmeler için notebook oluştur
         settings_notebook = ttk.Notebook(parent)
         settings_notebook.pack(fill="both", expand=True, padx=5, pady=5)
 
+        # Fonksiyon Ayarları sekmesi (YENİ - en başta)
+        fonksiyon_tab = tk.Frame(settings_notebook, bg='#F3E5F5')  # Mor tonu
+        settings_notebook.add(fonksiyon_tab, text="  Fonksiyonlar  ")
+
         # Giriş Ayarları sekmesi
         giris_tab = tk.Frame(settings_notebook, bg='#E3F2FD')
-        settings_notebook.add(giris_tab, text="  🔐 Giriş Ayarları  ")
+        settings_notebook.add(giris_tab, text="  Giriş Ayarları  ")
 
         # Timing Ayarları sekmesi
         timing_tab = tk.Frame(settings_notebook, bg='#E8F5E9')
-        settings_notebook.add(timing_tab, text="  ⏱ Timing Ayarları  ")
+        settings_notebook.add(timing_tab, text="  Timing Ayarları  ")
 
         # İnsan Davranışı sekmesi
         insan_tab = tk.Frame(settings_notebook, bg='#FFF3E0')
-        settings_notebook.add(insan_tab, text="  🧠 İnsan Davranışı  ")
+        settings_notebook.add(insan_tab, text="  İnsan Davranışı  ")
 
         # İçerikleri oluştur
+        self.create_fonksiyon_ayarlari_tab(fonksiyon_tab)
         self.create_giris_ayarlari_tab(giris_tab)
         self.create_timing_ayarlari_tab(timing_tab)
         self.create_insan_davranisi_tab(insan_tab)
+
+    def create_fonksiyon_ayarlari_tab(self, parent):
+        """Fonksiyon Ayarları sekmesi - İlaç Takip, Rapor Toplama, Rapor Kontrol"""
+        # Ana frame
+        main_frame = tk.Frame(parent, bg='#F3E5F5')
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Başlık
+        tk.Label(
+            main_frame,
+            text="Aktif Fonksiyonlar",
+            font=("Arial", 12, "bold"),
+            bg='#F3E5F5',
+            fg='#4A148C'
+        ).pack(pady=(0, 5))
+
+        tk.Label(
+            main_frame,
+            text="Her reçete için hangi işlemlerin yapılacağını seçin",
+            font=("Arial", 8),
+            bg='#F3E5F5',
+            fg='#7B1FA2'
+        ).pack(pady=(0, 15))
+
+        # Fonksiyon seçim frame'i
+        fonksiyon_frame = tk.LabelFrame(
+            main_frame,
+            text="Reçete İşlemleri",
+            font=("Arial", 10, "bold"),
+            bg='#F3E5F5',
+            fg='#4A148C',
+            padx=15,
+            pady=15
+        )
+        fonksiyon_frame.pack(fill="x", pady=(0, 10))
+
+        # Checkbox değişkenleri
+        self.ilac_takip_var = tk.BooleanVar(value=self.grup_durumu.fonksiyon_ayari_al("ilac_takip_aktif"))
+        self.rapor_toplama_var = tk.BooleanVar(value=self.grup_durumu.fonksiyon_ayari_al("rapor_toplama_aktif"))
+        self.rapor_kontrol_var = tk.BooleanVar(value=self.grup_durumu.fonksiyon_ayari_al("rapor_kontrol_aktif"))
+
+        # 1. İlaç Takip
+        ilac_frame = tk.Frame(fonksiyon_frame, bg='#F3E5F5')
+        ilac_frame.pack(fill="x", pady=5)
+
+        ilac_checkbox = tk.Checkbutton(
+            ilac_frame,
+            text="İlaç Takip",
+            variable=self.ilac_takip_var,
+            font=("Arial", 10, "bold"),
+            bg='#F3E5F5',
+            fg='#1B5E20',
+            activebackground='#F3E5F5',
+            selectcolor='#E1BEE7',
+            command=self.fonksiyon_ayarlarini_kaydet
+        )
+        ilac_checkbox.pack(side="left")
+
+        tk.Label(
+            ilac_frame,
+            text="Bizden alınmayan ilaçları takip et",
+            font=("Arial", 8),
+            bg='#F3E5F5',
+            fg='#666666'
+        ).pack(side="left", padx=(10, 0))
+
+        # 2. Rapor Toplama
+        rapor_frame = tk.Frame(fonksiyon_frame, bg='#F3E5F5')
+        rapor_frame.pack(fill="x", pady=5)
+
+        rapor_checkbox = tk.Checkbutton(
+            rapor_frame,
+            text="Rapor Toplama",
+            variable=self.rapor_toplama_var,
+            font=("Arial", 10, "bold"),
+            bg='#F3E5F5',
+            fg='#0D47A1',
+            activebackground='#F3E5F5',
+            selectcolor='#E1BEE7',
+            command=self.fonksiyon_ayarlarini_kaydet
+        )
+        rapor_checkbox.pack(side="left")
+
+        tk.Label(
+            rapor_frame,
+            text="Hasta rapor bilgilerini CSV'ye kaydet",
+            font=("Arial", 8),
+            bg='#F3E5F5',
+            fg='#666666'
+        ).pack(side="left", padx=(10, 0))
+
+        # 3. Rapor Kontrol (SUT Uygunluk)
+        kontrol_frame = tk.Frame(fonksiyon_frame, bg='#F3E5F5')
+        kontrol_frame.pack(fill="x", pady=5)
+
+        kontrol_checkbox = tk.Checkbutton(
+            kontrol_frame,
+            text="Rapor Kontrol",
+            variable=self.rapor_kontrol_var,
+            font=("Arial", 10, "bold"),
+            bg='#F3E5F5',
+            fg='#E65100',
+            activebackground='#F3E5F5',
+            selectcolor='#E1BEE7',
+            command=self.fonksiyon_ayarlarini_kaydet
+        )
+        kontrol_checkbox.pack(side="left")
+
+        tk.Label(
+            kontrol_frame,
+            text="Reçete SUT kurallarına uygunluğunu kontrol et",
+            font=("Arial", 8),
+            bg='#F3E5F5',
+            fg='#666666'
+        ).pack(side="left", padx=(10, 0))
+
+        # Ayırıcı
+        tk.Label(
+            main_frame,
+            text="─" * 40,
+            font=("Arial", 8),
+            bg='#F3E5F5',
+            fg='#CE93D8'
+        ).pack(pady=10)
+
+        # Açıklama
+        aciklama_frame = tk.LabelFrame(
+            main_frame,
+            text="Bilgi",
+            font=("Arial", 9, "bold"),
+            bg='#F3E5F5',
+            fg='#7B1FA2',
+            padx=10,
+            pady=10
+        )
+        aciklama_frame.pack(fill="x")
+
+        aciklama_text = """• Birden fazla fonksiyon aktifse, en gerideki
+  reçeteden başlanır.
+
+• Örnek: İlaç takip 50. reçetede, rapor toplama
+  30. reçetede kaldıysa → 30'dan başlar.
+
+• Her fonksiyon kendi reçete hafızasını tutar.
+
+• En az bir fonksiyon aktif olmalıdır."""
+
+        tk.Label(
+            aciklama_frame,
+            text=aciklama_text,
+            font=("Arial", 8),
+            bg='#F3E5F5',
+            fg='#4A148C',
+            justify="left"
+        ).pack(anchor="w")
+
+    def fonksiyon_ayarlarini_kaydet(self):
+        """Fonksiyon ayarlarını kaydet"""
+        # En az bir fonksiyon aktif olmalı
+        if not (self.ilac_takip_var.get() or self.rapor_toplama_var.get() or self.rapor_kontrol_var.get()):
+            messagebox.showwarning(
+                "Uyarı",
+                "En az bir fonksiyon aktif olmalıdır!"
+            )
+            # Son değiştirilen checkbox'ı geri al (ilac_takip varsayılan)
+            self.ilac_takip_var.set(True)
+            return
+
+        # Ayarları kaydet
+        self.grup_durumu.fonksiyon_ayarlari_guncelle({
+            "ilac_takip_aktif": self.ilac_takip_var.get(),
+            "rapor_toplama_aktif": self.rapor_toplama_var.get(),
+            "rapor_kontrol_aktif": self.rapor_kontrol_var.get()
+        })
+
+        # Log
+        aktif_fonksiyonlar = []
+        if self.ilac_takip_var.get():
+            aktif_fonksiyonlar.append("İlaç Takip")
+        if self.rapor_toplama_var.get():
+            aktif_fonksiyonlar.append("Rapor Toplama")
+        if self.rapor_kontrol_var.get():
+            aktif_fonksiyonlar.append("Rapor Kontrol")
+
+        logger.info(f"✓ Aktif fonksiyonlar güncellendi: {', '.join(aktif_fonksiyonlar)}")
 
     def create_giris_ayarlari_tab(self, parent):
         """Giriş Ayarları sekmesi içeriğini oluştur"""
@@ -3145,10 +3661,15 @@ class BotanikGUI:
             self.root.after(0, lambda g=secili: self.bitti_bilgisi_guncelle(g))  # GUI'yi güncelle
 
             # Yeni oturum başlat (database + log dosyası)
-            son_recete = self.grup_durumu.son_recete_al(secili)
+            # En gerideki reçeteden başla (aktif fonksiyonlara göre)
+            son_recete, baslangic_fonksiyon = self.grup_durumu.en_gerideki_recete_al(secili)
+            if baslangic_fonksiyon:
+                logger.info(f"En gerideki reçete: {son_recete} ({baslangic_fonksiyon} için)")
             self.aktif_oturum_id = self.database.yeni_oturum_baslat(secili, son_recete)
             self.session_logger = SessionLogger(self.aktif_oturum_id, secili)
             self.log_ekle(f"📝 Yeni oturum başlatıldı (ID: {self.aktif_oturum_id})")
+            if son_recete:
+                self.log_ekle(f"📍 Başlangıç reçetesi: {son_recete}")
             self.session_logger.info(f"Grup {secili} için yeni oturum başlatıldı")
 
         self.oturum_baslangic = time.time()
@@ -3184,14 +3705,14 @@ class BotanikGUI:
 
         # Tümünü kontrol modunu aktif et
         self.tumu_kontrol_aktif = True
-        self.tumu_kontrol_mevcut_index = 0  # A grubundan başla
+        self.tumu_kontrol_mevcut_index = 0  # C grubundan başla
 
-        # A grubunu seç
-        ilk_grup = self.tumu_kontrol_grup_sirasi[0]  # "A"
+        # C grubunu seç (ilk grup)
+        ilk_grup = self.tumu_kontrol_grup_sirasi[0]  # "C"
         self.secili_grup.set(ilk_grup)
         self.grup_buttons[ilk_grup].invoke()  # Radio button'ı seç
 
-        self.log_ekle(f"🚀 TÜMÜNÜ KONTROL ET BAŞLATILDI: A → B → C")
+        self.log_ekle(f"🚀 TÜMÜNÜ KONTROL ET BAŞLATILDI: C → A → B → GK")
         self.log_ekle(f"📍 Başlangıç: Grup {ilk_grup} (kaldığı yerden devam)")
 
         # NOT: basla() çağırmaya gerek yok, çünkü grup_buttons[ilk_grup].invoke()
@@ -3662,7 +4183,7 @@ class BotanikGUI:
                                                 self.root.after(0, lambda: self.log_ekle(f"📝 Yeni oturum başlatıldı (ID: {self.aktif_oturum_id})"))
 
                                                 # Grup rengini güncelle
-                                                for g in ["A", "B", "C"]:
+                                                for g in ["C", "A", "B", "GK"]:
                                                     if g in self.grup_frames:
                                                         bg_color = "#BBDEFB" if g == sonraki_grup else "#E8F5E9"
                                                         self.grup_frames[g]['main'].config(bg=bg_color)
@@ -3752,17 +4273,40 @@ class BotanikGUI:
                     except Exception as e:
                         logger.warning(f"Görev tamamlama kontrolü hatası: {e}")
 
+                    # Renkli reçete kontrolü - listede varsa atla
+                    if self.renkli_recete.liste_yuklu_mu() and self.renkli_recete.recete_var_mi(medula_recete_no):
+                        logger.info(f"🔴🟢 Renkli reçete listesinde var, atlanıyor: {medula_recete_no}")
+                        self.root.after(0, lambda r=medula_recete_no: self.log_ekle(f"🔴🟢 Renkli reçetede var: {r}"))
+
+                        # Sonraki reçeteye geç
+                        try:
+                            sonra = self.bot.retry_with_popup_check(
+                                lambda: self.bot.sonra_butonuna_tikla(),
+                                "SONRA butonu",
+                                max_retries=5
+                            )
+                            if sonra:
+                                recete_sira += 1
+                                onceki_recete_no = medula_recete_no
+                                continue  # Sonraki reçeteye geç
+                        except Exception as e:
+                            logger.warning(f"Renkli reçete atlama - SONRA butonu hatası: {e}")
+
                     # Tek reçete işle
                     try:
                         # stop_check: DURDUR butonuna basıldığında hemen durması için
                         # onceden_okunan_recete_no: GUI'de zaten okundu, tekrar okuma yapılmasın
                         # onceki_recete_no: Ardışık aynı reçete kontrolü için (optimize)
+                        # fonksiyon_ayarlari: Aktif fonksiyonlar (ilaç takip, rapor toplama, rapor kontrol)
+                        fonksiyon_ayarlari = self.grup_durumu.fonksiyon_ayarlari_al()
                         basari, medula_no, takip_adet, hata_nedeni = tek_recete_isle(
                             self.bot, recete_sira, self.rapor_takip,
+                            grup=self.aktif_grup,
                             session_logger=self.session_logger,
                             onceden_okunan_recete_no=medula_recete_no,
                             onceki_recete_no=onceki_recete_no,
-                            stop_check=lambda: self.stop_requested or not self.is_running
+                            stop_check=lambda: self.stop_requested or not self.is_running,
+                            fonksiyon_ayarlari=fonksiyon_ayarlari
                         )
                     except SistemselHataException as e:
                         # ✅ Sistemsel hata yakalandı!
@@ -3773,7 +4317,7 @@ class BotanikGUI:
                         self.root.after(0, lambda: self.log_ekle("🔄 MEDULA yeniden başlatılıyor..."))
                         # Aktif grubu al
                         aktif_mod = self.grup_durumu.aktif_mod_al()
-                        aktif_grup = aktif_mod if aktif_mod in ["A", "B", "C"] else self.aktif_grup
+                        aktif_grup = aktif_mod if aktif_mod in ["C", "A", "B", "GK"] else self.aktif_grup
 
                         # Son reçeteden devam et
                         son_recete = self.grup_durumu.son_recete_al(aktif_grup)

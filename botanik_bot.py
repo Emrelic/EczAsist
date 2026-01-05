@@ -5772,7 +5772,7 @@ class BotanikBot:
             logger.error(f"Bilgi gösterme hatası: {e}")
 
 
-def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=None, stop_check=None, onceden_okunan_recete_no=None, onceki_recete_no=None):
+def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=None, stop_check=None, onceden_okunan_recete_no=None, onceki_recete_no=None, fonksiyon_ayarlari=None):
     """
     Tek bir reçete için tüm işlemleri yap
 
@@ -5780,15 +5780,31 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
         bot: BotanikBot instance
         recete_sira_no: Reçete sıra numarası (1, 2, 3...)
         rapor_takip: RaporTakip instance (CSV kaydı için)
-        grup: Grup bilgisi (A, B, C) (varsayılan: "")
+        grup: Grup bilgisi (A, B, C, GK) (varsayılan: "")
         session_logger: SessionLogger instance (oturum logları için, opsiyonel)
         stop_check: Durdurma kontrolü için callback fonksiyonu (True dönerse işlem durur)
         onceden_okunan_recete_no: GUI'de zaten okunan reçete numarası (tekrar okumayı önler)
         onceki_recete_no: Bir önceki işlenen reçete numarası (ardışık aynı reçete kontrolü için)
+        fonksiyon_ayarlari: Dict - hangi fonksiyonların aktif olduğu
+            - ilac_takip_aktif: bool
+            - rapor_toplama_aktif: bool
+            - rapor_kontrol_aktif: bool
 
     Returns:
         tuple: (başarı durumu: bool, medula reçete no: str veya None, takip sayısı: int, hata nedeni: str veya None)
     """
+    # Varsayılan fonksiyon ayarları
+    if fonksiyon_ayarlari is None:
+        fonksiyon_ayarlari = {
+            "ilac_takip_aktif": True,
+            "rapor_toplama_aktif": True,
+            "rapor_kontrol_aktif": True
+        }
+
+    ilac_takip_aktif = fonksiyon_ayarlari.get("ilac_takip_aktif", True)
+    rapor_toplama_aktif = fonksiyon_ayarlari.get("rapor_toplama_aktif", True)
+    rapor_kontrol_aktif = fonksiyon_ayarlari.get("rapor_kontrol_aktif", True)
+
     # Durdurma kontrolü helper fonksiyonu
     def should_stop():
         """Stop_check callback varsa kontrol et, True dönerse durulmalı"""
@@ -6009,6 +6025,59 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
     except Exception as e:
         logger.debug(f"Uyarı kontrol hatası: {e}")
 
+    # ===== İLAÇ TAKİP PASİFSE ATLA =====
+    # İlaç takip aktif değilse, direkt rapor toplama/kontrol kısmına geç
+    if not ilac_takip_aktif:
+        logger.info("⏭ İlaç takip pasif, atlanıyor...")
+
+        # Sadece rapor işlemleri yap
+        sonraki_zaten_basildi = False
+
+        # Rapor toplama (aktifse)
+        if rapor_toplama_aktif and rapor_takip:
+            try:
+                if session_logger:
+                    session_logger.info("🔵 Rapor toplama başlatılıyor...")
+                rapor_verileri = bot.rapor_listesini_topla()
+                if rapor_verileri:
+                    sonraki_zaten_basildi = rapor_verileri.get('sonraki_basildi', False)
+                    if rapor_verileri.get('raporlar'):
+                        ad_soyad = rapor_verileri.get('ad_soyad', 'Bilinmeyen')
+                        telefon = rapor_verileri.get('telefon', '')
+                        raporlar = rapor_verileri.get('raporlar', [])
+                        rapor_takip.toplu_rapor_ekle(ad_soyad, telefon, raporlar, grup)
+                        logger.info(f"✓ Hasta raporları kaydedildi: {ad_soyad}")
+            except Exception as e:
+                logger.warning(f"Rapor kaydetme hatası: {e}")
+
+        # Rapor kontrol (aktifse)
+        if rapor_kontrol_aktif:
+            try:
+                from recete_kontrol import get_kontrol_motoru
+                kontrol_motoru = get_kontrol_motoru()
+                recete_verisi = {'recete_no': medula_recete_no, 'grup': grup}
+                sonuclar = kontrol_motoru.recete_kontrol_et(recete_verisi)
+                for kontrol_adi, rapor in sonuclar.items():
+                    if kontrol_adi != '_genel':
+                        logger.info(f"[Kontrol] {kontrol_adi}: {rapor.mesaj}")
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.warning(f"Rapor kontrol hatası: {e}")
+
+        # Sonraki reçeteye geç
+        if not sonraki_zaten_basildi:
+            sonra = bot.retry_with_popup_check(
+                lambda: bot.sonra_butonuna_tikla(),
+                "SONRA butonu",
+                max_retries=5
+            )
+            if not sonra:
+                return (False, medula_recete_no, 0, "SONRA butonu başarısız")
+
+        return (True, medula_recete_no, 0, None)
+
+    # ===== İLAÇ TAKİP (AKTİF) =====
     # İlaç butonuna tıkla (5 deneme + popup kontrolü)
     # ★ OPTİMİZASYON: Eğer hızlı taramadan referans varsa direkt kullan ★
     adim_baslangic = time.time()
