@@ -3432,22 +3432,39 @@ class MFAnalizGUI:
                 # Zam kac ay sonra
                 zam_ay_sonra = zam_gun_sonra / 30 if zam_gun_sonra > 0 else 999
 
+                # ===== AYIN GÜNÜ ETKİSİ =====
+                # Bu ay kalan gün sayısı ve ilk ay sarfı
+                kalan_gun = 30 - ayin_gunu + 1  # Bugün dahil kalan gün
+                ilk_ay_sarf = (kalan_gun / 30) * aylik_sarf  # Bu ay harcanacak miktar
+
                 # ===== MEVCUT STOK FAIZ KAYBI =====
                 # Mevcut stok icin: Her ay ayri alsaydik vs tumu bugun alinmis
                 # Fark = faiz kaybi (erken odeme maliyeti)
                 mevcut_stok_kaybi = 0
                 if mevcut_stok > 0 and aylik_sarf > 0:
-                    mevcut_stok_ay_tam = int(mevcut_stok / aylik_sarf) + (1 if (mevcut_stok / aylik_sarf) % 1 > 0 else 0)
-
-                    # Her ay ayri alsaydik maliyeti (NPV)
+                    # Her ay ayri alsaydik maliyeti (NPV) - ayin gununu dikkate al
                     npv_mevcut_ayri = 0
                     kalan = mevcut_stok
-                    for ay in range(mevcut_stok_ay_tam):
-                        bu_ay = min(aylik_sarf, kalan)
+                    ay = 0
+
+                    while kalan > 0:
+                        # İlk ay için kalan gün oranında sarf, sonraki aylar tam
+                        if ay == 0:
+                            bu_ay_sarf = ilk_ay_sarf
+                        else:
+                            bu_ay_sarf = aylik_sarf
+
+                        bu_ay = min(bu_ay_sarf, kalan)
                         if bu_ay <= 0:
                             break
+
                         npv_mevcut_ayri += (bu_ay * depocu_fiyat) / ((1 + aylik_faiz) ** ay)
                         kalan -= bu_ay
+                        ay += 1
+
+                        # Sonsuz döngü koruması
+                        if ay > 120:
+                            break
 
                     # Tumu bugun alinmis maliyeti
                     npv_mevcut_toplu = mevcut_stok * depocu_fiyat
@@ -3478,18 +3495,47 @@ class MFAnalizGUI:
                     odenen_para = al * depocu_fiyat
                     birim_maliyet = odenen_para / toplam_gelen
 
-                    # Stok kac ay yeter (toplam)
-                    stok_ay = (yeni_stok / aylik_sarf) if aylik_sarf > 0 else 999
-
-                    # Mevcut stok kac ay yeter
-                    mevcut_stok_ay = (mevcut_stok / aylik_sarf) if aylik_sarf > 0 else 0
-
-                    # Yeni alim kac ay yetecek
-                    yeni_alim_ay = (toplam_gelen / aylik_sarf) if aylik_sarf > 0 else 0
-                    yeni_alim_ay_tam = int(yeni_alim_ay) + (1 if yeni_alim_ay % 1 > 0 else 0)
-
                     # MF oranı
                     mf_oran = (bedava / toplam_gelen) * 100 if toplam_gelen > 0 else 0
+
+                    # ===== MEVCUT STOK NE ZAMAN BİTER? =====
+                    # Ay ay simüle ederek mevcut stok bitişini bul
+                    kalan_mevcut = mevcut_stok
+                    mevcut_bitis_ay = 0
+                    simule_ay = 0
+
+                    while kalan_mevcut > 0 and simule_ay < 120:
+                        if simule_ay == 0:
+                            bu_ay_sarf = ilk_ay_sarf
+                        else:
+                            bu_ay_sarf = aylik_sarf
+
+                        if kalan_mevcut >= bu_ay_sarf:
+                            kalan_mevcut -= bu_ay_sarf
+                            mevcut_bitis_ay = simule_ay + 1
+                        else:
+                            # Mevcut stok bu ayın ortasında bitiyor
+                            mevcut_bitis_ay = simule_ay
+                            break
+
+                        simule_ay += 1
+
+                    # Toplam stok kac ay yeter
+                    kalan_toplam = yeni_stok
+                    toplam_ay_sayisi = 0
+                    simule_ay = 0
+
+                    while kalan_toplam > 0 and simule_ay < 120:
+                        if simule_ay == 0:
+                            bu_ay_sarf = ilk_ay_sarf
+                        else:
+                            bu_ay_sarf = aylik_sarf
+
+                        kalan_toplam -= min(bu_ay_sarf, kalan_toplam)
+                        toplam_ay_sayisi = simule_ay + 1
+                        simule_ay += 1
+
+                    stok_ay = toplam_ay_sayisi
 
                     # ===== NPV HESAPLAMASI =====
                     # Mevcut stok zaten alindi (sunk cost) - sadece yeni alim karsilastirilir
@@ -3497,31 +3543,42 @@ class MFAnalizGUI:
                     # Senaryo B: MF'li - bugun toplu al
                     # Kazanc = NPV_A - NPV_B
 
-                    # Senaryo A: Mevcut stok bittikten sonra her ay alim
+                    # Senaryo A: Mevcut stok bittikten sonra her ay alim (ayin gunu dikkate alinarak)
                     npv_mfsiz = 0
                     kalan_ihtiyac = toplam_gelen  # Sadece yeni alim kadar ihtiyac
-                    baslangic_ay = int(mevcut_stok_ay)  # Mevcut stok bittikten sonra
 
-                    for i in range(yeni_alim_ay_tam):
-                        ay = baslangic_ay + i  # Mevcut stok bittikten sonraki aylar
+                    # Mevcut stok ve yeni alimi birlikte simüle et
+                    kalan_mevcut_sim = mevcut_stok
+                    ay = 0
 
-                        # Bu ay ne kadar alinacak
-                        bu_ay_alim = min(aylik_sarf, kalan_ihtiyac)
-                        if bu_ay_alim <= 0:
-                            break
-
-                        # Zam sonrasi mi?
-                        if zam_orani > 0 and ay >= zam_ay_sonra:
-                            fiyat = depocu_fiyat * (1 + zam_orani)
+                    while kalan_ihtiyac > 0 and ay < 120:
+                        if ay == 0:
+                            bu_ay_sarf = ilk_ay_sarf
                         else:
-                            fiyat = depocu_fiyat
+                            bu_ay_sarf = aylik_sarf
 
-                        # Bu ayki odemenin bugunku degeri
-                        odeme = bu_ay_alim * fiyat
-                        iskonto_faktor = (1 + aylik_faiz) ** ay
-                        npv_mfsiz += odeme / iskonto_faktor
+                        # Önce mevcut stoktan harca
+                        mevcut_kullanim = min(kalan_mevcut_sim, bu_ay_sarf)
+                        kalan_mevcut_sim -= mevcut_kullanim
 
-                        kalan_ihtiyac -= bu_ay_alim
+                        # Kalan sarfi yeni alimdan karşıla
+                        yeni_kullanim = min(bu_ay_sarf - mevcut_kullanim, kalan_ihtiyac)
+
+                        if yeni_kullanim > 0:
+                            # Zam sonrasi mi?
+                            if zam_orani > 0 and ay >= zam_ay_sonra:
+                                fiyat = depocu_fiyat * (1 + zam_orani)
+                            else:
+                                fiyat = depocu_fiyat
+
+                            # Bu ayki odemenin bugunku degeri
+                            odeme = yeni_kullanim * fiyat
+                            iskonto_faktor = (1 + aylik_faiz) ** ay
+                            npv_mfsiz += odeme / iskonto_faktor
+
+                            kalan_ihtiyac -= yeni_kullanim
+
+                        ay += 1
 
                     # Senaryo B: Bugun toplu odeme (MF'li)
                     npv_mfli = odenen_para  # Bugun odeniyor, iskonto yok
