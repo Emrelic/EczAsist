@@ -3301,7 +3301,7 @@ class MFAnalizGUI:
         """Basit MF Hesaplayici penceresini ac"""
         hesap_win = tk.Toplevel(self.root)
         hesap_win.title("MF Hesaplayici - Alim Karsilastirma")
-        hesap_win.geometry("900x700")
+        hesap_win.geometry("1050x700")
         hesap_win.configure(bg=self.colors['bg'])
         hesap_win.transient(self.root)
 
@@ -3357,7 +3357,19 @@ class MFAnalizGUI:
                 fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
         vade_var = tk.StringVar(value="75")
         tk.Entry(row2, textvariable=vade_var, font=('Segoe UI', 10),
-                bg=c['entry_bg'], fg=c['text'], relief='flat', width=6).pack(side=tk.LEFT)
+                bg=c['entry_bg'], fg=c['text'], relief='flat', width=6).pack(side=tk.LEFT, padx=(0, 20))
+
+        tk.Label(row2, text="Depo Vadesi (gun):", font=('Segoe UI', 10),
+                fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
+        depo_vade_var = tk.StringVar(value="30")
+        tk.Entry(row2, textvariable=depo_vade_var, font=('Segoe UI', 10),
+                bg=c['entry_bg'], fg=c['text'], relief='flat', width=5).pack(side=tk.LEFT, padx=(0, 15))
+
+        tk.Label(row2, text="Depo Isk.(%):", font=('Segoe UI', 10),
+                fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
+        depo_iskonto_var = tk.StringVar(value="0")
+        tk.Entry(row2, textvariable=depo_iskonto_var, font=('Segoe UI', 10),
+                bg=c['entry_bg'], fg=c['text'], relief='flat', width=5).pack(side=tk.LEFT)
 
         # Satir 3: Zam bilgileri
         row3 = tk.Frame(girdi_frame, bg=c['panel_bg'])
@@ -3420,14 +3432,20 @@ class MFAnalizGUI:
                 mevcut_stok = int(stok_var.get())
                 aylik_sarf = float(sarf_var.get())
                 ayin_gunu = int(gun_var.get())
-                depocu_fiyat = float(fiyat_var.get().replace(',', '.'))
+                depocu_fiyat_brut = float(fiyat_var.get().replace(',', '.'))
                 yillik_faiz = float(faiz_var.get().replace(',', '.')) / 100
                 sgk_vade_gun = int(vade_var.get())
+                depo_vade_gun = int(depo_vade_var.get())  # Depo ödeme vadesi
+                depo_iskonto = float(depo_iskonto_var.get().replace(',', '.')) / 100  # Depo iskontosu
                 zam_orani = float(zam_var.get().replace(',', '.')) / 100
                 zam_gun_sonra = int(zam_gun_var.get())
 
+                # Depo iskontosu uygulanmış fiyat
+                depocu_fiyat = depocu_fiyat_brut * (1 - depo_iskonto)
+
                 aylik_faiz = yillik_faiz / 12
                 gunluk_sarf = aylik_sarf / 30
+                depo_vade_ay = depo_vade_gun / 30  # Aylık olarak depo vadesi
 
                 # Zam kac ay sonra
                 zam_ay_sonra = zam_gun_sonra / 30 if zam_gun_sonra > 0 else 999
@@ -3572,16 +3590,17 @@ class MFAnalizGUI:
                                 fiyat = depocu_fiyat
 
                             # Bu ayki odemenin bugunku degeri
+                            # Depo vadesi: odeme ay + depo_vade_ay sonra yapilir
                             odeme = yeni_kullanim * fiyat
-                            iskonto_faktor = (1 + aylik_faiz) ** ay
+                            iskonto_faktor = (1 + aylik_faiz) ** (ay + depo_vade_ay)
                             npv_mfsiz += odeme / iskonto_faktor
 
                             kalan_ihtiyac -= yeni_kullanim
 
                         ay += 1
 
-                    # Senaryo B: Bugun toplu odeme (MF'li)
-                    npv_mfli = odenen_para  # Bugun odeniyor, iskonto yok
+                    # Senaryo B: Toplu odeme (MF'li) - depo vadesi kadar sonra odenir
+                    npv_mfli = odenen_para / ((1 + aylik_faiz) ** depo_vade_ay)
 
                     # Yeni alim kazanci/kaybi
                     yeni_alim_kazanc = npv_mfsiz - npv_mfli
@@ -3700,9 +3719,9 @@ class MFAnalizGUI:
         aciklama_frame.pack(fill=tk.X, padx=10, pady=5)
 
         aciklama = """Hesaplama Mantigi (NPV - Net Bugunku Deger):
-• MF'siz Maliyet = Mevcut stok bittikten sonra her ay alim yapilsa odenecek paranin bugunku degeri
-• MF'li Maliyet = Bugun toplu odenen tutar
-• Mevcut Stok Kaybi = Fazla stok icin erken odeme maliyeti (net kazanca dahil)
+• MF'siz Maliyet = Her ay alim yapilsa odenecek paranin bugunku degeri (depo vadesi + iskonto dahil)
+• MF'li Maliyet = Toplu alimda odenecek tutar (depo vadesi sonra odeme, iskonto dahil)
+• Depo Vadesi/Isk. = Depoya odeme vadesi ve o vadeye karsilik gelen iskonto orani
 • NET KAZANC = (MF'siz - MF'li) - Mevcut Stok Kaybi"""
 
         tk.Label(aciklama_frame, text=aciklama, font=('Segoe UI', 9),
