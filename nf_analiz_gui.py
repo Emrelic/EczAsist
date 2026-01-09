@@ -92,7 +92,7 @@ class MFAnalizGUI:
         "ilac_farki": "0.00",
         "alim_adet": "100",
         "mf_bedava": "10",
-        "vade_gun": "90",
+        "vade_gun": "75",
         "zam_orani": "0",
         "mevduat_faizi": "45",
         "kredi_faizi": "65",
@@ -2227,8 +2227,8 @@ class MFAnalizGUI:
                 sgk_brut = senaryo.sgk_acik_hesap.pop(onceki_ay_key)
                 # Muayene tutarı SGK'dan mahsup edilir
                 sgk_fatura_tutar = sgk_brut - muayene_borc_tutar
-                # 75 gün sonra tahsil edilecek (ayın 15'inde)
-                tahsil_tarihi = mevcut_tarih + timedelta(days=75)
+                # Vade gün sonra tahsil edilecek (ayın 15'inde)
+                tahsil_tarihi = mevcut_tarih + timedelta(days=d['vade'])
                 tahsil_tarihi = tahsil_tarihi.replace(day=15)
                 if tahsil_tarihi not in senaryo.sgk_alacak:
                     senaryo.sgk_alacak[tahsil_tarihi] = 0
@@ -2262,7 +2262,7 @@ class MFAnalizGUI:
             if onceki_ay_key in senaryo.depo_acik_hesap:
                 depo_senet_tutar = senaryo.depo_acik_hesap.pop(onceki_ay_key)
                 # SGK ile aynı tarihte ödeme (önce SGK yatar, sonra depo ödenir)
-                odeme_tarihi = mevcut_tarih + timedelta(days=75)
+                odeme_tarihi = mevcut_tarih + timedelta(days=d['vade'])
                 odeme_tarihi = odeme_tarihi.replace(day=15)
                 if odeme_tarihi not in senaryo.depo_borc:
                     senaryo.depo_borc[odeme_tarihi] = 0
@@ -2923,14 +2923,14 @@ class MFAnalizGUI:
                 tk.Label(row3, text=f"{net_alacak:,.2f} TL", font=('Segoe UI', 12, 'bold'),
                         fg=self.colors['info'], bg=self.colors['card_bg']).pack(side=tk.RIGHT)
 
-            # Tahsil tarihi (75 gün)
-            tahsil_tarihi = mevcut_tarih + timedelta(days=75)
+            # Tahsil tarihi (vade gün)
+            tahsil_tarihi = mevcut_tarih + timedelta(days=vade)
             tahsil_tarihi = tahsil_tarihi.replace(day=15)
             row4 = tk.Frame(sgk_content, bg=self.colors['card_bg'])
             row4.pack(fill=tk.X, pady=5)
             tk.Label(row4, text="Tahsil Tarihi:", font=('Segoe UI', 11),
                     fg=self.colors['text_dim'], bg=self.colors['card_bg']).pack(side=tk.LEFT)
-            tk.Label(row4, text=f"📅 {tahsil_tarihi.strftime('%d.%m.%Y')} (75 gün)",
+            tk.Label(row4, text=f"📅 {tahsil_tarihi.strftime('%d.%m.%Y')} ({vade} gün)",
                     font=('Segoe UI', 11, 'bold'),
                     fg=self.colors['warning'], bg=self.colors['card_bg']).pack(side=tk.RIGHT)
 
@@ -2957,14 +2957,14 @@ class MFAnalizGUI:
             tk.Label(row1, text=f"{depo_senet:,.2f} TL", font=('Segoe UI', 12, 'bold'),
                     fg=self.colors['danger'], bg=self.colors['card_bg']).pack(side=tk.RIGHT)
 
-            # Ödeme tarihi (SGK ile aynı gün - 75 gün)
-            odeme_tarihi = mevcut_tarih + timedelta(days=75)
+            # Ödeme tarihi (SGK ile aynı gün - vade gün)
+            odeme_tarihi = mevcut_tarih + timedelta(days=vade)
             odeme_tarihi = odeme_tarihi.replace(day=15)
             row2 = tk.Frame(depo_content, bg=self.colors['card_bg'])
             row2.pack(fill=tk.X, pady=5)
             tk.Label(row2, text="Ödeme Tarihi:", font=('Segoe UI', 11),
                     fg=self.colors['text_dim'], bg=self.colors['card_bg']).pack(side=tk.LEFT)
-            tk.Label(row2, text=f"📅 {odeme_tarihi.strftime('%d.%m.%Y')} (SGK ile aynı gün)",
+            tk.Label(row2, text=f"📅 {odeme_tarihi.strftime('%d.%m.%Y')} ({vade} gün, SGK ile aynı gün)",
                     font=('Segoe UI', 11, 'bold'),
                     fg=self.colors['warning'], bg=self.colors['card_bg']).pack(side=tk.RIGHT)
 
@@ -3301,7 +3301,7 @@ class MFAnalizGUI:
         """Basit MF Hesaplayici penceresini ac"""
         hesap_win = tk.Toplevel(self.root)
         hesap_win.title("MF Hesaplayici - Alim Karsilastirma")
-        hesap_win.geometry("1050x700")
+        hesap_win.geometry("1150x780")
         hesap_win.configure(bg=self.colors['bg'])
         hesap_win.transient(self.root)
 
@@ -3361,7 +3361,7 @@ class MFAnalizGUI:
 
         tk.Label(row2, text="Depo Vadesi (gun):", font=('Segoe UI', 10),
                 fg=c['text'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=(0, 5))
-        depo_vade_var = tk.StringVar(value="30")
+        depo_vade_var = tk.StringVar(value="75")
         tk.Entry(row2, textvariable=depo_vade_var, font=('Segoe UI', 10),
                 bg=c['entry_bg'], fg=c['text'], relief='flat', width=5).pack(side=tk.LEFT, padx=(0, 15))
 
@@ -3388,39 +3388,64 @@ class MFAnalizGUI:
                 bg=c['entry_bg'], fg=c['text'], relief='flat', width=6).pack(side=tk.LEFT)
 
         # ===== ORTA KISIM: MF ŞARTLARI =====
-        mf_frame = tk.LabelFrame(hesap_win, text=" MF Sartlari (Al + Bedava) ",
+        mf_frame = tk.LabelFrame(hesap_win, text=" MF Sartlari (Al + Bedava) - 20 adet girilebilir ",
                                 font=('Segoe UI', 11, 'bold'),
                                 fg=c['text'], bg=c['panel_bg'],
                                 relief='flat', bd=2)
         mf_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        mf_inner = tk.Frame(mf_frame, bg=c['panel_bg'])
-        mf_inner.pack(fill=tk.X, padx=10, pady=8)
-
-        # Varsayilan MF sartlari
+        # Varsayilan MF sartlari (20 adet, bos olanlar hesaplanmaz)
         varsayilan_mf = [
-            (1, 0), (5, 1), (10, 3), (20, 7), (50, 25), (100, 60)
+            (1, 0), (5, 1), (10, 3), (20, 7), (50, 25), (100, 60),
+            (0, 0), (0, 0), (0, 0), (0, 0),  # 7-10 bos
+            (0, 0), (0, 0), (0, 0), (0, 0), (0, 0),  # 11-15 bos
+            (0, 0), (0, 0), (0, 0), (0, 0), (0, 0)   # 16-20 bos
         ]
 
         mf_vars = []  # [(al_var, bedava_var), ...]
 
-        for i, (al, bedava) in enumerate(varsayilan_mf):
-            frame = tk.Frame(mf_inner, bg=c['panel_bg'])
-            frame.pack(side=tk.LEFT, padx=10)
+        # 2 satir halinde goster (her satirda 10 adet)
+        for row_idx in range(2):
+            mf_row = tk.Frame(mf_frame, bg=c['panel_bg'])
+            mf_row.pack(fill=tk.X, padx=5, pady=6)
 
-            al_var = tk.StringVar(value=str(al))
-            bedava_var = tk.StringVar(value=str(bedava))
+            for col_idx in range(10):
+                i = row_idx * 10 + col_idx
+                if i >= len(varsayilan_mf):
+                    break
 
-            tk.Entry(frame, textvariable=al_var, font=('Segoe UI', 9),
-                    bg=c['entry_bg'], fg=c['text'], relief='flat',
-                    width=4, justify='center').pack(side=tk.LEFT)
-            tk.Label(frame, text="+", font=('Segoe UI', 10, 'bold'),
-                    fg=c['accent'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=2)
-            tk.Entry(frame, textvariable=bedava_var, font=('Segoe UI', 9),
-                    bg=c['entry_bg'], fg=c['text'], relief='flat',
-                    width=4, justify='center').pack(side=tk.LEFT)
+                al, bedava = varsayilan_mf[i]
 
-            mf_vars.append((al_var, bedava_var))
+                # Her MF cifti icin ayri bir cerceveli kutu
+                pair_container = tk.Frame(mf_row, bg=c['panel_bg'])
+                pair_container.pack(side=tk.LEFT, padx=4, pady=2)
+
+                # Numara etiketi
+                tk.Label(pair_container, text=f"{i+1}.", font=('Segoe UI', 8),
+                        fg=c['text_dim'], bg=c['panel_bg']).pack(anchor='w')
+
+                # Cerceveli kutu
+                pair_frame = tk.Frame(pair_container, bg=c['card_bg'],
+                                      highlightbackground=c['accent'], highlightthickness=2)
+                pair_frame.pack()
+
+                # Ic kisim
+                inner = tk.Frame(pair_frame, bg=c['card_bg'])
+                inner.pack(padx=5, pady=4)
+
+                al_var = tk.StringVar(value=str(al) if al > 0 else "")
+                bedava_var = tk.StringVar(value=str(bedava) if al > 0 else "")
+
+                tk.Entry(inner, textvariable=al_var, font=('Segoe UI', 9),
+                        bg=c['entry_bg'], fg=c['text'], relief='flat',
+                        width=4, justify='center').pack(side=tk.LEFT)
+                tk.Label(inner, text="+", font=('Segoe UI', 11, 'bold'),
+                        fg=c['accent'], bg=c['card_bg']).pack(side=tk.LEFT, padx=3)
+                tk.Entry(inner, textvariable=bedava_var, font=('Segoe UI', 9),
+                        bg=c['entry_bg'], fg=c['text'], relief='flat',
+                        width=4, justify='center').pack(side=tk.LEFT)
+
+                mf_vars.append((al_var, bedava_var))
 
         # ===== HESAPLA BUTONU =====
         btn_frame = tk.Frame(hesap_win, bg=c['bg'])
@@ -3590,17 +3615,19 @@ class MFAnalizGUI:
                                 fiyat = depocu_fiyat
 
                             # Bu ayki odemenin bugunku degeri
-                            # Depo vadesi: odeme ay + depo_vade_ay sonra yapilir
+                            # Depo vadesi mantigi: ay boyunca alinan mallar icin
+                            # senet ay+1'in 1'inde kesilir, depo_vade gun sonra odenir
+                            # Ornek: Ocak alimi -> 1 Subat senet -> 75 gun sonra (15 Nisan) odeme
                             odeme = yeni_kullanim * fiyat
-                            iskonto_faktor = (1 + aylik_faiz) ** (ay + depo_vade_ay)
+                            iskonto_faktor = (1 + aylik_faiz) ** (ay + 1 + depo_vade_ay)
                             npv_mfsiz += odeme / iskonto_faktor
 
                             kalan_ihtiyac -= yeni_kullanim
 
                         ay += 1
 
-                    # Senaryo B: Toplu odeme (MF'li) - depo vadesi kadar sonra odenir
-                    npv_mfli = odenen_para / ((1 + aylik_faiz) ** depo_vade_ay)
+                    # Senaryo B: Toplu odeme (MF'li) - bu ay alinir, ay sonunda senet, depo_vade sonra odenir
+                    npv_mfli = odenen_para / ((1 + aylik_faiz) ** (1 + depo_vade_ay))
 
                     # Yeni alim kazanci/kaybi
                     yeni_alim_kazanc = npv_mfsiz - npv_mfli

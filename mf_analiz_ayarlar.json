@@ -1,0 +1,25 @@
+{
+    "varsayilan_degerler": {
+        "stok": "30",
+        "aylik_sarf": "30",
+        "depocu_fiyat": "100.00",
+        "kamu_fiyat": "120.00",
+        "piyasa_fiyat": "130.00",
+        "ilac_farki": "10",
+        "alim_adet": "0",
+        "mf_bedava": "0",
+        "vade_gun": "75",
+        "zam_orani": "0",
+        "mevduat_faizi": "45",
+        "kredi_faizi": "65",
+        "pos_komisyon": "2.75",
+        "blokeli_gun": "30",
+        "pos_modu": "blokeli",
+        "sgk_elden_orani": "61/39",
+        "raporlu_raporsuz_orani": "26/74",
+        "emekli_calisan_orani": "35/65",
+        "nakit_pos_orani": "45/55",
+        "muayene_tahsilat_orani": "15",
+        "banka_baslangic": "0"
+    }
+}
