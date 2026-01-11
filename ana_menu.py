@@ -477,8 +477,32 @@ class AnaMenu:
 
     def ek_raporlar_ac(self):
         """Ek Raporlar modülünü aç"""
-        messagebox.showinfo("Bilgi", "Ek Raporlar modülü henüz geliştirme aşamasında.")
-        # TODO: Ek raporlar modülü eklenecek
+        try:
+            self.root.withdraw()
+
+            from ek_raporlar_gui import EkRaporlarGUI
+
+            # Yeni pencere oluştur
+            ek_root = tk.Toplevel()
+
+            # Ana menüye dönüş callback'i
+            def ana_menuye_don():
+                self.root.deiconify()
+
+            # Pencere kapatma
+            ek_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(ek_root))
+
+            # EkRaporlarGUI'yi başlat
+            app = EkRaporlarGUI(ek_root, ana_menu_callback=ana_menuye_don)
+
+        except ImportError as e:
+            logger.error(f"Ek Raporlar import hatası: {e}")
+            messagebox.showerror("Hata", f"Ek Raporlar modülü yüklenemedi:\n{e}")
+            self.root.deiconify()
+        except Exception as e:
+            logger.error(f"Ek Raporlar açma hatası: {e}")
+            messagebox.showerror("Hata", f"Ek Raporlar modülü açılamadı:\n{e}")
+            self.root.deiconify()
 
     def mf_analiz_ac(self):
         """MF Analiz modülünü aç"""
