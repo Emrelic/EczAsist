@@ -93,7 +93,7 @@ class EkRaporlarGUI:
 
         # Pencere boyutları
         pencere_genislik = 800
-        pencere_yukseklik = 550
+        pencere_yukseklik = 700
 
         # Ekranın ortasına yerleştir
         ekran_genislik = self.root.winfo_screenwidth()
