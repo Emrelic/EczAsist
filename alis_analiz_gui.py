@@ -20,7 +20,7 @@ class AlisAnalizGUI:
     def __init__(self, parent):
         self.parent = parent
         self.parent.title("Alis Analiz Raporu")
-        self.parent.geometry("1650x800")
+        self.parent.geometry("1920x900")
 
         self.db = None
         self.veriler = []
@@ -90,24 +90,48 @@ class AlisAnalizGUI:
         row2.pack(fill=tk.X, pady=2)
 
         # Ortalama hesabi icin kac ay
-        ttk.Label(row2, text="Ortalama Hesabi (Ay):").pack(side=tk.LEFT, padx=(0, 5))
-        self.ortalama_ay_combo = ttk.Combobox(row2, width=5, state="readonly")
+        ttk.Label(row2, text="Ortalama (Ay):").pack(side=tk.LEFT, padx=(0, 5))
+        self.ortalama_ay_combo = ttk.Combobox(row2, width=4, state="readonly")
         self.ortalama_ay_combo['values'] = ["3", "6", "12", "24"]
         self.ortalama_ay_combo.set("6")
-        self.ortalama_ay_combo.pack(side=tk.LEFT, padx=(0, 15))
+        self.ortalama_ay_combo.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Mevduat Faizi
+        ttk.Label(row2, text="Faiz (%):").pack(side=tk.LEFT, padx=(0, 5))
+        self.faiz_entry = ttk.Entry(row2, width=5)
+        self.faiz_entry.insert(0, "45")
+        self.faiz_entry.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Depo Vadesi
+        ttk.Label(row2, text="Depo Vade (Gun):").pack(side=tk.LEFT, padx=(0, 5))
+        self.depo_vade_entry = ttk.Entry(row2, width=4)
+        self.depo_vade_entry.insert(0, "75")
+        self.depo_vade_entry.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Zam Tarihi
+        ttk.Label(row2, text="Zam Tarihi:").pack(side=tk.LEFT, padx=(0, 5))
+        self.zam_tarihi = DateEntry(row2, width=10, date_pattern='dd.mm.yyyy')
+        self.zam_tarihi.set_date(datetime.now() + timedelta(days=365))  # 1 yil sonra varsayilan
+        self.zam_tarihi.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Beklenen Zam Orani
+        ttk.Label(row2, text="Zam (%):").pack(side=tk.LEFT, padx=(0, 5))
+        self.zam_orani_entry = ttk.Entry(row2, width=4)
+        self.zam_orani_entry.insert(0, "0")
+        self.zam_orani_entry.pack(side=tk.LEFT, padx=(0, 10))
 
         # Limit
         ttk.Label(row2, text="Limit:").pack(side=tk.LEFT, padx=(0, 5))
-        self.limit_combo = ttk.Combobox(row2, width=8, state="readonly")
+        self.limit_combo = ttk.Combobox(row2, width=6, state="readonly")
         self.limit_combo['values'] = ["1000", "2000", "5000", "10000", "Tumu"]
         self.limit_combo.set("5000")
-        self.limit_combo.pack(side=tk.LEFT, padx=(0, 15))
+        self.limit_combo.pack(side=tk.LEFT, padx=(0, 10))
 
         # Sorgula butonu
-        ttk.Button(row2, text="Sorgula", command=self.sorgula, width=12).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(row2, text="Sorgula", command=self.sorgula, width=10).pack(side=tk.LEFT, padx=(0, 8))
 
         # Excel Aktar
-        ttk.Button(row2, text="Excel Aktar", command=self.excel_aktar, width=12).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(row2, text="Excel Aktar", command=self.excel_aktar, width=10).pack(side=tk.LEFT, padx=(0, 8))
 
         # Satir 3 - Tablo filtresi
         row3 = ttk.Frame(filtre_frame)
@@ -125,22 +149,28 @@ class AlisAnalizGUI:
         tablo_frame = ttk.Frame(parent)
         tablo_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Sutunlar
+        # Sutunlar - Stok ve Alim aylari yanyana
         self.columns = [
-            ("FaturaNo", 100),
-            ("Tarih", 85),
-            ("Depo", 120),
-            ("UrunAdi", 250),
-            ("Adet", 50),
-            ("MF", 40),
-            ("BirimFiyat", 80),
-            ("Maliyet", 80),
-            ("ToplamTutar", 95),
-            ("FaturaVade", 85),
-            ("FaturaOncesiStok", 85),
-            ("AylikOrtalama", 85),
-            ("OncesiStokAy", 85),
-            ("AlinanAy", 75),
+            ("FaturaNo", 90),
+            ("Tarih", 75),
+            ("Depo", 100),
+            ("UrunAdi", 180),
+            ("OncekiStok", 55),   # Eski stok miktari
+            ("StokAy", 50),       # Eski stok kac ay yetecek
+            ("Adet", 45),         # Alinan miktar
+            ("AlimAy", 50),       # Alim sonrasi toplam kac ay yetecek
+            ("MF", 35),
+            ("AylikOrt", 55),
+            ("BirimFiyat", 65),
+            ("Maliyet", 65),
+            ("ToplamTutar", 75),
+            ("Vade", 75),
+            ("KalanGun", 50),
+            ("UygunAlim", 55),
+            ("ToplamStok", 60),
+            ("NPV_MFsiz", 70),
+            ("NPV_MFli", 70),
+            ("MF_Avantaj", 75),
         ]
 
         self.column_headers = {
@@ -148,16 +178,22 @@ class AlisAnalizGUI:
             "Tarih": "Tarih",
             "Depo": "Depo",
             "UrunAdi": "Urun Adi",
+            "OncekiStok": "Stok",
+            "StokAy": "Stok Ay",
             "Adet": "Adet",
+            "AlimAy": "Alim Ay",
             "MF": "MF",
-            "BirimFiyat": "Birim Fiyat",
+            "AylikOrt": "Ay.Ort",
+            "BirimFiyat": "B.Fiyat",
             "Maliyet": "Maliyet",
-            "ToplamTutar": "Toplam Tutar",
-            "FaturaVade": "Fatura Vade",
-            "FaturaOncesiStok": "Onceki Stok",
-            "AylikOrtalama": "Aylik Ort.",
-            "OncesiStokAy": "Onceki (Ay)",
-            "AlinanAy": "Alinan (Ay)",
+            "ToplamTutar": "Toplam",
+            "Vade": "Vade",
+            "KalanGun": "Kalan",
+            "UygunAlim": "Uygun",
+            "ToplamStok": "Toplam",
+            "NPV_MFsiz": "NPV-",
+            "NPV_MFli": "NPV+",
+            "MF_Avantaj": "Avantaj",
         }
 
         # Treeview
@@ -186,10 +222,15 @@ class AlisAnalizGUI:
         # Cift tiklama
         self.tree.bind('<Double-1>', self.detay_goster)
 
-        # Renk tagleri
-        self.tree.tag_configure('stok_yok', background='#ffcccc')     # Kirmizi - stok yokken siparis
-        self.tree.tag_configure('stok_az', background='#ffffcc')      # Sari - stok azken siparis
-        self.tree.tag_configure('stok_fazla', background='#ccffcc')   # Yesil - stok fazlayken siparis
+        # Renk tagleri - Stok durumu icin
+        self.tree.tag_configure('stok_normal', background='#ffffff')   # Beyaz - bu ay bitiyor
+        self.tree.tag_configure('stok_sari', background='#FFFF99')     # Sari - 1 aya sarkiyor
+        self.tree.tag_configure('stok_turuncu', background='#FFCC66')  # Turuncu - 2 aya sarkiyor
+        self.tree.tag_configure('stok_kirmizi', background='#FF9999')  # Kirmizi - 3 aya sarkiyor
+        self.tree.tag_configure('stok_mor', background='#CC99FF')      # Mor - 4+ aya sarkiyor
+        # MF Avantaj icin
+        self.tree.tag_configure('mf_avantajli', foreground='#008800')  # Yesil yazi - avantaj var
+        self.tree.tag_configure('mf_dezavantajli', foreground='#CC0000')  # Kirmizi yazi - dezavantaj
 
     def _status_bar_olustur(self, parent):
         """Status bar olustur"""
@@ -274,29 +315,42 @@ class AlisAnalizGUI:
         for item in self.tree.get_children():
             self.tree.delete(item)
 
+        # Filtre parametrelerini al
+        try:
+            faiz_yillik = float(self.faiz_entry.get() or 45)
+        except:
+            faiz_yillik = 45
+        try:
+            depo_vade = int(self.depo_vade_entry.get() or 75)
+        except:
+            depo_vade = 75
+        try:
+            zam_orani = float(self.zam_orani_entry.get() or 0)
+        except:
+            zam_orani = 0
+        zam_tarihi = self.zam_tarihi.get_date()
+
         toplam_tutar = 0
         toplam_adet = 0
 
         for veri in self.veriler:
             # Degerleri al
             adet = veri.get('Adet', 0) or 0
+            mf = veri.get('MF', 0) or 0
             birim_fiyat = float(veri.get('BirimFiyat', 0) or 0)
             maliyet = float(veri.get('Maliyet', 0) or 0)
+            if maliyet <= 0:
+                maliyet = birim_fiyat
             toplam = float(veri.get('ToplamTutar', 0) or 0)
             onceki_stok = veri.get('FaturaOncesiStok', 0) or 0
             aylik_ort = float(veri.get('AylikOrtalama', 0) or 0)
+            kalan_gun = veri.get('KalanGun', 15) or 15
 
-            # Onceki stok kac aylik
+            # Stok ay cinsinden
             if aylik_ort > 0:
-                onceki_stok_ay = onceki_stok / aylik_ort
+                stok_ay = onceki_stok / aylik_ort
             else:
-                onceki_stok_ay = None
-
-            # Alinan miktar kac aylik
-            if aylik_ort > 0:
-                alinan_ay = adet / aylik_ort
-            else:
-                alinan_ay = None
+                stok_ay = 0
 
             toplam_tutar += toplam
             toplam_adet += adet
@@ -321,32 +375,75 @@ class AlisAnalizGUI:
             else:
                 vade_str = "-"
 
-            # Tag belirleme (onceki stok durumuna gore)
-            tags = ()
-            if onceki_stok_ay is not None:
-                if onceki_stok_ay <= 0:
-                    tags = ('stok_yok',)  # Stok yokken siparis - kirmizi
-                elif onceki_stok_ay < 2:
-                    tags = ('stok_az',)   # Stok 2 aydan azken siparis - sari
-                elif onceki_stok_ay > 6:
-                    tags = ('stok_fazla',)  # Stok 6 aydan fazlayken siparis - yesil
+            # Uygun alim hesapla
+            uygun_alim = self._uygun_alim_hesapla(kalan_gun, aylik_ort, onceki_stok)
 
-            # Satir ekle
+            # Toplam stok (onceki + alinan + MF)
+            toplam_stok = onceki_stok + adet + mf
+
+            # Stok gun hesapla (gunluk sarfa gore)
+            gunluk_sarf = aylik_ort / 30 if aylik_ort > 0 else 0
+            onceki_stok_gun = onceki_stok / gunluk_sarf if gunluk_sarf > 0 else 0
+            toplam_stok_gun = toplam_stok / gunluk_sarf if gunluk_sarf > 0 else 0
+
+            # Stok ay hesapla (ay cinsinden)
+            # stok_ay: Mevcut stok kac ay yetecek
+            # alim_ay: Alim sonrasi toplam kac ay yetecek
+            if aylik_ort > 0:
+                stok_ay_deger = onceki_stok / aylik_ort
+                alim_ay_deger = toplam_stok / aylik_ort
+            else:
+                stok_ay_deger = 0
+                alim_ay_deger = 0
+
+            # Renk belirleme - SADECE toplam stok (stok + alinan + MF) icin
+            # Alim sonrasi toplam stok kac ay yetecek - ona gore renklendir
+            toplam_stok_renk = self._stok_renk_belirle(toplam_stok_gun, kalan_gun)
+
+            # NPV hesapla (sadece MF varsa)
+            npv_mfsiz, npv_mfli, mf_avantaj = self._npv_hesapla(
+                alinan=adet,
+                mf=mf,
+                maliyet=maliyet,
+                aylik_ort=aylik_ort,
+                faiz_yillik=faiz_yillik,
+                depo_vade=depo_vade,
+                fatura_tarihi=tarih if isinstance(tarih, date) else None,
+                zam_tarihi=zam_tarihi,
+                zam_orani=zam_orani
+            )
+
+            # Satir rengi: Toplam stok (stok + alinan) kac ay yetecegine gore
+            if toplam_stok_renk != 'stok_normal':
+                tags = (toplam_stok_renk,)
+            else:
+                tags = ()
+
+            # Satir ekle - yeni sutun sirasi
+            # FaturaNo, Tarih, Depo, UrunAdi, OncekiStok, StokAy, Adet, AlimAy, MF, AylikOrt,
+            # BirimFiyat, Maliyet, ToplamTutar, Vade, KalanGun, UygunAlim, ToplamStok,
+            # NPV_MFsiz, NPV_MFli, MF_Avantaj
             self.tree.insert('', 'end', values=(
                 veri.get('FaturaNo', ''),
                 tarih_str,
                 veri.get('Depo', '') or '-',
                 veri.get('UrunAdi', ''),
-                adet,
-                veri.get('MF', '') or '-',
+                onceki_stok,                                    # Stok miktari
+                f"{stok_ay_deger:.1f}" if stok_ay_deger > 0 else "-",  # Stok kac ay
+                adet,                                           # Alinan miktar
+                f"{alim_ay_deger:.1f}" if alim_ay_deger > 0 else "-",  # Alim sonrasi kac ay
+                str(mf) if mf > 0 else '-',
+                f"{aylik_ort:.1f}",
                 f"{birim_fiyat:.2f}",
                 f"{maliyet:.2f}",
                 f"{toplam:.2f}",
                 vade_str,
-                onceki_stok,
-                f"{aylik_ort:.1f}",
-                f"{onceki_stok_ay:.1f}" if onceki_stok_ay is not None else "-",
-                f"{alinan_ay:.1f}" if alinan_ay is not None else "-",
+                kalan_gun,
+                uygun_alim,
+                toplam_stok,
+                f"{npv_mfsiz:.0f}" if npv_mfsiz > 0 else "-",
+                f"{npv_mfli:.0f}" if npv_mfli > 0 else "-",
+                f"{mf_avantaj:+.0f}" if mf_avantaj != 0 else "-",
             ), tags=tags)
 
         self.filtrelenmis_veriler = self.veriler.copy()
@@ -421,52 +518,98 @@ class AlisAnalizGUI:
         try:
             ortalama_ay = int(self.ortalama_ay_combo.get())
 
+            # Filtre parametrelerini al
+            try:
+                faiz_yillik = float(self.faiz_entry.get() or 45)
+            except:
+                faiz_yillik = 45
+            try:
+                depo_vade = int(self.depo_vade_entry.get() or 75)
+            except:
+                depo_vade = 75
+            try:
+                zam_orani = float(self.zam_orani_entry.get() or 0)
+            except:
+                zam_orani = 0
+            zam_tarihi = self.zam_tarihi.get_date()
+
             with open(dosya, 'w', newline='', encoding='utf-8-sig') as f:
                 writer = csv.writer(f, delimiter=';')
 
-                # Basliklar
+                # Basliklar - yeni sutun sirasi
                 headers = [
-                    "Fatura No", "Tarih", "Depo", "Urun Adi", "Adet", "MF",
+                    "Fatura No", "Tarih", "Depo", "Urun Adi",
+                    "Stok", "Stok Ay",  # Mevcut stok ve kac ay yetecegi
+                    "Adet", "Alim Ay",  # Alinan ve alim sonrasi kac ay
+                    "MF", f"Aylik Ort ({ortalama_ay} Ay)",
                     "Birim Fiyat", "Maliyet", "Toplam Tutar", "Fatura Vade",
-                    "Fatura Oncesi Stok", f"Aylik Ortalama ({ortalama_ay} Ay)",
-                    "Onceki Stok (Ay)", "Alinan (Ay)"
+                    "Kalan Gun", "Uygun Alim", "Toplam Stok",
+                    "NPV MFsiz", "NPV MFli", "MF Avantaj"
                 ]
                 writer.writerow(headers)
 
                 for veri in self.veriler:
                     adet = veri.get('Adet', 0) or 0
+                    mf = veri.get('MF', 0) or 0
                     birim_fiyat = float(veri.get('BirimFiyat', 0) or 0)
                     maliyet = float(veri.get('Maliyet', 0) or 0)
+                    if maliyet <= 0:
+                        maliyet = birim_fiyat
                     toplam = float(veri.get('ToplamTutar', 0) or 0)
                     onceki_stok = veri.get('FaturaOncesiStok', 0) or 0
                     aylik_ort = float(veri.get('AylikOrtalama', 0) or 0)
+                    kalan_gun = veri.get('KalanGun', 15) or 15
 
-                    onceki_stok_ay = onceki_stok / aylik_ort if aylik_ort > 0 else ''
-                    alinan_ay = adet / aylik_ort if aylik_ort > 0 else ''
+                    # Stok ay ve alim ay hesapla
+                    toplam_stok = onceki_stok + adet + mf
+                    stok_ay = onceki_stok / aylik_ort if aylik_ort > 0 else ''
+                    alim_ay = toplam_stok / aylik_ort if aylik_ort > 0 else ''
+                    uygun_alim = self._uygun_alim_hesapla(kalan_gun, aylik_ort, onceki_stok)
 
                     tarih = veri.get('Tarih')
                     if tarih and isinstance(tarih, (datetime, date)):
-                        tarih = tarih.strftime("%d.%m.%Y")
+                        tarih_str = tarih.strftime("%d.%m.%Y")
+                    else:
+                        tarih_str = str(tarih) if tarih else ''
 
                     vade = veri.get('FaturaVade')
                     if vade and isinstance(vade, (datetime, date)):
                         vade = vade.strftime("%d.%m.%Y")
 
+                    # NPV hesapla
+                    npv_mfsiz, npv_mfli, mf_avantaj = self._npv_hesapla(
+                        alinan=adet,
+                        mf=mf,
+                        maliyet=maliyet,
+                        aylik_ort=aylik_ort,
+                        faiz_yillik=faiz_yillik,
+                        depo_vade=depo_vade,
+                        fatura_tarihi=tarih if isinstance(tarih, date) else None,
+                        zam_tarihi=zam_tarihi,
+                        zam_orani=zam_orani
+                    )
+
                     writer.writerow([
                         veri.get('FaturaNo', ''),
-                        tarih or '',
+                        tarih_str,
                         veri.get('Depo', '') or '',
                         veri.get('UrunAdi', ''),
-                        adet,
-                        veri.get('MF', '') or '',
+                        onceki_stok,  # Stok
+                        round(stok_ay, 2) if isinstance(stok_ay, float) else stok_ay,  # Stok Ay
+                        adet,  # Adet
+                        round(alim_ay, 2) if isinstance(alim_ay, float) else alim_ay,  # Alim Ay
+                        mf if mf > 0 else '',
+                        aylik_ort,
                         birim_fiyat,
                         maliyet,
                         toplam,
                         vade or '',
-                        onceki_stok,
-                        aylik_ort,
-                        onceki_stok_ay,
-                        alinan_ay
+                        kalan_gun,
+                        uygun_alim,
+                        toplam_stok,
+                        npv_mfsiz if npv_mfsiz > 0 else '',
+                        npv_mfli if npv_mfli > 0 else '',
+                        mf_avantaj if mf_avantaj != 0 else ''
                     ])
 
             messagebox.showinfo("Basarili", f"{len(self.veriler)} kayit aktarildi:\n{dosya}")
@@ -480,6 +623,10 @@ class AlisAnalizGUI:
         sel = self.tree.selection()
         if sel:
             vals = self.tree.item(sel[0])['values']
+            # Sutunlar: FaturaNo(0), Tarih(1), Depo(2), UrunAdi(3), OncekiStok(4), StokAy(5),
+            # Adet(6), AlimAy(7), MF(8), AylikOrt(9), BirimFiyat(10), Maliyet(11),
+            # ToplamTutar(12), Vade(13), KalanGun(14), UygunAlim(15), ToplamStok(16),
+            # NPV_MFsiz(17), NPV_MFli(18), MF_Avantaj(19)
             detay = f"""
 ====================================
         ALIS DETAYI
@@ -493,29 +640,128 @@ class AlisAnalizGUI:
 URUN BILGILERI
 ------------------------------------
 > Urun Adi: {vals[3]}
-> Adet: {vals[4]}
-> MF: {vals[5]}
-
-------------------------------------
-FIYAT BILGILERI
-------------------------------------
-> Birim Fiyat: {vals[6]} TL
-> Maliyet: {vals[7]} TL
-> Toplam Tutar: {vals[8]} TL
-> Fatura Vade: {vals[9]}
+> Alinan Adet: {vals[6]}
+> MF (Bedava): {vals[8]}
 
 ------------------------------------
 STOK ANALIZI
 ------------------------------------
-> Fatura Oncesi Stok: {vals[10]} adet
-> Aylik Ortalama Satis: {vals[11]} adet/ay
-> Onceki Stok: {vals[12]} aylik
-> Alinan Miktar: {vals[13]} aylik
+> Mevcut Stok: {vals[4]} adet
+> Stok Kac Ay: {vals[5]} ay
+> Alinan Miktar: {vals[6]} adet
+> Alim Sonrasi Kac Ay: {vals[7]} ay
+> Aylik Ortalama: {vals[9]} adet/ay
+> Ay Sonuna Kalan: {vals[14]} gun
+> Uygun Alim: {vals[15]} adet
+> Toplam Stok: {vals[16]} adet
+
+------------------------------------
+FIYAT BILGILERI
+------------------------------------
+> Birim Fiyat: {vals[10]} TL
+> Maliyet: {vals[11]} TL
+> Toplam Tutar: {vals[12]} TL
+> Fatura Vade: {vals[13]}
+
+------------------------------------
+MF AVANTAJ ANALIZI
+------------------------------------
+> NPV MF'siz: {vals[17]} TL
+> NPV MF'li: {vals[18]} TL
+> MF Avantaj: {vals[19]} TL
             """
             messagebox.showinfo("Alis Detayi", detay.strip())
 
     def status_guncelle(self, mesaj):
         self.status_label.config(text=mesaj)
+
+    def _stok_renk_belirle(self, stok_gun: float, kalan_gun: int) -> str:
+        """
+        Stok durumuna gore renk belirle
+        stok_gun: Mevcut stogun kac gun yetecegi
+        kalan_gun: Ay sonuna kalan gun sayisi
+
+        Returns:
+            Tag ismi (stok_normal, stok_sari, stok_turuncu, stok_kirmizi, stok_mor)
+        """
+        if stok_gun <= kalan_gun:
+            return 'stok_normal'  # Bu ay bitiyor - normal
+        elif stok_gun <= kalan_gun + 30:
+            return 'stok_sari'    # 1 aya sarkiyor
+        elif stok_gun <= kalan_gun + 60:
+            return 'stok_turuncu' # 2 aya sarkiyor
+        elif stok_gun <= kalan_gun + 90:
+            return 'stok_kirmizi' # 3 aya sarkiyor
+        else:
+            return 'stok_mor'     # 4+ aya sarkiyor
+
+    def _uygun_alim_hesapla(self, kalan_gun: int, aylik_ort: float, onceki_stok: int) -> int:
+        """
+        Bu ay icin maksimum uygun alim miktari
+        Prensip: Alinan stok o ay icinde harcanmali
+        """
+        if aylik_ort <= 0:
+            return 0
+        gunluk_sarf = aylik_ort / 30
+        bu_ay_ihtiyac = kalan_gun * gunluk_sarf
+        eksik = max(0, bu_ay_ihtiyac - onceki_stok)
+        return int(eksik)
+
+    def _npv_hesapla(self, alinan: int, mf: int, maliyet: float, aylik_ort: float,
+                    faiz_yillik: float, depo_vade: int,
+                    fatura_tarihi: date, zam_tarihi: date, zam_orani: float) -> tuple:
+        """
+        NPV hesaplama - MF Analiz modulunden adapte
+
+        Returns:
+            (npv_mfsiz, npv_mfli, avantaj)
+        """
+        # MF yoksa hesaplama gereksiz
+        if mf == 0 or mf is None:
+            return (0, 0, 0)
+
+        if maliyet <= 0 or aylik_ort <= 0:
+            return (0, 0, 0)
+
+        aylik_faiz = (faiz_yillik / 100) / 12
+        depo_vade_ay = depo_vade / 30
+
+        toplam_gelen = alinan + mf
+
+        # NPV MF'siz: Her ay ihtiyac kadar al
+        npv_mfsiz = 0
+        kalan_ihtiyac = toplam_gelen
+        ay = 0
+
+        while kalan_ihtiyac > 0 and ay < 24:
+            bu_ay_sarf = min(aylik_ort, kalan_ihtiyac)
+
+            # Zam kontrolu
+            if zam_tarihi and fatura_tarihi and zam_orani > 0:
+                if isinstance(fatura_tarihi, date):
+                    zam_ay = (zam_tarihi.year - fatura_tarihi.year) * 12 + \
+                             (zam_tarihi.month - fatura_tarihi.month)
+                    fiyat = maliyet * (1 + zam_orani/100) if ay >= zam_ay else maliyet
+                else:
+                    fiyat = maliyet
+            else:
+                fiyat = maliyet
+
+            odeme = bu_ay_sarf * fiyat
+            iskonto = (1 + aylik_faiz) ** (ay + 1 + depo_vade_ay)
+            npv_mfsiz += odeme / iskonto
+
+            kalan_ihtiyac -= bu_ay_sarf
+            ay += 1
+
+        # NPV MF'li: Bugun toplu al - sadece alinan kadar odenir, MF bedava
+        odenen_para = alinan * maliyet
+        npv_mfli = odenen_para / ((1 + aylik_faiz) ** (1 + depo_vade_ay))
+
+        # Avantaj = MF'siz - MF'li (pozitif = MF karli)
+        avantaj = npv_mfsiz - npv_mfli
+
+        return (round(npv_mfsiz, 2), round(npv_mfli, 2), round(avantaj, 2))
 
 
 if __name__ == "__main__":

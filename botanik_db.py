@@ -1065,34 +1065,31 @@ class BotanikDB:
             urun_filtre = f" AND u.UrunAdi LIKE '%{urun_adi_temiz}%'"
 
         sql = f"""
-        ;WITH AlimlarCumulative AS (
-            -- Tüm alımlar, tarih ve ürün bazında kümülatif
+        ;WITH
+        -- Fatura sonrası girişler (MF DAHİL) - geriye doğru hesaplama için
+        FaturaSonrasiGirisler AS (
             SELECT
-                fs.FSUrunId as UrunId,
-                fg.FGFaturaTarihi as Tarih,
-                SUM(fs.FSUrunAdet) as GunlukAlim,
-                SUM(SUM(fs.FSUrunAdet)) OVER (
-                    PARTITION BY fs.FSUrunId
-                    ORDER BY fg.FGFaturaTarihi
-                    ROWS UNBOUNDED PRECEDING
-                ) as KumulatifAlim
-            FROM FaturaSatir fs
-            JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-            WHERE fg.FGSilme = 0 AND fs.FSUrunAdet > 0
-            GROUP BY fs.FSUrunId, fg.FGFaturaTarihi
+                fsi.FSUrunId as UrunId,
+                fgi.FGFaturaTarihi as FaturaTarihi,
+                SUM(fsi.FSUrunAdet + COALESCE(fsi.FSUrunMf, 0)) as ToplamGiris
+            FROM FaturaSatir fsi
+            JOIN FaturaGiris fgi ON fsi.FSFGId = fgi.FGId
+            WHERE fgi.FGSilme = 0
+            GROUP BY fsi.FSUrunId, fgi.FGFaturaTarihi
         ),
-        TakasGirisler AS (
-            -- Takas girişleri
+        -- Fatura sonrası takas girişleri
+        TakasSonrasiGirisler AS (
             SELECT
                 ts.TSUrunId as UrunId,
-                CAST(t.TakasTarihi as date) as Tarih,
-                SUM(ts.TSUrunAdedi) as GunlukAlim
+                CAST(t.TakasTarihi as date) as TakasTarihi,
+                SUM(ts.TSUrunAdedi) as ToplamGiris
             FROM TakasSatir ts
             JOIN Takas t ON ts.TSTakasId = t.TakasId
             WHERE t.TakasSilme = 0 AND ts.TSSilme = 0 AND t.TakasYonu = 1
             GROUP BY ts.TSUrunId, CAST(t.TakasTarihi as date)
         ),
-        TumSatislar AS (
+        -- Perakende satışlar (Reçeteli + Elden) - AYLIK ORTALAMA İÇİN
+        PerakendeSatislar AS (
             -- Reçeteli satışlar
             SELECT
                 ri.RIUrunId as UrunId,
@@ -1100,7 +1097,7 @@ class BotanikDB:
                 SUM(ri.RIAdet) as GunlukSatis
             FROM ReceteIlaclari ri
             JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
-            WHERE ra.RxSilme = 0 AND ri.RISilme = 0 AND ri.RIIade = 0
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0 AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
             GROUP BY ri.RIUrunId, CAST(ra.RxReceteTarihi as date)
 
             UNION ALL
@@ -1112,8 +1109,22 @@ class BotanikDB:
                 SUM(ei.RIAdet) as GunlukSatis
             FROM EldenIlaclari ei
             JOIN EldenAna ea ON ei.RIRxId = ea.RxId
-            WHERE ea.RxSilme = 0 AND ei.RISilme = 0 AND ei.RIIade = 0
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0 AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
             GROUP BY ei.RIUrunId, CAST(ea.RxReceteTarihi as date)
+        ),
+        PerakendeSatisOzet AS (
+            SELECT
+                UrunId,
+                Tarih,
+                SUM(GunlukSatis) as GunlukSatis
+            FROM PerakendeSatislar
+            GROUP BY UrunId, Tarih
+        ),
+        -- Tüm çıkışlar (Reçeteli + Elden + Takas) - STOK HESABI İÇİN
+        TumCikislar AS (
+            -- Perakende satışlar
+            SELECT UrunId, Tarih, GunlukSatis
+            FROM PerakendeSatislar
 
             UNION ALL
 
@@ -1127,12 +1138,12 @@ class BotanikDB:
             WHERE t.TakasSilme = 0 AND ts.TSSilme = 0 AND t.TakasYonu = 0
             GROUP BY ts.TSUrunId, CAST(t.TakasTarihi as date)
         ),
-        SatisOzet AS (
+        TumCikisOzet AS (
             SELECT
                 UrunId,
                 Tarih,
                 SUM(GunlukSatis) as GunlukSatis
-            FROM TumSatislar
+            FROM TumCikislar
             GROUP BY UrunId, Tarih
         )
 
@@ -1143,72 +1154,77 @@ class BotanikDB:
             u.UrunId,
             u.UrunAdi,
             fs.FSUrunAdet as Adet,
-            fs.FSIskontoKamu as MF,
+            fs.FSUrunMf as MF,
             fs.FSBirimFiyat as BirimFiyat,
             fs.FSMaliyet as Maliyet,
             fs.FSUrunAdet * COALESCE(fs.FSMaliyet, fs.FSBirimFiyat) as ToplamTutar,
             fg.FGVadeTarihi as FaturaVade,
+            DAY(fg.FGFaturaTarihi) as AyGunu,
+            DATEDIFF(DAY, fg.FGFaturaTarihi, EOMONTH(fg.FGFaturaTarihi)) + 1 as KalanGun,
 
-            -- Fatura öncesi toplam alım
-            COALESCE((
-                SELECT SUM(fs2.FSUrunAdet)
-                FROM FaturaSatir fs2
-                JOIN FaturaGiris fg2 ON fs2.FSFGId = fg2.FGId
-                WHERE fg2.FGSilme = 0 AND fs2.FSUrunId = fs.FSUrunId
-                AND fg2.FGFaturaTarihi < fg.FGFaturaTarihi
-            ), 0) +
-            COALESCE((
-                SELECT SUM(ts.TSUrunAdedi)
-                FROM TakasSatir ts
-                JOIN Takas t ON ts.TSTakasId = t.TakasId
-                WHERE t.TakasSilme = 0 AND ts.TSSilme = 0 AND t.TakasYonu = 1
-                AND ts.TSUrunId = fs.FSUrunId
-                AND CAST(t.TakasTarihi as date) < fg.FGFaturaTarihi
-            ), 0) as OncekiAlimlar,
+            -- Güncel stok (Urun tablosundan)
+            u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik as GuncelStok,
 
-            -- Fatura öncesi toplam satış
+            -- Fatura günü ve sonrası girişler (MF dahil) - aynı gün DAHİL
+            COALESCE((
+                SELECT SUM(fsg.ToplamGiris)
+                FROM FaturaSonrasiGirisler fsg
+                WHERE fsg.UrunId = fs.FSUrunId
+                AND CAST(fsg.FaturaTarihi as DATE) >= CAST(fg.FGFaturaTarihi as DATE)
+            ), 0) as FaturaGunuVeSonrasiGiris,
+
+            -- Fatura günü ve sonrası takas girişleri
+            COALESCE((
+                SELECT SUM(tsg.ToplamGiris)
+                FROM TakasSonrasiGirisler tsg
+                WHERE tsg.UrunId = fs.FSUrunId
+                AND tsg.TakasTarihi >= CAST(fg.FGFaturaTarihi as DATE)
+            ), 0) as FaturaGunuVeSonrasiTakasGiris,
+
+            -- Fatura günü ve sonrası çıkışlar - aynı gün DAHİL (takas dahil)
             COALESCE((
                 SELECT SUM(s.GunlukSatis)
-                FROM SatisOzet s
-                WHERE s.UrunId = fs.FSUrunId AND s.Tarih < fg.FGFaturaTarihi
-            ), 0) as OncekiSatislar,
+                FROM TumCikisOzet s
+                WHERE s.UrunId = fs.FSUrunId
+                AND s.Tarih >= CAST(fg.FGFaturaTarihi as DATE)
+            ), 0) as FaturaGunuVeSonrasiCikis,
 
-            -- Fatura öncesi stok (alımlar - satışlar)
-            COALESCE((
-                SELECT SUM(fs2.FSUrunAdet)
-                FROM FaturaSatir fs2
-                JOIN FaturaGiris fg2 ON fs2.FSFGId = fg2.FGId
-                WHERE fg2.FGSilme = 0 AND fs2.FSUrunId = fs.FSUrunId
-                AND fg2.FGFaturaTarihi < fg.FGFaturaTarihi
-            ), 0) +
-            COALESCE((
-                SELECT SUM(ts.TSUrunAdedi)
-                FROM TakasSatir ts
-                JOIN Takas t ON ts.TSTakasId = t.TakasId
-                WHERE t.TakasSilme = 0 AND ts.TSSilme = 0 AND t.TakasYonu = 1
-                AND ts.TSUrunId = fs.FSUrunId
-                AND CAST(t.TakasTarihi as date) < fg.FGFaturaTarihi
-            ), 0) -
-            COALESCE((
+            -- FATURA ÖNCESİ STOK = GüncelStok - (Gün+SonrasıGirişler) + (Gün+SonrasıÇıkışlar)
+            -- (Geriye doğru hesaplama - fatura günü başındaki stok)
+            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik)
+            - COALESCE((
+                SELECT SUM(fsg.ToplamGiris)
+                FROM FaturaSonrasiGirisler fsg
+                WHERE fsg.UrunId = fs.FSUrunId
+                AND CAST(fsg.FaturaTarihi as DATE) >= CAST(fg.FGFaturaTarihi as DATE)
+            ), 0)
+            - COALESCE((
+                SELECT SUM(tsg.ToplamGiris)
+                FROM TakasSonrasiGirisler tsg
+                WHERE tsg.UrunId = fs.FSUrunId
+                AND tsg.TakasTarihi >= CAST(fg.FGFaturaTarihi as DATE)
+            ), 0)
+            + COALESCE((
                 SELECT SUM(s.GunlukSatis)
-                FROM SatisOzet s
-                WHERE s.UrunId = fs.FSUrunId AND s.Tarih < fg.FGFaturaTarihi
+                FROM TumCikisOzet s
+                WHERE s.UrunId = fs.FSUrunId
+                AND s.Tarih >= CAST(fg.FGFaturaTarihi as DATE)
             ), 0) as FaturaOncesiStok,
 
-            -- Fatura öncesi X ay içindeki satışlar (aylık ortalama için)
+            -- Fatura öncesi X ay içindeki PERAKENDE satışlar (aylık ortalama için - takas HARİÇ)
             COALESCE((
                 SELECT SUM(s.GunlukSatis)
-                FROM SatisOzet s
+                FROM PerakendeSatisOzet s
                 WHERE s.UrunId = fs.FSUrunId
                 AND s.Tarih >= DATEADD(MONTH, -{ortalama_ay}, fg.FGFaturaTarihi)
                 AND s.Tarih < fg.FGFaturaTarihi
             ), 0) as OncekiDonemSatis,
 
-            -- Aylık ortalama satış (fatura öncesi X ay)
+            -- Aylık ortalama PERAKENDE satış (fatura öncesi X ay - takas HARİÇ)
             ROUND(
                 COALESCE((
                     SELECT SUM(s.GunlukSatis)
-                    FROM SatisOzet s
+                    FROM PerakendeSatisOzet s
                     WHERE s.UrunId = fs.FSUrunId
                     AND s.Tarih >= DATEADD(MONTH, -{ortalama_ay}, fg.FGFaturaTarihi)
                     AND s.Tarih < fg.FGFaturaTarihi
