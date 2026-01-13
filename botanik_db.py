@@ -14,16 +14,44 @@ logger = logging.getLogger(__name__)
 class BotanikDB:
     """Botanik EOS SQL Server veritabanı bağlantı sınıfı"""
 
-    # Varsayılan bağlantı ayarları
-    DEFAULT_CONFIG = {
+    # Test ortamı bağlantı ayarları (localhost)
+    TEST_CONFIG = {
         'server': 'localhost',
         'database': 'eczane_test',
         'trusted_connection': True,
         'trust_server_certificate': True
     }
 
-    def __init__(self, config: Optional[Dict] = None):
-        self.config = config or self.DEFAULT_CONFIG
+    # PRODUCTION ortamı bağlantı ayarları (gerçek sunucu)
+    PRODUCTION_CONFIG = {
+        'server': '192.168.1.120\\BOTANIKSQL',  # IP\Instance formatı
+        'database': 'eczane',
+        'trusted_connection': False,  # SQL Server Authentication kullanılacak
+        'user': 'sa',
+        'password': '123',
+        'trust_server_certificate': True
+    }
+
+    # Varsayılan olarak PRODUCTION kullan
+    DEFAULT_CONFIG = PRODUCTION_CONFIG
+
+    # YASAKLI SQL KOMUTLARI - GÜVENLİK
+    YASAKLI_KOMUTLAR = [
+        'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER',
+        'TRUNCATE', 'EXEC', 'EXECUTE', 'GRANT', 'REVOKE', 'DENY',
+        'BACKUP', 'RESTORE', 'SHUTDOWN', 'KILL'
+    ]
+
+    def __init__(self, config: Optional[Dict] = None, production: bool = True):
+        """
+        Args:
+            config: Özel bağlantı ayarları (opsiyonel)
+            production: True=gerçek sunucu, False=test sunucusu
+        """
+        if config:
+            self.config = config
+        else:
+            self.config = self.PRODUCTION_CONFIG if production else self.TEST_CONFIG
         self.conn = None
         self.cursor = None
 
@@ -69,9 +97,43 @@ class BotanikDB:
         except Exception as e:
             logger.error(f"Bağlantı kapatma hatası: {e}")
 
+    def _guvenlik_kontrolu(self, sql: str) -> bool:
+        """
+        SQL sorgusunun güvenli olup olmadığını kontrol et.
+        Sadece SELECT sorgularına izin verilir.
+
+        Returns:
+            True: Sorgu güvenli
+            False: Sorgu tehlikeli komut içeriyor
+        """
+        sql_upper = sql.upper().strip()
+
+        # Yasaklı komutları kontrol et
+        for komut in self.YASAKLI_KOMUTLAR:
+            # Kelimenin başında veya boşluktan sonra gelen komutları kontrol et
+            if sql_upper.startswith(komut + ' ') or sql_upper.startswith(komut + '('):
+                logger.error(f"GÜVENLİK UYARISI: Yasaklı komut tespit edildi: {komut}")
+                return False
+            # Sorgu içinde de kontrol et (alt sorgular hariç SELECT)
+            if f' {komut} ' in f' {sql_upper} ' or f';{komut} ' in sql_upper:
+                # WITH ... AS yapısında INSERT vb. olmamalı
+                if komut != 'AS':  # AS keyword'ü WITH için gerekli
+                    logger.error(f"GÜVENLİK UYARISI: Yasaklı komut tespit edildi: {komut}")
+                    return False
+
+        return True
+
     def sorgu_calistir(self, sql: str, params: tuple = None) -> List[Dict]:
-        """SQL sorgusu çalıştır ve sonuçları döndür"""
+        """
+        SQL sorgusu çalıştır ve sonuçları döndür.
+        GÜVENLİK: Sadece SELECT sorguları çalıştırılabilir!
+        """
         try:
+            # GÜVENLİK KONTROLÜ
+            if not self._guvenlik_kontrolu(sql):
+                logger.error("SORGU REDDEDİLDİ: Güvenlik kontrolünden geçemedi!")
+                return []
+
             if not self.conn:
                 if not self.baglan():
                     return []
@@ -525,25 +587,25 @@ class BotanikDB:
 
         sql = f"""
         WITH SatisVerileri AS (
-            -- Reçeteli satışlar
+            -- Reçeteli satışlar (iade olmayanlar)
             SELECT
                 ri.RIUrunId as UrunId,
                 ri.RIAdet as Adet,
                 CAST(ra.RxReceteTarihi as date) as Tarih
             FROM ReceteIlaclari ri
             JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
-            WHERE ra.RxSilme = 0 AND ri.RISilme = 0 AND ri.RIIade = 0
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0 AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
 
             UNION ALL
 
-            -- Elden satışlar
+            -- Elden satışlar (iade olmayanlar)
             SELECT
                 ei.RIUrunId as UrunId,
                 ei.RIAdet as Adet,
                 CAST(ea.RxReceteTarihi as date) as Tarih
             FROM EldenIlaclari ei
             JOIN EldenAna ea ON ei.RIRxId = ea.RxId
-            WHERE ea.RxSilme = 0 AND ei.RISilme = 0 AND ei.RIIade = 0
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0 AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
         ),
         SarfOzet AS (
             SELECT
@@ -560,14 +622,57 @@ class BotanikDB:
             WHERE Tarih >= DATEADD(MONTH, -24, '{bugun}')
             GROUP BY UrunId
         ),
-        EnYakinMiad AS (
+        -- İlaçlar için Karekod tablosundan en yakın miad (XD alanından parse)
+        IlacMiadlar AS (
+            SELECT
+                k.KKUrunId as UrunId,
+                MIN(
+                    CASE
+                        WHEN LEN(k.XD) = 6 AND ISNUMERIC(k.XD) = 1
+                        THEN DATEFROMPARTS(
+                            2000 + CAST(LEFT(k.XD, 2) as int),
+                            CAST(SUBSTRING(k.XD, 3, 2) as int),
+                            CAST(RIGHT(k.XD, 2) as int)
+                        )
+                        ELSE NULL
+                    END
+                ) as Miad
+            FROM Karekod k
+            JOIN Urun u ON k.KKUrunId = u.UrunId
+            WHERE k.KKDurum = 1
+                AND k.XD IS NOT NULL
+                AND LEN(k.XD) = 6
+                AND u.UrunUrunTipId = 1  -- Sadece ilaçlar
+            GROUP BY k.KKUrunId
+            HAVING MIN(
+                CASE
+                    WHEN LEN(k.XD) = 6 AND ISNUMERIC(k.XD) = 1
+                    THEN DATEFROMPARTS(
+                        2000 + CAST(LEFT(k.XD, 2) as int),
+                        CAST(SUBSTRING(k.XD, 3, 2) as int),
+                        CAST(RIGHT(k.XD, 2) as int)
+                    )
+                    ELSE NULL
+                END
+            ) > '{bugun}'
+        ),
+        -- Diğer ürünler için MiadTakip tablosundan en yakın miad
+        DigerMiadlar AS (
             SELECT
                 MiadTakipUrunId as UrunId,
-                MIN(MiadTakipMiad) as Miad,
-                SUM(MiadTakipAdet) as MiadStok
+                MIN(MiadTakipMiad) as Miad
             FROM MiadTakip
             WHERE MiadTakipMiad > '{bugun}'
             GROUP BY MiadTakipUrunId
+        ),
+        -- Birleşik en yakın miad (ilaçlar + diğer ürünler)
+        EnYakinMiad AS (
+            SELECT UrunId, Miad FROM IlacMiadlar
+            UNION ALL
+            SELECT dm.UrunId, dm.Miad
+            FROM DigerMiadlar dm
+            JOIN Urun u ON dm.UrunId = u.UrunId
+            WHERE u.UrunUrunTipId <> 1  -- İlaç olmayanlar
         ),
         -- FIFO Ağırlıklı Ortalama Maliyet Hesabı
         FaturaAlislar AS (
@@ -754,23 +859,25 @@ class BotanikDB:
 
         sql = f"""
         ;WITH SatisVerileri AS (
+            -- Reçeteli satışlar (iade olmayanlar)
             SELECT
                 ri.RIUrunId as UrunId,
                 ri.RIAdet as Adet,
                 CAST(ra.RxReceteTarihi as date) as Tarih
             FROM ReceteIlaclari ri
             JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
-            WHERE ra.RxSilme = 0 AND ri.RISilme = 0 AND ri.RIIade = 0
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0 AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
 
             UNION ALL
 
+            -- Elden satışlar (iade olmayanlar)
             SELECT
                 ei.RIUrunId as UrunId,
                 ei.RIAdet as Adet,
                 CAST(ea.RxReceteTarihi as date) as Tarih
             FROM EldenIlaclari ei
             JOIN EldenAna ea ON ei.RIRxId = ea.RxId
-            WHERE ea.RxSilme = 0 AND ei.RISilme = 0 AND ei.RIIade = 0
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0 AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
         ),
         SarfOzet AS (
             SELECT
@@ -1121,6 +1228,329 @@ class BotanikDB:
         {urun_filtre}
 
         ORDER BY fg.FGFaturaTarihi DESC, fg.FGId DESC, u.UrunAdi
+        """
+
+        return self.sorgu_calistir(sql)
+
+    def stok_hareket_analiz_getir(
+        self,
+        yil_sayisi: int = 2,
+        ay_sayisi: int = 6,
+        hareket_tipleri: List[str] = None,
+        limit: int = 10000
+    ) -> List[Dict]:
+        """
+        Stok Hareket Analiz Raporu - Son X yılda hareketi olan ürünler
+
+        Args:
+            yil_sayisi: Son kaç yıldaki hareketler (varsayılan 2)
+            ay_sayisi: Aylık detay için kaç ay gösterilecek (varsayılan 6)
+            hareket_tipleri: Seçili hareket tipleri listesi
+            limit: Maksimum kayıt sayısı
+
+        Returns:
+            Her ürün için: UrunId, UrunAdi, UrunTipi, EsdegerId, Stok,
+            ve seçili hareket tiplerine göre aylık toplamlar
+        """
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+
+        bugun = datetime.now()
+        baslangic_tarih = (bugun - relativedelta(years=yil_sayisi)).strftime('%Y-%m-%d')
+        bugun_str = bugun.strftime('%Y-%m-%d')
+
+        # Varsayılan hareket tipleri
+        if hareket_tipleri is None:
+            hareket_tipleri = ['RECETE_SATIS', 'ELDEN_SATIS']
+
+        # Hareket tiplerini kategorize et
+        giris_tipleri = []
+        cikis_tipleri = []
+
+        hareket_yon_map = {
+            'FATURA_GIRIS': 'GIRIS',
+            'TAKAS_GIRIS': 'GIRIS',
+            'FATURA_CIKIS': 'CIKIS',
+            'TAKAS_CIKIS': 'CIKIS',
+            'IADE': 'CIKIS',
+            'RECETE_SATIS': 'CIKIS',
+            'ELDEN_SATIS': 'CIKIS'
+        }
+
+        for ht in hareket_tipleri:
+            if hareket_yon_map.get(ht) == 'GIRIS':
+                giris_tipleri.append(ht)
+            else:
+                cikis_tipleri.append(ht)
+
+        # Aylık kolonlar için tarih aralıkları oluştur
+        ay_kolonlari = []
+        for i in range(ay_sayisi):
+            ay_basi = (bugun - relativedelta(months=i)).replace(day=1)
+            if i == 0:
+                ay_sonu = bugun
+            else:
+                ay_sonu = (ay_basi + relativedelta(months=1)) - relativedelta(days=1)
+            ay_kolonlari.append({
+                'ay_no': i + 1,
+                'ay_adi': ay_basi.strftime('%Y-%m'),
+                'baslangic': ay_basi.strftime('%Y-%m-%d'),
+                'bitis': ay_sonu.strftime('%Y-%m-%d')
+            })
+
+        # SQL sorgusu oluştur
+        # Her hareket tipi için ayrı UNION bloğu
+        hareket_bloklari = []
+
+        if 'FATURA_GIRIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT
+                fs.FSUrunId as UrunId,
+                fs.FSUrunAdet as Adet,
+                CAST(fg.FGFaturaTarihi as date) as Tarih,
+                'FATURA_GIRIS' as HareketTipi,
+                'GIRIS' as Yon
+            FROM FaturaSatir fs
+            JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+            WHERE fg.FGSilme = 0 AND fg.FGFaturaTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'FATURA_CIKIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT
+                fcs.FSUrunId as UrunId,
+                fcs.FSUrunAdet as Adet,
+                CAST(fc.FGFaturaTarihi as date) as Tarih,
+                'FATURA_CIKIS' as HareketTipi,
+                'CIKIS' as Yon
+            FROM FaturaCikisSatir fcs
+            JOIN FaturaCikis fc ON fcs.FSFGId = fc.FGId
+            WHERE fc.FGSilme = 0 AND fc.FGFaturaTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'TAKAS_GIRIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT
+                ts.TSUrunId as UrunId,
+                ts.TSUrunAdedi as Adet,
+                CAST(t.TakasTarihi as date) as Tarih,
+                'TAKAS_GIRIS' as HareketTipi,
+                'GIRIS' as Yon
+            FROM TakasSatir ts
+            JOIN Takas t ON ts.TSTakasId = t.TakasId
+            WHERE t.TakasSilme = 0 AND ts.TSSilme = 0 AND t.TakasYonu = 1
+            AND t.TakasTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'TAKAS_CIKIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT
+                ts.TSUrunId as UrunId,
+                ts.TSUrunAdedi as Adet,
+                CAST(t.TakasTarihi as date) as Tarih,
+                'TAKAS_CIKIS' as HareketTipi,
+                'CIKIS' as Yon
+            FROM TakasSatir ts
+            JOIN Takas t ON ts.TSTakasId = t.TakasId
+            WHERE t.TakasSilme = 0 AND ts.TSSilme = 0 AND t.TakasYonu = 0
+            AND t.TakasTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'IADE' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT
+                it.ITUrunId as UrunId,
+                it.ITUrunAdet as Adet,
+                CAST(it.ITKayitTarihi as date) as Tarih,
+                'IADE' as HareketTipi,
+                'CIKIS' as Yon
+            FROM IadeTakip it
+            WHERE it.ITKayitTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'RECETE_SATIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT
+                ri.RIUrunId as UrunId,
+                ri.RIAdet as Adet,
+                CAST(ra.RxReceteTarihi as date) as Tarih,
+                'RECETE_SATIS' as HareketTipi,
+                'CIKIS' as Yon
+            FROM ReceteIlaclari ri
+            JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0 AND ri.RIIade = 0
+            AND ra.RxReceteTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'ELDEN_SATIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT
+                ei.RIUrunId as UrunId,
+                ei.RIAdet as Adet,
+                CAST(ea.RxReceteTarihi as date) as Tarih,
+                'ELDEN_SATIS' as HareketTipi,
+                'CIKIS' as Yon
+            FROM EldenIlaclari ei
+            JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0 AND ei.RIIade = 0
+            AND ea.RxReceteTarihi >= '{baslangic_tarih}'
+            """)
+
+        if not hareket_bloklari:
+            return []
+
+        hareket_union = " UNION ALL ".join(hareket_bloklari)
+
+        # Aylık toplamlar için CASE ifadeleri
+        aylik_giris_cases = []
+        aylik_cikis_cases = []
+
+        for ay in ay_kolonlari:
+            aylik_giris_cases.append(f"""
+                SUM(CASE WHEN Yon = 'GIRIS' AND Tarih >= '{ay['baslangic']}' AND Tarih <= '{ay['bitis']}' THEN Adet ELSE 0 END) as Giris_Ay{ay['ay_no']}
+            """)
+            aylik_cikis_cases.append(f"""
+                SUM(CASE WHEN Yon = 'CIKIS' AND Tarih >= '{ay['baslangic']}' AND Tarih <= '{ay['bitis']}' THEN Adet ELSE 0 END) as Cikis_Ay{ay['ay_no']}
+            """)
+
+        aylik_kolonlar = ",\n".join(aylik_giris_cases + aylik_cikis_cases)
+
+        sql = f"""
+        ;WITH TumHareketler AS (
+            {hareket_union}
+        ),
+        UrunHareketOzet AS (
+            SELECT
+                UrunId,
+                Yon,
+                SUM(Adet) as ToplamAdet,
+                COUNT(*) as ToplamIslem,
+                {aylik_kolonlar}
+            FROM TumHareketler
+            GROUP BY UrunId, Yon
+        )
+
+        SELECT TOP {limit}
+            u.UrunId,
+            u.UrunAdi,
+            COALESCE(ut.UrunTipAdi, 'Belirsiz') as UrunTipi,
+            u.UrunEsdegerId as EsdegerId,
+            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) as Stok,
+            ho.Yon,
+            ho.ToplamAdet,
+            ho.ToplamIslem,
+            {', '.join([f'COALESCE(ho.Giris_Ay{i+1}, 0) as Giris_Ay{i+1}' for i in range(ay_sayisi)])},
+            {', '.join([f'COALESCE(ho.Cikis_Ay{i+1}, 0) as Cikis_Ay{i+1}' for i in range(ay_sayisi)])}
+        FROM Urun u
+        LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
+        JOIN UrunHareketOzet ho ON u.UrunId = ho.UrunId
+        WHERE u.UrunSilme = 0
+        ORDER BY u.UrunEsdegerId, u.UrunAdi, ho.Yon DESC
+        """
+
+        return self.sorgu_calistir(sql)
+
+    def stok_hareket_urunler_getir(
+        self,
+        yil_sayisi: int = 2,
+        hareket_tipleri: List[str] = None,
+        limit: int = 10000
+    ) -> List[Dict]:
+        """
+        Son X yılda hareketi olan ürünlerin listesini getir
+        Basit özet: UrunId, UrunAdi, UrunTipi, EsdegerId, Stok
+        """
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+
+        bugun = datetime.now()
+        baslangic_tarih = (bugun - relativedelta(years=yil_sayisi)).strftime('%Y-%m-%d')
+
+        if hareket_tipleri is None:
+            hareket_tipleri = ['RECETE_SATIS', 'ELDEN_SATIS']
+
+        # Hareket sorguları
+        hareket_bloklari = []
+
+        if 'FATURA_GIRIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT DISTINCT fs.FSUrunId as UrunId
+            FROM FaturaSatir fs
+            JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+            WHERE fg.FGSilme = 0 AND fg.FGFaturaTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'FATURA_CIKIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT DISTINCT fcs.FSUrunId as UrunId
+            FROM FaturaCikisSatir fcs
+            JOIN FaturaCikis fc ON fcs.FSFGId = fc.FGId
+            WHERE fc.FGSilme = 0 AND fc.FGFaturaTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'TAKAS_GIRIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT DISTINCT ts.TSUrunId as UrunId
+            FROM TakasSatir ts
+            JOIN Takas t ON ts.TSTakasId = t.TakasId
+            WHERE t.TakasSilme = 0 AND ts.TSSilme = 0 AND t.TakasYonu = 1
+            AND t.TakasTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'TAKAS_CIKIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT DISTINCT ts.TSUrunId as UrunId
+            FROM TakasSatir ts
+            JOIN Takas t ON ts.TSTakasId = t.TakasId
+            WHERE t.TakasSilme = 0 AND ts.TSSilme = 0 AND t.TakasYonu = 0
+            AND t.TakasTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'IADE' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT DISTINCT it.ITUrunId as UrunId
+            FROM IadeTakip it
+            WHERE it.ITKayitTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'RECETE_SATIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT DISTINCT ri.RIUrunId as UrunId
+            FROM ReceteIlaclari ri
+            JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0 AND ri.RIIade = 0
+            AND ra.RxReceteTarihi >= '{baslangic_tarih}'
+            """)
+
+        if 'ELDEN_SATIS' in hareket_tipleri:
+            hareket_bloklari.append(f"""
+            SELECT DISTINCT ei.RIUrunId as UrunId
+            FROM EldenIlaclari ei
+            JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0 AND ei.RIIade = 0
+            AND ea.RxReceteTarihi >= '{baslangic_tarih}'
+            """)
+
+        if not hareket_bloklari:
+            return []
+
+        hareket_union = " UNION ".join(hareket_bloklari)
+
+        sql = f"""
+        ;WITH HareketliUrunler AS (
+            {hareket_union}
+        )
+        SELECT TOP {limit}
+            u.UrunId,
+            u.UrunAdi,
+            COALESCE(ut.UrunTipAdi, 'Belirsiz') as UrunTipi,
+            u.UrunEsdegerId as EsdegerId,
+            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) as Stok
+        FROM Urun u
+        LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
+        WHERE u.UrunId IN (SELECT UrunId FROM HareketliUrunler)
+        AND u.UrunSilme = 0
+        ORDER BY u.UrunEsdegerId, u.UrunAdi
         """
 
         return self.sorgu_calistir(sql)

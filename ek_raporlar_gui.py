@@ -77,6 +77,14 @@ class EkRaporlarGUI:
             "renk": "#E91E63",
             "hover": "#C2185B",
             "aktif": True
+        },
+        "stok_hareket_analiz": {
+            "baslik": "Stok Hareket Analiz",
+            "icon": "📈",
+            "aciklama": "Eşdeğer bazlı aylık hareket analizi ve raporlama",
+            "renk": "#3F51B5",
+            "hover": "#303F9F",
+            "aktif": True
         }
     }
 
@@ -331,6 +339,8 @@ class EkRaporlarGUI:
             self.depo_analiz_ac()
         elif rapor_key == "alis_analiz":
             self.alis_analiz_ac()
+        elif rapor_key == "stok_hareket_analiz":
+            self.stok_hareket_analiz_ac()
 
     def tum_hareketler_ac(self):
         """Tüm Hareketler raporunu aç"""
@@ -395,6 +405,21 @@ class EkRaporlarGUI:
             messagebox.showerror("Hata", f"Alış Analiz modülü yüklenemedi:\n{e}")
         except Exception as e:
             logger.error(f"Alış Analiz açma hatası: {e}")
+            messagebox.showerror("Hata", f"Rapor açılamadı:\n{e}")
+
+    def stok_hareket_analiz_ac(self):
+        """Stok Hareket Analiz raporunu aç"""
+        try:
+            from stok_hareket_analiz_gui import StokHareketAnalizGUI
+
+            rapor_pencere = tk.Toplevel(self.root)
+            app = StokHareketAnalizGUI(rapor_pencere)
+
+        except ImportError as e:
+            logger.error(f"Stok Hareket Analiz import hatası: {e}")
+            messagebox.showerror("Hata", f"Stok Hareket Analiz modülü yüklenemedi:\n{e}")
+        except Exception as e:
+            logger.error(f"Stok Hareket Analiz açma hatası: {e}")
             messagebox.showerror("Hata", f"Rapor açılamadı:\n{e}")
 
     def ana_menuye_don(self):
