@@ -1162,8 +1162,8 @@ class BotanikDB:
             DAY(fg.FGFaturaTarihi) as AyGunu,
             DATEDIFF(DAY, fg.FGFaturaTarihi, EOMONTH(fg.FGFaturaTarihi)) + 1 as KalanGun,
 
-            -- Güncel stok (Urun tablosundan)
-            u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik as GuncelStok,
+            -- Güncel stok (Urun tablosundan - sadece StokRaf)
+            u.UrunStokRaf as GuncelStok,
 
             -- Fatura günü ve sonrası girişler (MF dahil) - aynı gün DAHİL
             COALESCE((
@@ -1190,8 +1190,8 @@ class BotanikDB:
             ), 0) as FaturaGunuVeSonrasiCikis,
 
             -- FATURA ÖNCESİ STOK = GüncelStok - (Gün+SonrasıGirişler) + (Gün+SonrasıÇıkışlar)
-            -- (Geriye doğru hesaplama - fatura günü başındaki stok)
-            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik)
+            -- (Geriye doğru hesaplama - fatura günü başındaki stok, sadece StokRaf)
+            u.UrunStokRaf
             - COALESCE((
                 SELECT SUM(fsg.ToplamGiris)
                 FROM FaturaSonrasiGirisler fsg
