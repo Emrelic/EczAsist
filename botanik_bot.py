@@ -8197,5 +8197,757 @@ def medula_ac_ve_giris_yap(medula_settings):
         return False
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# REÇETE KONTROL FONKSİYONLARI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def recete_turu_oku(bot, max_deneme=3):
+    """
+    Reçete türünü oku (Normal, Yeşil, Kırmızı, vb.)
+
+    Element bilgileri:
+    - HTML Id: f:m4
+    - Element Type: SELECT (dropdown)
+    - CSS Selector: #f:m4
+    - Değerler: Normal, Kırmızı, Turuncu, Mor, Yeşil
+
+    Args:
+        bot: BotanikBot instance
+        max_deneme: Maksimum deneme sayısı
+
+    Returns:
+        str: Reçete türü (Normal, Yeşil, Kırmızı vb.) veya None
+    """
+    for deneme in range(max_deneme):
+        try:
+            # Yöntem 1: auto_id ile SELECT elementi bul
+            try:
+                select_element = bot.main_window.child_window(
+                    auto_id="f:m4",
+                    control_type="ComboBox"
+                )
+                if select_element.exists(timeout=0.5):
+                    # Seçili değeri al
+                    try:
+                        secili_deger = select_element.selected_text()
+                        if secili_deger:
+                            logger.info(f"✓ Reçete türü okundu: {secili_deger}")
+                            return secili_deger.strip()
+                    except Exception:
+                        pass
+
+                    # Alternatif: window_text ile dene
+                    try:
+                        text = select_element.window_text()
+                        if text:
+                            logger.info(f"✓ Reçete türü okundu (window_text): {text}")
+                            return text.strip()
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.debug(f"ComboBox yöntemi başarısız: {e}")
+
+            # Yöntem 2: descendants ile ara
+            try:
+                elements = bot.main_window.descendants(auto_id="f:m4")
+                if elements and len(elements) > 0:
+                    element = elements[0]
+
+                    # selected_text dene
+                    try:
+                        secili_deger = element.selected_text()
+                        if secili_deger:
+                            logger.info(f"✓ Reçete türü okundu (descendants): {secili_deger}")
+                            return secili_deger.strip()
+                    except Exception:
+                        pass
+
+                    # window_text dene
+                    try:
+                        text = element.window_text()
+                        if text:
+                            # SELECT'te tüm seçenekler gelebilir, ilk satırı al
+                            ilk_satir = text.split('\n')[0].strip()
+                            if ilk_satir:
+                                logger.info(f"✓ Reçete türü okundu (window_text): {ilk_satir}")
+                                return ilk_satir
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.debug(f"descendants yöntemi başarısız: {e}")
+
+            # Yöntem 3: Tüm Text elementlerinden "Reçete Türü" label'ının yanındaki değeri bul
+            try:
+                texts = bot.main_window.descendants(control_type="Text")
+                recete_turu_bulundu = False
+                for text in texts:
+                    try:
+                        icerik = text.window_text() or ""
+                        # "Normal", "Yeşil", "Kırmızı" gibi değerler
+                        if icerik.strip() in ["Normal", "Yeşil", "Kırmızı", "Turuncu", "Mor"]:
+                            logger.info(f"✓ Reçete türü okundu (Text scan): {icerik.strip()}")
+                            return icerik.strip()
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.debug(f"Text scan yöntemi başarısız: {e}")
+
+            # Deneme başarısız, kısa bekle
+            if deneme < max_deneme - 1:
+                time.sleep(0.3)
+
+        except Exception as e:
+            logger.warning(f"Reçete türü okuma hatası (deneme {deneme + 1}): {e}")
+            if deneme < max_deneme - 1:
+                time.sleep(0.3)
+
+    logger.warning("⚠ Reçete türü okunamadı")
+    return None
+
+
+def tek_recete_rapor_kontrol(bot, recete_sira_no, grup="", session_logger=None, stop_check=None,
+                              onceden_okunan_recete_no=None, renkli_kontrol=None):
+    """
+    Tek bir reçete için SADECE rapor kontrol işlemi yap.
+    (İlaç takip ve rapor toplama YOK - sadece renkli reçete kontrolü)
+
+    Args:
+        bot: BotanikBot instance
+        recete_sira_no: Reçete sıra numarası (1, 2, 3...)
+        grup: Grup bilgisi (A, B, C, GK)
+        session_logger: SessionLogger instance
+        stop_check: Durdurma kontrolü callback
+        onceden_okunan_recete_no: Önceden okunan reçete numarası
+        renkli_kontrol: RenkliReceteKontrol instance
+
+    Returns:
+        tuple: (başarı, medula_recete_no, sorun_var_mi, mesaj)
+    """
+    # Durdurma kontrolü
+    def should_stop():
+        if stop_check and callable(stop_check):
+            return stop_check()
+        return False
+
+    if should_stop():
+        logger.info("⏸ İşlem durduruldu (kullanıcı talebi)")
+        return (False, None, False, "Kullanıcı tarafından durduruldu")
+
+    medula_recete_no = None
+
+    try:
+        # 1. Reçete numarasını al
+        if onceden_okunan_recete_no:
+            medula_recete_no = onceden_okunan_recete_no
+        else:
+            # Hızlı tarama ile reçete no al
+            hizli_sonuc = bot.recete_sayfasi_hizli_tarama(max_deneme=2, bekleme_suresi=0.15)
+            if hizli_sonuc:
+                medula_recete_no = hizli_sonuc.get('recete_no')
+            else:
+                # Fallback
+                birlesik_sonuc = bot.recete_telefon_kontrol_birlesik(max_deneme=2, bekleme_suresi=0.2)
+                medula_recete_no = birlesik_sonuc.get('recete_no')
+
+        if not medula_recete_no:
+            logger.warning(f"⚠ Reçete {recete_sira_no}: Numara okunamadı")
+            return (False, None, False, "Reçete numarası okunamadı")
+
+        logger.info(f"📋 REÇETE {recete_sira_no} | No: {medula_recete_no}")
+
+        # 2. Reçete türünü oku
+        recete_turu = recete_turu_oku(bot)
+
+        if not recete_turu:
+            logger.warning(f"⚠ Reçete {medula_recete_no}: Tür okunamadı, Normal kabul ediliyor")
+            recete_turu = "Normal"
+
+        logger.info(f"📝 Reçete türü: {recete_turu}")
+
+        # 3. Renkli reçete kontrolü
+        sorun_var = False
+        mesaj = ""
+
+        if renkli_kontrol:
+            sorun_var, mesaj = renkli_kontrol.kontrol_et(medula_recete_no, recete_turu, grup)
+            if sorun_var:
+                logger.warning(f"⚠ {mesaj}")
+        else:
+            logger.debug("Renkli reçete kontrolü aktif değil")
+
+        # 4. İlaç tablosu kontrolü (Msj ve Rapor kontrolü)
+        if should_stop():
+            return (True, medula_recete_no, sorun_var, "Durduruldu")
+
+        try:
+            ilac_rapor = tum_ilaclari_kontrol_et(bot, session_logger, stop_check)
+
+            if ilac_rapor['msj_var_sayisi'] > 0:
+                logger.info(f"⚠ Reçetede {ilac_rapor['msj_var_sayisi']} adet mesaj içeren ilaç var")
+                # Mesaj detaylarını ekle
+                for detay in ilac_rapor['detaylar']:
+                    if detay['msj'] == 'var' and detay['mesaj_metni']:
+                        if mesaj:
+                            mesaj += f"\n• Satır {detay['satir']}: {detay['mesaj_metni'][:100]}..."
+                        else:
+                            mesaj = f"• Satır {detay['satir']}: {detay['mesaj_metni'][:100]}..."
+
+            if ilac_rapor['sorunlu_sayisi'] > 0:
+                sorun_var = True
+                logger.warning(f"⚠ Reçetede {ilac_rapor['sorunlu_sayisi']} adet sorunlu ilaç var")
+
+        except Exception as e:
+            logger.error(f"İlaç tablosu kontrol hatası: {e}")
+
+        # 5. Sonraki reçeteye geç
+        if should_stop():
+            return (True, medula_recete_no, sorun_var, "Durduruldu")
+
+        sonra = bot.retry_with_popup_check(
+            lambda: bot.sonra_butonuna_tikla(),
+            "SONRA butonu",
+            max_retries=5
+        )
+
+        if not sonra:
+            logger.error(f"❌ Reçete {medula_recete_no}: SONRA butonu başarısız")
+            return (False, medula_recete_no, sorun_var, "SONRA butonu başarısız")
+
+        return (True, medula_recete_no, sorun_var, mesaj if sorun_var else "OK")
+
+    except Exception as e:
+        logger.error(f"❌ Reçete kontrol hatası: {e}")
+        return (False, medula_recete_no, False, str(e))
+
+
+# =============================================================================
+# İLAÇ TABLOSU KONTROL FONKSİYONLARI
+# =============================================================================
+
+def ilac_tablosu_satir_sayisi_oku(bot, max_satir=20):
+    """
+    İlaç tablosundaki satır sayısını tespit et.
+
+    Args:
+        bot: BotanikBot instance
+        max_satir: Maksimum kontrol edilecek satır sayısı
+
+    Returns:
+        int: Satır sayısı (0 ise tablo boş veya okunamadı)
+    """
+    try:
+        satir_sayisi = 0
+
+        for i in range(max_satir):
+            # Her satırın checkbox'ını kontrol et
+            checkbox_id = f"f:tbl1:{i}:checkbox7"
+
+            try:
+                element = bot.find_element_safe(checkbox_id, timeout=0.5)
+                if element:
+                    satir_sayisi += 1
+                else:
+                    break
+            except:
+                break
+
+        logger.debug(f"İlaç tablosu satır sayısı: {satir_sayisi}")
+        return satir_sayisi
+
+    except Exception as e:
+        logger.error(f"İlaç tablosu satır sayısı okuma hatası: {e}")
+        return 0
+
+
+def ilac_satiri_msj_oku(bot, satir_index):
+    """
+    Belirtilen satırdaki Msj sütununu oku.
+
+    Args:
+        bot: BotanikBot instance
+        satir_index: Satır indexi (0'dan başlar)
+
+    Returns:
+        str: "var", "yok" veya None (okunamadı)
+    """
+    try:
+        msj_id = f"f:tbl1:{satir_index}:t11"
+
+        element = bot.find_element_safe(msj_id, timeout=1)
+        if element:
+            msj_deger = element.get_attribute("value") or element.text or element.get_attribute("innerText")
+            if msj_deger:
+                msj_deger = msj_deger.strip().lower()
+                logger.debug(f"Satır {satir_index} Msj: {msj_deger}")
+                return msj_deger
+
+        # UI Automation ile dene
+        try:
+            from System.Windows.Automation import AutomationElement, PropertyCondition, AutomationProperty
+            from System.Windows.Automation import TreeScope
+
+            # Name property ile ara
+            condition = PropertyCondition(AutomationElement.AutomationIdProperty, msj_id)
+            elem = bot.root_element.FindFirst(TreeScope.Descendants, condition)
+            if elem:
+                name = elem.Current.Name
+                if name:
+                    logger.debug(f"Satır {satir_index} Msj (UIA): {name}")
+                    return name.strip().lower()
+        except:
+            pass
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Msj okuma hatası (satır {satir_index}): {e}")
+        return None
+
+
+def ilac_satiri_rapor_kodu_oku(bot, satir_index):
+    """
+    Belirtilen satırdaki Rapor kodunu oku.
+
+    Args:
+        bot: BotanikBot instance
+        satir_index: Satır indexi (0'dan başlar)
+
+    Returns:
+        str: Rapor kodu (örn: "04.05") veya None/boş (raporsuz)
+    """
+    try:
+        rapor_id = f"f:tbl1:{satir_index}:t9"
+
+        element = bot.find_element_safe(rapor_id, timeout=1)
+        if element:
+            rapor_kodu = element.get_attribute("value") or element.text or element.get_attribute("innerText")
+            if rapor_kodu:
+                rapor_kodu = rapor_kodu.strip()
+                if rapor_kodu:
+                    logger.debug(f"Satır {satir_index} Rapor kodu: {rapor_kodu}")
+                    return rapor_kodu
+
+        # UI Automation ile dene
+        try:
+            from System.Windows.Automation import AutomationElement, PropertyCondition
+            from System.Windows.Automation import TreeScope
+
+            condition = PropertyCondition(AutomationElement.AutomationIdProperty, rapor_id)
+            elem = bot.root_element.FindFirst(TreeScope.Descendants, condition)
+            if elem:
+                name = elem.Current.Name
+                if name and name.strip():
+                    logger.debug(f"Satır {satir_index} Rapor kodu (UIA): {name}")
+                    return name.strip()
+        except:
+            pass
+
+        return None  # Raporsuz
+
+    except Exception as e:
+        logger.error(f"Rapor kodu okuma hatası (satır {satir_index}): {e}")
+        return None
+
+
+def ilac_satiri_checkbox_sec(bot, satir_index, sec=True):
+    """
+    Belirtilen satırdaki checkbox'ı seç veya kaldır.
+
+    Args:
+        bot: BotanikBot instance
+        satir_index: Satır indexi (0'dan başlar)
+        sec: True=seç, False=kaldır
+
+    Returns:
+        bool: Başarılı mı
+    """
+    try:
+        checkbox_id = f"f:tbl1:{satir_index}:checkbox7"
+
+        element = bot.find_element_safe(checkbox_id, timeout=2)
+        if element:
+            # Mevcut durumu kontrol et
+            is_selected = element.is_selected() if hasattr(element, 'is_selected') else False
+
+            if sec and not is_selected:
+                element.click()
+                logger.debug(f"Satır {satir_index} checkbox seçildi")
+                return True
+            elif not sec and is_selected:
+                element.click()
+                logger.debug(f"Satır {satir_index} checkbox kaldırıldı")
+                return True
+            else:
+                logger.debug(f"Satır {satir_index} checkbox zaten istenen durumda")
+                return True
+
+        logger.warning(f"Satır {satir_index} checkbox bulunamadı")
+        return False
+
+    except Exception as e:
+        logger.error(f"Checkbox seçme hatası (satır {satir_index}): {e}")
+        return False
+
+
+def ilac_bilgi_butonuna_tikla(bot):
+    """
+    İlaç Bilgi butonuna tıkla.
+
+    Returns:
+        bool: Başarılı mı
+    """
+    try:
+        buton_id = "f:buttonIlacBilgiGorme"
+
+        element = bot.find_element_safe(buton_id, timeout=2)
+        if element:
+            element.click()
+            time.sleep(0.5)  # Pencerenin açılmasını bekle
+            logger.debug("İlaç Bilgi butonuna tıklandı")
+            return True
+
+        # UI Automation ile dene - Name ile ara
+        try:
+            from System.Windows.Automation import AutomationElement, PropertyCondition
+            from System.Windows.Automation import TreeScope
+
+            condition = PropertyCondition(AutomationElement.NameProperty, "İlaç Bilgi")
+            elem = bot.root_element.FindFirst(TreeScope.Descendants, condition)
+            if elem:
+                from System.Windows.Automation import InvokePattern
+                pattern = elem.GetCurrentPattern(InvokePattern.Pattern)
+                if pattern:
+                    pattern.Invoke()
+                    time.sleep(0.5)
+                    logger.debug("İlaç Bilgi butonuna tıklandı (UIA)")
+                    return True
+        except:
+            pass
+
+        logger.warning("İlaç Bilgi butonu bulunamadı")
+        return False
+
+    except Exception as e:
+        logger.error(f"İlaç Bilgi butonu tıklama hatası: {e}")
+        return False
+
+
+def ilac_bilgi_penceresi_mesaj_oku(bot):
+    """
+    İlaç Bilgi penceresindeki mesaj metnini oku.
+
+    Returns:
+        str: Mesaj metni veya None
+    """
+    try:
+        mesaj_id = "form1:textarea1"
+
+        element = bot.find_element_safe(mesaj_id, timeout=2)
+        if element:
+            mesaj = element.get_attribute("value") or element.text or element.get_attribute("innerText")
+            if mesaj:
+                logger.debug(f"İlaç mesajı okundu: {mesaj[:100]}...")
+                return mesaj.strip()
+
+        return None
+
+    except Exception as e:
+        logger.error(f"İlaç mesajı okuma hatası: {e}")
+        return None
+
+
+def ilac_bilgi_penceresi_raporlu_doz_oku(bot):
+    """
+    İlaç Bilgi penceresindeki Raporlu Maks. Kul. Doz değerini oku.
+
+    Returns:
+        dict: {'periyot': int, 'birim': str, 'carpan': int, 'doz': float} veya None
+        Örnek: {'periyot': 1, 'birim': 'Günde', 'carpan': 1, 'doz': 1.0}
+    """
+    try:
+        # "Raporlu Maks. Kul. Doz" label'ını bul ve değerini oku
+        # Format: "1 Günde 1 x 1.0"
+
+        from System.Windows.Automation import AutomationElement, PropertyCondition, TreeScope
+
+        # Önce "Raporlu Maks. Kul. Doz" metnini bul
+        condition = PropertyCondition(AutomationElement.NameProperty, "Raporlu Maks. Kul. Doz")
+        label_elem = bot.root_element.FindFirst(TreeScope.Descendants, condition)
+
+        if label_elem:
+            # Label'dan sonraki değerleri topla
+            # Genelde ":" dan sonra değerler geliyor
+            # UI yapısında: 1, Günde, 1, x, 1.0 şeklinde ayrı elementler
+
+            parent = TreeWalker.ContentViewWalker.GetParent(label_elem)
+            if parent:
+                children = parent.FindAll(TreeScope.Children, Condition.TrueCondition)
+
+                doz_parts = []
+                found_label = False
+                for child in children:
+                    name = child.Current.Name
+                    if "Raporlu Maks" in str(name):
+                        found_label = True
+                        continue
+                    if found_label and name and name.strip() not in [':', '']:
+                        doz_parts.append(name.strip())
+
+                if len(doz_parts) >= 4:
+                    # Parse et: ['1', 'Günde', '1', 'x', '1.0']
+                    try:
+                        return {
+                            'periyot': int(doz_parts[0]),
+                            'birim': doz_parts[1],
+                            'carpan': int(doz_parts[2]),
+                            'doz': float(doz_parts[4].replace(',', '.')) if len(doz_parts) > 4 else float(doz_parts[3].replace(',', '.'))
+                        }
+                    except:
+                        pass
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Raporlu doz okuma hatası: {e}")
+        return None
+
+
+def ilac_bilgi_penceresi_kapat(bot):
+    """
+    İlaç Bilgi penceresini kapat.
+
+    Returns:
+        bool: Başarılı mı
+    """
+    try:
+        kapat_id = "form1:buttonKapat"
+
+        element = bot.find_element_safe(kapat_id, timeout=2)
+        if element:
+            element.click()
+            time.sleep(0.3)
+            logger.debug("İlaç Bilgi penceresi kapatıldı")
+            return True
+
+        # UI Automation ile dene
+        try:
+            from System.Windows.Automation import AutomationElement, PropertyCondition
+            from System.Windows.Automation import TreeScope
+
+            condition = PropertyCondition(AutomationElement.NameProperty, "Kapat")
+            elem = bot.root_element.FindFirst(TreeScope.Descendants, condition)
+            if elem:
+                from System.Windows.Automation import InvokePattern
+                pattern = elem.GetCurrentPattern(InvokePattern.Pattern)
+                if pattern:
+                    pattern.Invoke()
+                    time.sleep(0.3)
+                    logger.debug("İlaç Bilgi penceresi kapatıldı (UIA)")
+                    return True
+        except:
+            pass
+
+        logger.warning("Kapat butonu bulunamadı")
+        return False
+
+    except Exception as e:
+        logger.error(f"Pencere kapatma hatası: {e}")
+        return False
+
+
+def ilac_satiri_recete_doz_oku(bot, satir_index):
+    """
+    Reçetedeki ilaç dozunu oku.
+    Adet / Periyot / Doz sütunundan okur.
+
+    Args:
+        bot: BotanikBot instance
+        satir_index: Satır indexi
+
+    Returns:
+        dict: {'adet': int, 'periyot': int, 'birim': str, 'carpan': int, 'doz': float} veya None
+    """
+    try:
+        # Doz bilgisi genelde şu formatta: "1, Adet" veya edit alanlarında
+        # Periyot ve doz için farklı element ID'leri var
+
+        # Periyot edit: f:tbl1:{satir}:edit1 vb.
+        # Bu yapıyı daha detaylı incelememiz gerekebilir
+
+        # Şimdilik basit bir yaklaşım - tablodaki text'leri okuyalım
+        # Normalde "( Günde 2 x 1,000 Doz...)" gibi bir metin var
+
+        # TODO: Daha detaylı element mapping gerekebilir
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Reçete doz okuma hatası (satır {satir_index}): {e}")
+        return None
+
+
+def ilac_kontrolu_yap(bot, satir_index, session_logger=None):
+    """
+    Tek bir ilaç satırı için kontrol yap.
+
+    Args:
+        bot: BotanikBot instance
+        satir_index: Satır indexi
+        session_logger: Oturum logger
+
+    Returns:
+        dict: {
+            'satir': int,
+            'msj': str,
+            'rapor_kodu': str,
+            'raporlu': bool,
+            'mesaj_metni': str,
+            'sorun_var': bool,
+            'sorun_aciklama': str
+        }
+    """
+    sonuc = {
+        'satir': satir_index,
+        'msj': None,
+        'rapor_kodu': None,
+        'raporlu': False,
+        'mesaj_metni': None,
+        'sorun_var': False,
+        'sorun_aciklama': None
+    }
+
+    try:
+        # 1. Msj sütununu oku
+        msj = ilac_satiri_msj_oku(bot, satir_index)
+        sonuc['msj'] = msj
+
+        # 2. Rapor kodunu oku
+        rapor_kodu = ilac_satiri_rapor_kodu_oku(bot, satir_index)
+        sonuc['rapor_kodu'] = rapor_kodu
+        sonuc['raporlu'] = bool(rapor_kodu)
+
+        # 3. Msj = "var" ise detaylı kontrol yap
+        if msj == "var":
+            logger.info(f"⚠ Satır {satir_index}: Msj=var, detaylı kontrol yapılıyor...")
+
+            # Checkbox'ı seç
+            if ilac_satiri_checkbox_sec(bot, satir_index, sec=True):
+                time.sleep(0.2)
+
+                # İlaç Bilgi butonuna tıkla
+                if ilac_bilgi_butonuna_tikla(bot):
+                    time.sleep(0.5)
+
+                    # Mesajı oku
+                    mesaj = ilac_bilgi_penceresi_mesaj_oku(bot)
+                    sonuc['mesaj_metni'] = mesaj
+
+                    if mesaj:
+                        logger.info(f"📋 İlaç mesajı: {mesaj[:150]}...")
+
+                        # Raporlu ilaç ise doz kontrolü yap
+                        if sonuc['raporlu']:
+                            raporlu_doz = ilac_bilgi_penceresi_raporlu_doz_oku(bot)
+                            if raporlu_doz:
+                                logger.info(f"📊 Raporlu maks doz: {raporlu_doz}")
+                                # TODO: Reçete dozu ile karşılaştır
+
+                    # Pencereyi kapat
+                    ilac_bilgi_penceresi_kapat(bot)
+                    time.sleep(0.2)
+
+                # Checkbox'ı kaldır
+                ilac_satiri_checkbox_sec(bot, satir_index, sec=False)
+
+        return sonuc
+
+    except Exception as e:
+        logger.error(f"İlaç kontrolü hatası (satır {satir_index}): {e}")
+        sonuc['sorun_var'] = True
+        sonuc['sorun_aciklama'] = str(e)
+        return sonuc
+
+
+def tum_ilaclari_kontrol_et(bot, session_logger=None, stop_check=None):
+    """
+    Reçetedeki tüm ilaçları kontrol et.
+
+    Args:
+        bot: BotanikBot instance
+        session_logger: Oturum logger
+        stop_check: Durdurma kontrolü fonksiyonu
+
+    Returns:
+        dict: {
+            'toplam_ilac': int,
+            'kontrol_edilen': int,
+            'msj_var_sayisi': int,
+            'raporlu_sayisi': int,
+            'sorunlu_sayisi': int,
+            'detaylar': list[dict]
+        }
+    """
+    rapor = {
+        'toplam_ilac': 0,
+        'kontrol_edilen': 0,
+        'msj_var_sayisi': 0,
+        'raporlu_sayisi': 0,
+        'sorunlu_sayisi': 0,
+        'detaylar': []
+    }
+
+    def should_stop():
+        return stop_check and stop_check()
+
+    try:
+        # 1. Satır sayısını tespit et
+        satir_sayisi = ilac_tablosu_satir_sayisi_oku(bot)
+        rapor['toplam_ilac'] = satir_sayisi
+
+        if satir_sayisi == 0:
+            logger.warning("İlaç tablosunda satır bulunamadı")
+            return rapor
+
+        logger.info(f"📋 İlaç tablosunda {satir_sayisi} satır bulundu")
+
+        # 2. Her satırı kontrol et
+        for i in range(satir_sayisi):
+            if should_stop():
+                logger.info("Kontrol durduruldu")
+                break
+
+            sonuc = ilac_kontrolu_yap(bot, i, session_logger)
+            rapor['detaylar'].append(sonuc)
+            rapor['kontrol_edilen'] += 1
+
+            if sonuc['msj'] == "var":
+                rapor['msj_var_sayisi'] += 1
+
+            if sonuc['raporlu']:
+                rapor['raporlu_sayisi'] += 1
+
+            if sonuc['sorun_var']:
+                rapor['sorunlu_sayisi'] += 1
+
+        # 3. Özet log
+        logger.info(f"""
+═══════════════════════════════════════════════════
+İLAÇ KONTROL RAPORU
+═══════════════════════════════════════════════════
+Toplam İlaç     : {rapor['toplam_ilac']}
+Kontrol Edilen  : {rapor['kontrol_edilen']}
+Msj=var Sayısı  : {rapor['msj_var_sayisi']}
+Raporlu İlaç    : {rapor['raporlu_sayisi']}
+Sorunlu         : {rapor['sorunlu_sayisi']}
+═══════════════════════════════════════════════════
+""")
+
+        return rapor
+
+    except Exception as e:
+        logger.error(f"Tüm ilaçları kontrol hatası: {e}")
+        return rapor
+
+
 if __name__ == "__main__":
     main()

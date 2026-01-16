@@ -18,6 +18,8 @@ from botanik_bot import (
     BotanikBot,
     RaporTakip,
     tek_recete_isle,
+    tek_recete_rapor_kontrol,
+    recete_turu_oku,
     popup_kontrol_ve_kapat,
     recete_kaydi_bulunamadi_mi,
     medula_taskkill,
@@ -551,6 +553,9 @@ class BotanikGUI:
 
         # Renkli reçete yönetici (yeşil/kırmızı reçeteli ilaçlar)
         self.renkli_recete = RenkliReceteYonetici()
+
+        # Renkli reçete kontrol (PDF'den yüklenen liste ile karşılaştırma)
+        self.renkli_recete_kontrol = None  # Lazy init - PDF yüklenince oluşturulur
 
         # Bot
         self.bot = None
@@ -1186,7 +1191,7 @@ class BotanikGUI:
             activebackground="#7B1FA2",
             relief="raised",
             bd=2,
-            command=self.renkli_recete_yukle
+            command=self.renkli_liste_penceresi_ac
         )
         self.renkli_recete_button.pack(fill="x")
 
@@ -2322,7 +2327,7 @@ class BotanikGUI:
 
         tk.Label(
             kontrol_frame,
-            text="Reçete SUT kurallarına uygunluğunu kontrol et",
+            text="Renkli reçete kontrolü",
             font=("Arial", 8),
             bg='#F3E5F5',
             fg='#666666'
@@ -2397,6 +2402,404 @@ class BotanikGUI:
             aktif_fonksiyonlar.append("Rapor Kontrol")
 
         logger.info(f"✓ Aktif fonksiyonlar güncellendi: {', '.join(aktif_fonksiyonlar)}")
+
+    def renkli_liste_penceresi_ac(self):
+        """Renkli reçete listesi yükleme penceresi aç"""
+        # Pencere oluştur
+        liste_pencere = tk.Toplevel(self.root)
+        liste_pencere.title("Renkli Reçete Listesi Yükle")
+        liste_pencere.geometry("600x550")
+        liste_pencere.configure(bg='#FFFFFF')
+        liste_pencere.transient(self.root)
+        liste_pencere.grab_set()
+        liste_pencere.resizable(True, True)
+
+        # ===== ALT BUTONLAR (ÖNCELİKLİ - side=bottom için önce pack edilmeli) =====
+        btn_frame = tk.Frame(liste_pencere, bg='#E8E8E8', height=70)
+        btn_frame.pack(side="bottom", fill="x")
+        btn_frame.pack_propagate(False)
+
+        btn_inner = tk.Frame(btn_frame, bg='#E8E8E8')
+        btn_inner.pack(expand=True, pady=15)
+
+        # Mevcut liste durumu
+        from recete_kontrol import get_renkli_recete_kontrol
+        kontrol = get_renkli_recete_kontrol()
+        if kontrol.pdf_yuklu and len(kontrol.pdf_receteler) > 0:
+            durum_label = tk.Label(
+                btn_inner,
+                text=f"📋 Mevcut: {len(kontrol.pdf_receteler)} reçete",
+                font=("Arial", 9, "bold"),
+                bg='#E8E8E8',
+                fg='#4CAF50'
+            )
+            durum_label.pack(side="left", padx=(0, 20))
+
+        # Başlık
+        tk.Label(
+            liste_pencere,
+            text="📋 Renkli Reçete Listesi Yükle",
+            font=("Arial", 14, "bold"),
+            bg='#FFFFFF',
+            fg='#333333'
+        ).pack(pady=(15, 10))
+
+        # ===== ÜST BUTONLAR - DOSYADAN YÜKLEME =====
+        dosya_frame = tk.LabelFrame(
+            liste_pencere,
+            text="Dosyadan Yükle",
+            font=("Arial", 10, "bold"),
+            bg='#FFFFFF',
+            fg='#1976D2',
+            padx=10,
+            pady=10
+        )
+        dosya_frame.pack(fill="x", padx=15, pady=(0, 10))
+
+        dosya_btn_frame = tk.Frame(dosya_frame, bg='#FFFFFF')
+        dosya_btn_frame.pack()
+
+        # Excel'den Yükle butonu
+        tk.Button(
+            dosya_btn_frame,
+            text="📊 Excel'den Yükle",
+            font=("Arial", 10),
+            bg='#4CAF50',
+            fg='white',
+            activebackground='#388E3C',
+            activeforeground='white',
+            cursor='hand2',
+            bd=0,
+            padx=15,
+            pady=8,
+            command=lambda: self._excel_yukle(liste_pencere)
+        ).pack(side="left", padx=10)
+
+        # PDF'den Yükle butonu
+        tk.Button(
+            dosya_btn_frame,
+            text="📄 PDF'den Yükle",
+            font=("Arial", 10),
+            bg='#2196F3',
+            fg='white',
+            activebackground='#1976D2',
+            activeforeground='white',
+            cursor='hand2',
+            bd=0,
+            padx=15,
+            pady=8,
+            command=lambda: self._pdf_yukle(liste_pencere)
+        ).pack(side="left", padx=10)
+
+        # ===== MANUEL GİRİŞ - TEXTBOX =====
+        manuel_frame = tk.LabelFrame(
+            liste_pencere,
+            text="Manuel Giriş (Kopyala-Yapıştır)",
+            font=("Arial", 10, "bold"),
+            bg='#FFFFFF',
+            fg='#E65100',
+            padx=10,
+            pady=10
+        )
+        manuel_frame.pack(fill="both", expand=True, padx=15, pady=(0, 10))
+
+        # Açıklama
+        tk.Label(
+            manuel_frame,
+            text="Renkli reçete sisteminden verileri kopyalayıp aşağıya yapıştırın:",
+            font=("Arial", 9),
+            bg='#FFFFFF',
+            fg='#666666'
+        ).pack(anchor="w")
+
+        # Text widget frame
+        text_frame = tk.Frame(manuel_frame, bg='#FFFFFF')
+        text_frame.pack(fill="both", expand=True, pady=(5, 0))
+
+        # Scrollbar
+        scrollbar = tk.Scrollbar(text_frame)
+        scrollbar.pack(side="right", fill="y")
+
+        # Text widget
+        text_widget = tk.Text(
+            text_frame,
+            font=("Consolas", 10),
+            bg='#F5F5F5',
+            fg='#333333',
+            wrap='word',
+            yscrollcommand=scrollbar.set,
+            padx=10,
+            pady=10
+        )
+        text_widget.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=text_widget.yview)
+
+        # Örnek metin
+        ornek = """Örnek formatlar:
+
+EBJMFHNF / 2KBNU50
+9X2GPX8O / 2K9RBDY
+
+veya sadece reçete numaraları:
+2KBNU50
+2K9RBDY
+"""
+        text_widget.insert('1.0', ornek)
+        text_widget.tag_add("placeholder", "1.0", "end")
+        text_widget.tag_config("placeholder", foreground="#AAAAAA")
+
+        # Tıklandığında örneği temizle
+        def temizle_ornek(event):
+            if text_widget.tag_ranges("placeholder"):
+                text_widget.delete('1.0', 'end')
+                text_widget.tag_remove("placeholder", "1.0", "end")
+
+        text_widget.bind("<FocusIn>", temizle_ornek)
+
+        # Text widget referansını sakla
+        self._renkli_text_widget = text_widget
+        self._renkli_pencere = liste_pencere
+
+        # Butonları btn_inner'a ekle (text_widget tanımlandıktan sonra)
+        # Metinden Yükle butonu
+        tk.Button(
+            btn_inner,
+            text="✓ METİNDEN YÜKLE",
+            font=("Arial", 11, "bold"),
+            bg='#FF9800',
+            fg='white',
+            activebackground='#F57C00',
+            activeforeground='white',
+            cursor='hand2',
+            bd=0,
+            padx=20,
+            pady=10,
+            command=lambda: self._metinden_yukle(text_widget, liste_pencere)
+        ).pack(side="left", padx=8)
+
+        # İptal butonu
+        tk.Button(
+            btn_inner,
+            text="✗ Kapat",
+            font=("Arial", 11),
+            bg='#9E9E9E',
+            fg='white',
+            activebackground='#757575',
+            activeforeground='white',
+            cursor='hand2',
+            bd=0,
+            padx=20,
+            pady=10,
+            command=liste_pencere.destroy
+        ).pack(side="left", padx=8)
+
+    def _metinden_yukle(self, text_widget, pencere):
+        """Textbox'tan reçete listesi yükle"""
+        metin = text_widget.get('1.0', 'end').strip()
+
+        # Placeholder mı kontrol et
+        if text_widget.tag_ranges("placeholder") or not metin:
+            messagebox.showwarning("Uyarı", "Lütfen reçete listesini yapıştırın.")
+            return
+
+        # Metni parse et
+        receteler = self._renkli_liste_parse(metin)
+
+        if not receteler:
+            messagebox.showwarning("Uyarı", "Geçerli reçete numarası bulunamadı.\n\nReçete numarası formatı: 2XXXXXX")
+            return
+
+        self._recete_listesi_kaydet(receteler, pencere)
+
+    def _excel_yukle(self, pencere):
+        """Excel dosyasından reçete listesi yükle"""
+        from tkinter import filedialog
+
+        dosya_yolu = filedialog.askopenfilename(
+            title="Renkli Reçete Excel Dosyası Seç",
+            filetypes=[("Excel Dosyaları", "*.xlsx *.xls"), ("Tüm Dosyalar", "*.*")],
+            initialdir="C:\\Users\\ana\\OneDrive\\Desktop"
+        )
+
+        if not dosya_yolu:
+            return
+
+        try:
+            import pandas as pd
+            df = pd.read_excel(dosya_yolu)
+
+            # Reçete No sütununu bul
+            recete_sutun = None
+            for col in df.columns:
+                if 'reçete' in col.lower() or 'recete' in col.lower():
+                    recete_sutun = col
+                    break
+
+            if recete_sutun is None:
+                recete_sutun = df.columns[1] if len(df.columns) > 1 else df.columns[0]
+
+            receteler = []
+            import re
+            for val in df[recete_sutun]:
+                if pd.isna(val):
+                    continue
+                val_str = str(val)
+                # "XXX / YYY" formatı
+                if '/' in val_str:
+                    parcalar = val_str.split('/')
+                    if len(parcalar) >= 2:
+                        ikinci = parcalar[1].strip()
+                        temiz = re.sub(r'[^A-Za-z0-9]', '', ikinci)
+                        if re.match(r'^2[A-Za-z0-9]{6}$', temiz):
+                            receteler.append(temiz)
+                else:
+                    temiz = re.sub(r'[^A-Za-z0-9]', '', val_str)
+                    if re.match(r'^2[A-Za-z0-9]{6}$', temiz):
+                        receteler.append(temiz)
+
+            if not receteler:
+                messagebox.showwarning("Uyarı", "Excel dosyasında geçerli reçete numarası bulunamadı.")
+                return
+
+            self._recete_listesi_kaydet(list(set(receteler)), pencere)
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Excel okuma hatası:\n{e}")
+
+    def _pdf_yukle(self, pencere):
+        """PDF dosyasından reçete listesi yükle"""
+        from tkinter import filedialog
+
+        dosya_yolu = filedialog.askopenfilename(
+            title="Renkli Reçete PDF Dosyası Seç",
+            filetypes=[("PDF Dosyaları", "*.pdf"), ("Tüm Dosyalar", "*.*")],
+            initialdir="C:\\Users\\ana\\OneDrive\\Desktop"
+        )
+
+        if not dosya_yolu:
+            return
+
+        try:
+            import pdfplumber
+            import re
+
+            receteler = []
+            with pdfplumber.open(dosya_yolu) as pdf:
+                for sayfa in pdf.pages:
+                    metin = sayfa.extract_text() or ""
+                    # 2XXXXXX formatındaki reçete numaralarını bul
+                    matches = re.findall(r'2[A-Za-z0-9]{6}', metin)
+                    receteler.extend(matches)
+
+            if not receteler:
+                messagebox.showwarning("Uyarı", "PDF dosyasında geçerli reçete numarası bulunamadı.\n\nPDF görüntü tabanlı olabilir, manuel giriş kullanın.")
+                return
+
+            self._recete_listesi_kaydet(list(set(receteler)), pencere)
+
+        except ImportError:
+            messagebox.showerror("Hata", "pdfplumber kütüphanesi yüklü değil.\n\npip install pdfplumber")
+        except Exception as e:
+            messagebox.showerror("Hata", f"PDF okuma hatası:\n{e}")
+
+    def _recete_listesi_kaydet(self, receteler, pencere):
+        """Reçete listesini kaydet ve UI güncelle"""
+        from recete_kontrol import get_renkli_recete_kontrol
+        self.renkli_recete_kontrol = get_renkli_recete_kontrol()
+        self.renkli_recete_kontrol.liste_yukle(receteler)
+
+        # Ana ekrandaki label'ı güncelle
+        self.renkli_recete_label.config(
+            text=f"✓ {len(receteler)} reçete yüklü",
+            bg="#C8E6C9",
+            fg="#1B5E20"
+        )
+        self.log_ekle(f"📋 Renkli reçete listesi yüklendi: {len(receteler)} reçete")
+
+        messagebox.showinfo("Başarılı", f"{len(receteler)} reçete yüklendi!")
+        pencere.destroy()
+
+    def _renkli_liste_parse(self, metin):
+        """
+        Yapıştırılan metinden reçete numaralarını çıkar.
+
+        Desteklenen formatlar:
+        - "EBJMFHNF / 2KBNU50" → 2KBNU50 (ikinci kısım)
+        - "2KBNU50" → 2KBNU50 (direkt numara)
+        - Excel'den kopyalanan tab-separated veriler
+        """
+        import re
+        receteler = []
+
+        for satir in metin.split('\n'):
+            satir = satir.strip()
+            if not satir:
+                continue
+
+            # Tab veya çoklu boşlukla ayrılmış hücreleri ayır (Excel formatı)
+            hucreler = re.split(r'\t+|\s{2,}', satir)
+
+            for hucre in hucreler:
+                hucre = hucre.strip()
+                if not hucre:
+                    continue
+
+                # Format 1: "XXX / YYY" - ikinci kısmı al
+                if '/' in hucre:
+                    parcalar = hucre.split('/')
+                    if len(parcalar) >= 2:
+                        ikinci = parcalar[1].strip()
+                        # Sadece alfanumerik karakterler (5-10 karakter arası - reçete no formatı)
+                        ikinci_temiz = re.sub(r'[^A-Za-z0-9]', '', ikinci)
+                        if 5 <= len(ikinci_temiz) <= 10:
+                            receteler.append(ikinci_temiz)
+                            continue
+
+                # Format 2: Direkt reçete numarası (2 ile başlayan, 7 karakter)
+                # Medula reçete no formatı: 2XXXXXX (2 ile başlar, 7 karakter)
+                temiz = re.sub(r'[^A-Za-z0-9]', '', hucre)
+                if re.match(r'^2[A-Za-z0-9]{6}$', temiz):
+                    receteler.append(temiz)
+
+        return list(set(receteler))  # Tekrarları kaldır
+
+    def renkli_kontrol_raporu_goster(self):
+        """Renkli reçete kontrol raporunu göster"""
+        if not self.renkli_recete_kontrol:
+            messagebox.showinfo("Bilgi", "Henüz kontrol yapılmadı.")
+            return
+
+        rapor = self.renkli_recete_kontrol.rapor_ozeti_al()
+
+        # Rapor penceresi
+        rapor_pencere = tk.Toplevel(self.root)
+        rapor_pencere.title("Renkli Reçete Kontrol Raporu")
+        rapor_pencere.geometry("500x400")
+        rapor_pencere.configure(bg='#FFFFFF')
+
+        # Rapor metni
+        text_widget = tk.Text(
+            rapor_pencere,
+            font=("Consolas", 10),
+            bg='#FFFFFF',
+            fg='#333333',
+            wrap='word',
+            padx=10,
+            pady=10
+        )
+        text_widget.pack(fill="both", expand=True, padx=10, pady=10)
+        text_widget.insert('1.0', rapor)
+        text_widget.config(state='disabled')
+
+        # Kapat butonu
+        tk.Button(
+            rapor_pencere,
+            text="Kapat",
+            font=("Arial", 10),
+            bg='#2196F3',
+            fg='white',
+            command=rapor_pencere.destroy
+        ).pack(pady=10)
 
     def create_giris_ayarlari_tab(self, parent):
         """Giriş Ayarları sekmesi içeriğini oluştur"""
@@ -4299,15 +4702,40 @@ class BotanikGUI:
                         # onceki_recete_no: Ardışık aynı reçete kontrolü için (optimize)
                         # fonksiyon_ayarlari: Aktif fonksiyonlar (ilaç takip, rapor toplama, rapor kontrol)
                         fonksiyon_ayarlari = self.grup_durumu.fonksiyon_ayarlari_al()
-                        basari, medula_no, takip_adet, hata_nedeni = tek_recete_isle(
-                            self.bot, recete_sira, self.rapor_takip,
-                            grup=self.aktif_grup,
-                            session_logger=self.session_logger,
-                            onceden_okunan_recete_no=medula_recete_no,
-                            onceki_recete_no=onceki_recete_no,
-                            stop_check=lambda: self.stop_requested or not self.is_running,
-                            fonksiyon_ayarlari=fonksiyon_ayarlari
+
+                        # SADECE rapor kontrol aktifse (ilaç takip ve rapor toplama pasif)
+                        sadece_rapor_kontrol = (
+                            fonksiyon_ayarlari.get("rapor_kontrol_aktif", False) and
+                            not fonksiyon_ayarlari.get("ilac_takip_aktif", True) and
+                            not fonksiyon_ayarlari.get("rapor_toplama_aktif", True)
                         )
+
+                        if sadece_rapor_kontrol:
+                            # Sadece renkli reçete kontrolü yap
+                            basari, medula_no, sorun_var, hata_nedeni = tek_recete_rapor_kontrol(
+                                self.bot, recete_sira,
+                                grup=self.aktif_grup,
+                                session_logger=self.session_logger,
+                                stop_check=lambda: self.stop_requested or not self.is_running,
+                                onceden_okunan_recete_no=medula_recete_no,
+                                renkli_kontrol=self.renkli_recete_kontrol
+                            )
+                            takip_adet = 0  # Rapor kontrolde takip yok
+
+                            # Sorunlu reçete varsa logla
+                            if sorun_var and hata_nedeni:
+                                self.root.after(0, lambda m=hata_nedeni: self.log_ekle(f"⚠️ {m}"))
+                        else:
+                            # Normal akış (ilaç takip ve/veya rapor toplama)
+                            basari, medula_no, takip_adet, hata_nedeni = tek_recete_isle(
+                                self.bot, recete_sira, self.rapor_takip,
+                                grup=self.aktif_grup,
+                                session_logger=self.session_logger,
+                                onceden_okunan_recete_no=medula_recete_no,
+                                onceki_recete_no=onceki_recete_no,
+                                stop_check=lambda: self.stop_requested or not self.is_running,
+                                fonksiyon_ayarlari=fonksiyon_ayarlari
+                            )
                     except SistemselHataException as e:
                         # ✅ Sistemsel hata yakalandı!
                         self.root.after(0, lambda: self.log_ekle("⚠️ SİSTEMSEL HATA TESPİT EDİLDİ!"))
