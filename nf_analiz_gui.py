@@ -439,6 +439,18 @@ class MFAnalizGUI:
                  normalbackground='#1a1a2e', normalforeground='white',
                  date_pattern='dd.mm.yyyy', locale='tr_TR').pack(side=tk.RIGHT)
 
+        # Botanikten Çek butonu
+        row4 = tk.Frame(content, bg=self.colors['card_bg'])
+        row4.pack(fill=tk.X, pady=(10, 4))
+        btn_botanik = tk.Button(row4, text="Botanikten Çek",
+                               font=('Segoe UI', 10, 'bold'),
+                               fg='white', bg='#17a2b8',
+                               activebackground='#138496',
+                               activeforeground='white',
+                               relief='flat', cursor='hand2',
+                               command=lambda: self._botanikten_cek_pencere_ac(vars))
+        btn_botanik.pack(fill=tk.X, pady=2)
+
     def _panel_b_olustur(self, parent, col, vars):
         """B paneli - Ilac Verileri (decimal fiyat alanlari)"""
         kart = tk.Frame(parent, bg=self.colors['card_bg'], bd=2, relief='solid')
@@ -3753,6 +3765,785 @@ class MFAnalizGUI:
 
         tk.Label(aciklama_frame, text=aciklama, font=('Segoe UI', 9),
                 fg=c['text_dim'], bg=c['bg'], justify='left').pack(anchor='w')
+
+    # =====================================================
+    # BOTANİKTEN ÇEK MODÜLÜ
+    # =====================================================
+
+    def _botanikten_cek_pencere_ac(self, senaryo_vars):
+        """Botanikten Çek penceresi aç"""
+        c = self.colors
+
+        # Pencere oluştur
+        pencere = tk.Toplevel(self.root)
+        pencere.title("Botanikten Veri Çek")
+        pencere.geometry("1100x700")
+        pencere.configure(bg=c['bg'])
+        pencere.transient(self.root)
+
+        # Botanik DB bağlantısı
+        try:
+            from botanik_db import BotanikDB
+            db = BotanikDB()
+            if not db.baglan():
+                messagebox.showerror("Hata", "Botanik veritabanına bağlanılamadı!")
+                pencere.destroy()
+                return
+        except Exception as e:
+            messagebox.showerror("Hata", f"Botanik modülü yüklenemedi: {e}")
+            pencere.destroy()
+            return
+
+        # Pencere kapanınca DB bağlantısını kapat
+        def on_close():
+            try:
+                db.kapat()
+            except:
+                pass
+            pencere.destroy()
+
+        pencere.protocol("WM_DELETE_WINDOW", on_close)
+
+        # Pencere state değişkenleri
+        secili_ilaclar = {}  # {urun_id: ilac_dict}
+        ay_sayisi_var = tk.IntVar(value=6)
+
+        # ===== ÜST KISIM: FİLTRELER =====
+        filtre_frame = tk.LabelFrame(pencere, text=" Filtreler ",
+                                     font=('Segoe UI', 11, 'bold'),
+                                     fg=c['text'], bg=c['panel_bg'])
+        filtre_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        filtre_content = tk.Frame(filtre_frame, bg=c['panel_bg'])
+        filtre_content.pack(fill=tk.X, padx=10, pady=10)
+
+        # Row 1: Autocomplete Comboboxlar
+        combo_frame = tk.Frame(filtre_content, bg=c['panel_bg'])
+        combo_frame.pack(fill=tk.X, pady=5)
+
+        # 1) İlaç Seçimi - Autocomplete
+        tk.Label(combo_frame, text="İlaç:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=0, column=0, padx=5, sticky='w')
+        ilac_combo = ttk.Combobox(combo_frame, width=40)  # Yazılabilir
+        ilac_combo.grid(row=0, column=1, padx=5, pady=2)
+
+        # 2) Etken Madde Seçimi - Autocomplete
+        tk.Label(combo_frame, text="Etken Madde:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=0, column=2, padx=5, sticky='w')
+        etken_combo = ttk.Combobox(combo_frame, width=30)  # Yazılabilir
+        etken_combo.grid(row=0, column=3, padx=5, pady=2)
+
+        # 3) Eşdeğer Grup Seçimi - Autocomplete (ilaç ismi ile)
+        tk.Label(combo_frame, text="Eşdeğer Grup:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=0, column=4, padx=5, sticky='w')
+        esdeger_combo = ttk.Combobox(combo_frame, width=35)  # Yazılabilir
+        esdeger_combo.grid(row=0, column=5, padx=5, pady=2)
+
+        # Row 2: Ay sayısı ve Temizle
+        param_frame = tk.Frame(filtre_content, bg=c['panel_bg'])
+        param_frame.pack(fill=tk.X, pady=5)
+
+        tk.Label(param_frame, text="Aylık Gidiş (ay):", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).pack(side=tk.LEFT, padx=5)
+        ay_spin = tk.Spinbox(param_frame, from_=1, to=24, textvariable=ay_sayisi_var,
+                            font=('Segoe UI', 10), width=5, bg=c['entry_bg'], fg=c['text'])
+        ay_spin.pack(side=tk.LEFT, padx=5)
+
+        tk.Button(param_frame, text="Filtreleri Temizle", font=('Segoe UI', 9),
+                 fg='white', bg=c['warning'], relief='flat', cursor='hand2',
+                 command=lambda: temizle_filtreler()).pack(side=tk.RIGHT, padx=10)
+
+        # ===== ORTA KISIM: İLAÇ LİSTESİ ve DATAGRID =====
+        orta_frame = tk.Frame(pencere, bg=c['bg'])
+        orta_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # Sol: İlaç listesi (checkboxlu)
+        sol_frame = tk.LabelFrame(orta_frame, text=" Seçilebilir İlaçlar (Tıklayarak seç/kaldır) ",
+                                  font=('Segoe UI', 11, 'bold'),
+                                  fg=c['text'], bg=c['panel_bg'], width=400)
+        sol_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+
+        # Treeview ile checkbox simülasyonu
+        ilac_tree_frame = tk.Frame(sol_frame, bg=c['panel_bg'])
+        ilac_tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        ilac_columns = ('secim', 'ilac_adi', 'stok', 'psf', 'kamu')
+        ilac_tree = ttk.Treeview(ilac_tree_frame, columns=ilac_columns, show='headings', height=15)
+
+        ilac_tree.heading('secim', text='✓')
+        ilac_tree.heading('ilac_adi', text='İlaç Adı')
+        ilac_tree.heading('stok', text='Stok')
+        ilac_tree.heading('psf', text='PSF')
+        ilac_tree.heading('kamu', text='Kamu')
+
+        ilac_tree.column('secim', width=30, anchor='center')
+        ilac_tree.column('ilac_adi', width=250, anchor='w')
+        ilac_tree.column('stok', width=50, anchor='center')
+        ilac_tree.column('psf', width=70, anchor='e')
+        ilac_tree.column('kamu', width=70, anchor='e')
+
+        # Tag renkleri - seçili ilaçlar için
+        ilac_tree.tag_configure('secili', background='#1a472a', foreground='#4ade80')
+
+        ilac_scrollbar = ttk.Scrollbar(ilac_tree_frame, orient='vertical', command=ilac_tree.yview)
+        ilac_tree.configure(yscrollcommand=ilac_scrollbar.set)
+        ilac_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        ilac_tree.pack(fill=tk.BOTH, expand=True)
+
+        # İlaç seçim butonları
+        ilac_btn_frame = tk.Frame(sol_frame, bg=c['panel_bg'])
+        ilac_btn_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Button(ilac_btn_frame, text="İşaretlileri Ekle", font=('Segoe UI', 9),
+                 fg='white', bg=c['info'], relief='flat', cursor='hand2',
+                 command=lambda: secileni_ekle()).pack(side=tk.LEFT, padx=2)
+
+        tk.Button(ilac_btn_frame, text="Tümünü İşaretle", font=('Segoe UI', 9),
+                 fg='white', bg=c['accent2'], relief='flat', cursor='hand2',
+                 command=lambda: tumunu_isaretle()).pack(side=tk.LEFT, padx=2)
+
+        tk.Button(ilac_btn_frame, text="İşaretleri Kaldır", font=('Segoe UI', 9),
+                 fg='white', bg=c['text_dim'], relief='flat', cursor='hand2',
+                 command=lambda: isaretleri_kaldir()).pack(side=tk.LEFT, padx=2)
+
+        # Sağ: Seçilen ilaçlar ve aylık gidiş
+        sag_frame = tk.LabelFrame(orta_frame, text=" Seçilen İlaçlar ve Aylık Gidiş ",
+                                  font=('Segoe UI', 11, 'bold'),
+                                  fg=c['text'], bg=c['panel_bg'])
+        sag_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+
+        # Seçilen ilaçlar treeview
+        secili_tree_frame = tk.Frame(sag_frame, bg=c['panel_bg'])
+        secili_tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Dinamik sütunlar: İlaç, Stok, Aylık Ort, Ay1, Ay2, ... AyN
+        secili_columns = ['ilac_adi', 'stok', 'aylik_ort']
+        secili_tree = ttk.Treeview(secili_tree_frame, columns=secili_columns, show='headings', height=10)
+
+        secili_tree.heading('ilac_adi', text='İlaç Adı')
+        secili_tree.heading('stok', text='Stok')
+        secili_tree.heading('aylik_ort', text='Aylık Ort')
+
+        secili_tree.column('ilac_adi', width=200, anchor='w')
+        secili_tree.column('stok', width=60, anchor='center')
+        secili_tree.column('aylik_ort', width=70, anchor='center')
+
+        secili_scrollbar_y = ttk.Scrollbar(secili_tree_frame, orient='vertical', command=secili_tree.yview)
+        secili_scrollbar_x = ttk.Scrollbar(secili_tree_frame, orient='horizontal', command=secili_tree.xview)
+        secili_tree.configure(yscrollcommand=secili_scrollbar_y.set, xscrollcommand=secili_scrollbar_x.set)
+        secili_scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+        secili_scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+        secili_tree.pack(fill=tk.BOTH, expand=True)
+
+        # Seçili ilaç butonları
+        secili_btn_frame = tk.Frame(sag_frame, bg=c['panel_bg'])
+        secili_btn_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Button(secili_btn_frame, text="Seçileni Kaldır", font=('Segoe UI', 9),
+                 fg='white', bg=c['danger'], relief='flat', cursor='hand2',
+                 command=lambda: secileni_kaldir()).pack(side=tk.LEFT, padx=2)
+
+        tk.Button(secili_btn_frame, text="Fiyat İçin Seç", font=('Segoe UI', 9, 'bold'),
+                 fg='white', bg='#9c27b0', relief='flat', cursor='hand2',
+                 command=lambda: fiyat_ilacini_sec()).pack(side=tk.LEFT, padx=5)
+
+        tk.Button(secili_btn_frame, text="Konsolide Et", font=('Segoe UI', 10, 'bold'),
+                 fg='white', bg=c['success'], relief='flat', cursor='hand2',
+                 command=lambda: konsolide_et()).pack(side=tk.RIGHT, padx=2)
+
+        # ===== ALT KISIM: KONSOLİDE SONUÇ ve AKTARIM =====
+        alt_frame = tk.LabelFrame(pencere, text=" Konsolide Sonuç ",
+                                  font=('Segoe UI', 11, 'bold'),
+                                  fg=c['text'], bg=c['panel_bg'])
+        alt_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        alt_content = tk.Frame(alt_frame, bg=c['panel_bg'])
+        alt_content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Konsolidasyon Tablosu (Stok + Ay Ay Çıkışlar + Ortalama)
+        konsolide_table_frame = tk.Frame(alt_content, bg=c['panel_bg'])
+        konsolide_table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        # Başlangıçta boş sütunlar, konsolide edilince güncellenecek
+        konsolide_columns = ['aciklama', 'stok', 'aylik_ort']
+        konsolide_tree = ttk.Treeview(konsolide_table_frame, columns=konsolide_columns,
+                                       show='headings', height=3)
+
+        konsolide_tree.heading('aciklama', text='Açıklama')
+        konsolide_tree.heading('stok', text='Stok')
+        konsolide_tree.heading('aylik_ort', text='Aylık Ort')
+
+        konsolide_tree.column('aciklama', width=150, anchor='w')
+        konsolide_tree.column('stok', width=70, anchor='center')
+        konsolide_tree.column('aylik_ort', width=70, anchor='center')
+
+        # Tag renkleri
+        konsolide_tree.tag_configure('toplam', background='#1a472a', foreground='#4ade80', font=('Segoe UI', 10, 'bold'))
+        konsolide_tree.tag_configure('fiyat', background='#2a2a4a', foreground='#a0a0b0')
+
+        konsolide_scrollbar_x = ttk.Scrollbar(konsolide_table_frame, orient='horizontal', command=konsolide_tree.xview)
+        konsolide_tree.configure(xscrollcommand=konsolide_scrollbar_x.set)
+        konsolide_scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+        konsolide_tree.pack(fill=tk.BOTH, expand=True)
+
+        # Fiyat ilacı seçimi etiketi
+        fiyat_ilac_frame = tk.Frame(alt_content, bg=c['panel_bg'])
+        fiyat_ilac_frame.pack(fill=tk.X, pady=(5, 5))
+
+        tk.Label(fiyat_ilac_frame, text="Fiyat İlacı:", font=('Segoe UI', 10, 'bold'),
+                fg='#9c27b0', bg=c['panel_bg']).pack(side=tk.LEFT, padx=10)
+        lbl_fiyat_ilaci = tk.Label(fiyat_ilac_frame, text="(Seçili ilaçlardan birini seçin)",
+                                   font=('Segoe UI', 10, 'italic'),
+                                   fg=c['text_dim'], bg=c['panel_bg'])
+        lbl_fiyat_ilaci.pack(side=tk.LEFT, padx=5)
+
+        # Fiyat bilgileri satırı
+        fiyat_frame = tk.Frame(alt_content, bg=c['panel_bg'])
+        fiyat_frame.pack(fill=tk.X, pady=(5, 10))
+
+        lbl_psf = tk.Label(fiyat_frame, text="PSF: -", font=('Segoe UI', 11),
+                          fg=c['text_dim'], bg=c['panel_bg'])
+        lbl_psf.pack(side=tk.LEFT, padx=20)
+
+        lbl_kamu = tk.Label(fiyat_frame, text="Kamu: -", font=('Segoe UI', 11),
+                           fg=c['text_dim'], bg=c['panel_bg'])
+        lbl_kamu.pack(side=tk.LEFT, padx=20)
+
+        lbl_depocu = tk.Label(fiyat_frame, text="Depocu: -", font=('Segoe UI', 11),
+                             fg=c['text_dim'], bg=c['panel_bg'])
+        lbl_depocu.pack(side=tk.LEFT, padx=20)
+
+        lbl_fark = tk.Label(fiyat_frame, text="Fark: -", font=('Segoe UI', 11),
+                           fg=c['text_dim'], bg=c['panel_bg'])
+        lbl_fark.pack(side=tk.LEFT, padx=20)
+
+        # Aktarım butonları
+        aktarim_frame = tk.Frame(alt_content, bg=c['panel_bg'])
+        aktarim_frame.pack(fill=tk.X, pady=(5, 5))
+
+        tk.Button(aktarim_frame, text="Stok ve Aylık Sarfı MF Analize Aktar",
+                 font=('Segoe UI', 11, 'bold'),
+                 fg='white', bg=c['accent'],
+                 relief='flat', cursor='hand2',
+                 command=lambda: stok_sarf_aktar()).pack(side=tk.LEFT, padx=10)
+
+        tk.Button(aktarim_frame, text="Fiyat Verilerini MF Analize Aktar",
+                 font=('Segoe UI', 11, 'bold'),
+                 fg='white', bg=c['info'],
+                 relief='flat', cursor='hand2',
+                 command=lambda: fiyat_aktar()).pack(side=tk.LEFT, padx=10)
+
+        tk.Button(aktarim_frame, text="Tümünü Aktar",
+                 font=('Segoe UI', 11, 'bold'),
+                 fg='white', bg=c['success'],
+                 relief='flat', cursor='hand2',
+                 command=lambda: tumunu_aktar()).pack(side=tk.RIGHT, padx=10)
+
+        # ===== VERİ DEPOLAMA =====
+        ilac_listesi = []  # Tüm ilaçlar
+        etken_listesi = []  # Etken maddeler
+        esdeger_listesi = []  # Eşdeğer kodlar (ilaç bazlı)
+        isaretli_ilaclar = set()  # Listbox'ta işaretli ilaç ID'leri
+        konsolide_sonuc = {}  # Konsolide edilmiş veriler
+        gosterilen_ilaclar = []  # Şu an tree'de gösterilen ilaçlar
+        fiyat_ilaci = {}  # Fiyat aktarımı için seçilen tek ilaç {UrunId, UrunAdi, PSF, KamuFiyat, DepocuFiyat, Fark}
+
+        # ===== FONKSİYONLAR =====
+
+        def ilac_listesini_yukle():
+            """İlaç listesini veritabanından yükle"""
+            nonlocal ilac_listesi
+            try:
+                ilac_listesi = db.mf_ilac_listesi_getir(yil_sayisi=5, sadece_stoklu=False)
+                # İlk yüklemede tüm ilaçları combobox'a ekle
+                ilac_isimleri = [i['UrunAdi'] for i in ilac_listesi]
+                ilac_combo['values'] = ilac_isimleri
+                ilac_combo.set('')  # Boş bırak, kullanıcı yazsın
+            except Exception as e:
+                messagebox.showerror("Hata", f"İlaç listesi yüklenemedi: {e}")
+
+        def etken_listesini_yukle():
+            """Etken madde listesini yükle"""
+            nonlocal etken_listesi
+            try:
+                etken_listesi = db.mf_etken_madde_listesi_getir()
+                etken_isimleri = [f"{e['EMLAdi']} ({e['IlacSayisi']})" for e in etken_listesi]
+                etken_combo['values'] = etken_isimleri
+                etken_combo.set('')
+            except Exception as e:
+                messagebox.showerror("Hata", f"Etken madde listesi yüklenemedi: {e}")
+
+        def esdeger_listesini_yukle():
+            """Eşdeğer kod listesini yükle - ilaç ismi ile"""
+            nonlocal esdeger_listesi
+            try:
+                # Eşdeğer kodu olan tüm ilaçları getir
+                esdeger_listesi = db.mf_ilac_listesi_getir(yil_sayisi=5, sadece_stoklu=False)
+                # Sadece eşdeğer kodu olanları filtrele
+                esdeger_listesi = [i for i in esdeger_listesi if i.get('UrunEsdegerId') and i['UrunEsdegerId'] > 0]
+                esdeger_isimleri = [f"[{i['UrunEsdegerId']}] {i['UrunAdi']}" for i in esdeger_listesi]
+                esdeger_combo['values'] = esdeger_isimleri
+                esdeger_combo.set('')
+            except Exception as e:
+                messagebox.showerror("Hata", f"Eşdeğer kod listesi yüklenemedi: {e}")
+
+        def ilac_treeyi_guncelle(ilaclar):
+            """İlaç treeview'ini güncelle"""
+            nonlocal gosterilen_ilaclar
+            gosterilen_ilaclar = ilaclar
+
+            for item in ilac_tree.get_children():
+                ilac_tree.delete(item)
+
+            for ilac in ilaclar:
+                urun_id = ilac['UrunId']
+                secim = "✓" if urun_id in isaretli_ilaclar else ""
+                tag = ('secili',) if urun_id in isaretli_ilaclar else ()
+                ilac_tree.insert('', 'end', iid=str(urun_id), values=(
+                    secim,
+                    ilac['UrunAdi'][:40],
+                    ilac.get('Stok', 0) or 0,
+                    f"{ilac.get('PSF', 0) or 0:.2f}",
+                    f"{ilac.get('KamuFiyat', 0) or 0:.2f}"
+                ), tags=tag)
+
+        def ilac_satirina_tiklandi(event):
+            """İlaç satırına tıklandığında checkbox toggle"""
+            item = ilac_tree.identify_row(event.y)
+            if not item:
+                return
+
+            urun_id = int(item)
+
+            # Toggle işareti
+            if urun_id in isaretli_ilaclar:
+                isaretli_ilaclar.discard(urun_id)
+                secim = ""
+                tag = ()
+            else:
+                isaretli_ilaclar.add(urun_id)
+                secim = "✓"
+                tag = ('secili',)
+
+            # Satırı güncelle
+            values = list(ilac_tree.item(item)['values'])
+            values[0] = secim
+            ilac_tree.item(item, values=values, tags=tag)
+
+        # Treeview'e tıklama eventi bağla
+        ilac_tree.bind('<ButtonRelease-1>', ilac_satirina_tiklandi)
+
+        def ilac_autocomplete(event):
+            """İlaç combobox'ı için autocomplete"""
+            typed = ilac_combo.get().upper()
+            if len(typed) < 2:
+                return
+
+            # Filtrelenmiş liste
+            filtered = [i['UrunAdi'] for i in ilac_listesi if typed in i['UrunAdi'].upper()][:50]
+            ilac_combo['values'] = filtered
+
+            # Dropdown'u aç
+            if filtered:
+                ilac_combo.event_generate('<Down>')
+
+        def ilac_secildi(event):
+            """İlaç combobox'ından seçim yapıldığında"""
+            secilen = ilac_combo.get()
+            if not secilen:
+                return
+
+            # Seçilen ilacı bul
+            ilac = next((i for i in ilac_listesi if i['UrunAdi'] == secilen), None)
+            if ilac:
+                ilac_treeyi_guncelle([ilac])
+                # Diğer comboboxları temizle
+                etken_combo.set('')
+                esdeger_combo.set('')
+
+        def etken_autocomplete(event):
+            """Etken madde combobox'ı için autocomplete"""
+            typed = etken_combo.get().upper()
+            if len(typed) < 2:
+                return
+
+            # Filtrelenmiş liste
+            filtered = [f"{e['EMLAdi']} ({e['IlacSayisi']})" for e in etken_listesi
+                       if typed in e['EMLAdi'].upper()][:30]
+            etken_combo['values'] = filtered
+
+            if filtered:
+                etken_combo.event_generate('<Down>')
+
+        def etken_secildi(event):
+            """Etken madde seçildiğinde"""
+            secilen = etken_combo.get()
+            if not secilen:
+                return
+
+            # Etken maddeyi bul (parantez öncesi)
+            etken_adi = secilen.split(' (')[0]
+            etken = next((e for e in etken_listesi if e['EMLAdi'] == etken_adi), None)
+            if etken:
+                ilaclar = db.mf_etken_maddeli_ilaclar_getir(etken['EMLId'])
+                ilac_treeyi_guncelle(ilaclar)
+                # Diğer comboboxları temizle
+                ilac_combo.set('')
+                esdeger_combo.set('')
+
+        def esdeger_autocomplete(event):
+            """Eşdeğer grup combobox'ı için autocomplete"""
+            typed = esdeger_combo.get().upper()
+            if len(typed) < 2:
+                return
+
+            # Filtrelenmiş liste - ilaç adı veya kod ile arama
+            filtered = [f"[{i['UrunEsdegerId']}] {i['UrunAdi']}" for i in esdeger_listesi
+                       if typed in i['UrunAdi'].upper() or typed in str(i['UrunEsdegerId'])][:50]
+            esdeger_combo['values'] = filtered
+
+            if filtered:
+                esdeger_combo.event_generate('<Down>')
+
+        def esdeger_secildi(event):
+            """Eşdeğer grup seçildiğinde - o gruptaki tüm ilaçları getir"""
+            secilen = esdeger_combo.get()
+            if not secilen:
+                return
+
+            # Eşdeğer kodunu parse et [KOD] format
+            try:
+                esdeger_id = int(secilen.split(']')[0].replace('[', ''))
+                ilaclar = db.mf_esdeger_kodlu_ilaclar_getir(esdeger_id)
+                ilac_treeyi_guncelle(ilaclar)
+                # Diğer comboboxları temizle
+                ilac_combo.set('')
+                etken_combo.set('')
+            except:
+                pass
+
+        def temizle_filtreler():
+            """Filtreleri temizle"""
+            ilac_combo.set('')
+            etken_combo.set('')
+            esdeger_combo.set('')
+            isaretli_ilaclar.clear()
+            ilac_treeyi_guncelle(ilac_listesi[:100])  # İlk 100 ilaç
+
+        def tumunu_isaretle():
+            """Listedeki tüm ilaçları işaretle"""
+            for ilac in gosterilen_ilaclar:
+                isaretli_ilaclar.add(ilac['UrunId'])
+            ilac_treeyi_guncelle(gosterilen_ilaclar)
+
+        def isaretleri_kaldir():
+            """Tüm işaretleri kaldır"""
+            isaretli_ilaclar.clear()
+            ilac_treeyi_guncelle(gosterilen_ilaclar)
+
+        def secileni_ekle():
+            """İşaretli ilaçları seçilen listeye ekle"""
+            if not isaretli_ilaclar:
+                messagebox.showwarning("Uyarı", "Lütfen önce ilaçları işaretleyin!")
+                return
+
+            for urun_id in isaretli_ilaclar:
+                # İlacı bul
+                ilac = next((i for i in ilac_listesi if i['UrunId'] == urun_id), None)
+                if not ilac:
+                    ilac = next((i for i in gosterilen_ilaclar if i['UrunId'] == urun_id), None)
+                if ilac and urun_id not in secili_ilaclar:
+                    secili_ilaclar[urun_id] = ilac
+
+            secili_treeyi_guncelle()
+            # İşaretleri temizleme - kullanıcı isterse temizlesin
+            # isaretli_ilaclar.clear()
+            # ilac_treeyi_guncelle(gosterilen_ilaclar)
+
+        def secileni_kaldir():
+            """Seçili ilacı listeden kaldır"""
+            selected = secili_tree.selection()
+            for item_id in selected:
+                # item_id format: "urun_ID"
+                try:
+                    urun_id = int(item_id.replace('urun_', ''))
+                    if urun_id in secili_ilaclar:
+                        del secili_ilaclar[urun_id]
+                except:
+                    pass
+
+            secili_treeyi_guncelle()
+            # Sol tree'de seçim işaretlerini güncelle
+            ilac_treeyi_guncelle(gosterilen_ilaclar)
+
+        def fiyat_ilacini_sec():
+            """Seçili ilaçlardan birini fiyat aktarımı için seç"""
+            nonlocal fiyat_ilaci
+
+            selected = secili_tree.selection()
+            if not selected:
+                messagebox.showwarning("Uyarı", "Lütfen sağ taraftaki listeden bir ilaç seçin!")
+                return
+
+            # İlk seçili ilacı al
+            item_id = selected[0]
+            try:
+                urun_id = int(item_id.replace('urun_', ''))
+            except:
+                messagebox.showerror("Hata", "Geçersiz ilaç seçimi!")
+                return
+
+            # Veritabanından fiyat detaylarını getir
+            try:
+                fiyat_detay = db.mf_ilac_fiyat_detay_getir(urun_id)
+                if not fiyat_detay:
+                    messagebox.showerror("Hata", "İlaç fiyat bilgisi alınamadı!")
+                    return
+
+                # fiyat_ilaci'nı güncelle
+                fiyat_ilaci = {
+                    'UrunId': fiyat_detay.get('UrunId'),
+                    'UrunAdi': fiyat_detay.get('UrunAdi', ''),
+                    'PSF': float(fiyat_detay.get('PSF') or 0),
+                    'KamuFiyat': float(fiyat_detay.get('KamuFiyat') or 0),
+                    'DepocuFiyat': float(fiyat_detay.get('DepocuFiyat') or 0),
+                    'Fark': float(fiyat_detay.get('Fark') or 0),
+                    'IskontoKamu': float(fiyat_detay.get('IskontoKamu') or 0)
+                }
+
+                # Etiketleri güncelle
+                ilac_adi = fiyat_ilaci['UrunAdi']
+                if len(ilac_adi) > 40:
+                    ilac_adi = ilac_adi[:37] + "..."
+                lbl_fiyat_ilaci.config(text=ilac_adi, fg='#9c27b0', font=('Segoe UI', 10, 'bold'))
+                lbl_psf.config(text=f"PSF: {fiyat_ilaci['PSF']:.2f} TL")
+                lbl_kamu.config(text=f"Kamu: {fiyat_ilaci['KamuFiyat']:.2f} TL")
+                lbl_depocu.config(text=f"Depocu: {fiyat_ilaci['DepocuFiyat']:.2f} TL")
+                lbl_fark.config(text=f"Fark: {fiyat_ilaci['Fark']:.2f} TL")
+
+            except Exception as e:
+                messagebox.showerror("Hata", f"Fiyat bilgisi alınamadı: {e}")
+
+        def secili_treeyi_guncelle():
+            """Seçili ilaçlar treeview'ini güncelle"""
+            for item in secili_tree.get_children():
+                secili_tree.delete(item)
+
+            if not secili_ilaclar:
+                return
+
+            # Aylık verileri getir
+            urun_idler = list(secili_ilaclar.keys())
+            ay_sayisi = ay_sayisi_var.get()
+
+            try:
+                aylik_veriler = db.mf_aylik_satis_getir(urun_idler, ay_sayisi)
+            except:
+                aylik_veriler = []
+
+            # Sütunları güncelle
+            yeni_sutunlar = ['ilac_adi', 'stok', 'aylik_ort']
+            for i, ay in enumerate(aylik_veriler):
+                yeni_sutunlar.append(f'ay_{i}')
+
+            secili_tree['columns'] = yeni_sutunlar
+
+            # Başlıkları ayarla
+            secili_tree.heading('ilac_adi', text='İlaç Adı')
+            secili_tree.heading('stok', text='Stok')
+            secili_tree.heading('aylik_ort', text='Aylık Ort')
+
+            secili_tree.column('ilac_adi', width=200, anchor='w')
+            secili_tree.column('stok', width=60, anchor='center')
+            secili_tree.column('aylik_ort', width=70, anchor='center')
+
+            for i, ay in enumerate(aylik_veriler):
+                ay_kodu = ay['AyKod']
+                secili_tree.heading(f'ay_{i}', text=ay_kodu)
+                secili_tree.column(f'ay_{i}', width=60, anchor='center')
+
+            # Her ilaç için satır ekle
+            for urun_id, ilac in secili_ilaclar.items():
+                # Bu ilaç için aylık satış
+                try:
+                    ilac_aylik = db.mf_aylik_satis_getir([urun_id], ay_sayisi)
+                except:
+                    ilac_aylik = []
+
+                toplam_satis = sum(a.get('ToplamSatis', 0) or 0 for a in ilac_aylik)
+                aylik_ort = toplam_satis / ay_sayisi if ay_sayisi > 0 else 0
+
+                values = [
+                    ilac['UrunAdi'][:35],
+                    ilac.get('Stok', 0) or 0,
+                    f"{aylik_ort:.1f}"
+                ]
+
+                # Aylık veriler
+                for ay in ilac_aylik:
+                    values.append(ay.get('ToplamSatis', 0) or 0)
+
+                secili_tree.insert('', 'end', iid=f"urun_{urun_id}", values=values)
+
+        def konsolide_et():
+            """Seçili ilaçları konsolide et"""
+            nonlocal konsolide_sonuc
+
+            if not secili_ilaclar:
+                messagebox.showwarning("Uyarı", "Lütfen en az bir ilaç seçin!")
+                return
+
+            urun_idler = list(secili_ilaclar.keys())
+            ay_sayisi = ay_sayisi_var.get()
+
+            try:
+                konsolide_sonuc = db.mf_konsolide_veri_getir(urun_idler, ay_sayisi)
+
+                # NOT: Fiyat bilgileri artık ortalama alınmıyor
+                # Kullanıcı "Fiyat İçin Seç" butonu ile tek ilaç seçecek
+
+                # ===== KONSOLİDE TABLOSUNU GÜNCELLE =====
+                # Mevcut satırları temizle
+                for item in konsolide_tree.get_children():
+                    konsolide_tree.delete(item)
+
+                # Aylık verileri al
+                aylik_veriler = konsolide_sonuc.get('aylik_veriler', [])
+
+                # Sütunları dinamik olarak oluştur
+                # Sabit sütunlar: aciklama, stok, aylik_ort + dinamik ay sütunları
+                yeni_sutunlar = ['aciklama', 'stok', 'aylik_ort']
+                for ay in aylik_veriler:
+                    ay_kodu = ay.get('AyKod', '')
+                    if ay_kodu:
+                        yeni_sutunlar.append(ay_kodu)
+
+                # Treeview sütunlarını güncelle
+                konsolide_tree['columns'] = yeni_sutunlar
+
+                # Sütun başlıklarını ayarla
+                konsolide_tree.heading('aciklama', text='Açıklama')
+                konsolide_tree.heading('stok', text='Stok')
+                konsolide_tree.heading('aylik_ort', text='Aylık Ort')
+                konsolide_tree.column('aciklama', width=120, anchor='w')
+                konsolide_tree.column('stok', width=60, anchor='center')
+                konsolide_tree.column('aylik_ort', width=70, anchor='center')
+
+                # Ay sütunlarını ayarla
+                for ay in aylik_veriler:
+                    ay_kodu = ay.get('AyKod', '')
+                    if ay_kodu:
+                        # AyKod formatı: YYYY-MM -> Ay/Yıl formatına çevir
+                        try:
+                            yil, ay_no = ay_kodu.split('-')
+                            baslik = f"{ay_no}/{yil[2:]}"  # 2024-01 -> 01/24
+                        except:
+                            baslik = ay_kodu
+                        konsolide_tree.heading(ay_kodu, text=baslik)
+                        konsolide_tree.column(ay_kodu, width=55, anchor='center')
+
+                # TOPLAM satırını ekle
+                toplam_values = ['TOPLAM', konsolide_sonuc.get('toplam_stok', 0),
+                                f"{konsolide_sonuc.get('aylik_ortalama', 0):.1f}"]
+                for ay in aylik_veriler:
+                    toplam_values.append(ay.get('ToplamSatis', 0) or 0)
+
+                konsolide_tree.insert('', 'end', values=toplam_values, tags=('toplam',))
+
+                # NOT: Fiyat etiketleri artık burada güncellenmiyor
+                # Kullanıcı "Fiyat İçin Seç" butonu ile tek ilaç seçecek
+
+                messagebox.showinfo("Başarılı",
+                    f"Konsolidasyon tamamlandı!\n\n"
+                    f"İlaç Sayısı: {len(urun_idler)}\n"
+                    f"Toplam Stok: {konsolide_sonuc.get('toplam_stok', 0)}\n"
+                    f"Aylık Ortalama: {konsolide_sonuc.get('aylik_ortalama', 0):.1f}")
+
+            except Exception as e:
+                messagebox.showerror("Hata", f"Konsolidasyon hatası: {e}")
+
+        def stok_sarf_aktar():
+            """Stok ve aylık sarfı MF Analize aktar"""
+            if not konsolide_sonuc:
+                messagebox.showwarning("Uyarı", "Önce 'Konsolide Et' butonuna basın!")
+                return
+
+            try:
+                senaryo_vars['stok'].set(str(int(konsolide_sonuc.get('toplam_stok', 0))))
+                senaryo_vars['aylik_sarf'].set(str(round(konsolide_sonuc.get('aylik_ortalama', 0), 1)))
+                messagebox.showinfo("Başarılı", "Stok ve aylık sarf verileri aktarıldı!")
+            except Exception as e:
+                messagebox.showerror("Hata", f"Aktarım hatası: {e}")
+
+        def fiyat_aktar():
+            """Fiyat verilerini MF Analize aktar (seçili tek ilacın fiyatları)"""
+            if not fiyat_ilaci:
+                messagebox.showwarning("Uyarı",
+                    "Önce fiyat aktarımı için bir ilaç seçin!\n\n"
+                    "1. Sağ taraftaki listeden bir ilaç seçin\n"
+                    "2. 'Fiyat İçin Seç' butonuna basın")
+                return
+
+            try:
+                senaryo_vars['depocu_fiyat'].set(f"{fiyat_ilaci.get('DepocuFiyat', 0):.2f}")
+                senaryo_vars['kamu_fiyat'].set(f"{fiyat_ilaci.get('KamuFiyat', 0):.2f}")
+                senaryo_vars['piyasa_fiyat'].set(f"{fiyat_ilaci.get('PSF', 0):.2f}")
+                senaryo_vars['ilac_farki'].set(f"{fiyat_ilaci.get('Fark', 0):.2f}")
+                messagebox.showinfo("Başarılı",
+                    f"Fiyat verileri aktarıldı!\n\n"
+                    f"İlaç: {fiyat_ilaci.get('UrunAdi', '')[:40]}")
+            except Exception as e:
+                messagebox.showerror("Hata", f"Aktarım hatası: {e}")
+
+        def tumunu_aktar():
+            """Tüm verileri MF Analize aktar (stok/sarf konsolideden, fiyat seçili ilaçtan)"""
+            if not konsolide_sonuc:
+                messagebox.showwarning("Uyarı", "Önce 'Konsolide Et' butonuna basın!")
+                return
+
+            if not fiyat_ilaci:
+                messagebox.showwarning("Uyarı",
+                    "Fiyat aktarımı için bir ilaç seçilmedi!\n\n"
+                    "1. Sağ taraftaki listeden bir ilaç seçin\n"
+                    "2. 'Fiyat İçin Seç' butonuna basın")
+                return
+
+            try:
+                # Stok ve sarf (konsolideden)
+                senaryo_vars['stok'].set(str(int(konsolide_sonuc.get('toplam_stok', 0))))
+                senaryo_vars['aylik_sarf'].set(str(round(konsolide_sonuc.get('aylik_ortalama', 0), 1)))
+
+                # Fiyatlar (seçili tek ilaçtan)
+                senaryo_vars['depocu_fiyat'].set(f"{fiyat_ilaci.get('DepocuFiyat', 0):.2f}")
+                senaryo_vars['kamu_fiyat'].set(f"{fiyat_ilaci.get('KamuFiyat', 0):.2f}")
+                senaryo_vars['piyasa_fiyat'].set(f"{fiyat_ilaci.get('PSF', 0):.2f}")
+                senaryo_vars['ilac_farki'].set(f"{fiyat_ilaci.get('Fark', 0):.2f}")
+
+                messagebox.showinfo("Başarılı",
+                    f"Tüm veriler MF Analize aktarıldı!\n\n"
+                    f"Fiyat İlacı: {fiyat_ilaci.get('UrunAdi', '')[:40]}")
+                on_close()  # Pencereyi kapat
+            except Exception as e:
+                messagebox.showerror("Hata", f"Aktarım hatası: {e}")
+
+        # ===== EVENT BINDING =====
+        # Autocomplete - yazarken filtreleme
+        ilac_combo.bind('<KeyRelease>', ilac_autocomplete)
+        etken_combo.bind('<KeyRelease>', etken_autocomplete)
+        esdeger_combo.bind('<KeyRelease>', esdeger_autocomplete)
+
+        # Seçim yapıldığında
+        ilac_combo.bind('<<ComboboxSelected>>', ilac_secildi)
+        etken_combo.bind('<<ComboboxSelected>>', etken_secildi)
+        esdeger_combo.bind('<<ComboboxSelected>>', esdeger_secildi)
+
+        # ===== İLK YÜKLEME =====
+        ilac_listesini_yukle()
+        etken_listesini_yukle()
+        esdeger_listesini_yukle()
+
+        # İlk 100 ilacı göster
+        ilac_treeyi_guncelle(ilac_listesi[:100])
 
     def run(self):
         """Uygulamayi calistir"""

@@ -45,6 +45,38 @@
 - Mesaj textarea: `form1:textarea1`
 - Kapat butonu: `form1:buttonKapat`
 
+### MF Analiz Modülü - Botanikten Çek (AKTİF GELİŞTİRME - 2026-01-21)
+
+**KALDIĞIMIZ YER:**
+Fiyat farkı veritabanından alınacak şekilde güncellendi. Test edilmedi.
+
+**Tamamlanan:**
+1. Eşdeğer grup bazlı ilaç arama (`mf_esdeger_ilaclar_getir`)
+2. İlaç fiyat detayları (`mf_ilac_fiyat_detay_getir`)
+   - PSF, Kamu Fiyatı, Stok
+   - Depocu Fiyat: PSF × 0.71 × 1.10 × (1 - İskonto/100)
+   - Fiyat Farkı: ReceteIlaclari.RIFiyatFarki'dan son kayıt
+3. Aylık satış verileri (`mf_aylik_satis_getir`) - RxKayitTarihi bazlı
+4. Tek ilaç seçimi için "Fiyat İçin Seç" butonu
+5. Konsolidasyon tablosu (tksheet)
+
+**Yapılacak:**
+1. TEST - Fiyat farkı doğru gelip gelmediğini test et (AUGMENTIN 1000mg için ~24.21 TL olmalı)
+2. Konsolidasyon sonrası ana panele aktarım butonu (Stok Toplam + Aylık Ortalama Gidiş)
+3. Eczane profili parametreleri (SONA BIRAKILDI)
+
+**Fiyat Formülleri:**
+- Depocu (KDV Hariç) = PSF × 0.71
+- Depocu (KDV Dahil) = Depocu × 1.10
+- Depocu (İskontolu) = Depocu (KDV Dahil) × (1 - UrunIskontoKamu/100)
+- Fiyat Farkı = ReceteIlaclari.RIFiyatFarki (veritabanından)
+
+**Veritabanı Bilgileri:**
+- UrunIskontoKamu: Kamu iskonto yüzdesi
+- UrunIskontoYedek: Depocu Fiyat (KDV Hariç) - 113.19 gibi
+- ReceteIlaclari.RIFiyatFarki: İlaç fiyat farkı (her reçete satırı için)
+- RxKayitTarihi: Reçete kayıt tarihi (aylık satış için kullanılır)
+
 ### Kullanıcı Giriş ve Yetkilendirme Sistemi (TODO - İleri Tarih)
 - Programa girilirken kullanıcı girişi olacak
 - İki kullanıcı tipi: **Eczacı** ve **Personel**

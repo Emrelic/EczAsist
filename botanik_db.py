@@ -1571,6 +1571,364 @@ class BotanikDB:
 
         return self.sorgu_calistir(sql)
 
+    # =====================================================
+    # MF ANALİZ MODÜLÜ İÇİN SORGULAR
+    # =====================================================
+
+    def mf_ilac_listesi_getir(self, yil_sayisi: int = 5, sadece_stoklu: bool = False) -> List[Dict]:
+        """
+        MF Analiz için ilaç listesi getir
+        Son X yılda hareketi olan ilaçlar
+
+        Args:
+            yil_sayisi: Son kaç yılda hareketi olan ilaçlar
+            sadece_stoklu: Sadece stokta olanlar
+
+        Returns:
+            List[Dict]: UrunId, UrunAdi, UrunEsdegerId, Stok, PSF, KamuFiyat
+        """
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+
+        baslangic = (datetime.now() - relativedelta(years=yil_sayisi)).strftime('%Y-%m-%d')
+
+        stok_filtre = ""
+        if sadece_stoklu:
+            stok_filtre = "AND (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) > 0"
+
+        sql = f"""
+        ;WITH HareketliUrunler AS (
+            -- Reçeteli satış
+            SELECT DISTINCT ri.RIUrunId as UrunId
+            FROM ReceteIlaclari ri
+            JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0
+            AND ra.RxReceteTarihi >= '{baslangic}'
+
+            UNION
+
+            -- Elden satış
+            SELECT DISTINCT ei.RIUrunId as UrunId
+            FROM EldenIlaclari ei
+            JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0
+            AND ea.RxReceteTarihi >= '{baslangic}'
+
+            UNION
+
+            -- Fatura girişi
+            SELECT DISTINCT fs.FSUrunId as UrunId
+            FROM FaturaSatir fs
+            JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+            WHERE fg.FGSilme = 0
+            AND fg.FGFaturaTarihi >= '{baslangic}'
+        )
+        SELECT
+            u.UrunId,
+            u.UrunAdi,
+            u.UrunEsdegerId,
+            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) as Stok,
+            u.UrunFiyatEtiket as PSF,
+            u.UrunFiyatKamu as KamuFiyat
+        FROM Urun u
+        WHERE u.UrunId IN (SELECT UrunId FROM HareketliUrunler)
+        AND u.UrunSilme = 0
+        AND u.UrunUrunTipId = 1  -- Sadece ilaçlar
+        {stok_filtre}
+        ORDER BY u.UrunAdi
+        """
+        return self.sorgu_calistir(sql)
+
+    def mf_etken_madde_listesi_getir(self) -> List[Dict]:
+        """
+        MF Analiz için etken madde listesi getir
+        Sadece stokta ilaç olan etken maddeler
+
+        Returns:
+            List[Dict]: EMLId, EMLAdi, IlacSayisi
+        """
+        sql = """
+        SELECT
+            em.EMLId,
+            em.EMLAdi,
+            COUNT(DISTINCT uem.UEMUrunId) as IlacSayisi
+        FROM EtkenMaddeListesi em
+        JOIN UrunEtkMad uem ON em.EMLId = uem.UEMEMLId
+        JOIN Urun u ON uem.UEMUrunId = u.UrunId
+        WHERE u.UrunSilme = 0
+        AND u.UrunUrunTipId = 1
+        AND (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) > 0
+        GROUP BY em.EMLId, em.EMLAdi
+        HAVING COUNT(DISTINCT uem.UEMUrunId) > 0
+        ORDER BY em.EMLAdi
+        """
+        return self.sorgu_calistir(sql)
+
+    def mf_esdeger_kod_listesi_getir(self) -> List[Dict]:
+        """
+        MF Analiz için eşdeğer kod listesi getir
+        Sadece stokta birden fazla ilaç olan gruplar
+
+        Returns:
+            List[Dict]: EsdegerId, IlacSayisi, OrnekIlac
+        """
+        sql = """
+        SELECT
+            u.UrunEsdegerId as EsdegerId,
+            COUNT(*) as IlacSayisi,
+            MIN(u.UrunAdi) as OrnekIlac
+        FROM Urun u
+        WHERE u.UrunSilme = 0
+        AND u.UrunUrunTipId = 1
+        AND u.UrunEsdegerId > 0
+        AND (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) > 0
+        GROUP BY u.UrunEsdegerId
+        ORDER BY MIN(u.UrunAdi)
+        """
+        return self.sorgu_calistir(sql)
+
+    def mf_etken_maddeli_ilaclar_getir(self, etken_madde_id: int) -> List[Dict]:
+        """
+        Belirli etken maddeyi içeren ilaçları getir
+
+        Args:
+            etken_madde_id: EtkenMaddeListesi.EMLId
+
+        Returns:
+            List[Dict]: UrunId, UrunAdi, UrunEsdegerId, Stok, PSF, KamuFiyat
+        """
+        sql = f"""
+        SELECT DISTINCT
+            u.UrunId,
+            u.UrunAdi,
+            u.UrunEsdegerId,
+            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) as Stok,
+            u.UrunFiyatEtiket as PSF,
+            u.UrunFiyatKamu as KamuFiyat
+        FROM Urun u
+        JOIN UrunEtkMad uem ON u.UrunId = uem.UEMUrunId
+        WHERE uem.UEMEMLId = {etken_madde_id}
+        AND u.UrunSilme = 0
+        AND u.UrunUrunTipId = 1
+        ORDER BY u.UrunAdi
+        """
+        return self.sorgu_calistir(sql)
+
+    def mf_esdeger_kodlu_ilaclar_getir(self, esdeger_id: int) -> List[Dict]:
+        """
+        Belirli eşdeğer koda sahip ilaçları getir
+
+        Args:
+            esdeger_id: Urun.UrunEsdegerId
+
+        Returns:
+            List[Dict]: UrunId, UrunAdi, UrunEsdegerId, Stok, PSF, KamuFiyat
+        """
+        sql = f"""
+        SELECT
+            u.UrunId,
+            u.UrunAdi,
+            u.UrunEsdegerId,
+            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) as Stok,
+            u.UrunFiyatEtiket as PSF,
+            u.UrunFiyatKamu as KamuFiyat
+        FROM Urun u
+        WHERE u.UrunEsdegerId = {esdeger_id}
+        AND u.UrunSilme = 0
+        AND u.UrunUrunTipId = 1
+        ORDER BY u.UrunAdi
+        """
+        return self.sorgu_calistir(sql)
+
+    def mf_ilac_fiyat_detay_getir(self, urun_id: int) -> Optional[Dict]:
+        """
+        İlaç fiyat detaylarını getir (depocu fiyat hesaplaması dahil)
+
+        Args:
+            urun_id: Urun.UrunId
+
+        Returns:
+            Dict: UrunId, UrunAdi, EsdegerId, Stok, PSF, KamuFiyat, DepocuFiyat, Fark, IskontoKamu
+
+        Depocu Fiyat Formülü (Türk İlaç Fiyatlandırması):
+            Depocu (KDV Hariç) = PSF × 0.71
+            Depocu (KDV Dahil) = Depocu (KDV Hariç) × 1.10
+            Depocu (İskontolu) = Depocu (KDV Dahil) × (1 - IskontoKamu/100)
+
+        Fiyat Farkı:
+            ReceteIlaclari.RIFiyatFarki kolonundan son reçete kaydındaki değer alınır.
+            Bu değer, ilacın SGK referans fiyatı ile satış fiyatı arasındaki farkı gösterir.
+        """
+        sql = f"""
+        SELECT
+            u.UrunId,
+            u.UrunAdi,
+            u.UrunEsdegerId as EsdegerId,
+            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) as Stok,
+            u.UrunFiyatEtiket as PSF,
+            u.UrunFiyatKamu as KamuFiyat,
+            ISNULL(u.UrunIskontoKamu, 0) as IskontoKamu,
+            -- Depocu fiyat: PSF × 0.71 × 1.10 × (1 - IskontoKamu/100)
+            -- KDV dahil ve kamu iskontosu uygulanmış
+            u.UrunFiyatEtiket * 0.71 * 1.10 * (1 - ISNULL(u.UrunIskontoKamu, 0) / 100.0) as DepocuFiyat,
+            -- Fiyat farkı: ReceteIlaclari tablosundan son kayıt
+            ISNULL((
+                SELECT TOP 1 ri.RIFiyatFarki
+                FROM ReceteIlaclari ri
+                JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+                WHERE ri.RIUrunId = u.UrunId
+                AND ri.RIFiyatFarki > 0
+                AND ra.RxSilme = 0
+                ORDER BY ra.RxKayitTarihi DESC
+            ), 0) as Fark
+        FROM Urun u
+        WHERE u.UrunId = {urun_id}
+        AND u.UrunSilme = 0
+        """
+        sonuc = self.sorgu_calistir(sql)
+        return sonuc[0] if sonuc else None
+
+    def mf_aylik_satis_getir(
+        self,
+        urun_idler: List[int],
+        ay_sayisi: int = 6
+    ) -> List[Dict]:
+        """
+        Belirtilen ilaçların aylık satış verilerini getir
+
+        Args:
+            urun_idler: İlaç ID listesi
+            ay_sayisi: Kaç aylık veri (max 24)
+
+        Returns:
+            List[Dict]: Her ay için: AyKod (2024-01), SGKSatis, EldenSatis, ToplamSatis
+        """
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+
+        if not urun_idler:
+            return []
+
+        ay_sayisi = min(ay_sayisi, 24)
+        bugun = datetime.now()
+        baslangic = (bugun - relativedelta(months=ay_sayisi)).replace(day=1)
+
+        urun_id_str = ','.join(map(str, urun_idler))
+
+        # NOT: Kayıt tarihi (RxKayitTarihi) kullanılıyor, reçete tarihi değil!
+        # Botanik Guide da kayıt tarihini esas alır.
+        sql = f"""
+        ;WITH Aylar AS (
+            -- Son N ay için tarih aralıkları
+            SELECT
+                FORMAT(DATEADD(MONTH, -n, GETDATE()), 'yyyy-MM') as AyKod,
+                DATEFROMPARTS(YEAR(DATEADD(MONTH, -n, GETDATE())), MONTH(DATEADD(MONTH, -n, GETDATE())), 1) as AyBasi,
+                EOMONTH(DATEADD(MONTH, -n, GETDATE())) as AySonu
+            FROM (SELECT TOP {ay_sayisi} ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) - 1 as n
+                  FROM sys.objects) nums
+        ),
+        SGKSatislar AS (
+            SELECT
+                FORMAT(ra.RxKayitTarihi, 'yyyy-MM') as AyKod,
+                SUM(ri.RIAdet) as Adet
+            FROM ReceteIlaclari ri
+            JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+            WHERE ri.RIUrunId IN ({urun_id_str})
+            AND ra.RxSilme = 0 AND ri.RISilme = 0
+            AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+            AND ra.RxKayitTarihi >= '{baslangic.strftime('%Y-%m-%d')}'
+            GROUP BY FORMAT(ra.RxKayitTarihi, 'yyyy-MM')
+        ),
+        EldenSatislar AS (
+            SELECT
+                FORMAT(ea.RxKayitTarihi, 'yyyy-MM') as AyKod,
+                SUM(ei.RIAdet) as Adet
+            FROM EldenIlaclari ei
+            JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+            WHERE ei.RIUrunId IN ({urun_id_str})
+            AND ea.RxSilme = 0 AND ei.RISilme = 0
+            AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+            AND ea.RxKayitTarihi >= '{baslangic.strftime('%Y-%m-%d')}'
+            GROUP BY FORMAT(ea.RxKayitTarihi, 'yyyy-MM')
+        )
+        SELECT
+            a.AyKod,
+            COALESCE(s.Adet, 0) as SGKSatis,
+            COALESCE(e.Adet, 0) as EldenSatis,
+            COALESCE(s.Adet, 0) + COALESCE(e.Adet, 0) as ToplamSatis
+        FROM Aylar a
+        LEFT JOIN SGKSatislar s ON a.AyKod = s.AyKod
+        LEFT JOIN EldenSatislar e ON a.AyKod = e.AyKod
+        ORDER BY a.AyKod DESC
+        """
+        return self.sorgu_calistir(sql)
+
+    def mf_konsolide_veri_getir(
+        self,
+        urun_idler: List[int],
+        ay_sayisi: int = 6
+    ) -> Dict:
+        """
+        Birden fazla ilacın konsolide verilerini getir
+
+        Args:
+            urun_idler: İlaç ID listesi
+            ay_sayisi: Kaç aylık veri
+
+        Returns:
+            Dict: {
+                'toplam_stok': int,
+                'aylik_ortalama': float,
+                'aylik_veriler': List[Dict],  # Ay bazında SGK+Elden
+                'ilac_detaylari': List[Dict]  # Her ilacın detayı
+            }
+        """
+        if not urun_idler:
+            return {'toplam_stok': 0, 'aylik_ortalama': 0, 'aylik_veriler': [], 'ilac_detaylari': []}
+
+        urun_id_str = ','.join(map(str, urun_idler))
+
+        # Stok ve ilaç detayları
+        stok_sql = f"""
+        SELECT
+            u.UrunId,
+            u.UrunAdi,
+            u.UrunEsdegerId,
+            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) as Stok,
+            u.UrunFiyatEtiket as PSF,
+            u.UrunFiyatKamu as KamuFiyat,
+            COALESCE(
+                (SELECT TOP 1 fs.FSMaliyet
+                 FROM FaturaSatir fs
+                 JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                 WHERE fs.FSUrunId = u.UrunId AND fg.FGSilme = 0 AND fs.FSMaliyet > 0
+                 ORDER BY fg.FGFaturaTarihi DESC),
+                u.UrunFiyatEtiket * 0.80
+            ) as DepocuFiyat
+        FROM Urun u
+        WHERE u.UrunId IN ({urun_id_str})
+        AND u.UrunSilme = 0
+        ORDER BY u.UrunAdi
+        """
+        ilac_detaylari = self.sorgu_calistir(stok_sql)
+
+        # Toplam stok
+        toplam_stok = sum(i.get('Stok', 0) or 0 for i in ilac_detaylari)
+
+        # Aylık satışlar
+        aylik_veriler = self.mf_aylik_satis_getir(urun_idler, ay_sayisi)
+
+        # Aylık ortalama
+        toplam_satis = sum(a.get('ToplamSatis', 0) or 0 for a in aylik_veriler)
+        aylik_ortalama = toplam_satis / ay_sayisi if ay_sayisi > 0 else 0
+
+        return {
+            'toplam_stok': toplam_stok,
+            'aylik_ortalama': round(aylik_ortalama, 2),
+            'aylik_veriler': aylik_veriler,
+            'ilac_detaylari': ilac_detaylari
+        }
+
 
 # Singleton instance
 _db_instance = None
