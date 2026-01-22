@@ -1771,13 +1771,15 @@ class BotanikDB:
             -- Depocu fiyat: PSF × 0.71 × 1.10 × (1 - IskontoKamu/100)
             -- KDV dahil ve kamu iskontosu uygulanmış
             u.UrunFiyatEtiket * 0.71 * 1.10 * (1 - ISNULL(u.UrunIskontoKamu, 0) / 100.0) as DepocuFiyat,
-            -- Fiyat farkı: ReceteIlaclari tablosundan son kayıt
+            -- Fiyat farkı: ReceteIlaclari tablosundan son kayıt (KUTU BAŞINA)
+            -- RIFiyatFarki toplam fark, RIAdet'e bölerek birim fark elde ediyoruz
             ISNULL((
-                SELECT TOP 1 ri.RIFiyatFarki
+                SELECT TOP 1 ri.RIFiyatFarki / NULLIF(ri.RIAdet, 0)
                 FROM ReceteIlaclari ri
                 JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
                 WHERE ri.RIUrunId = u.UrunId
                 AND ri.RIFiyatFarki > 0
+                AND ri.RIAdet > 0
                 AND ra.RxSilme = 0
                 ORDER BY ra.RxKayitTarihi DESC
             ), 0) as Fark

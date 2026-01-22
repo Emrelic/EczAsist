@@ -4271,17 +4271,24 @@ class MFAnalizGUI:
 
         def ilac_autocomplete(event):
             """İlaç combobox'ı için autocomplete"""
+            # Özel tuşlarda işlem yapma
+            if event.keysym in ('Down', 'Up', 'Return', 'Escape', 'Tab'):
+                return
+
             typed = ilac_combo.get().upper()
             if len(typed) < 2:
+                ilac_combo['values'] = []
                 return
+
+            # Cursor pozisyonunu kaydet
+            cursor_pos = ilac_combo.index(tk.INSERT)
 
             # Filtrelenmiş liste
             filtered = [i['UrunAdi'] for i in ilac_listesi if typed in i['UrunAdi'].upper()][:50]
             ilac_combo['values'] = filtered
 
-            # Dropdown'u aç
-            if filtered:
-                ilac_combo.event_generate('<Down>')
+            # Cursor pozisyonunu geri yükle
+            ilac_combo.icursor(cursor_pos)
 
         def ilac_secildi(event):
             """İlaç combobox'ından seçim yapıldığında"""
@@ -4299,17 +4306,25 @@ class MFAnalizGUI:
 
         def etken_autocomplete(event):
             """Etken madde combobox'ı için autocomplete"""
+            # Özel tuşlarda işlem yapma
+            if event.keysym in ('Down', 'Up', 'Return', 'Escape', 'Tab'):
+                return
+
             typed = etken_combo.get().upper()
             if len(typed) < 2:
+                etken_combo['values'] = []
                 return
+
+            # Cursor pozisyonunu kaydet
+            cursor_pos = etken_combo.index(tk.INSERT)
 
             # Filtrelenmiş liste
             filtered = [f"{e['EMLAdi']} ({e['IlacSayisi']})" for e in etken_listesi
                        if typed in e['EMLAdi'].upper()][:30]
             etken_combo['values'] = filtered
 
-            if filtered:
-                etken_combo.event_generate('<Down>')
+            # Cursor pozisyonunu geri yükle
+            etken_combo.icursor(cursor_pos)
 
         def etken_secildi(event):
             """Etken madde seçildiğinde"""
@@ -4329,17 +4344,25 @@ class MFAnalizGUI:
 
         def esdeger_autocomplete(event):
             """Eşdeğer grup combobox'ı için autocomplete"""
+            # Özel tuşlarda işlem yapma
+            if event.keysym in ('Down', 'Up', 'Return', 'Escape', 'Tab'):
+                return
+
             typed = esdeger_combo.get().upper()
             if len(typed) < 2:
+                esdeger_combo['values'] = []
                 return
+
+            # Cursor pozisyonunu kaydet
+            cursor_pos = esdeger_combo.index(tk.INSERT)
 
             # Filtrelenmiş liste - ilaç adı veya kod ile arama
             filtered = [f"[{i['UrunEsdegerId']}] {i['UrunAdi']}" for i in esdeger_listesi
                        if typed in i['UrunAdi'].upper() or typed in str(i['UrunEsdegerId'])][:50]
             esdeger_combo['values'] = filtered
 
-            if filtered:
-                esdeger_combo.event_generate('<Down>')
+            # Cursor pozisyonunu geri yükle
+            esdeger_combo.icursor(cursor_pos)
 
         def esdeger_secildi(event):
             """Eşdeğer grup seçildiğinde - o gruptaki tüm ilaçları getir"""
@@ -4660,7 +4683,7 @@ class MFAnalizGUI:
                 messagebox.showerror("Hata", f"Aktarım hatası: {e}")
 
         def analiz_aktar():
-            """Satış analizi verilerini MF Analize aktar (SGK/Elden, Raporlu/Raporsuz, Emekli/Çalışan)"""
+            """Satış analizi verilerini MF Analize aktar (SGK/Elden, Raporlu/Raporsuz, Emekli/Çalışan, Muayene)"""
             if not analiz_sonuc:
                 messagebox.showwarning("Uyarı", "Önce 'Konsolide Et' butonuna basın!")
                 return
@@ -4681,11 +4704,16 @@ class MFAnalizGUI:
                 calisan_oran = int(round(analiz_sonuc.get('calisan_oran', 60)))
                 senaryo_vars['emekli_calisan_orani'].set(f"{emekli_oran}/{calisan_oran}")
 
+                # Muayene oranı (tahsilat içindeki muayene yüzdesi)
+                muayene_oran = int(round(tahsilat_sonuc.get('muayene_oran', 10))) if tahsilat_sonuc else 10
+                senaryo_vars['muayene_tahsilat_orani'].set(str(muayene_oran))
+
                 messagebox.showinfo("Başarılı",
                     f"Satış analizi verileri aktarıldı!\n\n"
                     f"SGK/Elden: {sgk_oran}/{elden_oran}\n"
                     f"Raporlu/Raporsuz: {raporlu_oran}/{raporsuz_oran}\n"
-                    f"Emekli/Çalışan: {emekli_oran}/{calisan_oran}")
+                    f"Emekli/Çalışan: {emekli_oran}/{calisan_oran}\n"
+                    f"Muayene Oranı: %{muayene_oran}")
             except Exception as e:
                 messagebox.showerror("Hata", f"Aktarım hatası: {e}")
 
@@ -4726,6 +4754,11 @@ class MFAnalizGUI:
                     emekli_oran = int(round(analiz_sonuc.get('emekli_oran', 40)))
                     calisan_oran = int(round(analiz_sonuc.get('calisan_oran', 60)))
                     senaryo_vars['emekli_calisan_orani'].set(f"{emekli_oran}/{calisan_oran}")
+
+                # Muayene oranı (tahsilat analizi)
+                if tahsilat_sonuc:
+                    muayene_oran = int(round(tahsilat_sonuc.get('muayene_oran', 10)))
+                    senaryo_vars['muayene_tahsilat_orani'].set(str(muayene_oran))
 
                 messagebox.showinfo("Başarılı",
                     f"Tüm veriler MF Analize aktarıldı!\n\n"
