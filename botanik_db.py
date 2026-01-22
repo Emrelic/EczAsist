@@ -1981,7 +1981,8 @@ class BotanikDB:
 
         urun_id_str = ','.join(map(str, urun_idler))
 
-        # SGK Satışları - Raporlu/Raporsuz ve Emekli/Çalışan ayrımı
+        # SGK Satışları - SGK işlem numarası OLAN reçeteler
+        # Raporlu/Raporsuz ve Emekli/Çalışan ayrımı
         sql_sgk = f"""
         SELECT
             SUM(ri.RIAdet) as ToplamAdet,
@@ -2000,19 +2001,34 @@ class BotanikDB:
         AND ra.RxSilme = 0 AND ri.RISilme = 0
         AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
         AND ra.RxKayitTarihi >= '{baslangic_str}'
+        AND ra.RxSgkIslemNo IS NOT NULL AND ra.RxSgkIslemNo != ''
         """
         sgk_sonuc = self.sorgu_calistir(sql_sgk)
 
-        # Elden Satışları
+        # Elden Satışları: EldenAna + SGK işlem numarası OLMAYAN reçeteler
         sql_elden = f"""
-        SELECT
-            SUM(ei.RIAdet) as ToplamAdet
-        FROM EldenIlaclari ei
-        JOIN EldenAna ea ON ei.RIRxId = ea.RxId
-        WHERE ei.RIUrunId IN ({urun_id_str})
-        AND ea.RxSilme = 0 AND ei.RISilme = 0
-        AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
-        AND ea.RxKayitTarihi >= '{baslangic_str}'
+        SELECT SUM(Adet) as ToplamAdet FROM (
+            -- EldenAna tablosundan
+            SELECT ei.RIAdet as Adet
+            FROM EldenIlaclari ei
+            JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+            WHERE ei.RIUrunId IN ({urun_id_str})
+            AND ea.RxSilme = 0 AND ei.RISilme = 0
+            AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+            AND ea.RxKayitTarihi >= '{baslangic_str}'
+
+            UNION ALL
+
+            -- ReceteAna'dan SGK işlem numarası OLMAYAN reçeteler
+            SELECT ri.RIAdet as Adet
+            FROM ReceteIlaclari ri
+            JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+            WHERE ri.RIUrunId IN ({urun_id_str})
+            AND ra.RxSilme = 0 AND ri.RISilme = 0
+            AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+            AND ra.RxKayitTarihi >= '{baslangic_str}'
+            AND (ra.RxSgkIslemNo IS NULL OR ra.RxSgkIslemNo = '')
+        ) as EldenSatislar
         """
         elden_sonuc = self.sorgu_calistir(sql_elden)
 
