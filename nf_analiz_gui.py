@@ -3777,7 +3777,7 @@ class MFAnalizGUI:
         # Pencere oluştur
         pencere = tk.Toplevel(self.root)
         pencere.title("Botanikten Veri Çek")
-        pencere.geometry("1100x700")
+        pencere.geometry("1100x1000")
         pencere.configure(bg=c['bg'])
         pencere.transient(self.root)
 
@@ -3951,14 +3951,44 @@ class MFAnalizGUI:
                  fg='white', bg=c['success'], relief='flat', cursor='hand2',
                  command=lambda: konsolide_et()).pack(side=tk.RIGHT, padx=2)
 
-        # ===== ALT KISIM: KONSOLİDE SONUÇ ve AKTARIM =====
+        # ===== ALT KISIM: KONSOLİDE SONUÇ ve AKTARIM (Scrollable) =====
         alt_frame = tk.LabelFrame(pencere, text=" Konsolide Sonuç ",
                                   font=('Segoe UI', 11, 'bold'),
                                   fg=c['text'], bg=c['panel_bg'])
         alt_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        alt_content = tk.Frame(alt_frame, bg=c['panel_bg'])
-        alt_content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Scrollable canvas oluştur
+        alt_canvas = tk.Canvas(alt_frame, bg=c['panel_bg'], highlightthickness=0)
+        alt_scrollbar = ttk.Scrollbar(alt_frame, orient='vertical', command=alt_canvas.yview)
+        alt_content = tk.Frame(alt_canvas, bg=c['panel_bg'])
+
+        alt_canvas_window = alt_canvas.create_window((0, 0), window=alt_content, anchor='nw')
+
+        def on_alt_content_configure(event):
+            alt_canvas.configure(scrollregion=alt_canvas.bbox('all'))
+
+        def on_alt_canvas_configure(event):
+            alt_canvas.itemconfig(alt_canvas_window, width=event.width)
+
+        alt_content.bind('<Configure>', on_alt_content_configure)
+        alt_canvas.bind('<Configure>', on_alt_canvas_configure)
+        alt_canvas.configure(yscrollcommand=alt_scrollbar.set)
+
+        # Mouse wheel scroll (sadece canvas üzerinde)
+        def on_mousewheel(event):
+            alt_canvas.yview_scroll(int(-1*(event.delta/120)), 'units')
+
+        def bind_mousewheel(event):
+            alt_canvas.bind_all('<MouseWheel>', on_mousewheel)
+
+        def unbind_mousewheel(event):
+            alt_canvas.unbind_all('<MouseWheel>')
+
+        alt_canvas.bind('<Enter>', bind_mousewheel)
+        alt_canvas.bind('<Leave>', unbind_mousewheel)
+
+        alt_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        alt_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         # Konsolidasyon Tablosu (Stok + Ay Ay Çıkışlar + Ortalama)
         konsolide_table_frame = tk.Frame(alt_content, bg=c['panel_bg'])
@@ -4017,6 +4047,104 @@ class MFAnalizGUI:
                            fg=c['text_dim'], bg=c['panel_bg'])
         lbl_fark.pack(side=tk.LEFT, padx=20)
 
+        # ===== ANALİZ SONUÇLARI (SGK/Elden, Raporlu/Raporsuz, Emekli/Çalışan) =====
+        analiz_frame = tk.Frame(alt_content, bg=c['panel_bg'])
+        analiz_frame.pack(fill=tk.X, pady=(10, 10))
+
+        # Analiz başlığı (dinamik - konsolide edilince güncellenir)
+        lbl_analiz_baslik = tk.Label(analiz_frame, text="Satış Analizi (Konsolide Et'e basın):",
+                                     font=('Segoe UI', 10, 'bold'),
+                                     fg='#ff9800', bg=c['panel_bg'])
+        lbl_analiz_baslik.grid(row=0, column=0, columnspan=6, sticky='w', padx=5, pady=(0, 5))
+
+        # SGK/Elden satırı
+        tk.Label(analiz_frame, text="SGK:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=1, column=0, sticky='e', padx=5)
+        lbl_sgk = tk.Label(analiz_frame, text="- kutu (-)", font=('Segoe UI', 10, 'bold'),
+                          fg='#4caf50', bg=c['panel_bg'])
+        lbl_sgk.grid(row=1, column=1, sticky='w', padx=5)
+
+        tk.Label(analiz_frame, text="Elden:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=1, column=2, sticky='e', padx=15)
+        lbl_elden = tk.Label(analiz_frame, text="- kutu (-)", font=('Segoe UI', 10, 'bold'),
+                            fg='#2196f3', bg=c['panel_bg'])
+        lbl_elden.grid(row=1, column=3, sticky='w', padx=5)
+
+        # Raporlu/Raporsuz satırı (SGK içinde)
+        tk.Label(analiz_frame, text="Raporlu:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=2, column=0, sticky='e', padx=5)
+        lbl_raporlu = tk.Label(analiz_frame, text="- kutu (-)", font=('Segoe UI', 10),
+                              fg='#9c27b0', bg=c['panel_bg'])
+        lbl_raporlu.grid(row=2, column=1, sticky='w', padx=5)
+
+        tk.Label(analiz_frame, text="Raporsuz:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=2, column=2, sticky='e', padx=15)
+        lbl_raporsuz = tk.Label(analiz_frame, text="- kutu (-)", font=('Segoe UI', 10),
+                               fg='#607d8b', bg=c['panel_bg'])
+        lbl_raporsuz.grid(row=2, column=3, sticky='w', padx=5)
+
+        # Emekli/Çalışan satırı (SGK içinde)
+        tk.Label(analiz_frame, text="Emekli:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=3, column=0, sticky='e', padx=5)
+        lbl_emekli = tk.Label(analiz_frame, text="- kutu (-)", font=('Segoe UI', 10),
+                             fg='#ff5722', bg=c['panel_bg'])
+        lbl_emekli.grid(row=3, column=1, sticky='w', padx=5)
+
+        tk.Label(analiz_frame, text="Çalışan:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=3, column=2, sticky='e', padx=15)
+        lbl_calisan = tk.Label(analiz_frame, text="- kutu (-)", font=('Segoe UI', 10),
+                              fg='#00bcd4', bg=c['panel_bg'])
+        lbl_calisan.grid(row=3, column=3, sticky='w', padx=5)
+
+        # ===== TAHSİLAT ANALİZİ (Tüm reçeteler için muayene oranı) =====
+        tahsilat_frame = tk.Frame(alt_content, bg=c['panel_bg'])
+        tahsilat_frame.pack(fill=tk.X, pady=(10, 10))
+
+        # Tahsilat başlığı (dinamik)
+        lbl_tahsilat_baslik = tk.Label(tahsilat_frame,
+                                       text="Reçete Tahsilat Analizi (Konsolide Et'e basın):",
+                                       font=('Segoe UI', 10, 'bold'),
+                                       fg='#e91e63', bg=c['panel_bg'])
+        lbl_tahsilat_baslik.grid(row=0, column=0, columnspan=6, sticky='w', padx=5, pady=(0, 5))
+
+        # Tahsilat kalemleri
+        tk.Label(tahsilat_frame, text="Muayene:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=1, column=0, sticky='e', padx=5)
+        lbl_muayene = tk.Label(tahsilat_frame, text="- TL (-)", font=('Segoe UI', 10, 'bold'),
+                              fg='#e91e63', bg=c['panel_bg'])
+        lbl_muayene.grid(row=1, column=1, sticky='w', padx=5)
+
+        tk.Label(tahsilat_frame, text="Reçete Kat.:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=1, column=2, sticky='e', padx=15)
+        lbl_recete_kat = tk.Label(tahsilat_frame, text="- TL (-)", font=('Segoe UI', 10),
+                                 fg='#9c27b0', bg=c['panel_bg'])
+        lbl_recete_kat.grid(row=1, column=3, sticky='w', padx=5)
+
+        tk.Label(tahsilat_frame, text="İlaç Kat.:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=2, column=0, sticky='e', padx=5)
+        lbl_ilac_kat = tk.Label(tahsilat_frame, text="- TL (-)", font=('Segoe UI', 10),
+                               fg='#3f51b5', bg=c['panel_bg'])
+        lbl_ilac_kat.grid(row=2, column=1, sticky='w', padx=5)
+
+        tk.Label(tahsilat_frame, text="Fark:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=2, column=2, sticky='e', padx=15)
+        lbl_fark_tahsilat = tk.Label(tahsilat_frame, text="- TL (-)", font=('Segoe UI', 10),
+                                    fg='#ff5722', bg=c['panel_bg'])
+        lbl_fark_tahsilat.grid(row=2, column=3, sticky='w', padx=5)
+
+        # Toplam ve özet
+        tk.Label(tahsilat_frame, text="TOPLAM:", font=('Segoe UI', 10, 'bold'),
+                fg=c['text'], bg=c['panel_bg']).grid(row=3, column=0, sticky='e', padx=5)
+        lbl_tahsilat_toplam = tk.Label(tahsilat_frame, text="- TL", font=('Segoe UI', 10, 'bold'),
+                                       fg='#4caf50', bg=c['panel_bg'])
+        lbl_tahsilat_toplam.grid(row=3, column=1, sticky='w', padx=5)
+
+        tk.Label(tahsilat_frame, text="Reçete:", font=('Segoe UI', 10),
+                fg=c['text_dim'], bg=c['panel_bg']).grid(row=3, column=2, sticky='e', padx=15)
+        lbl_recete_sayisi = tk.Label(tahsilat_frame, text="- adet", font=('Segoe UI', 10),
+                                    fg=c['text_dim'], bg=c['panel_bg'])
+        lbl_recete_sayisi.grid(row=3, column=3, sticky='w', padx=5)
+
         # Aktarım butonları
         aktarim_frame = tk.Frame(alt_content, bg=c['panel_bg'])
         aktarim_frame.pack(fill=tk.X, pady=(5, 5))
@@ -4033,6 +4161,12 @@ class MFAnalizGUI:
                  relief='flat', cursor='hand2',
                  command=lambda: fiyat_aktar()).pack(side=tk.LEFT, padx=10)
 
+        tk.Button(aktarim_frame, text="Analiz Verilerini Aktar",
+                 font=('Segoe UI', 11, 'bold'),
+                 fg='white', bg='#ff9800',
+                 relief='flat', cursor='hand2',
+                 command=lambda: analiz_aktar()).pack(side=tk.LEFT, padx=10)
+
         tk.Button(aktarim_frame, text="Tümünü Aktar",
                  font=('Segoe UI', 11, 'bold'),
                  fg='white', bg=c['success'],
@@ -4047,6 +4181,8 @@ class MFAnalizGUI:
         konsolide_sonuc = {}  # Konsolide edilmiş veriler
         gosterilen_ilaclar = []  # Şu an tree'de gösterilen ilaçlar
         fiyat_ilaci = {}  # Fiyat aktarımı için seçilen tek ilaç {UrunId, UrunAdi, PSF, KamuFiyat, DepocuFiyat, Fark}
+        analiz_sonuc = {}  # Satış analizi sonuçları (SGK/Elden, Raporlu/Raporsuz, Emekli/Çalışan)
+        tahsilat_sonuc = {}  # Tahsilat analizi (Muayene, Reçete Kat., İlaç Kat., Fark)
 
         # ===== FONKSİYONLAR =====
 
@@ -4387,7 +4523,7 @@ class MFAnalizGUI:
 
         def konsolide_et():
             """Seçili ilaçları konsolide et"""
-            nonlocal konsolide_sonuc
+            nonlocal konsolide_sonuc, analiz_sonuc, tahsilat_sonuc
 
             if not secili_ilaclar:
                 messagebox.showwarning("Uyarı", "Lütfen en az bir ilaç seçin!")
@@ -4398,6 +4534,34 @@ class MFAnalizGUI:
 
             try:
                 konsolide_sonuc = db.mf_konsolide_veri_getir(urun_idler, ay_sayisi)
+
+                # ===== SATIŞ ANALİZİ =====
+                analiz_sonuc = db.mf_satis_analizi_getir(urun_idler, ay_sayisi)
+
+                # Analiz başlığını güncelle (kaç ay üzerinden yapıldığını göster)
+                lbl_analiz_baslik.config(text=f"Satış Analizi (Son {ay_sayisi} Ay - Kutu Bazlı):")
+
+                # Analiz etiketlerini güncelle
+                lbl_sgk.config(text=f"{analiz_sonuc.get('sgk_toplam', 0)} kutu (%{analiz_sonuc.get('sgk_oran', 0)})")
+                lbl_elden.config(text=f"{analiz_sonuc.get('elden_toplam', 0)} kutu (%{analiz_sonuc.get('elden_oran', 0)})")
+                lbl_raporlu.config(text=f"{analiz_sonuc.get('sgk_raporlu', 0)} kutu (%{analiz_sonuc.get('raporlu_oran', 0)})")
+                lbl_raporsuz.config(text=f"{analiz_sonuc.get('sgk_raporsuz', 0)} kutu (%{analiz_sonuc.get('raporsuz_oran', 0)})")
+                lbl_emekli.config(text=f"{analiz_sonuc.get('sgk_emekli', 0)} kutu (%{analiz_sonuc.get('emekli_oran', 0)})")
+                lbl_calisan.config(text=f"{analiz_sonuc.get('sgk_calisan', 0)} kutu (%{analiz_sonuc.get('calisan_oran', 0)})")
+
+                # ===== TAHSİLAT ANALİZİ (TÜM REÇETELER) =====
+                tahsilat_sonuc = db.mf_tahsilat_analizi_getir(ay_sayisi)
+
+                # Tahsilat başlığını güncelle
+                lbl_tahsilat_baslik.config(text=f"Reçete Tahsilat Analizi (Son {ay_sayisi} Ay - Tüm Reçeteler):")
+
+                # Tahsilat etiketlerini güncelle
+                lbl_muayene.config(text=f"{tahsilat_sonuc.get('muayene_toplam', 0):.0f} TL (%{tahsilat_sonuc.get('muayene_oran', 0)})")
+                lbl_recete_kat.config(text=f"{tahsilat_sonuc.get('recete_katilim_toplam', 0):.0f} TL (%{tahsilat_sonuc.get('recete_katilim_oran', 0)})")
+                lbl_ilac_kat.config(text=f"{tahsilat_sonuc.get('ilac_katilim_toplam', 0):.0f} TL (%{tahsilat_sonuc.get('ilac_katilim_oran', 0)})")
+                lbl_fark_tahsilat.config(text=f"{tahsilat_sonuc.get('fark_toplam', 0):.0f} TL (%{tahsilat_sonuc.get('fark_oran', 0)})")
+                lbl_tahsilat_toplam.config(text=f"{tahsilat_sonuc.get('genel_toplam', 0):.0f} TL")
+                lbl_recete_sayisi.config(text=f"{tahsilat_sonuc.get('recete_sayisi', 0)} adet")
 
                 # NOT: Fiyat bilgileri artık ortalama alınmıyor
                 # Kullanıcı "Fiyat İçin Seç" butonu ile tek ilaç seçecek
@@ -4470,7 +4634,7 @@ class MFAnalizGUI:
 
             try:
                 senaryo_vars['stok'].set(str(int(konsolide_sonuc.get('toplam_stok', 0))))
-                senaryo_vars['aylik_sarf'].set(str(round(konsolide_sonuc.get('aylik_ortalama', 0), 1)))
+                senaryo_vars['aylik_sarf'].set(str(int(round(konsolide_sonuc.get('aylik_ortalama', 0)))))
                 messagebox.showinfo("Başarılı", "Stok ve aylık sarf verileri aktarıldı!")
             except Exception as e:
                 messagebox.showerror("Hata", f"Aktarım hatası: {e}")
@@ -4495,8 +4659,38 @@ class MFAnalizGUI:
             except Exception as e:
                 messagebox.showerror("Hata", f"Aktarım hatası: {e}")
 
+        def analiz_aktar():
+            """Satış analizi verilerini MF Analize aktar (SGK/Elden, Raporlu/Raporsuz, Emekli/Çalışan)"""
+            if not analiz_sonuc:
+                messagebox.showwarning("Uyarı", "Önce 'Konsolide Et' butonuna basın!")
+                return
+
+            try:
+                # SGK/Elden oranı (ör: "85/15")
+                sgk_oran = int(round(analiz_sonuc.get('sgk_oran', 70)))
+                elden_oran = int(round(analiz_sonuc.get('elden_oran', 30)))
+                senaryo_vars['sgk_elden_orani'].set(f"{sgk_oran}/{elden_oran}")
+
+                # Raporlu/Raporsuz oranı (SGK içinde, ör: "30/70")
+                raporlu_oran = int(round(analiz_sonuc.get('raporlu_oran', 30)))
+                raporsuz_oran = int(round(analiz_sonuc.get('raporsuz_oran', 70)))
+                senaryo_vars['raporlu_raporsuz_orani'].set(f"{raporlu_oran}/{raporsuz_oran}")
+
+                # Emekli/Çalışan oranı (SGK içinde, ör: "40/60")
+                emekli_oran = int(round(analiz_sonuc.get('emekli_oran', 40)))
+                calisan_oran = int(round(analiz_sonuc.get('calisan_oran', 60)))
+                senaryo_vars['emekli_calisan_orani'].set(f"{emekli_oran}/{calisan_oran}")
+
+                messagebox.showinfo("Başarılı",
+                    f"Satış analizi verileri aktarıldı!\n\n"
+                    f"SGK/Elden: {sgk_oran}/{elden_oran}\n"
+                    f"Raporlu/Raporsuz: {raporlu_oran}/{raporsuz_oran}\n"
+                    f"Emekli/Çalışan: {emekli_oran}/{calisan_oran}")
+            except Exception as e:
+                messagebox.showerror("Hata", f"Aktarım hatası: {e}")
+
         def tumunu_aktar():
-            """Tüm verileri MF Analize aktar (stok/sarf konsolideden, fiyat seçili ilaçtan)"""
+            """Tüm verileri MF Analize aktar (stok/sarf konsolideden, fiyat seçili ilaçtan, analiz)"""
             if not konsolide_sonuc:
                 messagebox.showwarning("Uyarı", "Önce 'Konsolide Et' butonuna basın!")
                 return
@@ -4511,13 +4705,27 @@ class MFAnalizGUI:
             try:
                 # Stok ve sarf (konsolideden)
                 senaryo_vars['stok'].set(str(int(konsolide_sonuc.get('toplam_stok', 0))))
-                senaryo_vars['aylik_sarf'].set(str(round(konsolide_sonuc.get('aylik_ortalama', 0), 1)))
+                senaryo_vars['aylik_sarf'].set(str(int(round(konsolide_sonuc.get('aylik_ortalama', 0)))))
 
                 # Fiyatlar (seçili tek ilaçtan)
                 senaryo_vars['depocu_fiyat'].set(f"{fiyat_ilaci.get('DepocuFiyat', 0):.2f}")
                 senaryo_vars['kamu_fiyat'].set(f"{fiyat_ilaci.get('KamuFiyat', 0):.2f}")
                 senaryo_vars['piyasa_fiyat'].set(f"{fiyat_ilaci.get('PSF', 0):.2f}")
                 senaryo_vars['ilac_farki'].set(f"{fiyat_ilaci.get('Fark', 0):.2f}")
+
+                # Satış analizi (SGK/Elden, Raporlu/Raporsuz, Emekli/Çalışan)
+                if analiz_sonuc:
+                    sgk_oran = int(round(analiz_sonuc.get('sgk_oran', 70)))
+                    elden_oran = int(round(analiz_sonuc.get('elden_oran', 30)))
+                    senaryo_vars['sgk_elden_orani'].set(f"{sgk_oran}/{elden_oran}")
+
+                    raporlu_oran = int(round(analiz_sonuc.get('raporlu_oran', 30)))
+                    raporsuz_oran = int(round(analiz_sonuc.get('raporsuz_oran', 70)))
+                    senaryo_vars['raporlu_raporsuz_orani'].set(f"{raporlu_oran}/{raporsuz_oran}")
+
+                    emekli_oran = int(round(analiz_sonuc.get('emekli_oran', 40)))
+                    calisan_oran = int(round(analiz_sonuc.get('calisan_oran', 60)))
+                    senaryo_vars['emekli_calisan_orani'].set(f"{emekli_oran}/{calisan_oran}")
 
                 messagebox.showinfo("Başarılı",
                     f"Tüm veriler MF Analize aktarıldı!\n\n"

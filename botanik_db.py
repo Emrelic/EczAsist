@@ -1929,6 +1929,214 @@ class BotanikDB:
             'ilac_detaylari': ilac_detaylari
         }
 
+    def mf_satis_analizi_getir(
+        self,
+        urun_idler: List[int],
+        ay_sayisi: int = 6
+    ) -> Dict:
+        """
+        Seçilen ilaçlar için detaylı satış analizi getir.
+        SGK/Elden, Raporlu/Raporsuz, Emekli/Çalışan dağılımı.
+        Tüm değerler KUTU ADEDİ üzerinden hesaplanır.
+
+        Args:
+            urun_idler: İlaç ID listesi
+            ay_sayisi: Kaç aylık veri
+
+        Returns:
+            Dict: {
+                'sgk_toplam': int,          # SGK toplam kutu
+                'elden_toplam': int,        # Elden toplam kutu
+                'sgk_raporlu': int,         # SGK raporlu kutu
+                'sgk_raporsuz': int,        # SGK raporsuz kutu
+                'sgk_emekli': int,          # SGK emekli kutu
+                'sgk_calisan': int,         # SGK çalışan kutu
+                'sgk_oran': float,          # SGK yüzdesi
+                'elden_oran': float,        # Elden yüzdesi
+                'raporlu_oran': float,      # Raporlu yüzdesi (SGK içinde)
+                'raporsuz_oran': float,     # Raporsuz yüzdesi (SGK içinde)
+                'emekli_oran': float,       # Emekli yüzdesi (SGK içinde)
+                'calisan_oran': float       # Çalışan yüzdesi (SGK içinde)
+            }
+        """
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+
+        if not urun_idler:
+            return {
+                'sgk_toplam': 0, 'elden_toplam': 0,
+                'sgk_raporlu': 0, 'sgk_raporsuz': 0,
+                'sgk_emekli': 0, 'sgk_calisan': 0,
+                'sgk_oran': 0, 'elden_oran': 0,
+                'raporlu_oran': 0, 'raporsuz_oran': 0,
+                'emekli_oran': 0, 'calisan_oran': 0
+            }
+
+        ay_sayisi = min(ay_sayisi, 24)
+        bugun = datetime.now()
+        baslangic = (bugun - relativedelta(months=ay_sayisi)).replace(day=1)
+        baslangic_str = baslangic.strftime('%Y-%m-%d')
+
+        urun_id_str = ','.join(map(str, urun_idler))
+
+        # SGK Satışları - Raporlu/Raporsuz ve Emekli/Çalışan ayrımı
+        sql_sgk = f"""
+        SELECT
+            SUM(ri.RIAdet) as ToplamAdet,
+            SUM(CASE WHEN ri.RIRaporKodId IS NOT NULL AND ri.RIRaporKodId > 0
+                THEN ri.RIAdet ELSE 0 END) as RaporluAdet,
+            SUM(CASE WHEN ri.RIRaporKodId IS NULL OR ri.RIRaporKodId = 0
+                THEN ri.RIAdet ELSE 0 END) as RaporsuzAdet,
+            SUM(CASE WHEN m.MusteriEmeklilik = 1
+                THEN ri.RIAdet ELSE 0 END) as EmekliAdet,
+            SUM(CASE WHEN m.MusteriEmeklilik = 0 OR m.MusteriEmeklilik IS NULL
+                THEN ri.RIAdet ELSE 0 END) as CalisanAdet
+        FROM ReceteIlaclari ri
+        JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+        LEFT JOIN Musteri m ON ra.RxMusteriId = m.MusteriId
+        WHERE ri.RIUrunId IN ({urun_id_str})
+        AND ra.RxSilme = 0 AND ri.RISilme = 0
+        AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+        AND ra.RxKayitTarihi >= '{baslangic_str}'
+        """
+        sgk_sonuc = self.sorgu_calistir(sql_sgk)
+
+        # Elden Satışları
+        sql_elden = f"""
+        SELECT
+            SUM(ei.RIAdet) as ToplamAdet
+        FROM EldenIlaclari ei
+        JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+        WHERE ei.RIUrunId IN ({urun_id_str})
+        AND ea.RxSilme = 0 AND ei.RISilme = 0
+        AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+        AND ea.RxKayitTarihi >= '{baslangic_str}'
+        """
+        elden_sonuc = self.sorgu_calistir(sql_elden)
+
+        # Sonuçları parse et
+        sgk_toplam = int(sgk_sonuc[0].get('ToplamAdet') or 0) if sgk_sonuc else 0
+        sgk_raporlu = int(sgk_sonuc[0].get('RaporluAdet') or 0) if sgk_sonuc else 0
+        sgk_raporsuz = int(sgk_sonuc[0].get('RaporsuzAdet') or 0) if sgk_sonuc else 0
+        sgk_emekli = int(sgk_sonuc[0].get('EmekliAdet') or 0) if sgk_sonuc else 0
+        sgk_calisan = int(sgk_sonuc[0].get('CalisanAdet') or 0) if sgk_sonuc else 0
+        elden_toplam = int(elden_sonuc[0].get('ToplamAdet') or 0) if elden_sonuc else 0
+
+        # Oranları hesapla
+        genel_toplam = sgk_toplam + elden_toplam
+        sgk_oran = round((sgk_toplam / genel_toplam * 100), 1) if genel_toplam > 0 else 0
+        elden_oran = round((elden_toplam / genel_toplam * 100), 1) if genel_toplam > 0 else 0
+
+        # SGK içindeki oranlar
+        raporlu_oran = round((sgk_raporlu / sgk_toplam * 100), 1) if sgk_toplam > 0 else 0
+        raporsuz_oran = round((sgk_raporsuz / sgk_toplam * 100), 1) if sgk_toplam > 0 else 0
+        emekli_oran = round((sgk_emekli / sgk_toplam * 100), 1) if sgk_toplam > 0 else 0
+        calisan_oran = round((sgk_calisan / sgk_toplam * 100), 1) if sgk_toplam > 0 else 0
+
+        return {
+            'sgk_toplam': sgk_toplam,
+            'elden_toplam': elden_toplam,
+            'sgk_raporlu': sgk_raporlu,
+            'sgk_raporsuz': sgk_raporsuz,
+            'sgk_emekli': sgk_emekli,
+            'sgk_calisan': sgk_calisan,
+            'sgk_oran': sgk_oran,
+            'elden_oran': elden_oran,
+            'raporlu_oran': raporlu_oran,
+            'raporsuz_oran': raporsuz_oran,
+            'emekli_oran': emekli_oran,
+            'calisan_oran': calisan_oran
+        }
+
+    def mf_tahsilat_analizi_getir(self, ay_sayisi: int = 6) -> Dict:
+        """
+        TÜM reçeteler için tahsilat analizi.
+        Hastadan alınan 4 kalem: Muayene, Reçete Katılım, İlaç Katılım, Fark
+
+        YazarKasaKuyUrunler.YKKUrunSatisTipi:
+        - 0: Muayene Katkı Payı
+        - 1: Reçete Katkı Payı
+        - 2: Hasta/İlaç Katılım Payı
+        - 3: Fiyat Farkı
+
+        Args:
+            ay_sayisi: Kaç aylık veri (varsayılan 6)
+
+        Returns:
+            Dict: {
+                'recete_sayisi': int,
+                'muayene_toplam': float,
+                'recete_katilim_toplam': float,
+                'ilac_katilim_toplam': float,
+                'fark_toplam': float,
+                'genel_toplam': float,
+                'muayene_oran': float,
+                'recete_katilim_oran': float,
+                'ilac_katilim_oran': float,
+                'fark_oran': float
+            }
+        """
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+
+        ay_sayisi = min(ay_sayisi, 24)
+        bugun = datetime.now()
+        baslangic = (bugun - relativedelta(months=ay_sayisi)).replace(day=1)
+        baslangic_str = baslangic.strftime('%Y-%m-%d')
+
+        sql = f"""
+        SELECT
+            SUM(CASE WHEN u.YKKUrunSatisTipi = 0 THEN u.YKKUrunFiyat * u.YKKUrunAdet ELSE 0 END) as MuayeneToplam,
+            SUM(CASE WHEN u.YKKUrunSatisTipi = 1 THEN u.YKKUrunFiyat * u.YKKUrunAdet ELSE 0 END) as ReceteKatilimToplam,
+            SUM(CASE WHEN u.YKKUrunSatisTipi = 2 THEN u.YKKUrunFiyat * u.YKKUrunAdet ELSE 0 END) as IlacKatilimToplam,
+            SUM(CASE WHEN u.YKKUrunSatisTipi = 3 THEN u.YKKUrunFiyat * u.YKKUrunAdet ELSE 0 END) as FarkToplam,
+            SUM(CASE WHEN u.YKKUrunSatisTipi IN (0,1,2,3) THEN u.YKKUrunFiyat * u.YKKUrunAdet ELSE 0 END) as GenelToplam,
+            COUNT(DISTINCT yks.YKKSatId) as ReceteSayisi
+        FROM YazarKasaKuySatis yks
+        JOIN YazarKasaKuyUrunler u ON u.YKKUrunSatId = yks.YKKSatId
+        JOIN ReceteAna ra ON yks.YKKSatRXId = ra.RxId
+        WHERE ra.RxSilme = 0
+        AND u.YKKUrunSatisTipi IN (0,1,2,3)
+        AND ra.RxKayitTarihi >= '{baslangic_str}'
+        """
+        sonuc = self.sorgu_calistir(sql)
+
+        if not sonuc or not sonuc[0]:
+            return {
+                'recete_sayisi': 0,
+                'muayene_toplam': 0, 'recete_katilim_toplam': 0,
+                'ilac_katilim_toplam': 0, 'fark_toplam': 0, 'genel_toplam': 0,
+                'muayene_oran': 0, 'recete_katilim_oran': 0,
+                'ilac_katilim_oran': 0, 'fark_oran': 0
+            }
+
+        s = sonuc[0]
+        recete_sayisi = int(s.get('ReceteSayisi') or 0)
+        muayene = float(s.get('MuayeneToplam') or 0)
+        recete_kat = float(s.get('ReceteKatilimToplam') or 0)
+        ilac_kat = float(s.get('IlacKatilimToplam') or 0)
+        fark = float(s.get('FarkToplam') or 0)
+        toplam = float(s.get('GenelToplam') or 0)
+
+        # Oranları hesapla
+        muayene_oran = round((muayene / toplam * 100), 1) if toplam > 0 else 0
+        recete_kat_oran = round((recete_kat / toplam * 100), 1) if toplam > 0 else 0
+        ilac_kat_oran = round((ilac_kat / toplam * 100), 1) if toplam > 0 else 0
+        fark_oran = round((fark / toplam * 100), 1) if toplam > 0 else 0
+
+        return {
+            'recete_sayisi': recete_sayisi,
+            'muayene_toplam': round(muayene, 2),
+            'recete_katilim_toplam': round(recete_kat, 2),
+            'ilac_katilim_toplam': round(ilac_kat, 2),
+            'fark_toplam': round(fark, 2),
+            'genel_toplam': round(toplam, 2),
+            'muayene_oran': muayene_oran,
+            'recete_katilim_oran': recete_kat_oran,
+            'ilac_katilim_oran': ilac_kat_oran,
+            'fark_oran': fark_oran
+        }
+
 
 # Singleton instance
 _db_instance = None
