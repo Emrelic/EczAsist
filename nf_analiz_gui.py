@@ -4276,16 +4276,17 @@ class MFAnalizGUI:
                 return
 
             typed = ilac_combo.get().upper()
-            if len(typed) < 2:
-                ilac_combo['values'] = []
-                return
 
             # Cursor pozisyonunu kaydet
             cursor_pos = ilac_combo.index(tk.INSERT)
 
-            # Filtrelenmiş liste
-            filtered = [i['UrunAdi'] for i in ilac_listesi if typed in i['UrunAdi'].upper()][:50]
-            ilac_combo['values'] = filtered
+            if len(typed) < 2:
+                # İlk 100 ilacı göster
+                ilac_combo['values'] = [i['UrunAdi'] for i in ilac_listesi[:100]]
+            else:
+                # Filtrelenmiş liste
+                filtered = [i['UrunAdi'] for i in ilac_listesi if typed in i['UrunAdi'].upper()][:50]
+                ilac_combo['values'] = filtered
 
             # Cursor pozisyonunu geri yükle
             ilac_combo.icursor(cursor_pos)
@@ -4311,17 +4312,18 @@ class MFAnalizGUI:
                 return
 
             typed = etken_combo.get().upper()
-            if len(typed) < 2:
-                etken_combo['values'] = []
-                return
 
             # Cursor pozisyonunu kaydet
             cursor_pos = etken_combo.index(tk.INSERT)
 
-            # Filtrelenmiş liste
-            filtered = [f"{e['EMLAdi']} ({e['IlacSayisi']})" for e in etken_listesi
-                       if typed in e['EMLAdi'].upper()][:30]
-            etken_combo['values'] = filtered
+            if len(typed) < 2:
+                # Tüm listeyi göster
+                etken_combo['values'] = [f"{e['EMLAdi']} ({e['IlacSayisi']})" for e in etken_listesi]
+            else:
+                # Filtrelenmiş liste
+                filtered = [f"{e['EMLAdi']} ({e['IlacSayisi']})" for e in etken_listesi
+                           if typed in e['EMLAdi'].upper()][:30]
+                etken_combo['values'] = filtered
 
             # Cursor pozisyonunu geri yükle
             etken_combo.icursor(cursor_pos)
@@ -4349,17 +4351,18 @@ class MFAnalizGUI:
                 return
 
             typed = esdeger_combo.get().upper()
-            if len(typed) < 2:
-                esdeger_combo['values'] = []
-                return
 
             # Cursor pozisyonunu kaydet
             cursor_pos = esdeger_combo.index(tk.INSERT)
 
-            # Filtrelenmiş liste - ilaç adı veya kod ile arama
-            filtered = [f"[{i['UrunEsdegerId']}] {i['UrunAdi']}" for i in esdeger_listesi
-                       if typed in i['UrunAdi'].upper() or typed in str(i['UrunEsdegerId'])][:50]
-            esdeger_combo['values'] = filtered
+            if len(typed) < 2:
+                # İlk 100 eşdeğer grubu göster
+                esdeger_combo['values'] = [f"[{i['UrunEsdegerId']}] {i['UrunAdi']}" for i in esdeger_listesi[:100]]
+            else:
+                # Filtrelenmiş liste - ilaç adı veya kod ile arama
+                filtered = [f"[{i['UrunEsdegerId']}] {i['UrunAdi']}" for i in esdeger_listesi
+                           if typed in i['UrunAdi'].upper() or typed in str(i['UrunEsdegerId'])][:50]
+                esdeger_combo['values'] = filtered
 
             # Cursor pozisyonunu geri yükle
             esdeger_combo.icursor(cursor_pos)
