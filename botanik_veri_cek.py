@@ -354,6 +354,294 @@ def screenshot_clipboard_kopyala(dosya_yolu: str) -> bool:
         return False
 
 
+def _click_element_by_coords(x: int, y: int) -> bool:
+    """Verilen koordinatlara mouse click yapar"""
+    try:
+        import time
+        user32 = ctypes.windll.user32
+        user32.SetCursorPos(x, y)
+        time.sleep(0.1)
+        user32.mouse_event(0x0002, 0, 0, 0, 0)  # Left down
+        time.sleep(0.05)
+        user32.mouse_event(0x0004, 0, 0, 0, 0)  # Left up
+        return True
+    except Exception as e:
+        logger.error(f"Mouse click hatası: {e}")
+        return False
+
+
+def _click_uia_element(elem) -> bool:
+    """UI Automation element'ine tıklar"""
+    try:
+        import time
+        rect = elem.CurrentBoundingRectangle
+        center_x = rect.left + (rect.right - rect.left) // 2
+        center_y = rect.top + (rect.bottom - rect.top) // 2
+        logger.debug(f"Element tıklama: ({center_x}, {center_y})")
+        return _click_element_by_coords(center_x, center_y)
+    except Exception as e:
+        logger.error(f"UIA element tıklama hatası: {e}")
+        return False
+
+
+def _find_botanik_eos_handle():
+    """BotanikEOS ana pencere handle'ını bul"""
+    user32 = ctypes.windll.user32
+    botanik_h = None
+
+    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+
+    def find_botanik(hwnd, lparam):
+        nonlocal botanik_h
+        title = _get_window_text(hwnd)
+        if title and 'BotanikEOS' in title and 'Kasa Kapatma' not in title:
+            botanik_h = hwnd
+            logger.debug(f"BotanikEOS penceresi bulundu: handle={hwnd}, title='{title}'")
+            return False
+        return True
+
+    user32.EnumWindows(WNDENUMPROC(find_botanik), 0)
+    return botanik_h
+
+
+def botanik_baslangic_kasasi_ac() -> Tuple[bool, str]:
+    """
+    Botanik EOS'ta Kasa menüsünden Başlangıç Kasası penceresini açar
+
+    Returns:
+        Tuple[bool, str]: (başarılı mı, mesaj)
+    """
+    try:
+        import comtypes
+        import comtypes.client
+        import time
+
+        # COM başlat
+        comtypes.CoInitialize()
+
+        # UI Automation interface'ini yükle
+        comtypes.client.GetModule('UIAutomationCore.dll')
+        from comtypes.gen.UIAutomationClient import IUIAutomation, TreeScope_Descendants, TreeScope_Children
+
+        uia = comtypes.client.CreateObject(
+            '{ff48dba4-60ef-4201-aa87-54103eef594e}',
+            interface=IUIAutomation
+        )
+
+        # Önce Başlangıç Kasası penceresi zaten açık mı kontrol et
+        baslangic_h = _find_baslangic_kasasi_handle()
+        if baslangic_h:
+            logger.info("Başlangıç Kasası penceresi zaten açık")
+            return True, "Başlangıç Kasası penceresi zaten açık"
+
+        # BotanikEOS ana penceresini bul
+        botanik_h = _find_botanik_eos_handle()
+        if not botanik_h:
+            return False, "BotanikEOS penceresi bulunamadı!\n\nLütfen Botanik programını açın."
+
+        logger.info(f"BotanikEOS handle: {botanik_h}")
+
+        # EczaneMenu child penceresini bul
+        user32 = ctypes.windll.user32
+        eczane_menu_h = None
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+
+        def find_eczane_menu(hwnd, lparam):
+            nonlocal eczane_menu_h
+            title = _get_window_text(hwnd)
+            if title == 'EczaneMenu':
+                eczane_menu_h = hwnd
+                return False
+            return True
+
+        user32.EnumChildWindows(botanik_h, WNDENUMPROC(find_eczane_menu), 0)
+
+        if not eczane_menu_h:
+            return False, "EczaneMenu penceresi bulunamadı!"
+
+        logger.info(f"EczaneMenu handle: {eczane_menu_h}")
+
+        # EczaneMenu element'ini al
+        eczane_elem = uia.ElementFromHandle(eczane_menu_h)
+
+        # Kasa menüsünü bul (Name="Kasa", ControlType=MenuItem)
+        condition = uia.CreateTrueCondition()
+        children = eczane_elem.FindAll(TreeScope_Descendants, condition)
+
+        kasa_menu = None
+        for i in range(children.Length):
+            elem = children.GetElement(i)
+            try:
+                name = elem.CurrentName
+                control_type = elem.CurrentControlType
+                # MenuItem = 50011
+                if name == "Kasa" and control_type == 50011:
+                    kasa_menu = elem
+                    logger.info("Kasa menüsü bulundu")
+                    break
+            except:
+                continue
+
+        if not kasa_menu:
+            return False, "Kasa menüsü bulunamadı!"
+
+        # Kasa menüsüne InvokePattern ile tıkla
+        from comtypes.gen.UIAutomationClient import IUIAutomationInvokePattern
+        try:
+            ip = kasa_menu.GetCurrentPattern(10000)  # UIA_InvokePatternId
+            if ip:
+                invoke = ip.QueryInterface(IUIAutomationInvokePattern)
+                invoke.Invoke()
+                logger.info("Kasa menüsüne Invoke yapıldı")
+            else:
+                return False, "Kasa menüsü InvokePattern desteklemiyor!"
+        except Exception as e:
+            logger.error(f"Kasa menüsü Invoke hatası: {e}")
+            return False, f"Kasa menüsüne tıklanamadı: {e}"
+
+        time.sleep(0.5)  # Menünün açılmasını bekle
+
+        # Başlangıç Kasası menü öğesini bul
+        # Menü açıldıktan sonra yeniden tara
+        children = eczane_elem.FindAll(TreeScope_Descendants, condition)
+
+        baslangic_item = None
+        for i in range(children.Length):
+            elem = children.GetElement(i)
+            try:
+                name = elem.CurrentName
+                control_type = elem.CurrentControlType
+                if name == "Başlangıç Kasası" and control_type == 50011:
+                    baslangic_item = elem
+                    logger.info("Başlangıç Kasası menü öğesi bulundu")
+                    break
+            except:
+                continue
+
+        if not baslangic_item:
+            # Menüyü kapat (Escape)
+            ctypes.windll.user32.keybd_event(0x1B, 0, 0, 0)
+            ctypes.windll.user32.keybd_event(0x1B, 0, 2, 0)
+            return False, "Başlangıç Kasası menü öğesi bulunamadı!"
+
+        # Başlangıç Kasası'na InvokePattern ile tıkla
+        try:
+            ip = baslangic_item.GetCurrentPattern(10000)
+            if ip:
+                invoke = ip.QueryInterface(IUIAutomationInvokePattern)
+                invoke.Invoke()
+                logger.info("Başlangıç Kasası'na Invoke yapıldı")
+            else:
+                return False, "Başlangıç Kasası InvokePattern desteklemiyor!"
+        except Exception as e:
+            logger.error(f"Başlangıç Kasası Invoke hatası: {e}")
+            return False, f"Başlangıç Kasası menü öğesine tıklanamadı: {e}"
+
+        # Pencerenin açılmasını bekle - birkaç deneme yap
+        for attempt in range(5):
+            time.sleep(0.5)
+            baslangic_h = _find_baslangic_kasasi_handle()
+            if baslangic_h:
+                logger.info("Başlangıç Kasası penceresi başarıyla açıldı")
+                return True, "Başlangıç Kasası penceresi açıldı"
+            logger.debug(f"Pencere henüz açılmadı, deneme {attempt + 1}/5")
+
+        return False, "Başlangıç Kasası penceresi açılamadı!"
+
+    except Exception as e:
+        logger.error(f"Başlangıç Kasası açma hatası: {e}")
+        import traceback
+        traceback.print_exc()
+        return False, f"Hata: {e}"
+
+
+def botanik_baslangic_kasasi_kapat(kaydet: bool = False) -> Tuple[bool, str]:
+    """
+    Botanik Başlangıç Kasası penceresini kapatır
+
+    Args:
+        kaydet: True ise önce Kaydet'e basar, sonra kapatır
+
+    Returns:
+        Tuple[bool, str]: (başarılı mı, mesaj)
+    """
+    try:
+        import comtypes
+        import comtypes.client
+        import time
+
+        # COM başlat
+        comtypes.CoInitialize()
+
+        # UI Automation interface'ini yükle
+        comtypes.client.GetModule('UIAutomationCore.dll')
+        from comtypes.gen.UIAutomationClient import IUIAutomation, TreeScope_Descendants
+
+        uia = comtypes.client.CreateObject(
+            '{ff48dba4-60ef-4201-aa87-54103eef594e}',
+            interface=IUIAutomation
+        )
+
+        # Başlangıç Kasası penceresini bul
+        baslangic_h = _find_baslangic_kasasi_handle()
+        if not baslangic_h:
+            return True, "Başlangıç Kasası penceresi zaten kapalı"
+
+        # Pencereyi öne getir - koordinatların doğru olması için gerekli
+        user32 = ctypes.windll.user32
+        SW_RESTORE = 9
+        SW_SHOW = 5
+        user32.ShowWindow(baslangic_h, SW_RESTORE)
+        user32.SetForegroundWindow(baslangic_h)
+        time.sleep(0.3)  # Pencerenin öne gelmesini bekle
+
+        baslangic_elem = uia.ElementFromHandle(baslangic_h)
+        condition = uia.CreateTrueCondition()
+        children = baslangic_elem.FindAll(TreeScope_Descendants, condition)
+
+        # Element'leri topla
+        kaydet_btn = None
+        kapat_btn = None
+
+        for i in range(children.Length):
+            elem = children.GetElement(i)
+            try:
+                automation_id = elem.CurrentAutomationId
+                name = elem.CurrentName
+                control_type = elem.CurrentControlType
+                # Button = 50000
+                if control_type == 50000:
+                    if automation_id == 'btnKaydet' or name == 'Kaydet':
+                        kaydet_btn = elem
+                    if name == 'Kapat':  # Title bar close button
+                        kapat_btn = elem
+            except:
+                continue
+
+        # Kaydet gerekiyorsa
+        if kaydet and kaydet_btn:
+            logger.info("Kaydet butonuna basılıyor...")
+            _click_uia_element(kaydet_btn)
+            time.sleep(0.5)
+
+        # Pencereyi WM_CLOSE ile kapat (daha güvenilir)
+        WM_CLOSE = 0x0010
+        logger.info("Pencere WM_CLOSE ile kapatılıyor...")
+        user32.PostMessageW(baslangic_h, WM_CLOSE, 0, 0)
+        time.sleep(0.3)
+
+        # Pencere kapandı mı kontrol et
+        baslangic_h = _find_baslangic_kasasi_handle()
+        if not baslangic_h:
+            return True, "Başlangıç Kasası penceresi kapatıldı"
+        else:
+            return False, "Pencere kapatılamadı"
+
+    except Exception as e:
+        logger.error(f"Başlangıç Kasası kapatma hatası: {e}")
+        return False, f"Hata: {e}"
+
+
 def _find_baslangic_kasasi_handle():
     """Başlangıç Kasası pencere handle'ını bul"""
     user32 = ctypes.windll.user32
@@ -404,6 +692,7 @@ def _find_baslangic_kasasi_handle():
 def botanik_baslangic_kupurlerini_cek() -> Optional[Dict[str, int]]:
     """
     Botanik EOS 'Başlangıç Kasası' penceresinden küpür adetlerini çeker
+    Pencereyi otomatik açar, değerleri okur ve kapatır.
     AutomationId kullanarak txttl200, txttl100, vb. alanlardan değer okur
 
     Returns:
@@ -413,6 +702,15 @@ def botanik_baslangic_kupurlerini_cek() -> Optional[Dict[str, int]]:
     try:
         import comtypes
         import comtypes.client
+        import time
+
+        # 1. Önce pencereyi otomatik aç
+        acildi, ac_mesaj = botanik_baslangic_kasasi_ac()
+        if not acildi:
+            logger.error(f"Başlangıç Kasası açılamadı: {ac_mesaj}")
+            return None
+
+        time.sleep(0.3)  # Pencere stabilize olsun
 
         # Başlangıç Kasası penceresini bul
         baslangic_h = _find_baslangic_kasasi_handle()
@@ -511,21 +809,29 @@ def botanik_baslangic_kupurlerini_cek() -> Optional[Dict[str, int]]:
         toplam = sum(k * v for k, v in kupurler.items())
         logger.info(f"Toplam küpür değeri: {toplam} TL")
 
+        # 2. Pencereyi kapat (kaydet olmadan)
+        botanik_baslangic_kasasi_kapat(kaydet=False)
+
         return kupurler
 
     except ImportError as e:
         logger.error(f"Gerekli modül yüklü değil: {e}")
+        # Hata durumunda pencereyi kapat
+        botanik_baslangic_kasasi_kapat(kaydet=False)
         return None
     except Exception as e:
         logger.error(f"Botanik küpür çekme hatası: {e}")
         import traceback
         traceback.print_exc()
+        # Hata durumunda pencereyi kapat
+        botanik_baslangic_kasasi_kapat(kaydet=False)
         return None
 
 
 def botanik_baslangic_kasasina_yaz(kupurler: Dict[float, int]) -> Tuple[bool, str]:
     """
     Botanik EOS 'Başlangıç Kasası' penceresine küpür değerlerini yazar ve kaydeder
+    Pencereyi otomatik açar, değerleri yazar, kaydeder ve kapatır.
 
     Args:
         kupurler: Dict with keys like 200, 100, 50, 20, 10, 5, 1, 0.5 (küpür değerleri)
@@ -536,15 +842,27 @@ def botanik_baslangic_kasasina_yaz(kupurler: Dict[float, int]) -> Tuple[bool, st
     """
     try:
         import comtypes
-        from comtypes.client import CreateObject
+        import comtypes.client
+        import time
+
+        # 1. Önce pencereyi otomatik aç
+        acildi, ac_mesaj = botanik_baslangic_kasasi_ac()
+        if not acildi:
+            return False, ac_mesaj
+
+        time.sleep(0.3)  # Pencere stabilize olsun
 
         # COM başlat
         comtypes.CoInitialize()
 
-        # UI Automation
-        UIA_E_ELEMENTNOTAVAILABLE = -2147220991
+        # UI Automation interface'ini yükle
+        comtypes.client.GetModule('UIAutomationCore.dll')
+        from comtypes.gen.UIAutomationClient import IUIAutomation
 
-        uia = CreateObject("{ff48dba4-60ef-4201-aa87-54103eef594e}")
+        uia = comtypes.client.CreateObject(
+            '{ff48dba4-60ef-4201-aa87-54103eef594e}',
+            interface=IUIAutomation
+        )
 
         # Pattern IDs
         UIA_ValuePatternId = 10002
@@ -557,7 +875,7 @@ def botanik_baslangic_kasasina_yaz(kupurler: Dict[float, int]) -> Tuple[bool, st
         baslangic_h = _find_baslangic_kasasi_handle()
 
         if baslangic_h is None:
-            return False, "Botanik 'Başlangıç Kasası' penceresi bulunamadı!\n\nLütfen Botanik'te Başlangıç Kasası sayfasını açın."
+            return False, "Botanik 'Başlangıç Kasası' penceresi açılamadı!"
 
         logger.info(f"Başlangıç Kasası handle: {baslangic_h}")
 
@@ -626,38 +944,73 @@ def botanik_baslangic_kasasina_yaz(kupurler: Dict[float, int]) -> Tuple[bool, st
                     break
 
         if kaydet_btn:
+            kaydet_basarili = False
+
+            # Yöntem 1: InvokePattern
             try:
                 ip = kaydet_btn.GetCurrentPattern(UIA_InvokePatternId)
                 if ip:
                     from comtypes.gen.UIAutomationClient import IUIAutomationInvokePattern
                     invoke_pattern = ip.QueryInterface(IUIAutomationInvokePattern)
                     invoke_pattern.Invoke()
-                    logger.info("Kaydet butonuna basıldı")
-                else:
-                    # Alternatif: tıklama
-                    import time
-                    time.sleep(0.2)
-                    # SetFocus ve Enter tuşu
-                    kaydet_btn.SetFocus()
-                    import ctypes
-                    ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0)  # Enter key down
-                    ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0)  # Enter key up
+                    logger.info("Kaydet butonuna basıldı (InvokePattern)")
+                    kaydet_basarili = True
             except Exception as e:
-                logger.warning(f"Kaydet butonuna basılamadı: {e}")
+                logger.warning(f"InvokePattern başarısız: {e}")
+
+            # Yöntem 2: Doğrudan mouse click
+            if not kaydet_basarili:
+                try:
+                    import time
+                    time.sleep(0.3)
+
+                    # Butonun koordinatlarını al
+                    rect = kaydet_btn.CurrentBoundingRectangle
+                    center_x = rect.left + (rect.right - rect.left) // 2
+                    center_y = rect.top + (rect.bottom - rect.top) // 2
+
+                    logger.info(f"Mouse click koordinatları: ({center_x}, {center_y})")
+
+                    # Mouse'u hareket ettir ve tıkla
+                    import ctypes
+                    ctypes.windll.user32.SetCursorPos(center_x, center_y)
+                    time.sleep(0.1)
+                    ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)  # Left down
+                    time.sleep(0.05)
+                    ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)  # Left up
+
+                    logger.info("Kaydet butonuna basıldı (mouse click)")
+                    kaydet_basarili = True
+                except Exception as e:
+                    logger.warning(f"Mouse click başarısız: {e}")
+
+            if not kaydet_basarili:
+                # Pencereyi kapat
+                botanik_baslangic_kasasi_kapat(kaydet=False)
                 return True, f"{yazilan_sayac} değer yazıldı.\n\nKaydet butonuna manuel basmanız gerekiyor."
         else:
+            # Pencereyi kapat
+            botanik_baslangic_kasasi_kapat(kaydet=False)
             return True, f"{yazilan_sayac} değer yazıldı.\n\nKaydet butonuna manuel basmanız gerekiyor."
+
+        # 3. Pencereyi kapat (başarılı olunca)
+        time.sleep(0.3)
+        botanik_baslangic_kasasi_kapat(kaydet=False)
 
         toplam = sum(k * v for k, v in kupurler.items())
         return True, f"Başlangıç kasası Botanik'e işlendi!\n\n{yazilan_sayac} küpür değeri yazıldı.\nToplam: {toplam:,.2f} TL"
 
     except ImportError as e:
         logger.error(f"Gerekli modül yüklü değil: {e}")
+        # Hata durumunda pencereyi kapat
+        botanik_baslangic_kasasi_kapat(kaydet=False)
         return False, f"Gerekli modül yüklü değil: {e}"
     except Exception as e:
         logger.error(f"Botanik'e yazma hatası: {e}")
         import traceback
         traceback.print_exc()
+        # Hata durumunda pencereyi kapat
+        botanik_baslangic_kasasi_kapat(kaydet=False)
         return False, f"Hata: {e}"
 
 
