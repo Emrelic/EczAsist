@@ -73,6 +73,13 @@ class AnaMenu:
             "aciklama": "Kullanıcı ve yetki yönetimi",
             "renk": "#F44336",  # Kırmızı
             "hover": "#D32F2F"
+        },
+        "siparis_verme": {
+            "baslik": "Sipariş Verme",
+            "icon": "🛒",
+            "aciklama": "Stok analizi ve sipariş hazırlama",
+            "renk": "#009688",  # Teal
+            "hover": "#00796B"
         }
     }
 
@@ -90,7 +97,7 @@ class AnaMenu:
 
         # Pencere boyutları
         pencere_genislik = 900
-        pencere_yukseklik = 650
+        pencere_yukseklik = 750
 
         # Ekranın ortasına yerleştir
         ekran_genislik = self.root.winfo_screenwidth()
@@ -223,7 +230,8 @@ class AnaMenu:
         # Modül butonlarını oluştur
         modul_listesi = [
             "ilac_takip", "depo_ekstre", "kasa_takip", "rapor_kontrol",
-            "t_cetvel", "ek_raporlar", "mf_analiz", "kullanici_yonetimi"
+            "t_cetvel", "ek_raporlar", "mf_analiz", "siparis_verme",
+            "kullanici_yonetimi"
         ]
 
         row = 0
@@ -377,6 +385,8 @@ class AnaMenu:
             self.ek_raporlar_ac()
         elif modul_key == "mf_analiz":
             self.mf_analiz_ac()
+        elif modul_key == "siparis_verme":
+            self.siparis_verme_ac()
         elif modul_key == "kullanici_yonetimi":
             self.kullanici_yonetimi_ac()
 
@@ -533,6 +543,37 @@ class AnaMenu:
         except Exception as e:
             logger.error(f"MF Analiz açma hatası: {e}")
             messagebox.showerror("Hata", f"MF Analiz modülü açılamadı:\n{e}")
+            self.root.deiconify()
+
+    def siparis_verme_ac(self):
+        """Sipariş Verme modülünü aç"""
+        try:
+            self.root.withdraw()
+
+            from siparis_verme_gui import SiparisVermeGUI
+
+            # Yeni pencere oluştur
+            siparis_root = tk.Toplevel()
+            siparis_root.title("Sipariş Verme Modülü")
+            siparis_root.state('zoomed')
+
+            # Ana menüye dönüş callback'i
+            def ana_menuye_don():
+                self.root.deiconify()
+
+            # Pencere kapatma
+            siparis_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(siparis_root))
+
+            # SiparisVermeGUI'yi başlat
+            app = SiparisVermeGUI(siparis_root)
+
+        except ImportError as e:
+            logger.error(f"Sipariş Verme import hatası: {e}")
+            messagebox.showerror("Hata", "Sipariş Verme modülü yüklenemedi.")
+            self.root.deiconify()
+        except Exception as e:
+            logger.error(f"Sipariş Verme açma hatası: {e}")
+            messagebox.showerror("Hata", f"Sipariş Verme modülü açılamadı:\n{e}")
             self.root.deiconify()
 
     def kullanici_yonetimi_ac(self):

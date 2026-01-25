@@ -34,6 +34,7 @@ class KullaniciYonetimi:
         "t_cetvel": "T Cetvel / Bilanço",
         "ek_raporlar": "Botanik Ek Raporlar",
         "mf_analiz": "MF Analiz Simülatörü",
+        "siparis_verme": "Sipariş Verme",
         "kullanici_yonetimi": "Kullanıcı Yönetimi"
     }
 
