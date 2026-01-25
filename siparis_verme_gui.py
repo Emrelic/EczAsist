@@ -1,8 +1,7 @@
 """
-Sipariş Verme Modülü GUI
+Sipariş Verme Modülü GUI - v2
 Stok hareket analizi bazlı sipariş hazırlama sistemi
-Accordion panel yapısı ile kısmi ve kesin sipariş ayrımı
-Aylık dağılım gösterimi
+Eşdeğer gruplu görünüm, manuel giriş, MF/Zam analizi
 """
 
 import tkinter as tk
@@ -13,7 +12,6 @@ from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 import calendar
-import csv
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -23,333 +21,378 @@ logger = logging.getLogger(__name__)
 
 
 class SiparisVermeGUI:
-    """Sipariş Verme Modülü Penceresi"""
+    """Sipariş Verme Modülü Penceresi - v2"""
 
-    # Varsayılan seçili ürün tipleri
     VARSAYILAN_URUN_TIPLERI = ['İLAÇ', 'PASİF İLAÇ', 'SERUMLAR']
 
     # Renkler
-    RENK_GIRIS = '#C8E6C9'  # Açık yeşil
-    RENK_CIKIS = '#FFCDD2'  # Açık pembe
-    RENK_ALT_TOPLAM = '#B0BEC5'  # Koyu gri
-    RENK_GRUP_BASLIK = '#78909C'  # Daha koyu gri
-    RENK_KISMI = '#FFF3E0'  # Açık turuncu
-    RENK_KESIN = '#FFEBEE'  # Açık kırmızı
+    RENK_GRUP_BASLIK = '#5C6BC0'  # İndigo
+    RENK_GRUP_ICERIK = '#E8EAF6'  # Açık indigo
+    RENK_ALT_TOPLAM = '#9FA8DA'   # Orta indigo
+    RENK_SIPARIS_GEREK = '#FFCDD2'  # Açık kırmızı
+    RENK_YETERLI = '#C8E6C9'       # Açık yeşil
+    RENK_TEK_SATIR = '#FFFFFF'     # Beyaz
 
     def __init__(self, parent):
         self.parent = parent
         self.parent.title("Sipariş Verme Modülü")
-        self.parent.geometry("1600x900")
+        self.parent.geometry("1700x950")
 
         self.db = None
-        self.veriler = []
-        self.islenenmis_veriler = []
-        self.kismi_siparis_verileri = []
-        self.kesin_siparis_verileri = []
+        self.tum_veriler = []           # Tüm işlenmiş veriler
+        self.gorunen_veriler = []       # Filtrelenmiş görünen veriler
+        self.kesin_siparis_listesi = [] # Kesinleşmiş siparişler
+        self.secili_urun = None         # Detay paneli için seçili ürün
 
         # Parametre değişkenleri
+        self.sene_sayisi = tk.IntVar(value=1)
         self.ay_sayisi = tk.IntVar(value=6)
+        self.beklenen_zam_orani = tk.DoubleVar(value=0.0)
 
-        # Ürün tipi çoklu seçim için
+        # Checkbox değişkenleri
+        self.hedef_tarih_aktif = tk.BooleanVar(value=False)
+        self.min_stok_aktif = tk.BooleanVar(value=True)
+        self.zam_aktif = tk.BooleanVar(value=False)
+        self.yeterlileri_gizle = tk.BooleanVar(value=False)
+
+        # Ürün tipi seçimi
         self.urun_tipi_vars = {}
         self.urun_tipleri_listesi = []
-
-        # Sipariş parametreleri
-        self.beklenen_zam_orani = tk.DoubleVar(value=0.0)
-        self.min_stok_tamamla = tk.BooleanVar(value=True)  # Varsayılan: işaretli
-
-        # Accordion panelleri
-        self.accordion_frame = None
-        self.kismi_panel = None
-        self.kesin_panel = None
 
         # Dinamik sütunlar
         self.aktif_sutunlar = []
         self.aktif_basliklar = {}
+
+        # Manuel giriş değerleri {urun_id: miktar}
+        self.manuel_miktarlar = {}
+        self.manuel_mf_girisler = {}  # {urun_id: "5+1"}
 
         self._arayuz_olustur()
         self._baglanti_kur()
 
     def _arayuz_olustur(self):
         """Ana arayüzü oluştur"""
-        # Ana frame
-        main_frame = ttk.Frame(self.parent, padding=5)
+        main_frame = ttk.Frame(self.parent, padding=3)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Üst panel - Parametreler (tek satır, kompakt)
+        # Üst panel - Parametreler (2 satır)
         self._parametre_panel_olustur(main_frame)
 
-        # Alt panel - 3 eşit accordion panel (Ana Veri, Kısmi, Kesin)
-        self._uc_panel_olustur(main_frame)
+        # Orta bölüm - Ana DataGrid + Detay Paneli
+        self._orta_bolum_olustur(main_frame)
+
+        # Alt bölüm - Kesin Sipariş Listesi
+        self._kesin_liste_olustur(main_frame)
 
         # Status bar
         self._status_bar_olustur(main_frame)
 
     def _parametre_panel_olustur(self, parent):
-        """Parametre panelini oluştur - tek satır kompakt tasarım"""
-        # Ana parametre çerçevesi
+        """Parametre panelini oluştur - 2 satır kompakt"""
         param_frame = tk.Frame(parent, bg='#ECEFF1', relief='raised', bd=1)
-        param_frame.pack(fill=tk.X, pady=(0, 5))
+        param_frame.pack(fill=tk.X, pady=(0, 3))
 
-        # Tek satır - tüm kontroller yan yana
-        row = tk.Frame(param_frame, bg='#ECEFF1')
-        row.pack(fill=tk.X, padx=5, pady=5)
+        # ═══════════════════════════════════════════════════════════
+        # SATIR 1: Temel Parametreler
+        # ═══════════════════════════════════════════════════════════
+        row1 = tk.Frame(param_frame, bg='#ECEFF1')
+        row1.pack(fill=tk.X, padx=5, pady=3)
 
-        # ══════ GRUP 1: Analiz Parametreleri ══════
-        grp1 = tk.Frame(row, bg='#E3F2FD', relief='groove', bd=1)
-        grp1.pack(side=tk.LEFT, padx=(0, 8), pady=2)
+        # Grup 1: Hareket Süresi
+        grp1 = tk.Frame(row1, bg='#E3F2FD', relief='groove', bd=1)
+        grp1.pack(side=tk.LEFT, padx=(0, 5), pady=1)
 
-        tk.Label(grp1, text="Ay:", font=('Arial', 9, 'bold'), bg='#E3F2FD').pack(side=tk.LEFT, padx=(5, 2))
-        ay_combo = ttk.Combobox(grp1, textvariable=self.ay_sayisi, width=3, state="readonly")
+        tk.Label(grp1, text="Hareket:", font=('Arial', 8, 'bold'), bg='#E3F2FD').pack(side=tk.LEFT, padx=(3, 2))
+        sene_combo = ttk.Combobox(grp1, textvariable=self.sene_sayisi, width=2, state="readonly")
+        sene_combo['values'] = [1, 2, 3]
+        sene_combo.pack(side=tk.LEFT, padx=(0, 1))
+        tk.Label(grp1, text="yıl", font=('Arial', 8), bg='#E3F2FD').pack(side=tk.LEFT, padx=(0, 3))
+
+        # Grup 2: Aylık Gidiş
+        grp2 = tk.Frame(row1, bg='#E3F2FD', relief='groove', bd=1)
+        grp2.pack(side=tk.LEFT, padx=(0, 5), pady=1)
+
+        tk.Label(grp2, text="Aylık:", font=('Arial', 8, 'bold'), bg='#E3F2FD').pack(side=tk.LEFT, padx=(3, 2))
+        ay_combo = ttk.Combobox(grp2, textvariable=self.ay_sayisi, width=2, state="readonly")
         ay_combo['values'] = [3, 6, 9, 12]
-        ay_combo.set(6)
-        ay_combo.pack(side=tk.LEFT, padx=(0, 5))
+        ay_combo.pack(side=tk.LEFT, padx=(0, 1))
+        tk.Label(grp2, text="ay", font=('Arial', 8), bg='#E3F2FD').pack(side=tk.LEFT, padx=(0, 3))
 
-        # Ürün Tipi
-        tk.Label(grp1, text="Tip:", font=('Arial', 9, 'bold'), bg='#E3F2FD').pack(side=tk.LEFT, padx=(5, 2))
+        # Grup 3: Ürün Tipi
+        grp3 = tk.Frame(row1, bg='#E3F2FD', relief='groove', bd=1)
+        grp3.pack(side=tk.LEFT, padx=(0, 5), pady=1)
+
+        tk.Label(grp3, text="Tip:", font=('Arial', 8, 'bold'), bg='#E3F2FD').pack(side=tk.LEFT, padx=(3, 2))
         self.urun_tipi_menubutton = tk.Menubutton(
-            grp1, text="...", relief=tk.RAISED, width=14, font=('Arial', 8), bg='white'
+            grp3, text="...", relief=tk.RAISED, width=12, font=('Arial', 7), bg='white'
         )
         self.urun_tipi_menu = tk.Menu(self.urun_tipi_menubutton, tearoff=0)
         self.urun_tipi_menubutton["menu"] = self.urun_tipi_menu
-        self.urun_tipi_menubutton.pack(side=tk.LEFT, padx=(0, 3))
+        self.urun_tipi_menubutton.pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Button(grp3, text="T", command=self._tum_tipleri_sec, width=2).pack(side=tk.LEFT, padx=1)
+        ttk.Button(grp3, text="V", command=self._varsayilan_tipleri_sec, width=2).pack(side=tk.LEFT, padx=(0, 3))
 
-        ttk.Button(grp1, text="T", command=self._tum_tipleri_sec, width=2).pack(side=tk.LEFT, padx=1)
-        ttk.Button(grp1, text="V", command=self._varsayilan_tipleri_sec, width=2).pack(side=tk.LEFT, padx=(0, 5))
+        # Grup 4: Hedef Tarih
+        grp4 = tk.Frame(row1, bg='#E8F5E9', relief='groove', bd=1)
+        grp4.pack(side=tk.LEFT, padx=(0, 5), pady=1)
 
-        # ══════ GRUP 2: Tarih Parametreleri ══════
-        grp2 = tk.Frame(row, bg='#E8F5E9', relief='groove', bd=1)
-        grp2.pack(side=tk.LEFT, padx=(0, 8), pady=2)
+        self.hedef_check = tk.Checkbutton(
+            grp4, text="Hedef:", variable=self.hedef_tarih_aktif,
+            bg='#E8F5E9', font=('Arial', 8, 'bold'), activebackground='#E8F5E9'
+        )
+        self.hedef_check.pack(side=tk.LEFT, padx=(3, 2))
 
-        tk.Label(grp2, text="Hedef:", font=('Arial', 9, 'bold'), bg='#E8F5E9').pack(side=tk.LEFT, padx=(5, 2))
         bugun = datetime.now()
         ay_son_gun = calendar.monthrange(bugun.year, bugun.month)[1]
         self.hedef_tarih_entry = DateEntry(
-            grp2, width=10, background='#1976D2', foreground='white',
+            grp4, width=9, background='#1976D2', foreground='white',
             borderwidth=1, date_pattern='yyyy-mm-dd',
             year=bugun.year, month=bugun.month, day=ay_son_gun
         )
-        self.hedef_tarih_entry.pack(side=tk.LEFT, padx=(0, 3))
-        ttk.Button(grp2, text="AySonu", command=self._ay_sonu_sec, width=6).pack(side=tk.LEFT, padx=(0, 5))
+        self.hedef_tarih_entry.pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Button(grp4, text="AySonu", command=self._ay_sonu_sec, width=5).pack(side=tk.LEFT, padx=(0, 3))
 
-        # ══════ GRUP 3: Zam Parametreleri ══════
-        grp3 = tk.Frame(row, bg='#FFF3E0', relief='groove', bd=1)
-        grp3.pack(side=tk.LEFT, padx=(0, 8), pady=2)
+        # Grup 5: Zam
+        grp5 = tk.Frame(row1, bg='#FFF3E0', relief='groove', bd=1)
+        grp5.pack(side=tk.LEFT, padx=(0, 5), pady=1)
 
-        tk.Label(grp3, text="Zam%:", font=('Arial', 9), bg='#FFF3E0').pack(side=tk.LEFT, padx=(5, 2))
-        zam_entry = ttk.Entry(grp3, textvariable=self.beklenen_zam_orani, width=4)
-        zam_entry.pack(side=tk.LEFT, padx=(0, 5))
+        self.zam_check = tk.Checkbutton(
+            grp5, text="Zam:", variable=self.zam_aktif,
+            bg='#FFF3E0', font=('Arial', 8, 'bold'), activebackground='#FFF3E0'
+        )
+        self.zam_check.pack(side=tk.LEFT, padx=(3, 1))
 
-        tk.Label(grp3, text="Tarih:", font=('Arial', 9), bg='#FFF3E0').pack(side=tk.LEFT, padx=(0, 2))
+        tk.Label(grp5, text="%", font=('Arial', 8), bg='#FFF3E0').pack(side=tk.LEFT)
+        zam_entry = ttk.Entry(grp5, textvariable=self.beklenen_zam_orani, width=4)
+        zam_entry.pack(side=tk.LEFT, padx=(0, 3))
+
         self.zam_tarih_entry = DateEntry(
-            grp3, width=10, background='#E65100', foreground='white',
+            grp5, width=9, background='#E65100', foreground='white',
             borderwidth=1, date_pattern='yyyy-mm-dd'
         )
-        self.zam_tarih_entry.pack(side=tk.LEFT, padx=(0, 5))
+        self.zam_tarih_entry.pack(side=tk.LEFT, padx=(0, 3))
 
-        # ══════ GRUP 4: Minimum Stok Ayarı ══════
-        grp4 = tk.Frame(row, bg='#E8EAF6', relief='groove', bd=1)
-        grp4.pack(side=tk.LEFT, padx=(0, 8), pady=2)
+        # Grup 6: Min Stok
+        grp6 = tk.Frame(row1, bg='#F3E5F5', relief='groove', bd=1)
+        grp6.pack(side=tk.LEFT, padx=(0, 5), pady=1)
 
-        self.min_stok_check = tk.Checkbutton(
-            grp4, text="Min. stok tamamla",
-            variable=self.min_stok_tamamla,
-            bg='#E8EAF6', font=('Arial', 8),
-            activebackground='#E8EAF6'
+        self.min_check = tk.Checkbutton(
+            grp6, text="Min.Stok", variable=self.min_stok_aktif,
+            bg='#F3E5F5', font=('Arial', 8), activebackground='#F3E5F5'
         )
-        self.min_stok_check.pack(side=tk.LEFT, padx=5, pady=2)
+        self.min_check.pack(side=tk.LEFT, padx=3)
 
-        # ══════ GRUP 5: Aksiyon Butonları ══════
-        grp5 = tk.Frame(row, bg='#ECEFF1')
-        grp5.pack(side=tk.LEFT, padx=(5, 0), pady=2)
+        # Butonlar
+        btn_frame = tk.Frame(row1, bg='#ECEFF1')
+        btn_frame.pack(side=tk.LEFT, padx=(10, 0), pady=1)
 
         self.getir_btn = tk.Button(
-            grp5, text="VERİLERİ GETİR", command=self.verileri_getir,
+            btn_frame, text="VERİLERİ GETİR", command=self.verileri_getir,
             bg='#1976D2', fg='white', font=('Arial', 9, 'bold'),
-            relief='raised', bd=2, padx=10
+            relief='raised', bd=2, padx=8
         )
         self.getir_btn.pack(side=tk.LEFT, padx=(0, 5))
 
-        self.siparis_olustur_btn = tk.Button(
-            grp5, text="SİPARİŞ OLUŞTUR", command=self.siparis_olustur,
-            bg='#388E3C', fg='white', font=('Arial', 9, 'bold'),
-            relief='raised', bd=2, padx=10, state=tk.DISABLED
-        )
-        self.siparis_olustur_btn.pack(side=tk.LEFT, padx=(0, 5))
-
         self.excel_btn = tk.Button(
-            grp5, text="EXCEL", command=self.excel_aktar,
+            btn_frame, text="EXCEL", command=self.excel_aktar,
             bg='#FF6F00', fg='white', font=('Arial', 9, 'bold'),
-            relief='raised', bd=2, padx=8
+            relief='raised', bd=2, padx=6
         )
         self.excel_btn.pack(side=tk.LEFT)
 
-        # ══════ Bilgi Etiketi (sağda) ══════
+        # Sağda bilgi etiketi
         self.hesaplama_label = tk.Label(
-            row, text="", font=('Arial', 9, 'bold'), bg='#ECEFF1', fg='#1565C0'
+            row1, text="", font=('Arial', 9, 'bold'), bg='#ECEFF1', fg='#1565C0'
         )
-        self.hesaplama_label.pack(side=tk.RIGHT, padx=10)
+        self.hesaplama_label.pack(side=tk.RIGHT, padx=5)
 
-    def _uc_panel_olustur(self, parent):
-        """Üç eşit büyüklükte accordion panel oluştur"""
-        # PanedWindow kullanarak eşit bölünebilir paneller
-        self.paned = tk.PanedWindow(parent, orient=tk.VERTICAL, sashwidth=4, sashrelief=tk.RAISED, bg='#90A4AE')
-        self.paned.pack(fill=tk.BOTH, expand=True)
+        # ═══════════════════════════════════════════════════════════
+        # SATIR 2: Filtre ve Toggle
+        # ═══════════════════════════════════════════════════════════
+        row2 = tk.Frame(param_frame, bg='#ECEFF1')
+        row2.pack(fill=tk.X, padx=5, pady=(0, 3))
 
-        # Temel sütun tanımları
-        self.temel_sutunlar = [
-            ("UrunTipi", "Ürün Tipi", 90),
-            ("UrunAdi", "Ürün Adı", 250),
-            ("Esdeger", "Eşdeğer", 70),
-            ("Stok", "Stok", 50),
-            ("MinStok", "Min", 40),
-            ("MF", "MF", 70),
-        ]
-        self.son_sutunlar = [
-            ("AylikOrt", "Aylık Ort", 65),
-            ("GunlukOrt", "Gün.Ort", 55),
-            ("AyBitis", "Ay Bitiş", 60),
-            ("HedefGun", "Hdf.Gün", 55),
-            ("Ihtiyac", "İhtiyaç", 60),
-            ("SiparisMiktar", "Sipariş", 60),
-        ]
-
-        # ═══════════════════════════════════════════════════════════════
-        # PANEL 1: Ana Stok Verileri (Mavi tema)
-        # ═══════════════════════════════════════════════════════════════
-        self.ana_panel_frame = self._create_panel_v2(
-            "📊 STOK VE HAREKET VERİLERİ",
-            '#1976D2', '#E3F2FD', 'white'
+        # Yeterlileri Gizle Toggle
+        self.gizle_btn = tk.Button(
+            row2, text="Yeterlileri Gizle: KAPALI", command=self._toggle_yeterlileri_gizle,
+            bg='#78909C', fg='white', font=('Arial', 8, 'bold'),
+            relief='raised', bd=2, padx=8
         )
-        self.paned.add(self.ana_panel_frame, minsize=100)
+        self.gizle_btn.pack(side=tk.LEFT, padx=(0, 10))
 
-        # Ana tablo içeriği
-        self._ana_tablo_icerigi_olustur(self.ana_panel_frame)
+        # Toplu işlem butonları
+        tk.Button(
+            row2, text="Tüm Önerileri Manuel'e Kopyala", command=self._tum_onerileri_kopyala,
+            bg='#7B1FA2', fg='white', font=('Arial', 8), relief='raised', bd=1, padx=5
+        ).pack(side=tk.LEFT, padx=(0, 5))
 
-        # ═══════════════════════════════════════════════════════════════
-        # PANEL 2: Kısmi Sipariş (Turuncu tema)
-        # ═══════════════════════════════════════════════════════════════
-        self.kismi_panel_frame = self._create_panel_v2(
-            "🟠 KISMİ SİPARİŞ - Muadil Yeterli",
-            '#E65100', '#FFF3E0', 'white'
-        )
-        self.paned.add(self.kismi_panel_frame, minsize=100)
+        tk.Button(
+            row2, text="Seçilileri Kesin Listeye Ekle", command=self._secilileri_kesin_listeye_ekle,
+            bg='#388E3C', fg='white', font=('Arial', 8), relief='raised', bd=1, padx=5
+        ).pack(side=tk.LEFT, padx=(0, 5))
 
-        # Kısmi sipariş placeholder
-        self.kismi_content = tk.Frame(self.kismi_panel_frame, bg='#FFF3E0')
-        self.kismi_content.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-        self.kismi_placeholder = tk.Label(
-            self.kismi_content,
-            text="Sipariş oluşturmak için önce 'VERİLERİ GETİR' butonuna tıklayın",
-            bg='#FFF3E0', fg='#E65100', font=('Arial', 10, 'italic')
-        )
-        self.kismi_placeholder.pack(expand=True)
+    def _orta_bolum_olustur(self, parent):
+        """Orta bölüm - Ana DataGrid + Detay Paneli"""
+        # PanedWindow ile bölünebilir
+        self.orta_paned = tk.PanedWindow(parent, orient=tk.HORIZONTAL, sashwidth=4, bg='#90A4AE')
+        self.orta_paned.pack(fill=tk.BOTH, expand=True, pady=(0, 3))
 
-        # ═══════════════════════════════════════════════════════════════
-        # PANEL 3: Kesin Sipariş (Kırmızı tema)
-        # ═══════════════════════════════════════════════════════════════
-        self.kesin_panel_frame = self._create_panel_v2(
-            "🔴 KESİN SİPARİŞ - Muadil Yetersiz/Yok",
-            '#C62828', '#FFEBEE', 'white'
-        )
-        self.paned.add(self.kesin_panel_frame, minsize=100)
+        # Sol: Ana DataGrid
+        self._ana_grid_olustur()
 
-        # Kesin sipariş placeholder
-        self.kesin_content = tk.Frame(self.kesin_panel_frame, bg='#FFEBEE')
-        self.kesin_content.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-        self.kesin_placeholder = tk.Label(
-            self.kesin_content,
-            text="Sipariş oluşturmak için önce 'VERİLERİ GETİR' butonuna tıklayın",
-            bg='#FFEBEE', fg='#C62828', font=('Arial', 10, 'italic')
-        )
-        self.kesin_placeholder.pack(expand=True)
+        # Sağ: Detay Paneli
+        self._detay_panel_olustur()
 
-    def _create_panel_v2(self, title, header_bg, content_bg, header_fg):
-        """Yeni panel yapısı - başlık + içerik"""
-        frame = tk.Frame(self.paned, bg=content_bg, relief='sunken', bd=1)
+    def _ana_grid_olustur(self):
+        """Ana DataGrid - gruplu görünüm"""
+        grid_frame = tk.Frame(self.orta_paned, bg='#FAFAFA', relief='sunken', bd=1)
+        self.orta_paned.add(grid_frame, minsize=900, width=1200)
 
-        # Başlık çubuğu
-        header = tk.Frame(frame, bg=header_bg, height=28)
+        # Başlık
+        header = tk.Frame(grid_frame, bg='#1976D2', height=26)
         header.pack(fill=tk.X)
         header.pack_propagate(False)
+        tk.Label(header, text="📊 STOK VE SİPARİŞ ANALİZİ", bg='#1976D2', fg='white',
+                font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=10)
 
-        tk.Label(
-            header, text=title, bg=header_bg, fg=header_fg,
-            font=('Arial', 10, 'bold'), anchor='w'
-        ).pack(side=tk.LEFT, padx=10, pady=3)
+        # Treeview için frame
+        tree_container = tk.Frame(grid_frame, bg='#FAFAFA')
+        tree_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
 
-        return frame
+        # Sütun tanımları
+        self.ana_sutunlar = [
+            ("Tur", "", 25),
+            ("UrunAdi", "Ürün Adı", 220),
+            ("Stok", "Stok", 45),
+            ("Min", "Min", 35),
+            ("Sart1", "Şart1", 50),
+            ("Sart2", "Şart2", 50),
+            ("Sart3", "Şart3", 50),
+        ]
 
-    def _ana_tablo_icerigi_olustur(self, parent):
-        """Ana tablo içeriğini oluştur"""
-        content = tk.Frame(parent, bg='#E3F2FD')
-        content.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        # Aylık sütunlar dinamik eklenecek
+        self.aylik_sutunlar = []
+
+        self.son_sutunlar = [
+            ("AylikOrt", "Aylık", 50),
+            ("GunlukOrt", "Gün", 40),
+            ("AyBitis", "AyBitiş", 50),
+            ("Oneri", "Öneri", 50),
+            ("Manuel", "Manuel", 50),
+            ("MF", "MF", 45),
+        ]
 
         # Treeview
-        self.ana_tree = ttk.Treeview(content, columns=[], show='headings')
+        self.ana_tree = ttk.Treeview(tree_container, show='headings', selectmode='extended')
 
         # Scrollbarlar
-        vsb = ttk.Scrollbar(content, orient="vertical", command=self.ana_tree.yview)
-        hsb = ttk.Scrollbar(content, orient="horizontal", command=self.ana_tree.xview)
+        vsb = ttk.Scrollbar(tree_container, orient="vertical", command=self.ana_tree.yview)
+        hsb = ttk.Scrollbar(tree_container, orient="horizontal", command=self.ana_tree.xview)
         self.ana_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
-        # Grid
-        content.columnconfigure(0, weight=1)
-        content.rowconfigure(0, weight=1)
+        # Grid yerleşimi
+        tree_container.columnconfigure(0, weight=1)
+        tree_container.rowconfigure(0, weight=1)
         self.ana_tree.grid(row=0, column=0, sticky='nsew')
         vsb.grid(row=0, column=1, sticky='ns')
         hsb.grid(row=1, column=0, sticky='ew')
 
-        # Renk etiketleri
-        self.ana_tree.tag_configure('normal', background='white')
-        self.ana_tree.tag_configure('eksik', background='#FFCDD2')
-        self.ana_tree.tag_configure('yeterli', background='#C8E6C9')
-        self.ana_tree.tag_configure('grup_baslik', background='#78909C', font=('Arial', 9, 'bold'))
-        self.ana_tree.tag_configure('alt_toplam', background='#B0BEC5', font=('Arial', 9, 'bold'))
+        # Tag'ler
+        self.ana_tree.tag_configure('grup_baslik', background=self.RENK_GRUP_BASLIK, foreground='white')
+        self.ana_tree.tag_configure('grup_satir', background=self.RENK_GRUP_ICERIK)
+        self.ana_tree.tag_configure('grup_satir_siparis', background='#FFCDD2')
+        self.ana_tree.tag_configure('alt_toplam', background=self.RENK_ALT_TOPLAM, foreground='#1A237E')
+        self.ana_tree.tag_configure('tek_satir', background=self.RENK_TEK_SATIR)
+        self.ana_tree.tag_configure('tek_satir_siparis', background='#FFCDD2')
 
-    def _sutunlari_guncelle(self, ay_sayisi):
-        """Aylık sütunları dinamik olarak güncelle"""
-        sutunlar = list(self.temel_sutunlar)
-        basliklar = {col[0]: col[1] for col in self.temel_sutunlar}
+        # Seçim olayı
+        self.ana_tree.bind('<<TreeviewSelect>>', self._satir_secildi)
+        self.ana_tree.bind('<Double-1>', self._satir_cift_tiklandi)
 
-        # Aylık sütunları ekle (eskiden yeniye doğru)
-        bugun = datetime.now()
-        ay_isimleri = []
-        for i in range(ay_sayisi - 1, -1, -1):
-            ay_tarihi = bugun - relativedelta(months=i)
-            ay_adi = ay_tarihi.strftime('%b%y')  # Şub25, Mar25 gibi
-            col_id = f"Ay_{i}"
-            sutunlar.append((col_id, ay_adi, 50))
-            basliklar[col_id] = ay_adi
-            ay_isimleri.append((col_id, ay_adi))
+    def _detay_panel_olustur(self):
+        """Sağ taraftaki detay paneli"""
+        detay_frame = tk.Frame(self.orta_paned, bg='#F5F5F5', relief='sunken', bd=1)
+        self.orta_paned.add(detay_frame, minsize=280, width=350)
 
-        # Son sütunları ekle
-        for col in self.son_sutunlar:
-            sutunlar.append(col)
-            basliklar[col[0]] = col[1]
+        # Başlık
+        header = tk.Frame(detay_frame, bg='#5C6BC0', height=26)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
+        tk.Label(header, text="📝 İLAÇ DETAY", bg='#5C6BC0', fg='white',
+                font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=10)
 
-        # Treeview sütunlarını güncelle
-        col_ids = [c[0] for c in sutunlar]
-        self.ana_tree['columns'] = col_ids
+        # İçerik
+        self.detay_content = tk.Frame(detay_frame, bg='#F5F5F5')
+        self.detay_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        for col_id, baslik, width in sutunlar:
-            self.ana_tree.heading(col_id, text=baslik)
-            self.ana_tree.column(col_id, width=width, minwidth=40)
+        # Placeholder
+        self.detay_placeholder = tk.Label(
+            self.detay_content,
+            text="Detay görmek için\nbir ilaç satırı seçin",
+            bg='#F5F5F5', fg='#9E9E9E', font=('Arial', 11, 'italic'),
+            justify='center'
+        )
+        self.detay_placeholder.pack(expand=True)
 
-        self.aktif_sutunlar = sutunlar
-        self.aktif_basliklar = basliklar
+    def _kesin_liste_olustur(self, parent):
+        """Alt kısımdaki kesin sipariş listesi"""
+        kesin_frame = tk.Frame(parent, bg='#FAFAFA', relief='sunken', bd=1, height=150)
+        kesin_frame.pack(fill=tk.X, pady=(0, 3))
+        kesin_frame.pack_propagate(False)
 
+        # Başlık
+        header = tk.Frame(kesin_frame, bg='#388E3C', height=26)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
+
+        tk.Label(header, text="✓ KESİNLEŞMİŞ SİPARİŞ LİSTESİ", bg='#388E3C', fg='white',
+                font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=10)
+
+        tk.Button(header, text="Listeyi Temizle", command=self._kesin_listeyi_temizle,
+                 bg='#C62828', fg='white', font=('Arial', 8), relief='flat', padx=5
+                 ).pack(side=tk.RIGHT, padx=5, pady=2)
+
+        tk.Button(header, text="Excel'e Aktar", command=self._kesin_listeyi_excel_aktar,
+                 bg='#FF6F00', fg='white', font=('Arial', 8), relief='flat', padx=5
+                 ).pack(side=tk.RIGHT, padx=2, pady=2)
+
+        # Treeview
+        tree_frame = tk.Frame(kesin_frame, bg='#FAFAFA')
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+
+        columns = [
+            ("UrunAdi", "Ürün Adı", 300),
+            ("Miktar", "Miktar", 70),
+            ("MF", "MF", 60),
+            ("Toplam", "Toplam", 70),
+        ]
+
+        self.kesin_tree = ttk.Treeview(tree_frame, columns=[c[0] for c in columns],
+                                       show='headings', height=4)
+        for col_id, baslik, width in columns:
+            self.kesin_tree.heading(col_id, text=baslik)
+            self.kesin_tree.column(col_id, width=width, minwidth=50)
+
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.kesin_tree.yview)
+        self.kesin_tree.configure(yscrollcommand=vsb.set)
+
+        self.kesin_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
 
     def _status_bar_olustur(self, parent):
-        """Status bar oluştur"""
+        """Status bar"""
         status_frame = ttk.Frame(parent)
-        status_frame.pack(fill=tk.X, pady=(5, 0))
+        status_frame.pack(fill=tk.X)
 
         self.status_label = ttk.Label(status_frame, text="Hazır", font=('Arial', 9))
         self.status_label.pack(side=tk.LEFT)
 
         self.kayit_label = ttk.Label(status_frame, text="", font=('Arial', 9))
         self.kayit_label.pack(side=tk.RIGHT)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # VERİTABANI İŞLEMLERİ
+    # ═══════════════════════════════════════════════════════════════════════
 
     def _baglanti_kur(self):
         """Veritabanı bağlantısı kur"""
@@ -366,7 +409,7 @@ class SiparisVermeGUI:
             self.status_label.config(text=f"Hata: {e}")
 
     def _urun_tiplerini_yukle(self):
-        """Veritabanından ürün tiplerini yükle"""
+        """Ürün tiplerini yükle"""
         try:
             if self.db:
                 tipler = self.db.urun_tipleri_getir()
@@ -380,38 +423,35 @@ class SiparisVermeGUI:
                     var = tk.BooleanVar(value=varsayilan)
                     self.urun_tipi_vars[tip_adi] = var
                     self.urun_tipi_menu.add_checkbutton(
-                        label=tip_adi,
-                        variable=var,
+                        label=tip_adi, variable=var,
                         command=self._urun_tipi_secim_guncelle
                     )
-
                 self._urun_tipi_secim_guncelle()
         except Exception as e:
             logger.error(f"Ürün tipleri yükleme hatası: {e}")
 
     def _urun_tipi_secim_guncelle(self):
         """Seçili ürün tiplerini göster"""
-        secili_tipler = [tip for tip, var in self.urun_tipi_vars.items() if var.get()]
+        secili = [t for t, v in self.urun_tipi_vars.items() if v.get()]
         toplam = len(self.urun_tipi_vars)
-        secili = len(secili_tipler)
 
-        if secili == 0:
-            self.urun_tipi_menubutton.config(text="Hiçbiri Seçili")
-        elif secili == toplam:
-            self.urun_tipi_menubutton.config(text="Tümü Seçili")
-        elif secili <= 2:
-            self.urun_tipi_menubutton.config(text=", ".join(secili_tipler[:2]))
+        if len(secili) == 0:
+            self.urun_tipi_menubutton.config(text="Hiçbiri")
+        elif len(secili) == toplam:
+            self.urun_tipi_menubutton.config(text="Tümü")
+        elif len(secili) <= 2:
+            self.urun_tipi_menubutton.config(text=", ".join(secili[:2]))
         else:
-            self.urun_tipi_menubutton.config(text=f"{secili} tip seçili")
+            self.urun_tipi_menubutton.config(text=f"{len(secili)} tip")
 
     def _tum_tipleri_sec(self):
-        for var in self.urun_tipi_vars.values():
-            var.set(True)
+        for v in self.urun_tipi_vars.values():
+            v.set(True)
         self._urun_tipi_secim_guncelle()
 
     def _varsayilan_tipleri_sec(self):
-        for tip, var in self.urun_tipi_vars.items():
-            var.set(tip in self.VARSAYILAN_URUN_TIPLERI)
+        for t, v in self.urun_tipi_vars.items():
+            v.set(t in self.VARSAYILAN_URUN_TIPLERI)
         self._urun_tipi_secim_guncelle()
 
     def _ay_sonu_sec(self):
@@ -420,19 +460,31 @@ class SiparisVermeGUI:
         self.hedef_tarih_entry.set_date(date(bugun.year, bugun.month, ay_son_gun))
 
     def _hedef_gun_hesapla(self):
+        """Hedef tarihe kalan gün sayısı"""
         try:
-            hedef = self.hedef_tarih_entry.get_date()
+            if self.hedef_tarih_aktif.get():
+                hedef = self.hedef_tarih_entry.get_date()
+            else:
+                # Ay sonu
+                bugun = datetime.now()
+                ay_son_gun = calendar.monthrange(bugun.year, bugun.month)[1]
+                hedef = date(bugun.year, bugun.month, ay_son_gun)
+
             bugun = date.today()
             fark = (hedef - bugun).days
             return max(0, fark)
         except:
             return 0
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # VERİ GETİRME
+    # ═══════════════════════════════════════════════════════════════════════
+
     def verileri_getir(self):
         """Veritabanından verileri getir"""
-        secili_urun_tipleri = [tip for tip, var in self.urun_tipi_vars.items() if var.get()]
+        secili_tipler = [t for t, v in self.urun_tipi_vars.items() if v.get()]
 
-        if not secili_urun_tipleri:
+        if not secili_tipler:
             messagebox.showwarning("Uyarı", "En az bir ürün tipi seçmelisiniz!")
             return
 
@@ -441,24 +493,25 @@ class SiparisVermeGUI:
 
         def sorgu_thread():
             try:
-                ay = self.ay_sayisi.get()
-
                 from botanik_db import BotanikDB
                 db = BotanikDB()
                 if not db.baglan():
                     self.parent.after(0, lambda: messagebox.showerror("Hata", "Veritabanına bağlanılamadı!"))
                     return
 
-                # Verileri al
-                veriler = self._verileri_getir_sql(db, ay, secili_urun_tipleri)
+                sene = self.sene_sayisi.get()
+                ay = self.ay_sayisi.get()
 
-                # MF geçmişini al
-                mf_gecmisi = self._mf_gecmisi_getir(db)
+                # Ana verileri getir
+                veriler = self._verileri_getir_sql(db, sene, ay, secili_tipler)
+
+                # MF şartlarını getir
+                mf_sartlari = self._mf_sartlari_getir(db)
 
                 db.kapat()
 
                 # Verileri işle
-                islenenmis = self._verileri_isle(veriler, mf_gecmisi, ay)
+                islenenmis = self._verileri_isle(veriler, mf_sartlari, ay)
 
                 self.parent.after(0, lambda: self._veriler_yuklendi(islenenmis, ay))
 
@@ -471,14 +524,19 @@ class SiparisVermeGUI:
         thread = threading.Thread(target=sorgu_thread)
         thread.start()
 
-    def _verileri_getir_sql(self, db, ay_sayisi, urun_tipleri):
-        """Stok ve aylık çıkış verilerini getir"""
+    def _verileri_getir_sql(self, db, sene_sayisi, ay_sayisi, urun_tipleri):
+        """SQL sorgusu - X sene hareket görmüş + Y ay aylık dağılım"""
         bugun = datetime.now()
-        baslangic = (bugun - relativedelta(months=ay_sayisi)).replace(day=1).strftime('%Y-%m-%d')
+
+        # X sene içinde hareket görmüş ürünler için
+        hareket_baslangic = (bugun - relativedelta(years=sene_sayisi)).strftime('%Y-%m-%d')
+
+        # Y ay için aylık dağılım
+        aylik_baslangic = (bugun - relativedelta(months=ay_sayisi)).replace(day=1).strftime('%Y-%m-%d')
 
         tipler_sql = ', '.join([f"'{t}'" for t in urun_tipleri])
 
-        # Aylık CASE ifadeleri oluştur
+        # Aylık CASE ifadeleri
         aylik_cases = []
         for i in range(ay_sayisi):
             ay_tarihi = bugun - relativedelta(months=i)
@@ -498,35 +556,41 @@ class SiparisVermeGUI:
         aylik_kolonlar = ",\n".join(aylik_cases)
 
         sql = f"""
-        ;WITH CikisVerileri AS (
-            -- Reçeteli satışlar (kayıt tarihine göre)
-            SELECT
-                ri.RIUrunId as UrunId,
-                ri.RIAdet as Adet,
-                CAST(ra.RxKayitTarihi as date) as Tarih
+        ;WITH HareketliUrunler AS (
+            -- Son X sene içinde hareket görmüş ürünler
+            SELECT DISTINCT ri.RIUrunId as UrunId
+            FROM ReceteIlaclari ri
+            JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0
+            AND ra.RxKayitTarihi >= '{hareket_baslangic}'
+
+            UNION
+
+            SELECT DISTINCT ei.RIUrunId as UrunId
+            FROM EldenIlaclari ei
+            JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0
+            AND ea.RxKayitTarihi >= '{hareket_baslangic}'
+        ),
+        CikisVerileri AS (
+            SELECT ri.RIUrunId as UrunId, ri.RIAdet as Adet, CAST(ra.RxKayitTarihi as date) as Tarih
             FROM ReceteIlaclari ri
             JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
             WHERE ra.RxSilme = 0 AND ri.RISilme = 0
             AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
-            AND ra.RxKayitTarihi >= '{baslangic}'
+            AND ra.RxKayitTarihi >= '{aylik_baslangic}'
 
             UNION ALL
 
-            -- Elden satışlar
-            SELECT
-                ei.RIUrunId as UrunId,
-                ei.RIAdet as Adet,
-                CAST(ea.RxKayitTarihi as date) as Tarih
+            SELECT ei.RIUrunId as UrunId, ei.RIAdet as Adet, CAST(ea.RxKayitTarihi as date) as Tarih
             FROM EldenIlaclari ei
             JOIN EldenAna ea ON ei.RIRxId = ea.RxId
             WHERE ea.RxSilme = 0 AND ei.RISilme = 0
             AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
-            AND ea.RxKayitTarihi >= '{baslangic}'
+            AND ea.RxKayitTarihi >= '{aylik_baslangic}'
         ),
         UrunAylikOzet AS (
-            SELECT
-                UrunId,
-                SUM(Adet) as ToplamCikis,
+            SELECT UrunId, SUM(Adet) as ToplamCikis,
                 {aylik_kolonlar}
             FROM CikisVerileri
             GROUP BY UrunId
@@ -542,26 +606,26 @@ class SiparisVermeGUI:
             COALESCE(ao.ToplamCikis, 0) as ToplamCikis,
             {', '.join([f'COALESCE(ao.Ay_{i}, 0) as Ay_{i}' for i in range(ay_sayisi)])}
         FROM Urun u
+        INNER JOIN HareketliUrunler hu ON u.UrunId = hu.UrunId
         LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
         LEFT JOIN UrunAylikOzet ao ON u.UrunId = ao.UrunId
         WHERE u.UrunSilme = 0
         AND ut.UrunTipAdi IN ({tipler_sql})
-        AND (ao.ToplamCikis > 0 OR (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) > 0)
         ORDER BY u.UrunEsdegerId, u.UrunAdi
         """
 
         return db.sorgu_calistir(sql)
 
-    def _mf_gecmisi_getir(self, db):
-        """Son 1 yıldaki MF alımlarını getir"""
+    def _mf_sartlari_getir(self, db):
+        """Son 1 yılda alınan MF şartlarını getir (5+1 formatında)"""
         bugun = datetime.now()
         baslangic = (bugun - relativedelta(years=1)).strftime('%Y-%m-%d')
 
         sql = f"""
         SELECT
             fs.FSUrunId as UrunId,
-            fs.FSUrunAdet as Adet,
-            fs.FSUrunMf as MF,
+            CAST(fs.FSUrunAdet as int) as Adet,
+            CAST(fs.FSUrunMf as int) as MF,
             fg.FGFaturaTarihi as Tarih
         FROM FaturaSatir fs
         JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
@@ -573,26 +637,34 @@ class SiparisVermeGUI:
 
         sonuclar = db.sorgu_calistir(sql)
 
-        mf_ozet = {}
+        # Her ürün için en fazla 3 farklı şart
+        mf_sartlari = {}
         for row in sonuclar:
             urun_id = row['UrunId']
-            if urun_id not in mf_ozet:
-                mf_ozet[urun_id] = []
-
             adet = row['Adet'] or 0
             mf = row['MF'] or 0
+
             if mf > 0:
-                mf_ozet[urun_id].append(f"{adet}+{mf}")
+                sart = f"{adet}+{mf}"
+                if urun_id not in mf_sartlari:
+                    mf_sartlari[urun_id] = []
 
-        return mf_ozet
+                # Aynı şart yoksa ekle
+                if sart not in mf_sartlari[urun_id] and len(mf_sartlari[urun_id]) < 3:
+                    mf_sartlari[urun_id].append(sart)
 
-    def _verileri_isle(self, veriler, mf_gecmisi, ay_sayisi):
+        return mf_sartlari
+
+    def _verileri_isle(self, veriler, mf_sartlari, ay_sayisi):
         """Verileri işle ve hesapla"""
         if not veriler:
             return []
 
         hedef_gun = self._hedef_gun_hesapla()
-        min_stok_aktif = self.min_stok_tamamla.get()
+        min_stok_aktif = self.min_stok_aktif.get()
+        zam_aktif = self.zam_aktif.get()
+        zam_orani = self.beklenen_zam_orani.get() / 100 if zam_aktif else 0
+
         islenenmis = []
 
         for veri in veriler:
@@ -608,23 +680,26 @@ class SiparisVermeGUI:
             # Ay bitiş (stok kaç ay yeter)
             ay_bitis = stok / aylik_ort if aylik_ort > 0 else 999
 
-            # İhtiyaç = Hedef güne kadar gereken miktar
-            ihtiyac = gunluk_ort * hedef_gun
+            # Temel ihtiyaç = hedef güne kadar gereken
+            temel_ihtiyac = gunluk_ort * hedef_gun
 
-            # Sipariş miktarı hesaplama
-            siparis_miktar = max(0, ihtiyac - stok)
+            # Sipariş önerisi hesaplama
+            oneri = max(0, temel_ihtiyac - stok)
 
-            # Minimum stok tamamlama aktifse ve stok < minimum ise
+            # Minimum stok kontrolü
             if min_stok_aktif and min_stok > 0 and stok < min_stok:
-                min_stok_eksik = min_stok - stok
-                # Sipariş miktarı en az minimum stok eksiği kadar olmalı
-                siparis_miktar = max(siparis_miktar, min_stok_eksik)
+                min_eksik = min_stok - stok
+                oneri = max(oneri, min_eksik)
 
-            # MF geçmişi
-            mf_str = ""
-            if urun_id in mf_gecmisi:
-                mf_list = mf_gecmisi[urun_id][:2]
-                mf_str = ", ".join(mf_list)
+            # Zam analizi (basit)
+            if zam_aktif and zam_orani > 0:
+                # Zam karlılık hesabı - MF Analiz mantığı
+                # Şimdilik basit: zam oranı kadar fazla al
+                zam_karli_miktar = temel_ihtiyac * (1 + zam_orani)
+                oneri = max(oneri, zam_karli_miktar - stok)
+
+            # MF şartları
+            sartlar = mf_sartlari.get(urun_id, [])
 
             esdeger_id = veri.get('EsdegerId')
 
@@ -633,17 +708,19 @@ class SiparisVermeGUI:
                 'UrunAdi': veri.get('UrunAdi', ''),
                 'UrunTipi': veri.get('UrunTipi', ''),
                 'EsdegerId': esdeger_id,
-                'Esdeger': f"#{esdeger_id}" if esdeger_id else "-",
                 'Stok': stok,
                 'MinStok': min_stok,
                 'ToplamCikis': toplam_cikis,
-                'MF': mf_str,
                 'AylikOrt': round(aylik_ort, 1),
                 'GunlukOrt': round(gunluk_ort, 2),
                 'AyBitis': round(ay_bitis, 1) if ay_bitis < 100 else ">99",
                 'HedefGun': hedef_gun,
-                'Ihtiyac': round(ihtiyac, 1),
-                'SiparisMiktar': int(round(siparis_miktar, 0)),
+                'Oneri': int(round(oneri, 0)),
+                'Manuel': self.manuel_miktarlar.get(urun_id, 0),
+                'MF': self.manuel_mf_girisler.get(urun_id, ''),
+                'Sart1': sartlar[0] if len(sartlar) > 0 else '',
+                'Sart2': sartlar[1] if len(sartlar) > 1 else '',
+                'Sart3': sartlar[2] if len(sartlar) > 2 else '',
             }
 
             # Aylık verileri ekle
@@ -656,250 +733,480 @@ class SiparisVermeGUI:
 
     def _veriler_yuklendi(self, veriler, ay_sayisi):
         """Veriler yüklendiğinde UI güncelle"""
-        self.islenenmis_veriler = veriler
+        self.tum_veriler = veriler
 
         # Sütunları güncelle
         self._sutunlari_guncelle(ay_sayisi)
 
-        # Ana tabloyu güncelle
-        self._ana_tabloyu_guncelle(veriler, ay_sayisi)
+        # Filtreleme uygula ve tabloyu güncelle
+        self._filtreleme_uygula()
 
-        # Sipariş oluştur butonunu aktif et
-        self.siparis_olustur_btn.config(state='normal')
-
-        # Hesaplama bilgisini güncelle
+        # Bilgi güncelle
         hedef_gun = self._hedef_gun_hesapla()
-        siparis_gereken = len([v for v in veriler if v.get('SiparisMiktar', 0) > 0])
+        siparis_gereken = len([v for v in veriler if v.get('Oneri', 0) > 0])
         self.hesaplama_label.config(
-            text=f"Hedef tarihe {hedef_gun} gün | {len(veriler)} ürün | {siparis_gereken} ürün sipariş gerektirir"
+            text=f"Hedef: {hedef_gun} gün | {len(veriler)} ürün | {siparis_gereken} sipariş gerekli"
         )
 
         self.status_label.config(text="Veriler yüklendi")
         self.kayit_label.config(text=f"{len(veriler)} kayıt")
 
-    def _ana_tabloyu_guncelle(self, veriler, ay_sayisi):
-        """Ana tabloyu güncelle"""
+    def _sutunlari_guncelle(self, ay_sayisi):
+        """Sütunları dinamik güncelle"""
+        # Aylık sütunları oluştur
+        bugun = datetime.now()
+        self.aylik_sutunlar = []
+        for i in range(ay_sayisi - 1, -1, -1):
+            ay_tarihi = bugun - relativedelta(months=i)
+            ay_adi = ay_tarihi.strftime('%b')[:3]
+            self.aylik_sutunlar.append((f"Ay_{i}", ay_adi, 40))
+
+        # Tüm sütunları birleştir
+        tum_sutunlar = self.ana_sutunlar + self.aylik_sutunlar + self.son_sutunlar
+
+        col_ids = [c[0] for c in tum_sutunlar]
+        self.ana_tree['columns'] = col_ids
+
+        for col_id, baslik, width in tum_sutunlar:
+            self.ana_tree.heading(col_id, text=baslik)
+            self.ana_tree.column(col_id, width=width, minwidth=25)
+
+        self.aktif_sutunlar = tum_sutunlar
+
+    def _filtreleme_uygula(self):
+        """Yeterlileri gizle filtresini uygula ve tabloyu güncelle"""
+        if not self.tum_veriler:
+            self.gorunen_veriler = []
+            self._tabloyu_guncelle()
+            return
+
+        if not self.yeterlileri_gizle.get():
+            self.gorunen_veriler = self.tum_veriler
+        else:
+            # Eşdeğer gruplarını analiz et
+            esdeger_gruplari = {}
+            for veri in self.tum_veriler:
+                eid = veri.get('EsdegerId') or 0
+                if eid not in esdeger_gruplari:
+                    esdeger_gruplari[eid] = []
+                esdeger_gruplari[eid].append(veri)
+
+            # Filtreleme
+            gorunen = []
+            for eid, urunler in esdeger_gruplari.items():
+                grup_siparis_var = any(u.get('Oneri', 0) > 0 for u in urunler)
+
+                if eid == 0:
+                    # Eşdeğersiz - sadece sipariş gerekenleri göster
+                    for u in urunler:
+                        if u.get('Oneri', 0) > 0:
+                            gorunen.append(u)
+                else:
+                    # Eşdeğerli grup - grupta herhangi biri sipariş gerektiriyorsa tümünü göster
+                    if grup_siparis_var:
+                        gorunen.extend(urunler)
+
+            self.gorunen_veriler = gorunen
+
+        self._tabloyu_guncelle()
+
+    def _tabloyu_guncelle(self):
+        """Ana tabloyu gruplu şekilde güncelle"""
+        # Mevcut satırları temizle
         for item in self.ana_tree.get_children():
             self.ana_tree.delete(item)
 
-        for veri in veriler:
-            values = []
-            for col_id, _, _ in self.aktif_sutunlar:
-                val = veri.get(col_id, '')
-                values.append(val if val != '' else '')
+        if not self.gorunen_veriler:
+            return
 
-            siparis = veri.get('SiparisMiktar', 0)
-            tag = 'eksik' if siparis > 0 else 'yeterli'
+        # Eşdeğer gruplarına ayır
+        esdeger_gruplari = {}
+        for veri in self.gorunen_veriler:
+            eid = veri.get('EsdegerId') or 0
+            if eid not in esdeger_gruplari:
+                esdeger_gruplari[eid] = []
+            esdeger_gruplari[eid].append(veri)
 
-            self.ana_tree.insert('', 'end', values=values, tags=(tag,))
+        # Grupları sırala (eşdeğersizler sona)
+        sirali_gruplar = sorted(esdeger_gruplari.items(), key=lambda x: (x[0] == 0, x[0]))
+
+        for eid, urunler in sirali_gruplar:
+            if eid == 0:
+                # Eşdeğersiz - tek satırlar
+                for urun in urunler:
+                    self._tek_satir_ekle(urun)
+            elif len(urunler) == 1:
+                # Tek ürünlü grup - tek satır olarak göster
+                self._tek_satir_ekle(urunler[0])
+            else:
+                # Çoklu eşdeğer grubu
+                self._grup_ekle(eid, urunler)
+
+    def _grup_ekle(self, esdeger_id, urunler):
+        """Eşdeğer grubu ekle - başlık + satırlar + alt toplam"""
+        # Grup özet bilgileri
+        grup_stok = sum(u.get('Stok', 0) for u in urunler)
+        grup_oneri = sum(u.get('Oneri', 0) for u in urunler)
+        grup_aylik = sum(u.get('AylikOrt', 0) for u in urunler)
+
+        # Grup başlık satırı
+        baslik_values = ['═'] + [f"══ GRUP #{esdeger_id} ══"] + [''] * (len(self.aktif_sutunlar) - 2)
+        self.ana_tree.insert('', 'end', values=baslik_values, tags=('grup_baslik',))
+
+        # Grup üyeleri
+        for urun in urunler:
+            values = self._satir_degerleri_olustur(urun, '├')
+            tag = 'grup_satir_siparis' if urun.get('Oneri', 0) > 0 else 'grup_satir'
+            self.ana_tree.insert('', 'end', iid=f"urun_{urun['UrunId']}", values=values, tags=(tag,))
+
+        # Alt toplam satırı
+        alt_values = ['└', f"─── TOPLAM ───", grup_stok, '', '', '', '']
+
+        # Aylık toplamlar
+        for col_id, _, _ in self.aylik_sutunlar:
+            ay_toplam = sum(u.get(col_id, 0) for u in urunler)
+            alt_values.append(ay_toplam)
+
+        alt_values.extend([round(grup_aylik, 1), '', '', grup_oneri, '', ''])
+        self.ana_tree.insert('', 'end', values=alt_values, tags=('alt_toplam',))
+
+    def _tek_satir_ekle(self, urun):
+        """Tek satır (eşdeğersiz) ekle"""
+        values = self._satir_degerleri_olustur(urun, '●')
+        tag = 'tek_satir_siparis' if urun.get('Oneri', 0) > 0 else 'tek_satir'
+        self.ana_tree.insert('', 'end', iid=f"urun_{urun['UrunId']}", values=values, tags=(tag,))
+
+    def _satir_degerleri_olustur(self, urun, tur_simge):
+        """Satır değerlerini oluştur"""
+        values = [
+            tur_simge,
+            urun.get('UrunAdi', ''),
+            urun.get('Stok', 0),
+            urun.get('MinStok', 0) or '',
+            urun.get('Sart1', ''),
+            urun.get('Sart2', ''),
+            urun.get('Sart3', ''),
+        ]
+
+        # Aylık değerler
+        for col_id, _, _ in self.aylik_sutunlar:
+            values.append(urun.get(col_id, 0))
+
+        values.extend([
+            urun.get('AylikOrt', 0),
+            urun.get('GunlukOrt', 0),
+            urun.get('AyBitis', ''),
+            urun.get('Oneri', 0),
+            urun.get('Manuel', '') or '',
+            urun.get('MF', ''),
+        ])
+
+        return values
 
     def _sorgu_hatasi(self, hata):
         self.status_label.config(text=f"Hata: {hata}")
         messagebox.showerror("Hata", hata)
 
-    def siparis_olustur(self):
-        """Sipariş listelerini oluştur ve panelleri güncelle"""
-        if not self.islenenmis_veriler:
-            messagebox.showwarning("Uyarı", "Önce verileri getirin!")
+    # ═══════════════════════════════════════════════════════════════════════
+    # KULLANICI ETKİLEŞİMLERİ
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _toggle_yeterlileri_gizle(self):
+        """Yeterlileri gizle toggle"""
+        self.yeterlileri_gizle.set(not self.yeterlileri_gizle.get())
+
+        if self.yeterlileri_gizle.get():
+            self.gizle_btn.config(text="Yeterlileri Gizle: AÇIK", bg='#43A047')
+        else:
+            self.gizle_btn.config(text="Yeterlileri Gizle: KAPALI", bg='#78909C')
+
+        self._filtreleme_uygula()
+
+    def _satir_secildi(self, event):
+        """Satır seçildiğinde detay panelini güncelle"""
+        selection = self.ana_tree.selection()
+        if not selection:
             return
 
-        self.status_label.config(text="Sipariş hesaplanıyor...")
-        self.parent.update()
+        item_id = selection[0]
+        if item_id.startswith('urun_'):
+            urun_id = int(item_id.replace('urun_', ''))
+            urun = next((u for u in self.tum_veriler if u['UrunId'] == urun_id), None)
+            if urun:
+                self._detay_paneli_guncelle(urun)
 
-        # Eşdeğer gruplarını analiz et
-        self._siparis_analiz_yap()
+    def _satir_cift_tiklandi(self, event):
+        """Çift tıklama - öneriyi manuel'e kopyala"""
+        selection = self.ana_tree.selection()
+        if not selection:
+            return
 
-        # Kısmi sipariş panelini güncelle
-        for widget in self.kismi_content.winfo_children():
+        item_id = selection[0]
+        if item_id.startswith('urun_'):
+            urun_id = int(item_id.replace('urun_', ''))
+            urun = next((u for u in self.tum_veriler if u['UrunId'] == urun_id), None)
+            if urun:
+                oneri = urun.get('Oneri', 0)
+                self.manuel_miktarlar[urun_id] = oneri
+                urun['Manuel'] = oneri
+                self._tabloyu_guncelle()
+                self._detay_paneli_guncelle(urun)
+
+    def _detay_paneli_guncelle(self, urun):
+        """Detay panelini güncelle"""
+        self.secili_urun = urun
+
+        # Placeholder'ı kaldır
+        for widget in self.detay_content.winfo_children():
             widget.destroy()
-        self._kismi_panel_icerik_v2(self.kismi_content)
 
-        # Kesin sipariş panelini güncelle
-        for widget in self.kesin_content.winfo_children():
-            widget.destroy()
-        self._kesin_panel_icerik_v2(self.kesin_content)
+        # Ürün bilgileri
+        info_frame = tk.LabelFrame(self.detay_content, text=urun.get('UrunAdi', ''), font=('Arial', 9, 'bold'))
+        info_frame.pack(fill=tk.X, pady=(0, 5))
 
-        kismi_urun_count = sum(len(g['siparis_gerekenler']) for g in self.kismi_siparis_verileri)
-        kesin_count = len(self.kesin_siparis_verileri)
-        self.status_label.config(text=f"Sipariş oluşturuldu: {len(self.kismi_siparis_verileri)} kısmi grup ({kismi_urun_count} ürün), {kesin_count} kesin")
-
-    def _siparis_analiz_yap(self):
-        """Eşdeğer gruplarını analiz edip kısmi/kesin ayrımı yap"""
-        self.kismi_siparis_verileri = []
-        self.kesin_siparis_verileri = []
-
-        # Eşdeğer gruplarına ayır
-        esdeger_gruplari = {}
-        for veri in self.islenenmis_veriler:
-            esdeger_id = veri.get('EsdegerId') or 0
-            if esdeger_id not in esdeger_gruplari:
-                esdeger_gruplari[esdeger_id] = []
-            esdeger_gruplari[esdeger_id].append(veri)
-
-        for esdeger_id, urunler in esdeger_gruplari.items():
-            grup_stok = sum(u.get('Stok', 0) for u in urunler)
-            grup_ihtiyac = sum(u.get('Ihtiyac', 0) for u in urunler)
-            grup_siparis_gereken = [u for u in urunler if u.get('SiparisMiktar', 0) > 0]
-
-            if not grup_siparis_gereken:
-                continue
-
-            if esdeger_id == 0 or len(urunler) == 1:
-                # Eşdeğersiz veya tek ürünlü grup -> Kesin sipariş
-                for u in grup_siparis_gereken:
-                    self.kesin_siparis_verileri.append(u)
-            else:
-                # Çoklu eşdeğer grubu
-                if grup_stok >= grup_ihtiyac:
-                    # Grup genelinde stok yeterli -> Kısmi sipariş
-                    self.kismi_siparis_verileri.append({
-                        'esdeger_id': esdeger_id,
-                        'urunler': urunler,  # TÜM ürünler (muadiller dahil)
-                        'grup_stok': grup_stok,
-                        'grup_ihtiyac': grup_ihtiyac,
-                        'siparis_gerekenler': grup_siparis_gereken
-                    })
-                else:
-                    # Grup genelinde de stok yetersiz -> Kesin sipariş
-                    for u in grup_siparis_gereken:
-                        self.kesin_siparis_verileri.append(u)
-
-    def _kismi_panel_icerik_v2(self, content_frame):
-        """Kısmi sipariş paneli içeriği - yeni versiyon"""
-        if not self.kismi_siparis_verileri:
-            tk.Label(content_frame, text="Kısmi sipariş gerektiren ürün yok.",
-                    bg='#FFF3E0', font=('Arial', 10, 'italic'), fg='#E65100').pack(expand=True)
-            return
-
-        # Üst bilgi çubuğu
-        info_frame = tk.Frame(content_frame, bg='#FFE0B2')
-        info_frame.pack(fill=tk.X)
-
-        kismi_count = sum(len(g['siparis_gerekenler']) for g in self.kismi_siparis_verileri)
-        tk.Label(info_frame,
-                text=f"  {len(self.kismi_siparis_verileri)} grup, {kismi_count} ürün  |  Muadiller yeterli - sipariş opsiyonel",
-                bg='#FFE0B2', font=('Arial', 9, 'bold'), fg='#E65100').pack(side=tk.LEFT, pady=3)
-
-        ttk.Button(info_frame, text="Seçilenleri Siparişe Ekle",
-                  command=lambda: messagebox.showinfo("Bilgi", "Bu özellik yakında eklenecek.")).pack(side=tk.RIGHT, padx=5, pady=2)
-
-        # Scrollable içerik
-        canvas = tk.Canvas(content_frame, bg='#FFF3E0', highlightthickness=0)
-        scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg='#FFF3E0')
-
-        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
-        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
-
-        # Her grup için kompakt tablo
-        for grup in self.kismi_siparis_verileri:
-            grup_frame = tk.Frame(scrollable_frame, bg='#FFE0B2', relief='groove', bd=1)
-            grup_frame.pack(fill='x', padx=3, pady=3)
-
-            # Grup başlığı
-            tk.Label(grup_frame,
-                    text=f"Grup #{grup['esdeger_id']}  |  Stok: {grup['grup_stok']}  |  İhtiyaç: {round(grup['grup_ihtiyac'], 1)}",
-                    bg='#FFE0B2', font=('Arial', 9, 'bold'), fg='#E65100').pack(anchor='w', padx=5, pady=2)
-
-            # Mini tablo
-            columns = [("UrunAdi", "Ürün", 220), ("Stok", "Stok", 50), ("AylikOrt", "Aylık", 55),
-                      ("Ihtiyac", "İhtiyaç", 55), ("SiparisMiktar", "Sipariş", 55), ("Durum", "Durum", 90)]
-
-            tree = ttk.Treeview(grup_frame, columns=[c[0] for c in columns], show='headings',
-                               height=min(len(grup['urunler']) + 1, 6))
-            for col_id, baslik, width in columns:
-                tree.heading(col_id, text=baslik)
-                tree.column(col_id, width=width, minwidth=40)
-
-            tree.tag_configure('siparis_gerek', background='#FFCDD2')
-            tree.tag_configure('yeterli', background='#C8E6C9')
-            tree.tag_configure('alt_toplam', background='#B0BEC5')
-
-            for urun in grup['urunler']:
-                siparis = urun.get('SiparisMiktar', 0)
-                tree.insert('', 'end', values=(
-                    urun.get('UrunAdi', ''), urun.get('Stok', 0), urun.get('AylikOrt', 0),
-                    urun.get('Ihtiyac', 0), siparis if siparis > 0 else '-',
-                    "SİPARİŞ" if siparis > 0 else "Yeterli"
-                ), tags=('siparis_gerek' if siparis > 0 else 'yeterli',))
-
-            toplam_siparis = sum(u.get('SiparisMiktar', 0) for u in grup['urunler'])
-            tree.insert('', 'end', values=(
-                "TOPLAM", grup['grup_stok'], round(sum(u.get('AylikOrt', 0) for u in grup['urunler']), 1),
-                round(grup['grup_ihtiyac'], 1), toplam_siparis if toplam_siparis > 0 else '-', "KARŞILANIR"
-            ), tags=('alt_toplam',))
-
-            tree.pack(fill='x', padx=3, pady=2)
-
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-    def _kesin_panel_icerik_v2(self, content_frame):
-        """Kesin sipariş paneli içeriği - yeni versiyon"""
-        if not self.kesin_siparis_verileri:
-            tk.Label(content_frame, text="Kesin sipariş gerektiren ürün yok.",
-                    bg='#FFEBEE', font=('Arial', 10, 'italic'), fg='#C62828').pack(expand=True)
-            return
-
-        # Üst bilgi çubuğu
-        info_frame = tk.Frame(content_frame, bg='#FFCDD2')
-        info_frame.pack(fill=tk.X)
-
-        tk.Label(info_frame,
-                text=f"  {len(self.kesin_siparis_verileri)} ürün  |  Muadil yok veya yetersiz - sipariş önerilir",
-                bg='#FFCDD2', font=('Arial', 9, 'bold'), fg='#C62828').pack(side=tk.LEFT, pady=3)
-
-        ttk.Button(info_frame, text="Tümünü Siparişe Ekle",
-                  command=lambda: messagebox.showinfo("Bilgi", "Tüm ürünler siparişe eklendi.")).pack(side=tk.RIGHT, padx=5, pady=2)
-        ttk.Button(info_frame, text="Seçilenleri Siparişe Ekle",
-                  command=lambda: self._secili_siparise_ekle(self.kesin_tree)).pack(side=tk.RIGHT, padx=2, pady=2)
-
-        # Tablo
-        tree_frame = tk.Frame(content_frame, bg='#FFEBEE')
-        tree_frame.pack(fill='both', expand=True, padx=3, pady=3)
-
-        columns = [
-            ("UrunAdi", "Ürün Adı", 280), ("Stok", "Stok", 55), ("AylikOrt", "Aylık Ort", 65),
-            ("Ihtiyac", "İhtiyaç", 65), ("SiparisMiktar", "Sipariş", 60), ("MF", "MF Geçmişi", 90)
+        # Bilgi satırları
+        bilgiler = [
+            ("Stok:", urun.get('Stok', 0)),
+            ("Min Stok:", urun.get('MinStok', 0)),
+            ("Aylık Ort:", urun.get('AylikOrt', 0)),
+            ("Günlük Ort:", urun.get('GunlukOrt', 0)),
+            ("Ay Bitiş:", urun.get('AyBitis', '')),
+            ("Öneri:", urun.get('Oneri', 0)),
         ]
 
-        self.kesin_tree = ttk.Treeview(tree_frame, columns=[c[0] for c in columns], show='headings')
-        for col_id, baslik, width in columns:
-            self.kesin_tree.heading(col_id, text=baslik)
-            self.kesin_tree.column(col_id, width=width, minwidth=40)
+        for label, value in bilgiler:
+            row = tk.Frame(info_frame)
+            row.pack(fill=tk.X, padx=5, pady=1)
+            tk.Label(row, text=label, font=('Arial', 8), width=10, anchor='w').pack(side=tk.LEFT)
+            tk.Label(row, text=str(value), font=('Arial', 8, 'bold')).pack(side=tk.LEFT)
 
-        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.kesin_tree.yview)
-        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.kesin_tree.xview)
-        self.kesin_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        # MF Şartları
+        sart_frame = tk.LabelFrame(self.detay_content, text="MF Şartları (Geçmiş)")
+        sart_frame.pack(fill=tk.X, pady=5)
 
-        tree_frame.columnconfigure(0, weight=1)
-        tree_frame.rowconfigure(0, weight=1)
-        self.kesin_tree.grid(row=0, column=0, sticky='nsew')
-        vsb.grid(row=0, column=1, sticky='ns')
-        hsb.grid(row=1, column=0, sticky='ew')
+        sartlar = [urun.get('Sart1', ''), urun.get('Sart2', ''), urun.get('Sart3', '')]
+        sart_text = "  |  ".join([s for s in sartlar if s]) or "Kayıt yok"
+        tk.Label(sart_frame, text=sart_text, font=('Arial', 9)).pack(padx=5, pady=3)
 
-        for urun in self.kesin_siparis_verileri:
+        # Manuel Giriş
+        manuel_frame = tk.LabelFrame(self.detay_content, text="Manuel Sipariş")
+        manuel_frame.pack(fill=tk.X, pady=5)
+
+        # Miktar girişi
+        miktar_row = tk.Frame(manuel_frame)
+        miktar_row.pack(fill=tk.X, padx=5, pady=3)
+
+        tk.Label(miktar_row, text="Miktar:", font=('Arial', 9)).pack(side=tk.LEFT)
+
+        self.manuel_entry = ttk.Entry(miktar_row, width=8)
+        self.manuel_entry.pack(side=tk.LEFT, padx=5)
+        self.manuel_entry.insert(0, str(urun.get('Manuel', '') or ''))
+
+        tk.Button(miktar_row, text="-", width=2, command=lambda: self._manuel_azalt(urun)).pack(side=tk.LEFT, padx=1)
+        tk.Button(miktar_row, text="+", width=2, command=lambda: self._manuel_artir(urun)).pack(side=tk.LEFT, padx=1)
+
+        tk.Button(miktar_row, text="Öneriyi Al", command=lambda: self._oneriyi_al(urun),
+                 bg='#7B1FA2', fg='white', font=('Arial', 8)).pack(side=tk.LEFT, padx=5)
+
+        # MF Girişi
+        mf_row = tk.Frame(manuel_frame)
+        mf_row.pack(fill=tk.X, padx=5, pady=3)
+
+        tk.Label(mf_row, text="MF:", font=('Arial', 9)).pack(side=tk.LEFT)
+
+        self.mf_entry = ttk.Entry(mf_row, width=8)
+        self.mf_entry.pack(side=tk.LEFT, padx=5)
+        self.mf_entry.insert(0, urun.get('MF', ''))
+
+        tk.Label(mf_row, text="(örn: 5+1)", font=('Arial', 8), fg='gray').pack(side=tk.LEFT)
+
+        # Kaydet butonu
+        tk.Button(manuel_frame, text="KAYDET", command=lambda: self._manuel_kaydet(urun),
+                 bg='#1976D2', fg='white', font=('Arial', 9, 'bold')).pack(pady=5)
+
+        # Kesin listeye ekle butonu
+        tk.Button(self.detay_content, text="KESİN LİSTEYE EKLE", command=lambda: self._kesin_listeye_ekle(urun),
+                 bg='#388E3C', fg='white', font=('Arial', 9, 'bold'), width=20).pack(pady=10)
+
+    def _manuel_artir(self, urun):
+        """Manuel miktarı artır"""
+        try:
+            mevcut = int(self.manuel_entry.get() or 0)
+        except:
+            mevcut = 0
+        self.manuel_entry.delete(0, tk.END)
+        self.manuel_entry.insert(0, str(mevcut + 1))
+
+    def _manuel_azalt(self, urun):
+        """Manuel miktarı azalt"""
+        try:
+            mevcut = int(self.manuel_entry.get() or 0)
+        except:
+            mevcut = 0
+        self.manuel_entry.delete(0, tk.END)
+        self.manuel_entry.insert(0, str(max(0, mevcut - 1)))
+
+    def _oneriyi_al(self, urun):
+        """Öneriyi manuel alana kopyala"""
+        oneri = urun.get('Oneri', 0)
+        self.manuel_entry.delete(0, tk.END)
+        self.manuel_entry.insert(0, str(oneri))
+
+    def _manuel_kaydet(self, urun):
+        """Manuel girişleri kaydet"""
+        try:
+            miktar = int(self.manuel_entry.get() or 0)
+        except:
+            miktar = 0
+
+        mf = self.mf_entry.get().strip()
+
+        urun_id = urun['UrunId']
+        self.manuel_miktarlar[urun_id] = miktar
+        self.manuel_mf_girisler[urun_id] = mf
+
+        urun['Manuel'] = miktar
+        urun['MF'] = mf
+
+        self._tabloyu_guncelle()
+        self.status_label.config(text=f"{urun.get('UrunAdi', '')} güncellendi")
+
+    def _kesin_listeye_ekle(self, urun):
+        """Ürünü kesin listeye ekle"""
+        try:
+            miktar = int(self.manuel_entry.get() or 0)
+        except:
+            miktar = urun.get('Oneri', 0)
+
+        if miktar <= 0:
+            messagebox.showwarning("Uyarı", "Lütfen bir miktar girin!")
+            return
+
+        mf = self.mf_entry.get().strip()
+
+        # MF'den toplam hesapla
+        toplam = miktar
+        if mf and '+' in mf:
+            try:
+                mf_ek = int(mf.split('+')[1])
+                toplam = miktar + mf_ek
+            except:
+                pass
+
+        # Kesin listeye ekle
+        self.kesin_siparis_listesi.append({
+            'UrunId': urun['UrunId'],
+            'UrunAdi': urun.get('UrunAdi', ''),
+            'Miktar': miktar,
+            'MF': mf,
+            'Toplam': toplam
+        })
+
+        self._kesin_liste_guncelle()
+        self.status_label.config(text=f"{urun.get('UrunAdi', '')} kesin listeye eklendi")
+
+    def _tum_onerileri_kopyala(self):
+        """Tüm önerileri manuel alanlara kopyala"""
+        for urun in self.tum_veriler:
+            oneri = urun.get('Oneri', 0)
+            if oneri > 0:
+                urun_id = urun['UrunId']
+                self.manuel_miktarlar[urun_id] = oneri
+                urun['Manuel'] = oneri
+
+        self._tabloyu_guncelle()
+        self.status_label.config(text="Tüm öneriler manuel alanlara kopyalandı")
+
+    def _secilileri_kesin_listeye_ekle(self):
+        """Seçili satırları kesin listeye ekle"""
+        selection = self.ana_tree.selection()
+        eklenen = 0
+
+        for item_id in selection:
+            if item_id.startswith('urun_'):
+                urun_id = int(item_id.replace('urun_', ''))
+                urun = next((u for u in self.tum_veriler if u['UrunId'] == urun_id), None)
+                if urun:
+                    miktar = urun.get('Manuel', 0) or urun.get('Oneri', 0)
+                    if miktar > 0:
+                        mf = urun.get('MF', '')
+                        toplam = miktar
+                        if mf and '+' in mf:
+                            try:
+                                mf_ek = int(mf.split('+')[1])
+                                toplam = miktar + mf_ek
+                            except:
+                                pass
+
+                        self.kesin_siparis_listesi.append({
+                            'UrunId': urun['UrunId'],
+                            'UrunAdi': urun.get('UrunAdi', ''),
+                            'Miktar': miktar,
+                            'MF': mf,
+                            'Toplam': toplam
+                        })
+                        eklenen += 1
+
+        self._kesin_liste_guncelle()
+        self.status_label.config(text=f"{eklenen} ürün kesin listeye eklendi")
+
+    def _kesin_liste_guncelle(self):
+        """Kesin sipariş listesini güncelle"""
+        for item in self.kesin_tree.get_children():
+            self.kesin_tree.delete(item)
+
+        for siparis in self.kesin_siparis_listesi:
             self.kesin_tree.insert('', 'end', values=(
-                urun.get('UrunAdi', ''), urun.get('Stok', 0), urun.get('AylikOrt', 0),
-                urun.get('Ihtiyac', 0), urun.get('SiparisMiktar', 0), urun.get('MF', '')
+                siparis.get('UrunAdi', ''),
+                siparis.get('Miktar', 0),
+                siparis.get('MF', ''),
+                siparis.get('Toplam', 0)
             ))
 
-    def _secili_siparise_ekle(self, tree):
-        secili = tree.selection()
-        if not secili:
-            messagebox.showwarning("Uyarı", "Lütfen ürün seçin!")
+    def _kesin_listeyi_temizle(self):
+        """Kesin listeyi temizle"""
+        if messagebox.askyesno("Onay", "Kesin sipariş listesi temizlensin mi?"):
+            self.kesin_siparis_listesi = []
+            self._kesin_liste_guncelle()
+
+    def _kesin_listeyi_excel_aktar(self):
+        """Kesin listeyi Excel'e aktar"""
+        if not self.kesin_siparis_listesi:
+            messagebox.showwarning("Uyarı", "Kesin sipariş listesi boş!")
             return
-        messagebox.showinfo("Bilgi", f"{len(secili)} ürün siparişe eklendi.")
+
+        dosya_yolu = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel Dosyası", "*.xlsx")],
+            title="Kesin Sipariş Listesini Kaydet"
+        )
+
+        if not dosya_yolu:
+            return
+
+        try:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Kesin Sipariş"
+
+            headers = ["Ürün Adı", "Miktar", "MF", "Toplam"]
+            for col, h in enumerate(headers, 1):
+                ws.cell(row=1, column=col, value=h).font = Font(bold=True)
+
+            for row_idx, siparis in enumerate(self.kesin_siparis_listesi, 2):
+                ws.cell(row=row_idx, column=1, value=siparis.get('UrunAdi', ''))
+                ws.cell(row=row_idx, column=2, value=siparis.get('Miktar', 0))
+                ws.cell(row=row_idx, column=3, value=siparis.get('MF', ''))
+                ws.cell(row=row_idx, column=4, value=siparis.get('Toplam', 0))
+
+            wb.save(dosya_yolu)
+            messagebox.showinfo("Başarılı", f"Liste kaydedildi:\n{dosya_yolu}")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Kaydetme hatası: {e}")
 
     def excel_aktar(self):
-        """Verileri Excel'e aktar"""
-        if not self.islenenmis_veriler:
+        """Ana tabloyu Excel'e aktar"""
+        if not self.tum_veriler:
             messagebox.showwarning("Uyarı", "Aktarılacak veri yok!")
             return
 
@@ -915,22 +1222,25 @@ class SiparisVermeGUI:
         try:
             wb = Workbook()
             ws = wb.active
-            ws.title = "Sipariş Listesi"
+            ws.title = "Sipariş Analizi"
 
             # Başlıklar
-            basliklar = [self.aktif_basliklar.get(col[0], col[0]) for col in self.aktif_sutunlar]
-            for col_idx, baslik in enumerate(basliklar, 1):
-                cell = ws.cell(row=1, column=col_idx, value=baslik)
-                cell.font = Font(bold=True)
+            headers = [c[1] for c in self.aktif_sutunlar]
+            for col, h in enumerate(headers, 1):
+                ws.cell(row=1, column=col, value=h).font = Font(bold=True)
 
             # Veriler
-            for row_idx, veri in enumerate(self.islenenmis_veriler, 2):
-                for col_idx, (col_id, _, _) in enumerate(self.aktif_sutunlar, 1):
-                    ws.cell(row=row_idx, column=col_idx, value=veri.get(col_id, ''))
+            for row_idx, veri in enumerate(self.tum_veriler, 2):
+                col = 1
+                for col_id, _, _ in self.aktif_sutunlar:
+                    if col_id == 'Tur':
+                        ws.cell(row=row_idx, column=col, value='')
+                    else:
+                        ws.cell(row=row_idx, column=col, value=veri.get(col_id, ''))
+                    col += 1
 
             wb.save(dosya_yolu)
             messagebox.showinfo("Başarılı", f"Veriler aktarıldı:\n{dosya_yolu}")
-
         except Exception as e:
             messagebox.showerror("Hata", f"Aktarım hatası: {e}")
 
