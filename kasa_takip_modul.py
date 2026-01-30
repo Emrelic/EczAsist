@@ -46,6 +46,14 @@ except ImportError as e:
     logger.warning(f"Kasa API modülü yüklenemedi: {e}")
     KASA_API_MODULU_YUKLENDI = False
 
+# Loading indicator
+try:
+    from loading_indicator import LoadingIndicator
+    LOADING_INDICATOR_YUKLENDI = True
+except ImportError as e:
+    logger.warning(f"Loading indicator modülü yüklenemedi: {e}")
+    LOADING_INDICATOR_YUKLENDI = False
+
 
 class KasaKapatmaModul:
     """Kasa Kapatma - Günlük Mutabakat Sistemi"""
@@ -902,8 +910,31 @@ class KasaKapatmaModul:
             messagebox.showwarning("Pencere Yok", "Botanik 'Kasa Kapatma' penceresi açık değil!")
             return
 
-        self.botanik_verilerini_otomatik_cek()
-        messagebox.showinfo("Başarılı", "Botanik verileri güncellendi!")
+        def veri_cek():
+            return botanik_verilerini_cek()
+
+        def islem_bitti(veriler):
+            if veriler:
+                # Botanik verilerini ilgili alanlara yaz
+                self.botanik_nakit_var.set(f"{veriler.get('nakit', 0):.2f}")
+                self.botanik_pos_var.set(f"{veriler.get('pos', 0):.2f}")
+                self.botanik_iban_var.set(f"{veriler.get('iban', 0):.2f}")
+                self.hesaplari_guncelle()
+                messagebox.showinfo("Başarılı", "Botanik verileri güncellendi!")
+            else:
+                messagebox.showwarning("Uyarı", "Botanik verileri çekilemedi!")
+
+        if LOADING_INDICATOR_YUKLENDI:
+            LoadingIndicator.run_with_loading(
+                self.root,
+                "Botanik verileri yenileniyor...",
+                veri_cek,
+                callback=islem_bitti,
+                stil="spinner"
+            )
+        else:
+            self.botanik_verilerini_otomatik_cek()
+            messagebox.showinfo("Başarılı", "Botanik verileri güncellendi!")
 
     def ust_bar_olustur(self):
         """Üst bar - başlık ve butonlar"""
@@ -1277,63 +1308,84 @@ class KasaKapatmaModul:
             messagebox.showwarning("Uyarı", "Botanik veri çekme modülü yüklenemedi!")
             return
 
-        try:
-            # Küpürleri çek
-            kupurler = botanik_baslangic_kupurlerini_cek()
+        def veri_cek_islemi():
+            """Thread içinde çalışacak veri çekme işlemi"""
+            return botanik_baslangic_kupurlerini_cek()
 
-            if kupurler is None:
-                messagebox.showwarning(
-                    "Uyarı",
-                    "Botanik 'Kasa Kapatma' penceresi bulunamadı!\n\n"
-                    "Lütfen Botanik EOS'ta 'Kasa Kapatma' penceresinin açık olduğundan emin olun."
+        def islem_tamamlandi(kupurler):
+            """Veri çekme tamamlandığında çağrılır"""
+            try:
+                if kupurler is None:
+                    messagebox.showwarning(
+                        "Uyarı",
+                        "Botanik 'Kasa Kapatma' penceresi bulunamadı!\n\n"
+                        "Lütfen Botanik EOS'ta 'Kasa Kapatma' penceresinin açık olduğundan emin olun."
+                    )
+                    return
+
+                # Önizleme göster
+                onizleme = "Botanik'ten çekilen küpür adetleri:\n\n"
+                toplam = 0
+                for deger in [200, 100, 50, 20, 10, 5, 1, 0.5]:
+                    adet = kupurler.get(deger, 0)
+                    tutar = adet * deger
+                    toplam += tutar
+                    onizleme += f"  {deger} TL x {adet} = {tutar:,.2f} TL\n"
+
+                onizleme += f"\n{'─'*30}\n"
+                onizleme += f"  TOPLAM: {toplam:,.2f} TL"
+
+                onay = messagebox.askyesno(
+                    "Botanikten Çekilen Veriler",
+                    onizleme + "\n\nBu değerleri başlangıç kasasına aktarmak istiyor musunuz?",
+                    icon='question'
                 )
-                return
 
-            # Önizleme göster
-            onizleme = "Botanik'ten çekilen küpür adetleri:\n\n"
-            toplam = 0
-            for deger in [200, 100, 50, 20, 10, 5, 1, 0.5]:
-                adet = kupurler.get(deger, 0)
-                tutar = adet * deger
-                toplam += tutar
-                onizleme += f"  {deger} TL x {adet} = {tutar:,.2f} TL\n"
+                if not onay:
+                    return
 
-            onizleme += f"\n{'─'*30}\n"
-            onizleme += f"  TOPLAM: {toplam:,.2f} TL"
+                # Değerleri başlangıç kasası alanlarına yaz
+                for deger, var in self.baslangic_kupur_vars.items():
+                    adet = kupurler.get(deger, 0)
+                    var.set(str(adet))
 
-            onay = messagebox.askyesno(
-                "Botanikten Çekilen Veriler",
-                onizleme + "\n\nBu değerleri başlangıç kasasına aktarmak istiyor musunuz?",
-                icon='question'
+                # Manuel modu kapat (normal küpür moduna dön)
+                self.manuel_baslangic_aktif = False
+                self.manuel_baslangic_tutar = 0
+                self.manuel_baslangic_aciklama = ""
+                self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏ Elle")
+
+                # Toplamı hesapla
+                self.baslangic_toplam_hesapla()
+
+                messagebox.showinfo(
+                    "Başarılı",
+                    f"Botanik'ten başlangıç kasası verileri aktarıldı.\n\nToplam: {toplam:,.2f} TL"
+                )
+
+                logger.info(f"Botanikten başlangıç kasası çekildi: {toplam} TL")
+
+            except Exception as e:
+                logger.error(f"Botanikten veri çekme hatası: {e}")
+                messagebox.showerror("Hata", f"Veri çekme hatası:\n{str(e)}")
+
+        # Loading indicator ile çalıştır
+        if LOADING_INDICATOR_YUKLENDI:
+            LoadingIndicator.run_with_loading(
+                self.root,
+                "Botanik'ten veriler çekiliyor...",
+                veri_cek_islemi,
+                callback=islem_tamamlandi,
+                stil="spinner"
             )
-
-            if not onay:
-                return
-
-            # Değerleri başlangıç kasası alanlarına yaz
-            for deger, var in self.baslangic_kupur_vars.items():
-                adet = kupurler.get(deger, 0)
-                var.set(str(adet))
-
-            # Manuel modu kapat (normal küpür moduna dön)
-            self.manuel_baslangic_aktif = False
-            self.manuel_baslangic_tutar = 0
-            self.manuel_baslangic_aciklama = ""
-            self.manuel_baslangic_btn.config(bg='#FFE082', fg='#E65100', text="✏ Elle")
-
-            # Toplamı hesapla
-            self.baslangic_toplam_hesapla()
-
-            messagebox.showinfo(
-                "Başarılı",
-                f"Botanik'ten başlangıç kasası verileri aktarıldı.\n\nToplam: {toplam:,.2f} TL"
-            )
-
-            logger.info(f"Botanikten başlangıç kasası çekildi: {toplam} TL")
-
-        except Exception as e:
-            logger.error(f"Botanikten veri çekme hatası: {e}")
-            messagebox.showerror("Hata", f"Veri çekme hatası:\n{str(e)}")
+        else:
+            # Loading indicator yoksa eski yöntemle çalış
+            try:
+                kupurler = veri_cek_islemi()
+                islem_tamamlandi(kupurler)
+            except Exception as e:
+                logger.error(f"Botanikten veri çekme hatası: {e}")
+                messagebox.showerror("Hata", f"Veri çekme hatası:\n{str(e)}")
 
     def manuel_baslangic_penceresi_ac(self):
         """Manuel başlangıç kasası giriş penceresi"""
@@ -3223,7 +3275,7 @@ class KasaKapatmaModul:
             ("8) Artı/Eksi Sebepler", '#C62828', self.arti_eksi_popup_ac),
             ("9) WhatsApp ve Email Gönder", '#25D366', self.rapor_gonder_tumu),
             ("10) Yazdır", '#2196F3', self.ayrilan_cikti_yazdir),
-            ("11) Kaydet", '#1565C0', self.kaydet),
+            ("11) Kaydet ve Kapat", '#1565C0', self.kaydet_sirali),
         ]
 
         # 4 sutun esit genislikte
@@ -3616,10 +3668,15 @@ class KasaKapatmaModul:
         kalan_toplam = 0
 
         for deger, slider_var in self.c_slider_vars.items():
-            kalan = slider_var.get()
-            if kalan > 0:
-                kalan_kupurler[str(deger)] = kalan
-                kalan_toplam += kalan * deger
+            try:
+                sayim_adet = int(self.sayim_vars.get(deger, tk.StringVar(value="0")).get() or 0)
+                ayrilan_adet = slider_var.get()  # Slider değeri = ayrılan miktar
+                kalan = sayim_adet - ayrilan_adet  # Kalan = Sayım - Ayrılan
+                if kalan > 0:
+                    kalan_kupurler[str(deger)] = kalan
+                    kalan_toplam += kalan * deger
+            except (ValueError, KeyError):
+                pass
 
         self.ertesi_gun_belirlendi = True
         self.ertesi_gun_toplam_data = kalan_toplam
@@ -3633,8 +3690,7 @@ class KasaKapatmaModul:
 
         ayrilan_toplam = 0
         for deger, slider_var in self.c_slider_vars.items():
-            sayim_adet = int(self.sayim_vars.get(deger, tk.StringVar(value="0")).get() or 0)
-            ayrilan = sayim_adet - slider_var.get()
+            ayrilan = slider_var.get()  # Slider değeri = ayrılan miktar
             ayrilan_toplam += ayrilan * deger
 
         self.ayrilan_para_durum_label.config(
@@ -3996,7 +4052,7 @@ class KasaKapatmaModul:
             adet = kalan_kupurler.get(str(deger), 0)
             if adet > 0:
                 tutar = adet * deger
-                kupurler_metin += f"  {kupur['ad']}: {adet} adet = {tutar:,.0f} TL\n"
+                kupurler_metin += f"  {kupur['aciklama']}: {adet} adet = {tutar:,.0f} TL\n"
 
         messagebox.showinfo(
             "ERTESİ GÜN KASASI BELİRLENDİ",
@@ -4050,7 +4106,7 @@ class KasaKapatmaModul:
             adet = ayrilan_kupurler.get(str(deger), 0)
             if adet > 0:
                 tutar = adet * deger
-                kupurler_metin += f"  {kupur['ad']}: {adet} adet = {tutar:,.0f} TL\n"
+                kupurler_metin += f"  {kupur['aciklama']}: {adet} adet = {tutar:,.0f} TL\n"
 
         # Uyarı penceresi göster
         messagebox.showinfo(
@@ -4682,6 +4738,223 @@ class KasaKapatmaModul:
             )
             return False
         return True
+
+    def ertesi_gun_ayrilan_kontrol(self) -> bool:
+        """Ertesi gün kasası ve ayrılan para belirlenmiş mi kontrol et"""
+        # Önce slider'lardan gerçek değerleri hesapla
+        kalan_toplam = 0
+        ayrilan_toplam = 0
+
+        if hasattr(self, 'c_slider_vars') and hasattr(self, 'sayim_vars'):
+            for deger, slider_var in self.c_slider_vars.items():
+                try:
+                    sayim_adet = int(self.sayim_vars.get(deger, tk.StringVar(value="0")).get() or 0)
+                    ayrilan_adet = slider_var.get()
+                    kalan_adet = sayim_adet - ayrilan_adet
+
+                    if kalan_adet > 0:
+                        kalan_toplam += kalan_adet * deger
+                    if ayrilan_adet > 0:
+                        ayrilan_toplam += ayrilan_adet * deger
+                except (ValueError, KeyError):
+                    pass
+
+        # Eğer hem kalan hem ayrılan sıfırdan büyükse, direkt devam et
+        if kalan_toplam > 0 and ayrilan_toplam > 0:
+            return True
+
+        # Flag'ler zaten True ise de devam et
+        if self.ertesi_gun_belirlendi and self.ayrilan_para_belirlendi:
+            return True
+
+        # Değerler yoksa veya flag'ler False ise uyarı göster
+        if kalan_toplam == 0 and ayrilan_toplam == 0:
+            devam = messagebox.askyesno(
+                "Uyarı",
+                "Önce 'Ertesi Gün Kasası' ve 'Ayrılan Para' işlemlerini yapmalısınız!\n\n"
+                "7) Ertesi Gün Kasası / Ayrılan Para bölümündeki butonları kullanın.\n\n"
+                "Bu işlemleri zaten yaptıysanız 'Evet' ile devam edebilirsiniz."
+            )
+            return devam
+        elif kalan_toplam == 0:
+            devam = messagebox.askyesno(
+                "Uyarı",
+                "Ertesi gün kasası 0 TL görünüyor.\n\n"
+                "Tüm parayı ayırdınız mı? Devam etmek istiyor musunuz?"
+            )
+            return devam
+        elif ayrilan_toplam == 0:
+            devam = messagebox.askyesno(
+                "Uyarı",
+                "Ayrılan para 0 TL görünüyor.\n\n"
+                "Para ayırmadan devam etmek istiyor musunuz?"
+            )
+            return devam
+
+        return True
+
+    def kaydet_sirali(self):
+        """
+        Sıralı kaydet işlemi:
+        1. Ertesi gün/ayrılan para kontrolü
+        2. Kaydet
+        3. Botanik kasa kapat
+        4. Botaniğe aktar
+        """
+        import time
+
+        logger.info("========== KAYDET SİRALI BAŞLADI ==========")
+
+        # 1. Ertesi gün ve ayrılan para kontrolü
+        logger.info("Kontrol 1: Ertesi gün/ayrılan para...")
+        if not self.ertesi_gun_ayrilan_kontrol():
+            logger.info("Kontrol 1 BAŞARISIZ - işlem iptal")
+            return
+        logger.info("Kontrol 1 OK")
+
+        # Gün içi alınan açıklama kontrolü
+        logger.info("Kontrol 2: Gün içi alınan...")
+        if not self.gun_ici_alinan_kontrol():
+            logger.info("Kontrol 2 BAŞARISIZ - işlem iptal")
+            return
+        logger.info("Kontrol 2 OK")
+
+        # ÖNEMLİ: Kupür değerlerini kaydet() çağrılmadan ÖNCE kaydet
+        # Çünkü kaydet() -> temizle_onaysiz() değerleri sıfırlıyor
+        aktarilacak_kupurler = {}
+        if hasattr(self, 'c_slider_vars') and hasattr(self, 'sayim_vars'):
+            for deger in [200, 100, 50, 20, 10, 5, 1, 0.5]:
+                try:
+                    sayim_adet = 0
+                    if deger in self.sayim_vars:
+                        sayim_adet = int(self.sayim_vars[deger].get() or 0)
+                    ayrilan_adet = 0
+                    if deger in self.c_slider_vars:
+                        ayrilan_adet = self.c_slider_vars[deger].get()
+                    kalan_adet = sayim_adet - ayrilan_adet
+                    if kalan_adet > 0:
+                        aktarilacak_kupurler[deger] = kalan_adet
+                        logger.info(f"Önceden kaydedildi - Küpür: {deger} TL = {kalan_adet} adet")
+                except (ValueError, KeyError):
+                    pass
+        logger.info(f"Toplam {len(aktarilacak_kupurler)} küpür değeri önceden kaydedildi")
+
+        # 2. Kaydet
+        logger.info("ADIM 1: Kaydet başlıyor...")
+        try:
+            self.kaydet()
+            logger.info("ADIM 1: Kaydet tamamlandı")
+        except Exception as e:
+            logger.error(f"ADIM 1 HATA: {e}")
+            messagebox.showerror("Hata", f"Kaydetme hatası: {e}")
+            return
+
+        # 3. Botanik kasa kapat
+        logger.info("ADIM 2: Botanik kasa kapat başlıyor...")
+
+        try:
+            from botanik_veri_cek import botanik_kasa_kapat
+            basarili, mesaj = botanik_kasa_kapat()
+
+            if basarili:
+                logger.info(f"ADIM 2 OK: {mesaj}")
+            else:
+                logger.warning(f"ADIM 2 BAŞARISIZ: {mesaj}")
+                devam = messagebox.askyesno(
+                    "Botanik Kasa Kapatma",
+                    f"Botanik'te kasa kapatma işlemi başarısız:\n\n{mesaj}\n\n"
+                    "Manuel olarak kapatıp 'Botaniğe Aktar' işlemine devam etmek istiyor musunuz?"
+                )
+                if not devam:
+                    logger.info("Kullanıcı iptal etti")
+                    return
+
+        except ImportError as e:
+            logger.error(f"Botanik modülü yüklenemedi: {e}")
+        except Exception as e:
+            logger.error(f"Botanik kasa kapatma hatası: {e}")
+
+        # 4. Botaniğe aktar (önceden kaydedilen değerlerle)
+        logger.info("ADIM 3: Botaniğe aktar başlıyor...")
+        time.sleep(1)
+
+        try:
+            self._kaydet_botanige_aktar(aktarilacak_kupurler)
+            logger.info("ADIM 3: Botaniğe aktar tamamlandı")
+        except Exception as e:
+            logger.error(f"ADIM 3 HATA: {e}")
+
+        logger.info("========== KAYDET SİRALI TAMAMLANDI ==========")
+
+    def _kaydet_botanik_kasa_kapat_eski(self):
+        """Eski fonksiyon - kullanılmıyor"""
+        pass
+
+    def _kaydet_botanige_aktar(self, aktarilacak_kupurler=None):
+        """Kaydet sırası - Başlangıç kasasını Botanik'e aktar (otomatik, onay sormadan)
+
+        Args:
+            aktarilacak_kupurler: Önceden kaydedilmiş küpür değerleri dict {deger: adet}
+                                  None ise UI'dan okumaya çalışır (geriye uyumluluk)
+        """
+        logger.info("=== BOTANİĞE AKTAR BAŞLADI ===")
+        try:
+            # Parametre olarak geldiyse onu kullan
+            if aktarilacak_kupurler is None:
+                aktarilacak_kupurler = {}
+                # Geriye uyumluluk - UI'dan okumaya çalış
+                if hasattr(self, 'c_slider_vars') and hasattr(self, 'sayim_vars'):
+                    for deger in [200, 100, 50, 20, 10, 5, 1, 0.5]:
+                        try:
+                            sayim_adet = 0
+                            if deger in self.sayim_vars:
+                                sayim_adet = int(self.sayim_vars[deger].get() or 0)
+                            ayrilan_adet = 0
+                            if deger in self.c_slider_vars:
+                                ayrilan_adet = self.c_slider_vars[deger].get()
+                            kalan_adet = sayim_adet - ayrilan_adet
+                            if kalan_adet > 0:
+                                aktarilacak_kupurler[deger] = kalan_adet
+                                logger.info(f"UI'dan okundu - Küpür: {deger} TL = {kalan_adet} adet")
+                        except (ValueError, KeyError):
+                            pass
+            else:
+                logger.info("Önceden kaydedilmiş küpür değerleri kullanılıyor")
+                for deger, adet in aktarilacak_kupurler.items():
+                    logger.info(f"Küpür: {deger} TL = {adet} adet")
+
+            logger.info(f"Toplam küpür sayısı: {len(aktarilacak_kupurler)}")
+
+            if not aktarilacak_kupurler:
+                logger.warning("Botaniğe aktarılacak değer bulunamadı!")
+                messagebox.showwarning("Uyarı", "Botaniğe aktarılacak değer bulunamadı!\n\nErtesi gün kasası boş.")
+                return
+
+            # Toplam hesapla
+            toplam = sum(k * v for k, v in aktarilacak_kupurler.items())
+            logger.info(f"Botaniğe aktarılacak toplam: {toplam:,.2f} TL")
+
+            # Botanik'e yaz (otomatik)
+            logger.info("botanik_baslangic_kasasina_yaz çağrılıyor...")
+            from botanik_veri_cek import botanik_baslangic_kasasina_yaz
+            basarili, mesaj = botanik_baslangic_kasasina_yaz(aktarilacak_kupurler)
+
+            if basarili:
+                logger.info(f"Botanik'e aktarım başarılı: {mesaj}")
+            else:
+                logger.error(f"Botanik'e aktarım hatası: {mesaj}")
+                messagebox.showerror("Hata", f"Botanik'e aktarım hatası:\n\n{mesaj}")
+
+        except ImportError as e:
+            logger.error(f"Botanik modülü yüklenemedi: {e}")
+            messagebox.showerror("Hata", f"Botanik modülü yüklenemedi: {e}")
+        except Exception as e:
+            logger.error(f"Botanik'e aktarım hatası: {e}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Hata", f"Botanik'e aktarım hatası: {e}")
+
+        logger.info("=== BOTANİĞE AKTAR TAMAMLANDI ===")
 
     def kaydet(self):
         """Kasa kapatma verilerini kaydet"""
@@ -6128,6 +6401,10 @@ class KasaKapatmaModul:
         """WhatsApp ve E-posta ile birlikte rapor gönder - aşağıdaki buton için"""
         if not YENI_MODULLER_YUKLENDI:
             messagebox.showwarning("Uyarı", "Rapor modülleri yüklenemedi!")
+            return
+
+        # Ertesi gün ve ayrılan para kontrolü
+        if not self.ertesi_gun_ayrilan_kontrol():
             return
 
         # Seçim penceresi

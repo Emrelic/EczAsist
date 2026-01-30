@@ -1014,6 +1014,148 @@ def botanik_baslangic_kasasina_yaz(kupurler: Dict[float, int]) -> Tuple[bool, st
         return False, f"Hata: {e}"
 
 
+def botanik_kasa_kapat() -> Tuple[bool, str]:
+    """
+    Botanik EOS programında kasa kapatma işlemi yapar.
+
+    Adımlar:
+    1. BotanikEOS Kasa Kapatma penceresini bul
+    2. "Kasayı KAPAT" butonuna tıkla (AutomationId: btnKapat)
+    3. "KASA KAPAMA" onay dialogunda Enter tuşuna bas (Evet seçili)
+
+    Returns:
+        Tuple[bool, str]: (başarılı mı, mesaj)
+    """
+    try:
+        import comtypes
+        import comtypes.client
+        import time
+        from tkinter import messagebox
+
+        user32 = ctypes.windll.user32
+
+        logger.info("=== BOTANİK KASA KAPAT BAŞLADI ===")
+
+        # COM başlat
+        comtypes.CoInitialize()
+
+        # UI Automation interface'ini yükle
+        comtypes.client.GetModule('UIAutomationCore.dll')
+        from comtypes.gen.UIAutomationClient import (
+            IUIAutomation, TreeScope_Descendants,
+            IUIAutomationInvokePattern
+        )
+
+        UIA_InvokePatternId = 10000
+        UIA_NamePropertyId = 30005
+        UIA_AutomationIdPropertyId = 30012
+
+        uia = comtypes.client.CreateObject(
+            '{ff48dba4-60ef-4201-aa87-54103eef594e}',
+            interface=IUIAutomation
+        )
+
+        # 1. BotanikEOS Kasa Kapatma penceresini bul
+        logger.info("Adım 1: BotanikEOS Kasa Kapatma penceresi aranıyor...")
+        botanik_h, kasa_h = _find_botanik_and_kasa_handles()
+
+        logger.info(f"Bulunan: botanik_h={botanik_h}, kasa_h={kasa_h}")
+
+        if not kasa_h:
+            msg = "Botanik 'Kasa Kapatma' penceresi bulunamadı!\n\nLütfen Botanik programında Kasa Kapatma sayfasının açık olduğundan emin olun."
+            logger.error(msg)
+            return False, msg
+
+        # Kasa Kapatma penceresinin UI element'ini al
+        kasa_elem = uia.ElementFromHandle(kasa_h)
+
+        if not kasa_elem:
+            msg = "Kasa Kapatma penceresi UI element'i alınamadı!"
+            logger.error(msg)
+            return False, msg
+
+        logger.info("Adım 1 OK: Kasa Kapatma penceresi bulundu")
+
+        # 2. "Kasayı KAPAT" butonunu bul (AutomationId: btnKapat)
+        logger.info("Adım 2: 'Kasayı KAPAT' butonu aranıyor...")
+        condition = uia.CreatePropertyCondition(UIA_AutomationIdPropertyId, "btnKapat")
+        kasayi_kapat_btn = kasa_elem.FindFirst(TreeScope_Descendants, condition)
+
+        if not kasayi_kapat_btn:
+            logger.info("btnKapat bulunamadı, Name ile deneniyor...")
+            condition = uia.CreatePropertyCondition(UIA_NamePropertyId, "Kasayı KAPAT")
+            kasayi_kapat_btn = kasa_elem.FindFirst(TreeScope_Descendants, condition)
+
+        if not kasayi_kapat_btn:
+            msg = "'Kasayı KAPAT' butonu bulunamadı!"
+            logger.error(msg)
+            return False, msg
+
+        logger.info("Adım 2 OK: 'Kasayı KAPAT' butonu bulundu")
+
+        # 3. Önce BotanikEOS penceresini öne getir
+        logger.info("Adım 3: BotanikEOS penceresi öne getiriliyor...")
+        if botanik_h:
+            user32.SetForegroundWindow(botanik_h)
+            time.sleep(0.3)
+
+        # 4. Butona tıkla - önce koordinatları al ve mouse ile tıkla
+        logger.info("Adım 4: Butona tıklanıyor...")
+        try:
+            rect = kasayi_kapat_btn.CurrentBoundingRectangle
+            center_x = rect.left + (rect.right - rect.left) // 2
+            center_y = rect.top + (rect.bottom - rect.top) // 2
+            logger.info(f"Buton koordinatları: ({center_x}, {center_y})")
+
+            # Pencereyi aktif yap
+            user32.SetForegroundWindow(botanik_h)
+            time.sleep(0.2)
+
+            # Mouse'u hareket ettir
+            user32.SetCursorPos(center_x, center_y)
+            time.sleep(0.2)
+
+            # Sol tık
+            user32.mouse_event(0x0002, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
+            time.sleep(0.05)
+            user32.mouse_event(0x0004, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
+
+            logger.info("Adım 4 OK: 'Kasayı KAPAT' butonuna tıklandı")
+        except Exception as e:
+            logger.error(f"Buton tıklama hatası: {e}")
+            return False, f"Butona tıklama hatası: {e}"
+
+        # 5. Dialog açılmasını bekle
+        logger.info("Adım 5: Dialog bekleniyor (2.5 saniye)...")
+        time.sleep(2.5)
+
+        # 6. Enter tuşuna bas (Evet butonu varsayılan olarak seçili)
+        logger.info("Adım 6: Enter tuşuna basılıyor...")
+        VK_RETURN = 0x0D
+        KEYEVENTF_KEYUP = 0x0002
+
+        # Enter tuşuna 1 kez bas
+        user32.keybd_event(VK_RETURN, 0, 0, 0)  # Key down
+        time.sleep(0.1)
+        user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)  # Key up
+
+        logger.info("Adım 6 OK: Enter tuşuna basıldı")
+
+        time.sleep(0.5)
+
+        logger.info("=== BOTANİK KASA KAPAT TAMAMLANDI ===")
+        return True, "Botanik'te kasa kapatma işlemi başarıyla tamamlandı!"
+
+    except ImportError as e:
+        logger.error(f"Gerekli modül yüklü değil: {e}")
+        return False, f"Gerekli modül yüklü değil: {e}"
+    except Exception as e:
+        logger.error(f"Botanik kasa kapatma hatası: {e}")
+        import traceback
+        traceback.print_exc()
+        return False, f"Kasa kapatma hatası: {e}"
+
+
 # Test için
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
