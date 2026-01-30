@@ -85,6 +85,14 @@ class EkRaporlarGUI:
             "renk": "#3F51B5",
             "hover": "#303F9F",
             "aktif": True
+        },
+        "uretici_firma_rapor": {
+            "baslik": "Uretici Firma Raporu",
+            "icon": "F",
+            "aciklama": "Uretici firma ve depo bazli alis faturalari",
+            "renk": "#009688",
+            "hover": "#00796B",
+            "aktif": True
         }
     }
 
@@ -341,6 +349,8 @@ class EkRaporlarGUI:
             self.alis_analiz_ac()
         elif rapor_key == "stok_hareket_analiz":
             self.stok_hareket_analiz_ac()
+        elif rapor_key == "uretici_firma_rapor":
+            self.uretici_firma_rapor_ac()
 
     def tum_hareketler_ac(self):
         """Tüm Hareketler raporunu aç"""
@@ -421,6 +431,21 @@ class EkRaporlarGUI:
         except Exception as e:
             logger.error(f"Stok Hareket Analiz açma hatası: {e}")
             messagebox.showerror("Hata", f"Rapor açılamadı:\n{e}")
+
+    def uretici_firma_rapor_ac(self):
+        """Uretici Firma Raporu'nu ac"""
+        try:
+            from uretici_firma_rapor_gui import UreticiFirmaRaporGUI
+
+            rapor_pencere = tk.Toplevel(self.root)
+            app = UreticiFirmaRaporGUI(rapor_pencere)
+
+        except ImportError as e:
+            logger.error(f"Uretici Firma Rapor import hatasi: {e}")
+            messagebox.showerror("Hata", f"Uretici Firma Rapor modulu yuklenemedi:\n{e}")
+        except Exception as e:
+            logger.error(f"Uretici Firma Rapor acma hatasi: {e}")
+            messagebox.showerror("Hata", f"Rapor acilamadi:\n{e}")
 
     def ana_menuye_don(self):
         """Ana menüye dön"""
