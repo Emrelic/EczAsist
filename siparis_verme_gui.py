@@ -85,6 +85,7 @@ class SiparisVermeGUI:
         # Checkbox değişkenleri
         self.hedef_tarih_aktif = tk.BooleanVar(value=False)
         self.min_stok_aktif = tk.BooleanVar(value=True)
+        self.min_stok_kaynagi = tk.StringVar(value='botanik')  # 'botanik' veya 'yerel'
         self.zam_aktif = tk.BooleanVar(value=False)
         self.yeterlileri_gizle = tk.BooleanVar(value=False)
 
@@ -328,216 +329,213 @@ class SiparisVermeGUI:
         self._status_bar_olustur(main_frame)
 
     def _parametre_panel_olustur(self, parent):
-        """Parametre panelini oluştur - 3 satır okunabilir tasarım"""
+        """Parametre panelini oluştur - 2 satır düzenli tasarım"""
         param_frame = tk.Frame(parent, bg=self.R_PARAM_BG, relief='raised', bd=1)
         param_frame.pack(fill=tk.X, pady=(0, 5))
 
         # ═══════════════════════════════════════════════════════════
-        # SATIR 1: Veri Parametreleri
+        # SATIR 1: Parametre Grupları (4 Ana Grup)
         # ═══════════════════════════════════════════════════════════
         row1 = tk.Frame(param_frame, bg=self.R_PARAM_BG)
-        row1.pack(fill=tk.X, padx=10, pady=(8, 4))
+        row1.pack(fill=tk.X, padx=8, pady=(5, 3))
 
-        # Grup 1: Hareket Süresi
-        grp1 = tk.LabelFrame(row1, text="Hareket Süresi", font=('Arial', 9, 'bold'),
-                             bg=self.R_GRP_DATA, fg=self.R_GRP_DATA_FG, padx=8, pady=4)
-        grp1.pack(side=tk.LEFT, padx=(0, 10))
+        # ─────────────────────────────────────────────────────────
+        # GRUP 1: VERİ KAYNAĞI (Analiz edilecek veriler)
+        # ─────────────────────────────────────────────────────────
+        grp_veri = tk.LabelFrame(row1, text=" 📊 Veri Kaynağı ", font=('Arial', 9, 'bold'),
+                                  bg=self.R_GRP_DATA, fg=self.R_GRP_DATA_FG, padx=6, pady=4)
+        grp_veri.pack(side=tk.LEFT, padx=(0, 12), ipady=2)
 
-        sene_combo = ttk.Combobox(grp1, textvariable=self.sene_sayisi, width=4, state="readonly",
-                                   font=('Arial', 10))
+        # Hareket Süresi - Stok hareket analiz süresi
+        tk.Label(grp_veri, text="Stok Hareket Süresi:", font=('Arial', 9), bg=self.R_GRP_DATA, fg=self.R_FG).pack(side=tk.LEFT)
+        sene_combo = ttk.Combobox(grp_veri, textvariable=self.sene_sayisi, width=3, state="readonly", font=('Arial', 10))
         sene_combo['values'] = [1, 2, 3]
-        sene_combo.pack(side=tk.LEFT, padx=(0, 5))
-        tk.Label(grp1, text="yıl", font=('Arial', 10), bg=self.R_GRP_DATA, fg=self.R_FG).pack(side=tk.LEFT)
+        sene_combo.pack(side=tk.LEFT, padx=(3, 0))
+        tk.Label(grp_veri, text="yıl", font=('Arial', 9), bg=self.R_GRP_DATA, fg=self.R_FG).pack(side=tk.LEFT, padx=(3, 12))
 
-        # Grup 2: Aylık Gidiş Hesaplama
-        grp2 = tk.LabelFrame(row1, text="Aylık Gidiş", font=('Arial', 9, 'bold'),
-                             bg=self.R_GRP_DATA, fg=self.R_GRP_DATA_FG, padx=8, pady=4)
-        grp2.pack(side=tk.LEFT, padx=(0, 10))
-
-        ay_combo = ttk.Combobox(grp2, textvariable=self.ay_sayisi, width=4, state="readonly",
-                                 font=('Arial', 10))
+        # Aylık Ortalama - Aylık gidiş hesaplama süresi
+        tk.Label(grp_veri, text="Aylık Gidiş Ortalaması:", font=('Arial', 9), bg=self.R_GRP_DATA, fg=self.R_FG).pack(side=tk.LEFT)
+        ay_combo = ttk.Combobox(grp_veri, textvariable=self.ay_sayisi, width=3, state="readonly", font=('Arial', 10))
         ay_combo['values'] = [3, 6, 9, 12]
-        ay_combo.pack(side=tk.LEFT, padx=(0, 5))
-        tk.Label(grp2, text="ay ort.", font=('Arial', 10), bg=self.R_GRP_DATA, fg=self.R_FG).pack(side=tk.LEFT)
+        ay_combo.pack(side=tk.LEFT, padx=(3, 0))
+        tk.Label(grp_veri, text="ay", font=('Arial', 9), bg=self.R_GRP_DATA, fg=self.R_FG).pack(side=tk.LEFT, padx=(3, 12))
 
-        # Grup 3: Ürün Tipi
-        grp3 = tk.LabelFrame(row1, text="Ürün Tipi", font=('Arial', 9, 'bold'),
-                             bg=self.R_GRP_DATA, fg=self.R_GRP_DATA_FG, padx=8, pady=4)
-        grp3.pack(side=tk.LEFT, padx=(0, 10))
-
+        # Ürün Tipi
+        tk.Label(grp_veri, text="Tip:", font=('Arial', 9), bg=self.R_GRP_DATA, fg=self.R_FG).pack(side=tk.LEFT)
         self.urun_tipi_menubutton = tk.Menubutton(
-            grp3, text="Seçiniz...", relief=tk.RAISED, width=14, font=('Arial', 10),
+            grp_veri, text="Seçiniz", relief=tk.RAISED, width=8, font=('Arial', 9),
             bg=self.R_INPUT_BG, fg=self.R_INPUT_FG
         )
-        self.urun_tipi_menu = tk.Menu(self.urun_tipi_menubutton, tearoff=0, font=('Arial', 10),
+        self.urun_tipi_menu = tk.Menu(self.urun_tipi_menubutton, tearoff=0, font=('Arial', 9),
                                        bg=self.R_INPUT_BG, fg=self.R_INPUT_FG)
         self.urun_tipi_menubutton["menu"] = self.urun_tipi_menu
-        self.urun_tipi_menubutton.pack(side=tk.LEFT, padx=(0, 5))
+        self.urun_tipi_menubutton.pack(side=tk.LEFT, padx=(2, 3))
 
-        tk.Button(grp3, text="Tümü", command=self._tum_tipleri_sec, font=('Arial', 9),
-                  bg=self.R_ACCENT, fg='white', width=5).pack(side=tk.LEFT, padx=2)
-        tk.Button(grp3, text="Varsayılan", command=self._varsayilan_tipleri_sec, font=('Arial', 9),
-                  bg=self.R_ACCENT, fg='white', width=8).pack(side=tk.LEFT)
+        tk.Button(grp_veri, text="Tümü", command=self._tum_tipleri_sec, font=('Arial', 8),
+                  bg=self.R_ACCENT, fg='white', width=4, relief='flat').pack(side=tk.LEFT, padx=1)
+        tk.Button(grp_veri, text="Vars", command=self._varsayilan_tipleri_sec, font=('Arial', 8),
+                  bg=self.R_ACCENT, fg='white', width=4, relief='flat').pack(side=tk.LEFT)
 
-        # Grup 4: Hedef Tarih
-        grp4 = tk.LabelFrame(row1, text="Hedef Tarih", font=('Arial', 9, 'bold'),
-                             bg=self.R_GRP_HEDEF, fg=self.R_GRP_HEDEF_FG, padx=8, pady=4)
-        grp4.pack(side=tk.LEFT, padx=(0, 10))
+        # ─────────────────────────────────────────────────────────
+        # GRUP 2: SİPARİŞ HESAPLAMA (Hedef ve Min Stok)
+        # ─────────────────────────────────────────────────────────
+        grp_siparis = tk.LabelFrame(row1, text=" 🎯 Sipariş Hesaplama ", font=('Arial', 9, 'bold'),
+                                     bg=self.R_GRP_HEDEF, fg=self.R_GRP_HEDEF_FG, padx=6, pady=4)
+        grp_siparis.pack(side=tk.LEFT, padx=(0, 12), ipady=2)
 
+        # Hedef Tarih
         self.hedef_check = tk.Checkbutton(
-            grp4, text="Aktif", variable=self.hedef_tarih_aktif,
-            bg=self.R_GRP_HEDEF, fg=self.R_FG, font=('Arial', 10), activebackground=self.R_GRP_HEDEF,
-            selectcolor=self.R_BG_SECONDARY,
-            command=self._hedef_tarih_toggle
+            grp_siparis, text="Hedef:", variable=self.hedef_tarih_aktif,
+            bg=self.R_GRP_HEDEF, fg=self.R_FG, font=('Arial', 9), activebackground=self.R_GRP_HEDEF,
+            selectcolor=self.R_BG_SECONDARY, command=self._hedef_tarih_toggle
         )
-        self.hedef_check.pack(side=tk.LEFT, padx=(0, 5))
+        self.hedef_check.pack(side=tk.LEFT)
 
         bugun = datetime.now()
         ay_son_gun = calendar.monthrange(bugun.year, bugun.month)[1]
         self.hedef_tarih_entry = DateEntry(
-            grp4, width=11, background=self.R_ACCENT, foreground='white',
-            borderwidth=1, date_pattern='yyyy-mm-dd', font=('Arial', 10),
+            grp_siparis, width=10, background=self.R_ACCENT, foreground='white',
+            borderwidth=1, date_pattern='yyyy-mm-dd', font=('Arial', 9),
             year=bugun.year, month=bugun.month, day=ay_son_gun
         )
-        self.hedef_tarih_entry.pack(side=tk.LEFT, padx=(0, 5))
-        tk.Button(grp4, text="Ay Sonu", command=self._ay_sonu_sec, font=('Arial', 9),
-                  bg=self.R_SUCCESS, fg='white', width=7).pack(side=tk.LEFT)
+        self.hedef_tarih_entry.pack(side=tk.LEFT, padx=(0, 3))
+        tk.Button(grp_siparis, text="Ay Sonu", command=self._ay_sonu_sec, font=('Arial', 8),
+                  bg=self.R_SUCCESS, fg='white', relief='flat').pack(side=tk.LEFT, padx=(0, 10))
 
-        # Sağda VERİLERİ GETİR butonu
-        self.getir_btn = tk.Button(
-            row1, text="VERİLERİ GETİR", command=self.verileri_getir,
-            bg=self.R_ACCENT, fg='white', font=('Arial', 11, 'bold'),
-            relief='raised', bd=2, padx=15, pady=5
-        )
-        self.getir_btn.pack(side=tk.RIGHT, padx=(10, 0))
-
-        # ═══════════════════════════════════════════════════════════
-        # SATIR 2: Optimizasyon Parametreleri
-        # ═══════════════════════════════════════════════════════════
-        row2 = tk.Frame(param_frame, bg=self.R_PARAM_BG)
-        row2.pack(fill=tk.X, padx=10, pady=4)
-
-        # Grup 5: Zam Beklentisi
-        grp5 = tk.LabelFrame(row2, text="Zam Beklentisi", font=('Arial', 9, 'bold'),
-                             bg=self.R_GRP_ZAM, fg=self.R_GRP_ZAM_FG, padx=8, pady=4)
-        grp5.pack(side=tk.LEFT, padx=(0, 10))
-
-        self.zam_check = tk.Checkbutton(
-            grp5, text="Aktif", variable=self.zam_aktif,
-            bg=self.R_GRP_ZAM, fg=self.R_FG, font=('Arial', 10), activebackground=self.R_GRP_ZAM,
-            selectcolor=self.R_BG_SECONDARY,
-            command=self._zam_toggle
-        )
-        self.zam_check.pack(side=tk.LEFT, padx=(0, 8))
-
-        tk.Label(grp5, text="Oran %", font=('Arial', 10), bg=self.R_GRP_ZAM, fg=self.R_FG).pack(side=tk.LEFT)
-        zam_entry = ttk.Entry(grp5, textvariable=self.beklenen_zam_orani, width=5, font=('Arial', 10))
-        zam_entry.pack(side=tk.LEFT, padx=(3, 10))
-
-        tk.Label(grp5, text="Tarih:", font=('Arial', 10), bg=self.R_GRP_ZAM, fg=self.R_FG).pack(side=tk.LEFT)
-        self.zam_tarih_entry = DateEntry(
-            grp5, width=11, background=self.R_WARNING, foreground='white',
-            borderwidth=1, date_pattern='yyyy-mm-dd', font=('Arial', 10)
-        )
-        self.zam_tarih_entry.pack(side=tk.LEFT, padx=(3, 8))
-
-        # Zam stratejisi seçimi
-        tk.Label(grp5, text="Strateji:", font=('Arial', 10), bg=self.R_GRP_ZAM, fg=self.R_FG).pack(side=tk.LEFT)
-        self.strateji_combo = ttk.Combobox(
-            grp5, textvariable=self.zam_stratejisi, width=12, font=('Arial', 9),
-            state='readonly',
-            values=['pareto', 'optimum', 'verimlilik']
-        )
-        self.strateji_combo.pack(side=tk.LEFT, padx=(3, 0))
-        # Tooltip için binding
-        self.strateji_combo.bind('<<ComboboxSelected>>', self._strateji_bilgi_goster)
-
-        # Grup 6: Min Stok
-        grp6 = tk.LabelFrame(row2, text="Minimum Stok", font=('Arial', 9, 'bold'),
-                             bg=self.R_GRP_MIN, fg=self.R_GRP_MIN_FG, padx=8, pady=4)
-        grp6.pack(side=tk.LEFT, padx=(0, 10))
-
+        # Min Stok
         self.min_check = tk.Checkbutton(
-            grp6, text="Dikkate Al", variable=self.min_stok_aktif,
-            bg=self.R_GRP_MIN, fg=self.R_FG, font=('Arial', 10), activebackground=self.R_GRP_MIN,
+            grp_siparis, text="Min Stok:", variable=self.min_stok_aktif,
+            bg=self.R_GRP_HEDEF, fg=self.R_FG, font=('Arial', 9), activebackground=self.R_GRP_HEDEF,
             selectcolor=self.R_BG_SECONDARY
         )
         self.min_check.pack(side=tk.LEFT)
 
-        # Min Stok Hesapla butonu
-        tk.Button(
-            grp6, text="Hesapla", command=self._min_stok_analiz_ac,
-            bg=self.R_GRP_MIN_FG, fg='white', font=('Arial', 9, 'bold'),
-            relief='raised', bd=1, padx=6, pady=1
-        ).pack(side=tk.LEFT, padx=(8, 0))
-
-        # Grup 7: Faiz Parametreleri
-        grp7 = tk.LabelFrame(row2, text="Faiz Parametreleri", font=('Arial', 9, 'bold'),
-                             bg=self.R_GRP_FAIZ, fg=self.R_GRP_FAIZ_FG, padx=8, pady=4)
-        grp7.pack(side=tk.LEFT, padx=(0, 10))
-
-        tk.Label(grp7, text="Mevduat %", font=('Arial', 10), bg=self.R_GRP_FAIZ, fg=self.R_FG).pack(side=tk.LEFT)
-        mevduat_entry = ttk.Entry(grp7, textvariable=self.mevduat_faizi, width=5, font=('Arial', 10))
-        mevduat_entry.pack(side=tk.LEFT, padx=(3, 10))
-
-        tk.Label(grp7, text="Kredi %", font=('Arial', 10), bg=self.R_GRP_FAIZ, fg=self.R_FG).pack(side=tk.LEFT)
-        kredi_entry = ttk.Entry(grp7, textvariable=self.kredi_faizi, width=5, font=('Arial', 10))
-        kredi_entry.pack(side=tk.LEFT, padx=(3, 10))
-
-        # Faiz türü seçimi
         tk.Radiobutton(
-            grp7, text="Mevduat", variable=self.faiz_turu, value="mevduat",
-            bg=self.R_GRP_FAIZ, fg=self.R_FG, font=('Arial', 10), activebackground=self.R_GRP_FAIZ,
+            grp_siparis, text="Botanik", variable=self.min_stok_kaynagi, value="botanik",
+            bg=self.R_GRP_HEDEF, fg=self.R_FG, font=('Arial', 8), activebackground=self.R_GRP_HEDEF,
             selectcolor=self.R_BG_SECONDARY
+        ).pack(side=tk.LEFT)
+        tk.Radiobutton(
+            grp_siparis, text="Yerel", variable=self.min_stok_kaynagi, value="yerel",
+            bg=self.R_GRP_HEDEF, fg=self.R_FG, font=('Arial', 8), activebackground=self.R_GRP_HEDEF,
+            selectcolor=self.R_BG_SECONDARY
+        ).pack(side=tk.LEFT)
+
+        tk.Button(
+            grp_siparis, text="Hesapla", command=self._min_stok_analiz_ac,
+            bg=self.R_GRP_MIN_FG, fg='white', font=('Arial', 8),
+            relief='flat'
         ).pack(side=tk.LEFT, padx=(5, 0))
+
+        # ─────────────────────────────────────────────────────────
+        # GRUP 3: ZAM ANALİZİ (Zam optimizasyonu)
+        # ─────────────────────────────────────────────────────────
+        grp_zam = tk.LabelFrame(row1, text=" 📈 Zam Analizi ", font=('Arial', 9, 'bold'),
+                                 bg=self.R_GRP_ZAM, fg=self.R_GRP_ZAM_FG, padx=6, pady=4)
+        grp_zam.pack(side=tk.LEFT, padx=(0, 12), ipady=2)
+
+        self.zam_check = tk.Checkbutton(
+            grp_zam, text="Aktif", variable=self.zam_aktif,
+            bg=self.R_GRP_ZAM, fg=self.R_FG, font=('Arial', 9), activebackground=self.R_GRP_ZAM,
+            selectcolor=self.R_BG_SECONDARY, command=self._zam_toggle
+        )
+        self.zam_check.pack(side=tk.LEFT, padx=(0, 5))
+
+        tk.Label(grp_zam, text="Oran:", font=('Arial', 9), bg=self.R_GRP_ZAM, fg=self.R_FG).pack(side=tk.LEFT)
+        tk.Label(grp_zam, text="%", font=('Arial', 9), bg=self.R_GRP_ZAM, fg=self.R_FG).pack(side=tk.LEFT)
+        zam_entry = ttk.Entry(grp_zam, textvariable=self.beklenen_zam_orani, width=4, font=('Arial', 9))
+        zam_entry.pack(side=tk.LEFT, padx=(1, 8))
+
+        tk.Label(grp_zam, text="Tarih:", font=('Arial', 9), bg=self.R_GRP_ZAM, fg=self.R_FG).pack(side=tk.LEFT)
+        self.zam_tarih_entry = DateEntry(
+            grp_zam, width=10, background=self.R_WARNING, foreground='white',
+            borderwidth=1, date_pattern='yyyy-mm-dd', font=('Arial', 9)
+        )
+        self.zam_tarih_entry.pack(side=tk.LEFT, padx=(2, 8))
+
+        tk.Label(grp_zam, text="Strateji:", font=('Arial', 9), bg=self.R_GRP_ZAM, fg=self.R_FG).pack(side=tk.LEFT)
+        self.strateji_combo = ttk.Combobox(
+            grp_zam, textvariable=self.zam_stratejisi, width=8, font=('Arial', 9),
+            state='readonly', values=['pareto', 'optimum', 'verimlilik']
+        )
+        self.strateji_combo.pack(side=tk.LEFT, padx=(2, 0))
+        self.strateji_combo.bind('<<ComboboxSelected>>', self._strateji_bilgi_goster)
+
+        # ─────────────────────────────────────────────────────────
+        # GRUP 4: FİNANSAL PARAMETRELER (Faiz hesaplamaları)
+        # ─────────────────────────────────────────────────────────
+        grp_finans = tk.LabelFrame(row1, text=" 💰 Finansal ", font=('Arial', 9, 'bold'),
+                                    bg=self.R_GRP_FAIZ, fg=self.R_GRP_FAIZ_FG, padx=6, pady=4)
+        grp_finans.pack(side=tk.LEFT, ipady=2)
+
+        tk.Label(grp_finans, text="M%", font=('Arial', 9), bg=self.R_GRP_FAIZ, fg=self.R_FG).pack(side=tk.LEFT)
+        mevduat_entry = ttk.Entry(grp_finans, textvariable=self.mevduat_faizi, width=3, font=('Arial', 9))
+        mevduat_entry.pack(side=tk.LEFT, padx=(1, 4))
+
+        tk.Label(grp_finans, text="K%", font=('Arial', 9), bg=self.R_GRP_FAIZ, fg=self.R_FG).pack(side=tk.LEFT)
+        kredi_entry = ttk.Entry(grp_finans, textvariable=self.kredi_faizi, width=3, font=('Arial', 9))
+        kredi_entry.pack(side=tk.LEFT, padx=(1, 4))
+
         tk.Radiobutton(
-            grp7, text="Kredi", variable=self.faiz_turu, value="kredi",
-            bg=self.R_GRP_FAIZ, fg=self.R_FG, font=('Arial', 10), activebackground=self.R_GRP_FAIZ,
+            grp_finans, text="M", variable=self.faiz_turu, value="mevduat",
+            bg=self.R_GRP_FAIZ, fg=self.R_FG, font=('Arial', 9), activebackground=self.R_GRP_FAIZ,
             selectcolor=self.R_BG_SECONDARY
-        ).pack(side=tk.LEFT, padx=(0, 10))
+        ).pack(side=tk.LEFT)
+        tk.Radiobutton(
+            grp_finans, text="K", variable=self.faiz_turu, value="kredi",
+            bg=self.R_GRP_FAIZ, fg=self.R_FG, font=('Arial', 9), activebackground=self.R_GRP_FAIZ,
+            selectcolor=self.R_BG_SECONDARY
+        ).pack(side=tk.LEFT, padx=(0, 4))
 
-        tk.Label(grp7, text="Vade (gün):", font=('Arial', 10), bg=self.R_GRP_FAIZ, fg=self.R_FG).pack(side=tk.LEFT)
-        vade_entry = ttk.Entry(grp7, textvariable=self.depo_vadesi, width=4, font=('Arial', 10))
-        vade_entry.pack(side=tk.LEFT, padx=(3, 0))
-
-        # Sağda bilgi etiketi
-        self.hesaplama_label = tk.Label(
-            row2, text="", font=('Arial', 10, 'bold'), bg=self.R_PARAM_BG, fg=self.R_ACCENT
-        )
-        self.hesaplama_label.pack(side=tk.RIGHT, padx=10)
+        tk.Label(grp_finans, text="Vade", font=('Arial', 9), bg=self.R_GRP_FAIZ, fg=self.R_FG).pack(side=tk.LEFT)
+        vade_entry = ttk.Entry(grp_finans, textvariable=self.depo_vadesi, width=3, font=('Arial', 9))
+        vade_entry.pack(side=tk.LEFT, padx=(1, 0))
+        tk.Label(grp_finans, text="g", font=('Arial', 9), bg=self.R_GRP_FAIZ, fg=self.R_FG).pack(side=tk.LEFT, padx=(1, 0))
 
         # ═══════════════════════════════════════════════════════════
-        # SATIR 3: İşlem Butonları
+        # SATIR 2: İşlem Butonları
         # ═══════════════════════════════════════════════════════════
-        row3 = tk.Frame(param_frame, bg=self.R_PARAM_BG)
-        row3.pack(fill=tk.X, padx=10, pady=(4, 8))
+        row2 = tk.Frame(param_frame, bg=self.R_PARAM_BG)
+        row2.pack(fill=tk.X, padx=8, pady=(3, 5))
 
-        # Yeterlileri Gizle Toggle
+        # Sol taraf butonları
         self.gizle_btn = tk.Button(
-            row3, text="Yeterlileri Gizle: KAPALI", command=self._toggle_yeterlileri_gizle,
-            bg=self.R_FG_SECONDARY, fg='white', font=('Arial', 10, 'bold'),
-            relief='raised', bd=2, padx=12, pady=3
+            row2, text="Yeterlileri Gizle: KAPALI", command=self._toggle_yeterlileri_gizle,
+            bg=self.R_FG_SECONDARY, fg='white', font=('Arial', 9, 'bold'),
+            relief='raised', bd=2, padx=10, pady=3
         )
-        self.gizle_btn.pack(side=tk.LEFT, padx=(0, 15))
-
-        # Toplu işlem butonları
-        tk.Button(
-            row3, text="Tüm Önerileri Manuel'e Kopyala", command=self._tum_onerileri_kopyala,
-            bg=self.R_GRP_MIN_FG, fg='white', font=('Arial', 10), relief='raised', bd=2, padx=10, pady=3
-        ).pack(side=tk.LEFT, padx=(0, 10))
+        self.gizle_btn.pack(side=tk.LEFT, padx=(0, 12))
 
         tk.Button(
-            row3, text="Seçilileri Kesin Listeye Ekle", command=self._secilileri_kesin_listeye_ekle,
-            bg=self.R_SUCCESS, fg='white', font=('Arial', 10), relief='raised', bd=2, padx=10, pady=3
-        ).pack(side=tk.LEFT, padx=(0, 10))
+            row2, text="Önerileri Kopyala", command=self._tum_onerileri_kopyala,
+            bg=self.R_GRP_MIN_FG, fg='white', font=('Arial', 9), relief='raised', bd=2, padx=10, pady=3
+        ).pack(side=tk.LEFT, padx=(0, 8))
 
-        # Excel butonu
+        tk.Button(
+            row2, text="Seçilileri Ekle", command=self._secilileri_kesin_listeye_ekle,
+            bg=self.R_SUCCESS, fg='white', font=('Arial', 9), relief='raised', bd=2, padx=10, pady=3
+        ).pack(side=tk.LEFT, padx=(0, 8))
+
         self.excel_btn = tk.Button(
-            row3, text="EXCEL'E AKTAR", command=self.excel_aktar,
-            bg=self.R_WARNING, fg='white', font=('Arial', 10, 'bold'),
-            relief='raised', bd=2, padx=12, pady=3
+            row2, text="Excel'e Aktar", command=self.excel_aktar,
+            bg=self.R_WARNING, fg='white', font=('Arial', 9, 'bold'),
+            relief='raised', bd=2, padx=10, pady=3
         )
-        self.excel_btn.pack(side=tk.RIGHT)
+        self.excel_btn.pack(side=tk.LEFT)
+
+        # Ortada bilgi etiketi
+        self.hesaplama_label = tk.Label(
+            row2, text="", font=('Arial', 9, 'bold'), bg=self.R_PARAM_BG, fg=self.R_ACCENT
+        )
+        self.hesaplama_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=15)
+
+        # Sağda ana buton
+        self.getir_btn = tk.Button(
+            row2, text="  VERİLERİ GETİR  ", command=self.verileri_getir,
+            bg=self.R_ACCENT, fg='white', font=('Arial', 11, 'bold'),
+            relief='raised', bd=2, padx=20, pady=4
+        )
+        self.getir_btn.pack(side=tk.RIGHT)
 
     def _orta_bolum_olustur(self, parent):
         """Orta bölüm - Ana DataGrid + Detay Paneli"""
@@ -554,7 +552,7 @@ class SiparisVermeGUI:
     def _ana_grid_olustur(self):
         """Ana DataGrid - gruplu görünüm (genişletilmiş)"""
         grid_frame = tk.Frame(self.orta_paned, bg=self.R_BG_SECONDARY, relief='sunken', bd=1)
-        self.orta_paned.add(grid_frame, minsize=1000, width=1400)
+        self.orta_paned.add(grid_frame, minsize=1000, width=1350)
 
         # Başlık
         header = tk.Frame(grid_frame, bg=self.R_TABLE_HEADER_BG, height=26)
@@ -598,11 +596,11 @@ class SiparisVermeGUI:
         tree_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
 
         # Sütun tanımları
-        # NOT: Stok ve Aylık sütunları vurgulu gösterilecek
+        # NOT: Stok ve Aylık sütunları vurgulu gösterilecek (daha geniş)
         self.ana_sutunlar = [
             ("Tur", "", 25),
             ("UrunAdi", "Urun Adi", 220),
-            ("Stok", "STOK", 50),  # Vurgulu
+            ("Stok", "★STOK★", 65),  # Vurgulu - genişletildi
             ("Min", "Min", 35),
             ("Sart1", "Sart1", 50),
             ("Sart2", "Sart2", 50),
@@ -613,10 +611,10 @@ class SiparisVermeGUI:
         self.aylik_sutunlar = []
 
         self.son_sutunlar = [
-            ("AylikOrt", "AYLIK", 55),  # Vurgulu
+            ("AylikOrt", "★AYLIK★", 70),  # Vurgulu - genişletildi
             ("GunlukOrt", "Gun", 45),
             ("AyBitis", "AyBitis", 55),
-            ("Oneri", "SIPARIS", 70),  # Vurgulu ve genis
+            ("Oneri", "SİPARİŞ", 75),  # Vurgulu ve genis
             ("OneriAy", "OneriAy", 60),
             ("YeniAyBitis", "YeniBitis", 65),
             ("Manuel", "Manuel", 55),
@@ -638,36 +636,46 @@ class SiparisVermeGUI:
         vsb.grid(row=0, column=1, sticky='ns')
         hsb.grid(row=1, column=0, sticky='ew')
 
-        # Treeview stil ayarları - daha büyük font
+        # Treeview stil ayarları - daha büyük font (11pt)
         style = ttk.Style()
-        style.configure('Siparis.Treeview', font=('Arial', 10), rowheight=28)
-        style.configure('Siparis.Treeview.Heading', font=('Arial', 10, 'bold'))
+        style.configure('Siparis.Treeview', font=('Arial', 11), rowheight=30)
+        style.configure('Siparis.Treeview.Heading', font=('Arial', 11, 'bold'))
         self.ana_tree.configure(style='Siparis.Treeview')
 
         # Tag'ler - sipariş gerektiren satırlar bold ve vurgulu
         self.ana_tree.tag_configure('grup_baslik', background=self.R_GRUP_BASLIK, foreground='white',
-                                     font=('Arial', 10, 'bold'))
+                                     font=('Arial', 11, 'bold'))
+        # Sübvansiyon tag'leri - stok yeterliliğine göre renkler
+        self.ana_tree.tag_configure('grup_baslik_yeterli', background='#2E7D32', foreground='white',
+                                     font=('Arial', 11, 'bold'))  # Koyu yeşil - stok yeterli
+        self.ana_tree.tag_configure('grup_baslik_iyi', background='#558B2F', foreground='white',
+                                     font=('Arial', 11, 'bold'))  # Yeşil - %80+
+        self.ana_tree.tag_configure('grup_baslik_orta', background='#F9A825', foreground='black',
+                                     font=('Arial', 11, 'bold'))  # Sarı - %50-80
+        self.ana_tree.tag_configure('grup_baslik_dusuk', background='#D84315', foreground='white',
+                                     font=('Arial', 11, 'bold'))  # Kırmızı - %50 altı
         self.ana_tree.tag_configure('grup_satir', background=self.R_GRUP_ICERIK, foreground=self.R_FG,
-                                     font=('Arial', 10))
+                                     font=('Arial', 11))
         self.ana_tree.tag_configure('grup_satir_siparis', background=self.R_SIPARIS_GEREK, foreground=self.R_FG,
-                                     font=('Arial', 11, 'bold'))
+                                     font=('Arial', 12, 'bold'))
         self.ana_tree.tag_configure('alt_toplam', background=self.R_ALT_TOPLAM, foreground=self.R_FG,
-                                     font=('Arial', 10, 'bold'))
+                                     font=('Arial', 11, 'bold'))
         self.ana_tree.tag_configure('tek_satir', background=self.R_TEK_SATIR, foreground=self.R_FG,
-                                     font=('Arial', 10))
+                                     font=('Arial', 11))
         self.ana_tree.tag_configure('tek_satir_siparis', background=self.R_SIPARIS_GEREK, foreground=self.R_FG,
-                                     font=('Arial', 11, 'bold'))
+                                     font=('Arial', 12, 'bold'))
         self.ana_tree.tag_configure('arama_eslesme', background=self.R_WARNING, foreground=self.R_FG,
-                                     font=('Arial', 11, 'bold'))
+                                     font=('Arial', 12, 'bold'))
 
         # Seçim olayı
         self.ana_tree.bind('<<TreeviewSelect>>', self._satir_secildi)
         self.ana_tree.bind('<Double-1>', self._satir_cift_tiklandi)
+        self.ana_tree.bind('<Button-1>', self._sutun_tiklandi)
 
     def _detay_panel_olustur(self):
-        """Sağ taraftaki detay paneli - daraltılmış"""
+        """Sağ taraftaki detay paneli - scroll'lu tasarım"""
         detay_frame = tk.Frame(self.orta_paned, bg=self.R_BG_SECONDARY, relief='sunken', bd=1)
-        self.orta_paned.add(detay_frame, minsize=220, width=280)
+        self.orta_paned.add(detay_frame, minsize=160, width=180)
 
         # Başlık
         header = tk.Frame(detay_frame, bg=self.R_GRUP_BASLIK, height=26)
@@ -677,41 +685,24 @@ class SiparisVermeGUI:
                 font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=10)
 
         # Scrollable içerik alanı
-        detay_container = tk.Frame(detay_frame, bg=self.R_BG_SECONDARY)
-        detay_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Canvas ve Scrollbar
-        self.detay_canvas = tk.Canvas(detay_container, bg=self.R_BG_SECONDARY, highlightthickness=0)
-        detay_scrollbar = ttk.Scrollbar(detay_container, orient="vertical", command=self.detay_canvas.yview)
-
+        self.detay_canvas = tk.Canvas(detay_frame, bg=self.R_BG_SECONDARY, highlightthickness=0)
+        self.detay_scrollbar = ttk.Scrollbar(detay_frame, orient='vertical', command=self.detay_canvas.yview)
         self.detay_content = tk.Frame(self.detay_canvas, bg=self.R_BG_SECONDARY)
 
-        # Canvas içine frame'i yerleştir
-        self.detay_canvas_window = self.detay_canvas.create_window((0, 0), window=self.detay_content, anchor="nw")
+        self.detay_canvas.configure(yscrollcommand=self.detay_scrollbar.set)
+        self.detay_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.detay_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Scrollbar'ı canvas'a bağla
-        self.detay_canvas.configure(yscrollcommand=detay_scrollbar.set)
+        self.detay_canvas_window = self.detay_canvas.create_window((0, 0), window=self.detay_content, anchor='nw')
 
-        # Pack
-        detay_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.detay_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Canvas ve içerik boyut güncellemeleri
+        self.detay_content.bind('<Configure>', self._detay_scroll_configure)
+        self.detay_canvas.bind('<Configure>', lambda e: self.detay_canvas.itemconfig(
+            self.detay_canvas_window, width=e.width))
 
-        # Frame boyutu değişince scroll region güncelle
-        def _on_frame_configure(event):
-            self.detay_canvas.configure(scrollregion=self.detay_canvas.bbox("all"))
-
-        def _on_canvas_configure(event):
-            self.detay_canvas.itemconfig(self.detay_canvas_window, width=event.width)
-
-        self.detay_content.bind("<Configure>", _on_frame_configure)
-        self.detay_canvas.bind("<Configure>", _on_canvas_configure)
-
-        # Mouse wheel scroll desteği
-        def _on_mousewheel(event):
-            self.detay_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-
-        self.detay_canvas.bind("<MouseWheel>", _on_mousewheel)
-        self.detay_content.bind("<MouseWheel>", _on_mousewheel)
+        # Mouse wheel scroll
+        self.detay_canvas.bind('<Enter>', lambda e: self.detay_canvas.bind_all('<MouseWheel>', self._detay_mouse_scroll))
+        self.detay_canvas.bind('<Leave>', lambda e: self.detay_canvas.unbind_all('<MouseWheel>'))
 
         # Placeholder
         self.detay_placeholder = tk.Label(
@@ -722,9 +713,17 @@ class SiparisVermeGUI:
         )
         self.detay_placeholder.pack(expand=True)
 
+    def _detay_scroll_configure(self, event=None):
+        """Detay paneli scroll region güncelle"""
+        self.detay_canvas.configure(scrollregion=self.detay_canvas.bbox('all'))
+
+    def _detay_mouse_scroll(self, event):
+        """Detay paneli mouse wheel scroll"""
+        self.detay_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
     def _kesin_liste_olustur(self, parent):
         """Alt kısımdaki kesin sipariş listesi - depo bilgileri ile"""
-        kesin_frame = tk.Frame(parent, bg=self.R_BG_SECONDARY, relief='sunken', bd=1, height=200)
+        kesin_frame = tk.Frame(parent, bg=self.R_BG_SECONDARY, relief='sunken', bd=1, height=170)
         kesin_frame.pack(fill=tk.X, pady=(0, 3))
         kesin_frame.pack_propagate(False)
 
@@ -749,6 +748,16 @@ class SiparisVermeGUI:
         # Calisma Yukle butonu
         tk.Button(header, text="Calisma Yukle", command=self._calisma_yukle_dialog,
                  bg=self.R_GRP_MIN_FG, fg='white', font=('Arial', 8), relief='flat', padx=5
+                 ).pack(side=tk.LEFT, padx=2, pady=2)
+
+        # Kaydet ve Kapat butonu
+        tk.Button(header, text="Kaydet/Kapat", command=self._calisma_kaydet_kapat,
+                 bg='#6A1B9A', fg='white', font=('Arial', 8, 'bold'), relief='flat', padx=5
+                 ).pack(side=tk.LEFT, padx=2, pady=2)
+
+        # Arşiv butonu
+        tk.Button(header, text="Arşiv", command=self._calisma_arsiv_goster,
+                 bg='#5D4037', fg='white', font=('Arial', 8), relief='flat', padx=5
                  ).pack(side=tk.LEFT, padx=2, pady=2)
 
         # Depolarda Ara butonu
@@ -798,7 +807,7 @@ class SiparisVermeGUI:
         ]
 
         self.kesin_tree = ttk.Treeview(tree_frame, columns=[c[0] for c in columns],
-                                       show='headings', height=6)
+                                       show='headings', height=5)
         for col_id, baslik, width in columns:
             self.kesin_tree.heading(col_id, text=baslik)
             self.kesin_tree.column(col_id, width=width, minwidth=40)
@@ -813,6 +822,41 @@ class SiparisVermeGUI:
 
         self.kesin_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # F1 tuşu ile barkod kopyalama
+        self.kesin_tree.bind('<F1>', self._barkod_kopyala)
+
+        # Klavye kısayolu etiketi
+        kisayol_label = tk.Label(tree_frame, text="F1: Barkod Kopyala", font=('Arial', 7),
+                                 fg='#666', bg=self.R_BG)
+        kisayol_label.place(relx=1.0, y=0, anchor='ne')
+
+    def _barkod_kopyala(self, event=None):
+        """Seçili satırın barkodunu panoya kopyala (F1)"""
+        secili = self.kesin_tree.selection()
+        if not secili:
+            self.status_label.config(text="⚠ Barkod kopyalamak için bir satır seçin")
+            return
+
+        item = secili[0]
+        idx = self.kesin_tree.index(item)
+
+        if idx >= len(self.kesin_siparis_listesi):
+            return
+
+        siparis = self.kesin_siparis_listesi[idx]
+        barkod = siparis.get('Barkod', '')
+
+        if barkod:
+            # Panoya kopyala
+            self.parent.clipboard_clear()
+            self.parent.clipboard_append(barkod)
+
+            # Görsel geri bildirim
+            urun_adi = siparis.get('UrunAdi', '')[:25]
+            self.status_label.config(text=f"📋 Barkod kopyalandı: {barkod} ({urun_adi})")
+        else:
+            self.status_label.config(text="⚠ Bu ürünün barkodu yok!")
 
     def _status_bar_olustur(self, parent):
         """Status bar"""
@@ -1459,30 +1503,45 @@ class SiparisVermeGUI:
         colors = {'max_roi': '#FF9800', 'yarim_roi': '#9C27B0', 'pareto': '#4CAF50',
                   'optimum': '#2196F3', 'sifir_roi': '#F44336'}
 
+        # Dinamik eksen ölçeklendirmesi - ilacın kritik noktalarına göre
+        x_max = int(kn['sifir_roi']['m'] * 1.15)  # Negatif noktasının %15 ötesine kadar
+        if x_max < 10:
+            x_max = 20
+        y_kazanc_max = kn['optimum']['k'] * 1.2  # Tepe kazancın %20 üstü
+        y_kazanc_min = min(k[:x_max+1]) if x_max < len(k) else min(k)
+        if y_kazanc_min > 0:
+            y_kazanc_min = -y_kazanc_max * 0.1
+
         # Grafik 1: ROI Eğrisi
         ax1 = axes[0, 0]
-        ax1.fill_between(m, r, alpha=0.3, color='green', where=[x >= 0 for x in r])
-        ax1.fill_between(m, r, alpha=0.3, color='red', where=[x < 0 for x in r])
-        ax1.plot(m, r, 'b-', linewidth=2.5)
+        ax1.fill_between(m[:x_max+1], r[:x_max+1], alpha=0.3, color='green', where=[x >= 0 for x in r[:x_max+1]])
+        ax1.fill_between(m[:x_max+1], r[:x_max+1], alpha=0.3, color='red', where=[x < 0 for x in r[:x_max+1]])
+        ax1.plot(m[:x_max+1], r[:x_max+1], 'b-', linewidth=2.5)
         ax1.axhline(y=0, color='black', linestyle='-', linewidth=1)
         for n, v in kn.items():
-            ax1.scatter(v['m'], v['r'], c=colors[n], s=150, marker='o', zorder=5, edgecolors='black')
-            ax1.axvline(x=v['m'], color=colors[n], linestyle=':', linewidth=1, alpha=0.5)
-        if stok > 0 and stok < max(m):
+            if v['m'] <= x_max:
+                ax1.scatter(v['m'], v['r'], c=colors[n], s=150, marker='o', zorder=5, edgecolors='black')
+                ax1.axvline(x=v['m'], color=colors[n], linestyle=':', linewidth=1, alpha=0.5)
+        if stok > 0 and stok <= x_max:
             ax1.axvline(x=stok, color='gray', linestyle='--', linewidth=2, alpha=0.7)
+        ax1.set_xlim(0, x_max)
         ax1.set_xlabel('Siparis Miktari (adet)')
         ax1.set_ylabel('ROI - Her 100 TL\'de Kazanc (%)')
         ax1.set_title('Siparis Miktarina Gore ROI', fontweight='bold')
         ax1.grid(True, alpha=0.3)
 
-        # Grafik 2: Yatırım vs Kazanç
+        # Grafik 2: Yatırım vs Kazanç (dinamik ölçekli)
         ax2 = axes[0, 1]
-        ax2.fill_between(y, k, alpha=0.3, color='green', where=[x >= 0 for x in k])
-        ax2.fill_between(y, k, alpha=0.3, color='red', where=[x < 0 for x in k])
-        ax2.plot(y, k, 'b-', linewidth=2.5)
+        y_limited = y[:x_max+1]
+        k_limited = k[:x_max+1]
+        ax2.fill_between(y_limited, k_limited, alpha=0.3, color='green', where=[x >= 0 for x in k_limited])
+        ax2.fill_between(y_limited, k_limited, alpha=0.3, color='red', where=[x < 0 for x in k_limited])
+        ax2.plot(y_limited, k_limited, 'b-', linewidth=2.5)
         ax2.axhline(y=0, color='black', linestyle='-', linewidth=1)
         for n, v in kn.items():
-            ax2.scatter(v['y'], v['k'], c=colors[n], s=150, marker='o', zorder=5, edgecolors='black')
+            if v['m'] <= x_max:
+                ax2.scatter(v['y'], v['k'], c=colors[n], s=150, marker='o', zorder=5, edgecolors='black')
+        ax2.set_ylim(y_kazanc_min * 1.1, y_kazanc_max)
         ax2.set_xlabel('Yatirim (TL)')
         ax2.set_ylabel('Net Kazanc (TL)')
         ax2.set_title('Yatirim vs Kazanc', fontweight='bold')
@@ -1490,15 +1549,17 @@ class SiparisVermeGUI:
         ax2.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x/1000:.0f}K'))
         ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:,.0f}'))
 
-        # Grafik 3: Marjinal ROI
+        # Grafik 3: Marjinal ROI (dinamik ölçekli)
         ax3 = axes[1, 0]
-        ax3.fill_between(m, mr, alpha=0.3, color='orange', where=[x >= 0 for x in mr])
-        ax3.fill_between(m, mr, alpha=0.3, color='red', where=[x < 0 for x in mr])
-        ax3.plot(m, mr, 'orange', linewidth=2)
+        mr_limited = mr[:x_max+1]
+        ax3.fill_between(m[:x_max+1], mr_limited, alpha=0.3, color='orange', where=[x >= 0 for x in mr_limited])
+        ax3.fill_between(m[:x_max+1], mr_limited, alpha=0.3, color='red', where=[x < 0 for x in mr_limited])
+        ax3.plot(m[:x_max+1], mr_limited, 'orange', linewidth=2)
         ax3.axhline(y=0, color='black', linestyle='-', linewidth=1)
         for n, v in kn.items():
-            if v['i'] < len(mr):
+            if v['i'] < len(mr) and v['m'] <= x_max:
                 ax3.scatter(v['m'], mr[v['i']], c=colors[n], s=100, marker='o', zorder=5, edgecolors='black')
+        ax3.set_xlim(0, x_max)
         ax3.set_xlabel('Siparis Miktari (adet)')
         ax3.set_ylabel('Marjinal ROI (%)')
         ax3.set_title('Marjinal ROI (Her Ek Birim icin)', fontweight='bold')
@@ -1653,7 +1714,7 @@ class SiparisVermeGUI:
         zam_gun = (zam_tarihi - date.today()).days
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10), height_ratios=[2.5, 1])
-        fig.suptitle(f"Zam Oncesi Siparis Karlilik Analizi\n{ilac['UrunAdi']}", fontsize=16, fontweight='bold', y=0.98)
+        fig.suptitle(f"Zam Oncesi Siparis Karlilik Analizi - {ilac['UrunAdi']}", fontsize=14, fontweight='bold', x=0.99, ha='right', y=0.98)
 
         m, k, r, mr = sonuc['miktarlar'], sonuc['kazanclar'], sonuc['roi_ler'], sonuc['marjinal']
         kn = sonuc['kritik']
@@ -1663,50 +1724,78 @@ class SiparisVermeGUI:
         markers = {'max_roi': 'D', 'azalan': 'p', 'pareto': 's', 'optimum': '^', 'negatif': 'X'}
         labels = {'max_roi': 'Maks. ROI', 'azalan': 'Azalan Verim', 'pareto': 'Pareto (%80)', 'optimum': 'Tepe (Pik)', 'negatif': 'Negatife Donus'}
 
-        # Üst grafik
-        ax1.fill_between(m, k, alpha=0.3, color='green', where=[x >= 0 for x in k])
-        ax1.fill_between(m, k, alpha=0.3, color='red', where=[x < 0 for x in k])
-        ax1.plot(m, k, 'b-', linewidth=2.5, label='Kazanc Egrisi')
+        # Dinamik eksen ölçeklendirmesi - ilacın kritik noktalarına göre
+        x_max = int(kn['negatif']['m'] * 1.15)  # Negatif noktasının %15 ötesine kadar
+        if x_max < 10:
+            x_max = min(20, len(m) - 1)
+        x_max = min(x_max, len(m) - 1)
+        y_max = kn['optimum']['k'] * 1.25  # Tepe kazancın %25 üstü
+        y_min = min(k[:x_max+1]) if x_max < len(k) else min(k)
+        if y_min > -y_max * 0.1:
+            y_min = -y_max * 0.15
+
+        # Üst grafik (dinamik ölçekli)
+        m_lim, k_lim = m[:x_max+1], k[:x_max+1]
+        ax1.fill_between(m_lim, k_lim, alpha=0.3, color='green', where=[x >= 0 for x in k_lim])
+        ax1.fill_between(m_lim, k_lim, alpha=0.3, color='red', where=[x < 0 for x in k_lim])
+        ax1.plot(m_lim, k_lim, 'b-', linewidth=2.5, label='Kazanc Egrisi')
         ax1.axhline(y=0, color='black', linestyle='-', linewidth=1)
 
-        if stok > 0 and stok < max(m):
+        if stok > 0 and stok <= x_max:
             ax1.axvline(x=stok, color='gray', linestyle='--', linewidth=2, alpha=0.7)
-            ax1.text(stok + 5, max(k) * 0.9, f'Mevcut Stok: {stok}', fontsize=10, color='gray', rotation=90, va='top')
+            ax1.text(stok + 2, y_max * 0.85, f'Mevcut Stok: {stok}', fontsize=10, color='gray', rotation=90, va='top')
+
+        # Her nokta için sabit yön offset'leri (çakışma olmasın, başlıklara binmesin)
+        # Sıra: max_roi (sol-üst), azalan (sağ), pareto (sol-alt), optimum (sol-üst), negatif (sağ-alt)
+        offsets = {
+            'max_roi': (-x_max * 0.12, y_max * 0.18, -0.3),   # Sol üst
+            'azalan': (x_max * 0.15, y_max * 0.10, 0.3),      # Sağ
+            'pareto': (-x_max * 0.12, -y_max * 0.18, 0.3),    # Sol alt
+            'optimum': (-x_max * 0.15, y_max * 0.15, -0.3),   # Sol üst (başlığa binmesin)
+            'negatif': (x_max * 0.10, -y_max * 0.22, -0.3)    # Sağ alt
+        }
 
         for n, v in kn.items():
-            ax1.scatter(v['m'], v['k'], c=colors[n], s=200, marker=markers[n], zorder=5, edgecolors='black', linewidths=1.5)
-            ax1.axvline(x=v['m'], color=colors[n], linestyle=':', linewidth=1, alpha=0.5)
-            off = max(k) * 0.08 if n != 'negatif' else -max(k) * 0.15
-            extra = f"\nROI: %{v.get('r', 0):.1f}" if 'r' in v else (f"\nMarj: {v.get('mr', 0):.2f}" if 'mr' in v else "")
-            ax1.annotate(f"{labels[n]}\n{v['m']} ad.\n{v['k']:,.0f} TL{extra}", xy=(v['m'], v['k']),
-                        xytext=(v['m'], v['k'] + off), fontsize=9, ha='center', fontweight='bold',
-                        bbox=dict(boxstyle='round,pad=0.4', facecolor=colors[n], alpha=0.8, edgecolor='black'),
-                        arrowprops=dict(arrowstyle='->', color='black', lw=1.5))
+            if v['m'] <= x_max:
+                ax1.scatter(v['m'], v['k'], c=colors[n], s=200, marker=markers[n], zorder=5, edgecolors='black', linewidths=1.5)
+                ax1.axvline(x=v['m'], color=colors[n], linestyle=':', linewidth=1, alpha=0.5)
+                extra = f"\nROI: %{v.get('r', 0):.1f}" if 'r' in v else (f"\nMarj: {v.get('mr', 0):.2f}" if 'mr' in v else "")
 
+                x_off, y_off, rad = offsets.get(n, (0, y_max * 0.15, 0))
+
+                ax1.annotate(f"{labels[n]}\n{v['m']} ad.\n{v['k']:,.0f} TL{extra}", xy=(v['m'], v['k']),
+                            xytext=(v['m'] + x_off, v['k'] + y_off), fontsize=9, ha='center', fontweight='bold',
+                            bbox=dict(boxstyle='round,pad=0.4', facecolor=colors[n], alpha=0.8, edgecolor='black'),
+                            arrowprops=dict(arrowstyle='->', color=colors[n], lw=2, connectionstyle=f'arc3,rad={rad}'))
+
+        ax1.set_xlim(0, x_max)
+        ax1.set_ylim(y_min, y_max)
         ax1.set_xlabel('Siparis Miktari (adet)', fontsize=12)
         ax1.set_ylabel('Net Kazanc (TL)', fontsize=12)
-        ax1.set_title('Siparis Miktarina Gore Net Kazanc', fontsize=13, pad=10)
+        ax1.set_title('Siparis Miktarina Gore Net Kazanc', fontsize=12, loc='right', pad=5)
         ax1.grid(True, alpha=0.3)
         ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:,.0f}'))
 
-        # Alt grafik
+        # Alt grafik (dinamik ölçekli)
+        r_lim, mr_lim = r[:x_max+1], mr[:x_max+1]
         ax2_twin = ax2.twinx()
-        ax2.plot(m, r, 'g-', linewidth=2, label='ROI (%)')
+        ax2.plot(m_lim, r_lim, 'g-', linewidth=2, label='ROI (%)')
         ax2.set_ylabel('ROI (%)', color='green', fontsize=11)
         ax2.tick_params(axis='y', labelcolor='green')
         ax2.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
 
-        ax2_twin.plot(m, mr, 'orange', linewidth=2, linestyle='--', label='Marjinal (TL/ad)')
+        ax2_twin.plot(m_lim, mr_lim, 'orange', linewidth=2, linestyle='--', label='Marjinal (TL/ad)')
         ax2_twin.set_ylabel('Marjinal Kazanc (TL/ad)', color='orange', fontsize=11)
         ax2_twin.tick_params(axis='y', labelcolor='orange')
         ax2_twin.axhline(y=0, color='orange', linestyle=':', linewidth=0.5, alpha=0.5)
 
         for n, v in kn.items():
-            if v['i'] < len(r):
+            if v['i'] < len(r) and v['m'] <= x_max:
                 ax2.scatter(v['m'], r[v['i']], c=colors[n], s=100, marker=markers[n], zorder=5, edgecolors='black')
 
+        ax2.set_xlim(0, x_max)
         ax2.set_xlabel('Siparis Miktari (adet)', fontsize=12)
-        ax2.set_title('ROI ve Marjinal Kazanc Egrileri', fontsize=13, pad=10)
+        ax2.set_title('ROI ve Marjinal Kazanc Egrileri', fontsize=12, loc='right', pad=5)
         ax2.grid(True, alpha=0.3)
         ax2.legend(['ROI (%)', 'Marjinal (TL/ad)'], loc='upper right')
 
@@ -1740,7 +1829,7 @@ class SiparisVermeGUI:
 
         fig, axes = plt.subplots(2, 2, figsize=(16, 12))
         axes = axes.flatten()
-        fig.suptitle(f"Zam Oncesi Siparis Karlilik Analizi\nZam: %{zam_orani} | {zam_gun} gun | Faiz: %{faiz}", fontsize=14, fontweight='bold', y=0.98)
+        fig.suptitle(f"Zam Oncesi Karlilik | Zam: %{zam_orani} | {zam_gun} gun | Faiz: %{faiz}", fontsize=12, fontweight='bold', x=0.99, ha='right', y=0.98)
 
         colors = {'max_roi': '#FF9800', 'azalan': '#9C27B0', 'pareto': '#4CAF50', 'optimum': '#2196F3', 'negatif': '#F44336'}
         markers = {'max_roi': 'D', 'azalan': 'p', 'pareto': 's', 'optimum': '^', 'negatif': 'X'}
@@ -1752,7 +1841,7 @@ class SiparisVermeGUI:
 
             if not sonuc:
                 ax.text(0.5, 0.5, f"{ilac['UrunAdi']}\nHesaplanamadi", ha='center', va='center', fontsize=12)
-                ax.set_title(ilac['UrunAdi'][:35], fontsize=11, fontweight='bold')
+                ax.set_title(ilac['UrunAdi'][:35], fontsize=10, fontweight='bold', loc='right')
                 continue
 
             m, k, kn, stok = sonuc['miktarlar'], sonuc['kazanclar'], sonuc['kritik'], sonuc['mevcut_stok']
@@ -1766,17 +1855,29 @@ class SiparisVermeGUI:
                 ax.axvline(x=stok, color='gray', linestyle='--', linewidth=2, alpha=0.7)
                 ax.text(stok, max(k) * 0.8, f' {stok}', fontsize=8, color='gray', rotation=90, va='top')
 
+            x_max = max(m) if m else 100
+            y_max = max(k) if k else 100
+
+            # Sabit yön offset'leri (çakışma olmasın, başlıklara binmesin)
+            offsets = {
+                'max_roi': (-x_max * 0.10, y_max * 0.15, -0.25),
+                'azalan': (x_max * 0.12, y_max * 0.08, 0.25),
+                'pareto': (-x_max * 0.10, -y_max * 0.15, 0.25),
+                'optimum': (-x_max * 0.12, y_max * 0.12, -0.25),  # Sol üst (başlığa binmesin)
+                'negatif': (x_max * 0.08, -y_max * 0.18, -0.25)
+            }
+
             for n, v in kn.items():
                 ax.scatter(v['m'], v['k'], c=colors[n], s=120, marker=markers[n], zorder=5, edgecolors='black')
-                off = max(k) * 0.12 if n != 'negatif' else -abs(max(k) * 0.12)
+                x_off, y_off, rad = offsets.get(n, (0, y_max * 0.12, 0))
                 ax.annotate(f"{labels[n]}\n{v['m']} ad.\n{v['k']:,.0f} TL", xy=(v['m'], v['k']),
-                           xytext=(v['m'], v['k'] + off), fontsize=8, ha='center',
+                           xytext=(v['m'] + x_off, v['k'] + y_off), fontsize=8, ha='center',
                            bbox=dict(boxstyle='round,pad=0.2', facecolor=colors[n], alpha=0.6),
-                           arrowprops=dict(arrowstyle='->', color='gray', lw=0.5))
+                           arrowprops=dict(arrowstyle='->', color=colors[n], lw=1, connectionstyle=f'arc3,rad={rad}'))
 
             ax.text(0.02, 0.98, f"Stok: {stok}\nAylik: {ilac['AylikOrt']:.0f}\nFiyat: {ilac['DepocuFiyat']:.1f}",
                    transform=ax.transAxes, fontsize=9, va='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-            ax.set_title(ilac['UrunAdi'][:35], fontsize=11, fontweight='bold')
+            ax.set_title(ilac['UrunAdi'][:35], fontsize=10, fontweight='bold', loc='right')
             ax.set_xlabel('Siparis (adet)', fontsize=10)
             ax.set_ylabel('Kazanc (TL)', fontsize=10)
             ax.grid(True, alpha=0.3)
@@ -2059,7 +2160,7 @@ class SiparisVermeGUI:
             -- Fiyat bilgileri (Depocu fiyat hesaplaması için)
             COALESCE(u.UrunFiyatEtiket, 0) as PSF,
             COALESCE(u.UrunIskontoKamu, 0) as IskontoKamu,
-            -- Barkod (Barkod tablosundan ilk kayıt)
+            -- Barkod (Barkod tablosundan)
             (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId AND b.BarkodSilme = 0) as Barkod,
             {', '.join([f'COALESCE(ao.Ay_{i}, 0) as Ay_{i}' for i in range(ay_sayisi)])}
         FROM Urun u
@@ -2119,16 +2220,45 @@ class SiparisVermeGUI:
 
         hedef_gun = self._hedef_gun_hesapla()
         min_stok_aktif = self.min_stok_aktif.get()
+        min_stok_kaynagi = self.min_stok_kaynagi.get()  # 'botanik' veya 'yerel'
         zam_aktif = self.zam_aktif.get()
         zam_orani = self.beklenen_zam_orani.get() / 100 if zam_aktif else 0
         zam_stratejisi = self.zam_stratejisi.get() if zam_aktif else 'pareto'
+
+        # Yerel min stok verilerini cache'e al (kaynak 'yerel' ise)
+        yerel_min_stok_cache = {}
+        if min_stok_kaynagi == 'yerel':
+            try:
+                from siparis_db import get_siparis_db
+                siparis_db = get_siparis_db()
+                yerel_liste = siparis_db.min_stok_listesi_getir()
+                yerel_min_stok_cache = {v['urun_id']: v['min_onerilen'] for v in yerel_liste}
+                logger.info(f"Yerel min stok cache: {len(yerel_min_stok_cache)} kayıt")
+            except Exception as e:
+                logger.warning(f"Yerel min stok yüklenemedi: {e}")
+
+        # Efektif ay sayısı hesaplama (12 ay için düzeltme)
+        # Sorun: 12 ay seçilince içinde bulunulan ay kısmi, toplam 11.X ay oluyor
+        # Çözüm: Efektif ay sayısı = (tam aylar) + (bu ayın geçen günü / 30)
+        bugun = datetime.now()
+        ay_basi = bugun.replace(day=1)
+        bu_ay_gecen_gun = (bugun - ay_basi).days + 1  # Bugün dahil
+
+        # Efektif ay: (ay_sayisi - 1) tam ay + bu ayın oranı
+        efektif_ay_sayisi = (ay_sayisi - 1) + (bu_ay_gecen_gun / 30)
 
         islenenmis = []
 
         for veri in veriler:
             urun_id = veri.get('UrunId')
             stok = veri.get('Stok', 0) or 0
-            min_stok = veri.get('MinStok', 0) or 0
+
+            # Min stok kaynağına göre değeri al
+            if min_stok_kaynagi == 'yerel' and urun_id in yerel_min_stok_cache:
+                min_stok = yerel_min_stok_cache.get(urun_id, 0) or 0
+            else:
+                min_stok = veri.get('MinStok', 0) or 0
+
             toplam_cikis = veri.get('ToplamCikis', 0) or 0
 
             # Fiyat bilgileri
@@ -2136,8 +2266,8 @@ class SiparisVermeGUI:
             iskonto_kamu = veri.get('IskontoKamu', 0) or 0
             depocu_fiyat = self._depocu_fiyat_hesapla(psf, iskonto_kamu)
 
-            # Aylık ve günlük ortalama
-            aylik_ort = toplam_cikis / ay_sayisi if ay_sayisi > 0 else 0
+            # Aylık ve günlük ortalama - efektif ay sayısı kullan
+            aylik_ort = toplam_cikis / efektif_ay_sayisi if efektif_ay_sayisi > 0 else 0
             gunluk_ort = aylik_ort / 30
 
             # Ay bitiş (stok kaç ay yeter)
@@ -2312,7 +2442,7 @@ class SiparisVermeGUI:
             elif col_id == 'Oneri':
                 gosterim = ">> SIPARIS <<"
             elif col_id in aylik_sutun_ids:
-                gosterim = f"*{baslik}*"  # Aylik sutunlar yildizli
+                gosterim = f"◆{baslik}"  # Aylik sutunlar mavi karo ile
             else:
                 gosterim = baslik
 
@@ -2375,8 +2505,30 @@ class SiparisVermeGUI:
                 esdeger_gruplari[eid] = []
             esdeger_gruplari[eid].append(veri)
 
-        # Grupları sırala (eşdeğersizler sona)
-        sirali_gruplar = sorted(esdeger_gruplari.items(), key=lambda x: (x[0] == 0, x[0]))
+        # Her grubun toplam parasal değerini hesapla (Oneri × DepocuFiyat)
+        def grup_parasal_deger(urunler):
+            return sum(u.get('Oneri', 0) * u.get('DepocuFiyat', 0) for u in urunler)
+
+        # Grup içi sıralama: bireysel parasal değere göre (yüksekten düşüğe)
+        def birey_parasal_deger(urun):
+            return urun.get('Oneri', 0) * urun.get('DepocuFiyat', 0)
+
+        for eid, urunler in esdeger_gruplari.items():
+            urunler.sort(key=birey_parasal_deger, reverse=True)
+
+        # Grupları parasal değere göre sırala (yüksekten düşüğe)
+        # EsdegerId=0 olanlar (eşdeğersiz) ayrı tutulur ve bireysel sıralanır
+        esdegerli_gruplar = [(eid, urunler) for eid, urunler in esdeger_gruplari.items() if eid != 0]
+        esdegersiz_urunler = esdeger_gruplari.get(0, [])
+
+        # Eşdeğerli grupları toplam parasal değere göre sırala
+        esdegerli_gruplar.sort(key=lambda x: grup_parasal_deger(x[1]), reverse=True)
+
+        # Eşdeğersiz ürünleri bireysel parasal değere göre sırala
+        esdegersiz_urunler.sort(key=birey_parasal_deger, reverse=True)
+
+        # Tüm grupları birleştir: önce eşdeğerliler (parasal değere göre), sonra eşdeğersizler (bireysel değere göre)
+        sirali_gruplar = esdegerli_gruplar + [(0, esdegersiz_urunler)] if esdegersiz_urunler else esdegerli_gruplar
 
         for eid, urunler in sirali_gruplar:
             if eid == 0:
@@ -2396,10 +2548,54 @@ class SiparisVermeGUI:
         grup_stok = sum(u.get('Stok', 0) for u in urunler)
         grup_oneri = sum(u.get('Oneri', 0) for u in urunler)
         grup_aylik = sum(u.get('AylikOrt', 0) for u in urunler)
+        grup_tutar = sum(u.get('Oneri', 0) * u.get('DepocuFiyat', 0) for u in urunler)
 
-        # Grup başlık satırı
-        baslik_values = ['═'] + [f"══ GRUP #{esdeger_id} ══"] + [''] * (len(self.aktif_sutunlar) - 2)
-        self.ana_tree.insert('', 'end', values=baslik_values, tags=('grup_baslik',))
+        # Grup ihtiyacı hesapla (stok + öneri = toplam ihtiyaç değil, öneri zaten ihtiyaç-stok)
+        # Gerçek ihtiyaç = her ürünün (Stok + Oneri) toplamı değil
+        # Daha doğrusu: İhtiyaç = Stok yetmezliği olan ürünlerin eksik miktarları toplamı
+        # Basitleştirilmiş: grup_ihtiyac = grup_stok + grup_oneri (hedef stok seviyesi)
+        # VEYA: AylikOrt * kalan ay sayısı
+
+        # Hedef tarihine kadar toplam ihtiyaç (aylık ort * kalan süre)
+        try:
+            hedef_tarih = self.hedef_tarih.get_date()
+            bugun = date.today()
+            kalan_gun = max(0, (hedef_tarih - bugun).days)
+        except:
+            kalan_gun = 30  # Varsayılan 1 ay
+
+        # Grup toplam ihtiyaç = Aylık ort * (kalan gün / 30)
+        grup_ihtiyac = grup_aylik * (kalan_gun / 30) if grup_aylik > 0 else 0
+
+        # Sübvansiyon analizi
+        # Stok, ihtiyacın ne kadarını karşılıyor?
+        if grup_ihtiyac > 0:
+            subvansiyon_orani = grup_stok / grup_ihtiyac
+        else:
+            subvansiyon_orani = 999 if grup_stok > 0 else 0
+
+        # Sübvansiyon etiketi - stok sütununa yazılacak
+        subv_tag = "grup_baslik"
+        if subvansiyon_orani >= 1.0:
+            subv_stok_str = f"✓%{subvansiyon_orani*100:.0f}"
+            subv_tag = "grup_baslik_yeterli"
+        elif subvansiyon_orani >= 0.8:
+            subv_stok_str = f"%{subvansiyon_orani*100:.0f}"
+            subv_tag = "grup_baslik_iyi"
+        elif subvansiyon_orani >= 0.5:
+            subv_stok_str = f"%{subvansiyon_orani*100:.0f}"
+            subv_tag = "grup_baslik_orta"
+        elif grup_ihtiyac > 0:
+            subv_stok_str = f"%{subvansiyon_orani*100:.0f}"
+            subv_tag = "grup_baslik_dusuk"
+        else:
+            subv_stok_str = ""
+
+        # Grup başlık satırı - sübvansiyon oranı STOK sütununda (index 2)
+        tutar_str = f" ({grup_tutar:,.0f}₺)" if grup_tutar > 0 else ""
+        # Sütun yapısı: [simge, ad, STOK, min, sart1, sart2, sart3, aylar..., aylik, gun, aybitis, oneri...]
+        baslik_values = ['═', f"══ GRUP #{esdeger_id}{tutar_str} ══", subv_stok_str] + [''] * (len(self.aktif_sutunlar) - 3)
+        self.ana_tree.insert('', 'end', values=baslik_values, tags=(subv_tag,))
 
         # Grup üyeleri
         for urun in urunler:
@@ -2490,7 +2686,7 @@ class SiparisVermeGUI:
                 self._detay_paneli_guncelle(urun)
 
     def _satir_cift_tiklandi(self, event):
-        """Çift tıklama - öneriyi manuel'e kopyala"""
+        """Çift tıklama - öneriyi kesin sipariş listesine ekle"""
         selection = self.ana_tree.selection()
         if not selection:
             return
@@ -2501,54 +2697,79 @@ class SiparisVermeGUI:
             urun = next((u for u in self.tum_veriler if u['UrunId'] == urun_id), None)
             if urun:
                 oneri = urun.get('Oneri', 0)
-                self.manuel_miktarlar[urun_id] = oneri
-                urun['Manuel'] = oneri
-                self._tabloyu_guncelle()
-                self._detay_paneli_guncelle(urun)
+                if oneri > 0:
+                    self._kesin_listeye_ekle_hizli(urun, oneri, '')
+                    self.status_label.config(text=f"✓ {urun.get('UrunAdi', '')[:30]} → {oneri} adet kesin listeye eklendi")
+                else:
+                    self.status_label.config(text=f"⚠ {urun.get('UrunAdi', '')[:30]} için sipariş önerisi yok")
+
+    def _sutun_tiklandi(self, event):
+        """Sütun tıklaması - Oneri sütununa tıklanırsa kesin listeye ekle"""
+        # Tıklanan bölgeyi tespit et
+        region = self.ana_tree.identify_region(event.x, event.y)
+        if region != 'cell':
+            return
+
+        # Tıklanan sütunu tespit et
+        column = self.ana_tree.identify_column(event.x)
+        column_id = self.ana_tree.column(column, 'id') if column else None
+
+        # Sadece Oneri sütununa tıklandıysa işlem yap
+        if column_id != 'Oneri':
+            return
+
+        # Tıklanan satırı tespit et
+        item_id = self.ana_tree.identify_row(event.y)
+        if not item_id or not item_id.startswith('urun_'):
+            return
+
+        urun_id = int(item_id.replace('urun_', ''))
+        urun = next((u for u in self.tum_veriler if u['UrunId'] == urun_id), None)
+        if urun:
+            oneri = urun.get('Oneri', 0)
+            if oneri > 0:
+                self._kesin_listeye_ekle_hizli(urun, oneri, '')
+                self.status_label.config(text=f"✓ {urun.get('UrunAdi', '')[:30]} → {oneri} adet (öneri tıklandı)")
 
     def _detay_paneli_guncelle(self, urun):
-        """Detay panelini güncelle"""
+        """Detay panelini güncelle - çok kompakt tasarım"""
         self.secili_urun = urun
-
-        # Scroll'u en başa al
-        self.detay_canvas.yview_moveto(0)
 
         # Placeholder'ı kaldır
         for widget in self.detay_content.winfo_children():
             widget.destroy()
 
-        # Ürün bilgileri
-        info_frame = tk.LabelFrame(self.detay_content, text=urun.get('UrunAdi', ''), font=('Arial', 9, 'bold'))
-        info_frame.pack(fill=tk.X, pady=(0, 5))
+        # ═══ ÜRÜN BİLGİLERİ (Tek satır) ═══
+        info_frame = tk.LabelFrame(self.detay_content, text=urun.get('UrunAdi', '')[:40], font=('Arial', 10, 'bold'), padx=3, pady=2)
+        info_frame.pack(fill=tk.X, pady=(0, 2))
 
-        # Bilgi satırları
         depocu_fiyat = urun.get('DepocuFiyat', 0)
-        bilgiler = [
-            ("Stok:", urun.get('Stok', 0)),
-            ("Min Stok:", urun.get('MinStok', 0)),
-            ("Aylık Ort:", urun.get('AylikOrt', 0)),
-            ("Günlük Ort:", urun.get('GunlukOrt', 0)),
-            ("Ay Bitiş:", urun.get('AyBitis', '')),
-            ("Depocu Fiyat:", f"{depocu_fiyat:.2f} ₺" if depocu_fiyat > 0 else "Yok"),
-            ("Öneri:", urun.get('Oneri', 0)),
-        ]
+        stok = urun.get('Stok', 0)
+        min_stok = urun.get('MinStok', 0)
+        aylik_ort = urun.get('AylikOrt', 0)
+        oneri = urun.get('Oneri', 0)
 
-        for label, value in bilgiler:
-            row = tk.Frame(info_frame)
-            row.pack(fill=tk.X, padx=5, pady=1)
-            tk.Label(row, text=label, font=('Arial', 8), width=10, anchor='w').pack(side=tk.LEFT)
-            tk.Label(row, text=str(value), font=('Arial', 8, 'bold')).pack(side=tk.LEFT)
+        # Tek satırda tüm bilgiler
+        row1 = tk.Frame(info_frame, bg='#E3F2FD')
+        row1.pack(fill=tk.X)
+        tk.Label(row1, text=f"S:{stok} M:{min_stok} A:{aylik_ort:.0f} F:{depocu_fiyat:.0f}₺", font=('Arial', 10), bg='#E3F2FD').pack(side=tk.LEFT, padx=2)
+        tk.Button(row1, text=f"Öneri:{oneri}", font=('Arial', 10, 'bold'), bg='#1976D2', fg='white', cursor='hand2', relief='flat', padx=3,
+                  command=lambda: self._oneri_kesin_listeye_ekle(urun)).pack(side=tk.LEFT, padx=2)
+        tk.Button(row1, text="-", width=2, font=('Arial', 10, 'bold'), bg='#F44336', fg='white',
+                  command=lambda: self._oneri_azalt_ve_ekle(urun)).pack(side=tk.LEFT, padx=1)
+        tk.Button(row1, text="+", width=2, font=('Arial', 10, 'bold'), bg='#4CAF50', fg='white',
+                  command=lambda: self._oneri_artir_ve_ekle(urun)).pack(side=tk.LEFT, padx=1)
 
         # Zam Optimizasyonu Bilgisi (varsa)
         zam_oneri = urun.get('ZamOneri')
         stok = urun.get('Stok', 0)
         aylik_ort = urun.get('AylikOrt', 1) or 1
 
-        if zam_oneri and (zam_oneri.get('optimum', 0) > 0 or zam_oneri.get('maksimum', 0) > 0):
-            zam_frame = tk.LabelFrame(self.detay_content, text="Zam Optimizasyonu - Sipariş Önerileri", bg='#FFF3E0')
-            zam_frame.pack(fill=tk.X, pady=5)
+        # Zam Optimizasyonu frame - her zaman göster
+        zam_frame = tk.LabelFrame(self.detay_content, text="Zam Optimizasyonu", font=('Arial', 10, 'bold'), bg='#FFF3E0', padx=3, pady=2)
+        zam_frame.pack(fill=tk.X, pady=2)
 
-            # Karar noktaları bilgisi
+        if zam_oneri and (zam_oneri.get('optimum', 0) > 0 or zam_oneri.get('maksimum', 0) > 0):
             verimlilik = zam_oneri.get('verimlilik', 0)
             verimlilik_roi = zam_oneri.get('verimlilik_roi', 0)
             verimlilik_kazanc = zam_oneri.get('verimlilik_kazanc', 0)
@@ -2558,180 +2779,147 @@ class SiparisVermeGUI:
             kazanc_optimum = zam_oneri.get('kazanc_optimum', 0)
             maksimum = zam_oneri.get('maksimum', 0)
 
-            # Sipariş miktarları (algoritma zaten stoğu hesaba katıyor, tekrar çıkarmıyoruz)
-            siparis_verimlilik = verimlilik
-            siparis_pareto = pareto
-            siparis_optimum = optimum
-            siparis_maksimum = maksimum
-
-            # Açıklama satırı
-            aciklama_row = tk.Frame(zam_frame, bg='#FFF3E0')
-            aciklama_row.pack(fill=tk.X, padx=5, pady=2)
-            tk.Label(aciklama_row, text=f"Stok: {stok} | Aylık: {aylik_ort:.0f}", font=('Arial', 7, 'italic'), bg='#FFF3E0', fg='#666').pack(side=tk.LEFT)
-
             zam_bilgi = [
-                ("Max ROI:", f"{siparis_verimlilik} adet = {verimlilik_kazanc:.0f} TL [ROI:%{verimlilik_roi}]", '#2E7D32', siparis_verimlilik),
-                ("Pareto %80:", f"{siparis_pareto} adet = {pareto_kazanc:.0f} TL", '#F57C00', siparis_pareto),
-                ("Tepe (Pik):", f"{siparis_optimum} adet = {kazanc_optimum:.0f} TL", '#1565C0', siparis_optimum),
-                ("Sinir:", f"{siparis_maksimum} adet (kar=0)", '#C62828', siparis_maksimum),
+                ("ROI", verimlilik, verimlilik_kazanc, '#2E7D32'),
+                ("Pareto", pareto, pareto_kazanc, '#F57C00'),
+                ("Tepe", optimum, kazanc_optimum, '#1565C0'),
             ]
 
-            for label, value, color, miktar in zam_bilgi:
-                row = tk.Frame(zam_frame, bg='#FFF3E0')
-                row.pack(fill=tk.X, padx=5, pady=1)
-                tk.Label(row, text=label, font=('Arial', 8), width=10, anchor='w', bg='#FFF3E0').pack(side=tk.LEFT)
-                tk.Label(row, text=value, font=('Arial', 8, 'bold'), bg='#FFF3E0', fg=color).pack(side=tk.LEFT)
-                # Seç butonu
-                if miktar > 0 and label != "Sinir:":
-                    tk.Button(
-                        row, text="Seç", font=('Arial', 7), width=4,
-                        bg=color, fg='white',
-                        command=lambda m=miktar, u=urun: self._zam_miktari_sec(u, m)
-                    ).pack(side=tk.RIGHT, padx=2)
+            for label, miktar, kazanc, color in zam_bilgi:
+                if miktar > 0:
+                    row = tk.Frame(zam_frame, bg='#FFF3E0')
+                    row.pack(fill=tk.X, pady=0)
+                    tk.Label(row, text=f"{label}:{miktar}ad={kazanc:.0f}TL", font=('Arial', 9), bg='#FFF3E0', fg=color).pack(side=tk.LEFT)
+                    tk.Button(row, text="Seç", font=('Arial', 8), bg=color, fg='white', padx=2, pady=0,
+                              command=lambda m=miktar, u=urun: self._zam_miktari_sec(u, m)).pack(side=tk.RIGHT)
 
-            # Grafik Butonları
-            grafik_row = tk.Frame(zam_frame, bg='#FFF3E0')
-            grafik_row.pack(fill=tk.X, padx=5, pady=5)
-            tk.Button(
-                grafik_row, text="📊 Karlılık", font=('Arial', 9, 'bold'),
-                bg='#7B1FA2', fg='white', relief='raised', bd=2,
-                command=lambda u=urun: self._tek_ilac_grafik_goster(u)
-            ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
-            tk.Button(
-                grafik_row, text="📈 ROI Analizi", font=('Arial', 9, 'bold'),
-                bg='#00796B', fg='white', relief='raised', bd=2,
-                command=lambda u=urun: self._roi_grafik_goster(u)
-            ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(2, 0))
+        # Grafik Butonları - HER ZAMAN GÖRÜNÜR
+        grafik_row = tk.Frame(zam_frame, bg='#FFF3E0')
+        grafik_row.pack(fill=tk.X, pady=2)
+        tk.Button(grafik_row, text="Karlılık", font=('Arial', 9), bg='#7B1FA2', fg='white',
+                  command=lambda u=urun: self._tek_ilac_grafik_goster(u)).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 1))
+        tk.Button(grafik_row, text="ROI", font=('Arial', 9), bg='#00796B', fg='white',
+                  command=lambda u=urun: self._roi_grafik_goster(u)).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(1, 0))
 
-        # MF Karlılık Analizi (Birleştirilmiş)
-        mf_analiz_frame = tk.LabelFrame(self.detay_content, text="MF Karlılık Analizi", bg='#E8F5E9')
-        mf_analiz_frame.pack(fill=tk.X, pady=5)
+        # MF Karlılık Analizi (Kompakt)
+        mf_analiz_frame = tk.LabelFrame(self.detay_content, text="MF Analizi", font=('Arial', 10, 'bold'), bg='#E8F5E9', padx=3, pady=2)
+        mf_analiz_frame.pack(fill=tk.X, pady=2)
 
-        # MF'siz Alım checkbox
-        mfsiz_row = tk.Frame(mf_analiz_frame, bg='#E8F5E9')
-        mfsiz_row.pack(fill=tk.X, padx=5, pady=(3, 0))
+        # MF'siz + Geçmiş MF aynı satırda
+        mf_row1 = tk.Frame(mf_analiz_frame, bg='#E8F5E9')
+        mf_row1.pack(fill=tk.X)
 
         self.mf_mfsiz_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(mfsiz_row, text="MF'siz Alım (Referans)", variable=self.mf_mfsiz_var,
-                      bg='#E8F5E9', font=('Arial', 9, 'bold'), fg='#1565C0',
-                      activebackground='#E8F5E9').pack(side=tk.LEFT)
+        tk.Checkbutton(mf_row1, text="MF'siz", variable=self.mf_mfsiz_var, bg='#E8F5E9', font=('Arial', 9, 'bold'),
+                      fg='#1565C0', activebackground='#E8F5E9').pack(side=tk.LEFT)
 
-        # Geçmiş MF Şartları (Checkbox'lar)
+        # Geçmiş MF Şartları (Tıklanabilir Butonlar)
         sartlar = [urun.get('Sart1', ''), urun.get('Sart2', ''), urun.get('Sart3', '')]
         gecmis_sartlar = [s for s in sartlar if s]
 
         self.mf_gecmis_vars = []
-        if gecmis_sartlar:
-            gecmis_label = tk.Label(mf_analiz_frame, text="Geçmiş MF Şartları:",
-                                    font=('Arial', 8, 'bold'), bg='#E8F5E9')
-            gecmis_label.pack(anchor='w', padx=5, pady=(5, 0))
+        for sart in gecmis_sartlar:
+            var = tk.BooleanVar(value=True)
+            self.mf_gecmis_vars.append((var, sart))
+            btn = tk.Button(mf_row1, text=sart, font=('Arial', 9, 'bold'), bg='#81C784', fg='#1B5E20', relief='raised', padx=4, cursor='hand2',
+                           command=lambda s=sart, u=urun: self._mf_kesin_listeye_ekle(u, s))
+            btn.pack(side=tk.LEFT, padx=2)
 
-            gecmis_row = tk.Frame(mf_analiz_frame, bg='#E8F5E9')
-            gecmis_row.pack(fill=tk.X, padx=5, pady=2)
-
-            for sart in gecmis_sartlar:
-                var = tk.BooleanVar(value=True)
-                self.mf_gecmis_vars.append((var, sart))
-                cb = tk.Checkbutton(gecmis_row, text=sart, variable=var,
-                                   bg='#E8F5E9', font=('Arial', 9),
-                                   activebackground='#E8F5E9')
-                cb.pack(side=tk.LEFT, padx=5)
-
-        # Ayırıcı çizgi
-        ttk.Separator(mf_analiz_frame, orient='horizontal').pack(fill=tk.X, padx=5, pady=5)
-
-        # Manuel MF Girişleri (5 adet) - BOŞ
-        manuel_label = tk.Label(mf_analiz_frame, text="Manuel MF Şartları (5 adet):",
-                               font=('Arial', 8, 'bold'), bg='#E8F5E9')
-        manuel_label.pack(anchor='w', padx=5, pady=(0, 3))
-
-        manuel_row = tk.Frame(mf_analiz_frame, bg='#E8F5E9')
-        manuel_row.pack(fill=tk.X, padx=5, pady=2)
+        # Manuel MF + Sipariş miktarı aynı satırda
+        mf_row2 = tk.Frame(mf_analiz_frame, bg='#E8F5E9')
+        mf_row2.pack(fill=tk.X, pady=2)
 
         self.mf_manuel_entries = []
         for i in range(5):
-            entry = ttk.Entry(manuel_row, width=8, font=('Arial', 9))
-            entry.pack(side=tk.LEFT, padx=2)
-            # Varsayılan boş bırak
+            entry = ttk.Entry(mf_row2, width=6, font=('Arial', 10))
+            entry.pack(side=tk.LEFT, padx=1)
             self.mf_manuel_entries.append(entry)
 
-        # Sipariş miktarı girişi
-        siparis_row = tk.Frame(mf_analiz_frame, bg='#E8F5E9')
-        siparis_row.pack(fill=tk.X, padx=5, pady=5)
-
-        tk.Label(siparis_row, text="Sipariş Miktarı:", font=('Arial', 8), bg='#E8F5E9').pack(side=tk.LEFT)
-        self.mf_siparis_entry = ttk.Entry(siparis_row, width=6, font=('Arial', 9))
-        self.mf_siparis_entry.pack(side=tk.LEFT, padx=5)
-        # Varsayılan: Öneri veya aylık ortalama
+        tk.Label(mf_row2, text="Sip:", font=('Arial', 9), bg='#E8F5E9').pack(side=tk.LEFT, padx=(3, 0))
+        self.mf_siparis_entry = ttk.Entry(mf_row2, width=4, font=('Arial', 10))
+        self.mf_siparis_entry.pack(side=tk.LEFT, padx=1)
         varsayilan_siparis = urun.get('Oneri', 0) or urun.get('AylikOrt', 10)
         self.mf_siparis_entry.insert(0, str(int(varsayilan_siparis)))
 
-        tk.Label(siparis_row, text="(MF alımında kaç adet alınacak)", font=('Arial', 7),
-                bg='#E8F5E9', fg='gray').pack(side=tk.LEFT)
+        # Zam parametreleri satırı
+        mf_zam_row = tk.Frame(mf_analiz_frame, bg='#E8F5E9')
+        mf_zam_row.pack(fill=tk.X, pady=2)
 
-        # Hesapla butonu
-        btn_row = tk.Frame(mf_analiz_frame, bg='#E8F5E9')
-        btn_row.pack(fill=tk.X, padx=5, pady=5)
+        self.mf_zam_aktif = tk.BooleanVar(value=self.zam_aktif.get() if hasattr(self, 'zam_aktif') else False)
+        tk.Checkbutton(mf_zam_row, text="Zam:", variable=self.mf_zam_aktif, bg='#E8F5E9',
+                      font=('Arial', 9, 'bold'), fg='#E65100', activebackground='#E8F5E9').pack(side=tk.LEFT)
 
-        tk.Button(
-            btn_row, text="HESAPLA", font=('Arial', 9, 'bold'),
-            bg='#388E3C', fg='white', width=12,
-            command=lambda u=urun: self._mf_karsilastirma_hesapla(u)
-        ).pack(side=tk.LEFT)
+        tk.Label(mf_zam_row, text="%", font=('Arial', 9), bg='#E8F5E9').pack(side=tk.LEFT)
+        self.mf_zam_orani = ttk.Entry(mf_zam_row, width=4, font=('Arial', 10))
+        self.mf_zam_orani.pack(side=tk.LEFT, padx=1)
+        # Ana panelden varsayılan al
+        try:
+            varsayilan_zam = self.beklenen_zam_orani.get() if hasattr(self, 'beklenen_zam_orani') else '15'
+        except:
+            varsayilan_zam = '15'
+        self.mf_zam_orani.insert(0, varsayilan_zam)
 
-        tk.Button(
-            btn_row, text="Temizle", font=('Arial', 8),
-            bg='#757575', fg='white',
-            command=self._mf_sonuc_temizle
-        ).pack(side=tk.LEFT, padx=5)
+        tk.Label(mf_zam_row, text="Tarih:", font=('Arial', 9), bg='#E8F5E9').pack(side=tk.LEFT, padx=(5, 0))
+        self.mf_zam_tarih = DateEntry(mf_zam_row, width=8, background='#E65100',
+                                       foreground='white', borderwidth=2, font=('Arial', 9),
+                                       date_pattern='dd.mm.yyyy', locale='tr_TR')
+        self.mf_zam_tarih.pack(side=tk.LEFT, padx=1)
+        # Ana panelden varsayılan tarih al
+        try:
+            if hasattr(self, 'zam_tarih_entry'):
+                self.mf_zam_tarih.set_date(self.zam_tarih_entry.get_date())
+        except:
+            pass
+
+        # Hesapla + Temizle butonları
+        mf_row3 = tk.Frame(mf_analiz_frame, bg='#E8F5E9')
+        mf_row3.pack(fill=tk.X, pady=2)
+
+        tk.Button(mf_row3, text="HESAPLA", font=('Arial', 10, 'bold'), bg='#388E3C', fg='white', padx=8,
+                  command=lambda u=urun: self._mf_karsilastirma_hesapla(u)).pack(side=tk.LEFT)
+        tk.Button(mf_row3, text="Grafik", font=('Arial', 9), bg='#1565C0', fg='white',
+                  command=lambda u=urun: self._mf_kombine_grafik(u)).pack(side=tk.LEFT, padx=3)
+        tk.Button(mf_row3, text="Temizle", font=('Arial', 9), bg='#757575', fg='white',
+                  command=self._mf_sonuc_temizle).pack(side=tk.LEFT, padx=3)
 
         # MF Sonuç frame
         self.mf_sonuc_frame = tk.Frame(mf_analiz_frame, bg='#E8F5E9')
-        self.mf_sonuc_frame.pack(fill=tk.X, padx=5, pady=3)
+        self.mf_sonuc_frame.pack(fill=tk.X, pady=2)
 
-        # Manuel Giriş
-        manuel_frame = tk.LabelFrame(self.detay_content, text="Manuel Sipariş")
-        manuel_frame.pack(fill=tk.X, pady=5)
+        # ═══ MANUEL SİPARİŞ (Tek satır) ═══
+        manuel_frame = tk.LabelFrame(self.detay_content, text="Sipariş Girişi", font=('Arial', 10, 'bold'), bg='#ECEFF1', padx=3, pady=2)
+        manuel_frame.pack(fill=tk.X, pady=2)
 
-        # Miktar girişi
-        miktar_row = tk.Frame(manuel_frame)
-        miktar_row.pack(fill=tk.X, padx=5, pady=3)
+        giris_row = tk.Frame(manuel_frame, bg='#ECEFF1')
+        giris_row.pack(fill=tk.X)
 
-        tk.Label(miktar_row, text="Miktar:", font=('Arial', 9)).pack(side=tk.LEFT)
-
-        self.manuel_entry = ttk.Entry(miktar_row, width=8)
-        self.manuel_entry.pack(side=tk.LEFT, padx=5)
+        tk.Label(giris_row, text="Adet:", font=('Arial', 10), bg='#ECEFF1').pack(side=tk.LEFT)
+        self.manuel_entry = ttk.Entry(giris_row, width=5, font=('Arial', 10))
+        self.manuel_entry.pack(side=tk.LEFT, padx=2)
         self.manuel_entry.insert(0, str(urun.get('Manuel', '') or ''))
 
-        tk.Button(miktar_row, text="-", width=2, command=lambda: self._manuel_azalt(urun)).pack(side=tk.LEFT, padx=1)
-        tk.Button(miktar_row, text="+", width=2, command=lambda: self._manuel_artir(urun)).pack(side=tk.LEFT, padx=1)
-
-        tk.Button(miktar_row, text="Öneriyi Al", command=lambda: self._oneriyi_al(urun),
-                 bg='#7B1FA2', fg='white', font=('Arial', 8)).pack(side=tk.LEFT, padx=5)
-
-        # MF Girişi
-        mf_row = tk.Frame(manuel_frame)
-        mf_row.pack(fill=tk.X, padx=5, pady=3)
-
-        tk.Label(mf_row, text="MF:", font=('Arial', 9)).pack(side=tk.LEFT)
-
-        self.mf_entry = ttk.Entry(mf_row, width=8)
-        self.mf_entry.pack(side=tk.LEFT, padx=5)
+        tk.Label(giris_row, text="MF:", font=('Arial', 10), bg='#ECEFF1').pack(side=tk.LEFT, padx=(5, 0))
+        self.mf_entry = ttk.Entry(giris_row, width=7, font=('Arial', 10))
+        self.mf_entry.pack(side=tk.LEFT, padx=2)
         self.mf_entry.insert(0, urun.get('MF', ''))
 
-        tk.Label(mf_row, text="(örn: 5+1)", font=('Arial', 8), fg='gray').pack(side=tk.LEFT)
+        # Butonlar aynı satırda
+        tk.Button(giris_row, text="Al", command=lambda: self._oneriyi_al(urun),
+                 bg='#7B1FA2', fg='white', font=('Arial', 9)).pack(side=tk.LEFT, padx=2)
+        tk.Button(giris_row, text="Hes", command=lambda: self._mf_manuel_hesapla(urun),
+                 bg='#00796B', fg='white', font=('Arial', 9)).pack(side=tk.LEFT, padx=1)
+        tk.Button(giris_row, text="Kay", command=lambda: self._manuel_kaydet(urun),
+                 bg='#1976D2', fg='white', font=('Arial', 9, 'bold')).pack(side=tk.LEFT, padx=1)
 
-        # MF Hesapla butonu
-        tk.Button(mf_row, text="MF Hesapla", command=lambda: self._mf_manuel_hesapla(urun),
-                 bg='#00796B', fg='white', font=('Arial', 7)).pack(side=tk.LEFT, padx=5)
+        # Kesin listeye ekle butonu (kompakt)
+        tk.Button(self.detay_content, text="KESİN LİSTEYE EKLE",
+                 command=lambda: self._kesin_listeye_ekle(urun),
+                 bg='#388E3C', fg='white', font=('Arial', 11, 'bold'),
+                 cursor='hand2', relief='raised', bd=2).pack(fill=tk.X, pady=3)
 
-        # Kaydet butonu
-        tk.Button(manuel_frame, text="KAYDET", command=lambda: self._manuel_kaydet(urun),
-                 bg='#1976D2', fg='white', font=('Arial', 9, 'bold')).pack(pady=5)
-
-        # Kesin listeye ekle butonu
-        tk.Button(self.detay_content, text="KESİN LİSTEYE EKLE", command=lambda: self._kesin_listeye_ekle(urun),
-                 bg='#388E3C', fg='white', font=('Arial', 9, 'bold'), width=20).pack(pady=10)
+        # Scroll region güncelle
+        self.detay_content.update_idletasks()
+        self._detay_scroll_configure()
 
     def _manuel_artir(self, urun):
         """Manuel miktarı artır"""
@@ -2768,6 +2956,87 @@ class SiparisVermeGUI:
         """MF sonuç alanını temizle"""
         for widget in self.mf_sonuc_frame.winfo_children():
             widget.destroy()
+
+    def _oneri_kesin_listeye_ekle(self, urun):
+        """Öneriye tıklayınca kesin siparişe ekle"""
+        miktar = urun.get('Oneri', 0)
+        if miktar > 0:
+            self._kesin_listeye_ekle_hizli(urun, miktar, '')
+            self.status_label.config(text=f"✓ {urun.get('UrunAdi', '')[:25]} → {miktar} adet eklendi")
+
+    def _oneri_artir_ve_ekle(self, urun):
+        """Öneriyi +1 artırıp kesin siparişe ekle"""
+        miktar = urun.get('Oneri', 0) + 1
+        self._kesin_listeye_ekle_hizli(urun, miktar, '')
+        self.status_label.config(text=f"✓ {urun.get('UrunAdi', '')[:25]} → {miktar} adet eklendi (+1)")
+
+    def _oneri_azalt_ve_ekle(self, urun):
+        """Öneriyi -1 azaltıp kesin siparişe ekle"""
+        miktar = max(0, urun.get('Oneri', 0) - 1)
+        if miktar > 0:
+            self._kesin_listeye_ekle_hizli(urun, miktar, '')
+            self.status_label.config(text=f"✓ {urun.get('UrunAdi', '')[:25]} → {miktar} adet eklendi (-1)")
+        else:
+            self.status_label.config(text="⚠ Miktar 0 olamaz")
+
+    def _mf_kesin_listeye_ekle(self, urun, mf_sart):
+        """MF şartına göre kesin siparişe ekle"""
+        try:
+            # MF parse: "5+1" → alinan=5
+            parts = mf_sart.split('+')
+            if len(parts) == 2:
+                alinan = int(parts[0])
+                self._kesin_listeye_ekle_hizli(urun, alinan, mf_sart)
+                self.status_label.config(text=f"✓ {urun.get('UrunAdi', '')[:25]} → {mf_sart} MF eklendi")
+        except Exception as e:
+            self.status_label.config(text=f"⚠ MF parse hatası: {mf_sart}")
+
+    def _kesin_listeye_ekle_hizli(self, urun, miktar, mf=''):
+        """Hızlı kesin listeye ekleme (tek tıklama için)"""
+        if miktar <= 0:
+            return
+
+        # MF toplam hesapla
+        toplam = miktar
+        if mf and '+' in mf:
+            try:
+                parts = mf.split('+')
+                mf_ek = int(parts[1])
+                toplam = miktar + mf_ek
+            except:
+                pass
+
+        siparis_data = {
+            'UrunId': urun.get('UrunId'),
+            'UrunAdi': urun.get('UrunAdi', ''),
+            'Barkod': urun.get('Barkod', ''),
+            'Miktar': miktar,
+            'MF': mf,
+            'Toplam': toplam,
+            'Stok': urun.get('Stok', 0),
+            'AylikOrt': urun.get('AylikOrt', 0),
+        }
+
+        # Mevcut listede aynı ürün var mı?
+        for i, mevcut in enumerate(self.kesin_siparis_listesi):
+            if mevcut.get('UrunId') == urun.get('UrunId'):
+                # Güncelle
+                self.kesin_siparis_listesi[i] = siparis_data
+                if hasattr(self, 'siparis_db') and self.siparis_db and self.aktif_calisma:
+                    if mevcut.get('db_id'):
+                        self.siparis_db.siparis_guncelle(mevcut['db_id'], miktar=miktar, mf=mf, toplam=toplam)
+                self._kesin_liste_guncelle()
+                return
+
+        # Yeni ekleme
+        if hasattr(self, 'siparis_db') and self.siparis_db and self.aktif_calisma:
+            db_id = self.siparis_db.siparis_ekle(self.aktif_calisma, siparis_data)
+            if db_id:
+                siparis_data['db_id'] = db_id
+
+        self.kesin_siparis_listesi.append(siparis_data)
+        self._kesin_liste_guncelle()
+        self._calisma_bilgisini_guncelle()
 
     def _mevcut_stok_fazlaligi_hesapla(self, mevcut_stok: int, aylik_ort: float,
                                         maliyet: float, faiz_yillik: float, depo_vade: int) -> dict:
@@ -2830,7 +3099,7 @@ class SiparisVermeGUI:
             }
         """
         if alinan <= 0 or maliyet <= 0 or aylik_ort <= 0:
-            return {'npv_toplu': 0, 'npv_aylik': 0, 'kazanc': 0, 'stok_ay': 0, 'zam_kazanc': 0}
+            return {'npv_toplu': 0, 'npv_aylik': 0, 'kazanc': 0, 'stok_ay': 0, 'zam_kazanc': 0, 'mf_kazanc': 0, 'stok_maliyet': 0}
 
         toplam_gelen = alinan + bedava
         toplam_stok = mevcut_stok + toplam_gelen
@@ -2867,8 +3136,10 @@ class SiparisVermeGUI:
                 else:
                     fiyat = maliyet
 
-                # O gün alınsa, depo vadesi sonra ödenir
-                odeme_gun = gun + depo_vade
+                # O gün alınsa, ay sonunda senet kesilir, depo vadesi sonra ödenir
+                # Grafik ile tutarlılık için ay sonu hesabı
+                ay_sonu = ((gun // 30) + 1) * 30
+                odeme_gun = ay_sonu + depo_vade
                 odeme = yeni_harcanan * fiyat
                 iskonto = (1 + gunluk_faiz) ** odeme_gun
                 npv_aylik += odeme / iskonto
@@ -2878,8 +3149,18 @@ class SiparisVermeGUI:
             gun += 1
 
         # ===== SENARYO B: TOPLU ALIM (MF'li) =====
-        # Bugün toplu alım, depo vadesi sonra ödeme
-        npv_toplu = (alinan * maliyet) / ((1 + gunluk_faiz) ** depo_vade)
+        # Bugün toplu alım, ay sonunda senet, depo vadesi sonra ödeme
+        # Not: Grafik ile tutarlılık için 30 + depo_vade kullanılıyor
+        npv_toplu = (alinan * maliyet) / ((1 + gunluk_faiz) ** (30 + depo_vade))
+
+        # ===== MF KAZANCI =====
+        # MF avantajı = bedava ürünlerin değeri (bugüne indirgenmiş)
+        mf_kazanc = 0
+        if bedava > 0:
+            # Bedava ürünler ortalama satış gününde satılacak
+            ort_satis_gun = (toplam_stok / gunluk_sarf / 2) if gunluk_sarf > 0 else 30
+            iskonto_mf = (1 + gunluk_faiz) ** ort_satis_gun
+            mf_kazanc = (bedava * maliyet) / iskonto_mf
 
         # ===== ZAM KAZANCI =====
         zam_kazanc = 0
@@ -2889,23 +3170,109 @@ class SiparisVermeGUI:
             zam_sonrasi_miktar = max(0, toplam_stok - zam_oncesi_tuketim)
 
             if zam_sonrasi_miktar > 0:
-                # Her birim için zam farkı kazancı (bugüne indirgenerek)
                 zam_fark = maliyet * (zam_orani / 100)
-                # Ortalama satış günü (zam sonrası)
                 ort_satis_gun = zam_gun + (zam_sonrasi_miktar / gunluk_sarf / 2) if gunluk_sarf > 0 else zam_gun
                 iskonto = (1 + gunluk_faiz) ** ort_satis_gun
                 zam_kazanc = (zam_sonrasi_miktar * zam_fark) / iskonto
 
-        # Net kazanç = ay be ay alınsaydı ödenecek - toplu ödenen + zam kazancı
-        kazanc = npv_aylik - npv_toplu + zam_kazanc
+        # ===== STOK FİNANSMAN MALİYETİ =====
+        # Stok maliyeti = Erken ödeme nedeniyle paranın bağlı kalma maliyeti
+        # Ay sonu ihtiyacının ötesinde stok tutmanın maliyeti
+        # Hesaplama: Toplam ödeme × (ortalama stok gün / 365) × faiz
+        ay_sonu_ihtiyac = 30 * gunluk_sarf  # Bu ay satılacak miktar
+        fazla_stok = max(0, toplam_gelen - ay_sonu_ihtiyac)  # Ay sonuna sarkacak stok
+
+        stok_maliyet = 0
+        if fazla_stok > 0:
+            # Fazla stoğun ortalama tutulma süresi (gün)
+            # Fazla stok, ay sonundan itibaren tüketilecek
+            fazla_stok_gun = (fazla_stok / gunluk_sarf / 2) if gunluk_sarf > 0 else 30
+            # Finansman maliyeti = Stok değeri × gün × günlük faiz
+            stok_maliyet = fazla_stok * maliyet * fazla_stok_gun * gunluk_faiz
+
+        # ===== NET KAZANÇ =====
+        # Net = MF Avantajı + Zam Avantajı - Stok Maliyeti
+        kazanc = mf_kazanc + zam_kazanc - stok_maliyet
 
         return {
             'npv_toplu': round(npv_toplu, 2),
             'npv_aylik': round(npv_aylik, 2),
             'kazanc': round(kazanc, 2),
             'stok_ay': round(stok_ay, 1),
-            'zam_kazanc': round(zam_kazanc, 2)
+            'zam_kazanc': round(zam_kazanc, 2),
+            'mf_kazanc': round(mf_kazanc, 2),
+            'stok_maliyet': round(stok_maliyet, 2)  # Her zaman pozitif (maliyet)
         }
+
+    def _bolge_analizi_hesapla(self, miktar: int, urun: dict) -> dict:
+        """
+        Verilen miktar için hangi bölgede olduğunu hesapla.
+
+        Bölgeler:
+        1. Sıfır - Maks ROI arası (Verimli Başlangıç)
+        2. Maks ROI - Eğim Azalması arası (Azalan Verim)
+        3. Eğim Azalması - Pareto arası (Dengeli)
+        4. Pareto - Tepe arası (Agresif)
+        5. Tepe - Negatif Dönüş arası (Riskli)
+        6. Negatif Dönüş sonrası (Zarar)
+
+        Returns:
+            dict: bolge_no, bolge_adi, renk, aciklama
+        """
+        try:
+            faiz = self._aktif_faiz_getir()
+            depo_vade = self.depo_vadesi.get()
+            zam_aktif = self.zam_aktif.get()
+            zam_orani = float(self.beklenen_zam_orani.get()) if zam_aktif else 0
+            zam_tarihi = self.zam_tarih_entry.get_date() if zam_aktif else None
+        except:
+            return {'bolge_no': 0, 'bolge_adi': '?', 'renk': '#757575', 'aciklama': 'Hesaplanamadı'}
+
+        if not zam_aktif or zam_orani <= 0:
+            return {'bolge_no': 0, 'bolge_adi': '-', 'renk': '#757575', 'aciklama': 'Zam analizi kapalı'}
+
+        # ROI verisini hesapla
+        sonuc = self._roi_verisi_hesapla(
+            maliyet=urun.get('DepocuFiyat', 0),
+            aylik_ort=urun.get('AylikOrt', 0),
+            mevcut_stok=urun.get('Stok', 0),
+            zam_tarihi=zam_tarihi,
+            zam_orani=zam_orani,
+            faiz_yillik=faiz,
+            depo_vade=depo_vade
+        )
+
+        if not sonuc:
+            return {'bolge_no': 0, 'bolge_adi': '?', 'renk': '#757575', 'aciklama': 'Hesaplanamadı'}
+
+        kn = sonuc['kritik']
+        max_roi_m = kn['max_roi']['m']
+        yarim_roi_m = kn['yarim_roi']['m']  # Eğim azalması noktası
+        pareto_m = kn['pareto']['m']
+        optimum_m = kn['optimum']['m']  # Tepe noktası
+        sifir_roi_m = kn['sifir_roi']['m']  # Negatife dönüş
+
+        # Bölge belirleme
+        if miktar <= 0:
+            return {'bolge_no': 0, 'bolge_adi': '-', 'renk': '#757575', 'aciklama': 'Miktar yok'}
+        elif miktar <= max_roi_m:
+            return {'bolge_no': 1, 'bolge_adi': 'B1', 'renk': '#4CAF50',
+                    'aciklama': f'Verimli (0-{max_roi_m})'}
+        elif miktar <= yarim_roi_m:
+            return {'bolge_no': 2, 'bolge_adi': 'B2', 'renk': '#8BC34A',
+                    'aciklama': f'Azalan Verim ({max_roi_m}-{yarim_roi_m})'}
+        elif miktar <= pareto_m:
+            return {'bolge_no': 3, 'bolge_adi': 'B3', 'renk': '#FFC107',
+                    'aciklama': f'Dengeli ({yarim_roi_m}-{pareto_m})'}
+        elif miktar <= optimum_m:
+            return {'bolge_no': 4, 'bolge_adi': 'B4', 'renk': '#FF9800',
+                    'aciklama': f'Agresif ({pareto_m}-{optimum_m})'}
+        elif miktar <= sifir_roi_m:
+            return {'bolge_no': 5, 'bolge_adi': 'B5', 'renk': '#FF5722',
+                    'aciklama': f'Riskli ({optimum_m}-{sifir_roi_m})'}
+        else:
+            return {'bolge_no': 6, 'bolge_adi': 'B6', 'renk': '#F44336',
+                    'aciklama': f'Zarar ({sifir_roi_m}+)'}
 
     def _mf_karsilastirma_hesapla(self, urun):
         """
@@ -2951,13 +3318,14 @@ class SiparisVermeGUI:
             messagebox.showwarning("Uyarı", "En az bir seçenek işaretleyin veya MF şartı girin!")
             return
 
-        # Parametreleri al
+        # Parametreleri al - MF bölümündeki zam ayarlarından
         try:
             faiz = self._aktif_faiz_getir()
             depo_vade = self.depo_vadesi.get()
-            zam_aktif = self.zam_aktif.get()
-            zam_orani = float(self.beklenen_zam_orani.get()) if zam_aktif else 0
-            zam_tarihi = self.zam_tarih_entry.get_date() if zam_aktif else None
+            # MF bölümündeki zam parametrelerini kullan
+            zam_aktif = hasattr(self, 'mf_zam_aktif') and self.mf_zam_aktif.get()
+            zam_orani = float(self.mf_zam_orani.get()) if zam_aktif and hasattr(self, 'mf_zam_orani') else 0
+            zam_tarihi = self.mf_zam_tarih.get_date() if zam_aktif and hasattr(self, 'mf_zam_tarih') else None
         except:
             faiz, depo_vade, zam_orani, zam_tarihi = 45, 75, 0, None
 
@@ -3000,26 +3368,35 @@ class SiparisVermeGUI:
         bilgi_text = f"Stok: {stok} | Sipariş: {siparis_miktar} | Aylık: {aylik_ort:.0f} | Faiz: %{faiz:.0f}"
         if zam_gun > 0:
             bilgi_text += f" | Zam: {zam_gun}g %{zam_orani:.0f}"
-        tk.Label(bilgi_row, text=bilgi_text, font=('Arial', 7), bg='#E8F5E9', fg='#555').pack(anchor='w')
+        tk.Label(bilgi_row, text=bilgi_text, font=('Arial', 9), bg='#E8F5E9', fg='#555').pack(anchor='w')
 
         # Mevcut stok fazlalığı uyarısı (varsa)
         if fazla_adet > 0:
             fazla_row = tk.Frame(self.mf_sonuc_frame, bg='#FFCDD2')
             fazla_row.pack(fill=tk.X, pady=(0, 3))
             fazla_text = f"⚠ Mevcut Stok Fazlası: {fazla_adet} ad. → -{fazla_maliyet:.0f}₺ (her satırdan düşülür)"
-            tk.Label(fazla_row, text=fazla_text, font=('Arial', 7, 'bold'),
+            tk.Label(fazla_row, text=fazla_text, font=('Arial', 9, 'bold'),
                     bg='#FFCDD2', fg='#C62828').pack(anchor='w', padx=2)
+
+        # Formül açıklama satırı
+        formul_row = tk.Frame(self.mf_sonuc_frame, bg='#FFF9C4')
+        formul_row.pack(fill=tk.X, pady=(0, 2))
+        formul_text = "Net = MF Av.(+) + Zam Av.(+) - Stok Mal.(-)"
+        tk.Label(formul_row, text=formul_text, font=('Arial', 8, 'italic'),
+                bg='#FFF9C4', fg='#5D4037').pack(anchor='w', padx=2)
 
         # Başlık satırı
         baslik_row = tk.Frame(self.mf_sonuc_frame, bg='#C8E6C9')
         baslik_row.pack(fill=tk.X)
-        tk.Label(baslik_row, text="MF Şartı", font=('Arial', 7, 'bold'), width=8, bg='#C8E6C9', anchor='w').pack(side=tk.LEFT, padx=2)
-        tk.Label(baslik_row, text="Al", font=('Arial', 7, 'bold'), width=5, bg='#C8E6C9').pack(side=tk.LEFT)
-        tk.Label(baslik_row, text="Bed", font=('Arial', 7, 'bold'), width=4, bg='#C8E6C9').pack(side=tk.LEFT)
-        tk.Label(baslik_row, text="Top", font=('Arial', 7, 'bold'), width=5, bg='#C8E6C9').pack(side=tk.LEFT)
-        tk.Label(baslik_row, text="StokAy", font=('Arial', 7, 'bold'), width=5, bg='#C8E6C9').pack(side=tk.LEFT)
-        tk.Label(baslik_row, text="NetKar", font=('Arial', 7, 'bold'), width=7, bg='#C8E6C9').pack(side=tk.LEFT)
-        tk.Label(baslik_row, text="ROI%", font=('Arial', 7, 'bold'), width=6, bg='#C8E6C9').pack(side=tk.LEFT)
+        tk.Label(baslik_row, text="MF", font=('Arial', 8, 'bold'), width=6, bg='#C8E6C9', anchor='w').pack(side=tk.LEFT, padx=1)
+        tk.Label(baslik_row, text="Al", font=('Arial', 8, 'bold'), width=3, bg='#C8E6C9').pack(side=tk.LEFT)
+        tk.Label(baslik_row, text="Top", font=('Arial', 8, 'bold'), width=3, bg='#C8E6C9').pack(side=tk.LEFT)
+        tk.Label(baslik_row, text="+MF", font=('Arial', 8, 'bold'), width=5, bg='#C8E6C9', fg='#1B5E20').pack(side=tk.LEFT)
+        tk.Label(baslik_row, text="+Zam", font=('Arial', 8, 'bold'), width=5, bg='#C8E6C9', fg='#E65100').pack(side=tk.LEFT)
+        tk.Label(baslik_row, text="-Stok", font=('Arial', 8, 'bold'), width=5, bg='#C8E6C9', fg='#C62828').pack(side=tk.LEFT)
+        tk.Label(baslik_row, text="=Net", font=('Arial', 8, 'bold'), width=5, bg='#C8E6C9').pack(side=tk.LEFT)
+        tk.Label(baslik_row, text="ROI", font=('Arial', 8, 'bold'), width=4, bg='#C8E6C9').pack(side=tk.LEFT)
+        tk.Label(baslik_row, text="Ay", font=('Arial', 8, 'bold'), width=3, bg='#C8E6C9').pack(side=tk.LEFT)
 
         sonuclar = []
 
@@ -3039,7 +3416,10 @@ class SiparisVermeGUI:
             sonuclar.append({
                 'mf': "MF'siz", 'al': siparis_miktar, 'bedava': 0,
                 'toplam': siparis_miktar, 'stok_ay': npv_sonuc['stok_ay'],
-                'kar': net_kar, 'roi': roi, 'zam_kazanc': npv_sonuc['zam_kazanc'],
+                'kar': net_kar, 'roi': roi,
+                'zam_kazanc': npv_sonuc['zam_kazanc'],
+                'mf_kazanc': npv_sonuc.get('mf_kazanc', 0),
+                'stok_maliyet': npv_sonuc.get('stok_maliyet', 0),
                 'is_referans': True
             })
 
@@ -3073,7 +3453,10 @@ class SiparisVermeGUI:
                 sonuclar.append({
                     'mf': mf_sart, 'al': al, 'bedava': bedava,
                     'toplam': toplam, 'stok_ay': npv_sonuc['stok_ay'],
-                    'kar': net_kar, 'roi': roi, 'zam_kazanc': npv_sonuc['zam_kazanc'],
+                    'kar': net_kar, 'roi': roi,
+                    'zam_kazanc': npv_sonuc['zam_kazanc'],
+                    'mf_kazanc': npv_sonuc.get('mf_kazanc', 0),
+                    'stok_maliyet': npv_sonuc.get('stok_maliyet', 0),
                     'is_referans': False
                 })
 
@@ -3095,33 +3478,279 @@ class SiparisVermeGUI:
             row = tk.Frame(self.mf_sonuc_frame, bg=renk)
             row.pack(fill=tk.X)
 
-            # MF Şartı
+            # MF Şartı (tıklanabilir - kesin siparişe ekle)
             mf_text = s['mf']
             if i == 0:
-                mf_text += " ★"
-            tk.Label(row, text=mf_text, font=('Arial', 7, 'bold' if i == 0 else 'normal'),
-                    width=8, bg=renk, anchor='w').pack(side=tk.LEFT, padx=2)
+                mf_text += "★"
+
+            mf_btn = tk.Button(row, text=mf_text, font=('Arial', 8, 'bold' if i == 0 else 'normal'),
+                              width=6, bg=renk, anchor='w', relief='flat', cursor='hand2',
+                              command=lambda al=s['al'], mf=s['mf'], u=urun: self._mf_sonuc_kesin_ekle(u, al, mf))
+            mf_btn.pack(side=tk.LEFT, padx=1)
 
             # Al
-            tk.Label(row, text=str(s['al']), font=('Arial', 7), width=5, bg=renk).pack(side=tk.LEFT)
-
-            # Bedava
-            tk.Label(row, text=str(s['bedava']), font=('Arial', 7), width=4, bg=renk).pack(side=tk.LEFT)
+            tk.Label(row, text=str(s['al']), font=('Arial', 8), width=3, bg=renk).pack(side=tk.LEFT)
 
             # Toplam
-            tk.Label(row, text=str(s['toplam']), font=('Arial', 7), width=5, bg=renk).pack(side=tk.LEFT)
+            tk.Label(row, text=str(s['toplam']), font=('Arial', 8), width=3, bg=renk).pack(side=tk.LEFT)
 
-            # Stok Ay
-            tk.Label(row, text=f"{s['stok_ay']:.1f}", font=('Arial', 7), width=5, bg=renk).pack(side=tk.LEFT)
+            # MF Avantajı
+            mf_av = s.get('mf_kazanc', 0)
+            tk.Label(row, text=f"{mf_av:.0f}", font=('Arial', 8),
+                    width=5, bg=renk, fg='#1B5E20').pack(side=tk.LEFT)
+
+            # Zam Avantajı
+            zam_av = s.get('zam_kazanc', 0)
+            tk.Label(row, text=f"{zam_av:.0f}", font=('Arial', 8),
+                    width=5, bg=renk, fg='#E65100').pack(side=tk.LEFT)
+
+            # Stok Maliyeti (her zaman maliyet, kırmızı renk)
+            stok_m = s.get('stok_maliyet', 0)
+            stok_text = f"{stok_m:.0f}" if stok_m > 0 else "0"
+            tk.Label(row, text=stok_text, font=('Arial', 8),
+                    width=5, bg=renk, fg='#C62828').pack(side=tk.LEFT)
 
             # Net Kar
             kar_renk = 'green' if s['kar'] > 0 else ('red' if s['kar'] < 0 else 'black')
-            tk.Label(row, text=f"{s['kar']:.0f}₺", font=('Arial', 7, 'bold'),
-                    width=7, bg=renk, fg=kar_renk).pack(side=tk.LEFT)
+            tk.Label(row, text=f"{s['kar']:.0f}", font=('Arial', 8, 'bold'),
+                    width=5, bg=renk, fg=kar_renk).pack(side=tk.LEFT)
 
             # ROI %
-            tk.Label(row, text=f"%{s['roi']:.1f}", font=('Arial', 7, 'bold'),
-                    width=6, bg=renk, fg=kar_renk).pack(side=tk.LEFT)
+            tk.Label(row, text=f"%{s['roi']:.0f}", font=('Arial', 8, 'bold'),
+                    width=4, bg=renk, fg=kar_renk).pack(side=tk.LEFT)
+
+            # MF için stok ay sayısına göre risk göstergesi
+            stok_ay = s.get('stok_ay', 0)
+            if stok_ay <= 1:
+                risk_text, risk_renk, risk_aciklama = '1ay', '#4CAF50', f'{stok_ay:.1f} aylık stok - Güvenli'
+            elif stok_ay <= 2:
+                risk_text, risk_renk, risk_aciklama = '2ay', '#8BC34A', f'{stok_ay:.1f} aylık stok - Normal'
+            elif stok_ay <= 3:
+                risk_text, risk_renk, risk_aciklama = '3ay', '#FFC107', f'{stok_ay:.1f} aylık stok - Dikkat'
+            elif stok_ay <= 4:
+                risk_text, risk_renk, risk_aciklama = '4ay', '#FF9800', f'{stok_ay:.1f} aylık stok - Riskli'
+            elif stok_ay <= 6:
+                risk_text, risk_renk, risk_aciklama = '5-6', '#FF5722', f'{stok_ay:.1f} aylık stok - Yüksek Risk'
+            else:
+                risk_text, risk_renk, risk_aciklama = '6+', '#F44336', f'{stok_ay:.1f} aylık stok - Çok Riskli'
+
+            risk_label = tk.Label(row, text=risk_text, font=('Arial', 8, 'bold'),
+                                   width=3, bg=risk_renk, fg='white')
+            risk_label.pack(side=tk.LEFT, padx=1)
+
+            # Tooltip için risk açıklaması
+            def show_tooltip(event, aciklama=risk_aciklama):
+                tooltip = tk.Toplevel()
+                tooltip.wm_overrideredirect(True)
+                tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
+                tk.Label(tooltip, text=aciklama, bg='#FFFFE0', relief='solid', bd=1,
+                        font=('Arial', 8)).pack()
+                tooltip.after(2000, tooltip.destroy)
+            risk_label.bind('<Enter>', show_tooltip)
+
+        # Scroll region güncelle (yeni içerik eklendi)
+        self.detay_content.update_idletasks()
+        self._detay_scroll_configure()
+
+    def _mf_sonuc_kesin_ekle(self, urun, miktar, mf_sart):
+        """MF analiz sonucunu kesin siparişe ekle"""
+        if miktar <= 0:
+            return
+
+        mf = mf_sart if mf_sart != "MF'siz" else ''
+        self._kesin_listeye_ekle_hizli(urun, miktar, mf)
+        self.status_label.config(text=f"✓ {urun.get('UrunAdi', '')[:25]} → {miktar} ad. ({mf_sart}) kesin listeye eklendi")
+
+    def _mf_kombine_grafik(self, urun):
+        """MF + Zam kombine grafiği - Zam eğrisi üzerine MF noktaları"""
+        import tempfile
+        import os
+        import traceback
+
+        try:
+            # Parametreleri al - MF bölümündeki zam ayarlarından
+            faiz = self._aktif_faiz_getir()
+            depo_vade = self.depo_vadesi.get()
+            zam_aktif = hasattr(self, 'mf_zam_aktif') and self.mf_zam_aktif.get()
+            zam_orani = float(self.mf_zam_orani.get()) if zam_aktif and hasattr(self, 'mf_zam_orani') else 0
+            zam_tarihi = self.mf_zam_tarih.get_date() if zam_aktif and hasattr(self, 'mf_zam_tarih') else None
+
+            if not zam_aktif or zam_orani <= 0:
+                messagebox.showwarning("Uyarı", "MF kombine grafiği için zam analizi aktif olmalı.\nMF Analiz bölümünde Zam oranı ve tarihi girin.")
+                return
+
+            maliyet = urun.get('DepocuFiyat', 0)
+            aylik_ort = urun.get('AylikOrt', 0)
+            stok = urun.get('Stok', 0)
+
+            if maliyet <= 0 or aylik_ort <= 0:
+                messagebox.showwarning("Uyarı", "Depocu fiyat veya aylık ortalama eksik.")
+                return
+
+            # Zam eğrisi verilerini hesapla
+            sonuc = self._karlilik_verisi_hesapla(maliyet, aylik_ort, stok, zam_tarihi, zam_orani, faiz, depo_vade)
+            if not sonuc:
+                messagebox.showwarning("Uyarı", "Karlılık hesaplanamadı.")
+                return
+
+            zam_gun = (zam_tarihi - date.today()).days
+
+            # MF listesini oluştur
+            mf_listesi = []
+            if hasattr(self, 'mf_mfsiz_var') and self.mf_mfsiz_var.get():
+                mf_listesi.append("MF'siz")
+
+            # Standart MF baremleri
+            for btn_text in ['5+1', '10+2', '10+3', '20+5', '20+7', '50+15', '50+20', '100+30', '100+50']:
+                if btn_text not in mf_listesi:
+                    mf_listesi.append(btn_text)
+
+            # Manuel MF
+            if hasattr(self, 'mf_manuel_entries'):
+                for entry in self.mf_manuel_entries:
+                    mf = entry.get().strip()
+                    if mf and '+' in mf and mf not in mf_listesi:
+                        mf_listesi.append(mf)
+
+            # Sipariş miktarı
+            try:
+                siparis_miktar = int(self.mf_siparis_entry.get()) if hasattr(self, 'mf_siparis_entry') else max(1, int(aylik_ort))
+            except:
+                siparis_miktar = max(1, int(aylik_ort))
+
+            # MF noktalarını hesapla
+            mf_noktalar = []
+            for mf_sart in mf_listesi:
+                try:
+                    if mf_sart == "MF'siz":
+                        al, bedava, toplam = siparis_miktar, 0, siparis_miktar
+                    else:
+                        parcalar = mf_sart.split('+')
+                        mf_al = int(parcalar[0])
+                        mf_bedava = int(parcalar[1])
+                        set_sayisi = max(1, siparis_miktar // mf_al)
+                        al = set_sayisi * mf_al
+                        bedava = set_sayisi * mf_bedava
+                        toplam = al + bedava
+
+                    # NPV hesapla
+                    npv_sonuc = self._npv_mf_hesapla(
+                        alinan=al, bedava=bedava, maliyet=maliyet, aylik_ort=aylik_ort,
+                        mevcut_stok=stok, faiz_yillik=faiz, depo_vade=depo_vade,
+                        zam_gun=zam_gun, zam_orani=zam_orani
+                    )
+
+                    yatirim = al * maliyet
+                    roi = (npv_sonuc['kazanc'] / yatirim * 100) if yatirim > 0 else 0
+
+                    mf_noktalar.append({
+                        'mf': mf_sart, 'toplam': toplam, 'al': al,
+                        'kar': npv_sonuc['kazanc'], 'roi': roi
+                    })
+                except:
+                    continue
+
+            if not mf_noktalar:
+                messagebox.showwarning("Uyarı", "Hesaplanacak MF noktası bulunamadı.")
+                return
+
+            # Grafik çiz
+            m, k, kn = sonuc['miktarlar'], sonuc['kazanclar'], sonuc['kritik']
+
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), height_ratios=[2, 1])
+            fig.suptitle(f"MF + Zam Kombine Analiz - {urun['UrunAdi'][:50]}", fontsize=12, fontweight='bold', x=0.99, ha='right', y=0.98)
+
+            # Dinamik ölçeklendirme
+            x_max = int(kn['negatif']['m'] * 1.2)
+            x_max = max(x_max, max([n['toplam'] for n in mf_noktalar]) + 10)
+            x_max = min(x_max, len(m) - 1)
+            y_max = kn['optimum']['k'] * 1.3
+            y_min = min(k[:x_max+1]) if x_max < len(k) else min(k)
+            if y_min > -y_max * 0.1:
+                y_min = -y_max * 0.15
+
+            m_lim, k_lim = m[:x_max+1], k[:x_max+1]
+
+            # Zam eğrisi
+            ax1.fill_between(m_lim, k_lim, alpha=0.2, color='green', where=[x >= 0 for x in k_lim])
+            ax1.fill_between(m_lim, k_lim, alpha=0.2, color='red', where=[x < 0 for x in k_lim])
+            ax1.plot(m_lim, k_lim, 'b-', linewidth=2, alpha=0.7, label='Zam Eğrisi')
+            ax1.axhline(y=0, color='black', linestyle='-', linewidth=1)
+
+            # Kritik noktalar
+            colors_kn = {'max_roi': '#FF9800', 'azalan': '#9C27B0', 'pareto': '#4CAF50', 'optimum': '#2196F3', 'negatif': '#F44336'}
+            for n, v in kn.items():
+                if v['m'] <= x_max:
+                    ax1.axvline(x=v['m'], color=colors_kn[n], linestyle=':', linewidth=1, alpha=0.5)
+                    ax1.scatter(v['m'], v['k'], c=colors_kn[n], s=80, marker='o', zorder=4, alpha=0.6)
+
+            # MF noktaları
+            mf_colors = plt.cm.Set1(np.linspace(0, 1, len(mf_noktalar)))
+            for i, nokta in enumerate(mf_noktalar):
+                toplam = nokta['toplam']
+                mf_kar = nokta['kar']
+
+                ax1.scatter(toplam, mf_kar, c=[mf_colors[i]], s=250, marker='s', zorder=6,
+                           edgecolors='black', linewidths=2)
+
+                y_off = y_max * 0.08 * (1 if i % 2 == 0 else -1)
+                x_off = x_max * 0.02 * (1 if i % 3 == 0 else -1)
+                ax1.annotate(f"{nokta['mf']}\n{toplam}ad\n{mf_kar:,.0f}₺",
+                            xy=(toplam, mf_kar), xytext=(toplam + x_off, mf_kar + y_off),
+                            fontsize=8, ha='center', fontweight='bold',
+                            bbox=dict(boxstyle='round,pad=0.3', facecolor=mf_colors[i], alpha=0.8, edgecolor='black'),
+                            arrowprops=dict(arrowstyle='->', color='black', lw=1))
+
+            ax1.set_xlim(0, x_max)
+            ax1.set_ylim(y_min, y_max)
+            ax1.set_xlabel('Toplam Miktar (adet)', fontsize=11)
+            ax1.set_ylabel('Net Kazanç (TL)', fontsize=11)
+            ax1.set_title('Zam Eğrisi + MF Noktaları', fontsize=11, loc='right')
+            ax1.grid(True, alpha=0.3)
+            ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:,.0f}'))
+
+            # Alt grafik: Bar chart
+            mf_adlar = [n['mf'] for n in mf_noktalar]
+            mf_karlar = [n['kar'] for n in mf_noktalar]
+            mf_roiler = [n['roi'] for n in mf_noktalar]
+
+            x_pos = np.arange(len(mf_adlar))
+            bar_colors = ['#4CAF50' if kar > 0 else '#F44336' for kar in mf_karlar]
+
+            bars = ax2.bar(x_pos, mf_karlar, color=bar_colors, edgecolor='black', alpha=0.8)
+            ax2.axhline(y=0, color='black', linewidth=1)
+
+            for i, (bar, roi) in enumerate(zip(bars, mf_roiler)):
+                height = bar.get_height()
+                y_pos = height + (abs(y_max) * 0.02 if height >= 0 else -abs(y_max) * 0.05)
+                ax2.annotate(f'%{roi:.1f}', xy=(bar.get_x() + bar.get_width() / 2, y_pos),
+                            ha='center', va='bottom' if height >= 0 else 'top',
+                            fontsize=9, fontweight='bold', color='#1565C0')
+
+            ax2.set_xticks(x_pos)
+            ax2.set_xticklabels(mf_adlar, rotation=45, ha='right', fontsize=9)
+            ax2.set_ylabel('Net Kazanç (TL)', fontsize=11)
+            ax2.set_title('MF Baremleri Karşılaştırması (ROI ile)', fontsize=11, loc='right')
+            ax2.grid(True, alpha=0.3, axis='y')
+            ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:,.0f}'))
+
+            # Bilgi kutusu
+            bilgi = (f"Stok: {stok} | Aylık: {aylik_ort:.0f} | Fiyat: {maliyet:.1f}₺\n"
+                    f"Zam: %{zam_orani} | {zam_gun} gün | Faiz: %{faiz}")
+            fig.text(0.01, 0.01, bilgi, fontsize=9, va='bottom',
+                    bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.9))
+
+            plt.tight_layout()
+            plt.subplots_adjust(bottom=0.12, top=0.94, hspace=0.35)
+
+            dosya = os.path.join(tempfile.gettempdir(), f"mf_kombine_{urun['UrunAdi'][:20].replace(' ', '_')}.png")
+            plt.savefig(dosya, dpi=150, bbox_inches='tight')
+            plt.close(fig)
+
+            os.startfile(dosya)
+
+        except Exception as e:
+            messagebox.showerror("Grafik Hatası", f"MF kombine grafik oluşturulamadı:\n{e}\n\n{traceback.format_exc()}")
 
     def _mf_miktar_sec(self, urun, miktar):
         """MF miktarını manuel girişe kopyala"""
@@ -3200,6 +3829,10 @@ class SiparisVermeGUI:
                 command=lambda: self._mf_oneri_uygula(urun, sonuc),
                 bg='#1976D2', fg='white', font=('Arial', 8)
             ).pack(pady=3)
+
+            # Scroll region güncelle (yeni içerik eklendi)
+            self.detay_content.update_idletasks()
+            self._detay_scroll_configure()
 
     def _mf_oneri_uygula(self, urun, sonuc):
         """MF önerisini manuel alanlara uygula"""
@@ -3405,6 +4038,8 @@ class SiparisVermeGUI:
                             'Miktar': miktar,
                             'MF': mf,
                             'Toplam': toplam,
+                            'Stok': urun.get('Stok', 0),
+                            'AylikOrt': urun.get('AylikOrt', 0),
                             'Selcuk': '',
                             'Alliance': '',
                             'Sancak': '',
@@ -3423,16 +4058,16 @@ class SiparisVermeGUI:
 
         for siparis in self.kesin_siparis_listesi:
             self.kesin_tree.insert('', 'end', values=(
-                siparis.get('UrunAdi', ''),
-                siparis.get('Barkod', ''),
-                siparis.get('Miktar', 0),
-                siparis.get('MF', ''),
-                siparis.get('Toplam', 0),
-                siparis.get('Selcuk', ''),
-                siparis.get('Alliance', ''),
-                siparis.get('Sancak', ''),
-                siparis.get('Iskoop', ''),
-                siparis.get('Farmazon', '')
+                siparis.get('UrunAdi') or '',
+                siparis.get('Barkod') or '',  # None ise boş string
+                siparis.get('Miktar') or 0,
+                siparis.get('MF') or '',
+                siparis.get('Toplam') or 0,
+                siparis.get('Selcuk') or '',
+                siparis.get('Alliance') or '',
+                siparis.get('Sancak') or '',
+                siparis.get('Iskoop') or '',
+                siparis.get('Farmazon') or ''
             ))
 
     def _kesin_listeyi_temizle(self):
@@ -3478,7 +4113,7 @@ class SiparisVermeGUI:
         self._calisma_bilgisini_guncelle()
 
     def _kesin_miktari_duzenle(self):
-        """Secili siparisin miktarini duzenle (database dahil)"""
+        """Secili siparisin miktarini duzenle (database dahil) - Miktar, MF ve Muadil Çevirme"""
         secili = self.kesin_tree.selection()
         if not secili or len(secili) != 1:
             messagebox.showwarning("Uyari", "Lutfen duzenlemek icin tek bir satir secin!")
@@ -3492,46 +4127,265 @@ class SiparisVermeGUI:
 
         siparis = self.kesin_siparis_listesi[idx]
         mevcut_miktar = siparis.get('Miktar', 0)
-        urun_adi = siparis.get('UrunAdi', '')[:30]
+        mevcut_mf = siparis.get('MF', '')
+        urun_adi = siparis.get('UrunAdi', '')
+        urun_id = siparis.get('UrunId')
 
-        # Yeni miktar sor
-        from tkinter import simpledialog
-        yeni_miktar = simpledialog.askinteger(
-            "Miktar Duzenle",
-            f"{urun_adi}\n\nYeni miktar:",
-            initialvalue=mevcut_miktar,
-            minvalue=1,
-            maxvalue=9999
-        )
+        # Özel dialog penceresi
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("Sipariş Düzenle")
+        dialog.geometry("420x480")
+        dialog.resizable(False, False)
+        dialog.transient(self.parent)
+        dialog.grab_set()
 
-        if yeni_miktar is None:
-            return
+        # Ana frame
+        main_frame = tk.Frame(dialog, padx=15, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Miktar ve toplami guncelle
-        mf = siparis.get('MF', '')
-        if mf and '+' in mf:
+        # Ürün adı
+        urun_label = tk.Label(main_frame, text=urun_adi[:50], font=('Arial', 10, 'bold'),
+                              wraplength=380, fg='#1565C0')
+        urun_label.pack(pady=(5, 10))
+
+        # Miktar ve MF çerçevesi
+        duzenle_frame = tk.LabelFrame(main_frame, text=" Miktar & MF ", font=('Arial', 9, 'bold'),
+                                      padx=10, pady=8)
+        duzenle_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Miktar girişi
+        miktar_row = tk.Frame(duzenle_frame)
+        miktar_row.pack(fill=tk.X, pady=3)
+        tk.Label(miktar_row, text="Sipariş Miktarı:", font=('Arial', 10), width=15, anchor='e').pack(side=tk.LEFT)
+        miktar_entry = ttk.Entry(miktar_row, width=10, font=('Arial', 11))
+        miktar_entry.pack(side=tk.LEFT, padx=5)
+        miktar_entry.insert(0, str(mevcut_miktar))
+
+        # MF girişi
+        mf_row = tk.Frame(duzenle_frame)
+        mf_row.pack(fill=tk.X, pady=3)
+        tk.Label(mf_row, text="MF Şartı (ör: 5+1):", font=('Arial', 10), width=15, anchor='e').pack(side=tk.LEFT)
+        mf_entry = ttk.Entry(mf_row, width=10, font=('Arial', 11))
+        mf_entry.pack(side=tk.LEFT, padx=5)
+        mf_entry.insert(0, mevcut_mf)
+
+        # ═══════════════════════════════════════════════════════════════════
+        # MUADİLİNE ÇEVİR BÖLÜMÜ
+        # ═══════════════════════════════════════════════════════════════════
+        muadil_frame = tk.LabelFrame(main_frame, text=" 🔄 Muadiline Çevir ", font=('Arial', 9, 'bold'),
+                                     padx=10, pady=8, bg='#FFF3E0')
+        muadil_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        # Muadil kartları için scrollable frame
+        muadil_canvas = tk.Canvas(muadil_frame, bg='#FFF3E0', highlightthickness=0, height=180)
+        muadil_scrollbar = ttk.Scrollbar(muadil_frame, orient='vertical', command=muadil_canvas.yview)
+        muadil_cards_frame = tk.Frame(muadil_canvas, bg='#FFF3E0')
+
+        muadil_canvas.configure(yscrollcommand=muadil_scrollbar.set)
+        muadil_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        muadil_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        muadil_canvas.create_window((0, 0), window=muadil_cards_frame, anchor='nw')
+        muadil_cards_frame.bind('<Configure>',
+            lambda e: muadil_canvas.configure(scrollregion=muadil_canvas.bbox('all')))
+
+        # Seçili muadil değişkeni
+        secili_muadil = {'data': None}
+
+        def muadil_sec(muadil_data, card_frame):
+            """Muadil kartını seç"""
+            # Önceki seçimi temizle
+            for widget in muadil_cards_frame.winfo_children():
+                widget.configure(bg='#FFF8E1')
+                for child in widget.winfo_children():
+                    try:
+                        child.configure(bg='#FFF8E1')
+                    except:
+                        pass
+
+            # Yeni seçimi işaretle
+            card_frame.configure(bg='#C8E6C9')
+            for child in card_frame.winfo_children():
+                try:
+                    child.configure(bg='#C8E6C9')
+                except:
+                    pass
+
+            secili_muadil['data'] = muadil_data
+            urun_label.config(text=f"➜ {muadil_data['UrunAdi'][:50]}", fg='#2E7D32')
+
+        def muadilleri_yukle():
+            """Muadil ilaçları veritabanından getir ve kartları oluştur"""
+            # Temizle
+            for widget in muadil_cards_frame.winfo_children():
+                widget.destroy()
+
+            if not self.db:
+                tk.Label(muadil_cards_frame, text="Veritabanı bağlantısı yok",
+                        font=('Arial', 9), bg='#FFF3E0', fg='#C62828').pack(pady=20)
+                return
+
+            if not urun_id:
+                tk.Label(muadil_cards_frame, text="Ürün ID bulunamadı\n(Eski sipariş olabilir)",
+                        font=('Arial', 9), bg='#FFF3E0', fg='#E65100').pack(pady=20)
+                return
+
             try:
-                parcalar = mf.split('+')
-                mf_al = int(parcalar[0])
-                mf_bedava = int(parcalar[1])
-                set_sayisi = yeni_miktar // mf_al
-                if set_sayisi == 0:
-                    set_sayisi = 1
-                toplam = (set_sayisi * mf_al) + (set_sayisi * mf_bedava)
-            except:
-                toplam = yeni_miktar
-        else:
-            toplam = yeni_miktar
+                # Önce ilacın eşdeğer grubunu bul
+                sql_esdeger = f"""
+                SELECT UrunEsdegerId FROM Urun WHERE UrunId = {urun_id} AND UrunSilme = 0
+                """
+                sonuc = self.db.sorgu_calistir(sql_esdeger)
+                if not sonuc or not sonuc[0].get('UrunEsdegerId'):
+                    tk.Label(muadil_cards_frame, text="Bu ilacın eşdeğer grubu yok",
+                            font=('Arial', 9), bg='#FFF3E0', fg='#666').pack(pady=20)
+                    return
 
-        siparis['Miktar'] = yeni_miktar
-        siparis['Toplam'] = toplam
+                esdeger_id = sonuc[0]['UrunEsdegerId']
 
-        # Database'i guncelle
-        db_id = siparis.get('db_id')
-        if db_id and self.siparis_db:
-            self.siparis_db.siparis_guncelle(db_id, miktar=yeni_miktar, toplam=toplam)
+                # Aynı gruptaki tüm ilaçları getir (kendisi hariç)
+                sql_muadiller = f"""
+                SELECT
+                    u.UrunId,
+                    u.UrunAdi,
+                    CASE WHEN u.UrunUrunTipId IN (1, 16) THEN
+                        (SELECT COUNT(*) FROM Karekod kk WHERE kk.KKUrunId = u.UrunId AND kk.KKDurum = 1)
+                    ELSE (COALESCE(u.UrunStokDepo,0) + COALESCE(u.UrunStokRaf,0) + COALESCE(u.UrunStokAcik,0))
+                    END AS Stok,
+                    COALESCE(u.UrunFiyatEtiket, 0) as PSF,
+                    COALESCE(u.UrunIskontoKamu, 0) as Iskonto,
+                    (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId AND b.BarkodSilme = 0) as Barkod
+                FROM Urun u
+                WHERE u.UrunEsdegerId = {esdeger_id}
+                AND u.UrunSilme = 0
+                AND u.UrunId != {urun_id}
+                ORDER BY u.UrunAdi
+                """
+                muadiller = self.db.sorgu_calistir(sql_muadiller)
 
-        self._kesin_liste_guncelle()
+                if not muadiller:
+                    tk.Label(muadil_cards_frame, text="Başka muadil bulunamadı",
+                            font=('Arial', 9), bg='#FFF3E0', fg='#666').pack(pady=20)
+                    return
+
+                # Muadil kartlarını oluştur
+                for muadil in muadiller:
+                    stok = int(muadil.get('Stok') or 0)
+                    psf = float(muadil.get('PSF') or 0)
+                    iskonto = float(muadil.get('Iskonto') or 0)
+                    depocu = psf * 0.71 * 1.10 * (1 - iskonto / 100) if psf > 0 else 0
+
+                    # Kart frame
+                    card = tk.Frame(muadil_cards_frame, bg='#FFF8E1', relief='raised', bd=1)
+                    card.pack(fill=tk.X, padx=5, pady=3)
+
+                    # Sol: İlaç bilgileri
+                    info_frame = tk.Frame(card, bg='#FFF8E1')
+                    info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, pady=5)
+
+                    ilac_adi = muadil['UrunAdi'][:35] + ".." if len(muadil['UrunAdi']) > 37 else muadil['UrunAdi']
+                    tk.Label(info_frame, text=ilac_adi, font=('Arial', 9, 'bold'),
+                            bg='#FFF8E1', anchor='w').pack(anchor='w')
+
+                    # Stok ve fiyat bilgisi
+                    stok_renk = '#2E7D32' if stok > 0 else '#C62828'
+                    bilgi_text = f"Stok: {stok}  |  Fiyat: {depocu:.0f}₺"
+                    tk.Label(info_frame, text=bilgi_text, font=('Arial', 8),
+                            bg='#FFF8E1', fg=stok_renk).pack(anchor='w')
+
+                    # Sağ: Seç butonu
+                    btn = tk.Button(card, text="Seç", font=('Arial', 9, 'bold'),
+                                   bg='#FF9800', fg='white', width=5,
+                                   command=lambda m=muadil, c=card: muadil_sec(m, c))
+                    btn.pack(side=tk.RIGHT, padx=5, pady=5)
+
+                    # Karta tıklama
+                    card.bind('<Button-1>', lambda e, m=muadil, c=card: muadil_sec(m, c))
+
+            except Exception as e:
+                logger.error(f"Muadil yükleme hatası: {e}")
+                tk.Label(muadil_cards_frame, text=f"Hata: {str(e)[:40]}",
+                        font=('Arial', 9), bg='#FFF3E0', fg='#C62828').pack(pady=20)
+
+        # Muadilleri yükle butonu (ilk yüklemede çağrılacak)
+        muadilleri_yukle()
+
+        # ═══════════════════════════════════════════════════════════════════
+        # BUTONLAR
+        # ═══════════════════════════════════════════════════════════════════
+        btn_frame = tk.Frame(main_frame)
+        btn_frame.pack(pady=10)
+
+        def kaydet():
+            try:
+                yeni_miktar = int(miktar_entry.get().strip() or 0)
+                yeni_mf = mf_entry.get().strip()
+
+                if yeni_miktar <= 0:
+                    messagebox.showwarning("Uyarı", "Miktar 0'dan büyük olmalı!")
+                    return
+
+                # Toplam hesapla
+                if yeni_mf and '+' in yeni_mf:
+                    try:
+                        parcalar = yeni_mf.split('+')
+                        mf_al = int(parcalar[0])
+                        mf_bedava = int(parcalar[1])
+                        set_sayisi = yeni_miktar // mf_al
+                        if set_sayisi == 0:
+                            set_sayisi = 1
+                        toplam = (set_sayisi * mf_al) + (set_sayisi * mf_bedava)
+                    except:
+                        toplam = yeni_miktar
+                else:
+                    toplam = yeni_miktar
+
+                # Muadile çevirme kontrolü
+                if secili_muadil['data']:
+                    muadil = secili_muadil['data']
+                    siparis['UrunId'] = muadil['UrunId']
+                    siparis['UrunAdi'] = muadil['UrunAdi']
+                    siparis['Barkod'] = muadil.get('Barkod', '')
+                    siparis['Stok'] = int(muadil.get('Stok') or 0)
+
+                siparis['Miktar'] = yeni_miktar
+                siparis['MF'] = yeni_mf
+                siparis['Toplam'] = toplam
+
+                # Database'i guncelle
+                db_id = siparis.get('db_id')
+                if db_id and self.siparis_db:
+                    guncelleme_data = {
+                        'miktar': yeni_miktar,
+                        'mf': yeni_mf,
+                        'toplam': toplam
+                    }
+                    if secili_muadil['data']:
+                        guncelleme_data['urun_id'] = siparis['UrunId']
+                        guncelleme_data['urun_adi'] = siparis['UrunAdi']
+                        guncelleme_data['barkod'] = siparis.get('Barkod', '')
+                        guncelleme_data['stok'] = siparis.get('Stok', 0)
+
+                    self.siparis_db.siparis_guncelle(db_id, **guncelleme_data)
+
+                self._kesin_liste_guncelle()
+                dialog.destroy()
+
+                if secili_muadil['data']:
+                    messagebox.showinfo("Başarılı",
+                        f"Sipariş muadiline çevrildi:\n{secili_muadil['data']['UrunAdi'][:40]}")
+
+            except Exception as e:
+                messagebox.showerror("Hata", f"Güncelleme hatası: {e}")
+
+        tk.Button(btn_frame, text="Kaydet", command=kaydet, bg='#4CAF50', fg='white',
+                  font=('Arial', 10, 'bold'), width=12).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="İptal", command=dialog.destroy, bg='#757575', fg='white',
+                  font=('Arial', 10), width=10).pack(side=tk.LEFT, padx=5)
+
+        # Enter tuşu ile kaydet
+        dialog.bind('<Return>', lambda e: kaydet())
+        miktar_entry.focus_set()
 
     def _yeni_calisma_dialog(self):
         """Yeni siparis calismasi olusturma dialogu"""
@@ -3672,6 +4526,148 @@ class SiparisVermeGUI:
                  bg='#388E3C', fg='white', font=('Arial', 10, 'bold'), width=12).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Sil", command=sil,
                  bg='#C62828', fg='white', font=('Arial', 10), width=10).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Kapat", command=dialog.destroy,
+                 font=('Arial', 10), width=10).pack(side=tk.RIGHT, padx=5)
+
+    def _calisma_kaydet_kapat(self):
+        """Aktif çalışmayı kaydet ve kapat"""
+        if not self.siparis_db or not self.aktif_calisma:
+            messagebox.showwarning("Uyarı", "Aktif sipariş çalışması yok!")
+            return
+
+        kalem = len(self.kesin_siparis_listesi)
+        kutu = sum(s.get('Toplam') or s.get('Miktar') or 0 for s in self.kesin_siparis_listesi)
+
+        mesaj = f"Çalışma kapatılacak:\n\n"
+        mesaj += f"Çalışma: {self.aktif_calisma['ad']}\n"
+        mesaj += f"Kalem: {kalem}\n"
+        mesaj += f"Toplam Kutu: {kutu}\n\n"
+        mesaj += "Onaylıyor musunuz?"
+
+        if not messagebox.askyesno("Çalışmayı Kaydet ve Kapat", mesaj):
+            return
+
+        # Çalışmayı kapat
+        self.siparis_db.calisma_kapat(self.aktif_calisma['id'])
+
+        # Yeni çalışma oluştur
+        self.aktif_calisma = None
+        self.kesin_siparis_listesi = []
+        self._kesin_liste_guncelle()
+        self._yeni_calisma_olustur()
+
+        messagebox.showinfo("Başarılı", "Çalışma kaydedildi ve kapatıldı.\nYeni çalışma oluşturuldu.")
+
+    def _calisma_arsiv_goster(self):
+        """Eski sipariş çalışmalarını arşiv olarak göster"""
+        if not self.siparis_db:
+            messagebox.showerror("Hata", "Sipariş veritabanı bağlantısı yok!")
+            return
+
+        # Arşiv listesini getir
+        arsiv = self.siparis_db.arsiv_listesi_getir(limit=50)
+
+        if not arsiv:
+            messagebox.showinfo("Bilgi", "Arşivde sipariş çalışması bulunamadı.")
+            return
+
+        # Arşiv penceresi
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("Sipariş Çalışmaları Arşivi")
+        dialog.geometry("750x500")
+        dialog.transient(self.parent)
+        dialog.grab_set()
+
+        # Başlık
+        tk.Label(dialog, text="SİPARİŞ ÇALIŞMALARI ARŞİVİ", font=('Arial', 14, 'bold'),
+                bg='#5D4037', fg='white', pady=12).pack(fill=tk.X)
+
+        # Tablo
+        tablo_frame = tk.Frame(dialog)
+        tablo_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        columns = ('ad', 'baslangic', 'bitis', 'durum', 'kalem', 'kutu')
+        tree = ttk.Treeview(tablo_frame, columns=columns, show='headings', height=18)
+        tree.heading('ad', text='Çalışma Adı')
+        tree.heading('baslangic', text='Başlangıç')
+        tree.heading('bitis', text='Bitiş')
+        tree.heading('durum', text='Durum')
+        tree.heading('kalem', text='Kalem')
+        tree.heading('kutu', text='Kutu')
+
+        tree.column('ad', width=200)
+        tree.column('baslangic', width=130)
+        tree.column('bitis', width=130)
+        tree.column('durum', width=90)
+        tree.column('kalem', width=60)
+        tree.column('kutu', width=70)
+
+        vsb = ttk.Scrollbar(tablo_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Verileri ekle
+        for c in arsiv:
+            baslangic = c.get('olusturma_tarihi', '')[:16] if c.get('olusturma_tarihi') else '-'
+            bitis = c.get('bitis_tarihi', '')[:16] if c.get('bitis_tarihi') else '-'
+            durum = c.get('durum', '')
+            durum_text = 'Tamamlandı' if durum == 'tamamlandi' else ('Aktif' if durum == 'aktif' else durum)
+
+            tree.insert('', 'end', values=(
+                c.get('ad', ''),
+                baslangic,
+                bitis,
+                durum_text,
+                c.get('kalem', 0),
+                c.get('kutu', 0)
+            ), tags=(str(c['id']),))
+
+        # Renklendirme
+        tree.tag_configure('aktif', background='#E8F5E9')
+        tree.tag_configure('tamamlandi', background='#ECEFF1')
+
+        # Özet bilgi
+        toplam_kalem = sum(c.get('kalem', 0) for c in arsiv)
+        toplam_kutu = sum(c.get('kutu', 0) for c in arsiv)
+        tamamlanan = sum(1 for c in arsiv if c.get('durum') == 'tamamlandi')
+
+        ozet_frame = tk.Frame(dialog, bg='#ECEFF1', pady=5)
+        ozet_frame.pack(fill=tk.X, padx=10)
+        tk.Label(ozet_frame, text=f"Toplam: {len(arsiv)} çalışma | {tamamlanan} tamamlandı | {toplam_kalem} kalem | {toplam_kutu} kutu",
+                font=('Arial', 10), bg='#ECEFF1').pack()
+
+        # Butonlar
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        def yukle_secili():
+            secili = tree.selection()
+            if not secili:
+                messagebox.showwarning("Uyarı", "Lütfen bir çalışma seçin!")
+                return
+
+            calisma_id = int(tree.item(secili[0], 'tags')[0])
+            calisma_ad = tree.item(secili[0], 'values')[0]
+
+            # Mevcut çalışmayı kapat
+            if self.aktif_calisma and self.aktif_calisma['id'] != calisma_id:
+                if self.kesin_siparis_listesi:
+                    self.siparis_db.calisma_kapat(self.aktif_calisma['id'])
+
+            # Seçilen çalışmayı aktif yap
+            self.siparis_db.calisma_guncelle(calisma_id, durum='aktif')
+            self.aktif_calisma = {'id': calisma_id, 'ad': calisma_ad}
+
+            # Siparişleri yükle
+            self._calisma_siparislerini_yukle()
+            self._calisma_bilgisini_guncelle()
+
+            dialog.destroy()
+            messagebox.showinfo("Başarılı", f"Çalışma yüklendi: {calisma_ad}")
+
+        tk.Button(btn_frame, text="Seçili Çalışmayı Yükle", command=yukle_secili,
+                 bg='#388E3C', fg='white', font=('Arial', 10, 'bold'), width=20).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Kapat", command=dialog.destroy,
                  font=('Arial', 10), width=10).pack(side=tk.RIGHT, padx=5)
 

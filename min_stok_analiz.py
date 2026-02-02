@@ -136,6 +136,202 @@ def talep_pattern_analiz(db, urun_id: int, ay_sayisi: int = 12) -> dict:
     }
 
 
+def min_stok_uygunluk_analiz(db, urun_id: int) -> dict:
+    """
+    Bir ilacin minimum stok belirleme uygunlugunu puanla.
+
+    Son 2 yildaki satis verilerini analiz ederek:
+    1. Frekans (yillik satis sayisi)
+    2. Dagilim (ceyreklere dagilim)
+    3. Guncellik (son satisin ne zaman oldugu)
+
+    Returns:
+        dict: {
+            'frekans_puan': int (0-4),
+            'dagilim_puan': int (0-3),
+            'guncellik_puan': int (0-3),
+            'toplam_puan': int (0-10),
+            'karar': str ('UYGUN', 'DIKKATLI', 'SADECE_KRITIK', 'UYGUN_DEGIL'),
+            'aciklama': str,
+            'son_satis_gun': int,
+            'yillik_satis': int,
+            'ceyrek_dagilim': list
+        }
+    """
+    bugun = datetime.now()
+    iki_yil_once = (bugun - relativedelta(years=2)).strftime('%Y-%m-%d')
+    bir_yil_once = (bugun - relativedelta(years=1)).strftime('%Y-%m-%d')
+    alti_ay_once = (bugun - relativedelta(months=6)).strftime('%Y-%m-%d')
+    uc_ay_once = (bugun - relativedelta(months=3)).strftime('%Y-%m-%d')
+
+    # Son 2 yildaki tum satislari getir (tarih bazli)
+    sql = f"""
+    SELECT CAST(ra.RxKayitTarihi AS DATE) as Tarih
+    FROM ReceteIlaclari ri
+    JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+    WHERE ri.RIUrunId = {urun_id}
+    AND ra.RxSilme = 0 AND ri.RISilme = 0
+    AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+    AND ra.RxKayitTarihi >= '{iki_yil_once}'
+
+    UNION ALL
+
+    SELECT CAST(ea.RxKayitTarihi AS DATE) as Tarih
+    FROM EldenIlaclari ei
+    JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+    WHERE ei.RIUrunId = {urun_id}
+    AND ea.RxSilme = 0 AND ei.RISilme = 0
+    AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+    AND ea.RxKayitTarihi >= '{iki_yil_once}'
+    """
+
+    try:
+        satislar = db.sorgu_calistir(sql)
+    except Exception as e:
+        logger.error(f"Uygunluk analizi hatasi (UrunId={urun_id}): {e}")
+        return {
+            'frekans_puan': 0, 'dagilim_puan': 0, 'guncellik_puan': 0,
+            'toplam_puan': 0, 'karar': 'HATA', 'aciklama': str(e),
+            'son_satis_gun': 999, 'yillik_satis': 0, 'ceyrek_dagilim': []
+        }
+
+    if not satislar:
+        return {
+            'frekans_puan': 0, 'dagilim_puan': 0, 'guncellik_puan': 0,
+            'toplam_puan': 0, 'karar': 'UYGUN_DEGIL', 'aciklama': '2 yildir satis yok',
+            'son_satis_gun': 999, 'yillik_satis': 0, 'ceyrek_dagilim': [0, 0, 0, 0]
+        }
+
+    # Tarihleri isle
+    tarihler = []
+    for s in satislar:
+        try:
+            if isinstance(s['Tarih'], datetime):
+                tarihler.append(s['Tarih'])
+            else:
+                tarihler.append(datetime.strptime(str(s['Tarih']), '%Y-%m-%d'))
+        except:
+            continue
+
+    if not tarihler:
+        return {
+            'frekans_puan': 0, 'dagilim_puan': 0, 'guncellik_puan': 0,
+            'toplam_puan': 0, 'karar': 'UYGUN_DEGIL', 'aciklama': 'Tarih parse hatasi',
+            'son_satis_gun': 999, 'yillik_satis': 0, 'ceyrek_dagilim': [0, 0, 0, 0]
+        }
+
+    # Unique gunler (ayni gun birden fazla satis olabilir)
+    unique_tarihler = list(set([t.date() for t in tarihler]))
+    unique_tarihler.sort()
+
+    # Son satis tarihi
+    son_satis = max(unique_tarihler)
+    son_satis_gun = (bugun.date() - son_satis).days
+
+    # Son 1 yildaki satis sayisi
+    bir_yil_tarih = datetime.strptime(bir_yil_once, '%Y-%m-%d').date()
+    yillik_satislar = [t for t in unique_tarihler if t >= bir_yil_tarih]
+    yillik_satis = len(yillik_satislar)
+
+    # ===== 1. FREKANS PUANI (0-4) =====
+    if yillik_satis >= 6:
+        frekans_puan = 4  # 2 ayda 1+ = duzgun
+    elif yillik_satis >= 4:
+        frekans_puan = 3  # 3 ayda 1
+    elif yillik_satis >= 3:
+        frekans_puan = 2  # 4 ayda 1
+    elif yillik_satis >= 1:
+        frekans_puan = 1  # Yilda 1-2
+    else:
+        frekans_puan = 0  # Yilda 0
+
+    # ===== 2. DAGILIM PUANI (0-3) =====
+    # Son 2 yili 4 ceyrege bol (6'sar ay)
+    ceyrekler = [0, 0, 0, 0]  # [0-6ay, 6-12ay, 12-18ay, 18-24ay]
+    for t in unique_tarihler:
+        gun_fark = (bugun.date() - t).days
+        if gun_fark <= 180:
+            ceyrekler[0] += 1
+        elif gun_fark <= 365:
+            ceyrekler[1] += 1
+        elif gun_fark <= 545:
+            ceyrekler[2] += 1
+        else:
+            ceyrekler[3] += 1
+
+    # Kac ceyrekte satis var?
+    dolu_ceyrek = sum(1 for c in ceyrekler if c > 0)
+
+    if dolu_ceyrek >= 4:
+        dagilim_puan = 3  # Her ceyrekte satis
+    elif dolu_ceyrek >= 3:
+        dagilim_puan = 2  # 3 ceyrekte
+    elif dolu_ceyrek >= 2:
+        dagilim_puan = 1  # 2 ceyrekte
+    else:
+        dagilim_puan = 0  # 1 ceyrekte (yigilmis)
+
+    # ===== 3. GUNCELLIK PUANI (0-3) =====
+    if son_satis_gun <= 90:  # Son 3 ayda
+        guncellik_puan = 3
+    elif son_satis_gun <= 180:  # Son 6 ayda
+        guncellik_puan = 2
+    elif son_satis_gun <= 365:  # Son 1 yilda
+        guncellik_puan = 1
+    else:
+        guncellik_puan = 0  # 1+ yildir yok
+
+    # ===== TOPLAM PUAN VE KARAR =====
+    toplam_puan = frekans_puan + dagilim_puan + guncellik_puan
+
+    # Ozel durumlar - otomatik diskalifikasyon
+    diskalifiye = False
+    diskalifiye_sebep = ""
+
+    # Son 6 ayda hic satis yoksa
+    if son_satis_gun > 180:
+        diskalifiye = True
+        diskalifiye_sebep = f"Son {son_satis_gun} gundur satis yok"
+
+    # Son 1 yilda 2'den az satis VE son 6 ayda hic yoksa
+    elif yillik_satis <= 2 and ceyrekler[0] == 0:
+        diskalifiye = True
+        diskalifiye_sebep = f"Yilda {yillik_satis} satis, son 6 ayda 0"
+
+    # 4 ceyregin 3'unde satis yoksa
+    elif dolu_ceyrek <= 1:
+        diskalifiye = True
+        diskalifiye_sebep = f"4 ceyregin sadece {dolu_ceyrek}'inde satis var"
+
+    if diskalifiye:
+        karar = 'UYGUN_DEGIL'
+        aciklama = diskalifiye_sebep
+    elif toplam_puan >= 8:
+        karar = 'UYGUN'
+        aciklama = f'Puan:{toplam_puan}/10 - Min stok belirlenebilir'
+    elif toplam_puan >= 5:
+        karar = 'DIKKATLI'
+        aciklama = f'Puan:{toplam_puan}/10 - Dusuk min stok onerilir'
+    elif toplam_puan >= 3:
+        karar = 'SADECE_KRITIK'
+        aciklama = f'Puan:{toplam_puan}/10 - Sadece kritik ilaclara'
+    else:
+        karar = 'UYGUN_DEGIL'
+        aciklama = f'Puan:{toplam_puan}/10 - Min stok onerilmez'
+
+    return {
+        'frekans_puan': frekans_puan,
+        'dagilim_puan': dagilim_puan,
+        'guncellik_puan': guncellik_puan,
+        'toplam_puan': toplam_puan,
+        'karar': karar,
+        'aciklama': aciklama,
+        'son_satis_gun': son_satis_gun,
+        'yillik_satis': yillik_satis,
+        'ceyrek_dagilim': ceyrekler
+    }
+
+
 def basabas_noktasi_hesapla(kar_marji: float, yillik_faiz: float) -> float:
     """
     Finansal basabas noktasi hesapla
@@ -371,8 +567,27 @@ def tum_ilaclari_analiz_et(
         if not analiz:
             continue
 
+        # Uygunluk analizi (puanlama)
+        uygunluk = min_stok_uygunluk_analiz(db, urun_id)
+
         # Minimum stok hesapla
         min_sonuc = minimum_stok_hesapla(analiz, kar_marji, yillik_faiz)
+
+        # Uygunluk kararına göre önerilen değeri ayarla
+        if uygunluk['karar'] == 'UYGUN_DEGIL':
+            min_onerilen_final = 0
+            aciklama_final = f"{min_sonuc['aciklama']} | {uygunluk['aciklama']}"
+        elif uygunluk['karar'] == 'DIKKATLI':
+            # Düşük tut - minimum 1, maksimum hesaplananın yarısı
+            min_onerilen_final = max(1, min(min_sonuc['min_onerilen'], math.ceil(min_sonuc['min_onerilen'] / 2)))
+            aciklama_final = f"{min_sonuc['aciklama']} | DIKKATLI: {uygunluk['aciklama']}"
+        elif uygunluk['karar'] == 'SADECE_KRITIK':
+            # Sadece 1 adet öner
+            min_onerilen_final = 1 if min_sonuc['min_onerilen'] > 0 else 0
+            aciklama_final = f"{min_sonuc['aciklama']} | KRITIK: {uygunluk['aciklama']}"
+        else:
+            min_onerilen_final = min_sonuc['min_onerilen']
+            aciklama_final = min_sonuc['aciklama']
 
         sonuclar.append({
             'UrunId': urun_id,
@@ -387,8 +602,17 @@ def tum_ilaclari_analiz_et(
             'Sinif': analiz['sinif'],
             'MinBilimsel': min_sonuc['min_bilimsel'],
             'MinFinansal': min_sonuc['min_finansal'],
-            'MinOnerilen': min_sonuc['min_onerilen'],
-            'Aciklama': min_sonuc['aciklama']
+            'MinOnerilen': min_onerilen_final,
+            'Aciklama': aciklama_final,
+            # Yeni puanlama alanlari
+            'UygunlukPuan': uygunluk['toplam_puan'],
+            'UygunlukKarar': uygunluk['karar'],
+            'FrekPuan': uygunluk['frekans_puan'],
+            'DagPuan': uygunluk['dagilim_puan'],
+            'GunPuan': uygunluk['guncellik_puan'],
+            'SonSatisGun': uygunluk['son_satis_gun'],
+            'YillikSatis': uygunluk['yillik_satis'],
+            'CeyrekDagilim': uygunluk['ceyrek_dagilim']
         })
 
     if progress_callback:
