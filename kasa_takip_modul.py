@@ -3672,8 +3672,9 @@ class KasaKapatmaModul:
                 sayim_adet = int(self.sayim_vars.get(deger, tk.StringVar(value="0")).get() or 0)
                 ayrilan_adet = slider_var.get()  # Slider değeri = ayrılan miktar
                 kalan = sayim_adet - ayrilan_adet  # Kalan = Sayım - Ayrılan
+                # Sıfır dahil tüm değerleri kaydet (ertesi güne aktarım için önemli!)
+                kalan_kupurler[str(deger)] = kalan
                 if kalan > 0:
-                    kalan_kupurler[str(deger)] = kalan
                     kalan_toplam += kalan * deger
             except (ValueError, KeyError):
                 pass
@@ -4021,8 +4022,9 @@ class KasaKapatmaModul:
                 sayim_adet = int(self.sayim_vars.get(deger, tk.StringVar(value="0")).get() or 0)
                 ayrilan = slider_var.get()
                 kalan = sayim_adet - ayrilan
+                # Sıfır dahil tüm değerleri kaydet (ertesi güne aktarım için önemli!)
+                kalan_kupurler[str(deger)] = kalan
                 if kalan > 0:
-                    kalan_kupurler[str(deger)] = kalan
                     kalan_toplam += kalan * deger
             except (ValueError, KeyError):
                 pass
@@ -5022,8 +5024,9 @@ class KasaKapatmaModul:
                         ayrilan_adet = slider_var.get()
                         kalan_adet = sayim_adet - ayrilan_adet
 
+                        # Sıfır dahil tüm değerleri kaydet (ertesi güne aktarım için önemli!)
+                        kalan_kupurler[str(deger)] = kalan_adet
                         if kalan_adet > 0:
-                            kalan_kupurler[str(deger)] = kalan_adet
                             kalan_toplam += kalan_adet * deger
                         if ayrilan_adet > 0:
                             ayrilan_kupurler[str(deger)] = ayrilan_adet
@@ -5215,7 +5218,13 @@ class KasaKapatmaModul:
 
         # Önceki kayıttan başlangıç kasasını yükle
         onceki_veri = self.onceki_gun_kasasi_yukle()
-        if onceki_veri and onceki_veri.get("toplam", 0) > 0:
+
+        # Önce TÜM başlangıç kasası değerlerini sıfırla (önemli!)
+        for var in self.baslangic_kupur_vars.values():
+            var.set("0")
+
+        # Sonra önceki günden gelen değerleri yükle (sıfır olanlar dahil)
+        if onceki_veri:
             kupurler = onceki_veri.get("kupurler", {})
             for deger_str, adet in kupurler.items():
                 try:
@@ -5226,10 +5235,6 @@ class KasaKapatmaModul:
                         self.baslangic_kupur_vars[deger].set(str(adet))
                 except (ValueError, KeyError):
                     pass
-        else:
-            # Başlangıç kasasını temizle
-            for var in self.baslangic_kupur_vars.values():
-                var.set("0")
 
         self.baslangic_toplam_hesapla()
         self.hesaplari_guncelle()
