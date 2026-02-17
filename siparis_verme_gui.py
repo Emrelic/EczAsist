@@ -675,7 +675,7 @@ class SiparisVermeGUI:
     def _detay_panel_olustur(self):
         """Sağ taraftaki detay paneli - scroll'lu tasarım"""
         detay_frame = tk.Frame(self.orta_paned, bg=self.R_BG_SECONDARY, relief='sunken', bd=1)
-        self.orta_paned.add(detay_frame, minsize=96, width=108)
+        self.orta_paned.add(detay_frame, minsize=112, width=126)
 
         # Başlık
         header = tk.Frame(detay_frame, bg=self.R_GRUP_BASLIK, height=26)
@@ -828,8 +828,11 @@ class SiparisVermeGUI:
         self.kesin_tree.bind('<f>', self._barkod_kopyala)
         self.kesin_tree.bind('<F>', self._barkod_kopyala)
 
+        # F2 tuşu ile barkod yapıştırma (uygulama genelinde)
+        self.parent.bind_all('<F2>', self._barkod_yapistir)
+
         # Klavye kısayolu etiketi
-        kisayol_label = tk.Label(tree_frame, text="F / F1: Barkod Kopyala", font=('Arial', 7),
+        kisayol_label = tk.Label(tree_frame, text="F/F1: Kopyala | F2: Yapıştır", font=('Arial', 7),
                                  fg='#666', bg=self.R_BG)
         kisayol_label.place(relx=1.0, y=0, anchor='ne')
 
@@ -859,6 +862,30 @@ class SiparisVermeGUI:
             self.status_label.config(text=f"📋 Barkod kopyalandı: {barkod} ({urun_adi})")
         else:
             self.status_label.config(text="⚠ Bu ürünün barkodu yok!")
+
+    def _barkod_yapistir(self, event=None):
+        """F2: Panodaki barkodu aktif metin alanına yapıştır"""
+        try:
+            barkod = self.parent.clipboard_get()
+        except:
+            self.status_label.config(text="⚠ Panoda barkod yok!")
+            return
+
+        if not barkod:
+            self.status_label.config(text="⚠ Panoda barkod yok!")
+            return
+
+        # Aktif widget'a yapıştır (Entry veya Text alanı)
+        focused = self.parent.focus_get()
+        if focused and isinstance(focused, (tk.Entry, ttk.Entry)):
+            focused.delete(0, tk.END)
+            focused.insert(0, barkod)
+            self.status_label.config(text=f"📋 Barkod yapıştırıldı: {barkod}")
+        elif focused and isinstance(focused, tk.Text):
+            focused.insert(tk.INSERT, barkod)
+            self.status_label.config(text=f"📋 Barkod yapıştırıldı: {barkod}")
+        else:
+            self.status_label.config(text=f"📋 Barkod panoda: {barkod} (bir metin alanına tıklayıp F2)")
 
     def _status_bar_olustur(self, parent):
         """Status bar"""
@@ -2741,33 +2768,29 @@ class SiparisVermeGUI:
         # MF Şartı sütununa tıklandıysa (Sart1, Sart2, Sart3)
         if column_id in ('Sart1', 'Sart2', 'Sart3'):
             sart_degeri = urun.get(column_id, '')
-            if not sart_degeri:
+            if not sart_degeri or '+' not in sart_degeri:
                 return
 
             mevcut_mf = urun.get('MF', '')
 
             if mevcut_mf == sart_degeri:
                 # İkinci tıklama: Aynı MF zaten seçili → kesin siparişe ekle
-                oneri = urun.get('Oneri', 0)
-                miktar = oneri if oneri > 0 else (urun.get('AylikOrt', 0) or 0)
-                if miktar > 0:
-                    # MF'den alinan miktarı parse et
-                    try:
-                        parts = sart_degeri.split('+')
-                        alinan = int(parts[0])
-                        if miktar < alinan:
-                            miktar = alinan  # En az MF'nin al kısmı kadar
-                    except:
-                        pass
-                    self._kesin_listeye_ekle_hizli(urun, miktar, sart_degeri)
-                    self.status_label.config(text=f"✓ {urun.get('UrunAdi', '')[:25]} → {sart_degeri} MF ile kesin siparişe eklendi")
+                try:
+                    parts = sart_degeri.split('+')
+                    alinan = int(parts[0])
+                except:
+                    return
+                self._kesin_listeye_ekle_hizli(urun, alinan, sart_degeri)
+                self.status_label.config(text=f"✓ {urun.get('UrunAdi', '')[:25]} → {sart_degeri} MF ile kesin siparişe eklendi")
             else:
-                # İlk tıklama: MF'yi sipariş önerisine kaydet
+                # İlk tıklama: MF'yi sipariş önerisine kaydet + detay kutucuklarını doldur
                 urun['MF'] = sart_degeri
                 self.manuel_mf_girisler[urun_id] = sart_degeri
                 # Grid'deki MF sütununu güncelle
                 self.ana_tree.set(item_id, 'MF', sart_degeri)
-                self.status_label.config(text=f"📝 {urun.get('UrunAdi', '')[:25]} → MF: {sart_degeri} kaydedildi (tekrar tıkla → kesin sipariş)")
+                # Detay paneldeki kutucukları doldur (Adet=alinan, MF=bedava)
+                self._mf_kutucuklari_doldur(sart_degeri)
+                self.status_label.config(text=f"📝 {urun.get('UrunAdi', '')[:25]} → MF: {sart_degeri} (tekrar tıkla → kesin sipariş)")
             return
 
     def _detay_paneli_guncelle(self, urun):
@@ -2861,7 +2884,7 @@ class SiparisVermeGUI:
             var = tk.BooleanVar(value=True)
             self.mf_gecmis_vars.append((var, sart))
             btn = tk.Button(mf_row1, text=sart, font=('Arial', 9, 'bold'), bg='#81C784', fg='#1B5E20', relief='raised', padx=4, cursor='hand2',
-                           command=lambda s=sart, u=urun: self._mf_kesin_listeye_ekle(u, s))
+                           command=lambda s=sart, u=urun: self._mf_buton_tiklandi(u, s))
             btn.pack(side=tk.LEFT, padx=2)
 
         # Manuel MF + Sipariş miktarı aynı satırda
@@ -2995,6 +3018,56 @@ class SiparisVermeGUI:
         """MF sonuç alanını temizle"""
         for widget in self.mf_sonuc_frame.winfo_children():
             widget.destroy()
+
+    def _mf_kutucuklari_doldur(self, mf_sart):
+        """MF şartını parse edip detay paneldeki kutucukları doldur.
+        Örn: '10+1' → Adet kutucuğuna 10, MF kutucuğuna 1 yazar.
+        """
+        if not mf_sart or '+' not in mf_sart:
+            return
+        try:
+            parts = mf_sart.split('+')
+            alinan = int(parts[0])
+            bedava = int(parts[1])
+        except (ValueError, IndexError):
+            return
+
+        # Sipariş Girişi kutucukları (Adet + MF)
+        if hasattr(self, 'manuel_entry'):
+            self.manuel_entry.delete(0, tk.END)
+            self.manuel_entry.insert(0, str(alinan))
+        if hasattr(self, 'mf_entry'):
+            self.mf_entry.delete(0, tk.END)
+            self.mf_entry.insert(0, str(bedava))
+
+        # MF Analiz bölümündeki sipariş miktarı
+        if hasattr(self, 'mf_siparis_entry'):
+            self.mf_siparis_entry.delete(0, tk.END)
+            self.mf_siparis_entry.insert(0, str(alinan))
+
+    def _mf_buton_tiklandi(self, urun, mf_sart):
+        """Detay paneldeki MF butonuna tıklama.
+        İlk tık: kutucukları doldur (Adet=alinan, MF=bedava).
+        İkinci tık (aynı MF seçiliyse): kesin siparişe ekle.
+        """
+        mevcut_mf = urun.get('MF', '')
+        if mevcut_mf == mf_sart:
+            # İkinci tıklama → kesin siparişe ekle
+            self._mf_kesin_listeye_ekle(urun, mf_sart)
+        else:
+            # İlk tıklama → kutucukları doldur + MF'yi kaydet
+            urun['MF'] = mf_sart
+            urun_id = urun.get('UrunId')
+            if urun_id:
+                self.manuel_mf_girisler[urun_id] = mf_sart
+                # Grid'deki MF sütununu güncelle
+                item_id = f"urun_{urun_id}"
+                try:
+                    self.ana_tree.set(item_id, 'MF', mf_sart)
+                except:
+                    pass
+            self._mf_kutucuklari_doldur(mf_sart)
+            self.status_label.config(text=f"📝 {urun.get('UrunAdi', '')[:25]} → MF: {mf_sart} (tekrar tıkla → kesin sipariş)")
 
     def _oneri_kesin_listeye_ekle(self, urun):
         """Öneriye tıklayınca kesin siparişe ekle"""
@@ -3894,7 +3967,17 @@ class SiparisVermeGUI:
         except:
             miktar = 0
 
-        mf = self.mf_entry.get().strip()
+        mf_raw = self.mf_entry.get().strip()
+
+        # MF kutucuğunda sadece bedava sayısı varsa (ör: "1") tam formatı oluştur
+        if mf_raw and '+' not in mf_raw and miktar > 0:
+            try:
+                bedava = int(mf_raw)
+                mf = f"{miktar}+{bedava}"
+            except:
+                mf = mf_raw
+        else:
+            mf = mf_raw
 
         urun_id = urun['UrunId']
         self.manuel_miktarlar[urun_id] = miktar
@@ -4018,16 +4101,29 @@ class SiparisVermeGUI:
                     f"Düzenlemek için listeden seçip 'Düzenle' butonunu kullanın.")
                 return
 
-        mf = self.mf_entry.get().strip()
+        mf_raw = self.mf_entry.get().strip()
 
         # MF'den toplam hesapla
+        # mf_raw "10+1" formatında veya sadece bedava sayısı "1" olabilir
         toplam = miktar
-        if mf and '+' in mf:
+        if mf_raw and '+' in mf_raw:
+            # Tam format: "10+1"
+            mf = mf_raw
             try:
-                mf_ek = int(mf.split('+')[1])
+                mf_ek = int(mf_raw.split('+')[1])
                 toplam = miktar + mf_ek
             except:
                 pass
+        elif mf_raw:
+            # Sadece bedava sayısı: "1" → tam MF: "miktar+bedava"
+            try:
+                bedava = int(mf_raw)
+                mf = f"{miktar}+{bedava}"
+                toplam = miktar + bedava
+            except:
+                mf = mf_raw
+        else:
+            mf = ''
 
         siparis_data = {
             'UrunId': urun['UrunId'],
