@@ -552,7 +552,7 @@ class SiparisVermeGUI:
     def _ana_grid_olustur(self):
         """Ana DataGrid - gruplu görünüm (genişletilmiş)"""
         grid_frame = tk.Frame(self.orta_paned, bg=self.R_BG_SECONDARY, relief='sunken', bd=1)
-        self.orta_paned.add(grid_frame, minsize=1000, width=1350)
+        self.orta_paned.add(grid_frame, minsize=1000, stretch='always')
 
         # Başlık
         header = tk.Frame(grid_frame, bg=self.R_TABLE_HEADER_BG, height=26)
@@ -675,7 +675,7 @@ class SiparisVermeGUI:
     def _detay_panel_olustur(self):
         """Sağ taraftaki detay paneli - scroll'lu tasarım"""
         detay_frame = tk.Frame(self.orta_paned, bg=self.R_BG_SECONDARY, relief='sunken', bd=1)
-        self.orta_paned.add(detay_frame, minsize=112, width=126)
+        self.orta_paned.add(detay_frame, minsize=200, width=250, stretch='never')
 
         # Başlık
         header = tk.Frame(detay_frame, bg=self.R_GRUP_BASLIK, height=26)
@@ -3950,15 +3950,20 @@ class SiparisVermeGUI:
             self._detay_scroll_configure()
 
     def _mf_oneri_uygula(self, urun, sonuc):
-        """MF önerisini manuel alanlara uygula"""
+        """MF önerisini manuel alanlara uygula (Adet=alinan, MF=bedava)"""
         self.manuel_entry.delete(0, tk.END)
         self.manuel_entry.insert(0, str(sonuc['alinan']))
 
+        self.mf_entry.delete(0, tk.END)
         if sonuc['bedava'] > 0:
-            self.mf_entry.delete(0, tk.END)
-            self.mf_entry.insert(0, f"{sonuc['alinan']}+{sonuc['bedava']}")
+            self.mf_entry.insert(0, str(sonuc['bedava']))
 
-        self.status_label.config(text=f"MF önerisi uygulandı: {sonuc['oneri']}")
+        # MF sipariş entry'sini de güncelle
+        if hasattr(self, 'mf_siparis_entry'):
+            self.mf_siparis_entry.delete(0, tk.END)
+            self.mf_siparis_entry.insert(0, str(sonuc['alinan']))
+
+        self.status_label.config(text=f"MF önerisi uygulandı: Adet={sonuc['alinan']} MF={sonuc['bedava']}")
 
     def _manuel_kaydet(self, urun):
         """Manuel girişleri kaydet"""
