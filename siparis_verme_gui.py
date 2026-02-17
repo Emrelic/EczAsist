@@ -672,6 +672,65 @@ class SiparisVermeGUI:
         self.ana_tree.bind('<Double-1>', self._satir_cift_tiklandi)
         self.ana_tree.bind('<Button-1>', self._sutun_tiklandi)
 
+        # Tooltip (ilaç ismi gösterimi)
+        self._tooltip = None
+        self._tooltip_after_id = None
+        self.ana_tree.bind('<Motion>', self._tree_motion)
+        self.ana_tree.bind('<Leave>', self._tooltip_gizle)
+
+    def _tree_motion(self, event):
+        """Mouse hareket edince UrunAdi sütunundaysa tooltip göster"""
+        # Önceki zamanlayıcıyı iptal et
+        if self._tooltip_after_id:
+            self.ana_tree.after_cancel(self._tooltip_after_id)
+            self._tooltip_after_id = None
+
+        # Tooltip'i gizle (yeni pozisyonda tekrar açılacak)
+        self._tooltip_gizle()
+
+        region = self.ana_tree.identify_region(event.x, event.y)
+        if region != 'cell':
+            return
+
+        col = self.ana_tree.identify_column(event.x)
+        col_id = self.ana_tree.column(col, 'id') if col else None
+        if col_id != 'UrunAdi':
+            return
+
+        item = self.ana_tree.identify_row(event.y)
+        if not item:
+            return
+
+        values = self.ana_tree.item(item, 'values')
+        if not values or len(values) < 2:
+            return
+
+        urun_adi = str(values[1])
+        if not urun_adi or len(urun_adi) < 15:
+            return
+
+        # 300ms gecikme ile tooltip göster
+        self._tooltip_after_id = self.ana_tree.after(
+            300, lambda: self._tooltip_goster(event.x_root, event.y_root, urun_adi))
+
+    def _tooltip_goster(self, x, y, text):
+        """Küçük tooltip etiketi göster"""
+        self._tooltip_gizle()
+        tw = tk.Toplevel(self.ana_tree)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x + 12}+{y + 12}")
+        tw.attributes('-topmost', True)
+        label = tk.Label(tw, text=text, bg='#FFFFDD', fg='#333',
+                         font=('Arial', 10), relief='solid', bd=1, padx=4, pady=2)
+        label.pack()
+        self._tooltip = tw
+
+    def _tooltip_gizle(self, event=None):
+        """Tooltip'i kapat"""
+        if self._tooltip:
+            self._tooltip.destroy()
+            self._tooltip = None
+
     def _detay_panel_olustur(self):
         """Sağ taraftaki detay paneli - scroll'lu tasarım"""
         detay_frame = tk.Frame(self.orta_paned, bg=self.R_BG_SECONDARY, relief='sunken', bd=1)
