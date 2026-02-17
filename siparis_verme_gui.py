@@ -675,7 +675,7 @@ class SiparisVermeGUI:
     def _detay_panel_olustur(self):
         """Sağ taraftaki detay paneli - scroll'lu tasarım"""
         detay_frame = tk.Frame(self.orta_paned, bg=self.R_BG_SECONDARY, relief='sunken', bd=1)
-        self.orta_paned.add(detay_frame, minsize=200, width=250, stretch='never')
+        self.orta_paned.add(detay_frame, minsize=300, width=375, stretch='never')
 
         # Başlık
         header = tk.Frame(detay_frame, bg=self.R_GRUP_BASLIK, height=26)
