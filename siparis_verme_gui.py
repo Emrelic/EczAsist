@@ -675,7 +675,7 @@ class SiparisVermeGUI:
     def _detay_panel_olustur(self):
         """Sağ taraftaki detay paneli - scroll'lu tasarım"""
         detay_frame = tk.Frame(self.orta_paned, bg=self.R_BG_SECONDARY, relief='sunken', bd=1)
-        self.orta_paned.add(detay_frame, minsize=160, width=180)
+        self.orta_paned.add(detay_frame, minsize=96, width=108)
 
         # Başlık
         header = tk.Frame(detay_frame, bg=self.R_GRUP_BASLIK, height=26)
@@ -823,11 +823,13 @@ class SiparisVermeGUI:
         self.kesin_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # F1 tuşu ile barkod kopyalama
+        # F ve F1 tuşu ile barkod kopyalama
         self.kesin_tree.bind('<F1>', self._barkod_kopyala)
+        self.kesin_tree.bind('<f>', self._barkod_kopyala)
+        self.kesin_tree.bind('<F>', self._barkod_kopyala)
 
         # Klavye kısayolu etiketi
-        kisayol_label = tk.Label(tree_frame, text="F1: Barkod Kopyala", font=('Arial', 7),
+        kisayol_label = tk.Label(tree_frame, text="F / F1: Barkod Kopyala", font=('Arial', 7),
                                  fg='#666', bg=self.R_BG)
         kisayol_label.place(relx=1.0, y=0, anchor='ne')
 
@@ -1987,12 +1989,16 @@ class SiparisVermeGUI:
             }
 
     def _hedef_gun_hesapla(self):
-        """Hedef tarihe kalan gün sayısı"""
+        """Hedef tarihe kalan gün sayısı.
+
+        NOT: Zam tarihi burada hedef olarak KULLANILMAZ.
+        Zam optimizasyonu zam tarihini ayrıca alır (_zam_oncesi_optimum_hesapla).
+        Hedef gün, temel ihtiyaç hesaplaması için kullanılır (ay sonu veya kullanıcı hedefi).
+        Zam aktif olup tarih bugün/yarın gibi yakın olduğunda hedef_gun=0 olması
+        tüm sipariş önerilerini sıfırlıyordu - bu düzeltildi.
+        """
         try:
-            if self.zam_aktif.get():
-                # Zam aktif ise zam tarihini kullan
-                hedef = self.zam_tarih_entry.get_date()
-            elif self.hedef_tarih_aktif.get():
+            if self.hedef_tarih_aktif.get():
                 hedef = self.hedef_tarih_entry.get_date()
             else:
                 # Varsayılan: Ay sonu
@@ -2704,7 +2710,7 @@ class SiparisVermeGUI:
                     self.status_label.config(text=f"⚠ {urun.get('UrunAdi', '')[:30]} için sipariş önerisi yok")
 
     def _sutun_tiklandi(self, event):
-        """Sütun tıklaması - Oneri sütununa tıklanırsa kesin listeye ekle"""
+        """Sütun tıklaması - Oneri/MF sütunlarına tıklama işlemleri"""
         # Tıklanan bölgeyi tespit et
         region = self.ana_tree.identify_region(event.x, event.y)
         if region != 'cell':
@@ -2714,10 +2720,6 @@ class SiparisVermeGUI:
         column = self.ana_tree.identify_column(event.x)
         column_id = self.ana_tree.column(column, 'id') if column else None
 
-        # Sadece Oneri sütununa tıklandıysa işlem yap
-        if column_id != 'Oneri':
-            return
-
         # Tıklanan satırı tespit et
         item_id = self.ana_tree.identify_row(event.y)
         if not item_id or not item_id.startswith('urun_'):
@@ -2725,11 +2727,48 @@ class SiparisVermeGUI:
 
         urun_id = int(item_id.replace('urun_', ''))
         urun = next((u for u in self.tum_veriler if u['UrunId'] == urun_id), None)
-        if urun:
+        if not urun:
+            return
+
+        # Oneri sütununa tıklandıysa kesin listeye ekle
+        if column_id == 'Oneri':
             oneri = urun.get('Oneri', 0)
             if oneri > 0:
-                self._kesin_listeye_ekle_hizli(urun, oneri, '')
+                self._kesin_listeye_ekle_hizli(urun, oneri, urun.get('MF', ''))
                 self.status_label.config(text=f"✓ {urun.get('UrunAdi', '')[:30]} → {oneri} adet (öneri tıklandı)")
+            return
+
+        # MF Şartı sütununa tıklandıysa (Sart1, Sart2, Sart3)
+        if column_id in ('Sart1', 'Sart2', 'Sart3'):
+            sart_degeri = urun.get(column_id, '')
+            if not sart_degeri:
+                return
+
+            mevcut_mf = urun.get('MF', '')
+
+            if mevcut_mf == sart_degeri:
+                # İkinci tıklama: Aynı MF zaten seçili → kesin siparişe ekle
+                oneri = urun.get('Oneri', 0)
+                miktar = oneri if oneri > 0 else (urun.get('AylikOrt', 0) or 0)
+                if miktar > 0:
+                    # MF'den alinan miktarı parse et
+                    try:
+                        parts = sart_degeri.split('+')
+                        alinan = int(parts[0])
+                        if miktar < alinan:
+                            miktar = alinan  # En az MF'nin al kısmı kadar
+                    except:
+                        pass
+                    self._kesin_listeye_ekle_hizli(urun, miktar, sart_degeri)
+                    self.status_label.config(text=f"✓ {urun.get('UrunAdi', '')[:25]} → {sart_degeri} MF ile kesin siparişe eklendi")
+            else:
+                # İlk tıklama: MF'yi sipariş önerisine kaydet
+                urun['MF'] = sart_degeri
+                self.manuel_mf_girisler[urun_id] = sart_degeri
+                # Grid'deki MF sütununu güncelle
+                self.ana_tree.set(item_id, 'MF', sart_degeri)
+                self.status_label.config(text=f"📝 {urun.get('UrunAdi', '')[:25]} → MF: {sart_degeri} kaydedildi (tekrar tıkla → kesin sipariş)")
+            return
 
     def _detay_paneli_guncelle(self, urun):
         """Detay panelini güncelle - çok kompakt tasarım"""
@@ -3020,12 +3059,15 @@ class SiparisVermeGUI:
         # Mevcut listede aynı ürün var mı?
         for i, mevcut in enumerate(self.kesin_siparis_listesi):
             if mevcut.get('UrunId') == urun.get('UrunId'):
-                # Güncelle
+                # Güncelle ve kullanıcıyı bilgilendir
+                siparis_data['db_id'] = mevcut.get('db_id')
                 self.kesin_siparis_listesi[i] = siparis_data
                 if hasattr(self, 'siparis_db') and self.siparis_db and self.aktif_calisma:
                     if mevcut.get('db_id'):
                         self.siparis_db.siparis_guncelle(mevcut['db_id'], miktar=miktar, mf=mf, toplam=toplam)
                 self._kesin_liste_guncelle()
+                urun_adi = urun.get('UrunAdi', '')[:25]
+                self.status_label.config(text=f"⚠ {urun_adi} zaten listede - güncellendi ({miktar} ad. {mf})")
                 return
 
         # Yeni ekleme
@@ -3954,7 +3996,7 @@ class SiparisVermeGUI:
                 self.ana_tree.item(item, tags=tags)
 
     def _kesin_listeye_ekle(self, urun):
-        """Urunu kesin listeye ekle ve database'e kaydet"""
+        """Urunu kesin listeye ekle ve database'e kaydet (mükerrer kontrolü ile)"""
         try:
             miktar = int(self.manuel_entry.get() or 0)
         except:
@@ -3963,6 +4005,18 @@ class SiparisVermeGUI:
         if miktar <= 0:
             messagebox.showwarning("Uyari", "Lutfen bir miktar girin!")
             return
+
+        # Mükerrer kontrolü
+        urun_id = urun['UrunId']
+        for mevcut in self.kesin_siparis_listesi:
+            if mevcut.get('UrunId') == urun_id:
+                urun_adi = urun.get('UrunAdi', '')[:30]
+                messagebox.showwarning("Mükerrer Uyarısı",
+                    f"Bu ilaç zaten kesin sipariş listesinde!\n\n"
+                    f"{urun_adi}\n"
+                    f"Mevcut: {mevcut.get('Miktar', 0)} ad. {mevcut.get('MF', '')}\n\n"
+                    f"Düzenlemek için listeden seçip 'Düzenle' butonunu kullanın.")
+                return
 
         mf = self.mf_entry.get().strip()
 
@@ -4011,15 +4065,22 @@ class SiparisVermeGUI:
         self.status_label.config(text="Tüm öneriler manuel alanlara kopyalandı")
 
     def _secilileri_kesin_listeye_ekle(self):
-        """Seçili satırları kesin listeye ekle"""
+        """Seçili satırları kesin listeye ekle (mükerrer kontrolü ile)"""
         selection = self.ana_tree.selection()
         eklenen = 0
+        atlanan_mukerrer = 0
+        mevcut_urun_idler = {s.get('UrunId') for s in self.kesin_siparis_listesi}
 
         for item_id in selection:
             if item_id.startswith('urun_'):
                 urun_id = int(item_id.replace('urun_', ''))
                 urun = next((u for u in self.tum_veriler if u['UrunId'] == urun_id), None)
                 if urun:
+                    # Mükerrer kontrolü
+                    if urun_id in mevcut_urun_idler:
+                        atlanan_mukerrer += 1
+                        continue
+
                     miktar = urun.get('Manuel', 0) or urun.get('Oneri', 0)
                     if miktar > 0:
                         mf = urun.get('MF', '')
@@ -4047,9 +4108,13 @@ class SiparisVermeGUI:
                             'Farmazon': ''
                         })
                         eklenen += 1
+                        mevcut_urun_idler.add(urun_id)
 
         self._kesin_liste_guncelle()
-        self.status_label.config(text=f"{eklenen} ürün kesin listeye eklendi")
+        durum = f"{eklenen} ürün kesin listeye eklendi"
+        if atlanan_mukerrer > 0:
+            durum += f" | ⚠ {atlanan_mukerrer} ürün zaten listede (atlandı)"
+        self.status_label.config(text=durum)
 
     def _kesin_liste_guncelle(self):
         """Kesin sipariş listesini güncelle"""
