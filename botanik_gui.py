@@ -34,6 +34,14 @@ from database import get_database
 from session_logger import SessionLogger
 from medula_settings import get_medula_settings
 
+# Tema yönetimi
+try:
+    from tema_yonetimi import get_tema, TEMALAR
+    TEMA_YUKLENDI = True
+except ImportError:
+    TEMA_YUKLENDI = False
+    TEMALAR = {"koyu": {"ad": "Koyu Tema", "icon": "🌙"}, "acik": {"ad": "Açık Tema", "icon": "☀️"}}
+
 # Logging ayarları - Saat:Dakika:Saniye:Milisaniye formatı
 class MillisecondFormatter(logging.Formatter):
     """Milisaniye + önceki satırdan geçen süre içeren özel formatter"""
@@ -901,11 +909,12 @@ class BotanikGUI:
         main_container = tk.Frame(self.root, bg=self.bg_color)
         main_container.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # Üst bar - Ana Sayfa butonu (eğer callback varsa göster)
-        if self.ana_menu_callback:
-            top_bar = tk.Frame(main_container, bg=self.bg_color)
-            top_bar.pack(fill="x", pady=(0, 5))
+        # Üst bar - Her zaman göster (tema butonu için)
+        top_bar = tk.Frame(main_container, bg=self.bg_color)
+        top_bar.pack(fill="x", pady=(0, 5))
 
+        # Ana Sayfa butonu (eğer callback varsa göster)
+        if self.ana_menu_callback:
             ana_sayfa_btn = tk.Button(
                 top_bar,
                 text="🏠 Ana Sayfa",
@@ -921,6 +930,9 @@ class BotanikGUI:
                 command=self.ana_sayfaya_don
             )
             ana_sayfa_btn.pack(side="left")
+
+        # Tema değiştir butonu (sağda)
+        self._tema_butonu_olustur(top_bar)
 
         # Başlık
         title_label = tk.Label(
@@ -956,6 +968,53 @@ class BotanikGUI:
 
         # Ekstre karşılaştırma sekmesi içeriği
         self.create_ekstre_tab(ekstre_sekme)
+
+    def _tema_butonu_olustur(self, parent):
+        """Tema değiştir butonunu oluştur"""
+        if TEMA_YUKLENDI:
+            tema_yonetici = get_tema()
+            aktif_tema = tema_yonetici.aktif_tema
+        else:
+            aktif_tema = "koyu"
+
+        # Diğer temanın bilgisini al
+        diger_tema = "acik" if aktif_tema == "koyu" else "koyu"
+        diger_tema_bilgi = TEMALAR.get(diger_tema, {"ad": "Tema", "icon": "🎨"})
+
+        tema_btn = tk.Button(
+            parent,
+            text=f"{diger_tema_bilgi['icon']} {diger_tema_bilgi['ad']}",
+            font=("Arial", 8),
+            bg="#FF9800",
+            fg="white",
+            activebackground="#F57C00",
+            activeforeground="white",
+            cursor="hand2",
+            bd=1,
+            relief="raised",
+            padx=8,
+            pady=3,
+            command=self._tema_degistir
+        )
+        tema_btn.pack(side="right", padx=(5, 0))
+
+    def _tema_degistir(self):
+        """Tema değiştir"""
+        if TEMA_YUKLENDI:
+            tema_yonetici = get_tema()
+            yeni_tema = tema_yonetici.degistir()
+            tema_bilgi = TEMALAR.get(yeni_tema, {"ad": yeni_tema, "icon": "🎨"})
+            messagebox.showinfo(
+                "Tema Değiştirildi",
+                f"{tema_bilgi['icon']} {tema_bilgi['ad']} seçildi.\n\n"
+                "Değişikliğin tam olarak uygulanması için\n"
+                "programı yeniden başlatmanız gerekiyor."
+            )
+        else:
+            messagebox.showwarning(
+                "Tema Modülü Yok",
+                "Tema yönetimi modülü (tema_yonetimi.py) bulunamadı."
+            )
 
     def create_main_tab(self, parent):
         """Ana sekme içeriğini oluştur"""

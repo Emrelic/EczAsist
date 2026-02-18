@@ -94,8 +94,8 @@ class MFAnalizGUI:
         "mf_bedava": "10",
         "vade_gun": "75",
         "zam_orani": "0",
-        "mevduat_faizi": "45",
-        "kredi_faizi": "65",
+        "mevduat_faizi": "40",
+        "kredi_faizi": "50",
         "pos_komisyon": "2.75",
         "blokeli_gun": "30",
         "pos_modu": "blokeli",
@@ -353,8 +353,8 @@ class MFAnalizGUI:
             # D) Dis Etkenler
             'zam_tarihi': tk.StringVar(value=""),
             'zam_orani': tk.StringVar(value=ayar.get("zam_orani", "0")),
-            'mevduat_faizi': tk.StringVar(value=ayar.get("mevduat_faizi", "45")),  # Yillik %
-            'kredi_faizi': tk.StringVar(value=ayar.get("kredi_faizi", "65")),      # Yillik %
+            'mevduat_faizi': tk.StringVar(value=ayar.get("mevduat_faizi", "40")),  # Yillik %
+            'kredi_faizi': tk.StringVar(value=ayar.get("kredi_faizi", "50")),      # Yillik %
             'pos_komisyon': tk.StringVar(value=ayar.get("pos_komisyon", "2.75")),   # Ertesi gun %
             'blokeli_gun': tk.StringVar(value=ayar.get("blokeli_gun", "30")),      # Blokeli kac gun
             'pos_modu': tk.StringVar(value=ayar.get("pos_modu", "blokeli")),    # blokeli veya ertesi_gun
@@ -3647,16 +3647,31 @@ class MFAnalizGUI:
                     # Net kazanc = Yeni alim kazanci - Mevcut stok kaybi
                     net_kazanc = yeni_alim_kazanc - mevcut_stok_kaybi
 
+                    # ===== YENİ HESAPLAMALAR =====
+                    # MF Tasarrufu (Nominal) = Bedava ilacın değeri
+                    mf_tasarruf = bedava * depocu_fiyat
+
+                    # Finansman Farkı = Net Kazanç - MF Tasarrufu
+                    # Negatifse: Erken ödeme maliyeti (parayı bağlama bedeli)
+                    # Pozitifse: Zam avantajı veya geç ödeme avantajı
+                    finansman_fark = yeni_alim_kazanc - mf_tasarruf
+
+                    # ROI = Net Kazanç / Ödenen Para × 100 (her 100 TL'de kazanç)
+                    roi = (net_kazanc / odenen_para * 100) if odenen_para > 0 else 0
+
                     # Sonuclari kaydet
                     sonuclar.append({
                         'sart': f"{al}+{bedava}",
                         'birim': birim_maliyet,
                         'mf_oran': mf_oran,
                         'stok_ay': stok_ay,
+                        'mf_tasarruf': mf_tasarruf,
+                        'finansman_fark': finansman_fark,
                         'npv_mfsiz': npv_mfsiz,
                         'npv_mfli': npv_mfli,
                         'mevcut_stok_kaybi': mevcut_stok_kaybi,
-                        'net': net_kazanc
+                        'net': net_kazanc,
+                        'roi': roi
                     })
 
                     if net_kazanc > en_karli_net:
@@ -3671,23 +3686,29 @@ class MFAnalizGUI:
 
                     sonuc_tree.insert('', 'end', values=(
                         s['sart'],
-                        f"{s['birim']:.2f} TL",
-                        f"%{s['mf_oran']:.1f}",
-                        f"{s['stok_ay']:.1f} ay",
-                        f"{s['npv_mfsiz']:.2f} TL",
-                        f"{s['npv_mfli']:.2f} TL",
-                        f"{s['net']:+.2f} TL"
+                        f"{s['birim']:.2f}",
+                        f"{s['stok_ay']:.1f}",
+                        f"+{s['mf_tasarruf']:.0f}",
+                        f"{s['finansman_fark']:+.0f}",
+                        f"{s['net']:+.0f}",
+                        f"%{s['roi']:.1f}"
                     ), tags=(tag,))
 
-                # En karli etiketi guncelle
+                # En karli etiketi guncelle (ROI ile birlikte)
+                en_karli_roi = 0
+                for s in sonuclar:
+                    if s['sart'] == en_karli:
+                        en_karli_roi = s['roi']
+                        break
+
                 if en_karli:
                     if en_karli_net > 0:
                         en_karli_label.config(
-                            text=f"EN KARLI: {en_karli} → {en_karli_net:+.2f} TL",
+                            text=f"EN KARLI: {en_karli} → {en_karli_net:+.0f} TL (ROI: %{en_karli_roi:.1f})",
                             fg=c['success'])
                     elif en_karli_net < 0:
                         en_karli_label.config(
-                            text=f"EN AZ ZARARLI: {en_karli} → {en_karli_net:+.2f} TL",
+                            text=f"EN AZ ZARARLI: {en_karli} → {en_karli_net:+.0f} TL (ROI: %{en_karli_roi:.1f})",
                             fg=c['warning'])
                     else:
                         en_karli_label.config(
@@ -3717,25 +3738,25 @@ class MFAnalizGUI:
                                     relief='flat', bd=2)
         sonuc_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        # Treeview
-        columns = ('sart', 'birim', 'mf_oran', 'stok', 'npv_mfsiz', 'npv_mfli', 'net')
+        # Treeview - Yeni sütunlar: MF Tasarrufu, Finansman Farkı, ROI
+        columns = ('sart', 'birim', 'stok', 'mf_tasarruf', 'fin_fark', 'net', 'roi')
         sonuc_tree = ttk.Treeview(sonuc_frame, columns=columns, show='headings', height=8)
 
-        sonuc_tree.heading('sart', text='Alim Sarti')
-        sonuc_tree.heading('birim', text='Birim Maliyet')
-        sonuc_tree.heading('mf_oran', text='MF Orani')
-        sonuc_tree.heading('stok', text='Stok Suresi')
-        sonuc_tree.heading('npv_mfsiz', text="MF'siz Maliyet")
-        sonuc_tree.heading('npv_mfli', text="MF'li Maliyet")
-        sonuc_tree.heading('net', text='NET KAZANC')
+        sonuc_tree.heading('sart', text='Sart')
+        sonuc_tree.heading('birim', text='Birim TL')
+        sonuc_tree.heading('stok', text='Stok Ay')
+        sonuc_tree.heading('mf_tasarruf', text='MF Tas.')
+        sonuc_tree.heading('fin_fark', text='Fin.Fark')
+        sonuc_tree.heading('net', text='NET')
+        sonuc_tree.heading('roi', text='ROI')
 
-        sonuc_tree.column('sart', width=80, anchor='center')
-        sonuc_tree.column('birim', width=100, anchor='center')
-        sonuc_tree.column('mf_oran', width=80, anchor='center')
-        sonuc_tree.column('stok', width=80, anchor='center')
-        sonuc_tree.column('npv_mfsiz', width=110, anchor='center')
-        sonuc_tree.column('npv_mfli', width=110, anchor='center')
-        sonuc_tree.column('net', width=110, anchor='center')
+        sonuc_tree.column('sart', width=70, anchor='center')
+        sonuc_tree.column('birim', width=70, anchor='center')
+        sonuc_tree.column('stok', width=60, anchor='center')
+        sonuc_tree.column('mf_tasarruf', width=70, anchor='center')
+        sonuc_tree.column('fin_fark', width=70, anchor='center')
+        sonuc_tree.column('net', width=70, anchor='center')
+        sonuc_tree.column('roi', width=60, anchor='center')
 
         # Tag renkleri
         sonuc_tree.tag_configure('karli', background='#1a472a', foreground='#4ade80')

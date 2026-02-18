@@ -288,20 +288,15 @@ def min_stok_uygunluk_analiz(db, urun_id: int) -> dict:
     diskalifiye = False
     diskalifiye_sebep = ""
 
-    # Son 6 ayda hic satis yoksa
-    if son_satis_gun > 180:
+    # KURAL 1: Son 6 ayda satis yoksa
+    if ceyrekler[0] == 0:
         diskalifiye = True
-        diskalifiye_sebep = f"Son {son_satis_gun} gundur satis yok"
+        diskalifiye_sebep = "Son 6 ayda satis yok"
 
-    # Son 1 yilda 2'den az satis VE son 6 ayda hic yoksa
-    elif yillik_satis <= 2 and ceyrekler[0] == 0:
+    # KURAL 2: 24 ayda 4'ten az satis varsa
+    elif len(unique_tarihler) < 4:
         diskalifiye = True
-        diskalifiye_sebep = f"Yilda {yillik_satis} satis, son 6 ayda 0"
-
-    # 4 ceyregin 3'unde satis yoksa
-    elif dolu_ceyrek <= 1:
-        diskalifiye = True
-        diskalifiye_sebep = f"4 ceyregin sadece {dolu_ceyrek}'inde satis var"
+        diskalifiye_sebep = f"24 ayda sadece {len(unique_tarihler)} satis"
 
     if diskalifiye:
         karar = 'UYGUN_DEGIL'

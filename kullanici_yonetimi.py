@@ -34,7 +34,11 @@ class KullaniciYonetimi:
         "t_cetvel": "T Cetvel / Bilanço",
         "ek_raporlar": "Botanik Ek Raporlar",
         "mf_analiz": "MF Analiz Simülatörü",
+        "mf_hizli": "MF Hızlı Hesaplama",
         "siparis_verme": "Sipariş Verme",
+        "min_stok_analiz": "Minimum Stok Analizi",
+        "stok_maliyet_analiz": "Stok Maliyet Analizi",
+        "prim_raporlama": "Prim Raporlama",
         "kullanici_yonetimi": "Kullanıcı Yönetimi"
     }
 

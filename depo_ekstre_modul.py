@@ -70,6 +70,8 @@ class DepoEkstreModul:
         # Manuel eklenenler: tek tarafta olan satırı diğer tarafa da ekleyerek eşleştirme
         # {'orijinal': 'depo'/'eczane', 'fatura': str, 'kayit': dict, 'aciklama': str}
         self.manuel_eklenenler = []
+        self.tutar_duzeltme_delta_depo = 0  # Tutar düzeltmelerinin net etkisi
+        self.tutar_duzeltme_delta_eczane = 0
 
         # Seçili satırlar (manuel eşleştirme için)
         self.secili_depo_satir = None  # (fatura, kayit)
@@ -669,6 +671,9 @@ class DepoEkstreModul:
         self.manuel_eslestirilenler = []
         self.manuel_iptal_edilenler_depo = []
         self.manuel_iptal_edilenler_eczane = []
+        self.manuel_eklenenler = []
+        self.tutar_duzeltme_delta_depo = 0
+        self.tutar_duzeltme_delta_eczane = 0
         self.secili_depo_satir = None
         self.secili_eczane_satir = None
         self._sonuc_widgets = {}
@@ -765,7 +770,21 @@ class DepoEkstreModul:
         filtrelenen_depo_satirlar = []
         filtrelenen_eczane_satirlar = []
 
+        # Tekrar eden fatura numaralarını ayrı key ile sakla
+        def benzersiz_fatura_ekle(data_dict, fatura, kayit):
+            if fatura not in data_dict:
+                data_dict[fatura] = kayit
+            else:
+                counter = 2
+                while f"{fatura} ({counter})" in data_dict:
+                    counter += 1
+                data_dict[f"{fatura} ({counter})"] = kayit
+                logger.warning(f"Tekrar eden fatura no: '{fatura}' → '{fatura} ({counter})' olarak eklendi")
+
         # Verileri hazırla
+        faturasiz_depo_sayac = 0
+        faturasiz_eczane_sayac = 0
+
         depo_data = {}
         for _, row in df_depo.iterrows():
             if satir_filtreli_mi(row, 'depo'):
@@ -779,12 +798,23 @@ class DepoEkstreModul:
                 continue
 
             fatura = str(row[depo_fatura_col]).strip() if pd.notna(row[depo_fatura_col]) else ""
-            if fatura and fatura != 'nan':
-                borc = float(row[depo_borc_col]) if depo_borc_col and pd.notna(row[depo_borc_col]) else 0
-                alacak = float(row[depo_alacak_col]) if depo_alacak_col and pd.notna(row[depo_alacak_col]) else 0
-                tarih = str(row[depo_tarih_col]).strip() if depo_tarih_col and pd.notna(row[depo_tarih_col]) else ""
-                tip = str(row[depo_tip_col]).strip() if depo_tip_col and pd.notna(row[depo_tip_col]) else ""
-                depo_data[fatura] = {'borc': borc, 'alacak': alacak, 'tarih': tarih, 'tip': tip, 'row': row}
+            borc = float(row[depo_borc_col]) if depo_borc_col and pd.notna(row[depo_borc_col]) else 0
+            alacak = float(row[depo_alacak_col]) if depo_alacak_col and pd.notna(row[depo_alacak_col]) else 0
+            tarih = str(row[depo_tarih_col]).strip() if depo_tarih_col and pd.notna(row[depo_tarih_col]) else ""
+            tip = str(row[depo_tip_col]).strip() if depo_tip_col and pd.notna(row[depo_tip_col]) else ""
+            tutar_var = abs(borc) > 0.01 or abs(alacak) > 0.01
+            tarih_var = tarih and tarih != 'nan'
+            fatura_var = fatura and fatura != 'nan'
+
+            if not fatura_var:
+                if not tarih_var or not tutar_var:
+                    # Fatura no, tarih veya tutar yok → alt toplam/başlık satırı, atla
+                    continue
+                # Tarih ve tutar var ama fatura no yok → numara ata
+                faturasiz_depo_sayac += 1
+                fatura = f"[Faturasız-D{faturasiz_depo_sayac}]"
+
+            benzersiz_fatura_ekle(depo_data, fatura, {'borc': borc, 'alacak': alacak, 'tarih': tarih, 'tip': tip, 'row': row})
 
         eczane_data = {}
         for _, row in df_eczane.iterrows():
@@ -799,12 +829,23 @@ class DepoEkstreModul:
                 continue
 
             fatura = str(row[eczane_fatura_col]).strip() if pd.notna(row[eczane_fatura_col]) else ""
-            if fatura and fatura != 'nan':
-                borc = float(row[eczane_borc_col]) if eczane_borc_col and pd.notna(row[eczane_borc_col]) else 0
-                alacak = float(row[eczane_alacak_col]) if eczane_alacak_col and pd.notna(row[eczane_alacak_col]) else 0
-                tarih = str(row[eczane_tarih_col]).strip() if eczane_tarih_col and pd.notna(row[eczane_tarih_col]) else ""
-                tip = str(row[eczane_tip_col]).strip() if eczane_tip_col and pd.notna(row[eczane_tip_col]) else ""
-                eczane_data[fatura] = {'borc': borc, 'alacak': alacak, 'tarih': tarih, 'tip': tip, 'row': row}
+            borc = float(row[eczane_borc_col]) if eczane_borc_col and pd.notna(row[eczane_borc_col]) else 0
+            alacak = float(row[eczane_alacak_col]) if eczane_alacak_col and pd.notna(row[eczane_alacak_col]) else 0
+            tarih = str(row[eczane_tarih_col]).strip() if eczane_tarih_col and pd.notna(row[eczane_tarih_col]) else ""
+            tip = str(row[eczane_tip_col]).strip() if eczane_tip_col and pd.notna(row[eczane_tip_col]) else ""
+            tutar_var = abs(borc) > 0.01 or abs(alacak) > 0.01
+            tarih_var = tarih and tarih != 'nan'
+            fatura_var = fatura and fatura != 'nan'
+
+            if not fatura_var:
+                if not tarih_var or not tutar_var:
+                    # Fatura no, tarih veya tutar yok → alt toplam/başlık satırı, atla
+                    continue
+                # Tarih ve tutar var ama fatura no yok → numara ata
+                faturasiz_eczane_sayac += 1
+                fatura = f"[Faturasız-E{faturasiz_eczane_sayac}]"
+
+            benzersiz_fatura_ekle(eczane_data, fatura, {'borc': borc, 'alacak': alacak, 'tarih': tarih, 'tip': tip, 'row': row})
 
         # Karşılaştırma
         tum_faturalar = set(depo_data.keys()) | set(eczane_data.keys())
@@ -1331,11 +1372,17 @@ class DepoEkstreModul:
                 yeni_tutar_str = tutar_entry.get().replace(",", ".").replace(" ", "").replace("₺", "")
                 yeni_tutar = float(yeni_tutar_str)
 
-                # Kayıt güncelle
+                # Kayıt güncelle + genel toplam delta hesapla
                 if tip == 'B':
                     kayit['borc'] = yeni_tutar
+                    delta = yeni_tutar - mevcut_tutar
                 else:
                     kayit['alacak'] = yeni_tutar
+                    delta = -(yeni_tutar - mevcut_tutar)
+                if kaynak == 'depo':
+                    self.tutar_duzeltme_delta_depo += delta
+                else:
+                    self.tutar_duzeltme_delta_eczane += delta
 
                 # Tree güncelle
                 values = list(tree.item(item_id, 'values'))
@@ -1356,6 +1403,7 @@ class DepoEkstreModul:
                 else:
                     messagebox.showinfo("Başarılı", f"Tutar güncellendi: {yeni_tutar:,.2f} ₺")
 
+                self._toplamlari_guncelle()
                 duzelt_pencere.destroy()
 
             except ValueError:
@@ -1672,14 +1720,21 @@ class DepoEkstreModul:
 
                 if tip == 'B':
                     kayit['borc'] = yeni_tutar
+                    delta = yeni_tutar - mevcut_tutar
                 else:
                     kayit['alacak'] = yeni_tutar
+                    delta = -(yeni_tutar - mevcut_tutar)
+                if kaynak == 'depo':
+                    self.tutar_duzeltme_delta_depo += delta
+                else:
+                    self.tutar_duzeltme_delta_eczane += delta
 
                 # Tree güncelle
                 values = list(tree.item(item_id, 'values'))
                 values[3] = self._format_tutar(kayit, goster_tip=True)
                 tree.item(item_id, values=values)
 
+                self._toplamlari_guncelle()
                 duzelt_pencere.destroy()
                 messagebox.showinfo("Başarılı", f"Tutar güncellendi: {yeni_tutar:,.2f} ₺")
 
@@ -1926,15 +1981,19 @@ class DepoEkstreModul:
                 # Eczane'de vardı → Depo'ya eklendi
                 eklenen_depoya += tutar
 
-        # Orijinal toplamları al, iptal edilenleri çıkar, manuel eklenenleri ekle
+        # Tutar düzeltme deltalarını al
+        duzeltme_depo = getattr(self, 'tutar_duzeltme_delta_depo', 0)
+        duzeltme_eczane = getattr(self, 'tutar_duzeltme_delta_eczane', 0)
+
+        # Orijinal toplamları al, iptal edilenleri çıkar, manuel eklenenleri ekle, düzeltmeleri uygula
         if 'depo_toplam_label' in self._sonuc_widgets:
             orijinal_depo = self._sonuc_widgets.get('orijinal_depo_toplam', 0)
-            yeni_depo = orijinal_depo - iptal_depo_tutar + eklenen_depoya
+            yeni_depo = orijinal_depo - iptal_depo_tutar + eklenen_depoya + duzeltme_depo
             self._sonuc_widgets['depo_toplam_label'].config(text=f"{yeni_depo:,.2f} ₺")
 
         if 'eczane_toplam_label' in self._sonuc_widgets:
             orijinal_eczane = self._sonuc_widgets.get('orijinal_eczane_toplam', 0)
-            yeni_eczane = orijinal_eczane - iptal_eczane_tutar + eklenen_eczaneye
+            yeni_eczane = orijinal_eczane - iptal_eczane_tutar + eklenen_eczaneye + duzeltme_eczane
             self._sonuc_widgets['eczane_toplam_label'].config(text=f"{yeni_eczane:,.2f} ₺")
 
     def _build_toplam_panel(self, content_frame, yesil_satirlar, sari_satirlar, turuncu_satirlar, kirmizi_depo, kirmizi_eczane):

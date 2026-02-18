@@ -2066,6 +2066,135 @@ class BotanikDB:
             'calisan_oran': calisan_oran
         }
 
+    def personel_listesi_getir(self) -> List[Dict]:
+        """
+        Aktif personel listesini döndür.
+
+        Returns:
+            List[Dict]: PersonelId, PersonelAdiSoyadi
+        """
+        sql = """
+        SELECT PersonelId, PersonelAdiSoyadi
+        FROM Personel
+        WHERE PersonelSilme = 0
+        ORDER BY PersonelAdiSoyadi
+        """
+        return self.sorgu_calistir(sql)
+
+    def prim_raporu_getir(self, baslangic: str, bitis: str, personel_id: int = None) -> List[Dict]:
+        """
+        Prim raporlama verileri.
+        Tarih aralığında prim verilen ürünlerin elden + reçeteli satışlarını getirir.
+
+        Args:
+            baslangic: Başlangıç tarihi (YYYY-MM-DD)
+            bitis: Bitiş tarihi (YYYY-MM-DD)
+            personel_id: Personel filtresi (None=tümü)
+
+        Returns:
+            List[Dict]: UrunAdi, UrunId, Etiket, Adet, Indirimler, Tutar,
+                        PrimYuzde, PrimTutar, Personel, PersonelId, Tarih, AlisFiyati
+        """
+        personel_filtre_elden = ""
+        personel_filtre_recete = ""
+        if personel_id is not None:
+            personel_filtre_elden = f"AND ea.RxPersonelId = {int(personel_id)}"
+            personel_filtre_recete = f"AND ra.RxPersonelId = {int(personel_id)}"
+
+        sql = f"""
+        SELECT * FROM (
+            -- Elden satislar
+            SELECT
+                u.UrunAdi, u.UrunId,
+                ei.RIEtiketFiyati as Etiket,
+                ei.RIAdet as Adet,
+                COALESCE(ei.RIIskonto, 0) as Indirimler,
+                ei.RIToplam as Tutar,
+                COALESCE(pt.PrimTipTutar3, 0) as PrimYuzde,
+                ei.RIToplam * COALESCE(pt.PrimTipTutar3, 0) / 100.0 as PrimTutar,
+                COALESCE(p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
+                ea.RxPersonelId as PersonelId,
+                ea.RxReceteTarihi as Tarih,
+                COALESCE(
+                    (SELECT TOP 1 fs.FSMaliyet
+                     FROM FaturaSatir fs
+                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                     WHERE fs.FSUrunId = u.UrunId AND fg.FGSilme = 0 AND fs.FSMaliyet > 0
+                     ORDER BY fg.FGFaturaTarihi DESC),
+                    u.UrunIskontoYedek * 1.10
+                ) as AlisFiyati
+            FROM EldenIlaclari ei
+            JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+            JOIN Urun u ON ei.RIUrunId = u.UrunId
+            JOIN PrimUrunleri pu ON ei.RIUrunId = pu.PUUrunId AND pu.PUPasif = 0
+            LEFT JOIN PrimTip pt ON pu.PUPrimTipId = pt.PrimTipId
+            LEFT JOIN Personel p ON ea.RxPersonelId = p.PersonelId
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0
+            AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+            AND ea.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
+            {personel_filtre_elden}
+
+            UNION ALL
+
+            -- Receteli satislar
+            SELECT
+                u.UrunAdi, u.UrunId,
+                ri.RIEtiketFiyati as Etiket,
+                ri.RIAdet as Adet,
+                COALESCE(ri.RIIskonto, 0) as Indirimler,
+                ri.RIToplam as Tutar,
+                COALESCE(pt.PrimTipTutar3, 0) as PrimYuzde,
+                ri.RIToplam * COALESCE(pt.PrimTipTutar3, 0) / 100.0 as PrimTutar,
+                COALESCE(p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
+                ra.RxPersonelId as PersonelId,
+                ra.RxReceteTarihi as Tarih,
+                COALESCE(
+                    (SELECT TOP 1 fs.FSMaliyet
+                     FROM FaturaSatir fs
+                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                     WHERE fs.FSUrunId = u.UrunId AND fg.FGSilme = 0 AND fs.FSMaliyet > 0
+                     ORDER BY fg.FGFaturaTarihi DESC),
+                    u.UrunIskontoYedek * 1.10
+                ) as AlisFiyati
+            FROM ReceteIlaclari ri
+            JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+            JOIN Urun u ON ri.RIUrunId = u.UrunId
+            JOIN PrimUrunleri pu ON ri.RIUrunId = pu.PUUrunId AND pu.PUPasif = 0
+            LEFT JOIN PrimTip pt ON pu.PUPrimTipId = pt.PrimTipId
+            LEFT JOIN Personel p ON ra.RxPersonelId = p.PersonelId
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0
+            AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+            AND ra.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
+            {personel_filtre_recete}
+        ) TumSatislar
+        ORDER BY UrunAdi, Tarih
+        """
+        return self.sorgu_calistir(sql)
+
+    def prim_urunleri_listesi_getir(self) -> List[Dict]:
+        """
+        Prim verilen ürünlerin listesini döndür.
+
+        Returns:
+            List[Dict]: UrunAdi, UrunId, PrimYuzde, PrimTipAdi, EklemeTarihi, EtiketFiyat, Stok
+        """
+        sql = """
+        SELECT
+            u.UrunAdi,
+            u.UrunId,
+            COALESCE(pt.PrimTipTutar3, 0) as PrimYuzde,
+            COALESCE(pt.PrimTipAdi, 'Tanımsız') as PrimTipAdi,
+            pu.PUEklemeTarihi as EklemeTarihi,
+            u.UrunFiyatEtiket as EtiketFiyat,
+            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) as Stok
+        FROM PrimUrunleri pu
+        JOIN Urun u ON pu.PUUrunId = u.UrunId
+        LEFT JOIN PrimTip pt ON pu.PUPrimTipId = pt.PrimTipId
+        WHERE pu.PUPasif = 0
+        ORDER BY u.UrunAdi
+        """
+        return self.sorgu_calistir(sql)
+
     def mf_tahsilat_analizi_getir(self, ay_sayisi: int = 6) -> Dict:
         """
         TÜM reçeteler için tahsilat analizi.

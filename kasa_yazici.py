@@ -693,10 +693,11 @@ class KasaYazici:
 class YaziciSecimPenceresi:
     """Yazıcı seçim penceresi"""
 
-    def __init__(self, parent, ayarlar, on_select=None):
+    def __init__(self, parent, ayarlar, on_select=None, on_cancel=None):
         self.parent = parent
         self.ayarlar = ayarlar
         self.on_select = on_select
+        self.on_cancel = on_cancel
         self.secilen_yazici = None
         self.pencere = None
 
@@ -763,8 +764,20 @@ class YaziciSecimPenceresi:
             bg='#9E9E9E',
             fg='white',
             width=10,
-            command=self.pencere.destroy
+            command=self.iptal
         ).pack(side="left", padx=20)
+
+        # Atla butonu (sadece on_cancel varsa göster)
+        if self.on_cancel:
+            tk.Button(
+                buton_frame,
+                text="Atla",
+                font=("Arial", 10),
+                bg='#FF9800',
+                fg='white',
+                width=10,
+                command=self.atla
+            ).pack(side="left", padx=10)
 
         tk.Button(
             buton_frame,
@@ -791,3 +804,13 @@ class YaziciSecimPenceresi:
                 self.on_select(secilen)
 
         self.pencere.destroy()
+
+    def iptal(self):
+        """İptal - pencereyi kapat"""
+        self.pencere.destroy()
+
+    def atla(self):
+        """Atla - yazdırmadan devam et"""
+        self.pencere.destroy()
+        if self.on_cancel:
+            self.on_cancel()

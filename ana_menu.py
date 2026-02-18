@@ -6,9 +6,32 @@ Tüm modüllere erişim sağlayan ana giriş ekranı
 import tkinter as tk
 from tkinter import ttk, messagebox
 import logging
+import os
 from datetime import datetime
 
 from kullanici_yonetimi import get_kullanici_yonetimi, KullaniciYonetimi
+
+# Tema yönetimi merkezi modül
+try:
+    from tema_yonetimi import get_tema, TEMALAR
+    TEMA_YUKLENDI = True
+except ImportError:
+    TEMA_YUKLENDI = False
+    # Fallback tema tanımları
+    TEMALAR = {
+        "koyu": {
+            "ad": "Koyu Tema", "icon": "🌙",
+            "bg": "#1E3A5F", "header_bg": "#0D2137", "card_bg": "#2C4A6E",
+            "fg": "#FFFFFF", "fg_secondary": "#87CEEB", "border": "#3D5A80",
+            "success": "#4CAF50", "warning": "#FF9800", "error": "#F44336",
+        },
+        "acik": {
+            "ad": "Açık Tema", "icon": "☀️",
+            "bg": "#F5F5F5", "header_bg": "#1976D2", "card_bg": "#FFFFFF",
+            "fg": "#212121", "fg_secondary": "#757575", "border": "#E0E0E0",
+            "success": "#388E3C", "warning": "#F57C00", "error": "#D32F2F",
+        }
+    }
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +90,13 @@ class AnaMenu:
             "renk": "#795548",  # Kahverengi
             "hover": "#5D4037"
         },
+        "mf_hizli": {
+            "baslik": "MF Hızlı Hesap",
+            "icon": "⚡",
+            "aciklama": "NPV bazlı MF karlılık hesaplama",
+            "renk": "#673AB7",  # Mor
+            "hover": "#512DA8"
+        },
         "kullanici_yonetimi": {
             "baslik": "Kullanıcı Yönetimi",
             "icon": "👥",
@@ -80,6 +110,27 @@ class AnaMenu:
             "aciklama": "Stok analizi ve sipariş hazırlama",
             "renk": "#009688",  # Teal
             "hover": "#00796B"
+        },
+        "min_stok_analiz": {
+            "baslik": "Min Stok Analizi",
+            "icon": "📊",
+            "aciklama": "Bilimsel minimum stok hesaplama",
+            "renk": "#E91E63",  # Pembe
+            "hover": "#C2185B"
+        },
+        "stok_maliyet_analiz": {
+            "baslik": "Stok Maliyet Analizi",
+            "icon": "💰",
+            "aciklama": "Geriye dönük stok fırsat maliyeti raporu",
+            "renk": "#5D4037",  # Koyu Kahve
+            "hover": "#4E342E"
+        },
+        "prim_raporlama": {
+            "baslik": "Prim Raporlama",
+            "icon": "🏆",
+            "aciklama": "Personel prim raporlama ve analiz",
+            "renk": "#FF6F00",  # Amber
+            "hover": "#E65100"
         }
     }
 
@@ -108,18 +159,47 @@ class AnaMenu:
         self.root.geometry(f"{pencere_genislik}x{pencere_yukseklik}+{x}+{y}")
         self.root.resizable(False, False)
 
-        # Renk şeması
-        self.bg_color = '#1E3A5F'  # Koyu lacivert
-        self.header_color = '#0D2137'  # Daha koyu lacivert
-        self.fg_color = 'white'
-        self.card_bg = '#2C4A6E'  # Kart arkaplan
-
-        self.root.configure(bg=self.bg_color)
+        # Tema yükle
+        if TEMA_YUKLENDI:
+            tema_yonetici = get_tema()
+            self.aktif_tema = tema_yonetici.aktif_tema
+            tema_yonetici.ttk_stili_uygula()
+        else:
+            self.aktif_tema = "koyu"
+        self._tema_uygula()
 
         # Pencere kapatılırsa
         self.root.protocol("WM_DELETE_WINDOW", self.cikis_yap)
 
         self.arayuz_olustur()
+
+    def _tema_uygula(self):
+        """Aktif temayı uygula"""
+        tema = TEMALAR.get(self.aktif_tema, TEMALAR["koyu"])
+        self.bg_color = tema["bg"]
+        self.header_color = tema["header_bg"]
+        self.fg_color = tema["fg"]
+        self.card_bg = tema["card_bg"]
+        self.fg_secondary = tema["fg_secondary"]
+        self.root.configure(bg=self.bg_color)
+
+    def tema_degistir(self):
+        """Tema değiştir (toggle)"""
+        # Mevcut temayı değiştir
+        if TEMA_YUKLENDI:
+            tema_yonetici = get_tema()
+            self.aktif_tema = tema_yonetici.degistir()
+        else:
+            self.aktif_tema = "acik" if self.aktif_tema == "koyu" else "koyu"
+
+        # Kullanıcıya bilgi ver ve yeniden başlatma öner
+        tema = TEMALAR[self.aktif_tema]
+        messagebox.showinfo(
+            "Tema Değiştirildi",
+            f"{tema['icon']} {tema['ad']} seçildi.\n\n"
+            "Değişikliğin tam olarak uygulanması için\n"
+            "programı yeniden başlatmanız önerilir."
+        )
 
     def arayuz_olustur(self):
         """Ana menü arayüzünü oluştur"""
@@ -156,7 +236,7 @@ class AnaMenu:
             text="Eczane Yönetim Platformu",
             font=("Arial", 10),
             bg=self.header_color,
-            fg='#87CEEB'
+            fg=self.fg_secondary
         )
         alt_baslik.pack(anchor='w')
 
@@ -182,13 +262,39 @@ class AnaMenu:
             text=f"({profil})",
             font=("Arial", 9),
             bg=self.header_color,
-            fg='#87CEEB'
+            fg=self.fg_secondary
         )
         profil_label.pack(anchor='e')
 
+        # Butonlar için frame
+        btn_frame = tk.Frame(sag_frame, bg=self.header_color)
+        btn_frame.pack(anchor='e', pady=(10, 0))
+
+        # Tema değiştir butonu
+        tema = TEMALAR.get(self.aktif_tema, TEMALAR["koyu"])
+        diger_tema = "acik" if self.aktif_tema == "koyu" else "koyu"
+        diger_tema_bilgi = TEMALAR[diger_tema]
+
+        tema_btn = tk.Button(
+            btn_frame,
+            text=f"{diger_tema_bilgi['icon']} {diger_tema_bilgi['ad']}",
+            font=("Arial", 9),
+            bg='#FF9800',
+            fg='white',
+            activebackground='#F57C00',
+            activeforeground='white',
+            cursor='hand2',
+            bd=1,
+            relief='raised',
+            padx=10,
+            pady=4,
+            command=self.tema_degistir
+        )
+        tema_btn.pack(side=tk.LEFT, padx=(0, 10))
+
         # Çıkış butonu
         cikis_btn = tk.Button(
-            sag_frame,
+            btn_frame,
             text="🚪 Çıkış",
             font=("Arial", 9),
             bg='#C62828',
@@ -201,7 +307,7 @@ class AnaMenu:
             pady=5,
             command=self.cikis_yap
         )
-        cikis_btn.pack(anchor='e', pady=(10, 0))
+        cikis_btn.pack(side=tk.LEFT)
 
     def icerik_olustur(self):
         """Ana içerik alanı - modül butonları"""
@@ -209,15 +315,41 @@ class AnaMenu:
         content_frame = tk.Frame(self.root, bg=self.bg_color, padx=30, pady=20)
         content_frame.pack(fill="both", expand=True)
 
-        # Başlık
+        # Üst satır - Başlık ve Tema butonu
+        ust_satir = tk.Frame(content_frame, bg=self.bg_color)
+        ust_satir.pack(fill="x", pady=(0, 20))
+
+        # Başlık (solda)
         baslik = tk.Label(
-            content_frame,
+            ust_satir,
             text="Modül Seçin",
             font=("Arial", 14, "bold"),
             bg=self.bg_color,
             fg=self.fg_color
         )
-        baslik.pack(pady=(0, 20))
+        baslik.pack(side="left")
+
+        # Tema değiştir butonu (sağda, büyük ve belirgin)
+        tema = TEMALAR.get(self.aktif_tema, TEMALAR["koyu"])
+        diger_tema = "acik" if self.aktif_tema == "koyu" else "koyu"
+        diger_tema_bilgi = TEMALAR[diger_tema]
+
+        tema_btn_buyuk = tk.Button(
+            ust_satir,
+            text=f"  {diger_tema_bilgi['icon']}  {diger_tema_bilgi['ad']}  ",
+            font=("Arial", 11, "bold"),
+            bg='#FF9800',
+            fg='white',
+            activebackground='#F57C00',
+            activeforeground='white',
+            cursor='hand2',
+            bd=2,
+            relief='raised',
+            padx=15,
+            pady=8,
+            command=self.tema_degistir
+        )
+        tema_btn_buyuk.pack(side="right")
 
         # Grid frame for buttons
         grid_frame = tk.Frame(content_frame, bg=self.bg_color)
@@ -230,8 +362,8 @@ class AnaMenu:
         # Modül butonlarını oluştur
         modul_listesi = [
             "ilac_takip", "depo_ekstre", "kasa_takip", "rapor_kontrol",
-            "t_cetvel", "ek_raporlar", "mf_analiz", "siparis_verme",
-            "kullanici_yonetimi"
+            "t_cetvel", "ek_raporlar", "mf_analiz", "mf_hizli",
+            "siparis_verme", "min_stok_analiz", "stok_maliyet_analiz", "prim_raporlama", "kullanici_yonetimi"
         ]
 
         row = 0
@@ -385,8 +517,16 @@ class AnaMenu:
             self.ek_raporlar_ac()
         elif modul_key == "mf_analiz":
             self.mf_analiz_ac()
+        elif modul_key == "mf_hizli":
+            self.mf_hizli_ac()
         elif modul_key == "siparis_verme":
             self.siparis_verme_ac()
+        elif modul_key == "min_stok_analiz":
+            self.min_stok_analiz_ac()
+        elif modul_key == "stok_maliyet_analiz":
+            self.stok_maliyet_analiz_ac()
+        elif modul_key == "prim_raporlama":
+            self.prim_raporlama_ac()
         elif modul_key == "kullanici_yonetimi":
             self.kullanici_yonetimi_ac()
 
@@ -545,6 +685,36 @@ class AnaMenu:
             messagebox.showerror("Hata", f"MF Analiz modülü açılamadı:\n{e}")
             self.root.deiconify()
 
+    def mf_hizli_ac(self):
+        """MF Hızlı Hesaplama modülünü aç"""
+        try:
+            self.root.withdraw()
+
+            from mf_hizli_hesaplama_gui import MFHizliHesaplamaGUI
+
+            # Yeni pencere oluştur
+            mf_root = tk.Toplevel()
+            mf_root.title("MF Hızlı Hesaplama - NPV Bazlı Karlılık Analizi")
+
+            # Ana menüye dönüş callback'i
+            def ana_menuye_don():
+                self.root.deiconify()
+
+            # Pencere kapatma
+            mf_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(mf_root))
+
+            # MFHizliHesaplamaGUI'yi başlat
+            app = MFHizliHesaplamaGUI(mf_root, ana_menu_callback=ana_menuye_don)
+
+        except ImportError as e:
+            logger.error(f"MF Hızlı Hesaplama import hatası: {e}")
+            messagebox.showerror("Hata", "MF Hızlı Hesaplama modülü yüklenemedi.")
+            self.root.deiconify()
+        except Exception as e:
+            logger.error(f"MF Hızlı Hesaplama açma hatası: {e}")
+            messagebox.showerror("Hata", f"MF Hızlı Hesaplama modülü açılamadı:\n{e}")
+            self.root.deiconify()
+
     def siparis_verme_ac(self):
         """Sipariş Verme modülünü aç"""
         try:
@@ -574,6 +744,95 @@ class AnaMenu:
         except Exception as e:
             logger.error(f"Sipariş Verme açma hatası: {e}")
             messagebox.showerror("Hata", f"Sipariş Verme modülü açılamadı:\n{e}")
+            self.root.deiconify()
+
+    def min_stok_analiz_ac(self):
+        """Minimum Stok Analizi modülünü aç"""
+        try:
+            self.root.withdraw()
+
+            from min_stok_analiz_gui import MinStokAnalizGUI
+
+            # Yeni pencere oluştur
+            analiz_root = tk.Toplevel()
+            analiz_root.title("Minimum Stok Analizi")
+            analiz_root.state('zoomed')
+
+            # Ana menüye dönüş callback'i
+            def ana_menuye_don():
+                self.root.deiconify()
+
+            # Pencere kapatma
+            analiz_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(analiz_root))
+
+            # MinStokAnalizGUI'yi başlat
+            app = MinStokAnalizGUI(analiz_root, ana_menu_callback=ana_menuye_don)
+
+        except ImportError as e:
+            logger.error(f"Min Stok Analiz import hatası: {e}")
+            messagebox.showerror("Hata", "Minimum Stok Analizi modülü yüklenemedi.")
+            self.root.deiconify()
+        except Exception as e:
+            logger.error(f"Min Stok Analiz açma hatası: {e}")
+            messagebox.showerror("Hata", f"Minimum Stok Analizi modülü açılamadı:\n{e}")
+            self.root.deiconify()
+
+    def prim_raporlama_ac(self):
+        """Prim Raporlama modülünü aç"""
+        try:
+            self.root.withdraw()
+
+            from prim_raporlama_gui import PrimRaporlamaGUI
+
+            prim_root = tk.Toplevel()
+            prim_root.title("Prim Raporlama")
+            prim_root.state('zoomed')
+
+            def ana_menuye_don():
+                self.root.deiconify()
+
+            prim_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(prim_root))
+
+            app = PrimRaporlamaGUI(prim_root, ana_menu_callback=ana_menuye_don)
+
+        except ImportError as e:
+            logger.error(f"Prim Raporlama import hatası: {e}")
+            messagebox.showerror("Hata", "Prim Raporlama modülü yüklenemedi.")
+            self.root.deiconify()
+        except Exception as e:
+            logger.error(f"Prim Raporlama açma hatası: {e}")
+            messagebox.showerror("Hata", f"Prim Raporlama modülü açılamadı:\n{e}")
+            self.root.deiconify()
+
+    def stok_maliyet_analiz_ac(self):
+        """Stok Maliyet Analizi modülünü aç"""
+        try:
+            self.root.withdraw()
+
+            from stok_maliyet_analiz_gui import StokMaliyetAnalizGUI
+
+            # Yeni pencere oluştur
+            analiz_root = tk.Toplevel()
+            analiz_root.title("Stok Maliyet Analizi")
+            analiz_root.state('zoomed')
+
+            # Ana menüye dönüş callback'i
+            def ana_menuye_don():
+                self.root.deiconify()
+
+            # Pencere kapatma
+            analiz_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(analiz_root))
+
+            # StokMaliyetAnalizGUI'yi başlat
+            app = StokMaliyetAnalizGUI(analiz_root, ana_menu_callback=ana_menuye_don)
+
+        except ImportError as e:
+            logger.error(f"Stok Maliyet Analiz import hatası: {e}")
+            messagebox.showerror("Hata", "Stok Maliyet Analizi modülü yüklenemedi.")
+            self.root.deiconify()
+        except Exception as e:
+            logger.error(f"Stok Maliyet Analiz açma hatası: {e}")
+            messagebox.showerror("Hata", f"Stok Maliyet Analizi modülü açılamadı:\n{e}")
             self.root.deiconify()
 
     def kullanici_yonetimi_ac(self):
