@@ -615,7 +615,7 @@ class SiparisVermeGUI:
             ("GunlukOrt", "Gun", 45),
             ("AyBitis", "AyBitis", 55),
             ("Oneri", "SİPARİŞ", 75),  # Vurgulu ve genis
-            ("OneriAy", "OneriAy", 60),
+            ("OneriAy", "Kat", 50),
             ("YeniAyBitis", "YeniBitis", 65),
             ("Manuel", "Manuel", 55),
             ("MF", "MF", 50),
@@ -4284,7 +4284,7 @@ class SiparisVermeGUI:
         for siparis in self.kesin_siparis_listesi:
             self.kesin_tree.insert('', 'end', values=(
                 siparis.get('UrunAdi') or '',
-                siparis.get('Barkod') or '',  # None ise boş string
+                siparis.get('Barkod') or '',
                 siparis.get('Miktar') or 0,
                 siparis.get('MF') or '',
                 siparis.get('Toplam') or 0,

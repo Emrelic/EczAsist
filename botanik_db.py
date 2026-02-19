@@ -2106,6 +2106,7 @@ class BotanikDB:
             -- Elden satislar
             SELECT
                 u.UrunAdi, u.UrunId,
+                (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
                 ei.RIEtiketFiyati as Etiket,
                 ei.RIAdet as Adet,
                 COALESCE(ei.RIIskonto, 0) as Indirimler,
@@ -2139,6 +2140,7 @@ class BotanikDB:
             -- Receteli satislar
             SELECT
                 u.UrunAdi, u.UrunId,
+                (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
                 ri.RIEtiketFiyati as Etiket,
                 ri.RIAdet as Adet,
                 COALESCE(ri.RIIskonto, 0) as Indirimler,
@@ -2165,6 +2167,91 @@ class BotanikDB:
             WHERE ra.RxSilme = 0 AND ri.RISilme = 0
             AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
             AND ra.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
+            {personel_filtre_recete}
+        ) TumSatislar
+        ORDER BY UrunAdi, Tarih
+        """
+        return self.sorgu_calistir(sql)
+
+    def ilac_disi_raporu_getir(self, baslangic: str, bitis: str, personel_id: int = None) -> List[Dict]:
+        """
+        İlaç dışı tüm ürünlerin satış raporu.
+        İlaç, Pasif İlaç, Serumlar, Tıbbi Mamalar, İlaç Beraberi hariç tüm ürün tiplerini getirir.
+        """
+        personel_filtre_elden = ""
+        personel_filtre_recete = ""
+        if personel_id is not None:
+            personel_filtre_elden = f"AND ea.RxPersonelId = {int(personel_id)}"
+            personel_filtre_recete = f"AND ra.RxPersonelId = {int(personel_id)}"
+
+        haric_tipler = "'İlaç', 'Pasif İlaç', 'Serumlar', 'Tıbbi Mamalar', 'İlaç Beraberi'"
+
+        sql = f"""
+        SELECT * FROM (
+            -- Elden satislar
+            SELECT
+                u.UrunAdi, u.UrunId,
+                (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
+                ei.RIEtiketFiyati as Etiket,
+                ei.RIAdet as Adet,
+                COALESCE(ei.RIIskonto, 0) as Indirimler,
+                ei.RIToplam as Tutar,
+                0 as PrimYuzde,
+                0 as PrimTutar,
+                COALESCE(p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
+                ea.RxPersonelId as PersonelId,
+                ea.RxReceteTarihi as Tarih,
+                COALESCE(
+                    (SELECT TOP 1 fs.FSMaliyet
+                     FROM FaturaSatir fs
+                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                     WHERE fs.FSUrunId = u.UrunId AND fg.FGSilme = 0 AND fs.FSMaliyet > 0
+                     ORDER BY fg.FGFaturaTarihi DESC),
+                    u.UrunIskontoYedek * 1.10
+                ) as AlisFiyati
+            FROM EldenIlaclari ei
+            JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+            JOIN Urun u ON ei.RIUrunId = u.UrunId
+            LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
+            LEFT JOIN Personel p ON ea.RxPersonelId = p.PersonelId
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0
+            AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+            AND ea.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
+            AND COALESCE(ut.UrunTipAdi, '') NOT IN ({haric_tipler})
+            {personel_filtre_elden}
+
+            UNION ALL
+
+            -- Receteli satislar
+            SELECT
+                u.UrunAdi, u.UrunId,
+                (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
+                ri.RIEtiketFiyati as Etiket,
+                ri.RIAdet as Adet,
+                COALESCE(ri.RIIskonto, 0) as Indirimler,
+                ri.RIToplam as Tutar,
+                0 as PrimYuzde,
+                0 as PrimTutar,
+                COALESCE(p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
+                ra.RxPersonelId as PersonelId,
+                ra.RxReceteTarihi as Tarih,
+                COALESCE(
+                    (SELECT TOP 1 fs.FSMaliyet
+                     FROM FaturaSatir fs
+                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                     WHERE fs.FSUrunId = u.UrunId AND fg.FGSilme = 0 AND fs.FSMaliyet > 0
+                     ORDER BY fg.FGFaturaTarihi DESC),
+                    u.UrunIskontoYedek * 1.10
+                ) as AlisFiyati
+            FROM ReceteIlaclari ri
+            JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+            JOIN Urun u ON ri.RIUrunId = u.UrunId
+            LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
+            LEFT JOIN Personel p ON ra.RxPersonelId = p.PersonelId
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0
+            AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+            AND ra.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
+            AND COALESCE(ut.UrunTipAdi, '') NOT IN ({haric_tipler})
             {personel_filtre_recete}
         ) TumSatislar
         ORDER BY UrunAdi, Tarih
