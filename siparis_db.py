@@ -94,6 +94,16 @@ class SiparisDatabase:
                 )
             ''')
 
+            # Reçete ile sipariş tablosu
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS recete_ile_siparis (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    urun_id INTEGER NOT NULL UNIQUE,
+                    urun_adi TEXT NOT NULL,
+                    ekleme_tarihi TEXT NOT NULL
+                )
+            ''')
+
             self.conn.commit()
 
             # Bitiş tarihi sütunu yoksa ekle
@@ -512,6 +522,67 @@ class SiparisDatabase:
             return True
         except Exception as e:
             logger.error(f"Min stok temizleme hatasi: {e}")
+            return False
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # REÇETE İLE SİPARİŞ İŞLEMLERİ
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def recete_ile_siparis_ekle(self, urun_id, urun_adi):
+        """
+        İlacı reçete ile sipariş listesine ekle (UPSERT)
+
+        Args:
+            urun_id: Ürün ID
+            urun_adi: Ürün adı
+
+        Returns:
+            bool: Başarılı mı
+        """
+        try:
+            tarih_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.cursor.execute('''
+                INSERT OR REPLACE INTO recete_ile_siparis (urun_id, urun_adi, ekleme_tarihi)
+                VALUES (?, ?, ?)
+            ''', (urun_id, urun_adi, tarih_str))
+            self.conn.commit()
+            logger.info(f"Reçete ile sipariş eklendi: {urun_adi} (ID={urun_id})")
+            return True
+        except Exception as e:
+            logger.error(f"Reçete ile sipariş ekleme hatası: {e}")
+            return False
+
+    def recete_ile_siparis_sil(self, urun_id):
+        """İlacı reçete ile sipariş listesinden çıkar"""
+        try:
+            self.cursor.execute('DELETE FROM recete_ile_siparis WHERE urun_id = ?', (urun_id,))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Reçete ile sipariş silme hatası: {e}")
+            return False
+
+    def recete_ile_siparis_listesi_getir(self):
+        """
+        Reçete ile sipariş listesindeki tüm ilaçları getir
+
+        Returns:
+            list of dict
+        """
+        try:
+            self.cursor.execute('SELECT * FROM recete_ile_siparis ORDER BY urun_adi')
+            return [dict(row) for row in self.cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Reçete ile sipariş listesi hatası: {e}")
+            return []
+
+    def recete_ile_siparis_mi(self, urun_id):
+        """Ürünün reçete ile sipariş listesinde olup olmadığını kontrol et"""
+        try:
+            self.cursor.execute('SELECT 1 FROM recete_ile_siparis WHERE urun_id = ?', (urun_id,))
+            return self.cursor.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Reçete ile sipariş kontrol hatası: {e}")
             return False
 
     def kapat(self):

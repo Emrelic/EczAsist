@@ -346,6 +346,172 @@ def basabas_noktasi_hesapla(kar_marji: float, yillik_faiz: float) -> float:
     return basabas_ay
 
 
+def finansal_periyot_analiz(db, urun_id: int, kar_marji: float, yillik_faiz: float) -> dict:
+    """
+    Finansal başabaş periyoduna göre minimum stok analizi.
+
+    Son 24 ayı başabaş periyodu kadar dilimlere böler.
+    Dilimlerin çoğunluğunda satış varsa min = ortalama parti büyüklüğü.
+
+    Args:
+        db: Veritabani bağlantısı
+        urun_id: Ürün ID
+        kar_marji: Kar marjı (0.22 = %22)
+        yillik_faiz: Yıllık faiz oranı (0.40 = %40)
+
+    Returns:
+        dict: {
+            'basabas_ay': float,
+            'dilim_sayisi': int,
+            'satisli_dilim': int,
+            'ort_parti': float,
+            'talep_sayisi': int,
+            'toplam_miktar': float,
+            'min_onerilen': int,
+            'aciklama': str
+        }
+    """
+    # Başabaş periyodu hesapla
+    basabas_ay = basabas_noktasi_hesapla(kar_marji, yillik_faiz)
+    if basabas_ay <= 0 or basabas_ay >= 999:
+        return {
+            'basabas_ay': basabas_ay,
+            'dilim_sayisi': 0, 'satisli_dilim': 0,
+            'ort_parti': 0, 'talep_sayisi': 0, 'toplam_miktar': 0,
+            'min_onerilen': 0, 'aciklama': 'Başabaş hesaplanamadı'
+        }
+
+    # Son 24 ayın satış verilerini getir (tarih + miktar)
+    bugun = datetime.now()
+    baslangic_24ay = (bugun - relativedelta(months=24)).strftime('%Y-%m-%d')
+
+    sql = f"""
+    SELECT
+        CAST(ra.RxKayitTarihi AS DATE) as Tarih,
+        SUM(ri.RIAdet) as Adet
+    FROM ReceteIlaclari ri
+    JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+    WHERE ri.RIUrunId = {urun_id}
+    AND ra.RxSilme = 0 AND ri.RISilme = 0
+    AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+    AND ra.RxKayitTarihi >= '{baslangic_24ay}'
+    GROUP BY CAST(ra.RxKayitTarihi AS DATE)
+
+    UNION ALL
+
+    SELECT
+        CAST(ea.RxKayitTarihi AS DATE) as Tarih,
+        SUM(ei.RIAdet) as Adet
+    FROM EldenIlaclari ei
+    JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+    WHERE ei.RIUrunId = {urun_id}
+    AND ea.RxSilme = 0 AND ei.RISilme = 0
+    AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+    AND ea.RxKayitTarihi >= '{baslangic_24ay}'
+    GROUP BY CAST(ea.RxKayitTarihi AS DATE)
+    """
+
+    try:
+        gunluk_veriler = db.sorgu_calistir(sql)
+    except Exception as e:
+        logger.error(f"Finansal periyot analiz hatası (UrunId={urun_id}): {e}")
+        return {
+            'basabas_ay': basabas_ay,
+            'dilim_sayisi': 0, 'satisli_dilim': 0,
+            'ort_parti': 0, 'talep_sayisi': 0, 'toplam_miktar': 0,
+            'min_onerilen': 0, 'aciklama': f'Sorgu hatası: {e}'
+        }
+
+    if not gunluk_veriler:
+        return {
+            'basabas_ay': basabas_ay,
+            'dilim_sayisi': 0, 'satisli_dilim': 0,
+            'ort_parti': 0, 'talep_sayisi': 0, 'toplam_miktar': 0,
+            'min_onerilen': 0, 'aciklama': '24 ayda satış yok'
+        }
+
+    # Tarihleri parse et ve günlük verileri birleştir
+    satis_dict = {}
+    for v in gunluk_veriler:
+        try:
+            tarih = v['Tarih']
+            if isinstance(tarih, datetime):
+                tarih = tarih.date()
+            elif isinstance(tarih, str):
+                tarih = datetime.strptime(tarih, '%Y-%m-%d').date()
+            adet = float(v['Adet'] or 0)
+            if tarih in satis_dict:
+                satis_dict[tarih] += adet
+            else:
+                satis_dict[tarih] = adet
+        except:
+            continue
+
+    if not satis_dict:
+        return {
+            'basabas_ay': basabas_ay,
+            'dilim_sayisi': 0, 'satisli_dilim': 0,
+            'ort_parti': 0, 'talep_sayisi': 0, 'toplam_miktar': 0,
+            'min_onerilen': 0, 'aciklama': 'Satış verisi parse edilemedi'
+        }
+
+    # İstatistikler
+    parti_buyuklukleri = list(satis_dict.values())
+    toplam_miktar = sum(parti_buyuklukleri)
+    talep_sayisi = len(parti_buyuklukleri)
+    ort_parti = toplam_miktar / talep_sayisi if talep_sayisi > 0 else 0
+
+    # 24 ayı başabaş periyoduna göre dilimlere böl
+    basabas_ay_tam = max(1, math.ceil(basabas_ay))  # En az 1 aylık dilimler
+    dilim_sayisi = math.floor(24 / basabas_ay_tam)
+    if dilim_sayisi < 1:
+        dilim_sayisi = 1
+
+    # Her dilim için satış kontrolü
+    satisli_dilim = 0
+    bugun_date = bugun.date()
+
+    for i in range(dilim_sayisi):
+        # Dilim: [dilim_baslangic, dilim_bitis)
+        dilim_bitis = bugun - relativedelta(months=i * basabas_ay_tam)
+        dilim_baslangic = bugun - relativedelta(months=(i + 1) * basabas_ay_tam)
+        dilim_bas_date = dilim_baslangic.date()
+        dilim_bit_date = dilim_bitis.date()
+
+        # Bu dilimde satış var mı?
+        dilimde_satis = any(
+            dilim_bas_date <= tarih <= dilim_bit_date
+            for tarih in satis_dict.keys()
+        )
+        if dilimde_satis:
+            satisli_dilim += 1
+
+    # Çoğunluk kuralı: dilimlerin yarısından fazlasında satış varsa
+    cogunluk_esik = math.ceil(dilim_sayisi / 2) + (0 if dilim_sayisi % 2 == 1 else 1)
+    # Basit çoğunluk: yarıdan fazla
+    cogunluk_saglandi = satisli_dilim > dilim_sayisi / 2
+
+    if cogunluk_saglandi:
+        min_onerilen = max(1, round(ort_parti))
+        aciklama = (f'Başabaş:{basabas_ay:.1f}ay | {dilim_sayisi} dilimden {satisli_dilim} satışlı | '
+                    f'Ort:{ort_parti:.1f} → Min={min_onerilen}')
+    else:
+        min_onerilen = 0
+        aciklama = (f'Başabaş:{basabas_ay:.1f}ay | {dilim_sayisi} dilimden {satisli_dilim} satışlı | '
+                    f'Çoğunluk sağlanmadı → Min=0')
+
+    return {
+        'basabas_ay': round(basabas_ay, 1),
+        'dilim_sayisi': dilim_sayisi,
+        'satisli_dilim': satisli_dilim,
+        'ort_parti': round(ort_parti, 1),
+        'talep_sayisi': talep_sayisi,
+        'toplam_miktar': toplam_miktar,
+        'min_onerilen': min_onerilen,
+        'aciklama': aciklama
+    }
+
+
 def minimum_stok_hesapla(
     analiz: dict,
     kar_marji: float = 0.22,
@@ -353,13 +519,19 @@ def minimum_stok_hesapla(
     tedarik_suresi: int = 1  # gun
 ) -> dict:
     """
-    Minimum stok miktarini hesapla
+    Minimum stok miktarini frekans bazli hesapla
+
+    Kurallar:
+    - Satış adedi < 3  → minimum = 0 (hesaplanmaz)
+    - Satış adedi = 3  → minimum = satış başına ortalama miktar
+    - Satış adedi >= 4 → minimum = satış başına ortalama miktar (kesinlikle yazılmalı)
+    - Özel: min=1 yazılabilmesi için en az 3 kez birer adet gitmiş olmalı
 
     Args:
         analiz: talep_pattern_analiz() sonucu
-        kar_marji: Ortalama kar marji
-        yillik_faiz: Yillik mevduat faizi
-        tedarik_suresi: Tedarik suresi (gun)
+        kar_marji: Ortalama kar marji (artik kullanilmiyor, geriye uyumluluk icin)
+        yillik_faiz: Yillik faiz orani (artik kullanilmiyor, geriye uyumluluk icin)
+        tedarik_suresi: Tedarik suresi (artik kullanilmiyor, geriye uyumluluk icin)
 
     Returns:
         dict: {
@@ -377,68 +549,35 @@ def minimum_stok_hesapla(
             'aciklama': 'Talep yok'
         }
 
-    sinif = analiz['sinif']
+    talep_sayisi = analiz['talep_sayisi']
     ort_parti = analiz['ort_parti']
-    aylik_ort = analiz['aylik_ort']
-    gunluk_ort = aylik_ort / 30
-    cv = analiz['cv']
+    toplam_miktar = analiz['toplam_miktar']
 
-    # Basabas noktasi
-    basabas_ay = basabas_noktasi_hesapla(kar_marji, yillik_faiz)
+    # ===== FREKANS BAZLI HESAPLAMA =====
 
-    # ===== BILIMSEL YONTEM (Syntetos-Boylan) =====
-    if sinif == 'LUMPY':
-        # Cok duzensiz ve aralikli - siparis usulu
-        min_bilimsel = 0
-        aciklama_bilimsel = 'LUMPY: Siparis usulu'
-    elif sinif == 'INTERMITTENT':
-        # Aralikli ama duzensiz degil - parti buyuklugu kadar
-        min_bilimsel = max(1, math.ceil(ort_parti))
-        aciklama_bilimsel = f'INTERMITTENT: Parti={ort_parti:.1f}'
-    elif sinif == 'ERRATIC':
-        # Duzensiz ama surekli - emniyet payiyla
-        min_bilimsel = max(2, math.ceil(ort_parti * (1 + cv)))
-        aciklama_bilimsel = f'ERRATIC: Parti={ort_parti:.1f}, CV={cv:.2f}'
-    else:  # SMOOTH
-        # Duzgun talep - 1 haftalik stok
-        min_bilimsel = max(1, math.ceil(aylik_ort / 4))
-        aciklama_bilimsel = f'SMOOTH: 1 haftalik'
-
-    # ===== FINANSAL YONTEM =====
-    if aylik_ort < 1 / basabas_ay:
-        # Yilda 1'den az - stok tutma zarar
-        min_finansal = 0
-        aciklama_finansal = f'Yillik<1, basabas={basabas_ay:.1f}ay'
-    elif aylik_ort < basabas_ay:
-        # Basabas altinda - minimum tut
-        min_finansal = max(1, math.ceil(ort_parti))
-        aciklama_finansal = f'Basabas altinda'
+    if talep_sayisi < 3:
+        # 0, 1 veya 2 kez satış → minimum hesaplanmaz
+        min_onerilen = 0
+        aciklama = f'{talep_sayisi} satis (<3) - Min yok'
     else:
-        # Basabas ustunde - rahat stok tutulabilir
-        min_finansal = max(1, math.ceil(aylik_ort / 4))
-        aciklama_finansal = f'Basabas ustunde'
+        # 3+ kez satış → ortalama parti büyüklüğü
+        min_onerilen = max(1, round(ort_parti))
 
-    # ===== ONERILEN (her iki yontemin maksimumu) =====
-    # Ama parti buyuklugunden az olamaz
-    min_parti = math.ceil(ort_parti) if ort_parti > 0 else 0
-    min_tedarik = math.ceil(gunluk_ort * tedarik_suresi)
-
-    min_onerilen = max(
-        min_bilimsel,
-        min_finansal,
-        min_parti,
-        min_tedarik
-    )
-
-    # Ozel durumlar
-    if sinif == 'LUMPY' and aylik_ort < 1:
-        min_onerilen = 0  # Gercekten siparis usulu
-
-    aciklama = f'{sinif} | Parti:{ort_parti:.1f} | {aciklama_finansal}'
+        # Özel kural (sadece 3 satışlılar için):
+        # min=1 yazılabilmesi için en az 3 kez birer adet gitmiş olmalı
+        # 4+ satışta kesinlikle min yazılmalı, bu kural uygulanmaz
+        if talep_sayisi == 3 and min_onerilen == 1 and ort_parti > 1.0:
+            # 3 satış var ama ortalama 1'den büyük, yuvarlama 1 verdi
+            # 3 kez birer adet gitmiş olma şartı sağlanmıyor
+            min_onerilen = 0
+            aciklama = f'{talep_sayisi} satis, ort:{ort_parti:.1f} - Min 1 icin yeterli degil'
+        else:
+            kesinlik = "kesin" if talep_sayisi >= 4 else "onerilen"
+            aciklama = f'{talep_sayisi} satis, ort:{ort_parti:.1f} - Min={min_onerilen} ({kesinlik})'
 
     return {
-        'min_bilimsel': min_bilimsel,
-        'min_finansal': min_finansal,
+        'min_bilimsel': min_onerilen,
+        'min_finansal': min_onerilen,
         'min_onerilen': min_onerilen,
         'aciklama': aciklama
     }
@@ -451,6 +590,7 @@ def tum_ilaclari_analiz_et(
     yillik_faiz: float = 0.40,
     sadece_stoklu: bool = False,
     hareket_yili: int = 0,
+    hesaplama_modu: str = "frekans",
     progress_callback=None
 ) -> list:
     """
@@ -463,6 +603,7 @@ def tum_ilaclari_analiz_et(
         yillik_faiz: Yillik mevduat faizi
         sadece_stoklu: Sadece stokta olan ilaclari analiz et
         hareket_yili: Son kac yil icinde hareket gormesi gerektigi (0=filtre yok)
+        hesaplama_modu: "frekans" (12ay, 3+ satış kuralı) veya "finansal" (24ay, başabaş periyodu)
         progress_callback: Ilerleme callback fonksiyonu (current, total)
 
     Returns:
@@ -556,59 +697,56 @@ def tum_ilaclari_analiz_et(
         if progress_callback and i % 50 == 0:
             progress_callback(i, toplam)
 
-        # Talep analizi
-        analiz = talep_pattern_analiz(db, urun_id, ay_sayisi)
+        if hesaplama_modu == 'finansal':
+            # Finansal başabaş periyodu bazlı analiz (24 ay)
+            fin_sonuc = finansal_periyot_analiz(db, urun_id, kar_marji, yillik_faiz)
 
-        if not analiz:
-            continue
+            # 24 aylık talep analizi (istatistik bilgileri için)
+            analiz = talep_pattern_analiz(db, urun_id, 24)
+            if not analiz:
+                continue
 
-        # Uygunluk analizi (puanlama)
-        uygunluk = min_stok_uygunluk_analiz(db, urun_id)
-
-        # Minimum stok hesapla
-        min_sonuc = minimum_stok_hesapla(analiz, kar_marji, yillik_faiz)
-
-        # Uygunluk kararına göre önerilen değeri ayarla
-        if uygunluk['karar'] == 'UYGUN_DEGIL':
-            min_onerilen_final = 0
-            aciklama_final = f"{min_sonuc['aciklama']} | {uygunluk['aciklama']}"
-        elif uygunluk['karar'] == 'DIKKATLI':
-            # Düşük tut - minimum 1, maksimum hesaplananın yarısı
-            min_onerilen_final = max(1, min(min_sonuc['min_onerilen'], math.ceil(min_sonuc['min_onerilen'] / 2)))
-            aciklama_final = f"{min_sonuc['aciklama']} | DIKKATLI: {uygunluk['aciklama']}"
-        elif uygunluk['karar'] == 'SADECE_KRITIK':
-            # Sadece 1 adet öner
-            min_onerilen_final = 1 if min_sonuc['min_onerilen'] > 0 else 0
-            aciklama_final = f"{min_sonuc['aciklama']} | KRITIK: {uygunluk['aciklama']}"
+            sonuclar.append({
+                'UrunId': urun_id,
+                'UrunAdi': ilac['UrunAdi'],
+                'MevcutMin': ilac.get('MevcutMin', 0) or 0,
+                'Stok': ilac.get('Stok', 0) or 0,
+                'AylikOrt': round(analiz['aylik_ort'], 1),
+                'TalepSayisi': fin_sonuc['talep_sayisi'],
+                'OrtParti': fin_sonuc['ort_parti'],
+                'CV': round(analiz['cv'], 2),
+                'ADI': round(analiz['adi'], 1),
+                'Sinif': analiz['sinif'],
+                'MinBilimsel': fin_sonuc['min_onerilen'],
+                'MinFinansal': fin_sonuc['min_onerilen'],
+                'MinOnerilen': fin_sonuc['min_onerilen'],
+                'Aciklama': fin_sonuc['aciklama']
+            })
         else:
-            min_onerilen_final = min_sonuc['min_onerilen']
-            aciklama_final = min_sonuc['aciklama']
+            # Frekans bazlı analiz (12 ay, 3+ satış kuralı)
+            analiz = talep_pattern_analiz(db, urun_id, ay_sayisi)
 
-        sonuclar.append({
-            'UrunId': urun_id,
-            'UrunAdi': ilac['UrunAdi'],
-            'MevcutMin': ilac.get('MevcutMin', 0) or 0,
-            'Stok': ilac.get('Stok', 0) or 0,
-            'AylikOrt': round(analiz['aylik_ort'], 1),
-            'TalepSayisi': analiz['talep_sayisi'],
-            'OrtParti': round(analiz['ort_parti'], 1),
-            'CV': round(analiz['cv'], 2),
-            'ADI': round(analiz['adi'], 1),
-            'Sinif': analiz['sinif'],
-            'MinBilimsel': min_sonuc['min_bilimsel'],
-            'MinFinansal': min_sonuc['min_finansal'],
-            'MinOnerilen': min_onerilen_final,
-            'Aciklama': aciklama_final,
-            # Yeni puanlama alanlari
-            'UygunlukPuan': uygunluk['toplam_puan'],
-            'UygunlukKarar': uygunluk['karar'],
-            'FrekPuan': uygunluk['frekans_puan'],
-            'DagPuan': uygunluk['dagilim_puan'],
-            'GunPuan': uygunluk['guncellik_puan'],
-            'SonSatisGun': uygunluk['son_satis_gun'],
-            'YillikSatis': uygunluk['yillik_satis'],
-            'CeyrekDagilim': uygunluk['ceyrek_dagilim']
-        })
+            if not analiz:
+                continue
+
+            min_sonuc = minimum_stok_hesapla(analiz, kar_marji, yillik_faiz)
+
+            sonuclar.append({
+                'UrunId': urun_id,
+                'UrunAdi': ilac['UrunAdi'],
+                'MevcutMin': ilac.get('MevcutMin', 0) or 0,
+                'Stok': ilac.get('Stok', 0) or 0,
+                'AylikOrt': round(analiz['aylik_ort'], 1),
+                'TalepSayisi': analiz['talep_sayisi'],
+                'OrtParti': round(analiz['ort_parti'], 1),
+                'CV': round(analiz['cv'], 2),
+                'ADI': round(analiz['adi'], 1),
+                'Sinif': analiz['sinif'],
+                'MinBilimsel': min_sonuc['min_bilimsel'],
+                'MinFinansal': min_sonuc['min_finansal'],
+                'MinOnerilen': min_sonuc['min_onerilen'],
+                'Aciklama': min_sonuc['aciklama']
+            })
 
     if progress_callback:
         progress_callback(toplam, toplam)

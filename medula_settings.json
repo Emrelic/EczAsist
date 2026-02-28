@@ -43,5 +43,9 @@
   "aktif_kullanici": 3,
   "telefonsuz_atla": true,
   "giris_yontemi": "indeks",
-  "kullanici_adi_giris": ""
+  "kullanici_adi_giris": "",
+  "yasakli_tesis_numaralari": [
+    "11349969"
+  ],
+  "pencere_yerlesimi": "standart"
 }

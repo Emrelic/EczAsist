@@ -1,126 +1,130 @@
 {
   "recete_kontrol": {
-    "count": 3305,
-    "total_time": 4182.301068067551
+    "count": 4152,
+    "total_time": 5578.2397747039795
   },
   "uyari_kapat": {
     "count": 216,
     "total_time": 321.92114329338074
   },
   "ilac_butonu": {
-    "count": 3430,
-    "total_time": 7209.348875999451
+    "count": 4568,
+    "total_time": 8413.96267747879
   },
   "ilac_ekran_bekleme": {
-    "count": 1846,
-    "total_time": 6230.271862983704
+    "count": 2414,
+    "total_time": 8469.756162881851
   },
   "y_butonu": {
-    "count": 3402,
-    "total_time": 8165.91828417778
+    "count": 4540,
+    "total_time": 10031.795251846313
   },
   "pencere_bulma": {
-    "count": 1820,
-    "total_time": 537.5931148529053
+    "count": 2389,
+    "total_time": 613.7381911277771
   },
   "alinmayanlari_sec": {
-    "count": 1727,
-    "total_time": 780.857278585434
+    "count": 2293,
+    "total_time": 1013.8669919967651
   },
   "kapat_butonu": {
-    "count": 3198,
-    "total_time": 1972.7216491699219
+    "count": 4330,
+    "total_time": 2011.4735474586487
   },
   "ilac_secim_bekleme": {
-    "count": 1727,
-    "total_time": 10332.005598068237
+    "count": 2293,
+    "total_time": 11851.073081493378
   },
   "geri_don_butonu": {
-    "count": 3294,
-    "total_time": 4356.597976922989
+    "count": 4426,
+    "total_time": 5208.889817714691
   },
   "sonra_butonu": {
-    "count": 4943,
-    "total_time": 8930.324129581451
+    "count": 8040,
+    "total_time": 13034.403149843216
   },
   "y_ikinci_deneme": {
     "count": 24,
     "total_time": 67.9694344997406
   },
   "rapor_toplama": {
-    "count": 1640,
-    "total_time": 23025.421917676926
+    "count": 2205,
+    "total_time": 29104.78078508377
   },
   "pencere_restore": {
-    "count": 387,
-    "total_time": 80.30023074150085
+    "count": 392,
+    "total_time": 80.80171298980713
   },
   "pencere_move": {
-    "count": 458,
-    "total_time": 70.94035649299622
+    "count": 473,
+    "total_time": 71.39679455757141
   },
   "recete_sorgu": {
-    "count": 1101,
-    "total_time": 257.563823223114
+    "count": 1123,
+    "total_time": 259.7866988182068
   },
   "text_focus": {
-    "count": 1122,
-    "total_time": 174.30574321746826
+    "count": 1142,
+    "total_time": 175.35495948791504
   },
   "text_clear": {
-    "count": 1017,
-    "total_time": 97.6579360961914
+    "count": 1037,
+    "total_time": 98.28832149505615
   },
   "text_write": {
-    "count": 960,
-    "total_time": 130.7608346939087
+    "count": 977,
+    "total_time": 131.6354477405548
   },
   "sorgula_butonu": {
-    "count": 950,
-    "total_time": 213.5388355255127
+    "count": 964,
+    "total_time": 214.95343899726868
   },
   "sag_tik": {
-    "count": 507,
-    "total_time": 32.56623673439026
+    "count": 1072,
+    "total_time": 61.374266386032104
   },
   "takip_et": {
-    "count": 501,
-    "total_time": 22.642123460769653
+    "count": 1063,
+    "total_time": 40.12597608566284
   },
   "rapor_button_wait": {
-    "count": 1227,
-    "total_time": 2298.0420343875885
+    "count": 1791,
+    "total_time": 2355.1685497760773
   },
   "rapor_pencere_acilis": {
-    "count": 1256,
-    "total_time": 2645.4454526901245
+    "count": 1820,
+    "total_time": 2928.1003704071045
   },
   "pencere_kapatma": {
-    "count": 1223,
-    "total_time": 2428.6463601589203
+    "count": 1787,
+    "total_time": 2711.2617840766907
   },
   "retry_after_reconnect": {
-    "count": 629,
-    "total_time": 1782.542117357254
+    "count": 642,
+    "total_time": 1808.5570216178894
   },
   "ana_sayfa": {
-    "count": 146,
-    "total_time": 51.76401925086975
+    "count": 157,
+    "total_time": 53.98227071762085
   },
   "buton_hazir_bekleme": {
     "count": 693,
     "total_time": 1900.7981760501862
   },
   "textbox_yazma": {
-    "count": 483,
-    "total_time": 904.6367366313934
+    "count": 1049,
+    "total_time": 1549.0846195220947
   },
   "adim_arasi_bekleme": {
     "count": 28,
     "total_time": 8.427374124526978
   },
   "telefon_kontrol": {
-    "count": 152,
-    "total_time": 363.7421886920929
+    "count": 934,
+    "total_time": 2522.5855479240417
+  },
+  "tesis_kontrol": {
+    "count": 1283,
+    "total_time": 2704.6744997501373
   }
 }

@@ -87,7 +87,7 @@ class SiparisVermeGUI:
         self.min_stok_aktif = tk.BooleanVar(value=True)
         self.min_stok_kaynagi = tk.StringVar(value='botanik')  # 'botanik' veya 'yerel'
         self.zam_aktif = tk.BooleanVar(value=False)
-        self.yeterlileri_gizle = tk.BooleanVar(value=False)
+        self.siparis_edilecekleri_getir = tk.BooleanVar(value=False)
 
         # Zam stratejisi seçimi
         # pareto: %80 kazanç noktası (dengeli)
@@ -176,7 +176,7 @@ class SiparisVermeGUI:
                     'db_id': s['id'],
                     'UrunId': s.get('urun_id'),
                     'UrunAdi': s.get('urun_adi', ''),
-                    'Barkod': s.get('barkod', ''),
+                    'Barkod': s.get('barkod') or '',
                     'Miktar': s.get('miktar', 0),
                     'MF': s.get('mf', ''),
                     'Toplam': s.get('toplam', 0),
@@ -499,12 +499,13 @@ class SiparisVermeGUI:
         row2.pack(fill=tk.X, padx=8, pady=(3, 5))
 
         # Sol taraf butonları
-        self.gizle_btn = tk.Button(
-            row2, text="Yeterlileri Gizle: KAPALI", command=self._toggle_yeterlileri_gizle,
-            bg=self.R_FG_SECONDARY, fg='white', font=('Arial', 9, 'bold'),
-            relief='raised', bd=2, padx=10, pady=3
-        )
-        self.gizle_btn.pack(side=tk.LEFT, padx=(0, 12))
+        tk.Checkbutton(
+            row2, text="Sipariş edilecek satırları getir",
+            variable=self.siparis_edilecekleri_getir,
+            command=self._filtreleme_uygula,
+            font=('Arial', 9, 'bold'), bg=self.R_PARAM_BG,
+            activebackground=self.R_PARAM_BG
+        ).pack(side=tk.LEFT, padx=(0, 12))
 
         tk.Button(
             row2, text="Önerileri Kopyala", command=self._tum_onerileri_kopyala,
@@ -514,6 +515,11 @@ class SiparisVermeGUI:
         tk.Button(
             row2, text="Seçilileri Ekle", command=self._secilileri_kesin_listeye_ekle,
             bg=self.R_SUCCESS, fg='white', font=('Arial', 9), relief='raised', bd=2, padx=10, pady=3
+        ).pack(side=tk.LEFT, padx=(0, 8))
+
+        tk.Button(
+            row2, text="Reçete ile Sipariş", command=self._recete_ile_siparis_ekle,
+            bg='#7B1FA2', fg='white', font=('Arial', 9, 'bold'), relief='raised', bd=2, padx=10, pady=3
         ).pack(side=tk.LEFT, padx=(0, 8))
 
         self.excel_btn = tk.Button(
@@ -584,12 +590,26 @@ class SiparisVermeGUI:
         # Ctrl+F kısayolu
         self.parent.bind('<Control-f>', self._arama_odaklan)
         self.parent.bind('<Control-F>', self._arama_odaklan)
+        # F3 = Reçete ile Sipariş
+        self.parent.bind('<F3>', lambda e: self._recete_ile_siparis_ekle())
         self.arama_entry.bind('<Return>', lambda e: self._sonraki_eslesme())
         self.arama_entry.bind('<Escape>', lambda e: self._arama_temizle())
 
         # Arama sonuçları için değişkenler
         self.arama_eslesmeler = []
         self.arama_index = 0
+
+        # Kısayol bilgi satırı
+        kisayol_frame = tk.Frame(grid_frame, bg='#37474F', height=18)
+        kisayol_frame.pack(fill=tk.X)
+        kisayol_frame.pack_propagate(False)
+        kisayol_metni = (
+            "Tıklama: [STOK] 1 adet ekle/artır  |  [SİPARİŞ] öneriyi ekle  |  "
+            "[MF Şart] 1.tık=seç, 2.tık=ekle  |  [Çift tık] satırı ekle  |  "
+            "Klavye: Ctrl+F=Ara  F1/F=Barkod kopyala  F2=Yapıştır  F3=Reçete ile Sipariş"
+        )
+        tk.Label(kisayol_frame, text=kisayol_metni, font=('Arial', 7),
+                 fg='#B0BEC5', bg='#37474F').pack(side=tk.LEFT, padx=10)
 
         # Treeview için frame
         tree_container = tk.Frame(grid_frame, bg=self.R_BG_SECONDARY)
@@ -645,15 +665,23 @@ class SiparisVermeGUI:
         # Tag'ler - sipariş gerektiren satırlar bold ve vurgulu
         self.ana_tree.tag_configure('grup_baslik', background=self.R_GRUP_BASLIK, foreground='white',
                                      font=('Arial', 11, 'bold'))
-        # Sübvansiyon tag'leri - stok yeterliliğine göre renkler
-        self.ana_tree.tag_configure('grup_baslik_yeterli', background='#2E7D32', foreground='white',
-                                     font=('Arial', 11, 'bold'))  # Koyu yeşil - stok yeterli
-        self.ana_tree.tag_configure('grup_baslik_iyi', background='#558B2F', foreground='white',
-                                     font=('Arial', 11, 'bold'))  # Yeşil - %80+
-        self.ana_tree.tag_configure('grup_baslik_orta', background='#F9A825', foreground='black',
-                                     font=('Arial', 11, 'bold'))  # Sarı - %50-80
-        self.ana_tree.tag_configure('grup_baslik_dusuk', background='#D84315', foreground='white',
-                                     font=('Arial', 11, 'bold'))  # Kırmızı - %50 altı
+        # Sübvansiyon tag'leri - stok yeterliliğine göre 11 kademeli renk skalası
+        # Grup stoğunun, grup ihtiyacını (stok+sipariş önerisi toplamı) karşılama oranı
+        gbf = ('Arial', 11, 'bold')
+        self.ana_tree.tag_configure('grup_s_lacivert',      background='#0D1B4A', foreground='white',  font=gbf)  # %300+
+        self.ana_tree.tag_configure('grup_s_koyu_mavi',     background='#1565C0', foreground='white',  font=gbf)  # %200+
+        self.ana_tree.tag_configure('grup_s_mavi',          background='#1E88E5', foreground='white',  font=gbf)  # %150+
+        self.ana_tree.tag_configure('grup_s_koyu_yesil',   background='#1B5E20', foreground='white',  font=gbf)  # %120+
+        self.ana_tree.tag_configure('grup_s_orta_yesil',   background='#2E7D32', foreground='white',  font=gbf)  # %110+
+        self.ana_tree.tag_configure('grup_s_acik_yesil',   background='#43A047', foreground='white',  font=gbf)  # %100+
+        self.ana_tree.tag_configure('grup_s_limon_yesil',  background='#7CB342', foreground='black',  font=gbf)  # %90+
+        self.ana_tree.tag_configure('grup_s_sari',         background='#FDD835', foreground='black',  font=gbf)  # %80+
+        self.ana_tree.tag_configure('grup_s_koyu_sari',    background='#F9A825', foreground='black',  font=gbf)  # %70+
+        self.ana_tree.tag_configure('grup_s_acik_turuncu', background='#FB8C00', foreground='white',  font=gbf)  # %60+
+        self.ana_tree.tag_configure('grup_s_koyu_turuncu', background='#EF6C00', foreground='white',  font=gbf)  # %50+
+        self.ana_tree.tag_configure('grup_s_kirmizi',      background='#E53935', foreground='white',  font=gbf)  # %35+
+        self.ana_tree.tag_configure('grup_s_koyu_kirmizi', background='#C62828', foreground='white',  font=gbf)  # %20+
+        self.ana_tree.tag_configure('grup_s_bordo',        background='#7F0000', foreground='white',  font=gbf)  # %20 altı
         self.ana_tree.tag_configure('grup_satir', background=self.R_GRUP_ICERIK, foreground=self.R_FG,
                                      font=('Arial', 11))
         self.ana_tree.tag_configure('grup_satir_siparis', background=self.R_SIPARIS_GEREK, foreground=self.R_FG,
@@ -791,8 +819,9 @@ class SiparisVermeGUI:
         header.pack(fill=tk.X)
         header.pack_propagate(False)
 
-        tk.Label(header, text="KESIN SIPARIS LISTESI", bg=self.R_SUCCESS, fg='white',
-                font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=10)
+        self.kesin_baslik_label = tk.Label(header, text="KESIN SIPARIS LISTESI", bg=self.R_SUCCESS, fg='white',
+                font=('Arial', 10, 'bold'))
+        self.kesin_baslik_label.pack(side=tk.LEFT, padx=10)
 
         # Calisma bilgisi etiketi
         self.calisma_label = tk.Label(header, text="Calisma: -", bg=self.R_SUCCESS, fg='yellow',
@@ -891,8 +920,8 @@ class SiparisVermeGUI:
         self.parent.bind_all('<F2>', self._barkod_yapistir)
 
         # Klavye kısayolu etiketi
-        kisayol_label = tk.Label(tree_frame, text="F/F1: Kopyala | F2: Yapıştır", font=('Arial', 7),
-                                 fg='#666', bg=self.R_BG)
+        kisayol_label = tk.Label(tree_frame, text="F/F1: Barkod kopyala | F2: Barkod yapıştır | Seciliyi Sil: seçip sil | Miktari Düzenle: seçip düzenle",
+                                 font=('Arial', 7), fg='#666', bg=self.R_BG)
         kisayol_label.place(relx=1.0, y=0, anchor='ne')
 
     def _barkod_kopyala(self, event=None):
@@ -2075,13 +2104,15 @@ class SiparisVermeGUI:
             }
 
     def _hedef_gun_hesapla(self):
-        """Hedef tarihe kalan gün sayısı.
+        """Hedef tarihe kalan gün sayısı (bugün dahil).
 
         NOT: Zam tarihi burada hedef olarak KULLANILMAZ.
         Zam optimizasyonu zam tarihini ayrıca alır (_zam_oncesi_optimum_hesapla).
         Hedef gün, temel ihtiyaç hesaplaması için kullanılır (ay sonu veya kullanıcı hedefi).
-        Zam aktif olup tarih bugün/yarın gibi yakın olduğunda hedef_gun=0 olması
-        tüm sipariş önerilerini sıfırlıyordu - bu düzeltildi.
+
+        Bugün her zaman kalan günlere dahil edilir (+1).
+        Örnek: Bugün 28 Şubat, hedef 28 Şubat → 1 gün (bugünün ihtiyacı)
+        Örnek: Bugün 1 Mart, hedef 31 Mart → 31 gün (bugün dahil)
         """
         try:
             if self.hedef_tarih_aktif.get():
@@ -2093,7 +2124,7 @@ class SiparisVermeGUI:
                 hedef = date(bugun.year, bugun.month, ay_son_gun)
 
             bugun = date.today()
-            fark = (hedef - bugun).days
+            fark = (hedef - bugun).days + 1  # Bugünü de say
             return max(0, fark)
         except:
             return 0
@@ -2253,7 +2284,7 @@ class SiparisVermeGUI:
             COALESCE(u.UrunFiyatEtiket, 0) as PSF,
             COALESCE(u.UrunIskontoKamu, 0) as IskontoKamu,
             -- Barkod (Barkod tablosundan)
-            (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId AND b.BarkodSilme = 0) as Barkod,
+            (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
             {', '.join([f'COALESCE(ao.Ay_{i}, 0) as Ay_{i}' for i in range(ay_sayisi)])}
         FROM Urun u
         INNER JOIN HareketliUrunler hu ON u.UrunId = hu.UrunId
@@ -2329,6 +2360,18 @@ class SiparisVermeGUI:
             except Exception as e:
                 logger.warning(f"Yerel min stok yüklenemedi: {e}")
 
+        # Reçete ile sipariş listesini cache'e al
+        recete_ile_siparis_set = set()
+        try:
+            from siparis_db import get_siparis_db
+            siparis_db_recete = get_siparis_db()
+            recete_listesi = siparis_db_recete.recete_ile_siparis_listesi_getir()
+            recete_ile_siparis_set = {v['urun_id'] for v in recete_listesi}
+            if recete_ile_siparis_set:
+                logger.info(f"Reçete ile sipariş cache: {len(recete_ile_siparis_set)} ilaç")
+        except Exception as e:
+            logger.warning(f"Reçete ile sipariş listesi yüklenemedi: {e}")
+
         # Efektif ay sayısı hesaplama (12 ay için düzeltme)
         # Sorun: 12 ay seçilince içinde bulunulan ay kısmi, toplam 11.X ay oluyor
         # Çözüm: Efektif ay sayısı = (tam aylar) + (bu ayın geçen günü / 30)
@@ -2345,8 +2388,13 @@ class SiparisVermeGUI:
             urun_id = veri.get('UrunId')
             stok = veri.get('Stok', 0) or 0
 
+            # Reçete ile sipariş kontrolü - bu ilaç reçete listesinde ise min_stok=0
+            recete_ile_siparis_ilaci = urun_id in recete_ile_siparis_set
+
             # Min stok kaynağına göre değeri al
-            if min_stok_kaynagi == 'yerel' and urun_id in yerel_min_stok_cache:
+            if recete_ile_siparis_ilaci:
+                min_stok = 0
+            elif min_stok_kaynagi == 'yerel' and urun_id in yerel_min_stok_cache:
                 min_stok = yerel_min_stok_cache.get(urun_id, 0) or 0
             else:
                 min_stok = veri.get('MinStok', 0) or 0
@@ -2424,6 +2472,10 @@ class SiparisVermeGUI:
                 min_eksik = min_stok - stok
                 oneri = max(oneri, min_eksik)
 
+            # Reçete ile sipariş ilaçları için öneriyi sıfırla
+            if recete_ile_siparis_ilaci:
+                oneri = 0
+
             # MF şartları
             sartlar = mf_sartlari.get(urun_id, [])
 
@@ -2443,7 +2495,7 @@ class SiparisVermeGUI:
                 'UrunAdi': veri.get('UrunAdi', ''),
                 'UrunTipi': veri.get('UrunTipi', ''),
                 'EsdegerId': esdeger_id,
-                'Barkod': veri.get('Barkod', ''),
+                'Barkod': veri.get('Barkod') or '',
                 'Stok': stok,
                 'MinStok': min_stok,
                 'ToplamCikis': toplam_cikis,
@@ -2550,7 +2602,7 @@ class SiparisVermeGUI:
             self._tabloyu_guncelle()
             return
 
-        if not self.yeterlileri_gizle.get():
+        if not self.siparis_edilecekleri_getir.get():
             self.gorunen_veriler = self.tum_veriler
         else:
             # Eşdeğer gruplarını analiz et
@@ -2642,46 +2694,46 @@ class SiparisVermeGUI:
         grup_aylik = sum(u.get('AylikOrt', 0) for u in urunler)
         grup_tutar = sum(u.get('Oneri', 0) * u.get('DepocuFiyat', 0) for u in urunler)
 
-        # Grup ihtiyacı hesapla (stok + öneri = toplam ihtiyaç değil, öneri zaten ihtiyaç-stok)
-        # Gerçek ihtiyaç = her ürünün (Stok + Oneri) toplamı değil
-        # Daha doğrusu: İhtiyaç = Stok yetmezliği olan ürünlerin eksik miktarları toplamı
-        # Basitleştirilmiş: grup_ihtiyac = grup_stok + grup_oneri (hedef stok seviyesi)
-        # VEYA: AylikOrt * kalan ay sayısı
-
-        # Hedef tarihine kadar toplam ihtiyaç (aylık ort * kalan süre)
-        try:
-            hedef_tarih = self.hedef_tarih.get_date()
-            bugun = date.today()
-            kalan_gun = max(0, (hedef_tarih - bugun).days)
-        except:
-            kalan_gun = 30  # Varsayılan 1 ay
-
-        # Grup toplam ihtiyaç = Aylık ort * (kalan gün / 30)
-        grup_ihtiyac = grup_aylik * (kalan_gun / 30) if grup_aylik > 0 else 0
-
-        # Sübvansiyon analizi
-        # Stok, ihtiyacın ne kadarını karşılıyor?
-        if grup_ihtiyac > 0:
-            subvansiyon_orani = grup_stok / grup_ihtiyac
+        # Karşılama oranı: Grup stoğu, toplam ihtiyacın ne kadarını karşılıyor?
+        # Toplam ihtiyaç = Grup Stok + Grup Sipariş Önerisi (olması gereken toplam miktar)
+        # Bu oran, diğer grup üyelerinin stok fazlasının bir üyenin eksiğini kapatıp kapatmadığını gösterir
+        grup_toplam_ihtiyac = grup_stok + grup_oneri
+        if grup_toplam_ihtiyac > 0:
+            karsilama_orani = grup_stok / grup_toplam_ihtiyac
         else:
-            subvansiyon_orani = 999 if grup_stok > 0 else 0
+            karsilama_orani = 1.0  # İhtiyaç yok
 
-        # Sübvansiyon etiketi - stok sütununa yazılacak
-        subv_tag = "grup_baslik"
-        if subvansiyon_orani >= 1.0:
-            subv_stok_str = f"✓%{subvansiyon_orani*100:.0f}"
-            subv_tag = "grup_baslik_yeterli"
-        elif subvansiyon_orani >= 0.8:
-            subv_stok_str = f"%{subvansiyon_orani*100:.0f}"
-            subv_tag = "grup_baslik_iyi"
-        elif subvansiyon_orani >= 0.5:
-            subv_stok_str = f"%{subvansiyon_orani*100:.0f}"
-            subv_tag = "grup_baslik_orta"
-        elif grup_ihtiyac > 0:
-            subv_stok_str = f"%{subvansiyon_orani*100:.0f}"
-            subv_tag = "grup_baslik_dusuk"
+        # 14 kademeli renk skalası
+        if karsilama_orani >= 3.00:
+            subv_tag = "grup_s_lacivert"
+        elif karsilama_orani >= 2.00:
+            subv_tag = "grup_s_koyu_mavi"
+        elif karsilama_orani >= 1.50:
+            subv_tag = "grup_s_mavi"
+        elif karsilama_orani >= 1.20:
+            subv_tag = "grup_s_koyu_yesil"
+        elif karsilama_orani >= 1.10:
+            subv_tag = "grup_s_orta_yesil"
+        elif karsilama_orani >= 1.00:
+            subv_tag = "grup_s_acik_yesil"
+        elif karsilama_orani >= 0.90:
+            subv_tag = "grup_s_limon_yesil"
+        elif karsilama_orani >= 0.80:
+            subv_tag = "grup_s_sari"
+        elif karsilama_orani >= 0.70:
+            subv_tag = "grup_s_koyu_sari"
+        elif karsilama_orani >= 0.60:
+            subv_tag = "grup_s_acik_turuncu"
+        elif karsilama_orani >= 0.50:
+            subv_tag = "grup_s_koyu_turuncu"
+        elif karsilama_orani >= 0.35:
+            subv_tag = "grup_s_kirmizi"
+        elif karsilama_orani >= 0.20:
+            subv_tag = "grup_s_koyu_kirmizi"
         else:
-            subv_stok_str = ""
+            subv_tag = "grup_s_bordo"
+
+        subv_stok_str = f"%{karsilama_orani*100:.0f}" if grup_toplam_ihtiyac > 0 else ""
 
         # Grup başlık satırı - sübvansiyon oranı STOK sütununda (index 2)
         tutar_str = f" ({grup_tutar:,.0f}₺)" if grup_tutar > 0 else ""
@@ -2753,16 +2805,38 @@ class SiparisVermeGUI:
     # KULLANICI ETKİLEŞİMLERİ
     # ═══════════════════════════════════════════════════════════════════════
 
-    def _toggle_yeterlileri_gizle(self):
-        """Yeterlileri gizle toggle"""
-        self.yeterlileri_gizle.set(not self.yeterlileri_gizle.get())
+    def _recete_ile_siparis_ekle(self):
+        """Seçili ilacı reçete ile sipariş listesine ekle"""
+        selection = self.ana_tree.selection()
+        if not selection:
+            messagebox.showwarning("Uyarı", "Lütfen bir ürün satırı seçin!")
+            return
 
-        if self.yeterlileri_gizle.get():
-            self.gizle_btn.config(text="Yeterlileri Gizle: AÇIK", bg=self.R_SUCCESS)
-        else:
-            self.gizle_btn.config(text="Yeterlileri Gizle: KAPALI", bg=self.R_FG_SECONDARY)
+        item_id = selection[0]
+        if not item_id.startswith('urun_'):
+            messagebox.showwarning("Uyarı", "Lütfen bir ürün satırı seçin (grup başlığı değil)!")
+            return
 
-        self._filtreleme_uygula()
+        urun_id = int(item_id.replace('urun_', ''))
+        urun = next((u for u in self.tum_veriler if u['UrunId'] == urun_id), None)
+        if not urun:
+            return
+
+        urun_adi = urun.get('UrunAdi', '')
+
+        if not SIPARIS_DB_YUKLENDI:
+            messagebox.showerror("Hata", "Veritabanı modülü yüklenemedi!")
+            return
+
+        try:
+            siparis_db = get_siparis_db()
+            if siparis_db.recete_ile_siparis_ekle(urun_id, urun_adi):
+                messagebox.showinfo("Bilgi", f"'{urun_adi}' reçete ile sipariş listesine eklendi.\n\nBu ilaç için otomatik sipariş önerisi hesaplanmayacak ve minimum miktarı 0 olacaktır.")
+            else:
+                messagebox.showerror("Hata", "Kayıt sırasında bir hata oluştu!")
+        except Exception as e:
+            logger.error(f"Reçete ile sipariş ekleme hatası: {e}")
+            messagebox.showerror("Hata", f"Hata: {e}")
 
     def _satir_secildi(self, event):
         """Satır seçildiğinde detay panelini güncelle"""
@@ -2814,6 +2888,11 @@ class SiparisVermeGUI:
         urun_id = int(item_id.replace('urun_', ''))
         urun = next((u for u in self.tum_veriler if u['UrunId'] == urun_id), None)
         if not urun:
+            return
+
+        # Stok sütununa tıklandıysa kesin listeye 1 adet ekle / miktarı artır
+        if column_id == 'Stok':
+            self._stok_tiklama_ekle(urun)
             return
 
         # Oneri sütununa tıklandıysa kesin listeye ekle
@@ -3162,6 +3241,39 @@ class SiparisVermeGUI:
         except Exception as e:
             self.status_label.config(text=f"⚠ MF parse hatası: {mf_sart}")
 
+    def _stok_tiklama_ekle(self, urun):
+        """Stok sütununa tıklanınca kesin listeye 1 adet ekle, tekrar tıklanınca 1 artır"""
+        urun_id = urun.get('UrunId')
+        urun_adi = urun.get('UrunAdi', '')[:30]
+
+        # Mevcut listede aynı ürün var mı?
+        for i, mevcut in enumerate(self.kesin_siparis_listesi):
+            if mevcut.get('UrunId') == urun_id:
+                # Var → miktarı 1 artır
+                yeni_miktar = mevcut.get('Miktar', 0) + 1
+                mf = mevcut.get('MF', '')
+                toplam = yeni_miktar
+                if mf and '+' in mf:
+                    try:
+                        parts = mf.split('+')
+                        mf_ek = int(parts[1])
+                        toplam = yeni_miktar + mf_ek
+                    except:
+                        pass
+                mevcut['Miktar'] = yeni_miktar
+                mevcut['Toplam'] = toplam
+                if hasattr(self, 'siparis_db') and self.siparis_db and self.aktif_calisma:
+                    if mevcut.get('db_id'):
+                        self.siparis_db.siparis_guncelle(mevcut['db_id'], miktar=yeni_miktar, toplam=toplam)
+                self._kesin_liste_guncelle()
+                self.status_label.config(text=f"▲ {urun_adi} → {yeni_miktar} adet (stok tıklama +1)")
+                self._kesin_baslik_yanip_son()
+                return
+
+        # Yok → 1 adet olarak ekle
+        self._kesin_listeye_ekle_hizli(urun, 1, '')
+        self.status_label.config(text=f"✓ {urun_adi} → 1 adet kesin listeye eklendi (stok tıklama)")
+
     def _kesin_listeye_ekle_hizli(self, urun, miktar, mf=''):
         """Hızlı kesin listeye ekleme (tek tıklama için)"""
         if miktar <= 0:
@@ -3180,7 +3292,7 @@ class SiparisVermeGUI:
         siparis_data = {
             'UrunId': urun.get('UrunId'),
             'UrunAdi': urun.get('UrunAdi', ''),
-            'Barkod': urun.get('Barkod', ''),
+            'Barkod': urun.get('Barkod') or '',
             'Miktar': miktar,
             'MF': mf,
             'Toplam': toplam,
@@ -3200,6 +3312,7 @@ class SiparisVermeGUI:
                 self._kesin_liste_guncelle()
                 urun_adi = urun.get('UrunAdi', '')[:25]
                 self.status_label.config(text=f"⚠ {urun_adi} zaten listede - güncellendi ({miktar} ad. {mf})")
+                self._kesin_baslik_yanip_son()
                 return
 
         # Yeni ekleme
@@ -3211,6 +3324,21 @@ class SiparisVermeGUI:
         self.kesin_siparis_listesi.append(siparis_data)
         self._kesin_liste_guncelle()
         self._calisma_bilgisini_guncelle()
+        self._kesin_baslik_yanip_son()
+
+    def _kesin_baslik_yanip_son(self, tekrar=0):
+        """Kesin sipariş başlığını kırmızı yanıp söndür"""
+        if tekrar >= 6:
+            # Son durumda orijinal renge dön
+            self.kesin_baslik_label.config(bg=self.R_SUCCESS)
+            return
+
+        if tekrar % 2 == 0:
+            self.kesin_baslik_label.config(bg='#D32F2F')
+        else:
+            self.kesin_baslik_label.config(bg=self.R_SUCCESS)
+
+        self.parent.after(150, lambda: self._kesin_baslik_yanip_son(tekrar + 1))
 
     def _mevcut_stok_fazlaligi_hesapla(self, mevcut_stok: int, aylik_ort: float,
                                         maliyet: float, faiz_yillik: float, depo_vade: int) -> dict:
@@ -3229,7 +3357,7 @@ class SiparisVermeGUI:
         """
         bugun = date.today()
         ay_son_gun = calendar.monthrange(bugun.year, bugun.month)[1]
-        ay_sonuna_kalan = ay_son_gun - bugun.day
+        ay_sonuna_kalan = ay_son_gun - bugun.day + 1  # Bugünü de say
 
         if ay_sonuna_kalan <= 0 or aylik_ort <= 0:
             return {'fazla_adet': 0, 'fazla_maliyet': 0, 'ay_sonu_gun': 0}
@@ -4192,7 +4320,7 @@ class SiparisVermeGUI:
         siparis_data = {
             'UrunId': urun['UrunId'],
             'UrunAdi': urun.get('UrunAdi', ''),
-            'Barkod': urun.get('Barkod', ''),
+            'Barkod': urun.get('Barkod') or '',
             'Miktar': miktar,
             'MF': mf,
             'Toplam': toplam,
@@ -4255,7 +4383,7 @@ class SiparisVermeGUI:
                         self.kesin_siparis_listesi.append({
                             'UrunId': urun['UrunId'],
                             'UrunAdi': urun.get('UrunAdi', ''),
-                            'Barkod': urun.get('Barkod', ''),
+                            'Barkod': urun.get('Barkod') or '',
                             'Miktar': miktar,
                             'MF': mf,
                             'Toplam': toplam,
@@ -4479,7 +4607,7 @@ class SiparisVermeGUI:
                     END AS Stok,
                     COALESCE(u.UrunFiyatEtiket, 0) as PSF,
                     COALESCE(u.UrunIskontoKamu, 0) as Iskonto,
-                    (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId AND b.BarkodSilme = 0) as Barkod
+                    (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod
                 FROM Urun u
                 WHERE u.UrunEsdegerId = {esdeger_id}
                 AND u.UrunSilme = 0
@@ -4570,7 +4698,7 @@ class SiparisVermeGUI:
                     muadil = secili_muadil['data']
                     siparis['UrunId'] = muadil['UrunId']
                     siparis['UrunAdi'] = muadil['UrunAdi']
-                    siparis['Barkod'] = muadil.get('Barkod', '')
+                    siparis['Barkod'] = muadil.get('Barkod') or ''
                     siparis['Stok'] = int(muadil.get('Stok') or 0)
 
                 siparis['Miktar'] = yeni_miktar
@@ -5195,6 +5323,17 @@ class SiparisVermeGUI:
         tk.Checkbutton(param_frame, text="Sadece Stoklu İlaçlar", variable=stoklu_var,
                       bg='#E3F2FD', font=('Arial', 10)).pack(side=tk.LEFT, padx=(0, 20))
 
+        # Hesaplama modu seçimi
+        mod_frame = tk.Frame(param_frame, bg='#E8EAF6', relief='ridge', bd=1, padx=5, pady=2)
+        mod_frame.pack(side=tk.LEFT, padx=(0, 20))
+        tk.Label(mod_frame, text="Hesaplama:", font=('Arial', 9, 'bold'),
+                bg='#E8EAF6').pack(side=tk.LEFT, padx=(2, 5))
+        hesaplama_modu_var = tk.StringVar(value='frekans')
+        tk.Radiobutton(mod_frame, text="Frekans Bazlı", variable=hesaplama_modu_var,
+                       value='frekans', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 5))
+        tk.Radiobutton(mod_frame, text="Finansal Başabaş", variable=hesaplama_modu_var,
+                       value='finansal', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 2))
+
         # Durum etiketi
         durum_label = tk.Label(param_frame, text="Hareket süresi içinde stok/satış/alış hareketi olan ilaçlar analiz edilir",
                               font=('Arial', 9), bg='#E3F2FD', fg='#666')
@@ -5277,8 +5416,21 @@ class SiparisVermeGUI:
                     yillik_faiz=faiz_var.get() / 100,
                     sadece_stoklu=stoklu_var.get(),
                     hareket_yili=hareket_yili_var.get(),
+                    hesaplama_modu=hesaplama_modu_var.get(),
                     progress_callback=progress_cb
                 )
+
+                # Reçete ile sipariş listesindeki ilaçları filtrele
+                try:
+                    from siparis_db import get_siparis_db
+                    _recete_db = get_siparis_db()
+                    _recete_listesi = _recete_db.recete_ile_siparis_listesi_getir()
+                    _recete_set = {v['urun_id'] for v in _recete_listesi}
+                    if _recete_set:
+                        analiz_sonuclari = [s for s in analiz_sonuclari if s['UrunId'] not in _recete_set]
+                        logger.info(f"Min stok analizden {len(_recete_set)} reçete ile sipariş ilacı çıkarıldı")
+                except Exception as e:
+                    logger.warning(f"Reçete ile sipariş filtresi uygulanamadı: {e}")
 
                 # Tabloyu temizle ve doldur
                 for item in tree.get_children():

@@ -5740,6 +5740,83 @@ class BotanikBot:
             logger.debug(f"Operation failed: {type(e).__name__}")
         return ""
 
+    def tesis_numarasi_oku(self):
+        """
+        Reçete sayfasından tesis numarasını oku.
+        HTML Element: INPUT id="f:t33", class="inputText"
+
+        UI Automation bu elementin AutomationId'sini görmüyor (boş).
+        MSHTML COM ile Internet Explorer_Server'dan HTML DOM'a erişerek okur.
+
+        Returns:
+            str: Tesis numarası veya "" (boş string)
+        """
+        try:
+            # MSHTML COM ile HTML DOM'a eriş
+            import win32com.client
+            import pythoncom
+
+            # Internet Explorer_Server window handle'ını bul
+            ie_server = self.main_window.child_window(class_name="Internet Explorer_Server")
+            if not ie_server.exists(timeout=0.5):
+                logger.debug("Tesis okuma: Internet Explorer_Server bulunamadı")
+                return ""
+
+            hwnd = ie_server.handle
+
+            # WM_HTML_GETOBJECT mesajı ile IHTMLDocument2 al
+            msg = win32gui.RegisterWindowMessage("WM_HTML_GETOBJECT")
+            result = ctypes.c_long(0)
+            retval = ctypes.windll.user32.SendMessageTimeoutW(
+                hwnd, msg, 0, 0,
+                0x0002,  # SMTO_ABORTIFHUNG
+                2000,    # 2 saniye timeout
+                ctypes.byref(result)
+            )
+
+            if not retval or result.value == 0:
+                logger.debug("Tesis okuma: WM_HTML_GETOBJECT başarısız")
+                return ""
+
+            # IID_IDispatch GUID bytes
+            iid_bytes = bytes(pythoncom.IID_IDispatch)
+            guid = (ctypes.c_byte * 16)(*iid_bytes)
+
+            ptr = ctypes.c_void_p()
+            hr = ctypes.oledll.oleacc.ObjectFromLresult(
+                result.value,
+                ctypes.byref(guid),
+                0,
+                ctypes.byref(ptr)
+            )
+
+            if hr != 0 or not ptr.value:
+                logger.warning(f"Tesis okuma: ObjectFromLresult başarısız (hr=0x{hr:08X})")
+                return ""
+
+            # IDispatch pointer'ından COM object oluştur
+            doc_dispatch = pythoncom.ObjectFromAddress(ptr.value, pythoncom.IID_IDispatch)
+            html_doc = win32com.client.Dispatch(doc_dispatch)
+
+            # getElementById ile f:t33 elementini bul
+            elem = html_doc.getElementById("f:t33")
+            if elem:
+                deger = elem.value
+                if deger:
+                    deger = str(deger).strip()
+                    logger.info(f"Tesis numarası: {deger}")
+                    return deger
+                else:
+                    logger.debug("Tesis okuma: f:t33 değeri boş")
+                    return ""
+            else:
+                logger.warning("Tesis okuma: f:t33 elementi bulunamadı")
+                return ""
+
+        except Exception as e:
+            logger.error(f"Tesis numarası okuma hatası: {type(e).__name__}: {e}")
+            return ""
+
     def tum_butonlari_listele(self):
         """Debug için penceredeki tüm butonları listele"""
         try:
@@ -5860,12 +5937,103 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
 
     # Reçete notu ve uyarı kontrolü KALDIRILDI - retry mekanizması gerektiğinde yapacak
 
-    # ===== ULTRA OPTİMİZE: CONTAINER-BASED + TEK TARAMA =====
-    # Eski yöntem: telefon_kontrolu() + recete_no_ve_kontrol_birlesik() = ~3-4 saniye
-    # Yeni yöntem: recete_sayfasi_hizli_tarama() = ~0.5-1 saniye (CONTAINER BASED)
+    # ===== BİRLEŞİK KONTROL: TESİS + TELEFON + AYNI REÇETE (TEK DÖNGÜ) =====
+    # 1) Yasaklı tesis → atla
+    # 2) Telefon yok → atla
+    # 3) SONRA basıldıktan sonra aynı reçete geldi mi → son reçete kontrolü
     from medula_settings import get_medula_settings
     medula_settings = get_medula_settings()
     telefonsuz_atla = medula_settings.get("telefonsuz_atla", False)
+    yasakli_tesisler = medula_settings.get("yasakli_tesis_numaralari", [])
+    tesis_kontrolu_aktif = (grup == "B" and len(yasakli_tesisler) > 0)
+
+    # Kontrol gerekiyor mu?
+    if tesis_kontrolu_aktif or telefonsuz_atla:
+        atlanan_sayisi = 0
+        max_atlama = 50  # Sonsuz döngü koruması
+        onceki_loop_recete = onceden_okunan_recete_no  # İlk reçete no (varsa)
+        loop_hizli_sonuc = None  # Önceki iterasyondan kalan hızlı tarama sonucu
+
+        while atlanan_sayisi < max_atlama:
+            if should_stop():
+                return (False, None, 0, "Kullanıcı tarafından durduruldu")
+
+            atlama_nedeni = None
+            current_recete = None
+
+            # 1) TESİS KONTROLÜ (hızlı - tek element MSHTML okuma)
+            if tesis_kontrolu_aktif:
+                adim_baslangic = time.time()
+                tesis_no = bot.tesis_numarasi_oku()
+                log_sure("Tesis no okuma", adim_baslangic, "tesis_kontrol")
+
+                if tesis_no and tesis_no in yasakli_tesisler:
+                    atlama_nedeni = f"yasaklı tesis: {tesis_no}"
+
+            # 2) TELEFON KONTROLÜ + REÇETE NO (tek hızlı taramada ikisi birden)
+            if not atlama_nedeni and telefonsuz_atla:
+                adim_baslangic = time.time()
+                hizli_sonuc = bot.recete_sayfasi_hizli_tarama(max_deneme=2, bekleme_suresi=0.15)
+                if hizli_sonuc:
+                    telefon_var = hizli_sonuc['telefon_var']
+                    current_recete = hizli_sonuc.get('recete_no')
+                    loop_hizli_sonuc = hizli_sonuc
+                    log_sure("Telefon+Reçete kontrolü (hızlı)", adim_baslangic, "telefon_kontrol")
+                else:
+                    birlesik_sonuc = bot.recete_telefon_kontrol_birlesik(max_deneme=2, bekleme_suresi=0.2)
+                    telefon_var = birlesik_sonuc['telefon_var']
+                    current_recete = birlesik_sonuc.get('recete_no')
+                    log_sure("Telefon+Reçete kontrolü (fallback)", adim_baslangic, "telefon_kontrol")
+
+                if not telefon_var:
+                    atlama_nedeni = "telefon yok"
+
+            # 3) AYNI REÇETE KONTROLÜ (son reçeteye gelindi mi?)
+            # Telefon kontrolünden gelen reçete no ile karşılaştır - ek okuma yok
+            if not atlama_nedeni and onceki_loop_recete and current_recete:
+                if onceki_loop_recete == current_recete:
+                    # Aynı reçete - doğrulama: 0.5s bekle + tekrar oku
+                    time.sleep(0.5)
+                    dogrulama = bot.recete_sayfasi_hizli_tarama(max_deneme=2, bekleme_suresi=0.2)
+                    dogrulama_recete = dogrulama.get('recete_no') if dogrulama else None
+
+                    if dogrulama_recete and onceki_loop_recete == dogrulama_recete:
+                        if not bot.recete_kaydi_var_mi_kontrol_hizli():
+                            logger.error("❌ Reçete kaydı bulunamadı (son reçete)")
+                            return (False, None, takip_sayisi, "Reçete kaydı bulunamadı")
+                    else:
+                        current_recete = dogrulama_recete
+
+            # Her şey OK - döngüden çık
+            if not atlama_nedeni:
+                if atlanan_sayisi > 0:
+                    logger.info(f"✓ {atlanan_sayisi} reçete atlandı, devam ediliyor")
+                break
+
+            # SONRA butonuna bas
+            atlanan_sayisi += 1
+            logger.info(f"⏭ Reçete atlanıyor ({atlama_nedeni}) [{atlanan_sayisi}]")
+
+            adim_baslangic = time.time()
+            sonra = bot.retry_with_popup_check(
+                lambda: bot.sonra_butonuna_tikla(),
+                "SONRA butonu",
+                max_retries=5
+            )
+            log_sure("Sonra butonu (atlama)", adim_baslangic, "sonra_butonu")
+            if not sonra:
+                return (False, None, takip_sayisi, f"SONRA butonu başarısız ({atlama_nedeni})")
+
+            # Sayfanın yüklenmesi için kısa bekleme
+            time.sleep(0.4)
+
+            onceki_loop_recete = current_recete or onceki_loop_recete
+            # onceden_okunan_recete_no artık geçersiz (yeni sayfadayız)
+            onceden_okunan_recete_no = None
+        else:
+            # max_atlama'ya ulaşıldı
+            logger.error(f"❌ {max_atlama} ardışık reçete atlandı, durduruluyor")
+            return (False, None, takip_sayisi, f"{max_atlama} ardışık reçete atlandı")
 
     # İlaç butonu referansı (hızlı taramadan alınacak)
     ilac_butonu_ref = None
@@ -5873,65 +6041,6 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
     # Reçete numarası zaten GUI'de okunmuşsa tekrar okuma (performans optimizasyonu)
     if onceden_okunan_recete_no:
         medula_recete_no = onceden_okunan_recete_no
-        # Sadece telefon kontrolü yap (eğer telefonsuz_atla açıksa)
-        if telefonsuz_atla:
-            adim_baslangic = time.time()
-            # ★ ÖNCE HIZLI TARAMA DENE (container-based) ★
-            hizli_sonuc = bot.recete_sayfasi_hizli_tarama(max_deneme=2, bekleme_suresi=0.15)
-            if hizli_sonuc:
-                telefon_var = hizli_sonuc['telefon_var']
-                onceki_telefon = hizli_sonuc.get('telefon_degeri')
-                ilac_butonu_ref = hizli_sonuc.get('ilac_butonu')
-                log_sure("Telefon kontrolü (hızlı)", adim_baslangic, "telefon_kontrol")
-            else:
-                # Fallback: Eski yöntem
-                birlesik_sonuc = bot.recete_telefon_kontrol_birlesik(max_deneme=2, bekleme_suresi=0.2)
-                telefon_var = birlesik_sonuc['telefon_var']
-                onceki_telefon = birlesik_sonuc.get('telefon_degeri')
-                log_sure("Telefon kontrolü (fallback)", adim_baslangic, "telefon_kontrol")
-
-            if not telefon_var:
-                logger.info("⏭ Telefon numarası yok, hasta atlanıyor...")
-
-                # ÖNCEKİ DEĞERLER - sayfa değişimi kontrolü için
-                onceki_recete = medula_recete_no
-
-                adim_baslangic = time.time()
-                sonra = bot.retry_with_popup_check(
-                    lambda: bot.sonra_butonuna_tikla(),
-                    "SONRA butonu",
-                    max_retries=5
-                )
-                log_sure("Sonra butonu (telefon yok)", adim_baslangic, "sonra_butonu")
-                if not sonra:
-                    return (False, None, takip_sayisi, "SONRA butonu başarısız (telefon yok)")
-
-                # ===== SAYFA DEĞİŞİM KONTROLÜ =====
-                time.sleep(0.3)
-                # Hızlı tarama ile kontrol
-                yeni_sonuc = bot.recete_sayfasi_hizli_tarama(max_deneme=2, bekleme_suresi=0.15)
-                if not yeni_sonuc:
-                    yeni_sonuc = bot.recete_telefon_kontrol_birlesik(max_deneme=2, bekleme_suresi=0.2)
-                yeni_recete = yeni_sonuc.get('recete_no') if yeni_sonuc else None
-                yeni_telefon = yeni_sonuc.get('telefon_degeri') if yeni_sonuc else None
-
-                sayfa_degisti = False
-                if onceki_recete and yeni_recete and onceki_recete != yeni_recete:
-                    sayfa_degisti = True
-                elif onceki_telefon and yeni_telefon and onceki_telefon != yeni_telefon:
-                    sayfa_degisti = True
-                elif not onceki_recete and yeni_recete:
-                    sayfa_degisti = True
-                elif not onceki_telefon and yeni_telefon:
-                    sayfa_degisti = True
-
-                if not sayfa_degisti:
-                    logger.error("❌ SONRA butonuna basıldı ama sayfa değişmedi!")
-                    logger.error(f"   Önceki reçete: {onceki_recete}, Yeni reçete: {yeni_recete}")
-                    return (False, medula_recete_no, takip_sayisi, "Sayfa değişmedi (sonsuz döngü engellendi)")
-
-                logger.info(f"✓ Reçete {recete_sira_no} atlandı (telefon yok)")
-                return (True, None, 0, None)
     else:
         # ★ ULTRA OPTİMİZE: CONTAINER-BASED HIZLI TARAMA ★
         # Reçete no + telefon + ilaç butonu referansı TEK TARAMADA
@@ -5960,56 +6069,6 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
             logger.error("❌ Reçete kaydı bulunamadı")
             log_recete_baslik()
             return (False, medula_recete_no, takip_sayisi, "Reçete kaydı bulunamadı")
-
-        # Telefonsuz atla kontrolü
-        if telefonsuz_atla and not telefon_var:
-            logger.info("⏭ Telefon numarası yok, hasta atlanıyor...")
-
-            # ÖNCEKİ DEĞERLER - sayfa değişimi kontrolü için
-            onceki_recete = medula_recete_no
-            onceki_telefon = birlesik_sonuc.get('telefon_degeri')
-
-            adim_baslangic = time.time()
-            sonra = bot.retry_with_popup_check(
-                lambda: bot.sonra_butonuna_tikla(),
-                "SONRA butonu",
-                max_retries=5
-            )
-            log_sure("Sonra butonu (telefon yok)", adim_baslangic, "sonra_butonu")
-            if not sonra:
-                return (False, medula_recete_no, takip_sayisi, "SONRA butonu başarısız (telefon yok)")
-
-            # ===== SAYFA DEĞİŞİM KONTROLÜ =====
-            # SONRA butonuna bastıktan sonra sayfanın gerçekten değişip değişmediğini kontrol et
-            time.sleep(0.3)  # Sayfanın yüklenmesi için kısa bekleme
-            yeni_sonuc = bot.recete_telefon_kontrol_birlesik(max_deneme=2, bekleme_suresi=0.2)
-            yeni_recete = yeni_sonuc.get('recete_no')
-            yeni_telefon = yeni_sonuc.get('telefon_degeri')
-
-            # Sayfa değişmedi mi kontrol et
-            sayfa_degisti = False
-            if onceki_recete and yeni_recete and onceki_recete != yeni_recete:
-                sayfa_degisti = True
-                logger.debug(f"Sayfa değişti: {onceki_recete} → {yeni_recete}")
-            elif onceki_telefon and yeni_telefon and onceki_telefon != yeni_telefon:
-                sayfa_degisti = True
-                logger.debug(f"Telefon değişti: {onceki_telefon} → {yeni_telefon}")
-            elif not onceki_recete and yeni_recete:
-                # Önceki reçete yoktu ama şimdi var - değişmiş demek
-                sayfa_degisti = True
-            elif not onceki_telefon and yeni_telefon:
-                # Önceki telefon yoktu ama şimdi var - değişmiş demek
-                sayfa_degisti = True
-
-            if not sayfa_degisti:
-                # Sayfa değişmedi - muhtemelen bir hata var
-                logger.error("❌ SONRA butonuna basıldı ama sayfa değişmedi!")
-                logger.error(f"   Önceki reçete: {onceki_recete}, Yeni reçete: {yeni_recete}")
-                logger.error(f"   Önceki telefon: {onceki_telefon}, Yeni telefon: {yeni_telefon}")
-                return (False, medula_recete_no, takip_sayisi, "Sayfa değişmedi (sonsuz döngü engellendi)")
-
-            logger.info(f"✓ Reçete {recete_sira_no} atlandı (telefon yok)")
-            return (True, medula_recete_no, 0, None)
 
     log_recete_baslik(medula_recete_no)
 

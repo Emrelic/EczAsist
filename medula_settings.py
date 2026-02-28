@@ -79,6 +79,10 @@ class MedulaSettings:
             # Telefon Kontrolü
             "telefonsuz_atla": False,  # Telefonu olmayan hastaları atla
 
+            # B Grubu Yasaklı Tesis Numaraları
+            # Bu listedeki tesis numaralarından gelen B grubu reçeteler otomatik atlanır
+            "yasakli_tesis_numaralari": [],
+
             # Giriş Yöntemi
             "giris_yontemi": "indeks",  # "indeks" veya "kullanici_adi"
             "kullanici_adi_giris": "",  # Kullanıcı adı ile giriş yapılacaksa buraya yazılır

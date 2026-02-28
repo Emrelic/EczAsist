@@ -217,6 +217,7 @@ class PrimRaporlamaGUI:
         self.tree.tag_configure('kar_yuksek', background='#C8E6C9')  # Yesil
         self.tree.tag_configure('kar_orta', background='#FFF9C4')    # Sari
         self.tree.tag_configure('kar_dusuk', background='#FFCDD2')   # Kirmizi
+        self.tree.tag_configure('alis_tahmini', foreground='#D32F2F')  # Kirmizi yazi - tahmini alis fiyati
         self.tree.tag_configure('toplam', background='#B0BEC5',
                                 font=('Segoe UI', 10, 'bold'))
 
@@ -375,6 +376,7 @@ class PrimRaporlamaGUI:
             indirimler = float(s.get('Indirimler') or 0)
             tutar = float(s.get('Tutar') or 0)
             alis_fiyati = float(s.get('AlisFiyati') or 0)
+            alis_tahmini = int(s.get('AlisTahmini') or 0)
             personel = str(s.get('Personel') or 'ATANMAMIS')
 
             # Tarih formatlama
@@ -412,6 +414,11 @@ class PrimRaporlamaGUI:
 
             barkod = str(s.get('Barkod') or '')
 
+            # Tag listesi: kar rengi + tahmini alis fiyati ise kirmizi yazi
+            tags = [tag]
+            if alis_tahmini:
+                tags.append('alis_tahmini')
+
             self.tree.insert('', 'end', values=(
                 s.get('UrunAdi', '')[:60],
                 barkod,
@@ -421,13 +428,13 @@ class PrimRaporlamaGUI:
                 adet,
                 f"{indirimler:,.2f}",
                 f"{tutar:,.2f}",
-                f"{alis_fiyati:,.2f}" if alis_fiyati > 0 else "-",
+                f"~{alis_fiyati:,.2f}" if alis_tahmini else (f"{alis_fiyati:,.2f}" if alis_fiyati > 0 else "-"),
                 f"{brut_kar:,.2f}" if alis_fiyati > 0 else "-",
                 f"%{brut_kar_yuzde:,.1f}" if alis_fiyati > 0 else "-",
                 f"{altidabirlik:,.2f}" if brut_kar > 0 else "-",
                 f"%{altidabirlik_oran:,.1f}" if altidabirlik > 0 else "-",
                 personel,
-            ), tags=(tag,))
+            ), tags=tuple(tags))
 
             # Toplamlar
             toplam_adet += adet

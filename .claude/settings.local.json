@@ -78,7 +78,8 @@
       "Bash(start:*)",
       "Bash(start \"\" \"zam_arveles.png\")",
       "WebSearch",
-      "WebFetch(domain:www.hangikredi.com)"
+      "WebFetch(domain:www.hangikredi.com)",
+      "Bash(cd:*)"
     ],
     "deny": [],
     "ask": []

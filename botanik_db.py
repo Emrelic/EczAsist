@@ -2093,13 +2093,13 @@ class BotanikDB:
 
         Returns:
             List[Dict]: UrunAdi, UrunId, Etiket, Adet, Indirimler, Tutar,
-                        PrimYuzde, PrimTutar, Personel, PersonelId, Tarih, AlisFiyati
+                        PrimYuzde, PrimTutar, Personel, PersonelId, Tarih, AlisFiyati, AlisTahmini
         """
         personel_filtre_elden = ""
         personel_filtre_recete = ""
         if personel_id is not None:
-            personel_filtre_elden = f"AND ea.RxPersonelId = {int(personel_id)}"
-            personel_filtre_recete = f"AND ra.RxPersonelId = {int(personel_id)}"
+            personel_filtre_elden = f"AND COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ea.RxPersonelId, 0)) = {int(personel_id)}"
+            personel_filtre_recete = f"AND COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ra.RxPersonelId, 0)) = {int(personel_id)}"
 
         sql = f"""
         SELECT * FROM (
@@ -2113,23 +2113,35 @@ class BotanikDB:
                 ei.RIToplam as Tutar,
                 COALESCE(pt.PrimTipTutar3, 0) as PrimYuzde,
                 ei.RIToplam * COALESCE(pt.PrimTipTutar3, 0) / 100.0 as PrimTutar,
-                COALESCE(p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
-                ea.RxPersonelId as PersonelId,
+                COALESCE(pl.PersonelAdiSoyadi, p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
+                COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ea.RxPersonelId, 0), 0) as PersonelId,
                 ea.RxReceteTarihi as Tarih,
                 COALESCE(
                     (SELECT TOP 1 fs.FSMaliyet
                      FROM FaturaSatir fs
                      JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     WHERE fs.FSUrunId = u.UrunId AND fg.FGSilme = 0 AND fs.FSMaliyet > 0
-                     ORDER BY fg.FGFaturaTarihi DESC),
-                    u.UrunIskontoYedek * 1.10
-                ) as AlisFiyati
+                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                     WHERE fs.FSUrunId = u.UrunId
+                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                     ORDER BY fg.FGFaturaTarihi DESC, fg.FGId DESC),
+                    ei.RIEtiketFiyati * 0.80
+                ) as AlisFiyati,
+                CASE WHEN (SELECT TOP 1 1
+                     FROM FaturaSatir fs
+                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                     WHERE fs.FSUrunId = u.UrunId
+                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%') IS NULL THEN 1 ELSE 0 END as AlisTahmini
             FROM EldenIlaclari ei
             JOIN EldenAna ea ON ei.RIRxId = ea.RxId
             JOIN Urun u ON ei.RIUrunId = u.UrunId
             JOIN PrimUrunleri pu ON ei.RIUrunId = pu.PUUrunId AND pu.PUPasif = 0
             LEFT JOIN PrimTip pt ON pu.PUPrimTipId = pt.PrimTipId
             LEFT JOIN Personel p ON ea.RxPersonelId = p.PersonelId
+            LEFT JOIN Logger lg ON lg.LoggerIslemId = ea.RxId AND lg.LoggerIslemTuru = 2 AND lg.LoggerIslemAltTuru = 1
+            LEFT JOIN Personel pl ON lg.LoggerPersonelId = pl.PersonelId
             WHERE ea.RxSilme = 0 AND ei.RISilme = 0
             AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
             AND ea.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
@@ -2147,23 +2159,35 @@ class BotanikDB:
                 ri.RIToplam as Tutar,
                 COALESCE(pt.PrimTipTutar3, 0) as PrimYuzde,
                 ri.RIToplam * COALESCE(pt.PrimTipTutar3, 0) / 100.0 as PrimTutar,
-                COALESCE(p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
-                ra.RxPersonelId as PersonelId,
+                COALESCE(pl.PersonelAdiSoyadi, p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
+                COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ra.RxPersonelId, 0), 0) as PersonelId,
                 ra.RxReceteTarihi as Tarih,
                 COALESCE(
                     (SELECT TOP 1 fs.FSMaliyet
                      FROM FaturaSatir fs
                      JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     WHERE fs.FSUrunId = u.UrunId AND fg.FGSilme = 0 AND fs.FSMaliyet > 0
-                     ORDER BY fg.FGFaturaTarihi DESC),
-                    u.UrunIskontoYedek * 1.10
-                ) as AlisFiyati
+                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                     WHERE fs.FSUrunId = u.UrunId
+                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                     ORDER BY fg.FGFaturaTarihi DESC, fg.FGId DESC),
+                    ri.RIEtiketFiyati * 0.80
+                ) as AlisFiyati,
+                CASE WHEN (SELECT TOP 1 1
+                     FROM FaturaSatir fs
+                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                     WHERE fs.FSUrunId = u.UrunId
+                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%') IS NULL THEN 1 ELSE 0 END as AlisTahmini
             FROM ReceteIlaclari ri
             JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
             JOIN Urun u ON ri.RIUrunId = u.UrunId
             JOIN PrimUrunleri pu ON ri.RIUrunId = pu.PUUrunId AND pu.PUPasif = 0
             LEFT JOIN PrimTip pt ON pu.PUPrimTipId = pt.PrimTipId
             LEFT JOIN Personel p ON ra.RxPersonelId = p.PersonelId
+            LEFT JOIN Logger lg ON lg.LoggerIslemId = ra.RxId AND lg.LoggerIslemTuru = 1 AND lg.LoggerIslemAltTuru = 1
+            LEFT JOIN Personel pl ON lg.LoggerPersonelId = pl.PersonelId
             WHERE ra.RxSilme = 0 AND ri.RISilme = 0
             AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
             AND ra.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
@@ -2181,8 +2205,8 @@ class BotanikDB:
         personel_filtre_elden = ""
         personel_filtre_recete = ""
         if personel_id is not None:
-            personel_filtre_elden = f"AND ea.RxPersonelId = {int(personel_id)}"
-            personel_filtre_recete = f"AND ra.RxPersonelId = {int(personel_id)}"
+            personel_filtre_elden = f"AND COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ea.RxPersonelId, 0)) = {int(personel_id)}"
+            personel_filtre_recete = f"AND COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ra.RxPersonelId, 0)) = {int(personel_id)}"
 
         haric_tipler = "'İlaç', 'Pasif İlaç', 'Serumlar', 'Tıbbi Mamalar', 'İlaç Beraberi'"
 
@@ -2198,22 +2222,34 @@ class BotanikDB:
                 ei.RIToplam as Tutar,
                 0 as PrimYuzde,
                 0 as PrimTutar,
-                COALESCE(p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
-                ea.RxPersonelId as PersonelId,
+                COALESCE(pl.PersonelAdiSoyadi, p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
+                COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ea.RxPersonelId, 0), 0) as PersonelId,
                 ea.RxReceteTarihi as Tarih,
                 COALESCE(
                     (SELECT TOP 1 fs.FSMaliyet
                      FROM FaturaSatir fs
                      JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     WHERE fs.FSUrunId = u.UrunId AND fg.FGSilme = 0 AND fs.FSMaliyet > 0
-                     ORDER BY fg.FGFaturaTarihi DESC),
-                    u.UrunIskontoYedek * 1.10
-                ) as AlisFiyati
+                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                     WHERE fs.FSUrunId = u.UrunId
+                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                     ORDER BY fg.FGFaturaTarihi DESC, fg.FGId DESC),
+                    ei.RIEtiketFiyati * 0.80
+                ) as AlisFiyati,
+                CASE WHEN (SELECT TOP 1 1
+                     FROM FaturaSatir fs
+                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                     WHERE fs.FSUrunId = u.UrunId
+                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%') IS NULL THEN 1 ELSE 0 END as AlisTahmini
             FROM EldenIlaclari ei
             JOIN EldenAna ea ON ei.RIRxId = ea.RxId
             JOIN Urun u ON ei.RIUrunId = u.UrunId
             LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
             LEFT JOIN Personel p ON ea.RxPersonelId = p.PersonelId
+            LEFT JOIN Logger lg ON lg.LoggerIslemId = ea.RxId AND lg.LoggerIslemTuru = 2 AND lg.LoggerIslemAltTuru = 1
+            LEFT JOIN Personel pl ON lg.LoggerPersonelId = pl.PersonelId
             WHERE ea.RxSilme = 0 AND ei.RISilme = 0
             AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
             AND ea.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
@@ -2232,22 +2268,34 @@ class BotanikDB:
                 ri.RIToplam as Tutar,
                 0 as PrimYuzde,
                 0 as PrimTutar,
-                COALESCE(p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
-                ra.RxPersonelId as PersonelId,
+                COALESCE(pl.PersonelAdiSoyadi, p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
+                COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ra.RxPersonelId, 0), 0) as PersonelId,
                 ra.RxReceteTarihi as Tarih,
                 COALESCE(
                     (SELECT TOP 1 fs.FSMaliyet
                      FROM FaturaSatir fs
                      JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     WHERE fs.FSUrunId = u.UrunId AND fg.FGSilme = 0 AND fs.FSMaliyet > 0
-                     ORDER BY fg.FGFaturaTarihi DESC),
-                    u.UrunIskontoYedek * 1.10
-                ) as AlisFiyati
+                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                     WHERE fs.FSUrunId = u.UrunId
+                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                     ORDER BY fg.FGFaturaTarihi DESC, fg.FGId DESC),
+                    ri.RIEtiketFiyati * 0.80
+                ) as AlisFiyati,
+                CASE WHEN (SELECT TOP 1 1
+                     FROM FaturaSatir fs
+                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                     WHERE fs.FSUrunId = u.UrunId
+                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%') IS NULL THEN 1 ELSE 0 END as AlisTahmini
             FROM ReceteIlaclari ri
             JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
             JOIN Urun u ON ri.RIUrunId = u.UrunId
             LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
             LEFT JOIN Personel p ON ra.RxPersonelId = p.PersonelId
+            LEFT JOIN Logger lg ON lg.LoggerIslemId = ra.RxId AND lg.LoggerIslemTuru = 1 AND lg.LoggerIslemAltTuru = 1
+            LEFT JOIN Personel pl ON lg.LoggerPersonelId = pl.PersonelId
             WHERE ra.RxSilme = 0 AND ri.RISilme = 0
             AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
             AND ra.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'

@@ -3128,7 +3128,7 @@ veya sadece reçete numaraları:
             fg='#616161'
         ).grid(row=15, column=0, columnspan=2, pady=(0, 5))
 
-        # Ayırıcı (Pencere Yerleşimi için)
+        # Ayırıcı (Yasaklı Tesis Numaraları için)
         tk.Label(
             medula_frame,
             text="─" * 50,
@@ -3137,6 +3137,97 @@ veya sadece reçete numaraları:
             fg='#90CAF9'
         ).grid(row=16, column=0, columnspan=2, pady=5)
 
+        # B Grubu Yasaklı Tesis Numaraları
+        tk.Label(
+            medula_frame,
+            text="🚫 B Grubu Yasaklı Tesis Numaraları:",
+            font=("Arial", 9, "bold"),
+            bg='#E3F2FD',
+            fg='#D32F2F'
+        ).grid(row=17, column=0, columnspan=2, sticky="w", padx=5, pady=(5, 0))
+
+        tk.Label(
+            medula_frame,
+            text="ℹ Bu listedeki tesislerden gelen B grubu reçeteler tarama sırasında otomatik atlanır.",
+            font=("Arial", 6),
+            bg='#E3F2FD',
+            fg='#616161'
+        ).grid(row=18, column=0, columnspan=2, pady=(0, 3))
+
+        # Tesis ekleme frame
+        tesis_frame = tk.Frame(medula_frame, bg='#E3F2FD')
+        tesis_frame.grid(row=19, column=0, columnspan=2, sticky="ew", padx=5, pady=2)
+
+        tk.Label(
+            tesis_frame,
+            text="Tesis No:",
+            font=("Arial", 8),
+            bg='#E3F2FD',
+            fg='#0D47A1'
+        ).pack(side="left", padx=(0, 5))
+
+        self.tesis_entry = tk.Entry(
+            tesis_frame,
+            font=("Arial", 9),
+            width=15
+        )
+        self.tesis_entry.pack(side="left", padx=(0, 5))
+
+        tk.Button(
+            tesis_frame,
+            text="Ekle",
+            font=("Arial", 8),
+            bg='#4CAF50',
+            fg='white',
+            command=self.yasakli_tesis_ekle,
+            width=6
+        ).pack(side="left", padx=2)
+
+        tk.Button(
+            tesis_frame,
+            text="Sil",
+            font=("Arial", 8),
+            bg='#F44336',
+            fg='white',
+            command=self.yasakli_tesis_sil,
+            width=6
+        ).pack(side="left", padx=2)
+
+        # Yasaklı tesis listesi
+        tesis_liste_frame = tk.Frame(medula_frame, bg='#E3F2FD')
+        tesis_liste_frame.grid(row=20, column=0, columnspan=2, sticky="ew", padx=5, pady=(2, 5))
+
+        self.tesis_listbox = tk.Listbox(
+            tesis_liste_frame,
+            font=("Arial", 9),
+            height=4,
+            width=30,
+            selectmode="single",
+            bg='#FFFFFF',
+            fg='#333333',
+            selectbackground='#2196F3',
+            selectforeground='white'
+        )
+        self.tesis_listbox.pack(side="left", fill="x", expand=True)
+
+        tesis_scrollbar = tk.Scrollbar(tesis_liste_frame, orient="vertical", command=self.tesis_listbox.yview)
+        tesis_scrollbar.pack(side="right", fill="y")
+        self.tesis_listbox.config(yscrollcommand=tesis_scrollbar.set)
+
+        # Mevcut yasaklı tesisleri yükle
+        yasakli_tesisler = self.medula_settings.get("yasakli_tesis_numaralari", [])
+        for tesis in yasakli_tesisler:
+            self.tesis_listbox.insert(tk.END, tesis)
+
+        # Ayırıcı (Pencere Yerleşimi için)
+        tk.Label(
+            medula_frame,
+            text="─" * 50,
+            font=("Arial", 8),
+            bg='#E3F2FD',
+            fg='#90CAF9'
+        ).grid(row=21, column=0, columnspan=2, pady=5)
+
         # Pencere Yerleşimi Seçimi
         tk.Label(
             medula_frame,
@@ -3144,11 +3235,11 @@ veya sadece reçete numaraları:
             font=("Arial", 9, "bold"),
             bg='#E3F2FD',
             fg='#0D47A1'
-        ).grid(row=17, column=0, sticky="w", padx=5, pady=(5, 0))
+        ).grid(row=22, column=0, sticky="w", padx=5, pady=(5, 0))
 
         # Pencere yerleşimi için frame
         yerlesim_frame = tk.Frame(medula_frame, bg='#E3F2FD')
-        yerlesim_frame.grid(row=17, column=1, sticky="w", padx=5, pady=(5, 0))
+        yerlesim_frame.grid(row=22, column=1, sticky="w", padx=5, pady=(5, 0))
 
         self.pencere_yerlesimi_var = tk.StringVar(value=self.medula_settings.get("pencere_yerlesimi", "standart"))
 
@@ -3186,7 +3277,7 @@ veya sadece reçete numaraları:
             bg='#E3F2FD',
             fg='#616161',
             justify="left"
-        ).grid(row=18, column=0, columnspan=2, pady=(0, 5))
+        ).grid(row=23, column=0, columnspan=2, pady=(0, 5))
 
     def create_timing_ayarlari_tab(self, parent):
         """Timing Ayarları sekmesi içeriğini oluştur"""
@@ -4071,6 +4162,57 @@ veya sadece reçete numaraları:
             logger.info(f"✓ Telefon kontrolü ayarı: {durum}")
         else:
             self.log_ekle("❌ Ayar kaydedilemedi")
+
+    def yasakli_tesis_ekle(self):
+        """Yasaklı tesis numarası listesine ekle"""
+        tesis_no = self.tesis_entry.get().strip()
+        if not tesis_no:
+            messagebox.showwarning("Uyarı", "Tesis numarası giriniz!")
+            return
+
+        if not tesis_no.isdigit():
+            messagebox.showwarning("Uyarı", "Tesis numarası sadece rakamlardan oluşmalıdır!")
+            return
+
+        yasakli_tesisler = self.medula_settings.get("yasakli_tesis_numaralari", [])
+
+        if tesis_no in yasakli_tesisler:
+            messagebox.showinfo("Bilgi", f"{tesis_no} zaten listede!")
+            return
+
+        yasakli_tesisler.append(tesis_no)
+        self.medula_settings.set("yasakli_tesis_numaralari", yasakli_tesisler)
+
+        if self.medula_settings.kaydet():
+            self.tesis_listbox.insert(tk.END, tesis_no)
+            self.tesis_entry.delete(0, tk.END)
+            self.log_ekle(f"✓ Yasaklı tesis eklendi: {tesis_no}")
+            logger.info(f"✓ Yasaklı tesis eklendi: {tesis_no}")
+        else:
+            self.log_ekle("❌ Ayar kaydedilemedi")
+
+    def yasakli_tesis_sil(self):
+        """Seçili yasaklı tesis numarasını listeden sil"""
+        secili = self.tesis_listbox.curselection()
+        if not secili:
+            messagebox.showwarning("Uyarı", "Silmek için listeden bir tesis seçiniz!")
+            return
+
+        index = secili[0]
+        tesis_no = self.tesis_listbox.get(index)
+
+        yasakli_tesisler = self.medula_settings.get("yasakli_tesis_numaralari", [])
+
+        if tesis_no in yasakli_tesisler:
+            yasakli_tesisler.remove(tesis_no)
+            self.medula_settings.set("yasakli_tesis_numaralari", yasakli_tesisler)
+
+            if self.medula_settings.kaydet():
+                self.tesis_listbox.delete(index)
+                self.log_ekle(f"✓ Yasaklı tesis silindi: {tesis_no}")
+                logger.info(f"✓ Yasaklı tesis silindi: {tesis_no}")
+            else:
+                self.log_ekle("❌ Ayar kaydedilemedi")
 
     def pencere_yerlesimi_degisti(self):
         """Pencere yerleşimi ayarını kaydet"""
