@@ -2108,42 +2108,65 @@ class BotanikDB:
                 u.UrunAdi, u.UrunId,
                 (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
                 ei.RIEtiketFiyati as Etiket,
-                ei.RIAdet as Adet,
-                COALESCE(ei.RIIskonto, 0) as Indirimler,
-                ei.RIToplam as Tutar,
+                CASE WHEN ISNULL(ei.RIIade, 0) = 1 THEN -ei.RIAdet ELSE ei.RIAdet END as Adet,
+                CASE WHEN ISNULL(ei.RIIade, 0) = 1
+                    THEN -COALESCE(eh.RHIskontoToplam * ei.RIToplam / NULLIF(eh.RHEtiketToplam, 0), 0)
+                    ELSE COALESCE(eh.RHIskontoToplam * ei.RIToplam / NULLIF(eh.RHEtiketToplam, 0), 0)
+                END as Indirimler,
+                CASE WHEN ISNULL(ei.RIIade, 0) = 1 THEN -ei.RIToplam ELSE ei.RIToplam END as Tutar,
                 COALESCE(pt.PrimTipTutar3, 0) as PrimYuzde,
-                ei.RIToplam * COALESCE(pt.PrimTipTutar3, 0) / 100.0 as PrimTutar,
+                CASE WHEN ISNULL(ei.RIIade, 0) = 1 THEN -(ei.RIToplam * COALESCE(pt.PrimTipTutar3, 0) / 100.0) ELSE ei.RIToplam * COALESCE(pt.PrimTipTutar3, 0) / 100.0 END as PrimTutar,
                 COALESCE(pl.PersonelAdiSoyadi, p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
                 COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ea.RxPersonelId, 0), 0) as PersonelId,
                 ea.RxReceteTarihi as Tarih,
+                ISNULL(ei.RIIade, 0) as Iade,
                 COALESCE(
-                    (SELECT TOP 1 fs.FSMaliyet
-                     FROM FaturaSatir fs
-                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
-                     WHERE fs.FSUrunId = u.UrunId
-                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
-                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
-                     ORDER BY fg.FGFaturaTarihi DESC, fg.FGId DESC),
+                    (SELECT TOP 1 Fiyat FROM (
+                        SELECT fs.FSMaliyet as Fiyat, fg.FGFaturaTarihi as Tarih, fg.FGId as Id
+                        FROM FaturaSatir fs
+                        JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                        LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                        WHERE fs.FSUrunId = u.UrunId
+                        AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                        AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                        UNION ALL
+                        SELECT ts.TSUrunFiyat as Fiyat, t.TakasTarihi as Tarih, t.TakasId as Id
+                        FROM TakasSatir ts
+                        JOIN Takas t ON ts.TSTakasId = t.TakasId
+                        WHERE ts.TSUrunId = u.UrunId
+                        AND ts.TSUrunFiyat > 0 AND ts.TSUrunAdedi > 0
+                        AND t.TakasSilme = 0 AND ts.TSSilme = 0
+                        AND t.TakasYonu = 1
+                     ) alis_kaynak ORDER BY Tarih DESC, Id DESC),
                     ei.RIEtiketFiyati * 0.80
                 ) as AlisFiyati,
-                CASE WHEN (SELECT TOP 1 1
-                     FROM FaturaSatir fs
-                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
-                     WHERE fs.FSUrunId = u.UrunId
-                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
-                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%') IS NULL THEN 1 ELSE 0 END as AlisTahmini
+                CASE WHEN (SELECT TOP 1 1 FROM (
+                    SELECT fg.FGFaturaTarihi as Tarih
+                    FROM FaturaSatir fs
+                    JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                    LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                    WHERE fs.FSUrunId = u.UrunId
+                    AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                    AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                    UNION ALL
+                    SELECT t.TakasTarihi as Tarih
+                    FROM TakasSatir ts
+                    JOIN Takas t ON ts.TSTakasId = t.TakasId
+                    WHERE ts.TSUrunId = u.UrunId
+                    AND ts.TSUrunFiyat > 0 AND ts.TSUrunAdedi > 0
+                    AND t.TakasSilme = 0 AND ts.TSSilme = 0
+                    AND t.TakasYonu = 1
+                ) alis_kontrol) IS NULL THEN 1 ELSE 0 END as AlisTahmini
             FROM EldenIlaclari ei
             JOIN EldenAna ea ON ei.RIRxId = ea.RxId
             JOIN Urun u ON ei.RIUrunId = u.UrunId
             JOIN PrimUrunleri pu ON ei.RIUrunId = pu.PUUrunId AND pu.PUPasif = 0
             LEFT JOIN PrimTip pt ON pu.PUPrimTipId = pt.PrimTipId
+            LEFT JOIN EldenHesap eh ON eh.RHRxId = ea.RxId AND eh.RHSilme = 0
             LEFT JOIN Personel p ON ea.RxPersonelId = p.PersonelId
             LEFT JOIN Logger lg ON lg.LoggerIslemId = ea.RxId AND lg.LoggerIslemTuru = 2 AND lg.LoggerIslemAltTuru = 1
             LEFT JOIN Personel pl ON lg.LoggerPersonelId = pl.PersonelId
             WHERE ea.RxSilme = 0 AND ei.RISilme = 0
-            AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
             AND ea.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
             {personel_filtre_elden}
 
@@ -2154,42 +2177,65 @@ class BotanikDB:
                 u.UrunAdi, u.UrunId,
                 (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
                 ri.RIEtiketFiyati as Etiket,
-                ri.RIAdet as Adet,
-                COALESCE(ri.RIIskonto, 0) as Indirimler,
-                ri.RIToplam as Tutar,
+                CASE WHEN ISNULL(ri.RIIade, 0) = 1 THEN -ri.RIAdet ELSE ri.RIAdet END as Adet,
+                CASE WHEN ISNULL(ri.RIIade, 0) = 1
+                    THEN -COALESCE(rh.RHIskontoToplam * ri.RIToplam / NULLIF(rh.RHEtiketToplam, 0), 0)
+                    ELSE COALESCE(rh.RHIskontoToplam * ri.RIToplam / NULLIF(rh.RHEtiketToplam, 0), 0)
+                END as Indirimler,
+                CASE WHEN ISNULL(ri.RIIade, 0) = 1 THEN -ri.RIToplam ELSE ri.RIToplam END as Tutar,
                 COALESCE(pt.PrimTipTutar3, 0) as PrimYuzde,
-                ri.RIToplam * COALESCE(pt.PrimTipTutar3, 0) / 100.0 as PrimTutar,
+                CASE WHEN ISNULL(ri.RIIade, 0) = 1 THEN -(ri.RIToplam * COALESCE(pt.PrimTipTutar3, 0) / 100.0) ELSE ri.RIToplam * COALESCE(pt.PrimTipTutar3, 0) / 100.0 END as PrimTutar,
                 COALESCE(pl.PersonelAdiSoyadi, p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
                 COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ra.RxPersonelId, 0), 0) as PersonelId,
                 ra.RxReceteTarihi as Tarih,
+                ISNULL(ri.RIIade, 0) as Iade,
                 COALESCE(
-                    (SELECT TOP 1 fs.FSMaliyet
-                     FROM FaturaSatir fs
-                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
-                     WHERE fs.FSUrunId = u.UrunId
-                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
-                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
-                     ORDER BY fg.FGFaturaTarihi DESC, fg.FGId DESC),
+                    (SELECT TOP 1 Fiyat FROM (
+                        SELECT fs.FSMaliyet as Fiyat, fg.FGFaturaTarihi as Tarih, fg.FGId as Id
+                        FROM FaturaSatir fs
+                        JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                        LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                        WHERE fs.FSUrunId = u.UrunId
+                        AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                        AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                        UNION ALL
+                        SELECT ts.TSUrunFiyat as Fiyat, t.TakasTarihi as Tarih, t.TakasId as Id
+                        FROM TakasSatir ts
+                        JOIN Takas t ON ts.TSTakasId = t.TakasId
+                        WHERE ts.TSUrunId = u.UrunId
+                        AND ts.TSUrunFiyat > 0 AND ts.TSUrunAdedi > 0
+                        AND t.TakasSilme = 0 AND ts.TSSilme = 0
+                        AND t.TakasYonu = 1
+                     ) alis_kaynak ORDER BY Tarih DESC, Id DESC),
                     ri.RIEtiketFiyati * 0.80
                 ) as AlisFiyati,
-                CASE WHEN (SELECT TOP 1 1
-                     FROM FaturaSatir fs
-                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
-                     WHERE fs.FSUrunId = u.UrunId
-                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
-                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%') IS NULL THEN 1 ELSE 0 END as AlisTahmini
+                CASE WHEN (SELECT TOP 1 1 FROM (
+                    SELECT fg.FGFaturaTarihi as Tarih
+                    FROM FaturaSatir fs
+                    JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                    LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                    WHERE fs.FSUrunId = u.UrunId
+                    AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                    AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                    UNION ALL
+                    SELECT t.TakasTarihi as Tarih
+                    FROM TakasSatir ts
+                    JOIN Takas t ON ts.TSTakasId = t.TakasId
+                    WHERE ts.TSUrunId = u.UrunId
+                    AND ts.TSUrunFiyat > 0 AND ts.TSUrunAdedi > 0
+                    AND t.TakasSilme = 0 AND ts.TSSilme = 0
+                    AND t.TakasYonu = 1
+                ) alis_kontrol) IS NULL THEN 1 ELSE 0 END as AlisTahmini
             FROM ReceteIlaclari ri
             JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
             JOIN Urun u ON ri.RIUrunId = u.UrunId
             JOIN PrimUrunleri pu ON ri.RIUrunId = pu.PUUrunId AND pu.PUPasif = 0
             LEFT JOIN PrimTip pt ON pu.PUPrimTipId = pt.PrimTipId
+            LEFT JOIN ReceteHesap rh ON rh.RHRxId = ra.RxId AND rh.RHSilme = 0
             LEFT JOIN Personel p ON ra.RxPersonelId = p.PersonelId
             LEFT JOIN Logger lg ON lg.LoggerIslemId = ra.RxId AND lg.LoggerIslemTuru = 1 AND lg.LoggerIslemAltTuru = 1
             LEFT JOIN Personel pl ON lg.LoggerPersonelId = pl.PersonelId
             WHERE ra.RxSilme = 0 AND ri.RISilme = 0
-            AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
             AND ra.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
             {personel_filtre_recete}
         ) TumSatislar
@@ -2217,41 +2263,64 @@ class BotanikDB:
                 u.UrunAdi, u.UrunId,
                 (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
                 ei.RIEtiketFiyati as Etiket,
-                ei.RIAdet as Adet,
-                COALESCE(ei.RIIskonto, 0) as Indirimler,
-                ei.RIToplam as Tutar,
+                CASE WHEN ISNULL(ei.RIIade, 0) = 1 THEN -ei.RIAdet ELSE ei.RIAdet END as Adet,
+                CASE WHEN ISNULL(ei.RIIade, 0) = 1
+                    THEN -COALESCE(eh.RHIskontoToplam * ei.RIToplam / NULLIF(eh.RHEtiketToplam, 0), 0)
+                    ELSE COALESCE(eh.RHIskontoToplam * ei.RIToplam / NULLIF(eh.RHEtiketToplam, 0), 0)
+                END as Indirimler,
+                CASE WHEN ISNULL(ei.RIIade, 0) = 1 THEN -ei.RIToplam ELSE ei.RIToplam END as Tutar,
                 0 as PrimYuzde,
                 0 as PrimTutar,
                 COALESCE(pl.PersonelAdiSoyadi, p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
                 COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ea.RxPersonelId, 0), 0) as PersonelId,
                 ea.RxReceteTarihi as Tarih,
+                ISNULL(ei.RIIade, 0) as Iade,
                 COALESCE(
-                    (SELECT TOP 1 fs.FSMaliyet
-                     FROM FaturaSatir fs
-                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
-                     WHERE fs.FSUrunId = u.UrunId
-                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
-                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
-                     ORDER BY fg.FGFaturaTarihi DESC, fg.FGId DESC),
+                    (SELECT TOP 1 Fiyat FROM (
+                        SELECT fs.FSMaliyet as Fiyat, fg.FGFaturaTarihi as Tarih, fg.FGId as Id
+                        FROM FaturaSatir fs
+                        JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                        LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                        WHERE fs.FSUrunId = u.UrunId
+                        AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                        AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                        UNION ALL
+                        SELECT ts.TSUrunFiyat as Fiyat, t.TakasTarihi as Tarih, t.TakasId as Id
+                        FROM TakasSatir ts
+                        JOIN Takas t ON ts.TSTakasId = t.TakasId
+                        WHERE ts.TSUrunId = u.UrunId
+                        AND ts.TSUrunFiyat > 0 AND ts.TSUrunAdedi > 0
+                        AND t.TakasSilme = 0 AND ts.TSSilme = 0
+                        AND t.TakasYonu = 1
+                     ) alis_kaynak ORDER BY Tarih DESC, Id DESC),
                     ei.RIEtiketFiyati * 0.80
                 ) as AlisFiyati,
-                CASE WHEN (SELECT TOP 1 1
-                     FROM FaturaSatir fs
-                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
-                     WHERE fs.FSUrunId = u.UrunId
-                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
-                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%') IS NULL THEN 1 ELSE 0 END as AlisTahmini
+                CASE WHEN (SELECT TOP 1 1 FROM (
+                    SELECT fg.FGFaturaTarihi as Tarih
+                    FROM FaturaSatir fs
+                    JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                    LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                    WHERE fs.FSUrunId = u.UrunId
+                    AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                    AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                    UNION ALL
+                    SELECT t.TakasTarihi as Tarih
+                    FROM TakasSatir ts
+                    JOIN Takas t ON ts.TSTakasId = t.TakasId
+                    WHERE ts.TSUrunId = u.UrunId
+                    AND ts.TSUrunFiyat > 0 AND ts.TSUrunAdedi > 0
+                    AND t.TakasSilme = 0 AND ts.TSSilme = 0
+                    AND t.TakasYonu = 1
+                ) alis_kontrol) IS NULL THEN 1 ELSE 0 END as AlisTahmini
             FROM EldenIlaclari ei
             JOIN EldenAna ea ON ei.RIRxId = ea.RxId
             JOIN Urun u ON ei.RIUrunId = u.UrunId
             LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
+            LEFT JOIN EldenHesap eh ON eh.RHRxId = ea.RxId AND eh.RHSilme = 0
             LEFT JOIN Personel p ON ea.RxPersonelId = p.PersonelId
             LEFT JOIN Logger lg ON lg.LoggerIslemId = ea.RxId AND lg.LoggerIslemTuru = 2 AND lg.LoggerIslemAltTuru = 1
             LEFT JOIN Personel pl ON lg.LoggerPersonelId = pl.PersonelId
             WHERE ea.RxSilme = 0 AND ei.RISilme = 0
-            AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
             AND ea.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
             AND COALESCE(ut.UrunTipAdi, '') NOT IN ({haric_tipler})
             {personel_filtre_elden}
@@ -2263,41 +2332,64 @@ class BotanikDB:
                 u.UrunAdi, u.UrunId,
                 (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
                 ri.RIEtiketFiyati as Etiket,
-                ri.RIAdet as Adet,
-                COALESCE(ri.RIIskonto, 0) as Indirimler,
-                ri.RIToplam as Tutar,
+                CASE WHEN ISNULL(ri.RIIade, 0) = 1 THEN -ri.RIAdet ELSE ri.RIAdet END as Adet,
+                CASE WHEN ISNULL(ri.RIIade, 0) = 1
+                    THEN -COALESCE(rh.RHIskontoToplam * ri.RIToplam / NULLIF(rh.RHEtiketToplam, 0), 0)
+                    ELSE COALESCE(rh.RHIskontoToplam * ri.RIToplam / NULLIF(rh.RHEtiketToplam, 0), 0)
+                END as Indirimler,
+                CASE WHEN ISNULL(ri.RIIade, 0) = 1 THEN -ri.RIToplam ELSE ri.RIToplam END as Tutar,
                 0 as PrimYuzde,
                 0 as PrimTutar,
                 COALESCE(pl.PersonelAdiSoyadi, p.PersonelAdiSoyadi, 'ATANMAMIŞ') as Personel,
                 COALESCE(NULLIF(lg.LoggerPersonelId, -1), NULLIF(ra.RxPersonelId, 0), 0) as PersonelId,
                 ra.RxReceteTarihi as Tarih,
+                ISNULL(ri.RIIade, 0) as Iade,
                 COALESCE(
-                    (SELECT TOP 1 fs.FSMaliyet
-                     FROM FaturaSatir fs
-                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
-                     WHERE fs.FSUrunId = u.UrunId
-                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
-                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
-                     ORDER BY fg.FGFaturaTarihi DESC, fg.FGId DESC),
+                    (SELECT TOP 1 Fiyat FROM (
+                        SELECT fs.FSMaliyet as Fiyat, fg.FGFaturaTarihi as Tarih, fg.FGId as Id
+                        FROM FaturaSatir fs
+                        JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                        LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                        WHERE fs.FSUrunId = u.UrunId
+                        AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                        AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                        UNION ALL
+                        SELECT ts.TSUrunFiyat as Fiyat, t.TakasTarihi as Tarih, t.TakasId as Id
+                        FROM TakasSatir ts
+                        JOIN Takas t ON ts.TSTakasId = t.TakasId
+                        WHERE ts.TSUrunId = u.UrunId
+                        AND ts.TSUrunFiyat > 0 AND ts.TSUrunAdedi > 0
+                        AND t.TakasSilme = 0 AND ts.TSSilme = 0
+                        AND t.TakasYonu = 1
+                     ) alis_kaynak ORDER BY Tarih DESC, Id DESC),
                     ri.RIEtiketFiyati * 0.80
                 ) as AlisFiyati,
-                CASE WHEN (SELECT TOP 1 1
-                     FROM FaturaSatir fs
-                     JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
-                     LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
-                     WHERE fs.FSUrunId = u.UrunId
-                     AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
-                     AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%') IS NULL THEN 1 ELSE 0 END as AlisTahmini
+                CASE WHEN (SELECT TOP 1 1 FROM (
+                    SELECT fg.FGFaturaTarihi as Tarih
+                    FROM FaturaSatir fs
+                    JOIN FaturaGiris fg ON fs.FSFGId = fg.FGId
+                    LEFT JOIN Depo dfl ON fg.FGIlgiliId = dfl.DepoId
+                    WHERE fs.FSUrunId = u.UrunId
+                    AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
+                    AND ISNULL(dfl.DepoAdi, '') NOT LIKE '%düzeltme%'
+                    UNION ALL
+                    SELECT t.TakasTarihi as Tarih
+                    FROM TakasSatir ts
+                    JOIN Takas t ON ts.TSTakasId = t.TakasId
+                    WHERE ts.TSUrunId = u.UrunId
+                    AND ts.TSUrunFiyat > 0 AND ts.TSUrunAdedi > 0
+                    AND t.TakasSilme = 0 AND ts.TSSilme = 0
+                    AND t.TakasYonu = 1
+                ) alis_kontrol) IS NULL THEN 1 ELSE 0 END as AlisTahmini
             FROM ReceteIlaclari ri
             JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
             JOIN Urun u ON ri.RIUrunId = u.UrunId
             LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
+            LEFT JOIN ReceteHesap rh ON rh.RHRxId = ra.RxId AND rh.RHSilme = 0
             LEFT JOIN Personel p ON ra.RxPersonelId = p.PersonelId
             LEFT JOIN Logger lg ON lg.LoggerIslemId = ra.RxId AND lg.LoggerIslemTuru = 1 AND lg.LoggerIslemAltTuru = 1
             LEFT JOIN Personel pl ON lg.LoggerPersonelId = pl.PersonelId
             WHERE ra.RxSilme = 0 AND ri.RISilme = 0
-            AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
             AND ra.RxReceteTarihi BETWEEN '{baslangic}' AND '{bitis}'
             AND COALESCE(ut.UrunTipAdi, '') NOT IN ({haric_tipler})
             {personel_filtre_recete}

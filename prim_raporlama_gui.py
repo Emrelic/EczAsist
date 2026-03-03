@@ -213,10 +213,15 @@ class PrimRaporlamaGUI:
                               command=lambda c=col_id: self._sutun_sirala(c))
             self.tree.column(col_id, width=width, minwidth=40, anchor=anchor)
 
-        # Renk tagleri
-        self.tree.tag_configure('kar_yuksek', background='#C8E6C9')  # Yesil
-        self.tree.tag_configure('kar_orta', background='#FFF9C4')    # Sari
-        self.tree.tag_configure('kar_dusuk', background='#FFCDD2')   # Kirmizi
+        # Renk tagleri - 1/6 prim brut kar % baremine gore 8 kademe
+        self.tree.tag_configure('kar_15_ustu', background='#2E7D32', foreground='white')  # Koyu yesil >=15%
+        self.tree.tag_configure('kar_12_15', background='#4CAF50', foreground='white')     # Orta yesil 12-15%
+        self.tree.tag_configure('kar_10_12', background='#81C784')    # Acik yesil 10-12%
+        self.tree.tag_configure('kar_7_10', background='#C5E1A5')     # Limoni sarimsi yesil 7-10%
+        self.tree.tag_configure('kar_5_7', background='#FFF9C4')      # Sari 5-7%
+        self.tree.tag_configure('kar_4_5', background='#FFE0B2')      # Acik turuncu 4-5%
+        self.tree.tag_configure('kar_0_4', background='#FFB74D')      # Turuncu 0-4%
+        self.tree.tag_configure('kar_negatif', background='#EF5350', foreground='white')   # Kirmizi <0%
         self.tree.tag_configure('alis_tahmini', foreground='#D32F2F')  # Kirmizi yazi - tahmini alis fiyati
         self.tree.tag_configure('toplam', background='#B0BEC5',
                                 font=('Segoe UI', 10, 'bold'))
@@ -257,7 +262,8 @@ class PrimRaporlamaGUI:
         ozet_items = [
             ("satir", "Satir:"),
             ("adet", "Top. Adet:"),
-            ("tutar", "Top. Tutar:"),
+            ("indirim", "Top. İndirim:"),
+            ("tutar", "Net Tutar:"),
             ("brut_kar", "Top. Brut Kar:"),
             ("altidabirlik", "Top. 1/6 Prim:"),
         ]
@@ -365,6 +371,7 @@ class PrimRaporlamaGUI:
 
         # Toplamlar
         toplam_adet = 0
+        toplam_indirim = 0.0
         toplam_tutar = 0.0
         toplam_brut_kar = 0.0
         toplam_altidabirlik = 0.0
@@ -378,6 +385,7 @@ class PrimRaporlamaGUI:
             alis_fiyati = float(s.get('AlisFiyati') or 0)
             alis_tahmini = int(s.get('AlisTahmini') or 0)
             personel = str(s.get('Personel') or 'ATANMAMIS')
+            iade = int(s.get('Iade') or 0)
 
             # Tarih formatlama
             tarih_raw = s.get('Tarih')
@@ -392,53 +400,75 @@ class PrimRaporlamaGUI:
             else:
                 tarih_str = "-"
 
-            # Satis fiyati = Etiket (birim fiyat)
-            satis_fiy = etiket
+            # RIToplam = brut satis tutari (SatisFiy * Adet, indirim ONCESI)
+            # RIIskonto = indirim tutari
+            # Net tutar = RIToplam - RIIskonto (indirim sonrasi gercek gelir)
+            net_tutar = tutar - indirimler
 
-            # Brut kar hesaplama
-            brut_kar = tutar - (alis_fiyati * adet) if alis_fiyati > 0 else 0
-            brut_kar_yuzde = (brut_kar / tutar * 100) if tutar > 0 else 0
+            # Satis fiyati = Indirim sonrasi birim fiyat
+            satis_fiy = (net_tutar / adet) if adet != 0 else etiket
 
-            # Altidabirlik prim = Brut Kar / 6
-            altidabirlik = brut_kar / 6.0 if brut_kar > 0 else 0
-            # 1/6 primin satis tutarina orani
-            altidabirlik_oran = (altidabirlik / tutar * 100) if tutar > 0 and altidabirlik > 0 else 0
-
-            # Renk tagi
-            if brut_kar_yuzde >= 30:
-                tag = 'kar_yuksek'
-            elif brut_kar_yuzde >= 15:
-                tag = 'kar_orta'
+            # Brut kar hesaplama (net tutar uzerinden)
+            brut_kar = net_tutar - (alis_fiyati * adet) if alis_fiyati > 0 else 0
+            if iade:
+                brut_kar_yuzde = (brut_kar / abs(net_tutar) * 100) if net_tutar != 0 else 0
+                altidabirlik = brut_kar / 6.0
+                altidabirlik_oran = (altidabirlik / abs(net_tutar) * 100) if net_tutar != 0 else 0
             else:
-                tag = 'kar_dusuk'
+                brut_kar_yuzde = (brut_kar / net_tutar * 100) if net_tutar > 0 else 0
+                # Altidabirlik prim = Brut Kar / 6
+                altidabirlik = brut_kar / 6.0 if brut_kar > 0 else 0
+                # 1/6 primin satis tutarina orani
+                altidabirlik_oran = (altidabirlik / net_tutar * 100) if net_tutar > 0 and altidabirlik > 0 else 0
+
+            # Renk tagi - 1/6 oran % baremine gore 8 kademe
+            if altidabirlik_oran >= 15:
+                tag = 'kar_15_ustu'
+            elif altidabirlik_oran >= 12:
+                tag = 'kar_12_15'
+            elif altidabirlik_oran >= 10:
+                tag = 'kar_10_12'
+            elif altidabirlik_oran >= 7:
+                tag = 'kar_7_10'
+            elif altidabirlik_oran >= 5:
+                tag = 'kar_5_7'
+            elif altidabirlik_oran >= 4:
+                tag = 'kar_4_5'
+            elif altidabirlik_oran >= 0:
+                tag = 'kar_0_4'
+            else:
+                tag = 'kar_negatif'
 
             barkod = str(s.get('Barkod') or '')
 
             # Tag listesi: kar rengi + tahmini alis fiyati ise kirmizi yazi
             tags = [tag]
-            if alis_tahmini:
+            if alis_tahmini and not iade:
                 tags.append('alis_tahmini')
 
+            urun_adi = f"İADE: {s.get('UrunAdi', '')[:55]}" if iade else s.get('UrunAdi', '')[:60]
+
             self.tree.insert('', 'end', values=(
-                s.get('UrunAdi', '')[:60],
+                urun_adi,
                 barkod,
                 tarih_str,
                 f"{etiket:,.2f}",
                 f"{satis_fiy:,.2f}",
                 adet,
                 f"{indirimler:,.2f}",
-                f"{tutar:,.2f}",
+                f"{net_tutar:,.2f}",
                 f"~{alis_fiyati:,.2f}" if alis_tahmini else (f"{alis_fiyati:,.2f}" if alis_fiyati > 0 else "-"),
                 f"{brut_kar:,.2f}" if alis_fiyati > 0 else "-",
                 f"%{brut_kar_yuzde:,.1f}" if alis_fiyati > 0 else "-",
-                f"{altidabirlik:,.2f}" if brut_kar > 0 else "-",
-                f"%{altidabirlik_oran:,.1f}" if altidabirlik > 0 else "-",
+                f"{altidabirlik:,.2f}" if altidabirlik != 0 else "-",
+                f"%{altidabirlik_oran:,.1f}" if altidabirlik_oran != 0 else "-",
                 personel,
             ), tags=tuple(tags))
 
             # Toplamlar
             toplam_adet += adet
-            toplam_tutar += tutar
+            toplam_indirim += indirimler
+            toplam_tutar += net_tutar
             toplam_brut_kar += brut_kar
             toplam_altidabirlik += altidabirlik
 
@@ -448,13 +478,14 @@ class PrimRaporlamaGUI:
                     'adet': 0, 'tutar': 0.0, 'brut_kar': 0.0, 'altidabirlik': 0.0
                 }
             personel_toplamlari[personel]['adet'] += adet
-            personel_toplamlari[personel]['tutar'] += tutar
+            personel_toplamlari[personel]['tutar'] += net_tutar
             personel_toplamlari[personel]['brut_kar'] += brut_kar
             personel_toplamlari[personel]['altidabirlik'] += altidabirlik
 
         # Ozet guncelle
         self.ozet_labels['satir'].config(text=str(len(sonuclar)))
         self.ozet_labels['adet'].config(text=str(toplam_adet))
+        self.ozet_labels['indirim'].config(text=f"{toplam_indirim:,.2f} TL")
         self.ozet_labels['tutar'].config(text=f"{toplam_tutar:,.2f} TL")
         self.ozet_labels['brut_kar'].config(text=f"{toplam_brut_kar:,.2f} TL")
         self.ozet_labels['altidabirlik'].config(text=f"{toplam_altidabirlik:,.2f} TL")
@@ -661,8 +692,16 @@ class PrimRaporlamaGUI:
                 left=Side(style='thin'), right=Side(style='thin'),
                 top=Side(style='thin'), bottom=Side(style='thin')
             )
-            kar_yuksek_fill = PatternFill(start_color="C8E6C9", end_color="C8E6C9", fill_type="solid")
-            kar_dusuk_fill = PatternFill(start_color="FFCDD2", end_color="FFCDD2", fill_type="solid")
+            # 8 kademe renk (altidabirlik_oran bazli)
+            fill_15_ustu = PatternFill(start_color="2E7D32", end_color="2E7D32", fill_type="solid")   # >=15%
+            fill_12_15 = PatternFill(start_color="4CAF50", end_color="4CAF50", fill_type="solid")      # 12-15%
+            fill_10_12 = PatternFill(start_color="81C784", end_color="81C784", fill_type="solid")      # 10-12%
+            fill_7_10 = PatternFill(start_color="C5E1A5", end_color="C5E1A5", fill_type="solid")       # 7-10%
+            fill_5_7 = PatternFill(start_color="FFF9C4", end_color="FFF9C4", fill_type="solid")        # 5-7%
+            fill_4_5 = PatternFill(start_color="FFE0B2", end_color="FFE0B2", fill_type="solid")        # 4-5%
+            fill_0_4 = PatternFill(start_color="FFB74D", end_color="FFB74D", fill_type="solid")        # 0-4%
+            fill_negatif = PatternFill(start_color="EF5350", end_color="EF5350", fill_type="solid")    # <0%
+            iade_fill = PatternFill(start_color="FFCDD2", end_color="FFCDD2", fill_type="solid")
             toplam_fill = PatternFill(start_color="B0BEC5", end_color="B0BEC5", fill_type="solid")
             toplam_font = Font(bold=True, size=11)
             sayi_align = Alignment(horizontal="right")
@@ -690,6 +729,7 @@ class PrimRaporlamaGUI:
 
             # Toplamlar
             toplam_adet = 0
+            toplam_indirim_xl = 0.0
             toplam_tutar = 0.0
             toplam_brut_kar = 0.0
             toplam_altidabirlik_xl = 0.0
@@ -704,6 +744,7 @@ class PrimRaporlamaGUI:
                 tutar = float(s.get('Tutar') or 0)
                 alis_fiyati = float(s.get('AlisFiyati') or 0)
                 personel = str(s.get('Personel') or 'ATANMAMIS')
+                iade = int(s.get('Iade') or 0)
 
                 # Tarih formatlama
                 tarih_raw = s.get('Tarih')
@@ -718,28 +759,38 @@ class PrimRaporlamaGUI:
                 else:
                     tarih_str = "-"
 
-                satis_fiy = etiket
-                brut_kar = tutar - (alis_fiyati * adet) if alis_fiyati > 0 else 0
-                brut_kar_yuzde = (brut_kar / tutar * 100) if tutar > 0 else 0
-                altidabirlik = brut_kar / 6.0 if brut_kar > 0 else 0
-                altidabirlik_oran = (altidabirlik / tutar * 100) if tutar > 0 and altidabirlik > 0 else 0
+                # RIToplam = brut satis tutari (indirim ONCESI)
+                # RIIskonto = indirim tutari (DB'den)
+                # Net tutar = RIToplam - RIIskonto
+                net_tutar = tutar - indirimler
+                satis_fiy = (net_tutar / adet) if adet != 0 else etiket
+                brut_kar = net_tutar - (alis_fiyati * adet) if alis_fiyati > 0 else 0
+                if iade:
+                    brut_kar_yuzde = (brut_kar / abs(net_tutar) * 100) if net_tutar != 0 else 0
+                    altidabirlik = brut_kar / 6.0
+                    altidabirlik_oran = (altidabirlik / abs(net_tutar) * 100) if net_tutar != 0 else 0
+                else:
+                    brut_kar_yuzde = (brut_kar / net_tutar * 100) if net_tutar > 0 else 0
+                    altidabirlik = brut_kar / 6.0 if brut_kar > 0 else 0
+                    altidabirlik_oran = (altidabirlik / net_tutar * 100) if net_tutar > 0 and altidabirlik > 0 else 0
 
                 barkod_xl = str(s.get('Barkod') or '')
+                urun_adi_xl = f"İADE: {s.get('UrunAdi', '')}" if iade else s.get('UrunAdi', '')
 
                 degerler = [
-                    s.get('UrunAdi', ''),
+                    urun_adi_xl,
                     barkod_xl,
                     tarih_str,
                     round(etiket, 2),
                     round(satis_fiy, 2),
                     adet,
                     round(indirimler, 2),
-                    round(tutar, 2),
+                    round(net_tutar, 2),
                     round(alis_fiyati, 2) if alis_fiyati > 0 else None,
                     round(brut_kar, 2) if alis_fiyati > 0 else None,
                     round(brut_kar_yuzde, 1) if alis_fiyati > 0 else None,
-                    round(altidabirlik, 2) if brut_kar > 0 else None,
-                    round(altidabirlik_oran, 1) if altidabirlik > 0 else None,
+                    round(altidabirlik, 2) if altidabirlik != 0 else None,
+                    round(altidabirlik_oran, 1) if altidabirlik_oran != 0 else None,
                     personel,
                 ]
 
@@ -753,23 +804,43 @@ class PrimRaporlamaGUI:
                         if isinstance(val, (int, float)) and val is not None:
                             cell.number_format = '#,##0.00' if col_idx != 6 else '#,##0'
 
-                # Renk
-                if brut_kar_yuzde >= 30:
-                    for col_idx in range(1, 15):
-                        ws.cell(row=row_idx, column=col_idx).fill = kar_yuksek_fill
-                elif brut_kar_yuzde < 15 and alis_fiyati > 0:
-                    for col_idx in range(1, 15):
-                        ws.cell(row=row_idx, column=col_idx).fill = kar_dusuk_fill
+                # Renk - 8 kademe altidabirlik_oran bazli
+                if iade:
+                    row_fill = iade_fill
+                elif altidabirlik_oran >= 15:
+                    row_fill = fill_15_ustu
+                elif altidabirlik_oran >= 12:
+                    row_fill = fill_12_15
+                elif altidabirlik_oran >= 10:
+                    row_fill = fill_10_12
+                elif altidabirlik_oran >= 7:
+                    row_fill = fill_7_10
+                elif altidabirlik_oran >= 5:
+                    row_fill = fill_5_7
+                elif altidabirlik_oran >= 4:
+                    row_fill = fill_4_5
+                elif altidabirlik_oran >= 0:
+                    row_fill = fill_0_4
+                else:
+                    row_fill = fill_negatif
+
+                for col_idx in range(1, 15):
+                    cell = ws.cell(row=row_idx, column=col_idx)
+                    cell.fill = row_fill
+                    # Koyu arka plan icin beyaz yazi
+                    if row_fill in (fill_15_ustu, fill_12_15, fill_negatif):
+                        cell.font = Font(color="FFFFFF")
 
                 toplam_adet += adet
-                toplam_tutar += tutar
+                toplam_indirim_xl += indirimler
+                toplam_tutar += net_tutar
                 toplam_brut_kar += brut_kar
                 toplam_altidabirlik_xl += altidabirlik
 
             # Toplam satiri
             toplam_row = len(self.rapor_verileri) + 3
             toplam_degerler = [
-                "TOPLAM", None, None, None, None, toplam_adet, None,
+                "TOPLAM", None, None, None, None, toplam_adet, round(toplam_indirim_xl, 2),
                 round(toplam_tutar, 2), None, round(toplam_brut_kar, 2), None,
                 round(toplam_altidabirlik_xl, 2), None, None
             ]
