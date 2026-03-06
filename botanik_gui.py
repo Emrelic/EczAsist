@@ -1043,6 +1043,7 @@ class BotanikGUI:
         }
 
         self.grup_labels = {}
+        self.grup_rapor_kontrol_labels = {}  # Rapor kontrol reçete labelları
         self.grup_buttons = {}
         self.grup_x_buttons = {}
         self.grup_stat_labels = {}  # Aylık istatistik labelları
@@ -1092,19 +1093,37 @@ class BotanikGUI:
             middle_frame.pack(side="left", fill="both", expand=True, padx=5)
             middle_frame.bind("<Button-1>", lambda e, g=grup: self.grup_secildi_click(g))
 
+            # Labels container (iki satırlı: ilaç takip + rapor kontrol)
+            labels_container = tk.Frame(middle_frame, bg="#E8F5E9")
+            labels_container.pack(side="left", fill="both", expand=True)
+            labels_container.bind("<Button-1>", lambda e, g=grup: self.grup_secildi_click(g))
+            self.grup_frames[grup]['widgets'].append(labels_container)
+
             recete_label = tk.Label(
-                middle_frame,
+                labels_container,
                 text="—",
                 font=("Arial", 10),
                 bg="#E8F5E9",
                 fg="#2E7D32",
-                width=12,
                 anchor="center"
             )
-            recete_label.pack(side="left", fill="both", expand=True)
+            recete_label.pack(fill="x")
             recete_label.bind("<Button-1>", lambda e, g=grup: self.grup_secildi_click(g))
             self.grup_labels[grup] = recete_label
             self.grup_frames[grup]['widgets'].append(recete_label)
+
+            rapor_kontrol_label = tk.Label(
+                labels_container,
+                text="",
+                font=("Arial", 7),
+                bg="#E8F5E9",
+                fg="#E65100",
+                anchor="center"
+            )
+            rapor_kontrol_label.pack(fill="x")
+            rapor_kontrol_label.bind("<Button-1>", lambda e, g=grup: self.grup_secildi_click(g))
+            self.grup_rapor_kontrol_labels[grup] = rapor_kontrol_label
+            self.grup_frames[grup]['widgets'].append(rapor_kontrol_label)
 
             # X butonu - reçete numarasının hemen yanında
             x_button = tk.Button(
@@ -1384,6 +1403,13 @@ class BotanikGUI:
                 self.grup_labels[grup].config(text=son_recete)
             else:
                 self.grup_labels[grup].config(text="—")
+
+            # Rapor kontrol reçetesini göster
+            rk_recete = self.grup_durumu.son_recete_al_fonksiyon(grup, "rapor_kontrol")
+            if rk_recete:
+                self.grup_rapor_kontrol_labels[grup].config(text=f"RK: {rk_recete}")
+            else:
+                self.grup_rapor_kontrol_labels[grup].config(text="")
 
             # Aylık istatistikleri göster
             self.aylik_istatistik_guncelle(grup)
@@ -2043,6 +2069,7 @@ class BotanikGUI:
         """X butonuna basıldığında grubu sıfırla"""
         self.grup_durumu.grup_sifirla(grup)
         self.grup_labels[grup].config(text="—")
+        self.grup_rapor_kontrol_labels[grup].config(text="")
         self.aylik_istatistik_guncelle(grup)  # Aylık istatistiği de güncelle
         self.log_ekle(f"Grup {grup} sıfırlandı")
         logger.info(f"Grup {grup} sıfırlandı")
@@ -4620,6 +4647,19 @@ veya sadece reçete numaraları:
                         # Hafızaya kaydet
                         self.grup_durumu.son_recete_guncelle(grup, medula_recete_no)
                         self.root.after(0, lambda no=medula_recete_no: self.log_ekle(f"🏷 No: {no}"))
+
+                        # Fonksiyona göre reçete hafızası ve label güncelle
+                        _fa = self.grup_durumu.fonksiyon_ayarlari_al()
+                        _sadece_rk = (
+                            _fa.get("rapor_kontrol_aktif", False) and
+                            not _fa.get("ilac_takip_aktif", True) and
+                            not _fa.get("rapor_toplama_aktif", True)
+                        )
+                        if _sadece_rk:
+                            self.grup_durumu.son_recete_guncelle_fonksiyon(grup, "rapor_kontrol", medula_recete_no)
+                            self.root.after(0, lambda no=medula_recete_no: self.grup_rapor_kontrol_labels[grup].config(text=f"RK: {no}"))
+                        else:
+                            self.grup_durumu.son_recete_guncelle_fonksiyon(grup, "ilac_takip", medula_recete_no)
 
                         # ✅ YENİ: Aynı reçete kontrolü (takılma önleme)
                         if medula_recete_no == onceki_recete_no:
