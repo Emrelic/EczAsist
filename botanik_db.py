@@ -5,10 +5,29 @@ SQL Server üzerinden Botanik veritabanına erişim sağlar
 
 import pyodbc
 import logging
+import json
+import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
 
 logger = logging.getLogger(__name__)
+
+# db_config.json yolu
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_DB_CONFIG_PATH = os.path.join(_SCRIPT_DIR, "db_config.json")
+
+
+def _db_config_yukle():
+    """db_config.json dosyasından bağlantı ayarlarını yükle"""
+    if os.path.exists(_DB_CONFIG_PATH):
+        try:
+            with open(_DB_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            if config.get('kurulum_tamamlandi'):
+                return config
+        except Exception as e:
+            logger.warning("db_config.json okunamadi: %s", e)
+    return None
 
 
 class BotanikDB:
@@ -22,15 +41,19 @@ class BotanikDB:
         'trust_server_certificate': True
     }
 
-    # PRODUCTION ortamı bağlantı ayarları (gerçek sunucu)
-    PRODUCTION_CONFIG = {
-        'server': '192.168.1.120\\BOTANIKSQL',  # IP\Instance formatı
+    # PRODUCTION ortamı - db_config.json varsa oradan okunur, yoksa fallback
+    _FALLBACK_CONFIG = {
+        'server': '192.168.1.120\BOTANIKSQL',
         'database': 'eczane',
-        'trusted_connection': False,  # SQL Server Authentication kullanılacak
+        'trusted_connection': False,
         'user': 'sa',
         'password': '123',
         'trust_server_certificate': True
     }
+
+    # db_config.json varsa onu kullan
+    _harici_config = _db_config_yukle()
+    PRODUCTION_CONFIG = _harici_config if _harici_config else _FALLBACK_CONFIG
 
     # Varsayılan olarak PRODUCTION kullan
     DEFAULT_CONFIG = PRODUCTION_CONFIG

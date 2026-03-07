@@ -1,0 +1,9 @@
+{
+  "server": "192.168.1.120\\BOTANIKSQL",
+  "database": "eczane",
+  "user": "sa",
+  "password": "123",
+  "trusted_connection": false,
+  "trust_server_certificate": true,
+  "kurulum_tamamlandi": true
+}

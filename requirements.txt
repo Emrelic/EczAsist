@@ -12,3 +12,15 @@ pywin32>=300
 
 # Gorsel islemler
 Pillow>=8.0.0
+
+# Veritabani baglantisi
+pyodbc>=4.0.0
+
+# Veri isleme ve raporlama
+openpyxl>=3.0.0
+matplotlib>=3.5.0
+tksheet>=6.0.0
+
+# Depo sorgulama (web scraping)
+selenium>=4.15.0
+webdriver-manager>=4.0.1
