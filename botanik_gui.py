@@ -1286,6 +1286,36 @@ class BotanikGUI:
         )
         self.renkli_recete_label.pack(fill="x")
 
+        # Öğrenme Modu Checkbox
+        ogrenme_frame = tk.Frame(main_frame, bg=self.bg_color)
+        ogrenme_frame.pack(fill="x", pady=(5, 5))
+
+        self.ogrenme_modu_aktif = tk.BooleanVar(value=False)
+        self.ogrenme_modu_checkbox = tk.Checkbutton(
+            ogrenme_frame,
+            text="🎓 Öğrenme Modu",
+            variable=self.ogrenme_modu_aktif,
+            font=("Arial", 9, "bold"),
+            bg=self.bg_color,
+            fg="#00897B",
+            activebackground=self.bg_color,
+            selectcolor="#1e1e1e",
+            command=self._ogrenme_modu_toggle
+        )
+        self.ogrenme_modu_checkbox.pack(fill="x")
+
+        self.ogrenme_modu_label = tk.Label(
+            ogrenme_frame,
+            text="Kapalı - Mesajlı ilaçlarda durmaz",
+            font=("Arial", 7),
+            bg="#455A64",
+            fg="#B0BEC5",
+            anchor="center",
+            padx=5,
+            pady=2
+        )
+        self.ogrenme_modu_label.pack(fill="x")
+
         # Görev Raporları Butonu
         report_btn_frame = tk.Frame(main_frame, bg=self.bg_color)
         report_btn_frame.pack(fill="x", pady=(0, 5))
@@ -1520,6 +1550,65 @@ class BotanikGUI:
             thread.daemon = True
             thread.start()
 
+    def _mevcut_ekrandan_cik(self):
+        """
+        Mevcut ekrandan kademeli kurtarma ile cik.
+        Sira: Geri Don -> Ana Sayfa -> ESC -> taskkill
+        """
+        import pyautogui
+
+        # 1. Geri Don butonu
+        try:
+            self.root.after(0, lambda: self.log_ekle("◀ Geri Don butonu deneniyor..."))
+            if self.bot.geri_don_butonuna_tikla():
+                time.sleep(0.5)
+                self.root.after(0, lambda: self.log_ekle("✓ Geri Don basarili"))
+                return True
+        except Exception as e:
+            logger.debug("Geri Don hatasi: {}".format(e))
+
+        # 2. Ana Sayfa butonu
+        try:
+            self.root.after(0, lambda: self.log_ekle("◀ Ana Sayfa butonu deneniyor..."))
+            if self.bot.ana_sayfaya_don():
+                time.sleep(0.75)
+                self.root.after(0, lambda: self.log_ekle("✓ Ana Sayfa basarili"))
+                return True
+        except Exception as e:
+            logger.debug("Ana Sayfa hatasi: {}".format(e))
+
+        # 3. ESC tuslari
+        try:
+            self.root.after(0, lambda: self.log_ekle("◀ ESC tuslari deneniyor..."))
+            for _ in range(3):
+                pyautogui.press('escape')
+                time.sleep(0.2)
+            time.sleep(0.5)
+            # ESC sonrasi ana sayfaya donmeyi dene
+            try:
+                self.bot.ana_sayfaya_don()
+                time.sleep(0.5)
+            except Exception:
+                pass
+            self.root.after(0, lambda: self.log_ekle("✓ ESC ile kurtarma denendi"))
+            return True
+        except Exception as e:
+            logger.debug("ESC hatasi: {}".format(e))
+
+        # 4. Hicbiri calismadiysa - taskkill + yeniden giris
+        self.root.after(0, lambda: self.log_ekle("⚠ Ekrandan cikilamadi, TASKKILL yapiliyor..."))
+        try:
+            self.bot = None
+            if self.medula_ac_ve_giris_5_deneme_yap():
+                self.root.after(0, lambda: self.log_ekle("✓ MEDULA yeniden baslatildi"))
+                return True
+            else:
+                self.root.after(0, lambda: self.log_ekle("❌ MEDULA yeniden baslatma basarisiz"))
+                return False
+        except Exception as e:
+            logger.error("Taskkill kurtarma hatasi: {}".format(e))
+            return False
+
     def medula_ac_ve_giris_5_deneme_yap(self):
         """
         MEDULA'yı açmayı 5 kere dener. İlk denemede:
@@ -1657,6 +1746,14 @@ class BotanikGUI:
             import pyautogui
 
             MAX_DENEME = 3  # Her işlem için maksimum deneme sayısı
+
+            # Mevcut recete ekranindaysa kademeli kurtarma ile cik
+            if self.bot is not None:
+                self._mevcut_ekrandan_cik()
+                # Pencereyi yenile (elementler degismis olabilir)
+                if self.bot is not None:
+                    self.bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+                    time.sleep(0.5)
 
             # Bot yoksa oluştur ve bağlan
             if self.bot is None:
@@ -1855,6 +1952,14 @@ class BotanikGUI:
         İlk reçete için tam akış (masaüstü simgesi → giriş → reçete listesi → grup seçimi → ilk reçete)
         """
         try:
+            # Mevcut recete ekranindaysa kademeli kurtarma ile cik
+            if self.bot is not None:
+                self._mevcut_ekrandan_cik()
+                # Pencereyi yenile (elementler degismis olabilir)
+                if self.bot is not None:
+                    self.bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+                    time.sleep(0.5)
+
             from botanik_bot import (
                 masaustu_medula_ac,
                 medula_giris_yap,
@@ -1947,7 +2052,7 @@ class BotanikGUI:
             try:
                 if not recete_listesi_ac(self.bot):
                     self.root.after(0, lambda: self.log_ekle("❌ Reçete Listesi açılamadı"))
-                    self.root.after(0, self.hata_sesi_caler)
+                    self.root.after(0, self.hata_sesi_calar)
                     return
             except SistemselHataException as e:
                 self.root.after(0, lambda: self.log_ekle(f"⚠️ SİSTEMSEL HATA: {e}"))
@@ -1964,7 +2069,7 @@ class BotanikGUI:
                     return
                 else:
                     self.root.after(0, lambda: self.log_ekle("❌ MEDULA yeniden başlatma başarısız!"))
-                    self.root.after(0, self.hata_sesi_caler)
+                    self.root.after(0, self.hata_sesi_calar)
                     self.root.after(0, self.gorevi_bitir)
                     return
 
@@ -4259,6 +4364,26 @@ veya sadece reçete numaraları:
         else:
             self.log_ekle("❌ Ayar kaydedilemedi")
 
+    def _ogrenme_modu_toggle(self):
+        """Öğrenme modu checkbox değiştiğinde"""
+        if self.ogrenme_modu_aktif.get():
+            self.ogrenme_modu_label.config(
+                text="Aktif - Mesajlı ilaçlarda durup soracak",
+                bg="#00897B", fg="white"
+            )
+            self.log_ekle("🎓 Öğrenme Modu AKTİF - Mesajlı ilaçlarda duracak")
+        else:
+            self.ogrenme_modu_label.config(
+                text="Kapalı - Mesajlı ilaçlarda durmaz",
+                bg="#455A64", fg="#B0BEC5"
+            )
+            self.log_ekle("🎓 Öğrenme Modu KAPALI")
+
+    def ogrenme_modu_basla(self):
+        """Öğrenme modu checkbox aktifse BAŞLAT'a basıldığında otomatik çalışır"""
+        self.ogrenme_modu_aktif.set(True)
+        self._ogrenme_modu_toggle()
+
     def basla(self):
         """Başlat butonuna basıldığında"""
         logger.info(f"basla() çağrıldı: is_running={self.is_running}, secili_grup={self.secili_grup.get()}")
@@ -4951,7 +5076,67 @@ veya sadece reçete numaraları:
                             not fonksiyon_ayarlari.get("rapor_toplama_aktif", True)
                         )
 
-                        if sadece_rapor_kontrol:
+                        # ═══ ÖĞRENME MODU ═══
+                        if self.ogrenme_modu_aktif.get():
+                            from ogrenme_modu import (
+                                ogrenme_modu_reçete_isle,
+                                ogrenme_modu_thread_safe_callback,
+                                OgrenmeModuKayit
+                            )
+
+                            # Renkli reçete kontrol instance
+                            if not self.renkli_recete_kontrol:
+                                from recete_kontrol import get_renkli_recete_kontrol
+                                self.renkli_recete_kontrol = get_renkli_recete_kontrol()
+
+                            # Kullanıcı callback (thread-safe popup)
+                            def _ogrenme_callback(ilac_bilgi):
+                                tip = ilac_bilgi.get('tip', '')
+                                if tip == 'renkli_recete_uyari':
+                                    self.root.after(0, lambda m=ilac_bilgi.get('mesaj', ''): self.log_ekle(f"⚠️ RENKLI: {m}"))
+                                    return "devam"
+                                elif tip == 'mesajli_ilac':
+                                    ilac_adi = ilac_bilgi.get('ilac_adi', '?')
+                                    self.root.after(0, lambda a=ilac_adi: self.log_ekle(f"🎓 Mesajlı ilaç: {a} - popup gösteriliyor..."))
+                                    return ogrenme_modu_thread_safe_callback(self.root, ilac_bilgi)
+                                return "devam"
+
+                            ogrenme_sonuc = ogrenme_modu_reçete_isle(
+                                self.bot, recete_sira,
+                                grup=self.aktif_grup,
+                                session_logger=self.session_logger,
+                                stop_check=lambda: self.stop_requested or not self.is_running,
+                                onceden_okunan_recete_no=medula_recete_no,
+                                renkli_kontrol=self.renkli_recete_kontrol,
+                                kullanici_callback=_ogrenme_callback
+                            )
+
+                            basari = ogrenme_sonuc.get('basari', False)
+                            medula_no = ogrenme_sonuc.get('recete_no')
+                            takip_adet = 0
+
+                            # Öğrenme sonucunu logla
+                            msj_sayi = ogrenme_sonuc.get('mesajli_ilac_sayisi', 0)
+                            doz_sayi = ogrenme_sonuc.get('doz_asimi_sayisi', 0)
+                            toplam = ogrenme_sonuc.get('toplam_ilac', 0)
+                            self.root.after(0, lambda t=toplam, m=msj_sayi, d=doz_sayi: self.log_ekle(
+                                f"🎓 İlaç:{t} Mesajlı:{m} DozAşımı:{d}"))
+
+                            hata_nedeni = ogrenme_sonuc.get('hata')
+
+                        elif sadece_rapor_kontrol:
+                            # Renkli recete kontrol instance yoksa otomatik yukle
+                            if not self.renkli_recete_kontrol:
+                                from recete_kontrol import get_renkli_recete_kontrol
+                                self.renkli_recete_kontrol = get_renkli_recete_kontrol()
+                                if self.renkli_recete_kontrol.pdf_yuklu:
+                                    self.root.after(0, lambda: self.log_ekle(
+                                        "Renkli recete listesi otomatik yuklendi: {} recete".format(
+                                            len(self.renkli_recete_kontrol.pdf_receteler))))
+                                else:
+                                    self.root.after(0, lambda: self.log_ekle(
+                                        "Renkli recete listesi yuklenmemis! Once liste yukleyin."))
+
                             # Sadece renkli reçete kontrolü yap
                             basari, medula_no, sorun_var, hata_nedeni = tek_recete_rapor_kontrol(
                                 self.bot, recete_sira,

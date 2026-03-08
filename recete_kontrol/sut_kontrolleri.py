@@ -2,11 +2,12 @@
 """
 SUT Kontrolleri
 
-4 SUT kuralı için algoritmik ilaç kontrolleri:
+5 SUT kuralı için algoritmik ilaç kontrolleri:
 1. Kombine Antihipertansifler (4.2.12.B) - Monoterapi ibaresi
 2. DPP-4 / SGLT-2 / GLP-1 İnhibitörleri (4.2.38) - Glisemik kontrol
 3. Klopidogrel / Prasugrel / Tikagrelor (4.2.15) - Anjiografi tarihi
 4. Statinler (4.2.28.A) - LDL düzeyi
+5. Fibratlar (4.2.28.B) - Trigliserid düzeyi
 """
 
 import re
@@ -33,6 +34,7 @@ SUT_MADDESI_KATEGORI = {
     '4.2.15.B': 'KLOPIDOGREL',
     '4.2.28': 'STATIN',
     '4.2.28.A': 'STATIN',
+    '4.2.28.B': 'FIBRAT',
 }
 
 # Etkin madde -> kategori eşleştirme (büyük harf, boşluklar düzeltilmiş)
@@ -120,6 +122,12 @@ ETKIN_MADDE_KATEGORI = {
     'EZETIMIB/SIMVASTATIN': 'STATIN',
     'EZETIMIB/ATORVASTATIN': 'STATIN',
     'EZETIMIB/ROSUVASTATIN': 'STATIN',
+
+    # FIBRAT
+    'FENOFIBRAT': 'FIBRAT',
+    'GEMFIBROZIL': 'FIBRAT',
+    'BEZAFIBRAT': 'FIBRAT',
+    'SIPROFIBRAT': 'FIBRAT',
 }
 
 
@@ -188,6 +196,37 @@ def sut_kategorisi_tespit_et(ilac_sonuc: Dict) -> Optional[str]:
 # SUT Kontrol Fonksiyonları (Mesaj metninden algoritmik kontrol)
 # ═══════════════════════════════════════════════════════════════════════
 
+def _tum_metinleri_birlesir(ilac_sonuc: Dict) -> str:
+    """
+    SUT kontrolü için tüm metin kaynaklarını birleştir.
+    Mesaj metni + rapor açıklamaları + tanı bilgileri.
+    """
+    parcalar = []
+
+    # Mesaj metni (İlaç Bilgi penceresinden)
+    mesaj = ilac_sonuc.get('mesaj_metni')
+    if mesaj:
+        parcalar.append(mesaj)
+
+    # Rapor açıklamaları
+    aciklamalar = ilac_sonuc.get('rapor_aciklamalari', [])
+    if aciklamalar:
+        parcalar.extend(aciklamalar)
+
+    # Tanı bilgileri
+    tani_bilgileri = ilac_sonuc.get('rapor_tani_bilgileri', [])
+    for tani in tani_bilgileri:
+        sut_kodu = tani.get('sut_kodu', '')
+        if sut_kodu:
+            parcalar.append(sut_kodu)
+        for icd in tani.get('icd_kodlari', []):
+            adi = icd.get('adi', '')
+            if adi:
+                parcalar.append(adi)
+
+    return " ".join(parcalar)
+
+
 def _mesaj_icinde_ara(mesaj_metni: str, aranacak_kelimeler: List[str]) -> bool:
     """Mesaj metni içinde anahtar kelimeleri ara."""
     if not mesaj_metni:
@@ -203,21 +242,19 @@ def kontrol_kombine_antihipertansif(ilac_sonuc: Dict) -> KontrolRaporu:
     Raporda "monoterapi ile hasta kan basıncının yeteri kadar
     kontrol altına alınamadığı" ibaresi olmalı.
     """
-    mesaj = ilac_sonuc.get('mesaj_metni', '')
-
-    # Mesaj metninde monoterapi ibaresini ara
-    monoterapi_kelimeleri = ['monoterapi']
-    kontrol_altina = ['kontrol altına alına']
-    kan_basinci = ['kan basıncı']
+    tum_metin = _tum_metinleri_birlesir(ilac_sonuc)
 
     bulundu = False
-    if mesaj:
-        mesaj_lower = mesaj.lower()
+    if tum_metin:
+        metin_lower = tum_metin.lower()
         # "monoterapi" kelimesi yeterli bir gösterge
-        if 'monoterapi' in mesaj_lower:
+        if 'monoterapi' in metin_lower:
             bulundu = True
         # veya "tek ilaç tedavisi" ibaresi
-        elif 'tek ilaç' in mesaj_lower and 'yeter' in mesaj_lower:
+        elif 'tek ilaç' in metin_lower and 'yeter' in metin_lower:
+            bulundu = True
+        # veya "kan basıncı" + "kontrol" ibaresi
+        elif 'kan basıncı' in metin_lower and 'kontrol' in metin_lower:
             bulundu = True
 
     if bulundu:
@@ -243,17 +280,20 @@ def kontrol_diyabet_dpp4_sglt2(ilac_sonuc: Dict) -> KontrolRaporu:
     Raporda "metformin ve sülfonilürelerin yeterli/maksimum dozlarında
     yeterli glisemik kontrol/yanıt sağlanamaması" ibaresi olmalı.
     """
-    mesaj = ilac_sonuc.get('mesaj_metni', '')
+    tum_metin = _tum_metinleri_birlesir(ilac_sonuc)
 
     bulundu = False
-    if mesaj:
-        mesaj_lower = mesaj.lower()
+    if tum_metin:
+        metin_lower = tum_metin.lower()
         # metformin VE sülfonilüre ibareleri
-        metformin_var = 'metformin' in mesaj_lower
-        sulfonilure_var = 'sülfonilüre' in mesaj_lower or 'sulfonilurea' in mesaj_lower or 'sülfonilure' in mesaj_lower
-        glisemik_var = 'glisemik' in mesaj_lower or 'kan şekeri' in mesaj_lower
+        metformin_var = 'metformin' in metin_lower
+        sulfonilure_var = 'sülfonilüre' in metin_lower or 'sulfonilurea' in metin_lower or 'sülfonilure' in metin_lower
+        glisemik_var = 'glisemik' in metin_lower or 'kan şekeri' in metin_lower or 'hba1c' in metin_lower
 
         if metformin_var and (sulfonilure_var or glisemik_var):
+            bulundu = True
+        # Sadece glisemik kontrol ifadesi de yeterli olabilir
+        elif glisemik_var and ('yeter' in metin_lower or 'sağlana' in metin_lower):
             bulundu = True
 
     if bulundu:
@@ -278,21 +318,23 @@ def kontrol_klopidogrel(ilac_sonuc: Dict) -> KontrolRaporu:
 
     Raporda anjiografi tarihi bulunmalı (belirli süre içinde yapılmış olmalı).
     """
-    mesaj = ilac_sonuc.get('mesaj_metni', '')
+    tum_metin = _tum_metinleri_birlesir(ilac_sonuc)
 
     bulundu = False
     tarih_bilgisi = None
-    if mesaj:
-        mesaj_lower = mesaj.lower()
-        anjiografi_var = 'anjio' in mesaj_lower or 'angiografi' in mesaj_lower or 'koroner' in mesaj_lower
-        stent_var = 'stent' in mesaj_lower
-        akut_koroner = 'akut koroner' in mesaj_lower
+    if tum_metin:
+        metin_lower = tum_metin.lower()
+        anjiografi_var = 'anjio' in metin_lower or 'angiografi' in metin_lower or 'koroner' in metin_lower
+        stent_var = 'stent' in metin_lower
+        akut_koroner = 'akut koroner' in metin_lower
+        bypass_var = 'bypass' in metin_lower or 'kabg' in metin_lower
+        perkutan_var = 'perkütan' in metin_lower or 'perkutan' in metin_lower
 
-        if anjiografi_var or stent_var or akut_koroner:
+        if anjiografi_var or stent_var or akut_koroner or bypass_var or perkutan_var:
             bulundu = True
 
             # Tarih formatı ara (GG.AA.YYYY veya GG/AA/YYYY)
-            tarih_match = re.findall(r'\d{2}[./]\d{2}[./]\d{4}', mesaj)
+            tarih_match = re.findall(r'\d{2}[./]\d{2}[./]\d{4}', tum_metin)
             if tarih_match:
                 tarih_bilgisi = tarih_match
 
@@ -326,19 +368,20 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
     - Diyabet/KAH: LDL >= 100 mg/dL
     - Çok yüksek risk: LDL >= 70 mg/dL (bazı durumlar)
     """
-    mesaj = ilac_sonuc.get('mesaj_metni', '')
+    tum_metin = _tum_metinleri_birlesir(ilac_sonuc)
 
     bulundu = False
     ldl_degeri = None
-    if mesaj:
-        mesaj_lower = mesaj.lower()
-        ldl_var = 'ldl' in mesaj_lower
+    if tum_metin:
+        metin_lower = tum_metin.lower()
+        ldl_var = 'ldl' in metin_lower
+        kolesterol_var = 'kolesterol' in metin_lower
 
-        if ldl_var:
+        if ldl_var or kolesterol_var:
             bulundu = True
 
             # LDL değeri ara (sayısal)
-            ldl_match = re.findall(r'ldl[^0-9]*(\d+)', mesaj_lower)
+            ldl_match = re.findall(r'ldl[^0-9]*(\d+)', metin_lower)
             if ldl_match:
                 try:
                     ldl_degeri = int(ldl_match[0])
@@ -368,6 +411,57 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
         )
 
 
+def kontrol_fibrat(ilac_sonuc: Dict) -> KontrolRaporu:
+    """
+    SUT 4.2.28.B - Fibrat Kontrol
+
+    Raporda trigliserid düzeyi belirtilmiş olmalı.
+    SUT'a göre:
+    - Trigliserid >= 500 mg/dL VEYA
+    - Trigliserid >= 200 mg/dL + DM/KAH/PAH/MI/İnme
+    """
+    tum_metin = _tum_metinleri_birlesir(ilac_sonuc)
+
+    bulundu = False
+    tg_degeri = None
+    if tum_metin:
+        metin_lower = tum_metin.lower()
+        tg_var = 'trigliserid' in metin_lower or 'trigliserit' in metin_lower or 'tg ' in metin_lower or 'tg:' in metin_lower
+
+        if tg_var:
+            bulundu = True
+
+            # TG değeri ara (sayısal)
+            tg_match = re.findall(r'(?:trigliserid|trigliserit|tg)[^0-9]*(\d+)', metin_lower)
+            if tg_match:
+                try:
+                    tg_degeri = int(tg_match[0])
+                except ValueError:
+                    pass
+
+    if bulundu:
+        detay = {
+            'aranan': 'Trigliserid düzeyi',
+            'bulundu': True,
+            'tg_degeri': tg_degeri
+        }
+        mesaj_text = f'SUT kuralı mesajda mevcut: Trigliserid ibaresi (değer: {tg_degeri})' if tg_degeri else 'SUT kuralı mesajda mevcut: Trigliserid ibaresi'
+
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj=mesaj_text,
+            detaylar=detay,
+            uyari='Raporda trigliserid düzeyi kontrol edilmeli (eşik: 500 veya 200+risk mg/dL)'
+        )
+    else:
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+            mesaj='Trigliserid ibaresi mesaj metninde bulunamadı',
+            detaylar={'aranan': 'trigliserid', 'bulundu': False},
+            uyari='RAPOR KONTROLÜ GEREKLİ: Trigliserid düzeyi raporda olmalı'
+        )
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # Ana Kontrol Fonksiyonu
 # ═══════════════════════════════════════════════════════════════════════
@@ -378,6 +472,7 @@ KATEGORI_KONTROL_FONKSIYONU = {
     'DIYABET_DPP4_SGLT2': kontrol_diyabet_dpp4_sglt2,
     'KLOPIDOGREL': kontrol_klopidogrel,
     'STATIN': kontrol_statin,
+    'FIBRAT': kontrol_fibrat,
 }
 
 KATEGORI_ISIMLERI = {
@@ -385,6 +480,7 @@ KATEGORI_ISIMLERI = {
     'DIYABET_DPP4_SGLT2': 'DPP-4/SGLT-2/GLP-1 (4.2.38)',
     'KLOPIDOGREL': 'Klopidogrel/Prasugrel/Tikagrelor (4.2.15)',
     'STATIN': 'Statin (4.2.28.A)',
+    'FIBRAT': 'Fibrat (4.2.28.B)',
 }
 
 
