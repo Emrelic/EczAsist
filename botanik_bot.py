@@ -4724,6 +4724,46 @@ class BotanikBot:
         except Exception:
             return False
 
+    def genel_duyurular_sayfasi_mi(self):
+        """
+        Genel Duyurular sayfasının açık olup olmadığını kontrol et.
+        Bu sayfa giriş başarılı olduğunda görünür (index.jsp).
+
+        Element: form1:tableExGenelDuyuruList:text2 (SPAN, Name="Genel Duyurular")
+        URL: https://medeczane.sgk.gov.tr/eczane/faces/index.jsp
+
+        Returns:
+            bool: Genel Duyurular sayfası açıksa True
+        """
+        try:
+            # UIA ile "Genel Duyurular" text elementini ara
+            try:
+                gd_element = self.main_window.child_window(
+                    title="Genel Duyurular",
+                    control_type="Text"
+                )
+                if gd_element.exists(timeout=0.3):
+                    logger.info("✓ Genel Duyurular sayfası tespit edildi (UIA)")
+                    return True
+            except Exception:
+                pass
+
+            # MSHTML/DOM ile kontrol (yedek)
+            try:
+                doc = self._get_html_document(timeout=0.5)
+                if doc:
+                    elem = doc.getElementById("form1:tableExGenelDuyuruList:text2")
+                    if elem:
+                        logger.info("✓ Genel Duyurular sayfası tespit edildi (DOM)")
+                        return True
+            except Exception:
+                pass
+
+            return False
+
+        except Exception:
+            return False
+
     def giris_butonuna_tikla(self):
         """
         Ana penceredeki WinForms 'Giriş' butonuna tıkla
@@ -8586,6 +8626,22 @@ def tek_recete_rapor_kontrol(bot, recete_sira_no, grup="", session_logger=None, 
         try:
             doz_rapor = sadece_doz_kontrolu(bot, session_logger, stop_check)
 
+            # İlaç tablosunda hiç satır bulunamadıysa sayfa düşmüş olabilir
+            if doz_rapor['toplam_ilac'] == 0:
+                logger.warning(f"⚠ İlaç tablosunda satır bulunamadı - sayfa düşmüş olabilir!")
+                # Çıkış butonu kontrolü ile sayfa durumunu doğrula
+                try:
+                    if not bot.cikis_butonu_var_mi():
+                        logger.error("❌ Çıkış butonu da bulunamadı - MEDULA oturumu düşmüş!")
+                        raise SistemselHataException("MEDULA oturumu düşmüş - ilaç tablosu ve çıkış butonu bulunamadı")
+                    else:
+                        logger.info("Çıkış butonu mevcut - sayfa açık ama ilaç tablosu boş")
+                except SistemselHataException:
+                    raise
+                except Exception as e:
+                    logger.error(f"Çıkış butonu kontrol hatası: {e}")
+                    raise SistemselHataException("MEDULA durumu belirsiz - ilaç tablosu boş ve çıkış butonu kontrol edilemedi")
+
             if doz_rapor['doz_asimi'] > 0:
                 sorun_var = True
                 logger.warning(f"⚠ Reçetede {doz_rapor['doz_asimi']} adet doz aşımı var")
@@ -8593,6 +8649,8 @@ def tek_recete_rapor_kontrol(bot, recete_sira_no, grup="", session_logger=None, 
             if doz_rapor['okunamayanlar'] > 0:
                 logger.info(f"⚠ {doz_rapor['okunamayanlar']} ilaç için doz okunamadı")
 
+        except SistemselHataException:
+            raise
         except Exception as e:
             logger.error(f"Doz kontrolü hatası: {e}")
 
@@ -8620,6 +8678,147 @@ def tek_recete_rapor_kontrol(bot, recete_sira_no, grup="", session_logger=None, 
 # =============================================================================
 # İLAÇ TABLOSU KONTROL FONKSİYONLARI
 # =============================================================================
+
+def ilac_tablosu_toplu_oku(bot, max_satir=20):
+    """
+    İlaç tablosundaki tüm satırların temel bilgilerini TEK DOM çağrısı ile oku.
+    Bu fonksiyon satır sayısı + her satırın barkod, ilaç adı, msj, rapor kodu bilgisini döndürür.
+    Ayrıca BotanikEOS'un enjekte ettiği rapor dozu ve etken madde bilgilerini de okur.
+
+    Returns:
+        list[dict]: Her satır için:
+            {
+                'satir': int,
+                'barkod': str,
+                'ilac_adi': str,
+                'msj': str,         # "var" / "yok" / None
+                'rapor_kodu': str,  # "04.05" vb.
+                'eos_rapor_dozu': str,      # "1 Günde 1 x 1,00 - Adet"
+                'eos_arka_plan': str,       # "lightgreen" vb.
+                'eos_doz_uygun': bool,      # True/False/None
+                'eos_sgk_etkin_madde': str, # "SGKF34-FUROSEMID"
+                'eos_sgk_kodu': str,
+                'eos_etkin_madde': str,
+            }
+        Boş liste: Tablo boş veya okunamadı
+    """
+    try:
+        doc = bot._get_html_document(timeout=1)
+        if not doc:
+            logger.warning("ilac_tablosu_toplu_oku: DOM alınamadı")
+            return []
+
+        satirlar = []
+
+        # Önce skyblue satırlarını topla (EOS enjeksiyonları) - satir_index bazlı
+        eos_bilgileri = {}
+        try:
+            rows = doc.getElementsByTagName("TR")
+            skyblue_idx = 0
+            for i in range(rows.length):
+                row = rows.item(i)
+                if not row:
+                    continue
+                style = row.getAttribute("style") or ""
+                if "skyblue" not in style.lower():
+                    continue
+
+                eos = {'rapor_dozu': None, 'arka_plan': None, 'doz_uygun': None,
+                       'sgk_etkin_madde': None, 'sgk_kodu': None, 'etkin_madde': None}
+                cells = row.getElementsByTagName("TD")
+                for j in range(cells.length):
+                    cell = cells.item(j)
+                    if not cell:
+                        continue
+                    cell_text = (cell.innerText or "").strip()
+                    cell_style = cell.getAttribute("style") or ""
+                    if not cell_text:
+                        continue
+
+                    if "background-color" in cell_style.lower() and "x" in cell_text.lower():
+                        eos['rapor_dozu'] = cell_text
+                        sl = cell_style.lower()
+                        if "lightgreen" in sl:
+                            eos['arka_plan'] = "lightgreen"
+                            eos['doz_uygun'] = True
+                        elif "lightcoral" in sl or "red" in sl:
+                            eos['arka_plan'] = "lightcoral"
+                            eos['doz_uygun'] = False
+                        elif "yellow" in sl or "goldenrod" in sl:
+                            eos['arka_plan'] = "yellow"
+                            eos['doz_uygun'] = None
+                    elif "SGK" in cell_text.upper() and "-" in cell_text:
+                        eos['sgk_etkin_madde'] = cell_text
+                        parts = cell_text.split("-", 1)
+                        eos['sgk_kodu'] = parts[0].strip()
+                        eos['etkin_madde'] = parts[1].strip() if len(parts) > 1 else None
+
+                eos_bilgileri[skyblue_idx] = eos
+                skyblue_idx += 1
+        except Exception as e:
+            logger.debug(f"EOS bilgileri okuma hatası: {e}")
+
+        # İlaç satırlarını oku
+        for i in range(max_satir):
+            barkod_elem = doc.getElementById(f"f:tbl1:{i}:t1")
+            if not barkod_elem:
+                break
+            barkod = barkod_elem.getAttribute("value") or ""
+            if not barkod.strip():
+                break
+
+            # İlaç adı
+            ilac_adi = None
+            ilac_elem = doc.getElementById(f"f:tbl1:{i}:t6")
+            if ilac_elem:
+                ilac_adi = (ilac_elem.innerText or ilac_elem.getAttribute("value") or "").strip()
+
+            # Msj sütunu
+            msj = None
+            msj_elem = doc.getElementById(f"f:tbl1:{i}:t11")
+            if msj_elem:
+                msj = (msj_elem.innerText or msj_elem.getAttribute("value") or "").strip()
+
+            # Rapor kodu
+            rapor_kodu = None
+            rapor_elem = doc.getElementById(f"f:tbl1:{i}:t9")
+            if rapor_elem:
+                rapor_kodu = (rapor_elem.innerText or rapor_elem.getAttribute("value") or "").strip()
+                if not rapor_kodu:
+                    rapor_kodu = None
+
+            # EOS bilgileri
+            eos = eos_bilgileri.get(i, {})
+
+            satir = {
+                'satir': i,
+                'barkod': barkod.strip(),
+                'ilac_adi': ilac_adi,
+                'msj': msj,
+                'rapor_kodu': rapor_kodu,
+                'eos_rapor_dozu': eos.get('rapor_dozu'),
+                'eos_arka_plan': eos.get('arka_plan'),
+                'eos_doz_uygun': eos.get('doz_uygun'),
+                'eos_sgk_etkin_madde': eos.get('sgk_etkin_madde'),
+                'eos_sgk_kodu': eos.get('sgk_kodu'),
+                'eos_etkin_madde': eos.get('etkin_madde'),
+            }
+            satirlar.append(satir)
+
+        logger.info(f"İlaç tablosu toplu okuma: {len(satirlar)} satır")
+        for s in satirlar:
+            eos_info = ""
+            if s['eos_rapor_dozu']:
+                renk = s['eos_arka_plan'] or '?'
+                eos_info = f" | EOS: {s['eos_rapor_dozu']} ({renk}) | {s['eos_sgk_etkin_madde'] or ''}"
+            logger.info(f"  [{s['satir']}] {s['ilac_adi'] or '?'} | Rapor: {s['rapor_kodu'] or '-'} | Msj: {s['msj'] or '-'}{eos_info}")
+
+        return satirlar
+
+    except Exception as e:
+        logger.error(f"İlaç tablosu toplu okuma hatası: {e}")
+        return []
+
 
 def ilac_tablosu_satir_sayisi_oku(bot, max_satir=20):
     """
@@ -8805,7 +9004,7 @@ def ilac_bilgi_butonuna_tikla(bot):
         element = bot.find_element_safe(buton_id, timeout=2)
         if element:
             element.click()
-            time.sleep(0.5)  # Pencerenin açılmasını bekle
+            time.sleep(0.3)  # Pencerenin açılmasını bekle
             logger.debug("İlaç Bilgi butonuna tıklandı")
             return True
 
@@ -8821,7 +9020,7 @@ def ilac_bilgi_butonuna_tikla(bot):
                 pattern = elem.GetCurrentPattern(InvokePattern.Pattern)
                 if pattern:
                     pattern.Invoke()
-                    time.sleep(0.5)
+                    time.sleep(0.3)
                     logger.debug("İlaç Bilgi butonuna tıklandı (UIA)")
                     return True
         except:
@@ -8917,22 +9116,50 @@ def ilac_bilgi_penceresi_raporlu_doz_oku(bot):
 
 def ilac_bilgi_penceresi_kapat(bot):
     """
-    İlaç Bilgi penceresini kapat.
+    İlaç Bilgi sayfasından geri dön.
+    İlaç Bilgi sayfası tam sayfa olarak açılır, "Geri Dön" (form1:buttonGeriDon) butonu ile kapatılır.
 
     Returns:
         bool: Başarılı mı
     """
     try:
-        kapat_id = "form1:buttonKapat"
-
-        element = bot.find_element_safe(kapat_id, timeout=2)
+        # Öncelik 1: Geri Dön butonu (İlaç Bilgi tam sayfası için)
+        geri_don_id = "form1:buttonGeriDon"
+        element = bot.find_element_safe(geri_don_id, timeout=2)
         if element:
             element.click()
-            time.sleep(0.3)
-            logger.debug("İlaç Bilgi penceresi kapatıldı")
+            time.sleep(0.15)
+            logger.debug("İlaç Bilgi sayfasından geri dönüldü (form1:buttonGeriDon)")
             return True
 
-        # UI Automation ile dene
+        # Fallback: Eski Kapat butonu (popup ise)
+        kapat_id = "form1:buttonKapat"
+        element = bot.find_element_safe(kapat_id, timeout=1)
+        if element:
+            element.click()
+            time.sleep(0.15)
+            logger.debug("İlaç Bilgi penceresi kapatıldı (form1:buttonKapat)")
+            return True
+
+        # UI Automation ile Geri Dön butonunu dene
+        try:
+            from System.Windows.Automation import AutomationElement, PropertyCondition
+            from System.Windows.Automation import TreeScope
+
+            condition = PropertyCondition(AutomationElement.NameProperty, "Geri Dön")
+            elem = bot.root_element.FindFirst(TreeScope.Descendants, condition)
+            if elem:
+                from System.Windows.Automation import InvokePattern
+                pattern = elem.GetCurrentPattern(InvokePattern.Pattern)
+                if pattern:
+                    pattern.Invoke()
+                    time.sleep(0.15)
+                    logger.debug("İlaç Bilgi sayfasından geri dönüldü (UIA - Geri Dön)")
+                    return True
+        except:
+            pass
+
+        # UI Automation ile Kapat butonunu dene
         try:
             from System.Windows.Automation import AutomationElement, PropertyCondition
             from System.Windows.Automation import TreeScope
@@ -8944,17 +9171,17 @@ def ilac_bilgi_penceresi_kapat(bot):
                 pattern = elem.GetCurrentPattern(InvokePattern.Pattern)
                 if pattern:
                     pattern.Invoke()
-                    time.sleep(0.3)
-                    logger.debug("İlaç Bilgi penceresi kapatıldı (UIA)")
+                    time.sleep(0.15)
+                    logger.debug("İlaç Bilgi penceresi kapatıldı (UIA - Kapat)")
                     return True
         except:
             pass
 
-        logger.warning("Kapat butonu bulunamadı")
+        logger.warning("İlaç Bilgi Geri Dön/Kapat butonu bulunamadı")
         return False
 
     except Exception as e:
-        logger.error(f"Pencere kapatma hatası: {e}")
+        logger.error(f"İlaç Bilgi kapatma hatası: {e}")
         return False
 
 
@@ -9152,7 +9379,7 @@ def rapor_butonuna_tikla(bot):
         element = bot.find_element_safe(buton_id, timeout=2)
         if element:
             element.click()
-            time.sleep(1)  # Rapor penceresinin açılmasını bekle
+            time.sleep(0.5)  # Rapor penceresinin açılmasını bekle
             logger.debug("Rapor butonuna tıklandı")
             return True
 
@@ -9166,7 +9393,7 @@ def rapor_butonuna_tikla(bot):
                 pattern = elem.GetCurrentPattern(InvokePattern.Pattern)
                 if pattern:
                     pattern.Invoke()
-                    time.sleep(1)
+                    time.sleep(0.5)
                     logger.debug("Rapor butonuna tıklandı (UIA)")
                     return True
         except:
@@ -9249,7 +9476,7 @@ def rapor_tedavi_semasi_oku(bot):
 def _rapor_element_oku(bot, element_id):
     """Rapor sayfasındaki bir elementi oku (MSHTML veya UIA)."""
     try:
-        element = bot.find_element_safe(element_id, timeout=1)
+        element = bot.find_element_safe(element_id, timeout=0.5)
         if element:
             text = element.get_attribute("value") or element.text or element.get_attribute("innerText")
             if text:
@@ -9443,7 +9670,7 @@ def rapor_geri_don(bot):
         element = bot.find_element_safe("form1:buttonGeriDon", timeout=2)
         if element:
             element.click()
-            time.sleep(1)
+            time.sleep(0.4)
             logger.debug("Rapor sayfasından geri dönüldü")
             return True
 
@@ -9456,7 +9683,7 @@ def rapor_geri_don(bot):
                 pattern = elem.GetCurrentPattern(InvokePattern.Pattern)
                 if pattern:
                     pattern.Invoke()
-                    time.sleep(1)
+                    time.sleep(0.4)
                     logger.debug("Rapor sayfasından geri dönüldü (UIA)")
                     return True
         except:
@@ -9584,7 +9811,7 @@ def ilac_bilgi_ayaktan_doz_oku(bot):
 
 def ilac_satiri_recete_doz_oku(bot, satir_index):
     """
-    Reçetedeki ilaç dozunu oku.
+    Reçetedeki ilaç dozunu oku - TEK DOM çağrısı ile.
 
     Element ID'leri (ReceteIslem2.jsp):
         - Periyot sayısı: f:tbl1:{row}:t5 (INPUT, "1")
@@ -9592,47 +9819,50 @@ def ilac_satiri_recete_doz_oku(bot, satir_index):
         - Çarpan:          f:tbl1:{row}:t3 (INPUT, "1")
         - Doz:             f:tbl1:{row}:t4 (INPUT, "1,0")
 
-    Args:
-        bot: BotanikBot instance
-        satir_index: Satır indexi
-
     Returns:
-        str: Tedavi şeması formatında (örn: "Günde 1 x 1.0 Adet") veya None
+        str: "Günde 1 x 1.0 Adet" formatında veya None
     """
     try:
         BIRIM_MAP = {'3': 'Günde', '4': 'Haftada', '5': 'Ayda', '6': 'Yılda'}
 
+        # Tek DOM çağrısı ile tüm elementleri oku
+        doc = bot._get_html_document(timeout=0.5)
+        if not doc:
+            return None
+
+        row = satir_index
+        periyot_str = "1"
+        birim_str = "Günde"
+        carpan_str = "1"
+        doz_str = "1,0"
+
         # Periyot sayısı
-        periyot_elem = bot.find_element_safe(f"f:tbl1:{satir_index}:t5", timeout=1)
-        periyot_str = None
-        if periyot_elem:
-            periyot_str = periyot_elem.get_attribute("value") or periyot_elem.text
-        if not periyot_str:
-            periyot_str = "1"
+        elem = doc.getElementById(f"f:tbl1:{row}:t5")
+        if elem:
+            val = elem.getAttribute("value") or elem.innerText or ""
+            if val.strip():
+                periyot_str = val.strip()
 
         # Periyot birimi (SELECT)
-        birim_elem = bot.find_element_safe(f"f:tbl1:{satir_index}:m1", timeout=1)
-        birim_str = "Günde"
-        if birim_elem:
-            birim_val = birim_elem.get_attribute("value")
-            if birim_val and birim_val in BIRIM_MAP:
-                birim_str = BIRIM_MAP[birim_val]
+        elem = doc.getElementById(f"f:tbl1:{row}:m1")
+        if elem:
+            val = elem.getAttribute("value") or ""
+            if val.strip() in BIRIM_MAP:
+                birim_str = BIRIM_MAP[val.strip()]
 
         # Çarpan
-        carpan_elem = bot.find_element_safe(f"f:tbl1:{satir_index}:t3", timeout=1)
-        carpan_str = None
-        if carpan_elem:
-            carpan_str = carpan_elem.get_attribute("value") or carpan_elem.text
-        if not carpan_str:
-            carpan_str = "1"
+        elem = doc.getElementById(f"f:tbl1:{row}:t3")
+        if elem:
+            val = elem.getAttribute("value") or elem.innerText or ""
+            if val.strip():
+                carpan_str = val.strip()
 
         # Doz
-        doz_elem = bot.find_element_safe(f"f:tbl1:{satir_index}:t4", timeout=1)
-        doz_str = None
-        if doz_elem:
-            doz_str = doz_elem.get_attribute("value") or doz_elem.text
-        if not doz_str:
-            doz_str = "1,0"
+        elem = doc.getElementById(f"f:tbl1:{row}:t4")
+        if elem:
+            val = elem.getAttribute("value") or elem.innerText or ""
+            if val.strip():
+                doz_str = val.strip()
 
         # Format: "Günde 1 x 1.0 Adet"
         doz_float = doz_str.replace(',', '.')
@@ -9643,6 +9873,93 @@ def ilac_satiri_recete_doz_oku(bot, satir_index):
 
     except Exception as e:
         logger.error(f"Reçete doz okuma hatası (satır {satir_index}): {e}")
+        return None
+
+
+def ilac_satiri_eos_rapor_dozu_oku(bot, satir_index):
+    """
+    BotanikEOS'un reçete sayfasına enjekte ettiği rapor dozu satırını oku.
+    Her ilaç satırının altında skyblue arka planlı bir TR satır var:
+      - TD (colspan=2): boş
+      - TD: Rapor dozu metni + arka plan rengi (lightgreen/lightcoral/yellow)
+      - TD (colspan=15): SGK kodu-Etkin madde (ör: "SGKF34-FUROSEMID")
+
+    Returns:
+        dict veya None
+    """
+    try:
+        doc = bot._get_html_document(timeout=0.5)
+        if not doc:
+            return None
+
+        sonuc = {
+            'rapor_dozu': None,
+            'arka_plan': None,
+            'doz_uygun': None,
+            'sgk_etkin_madde': None,
+            'sgk_kodu': None,
+            'etkin_madde': None,
+        }
+
+        rows = doc.getElementsByTagName("TR")
+        skyblue_count = 0
+
+        for i in range(rows.length):
+            row = rows.item(i)
+            if not row:
+                continue
+            style = row.getAttribute("style") or ""
+            if "skyblue" not in style.lower():
+                continue
+
+            if skyblue_count == satir_index:
+                cells = row.getElementsByTagName("TD")
+                for j in range(cells.length):
+                    cell = cells.item(j)
+                    if not cell:
+                        continue
+                    cell_text = (cell.innerText or "").strip()
+                    cell_style = cell.getAttribute("style") or ""
+
+                    if not cell_text:
+                        continue
+
+                    # Rapor dozu hücresi (background-color içerir ve doz formatında)
+                    if "background-color" in cell_style.lower() and "x" in cell_text.lower():
+                        sonuc['rapor_dozu'] = cell_text
+
+                        style_lower = cell_style.lower()
+                        if "lightgreen" in style_lower:
+                            sonuc['arka_plan'] = "lightgreen"
+                            sonuc['doz_uygun'] = True
+                        elif "lightcoral" in style_lower or "red" in style_lower:
+                            sonuc['arka_plan'] = "lightcoral"
+                            sonuc['doz_uygun'] = False
+                        elif "yellow" in style_lower or "goldenrod" in style_lower:
+                            sonuc['arka_plan'] = "yellow"
+                            sonuc['doz_uygun'] = None
+                        else:
+                            sonuc['arka_plan'] = "unknown"
+
+                    # SGK kodu + etkin madde hücresi
+                    elif "SGK" in cell_text.upper() and "-" in cell_text:
+                        sonuc['sgk_etkin_madde'] = cell_text
+                        parts = cell_text.split("-", 1)
+                        sonuc['sgk_kodu'] = parts[0].strip()
+                        sonuc['etkin_madde'] = parts[1].strip() if len(parts) > 1 else None
+
+                if sonuc['rapor_dozu'] or sonuc['sgk_etkin_madde']:
+                    logger.info(f"  EOS satır {satir_index}: {sonuc['rapor_dozu']} | "
+                               f"Renk: {sonuc['arka_plan']} | {sonuc['sgk_etkin_madde']}")
+                    return sonuc
+
+                break
+            skyblue_count += 1
+
+        return None
+
+    except Exception as e:
+        logger.debug(f"EOS rapor dozu okuma hatası (satır {satir_index}): {e}")
         return None
 
 
@@ -9781,7 +10098,7 @@ def sadece_doz_kontrolu(bot, session_logger=None, stop_check=None):
                     rapor['detaylar'].append(detay)
                     continue
 
-                time.sleep(0.3)
+                time.sleep(0.1)
 
                 # 3b. Rapor butonuna tıkla
                 if not rapor_butonuna_tikla(bot):
@@ -9792,7 +10109,7 @@ def sadece_doz_kontrolu(bot, session_logger=None, stop_check=None):
                     rapor['detaylar'].append(detay)
                     continue
 
-                time.sleep(1)
+                time.sleep(0.3)
 
                 # 3c. Rapor tedavi şemalarını oku
                 tedavi_semalari = rapor_tedavi_semasi_oku(bot)
@@ -9810,11 +10127,11 @@ def sadece_doz_kontrolu(bot, session_logger=None, stop_check=None):
 
                 # 3e. Geri dön
                 rapor_geri_don(bot)
-                time.sleep(0.5)
+                time.sleep(0.2)
 
                 # 3f. Checkbox'ı kaldır
                 ilac_satiri_checkbox_sec(bot, satir_idx, sec=False)
-                time.sleep(0.2)
+                time.sleep(0.1)
 
                 # 3g. Eşleşen etkin maddeyi bul ve doz karşılaştır
                 rapor['kontrol_edilen'] += 1
@@ -9977,12 +10294,111 @@ def ilac_kontrolu_yap(bot, satir_index, session_logger=None):
         sonuc['rapor_kodu'] = rapor_kodu
         sonuc['raporlu'] = bool(rapor_kodu)
 
+        # 3b. Veritabanından etkin madde sorgusu
+        etkin_maddeler = []
+        if ilac_adi:
+            try:
+                from botanik_db import BotanikDB
+                if not hasattr(ilac_kontrolu_yap, '_db_cache'):
+                    ilac_kontrolu_yap._db_cache = BotanikDB()
+                etkin_maddeler = ilac_kontrolu_yap._db_cache.etkin_madde_getir_ilac_adiyla(ilac_adi)
+                if etkin_maddeler:
+                    sonuc['etkin_madde_db'] = etkin_maddeler
+                    logger.debug(f"  DB etkin madde: {', '.join(etkin_maddeler)}")
+            except Exception as e:
+                logger.debug(f"  Etkin madde sorgu hatası: {e}")
+
         # 4. Raporsuz VE msj="yok" ise atla
         if not sonuc['raporlu'] and msj != "var":
             logger.debug(f"Satır {satir_index}: Raporsuz ve Msj≠var, atlanıyor ({ilac_adi})")
             return sonuc
 
-        # 5. Detaylı kontrol (raporlu VEYA msj="var")
+        # 4b. Raporlu ama mesajsız → İlaç Bilgi'ye girmeden sadece doz kontrolü
+        if sonuc['raporlu'] and msj != "var":
+            logger.info(f"🔍 Satır {satir_index}: {ilac_adi} | Rapor:{rapor_kodu} Msj:{msj} → Sadece doz kontrolü")
+
+            # Reçete dozunu oku (ilaç tablosundan)
+            recete_doz_str = ilac_satiri_recete_doz_oku(bot, satir_index)
+            recete_doz_parsed = _tedavi_semasi_parse(recete_doz_str) if recete_doz_str else None
+
+            if not ilac_satiri_checkbox_sec(bot, satir_index, sec=True):
+                logger.warning(f"Satır {satir_index} checkbox seçilemedi")
+                return sonuc
+
+            time.sleep(0.1)
+
+            try:
+                if rapor_butonuna_tikla(bot):
+                    time.sleep(0.3)
+
+                    tedavi_semalari = rapor_tedavi_semasi_oku(bot)
+                    if tedavi_semalari:
+                        logger.info(f"  Raporda {len(tedavi_semalari)} etkin madde bulundu:")
+                        for ts in tedavi_semalari:
+                            logger.info(f"    {ts['sgk_kodu']} | {ts['etkin_madde']} | {ts['tedavi_semasi']}")
+
+                    rapor_geri_don(bot)
+                    time.sleep(0.2)
+
+                    # Reçete dozu vs rapor dozu karşılaştır
+                    if recete_doz_str:
+                        logger.info(f"  Reçete dozu: {recete_doz_str}")
+
+                    if recete_doz_parsed and tedavi_semalari:
+                        recete_dict = {
+                            'periyot': 1,
+                            'birim': recete_doz_parsed.get('birim', 'Günde'),
+                            'carpan': recete_doz_parsed.get('periyot', 1),
+                            'doz': recete_doz_parsed.get('carpan', 1.0),
+                        }
+
+                        # Etkin maddeye göre doğru tedavi şeması satırını bul
+                        eslesen_ts = None
+                        if etkin_maddeler and len(tedavi_semalari) > 1:
+                            for ts in tedavi_semalari:
+                                rapor_etkin = ts.get('etkin_madde', '').upper()
+                                for em in etkin_maddeler:
+                                    if em.upper() in rapor_etkin or rapor_etkin in em.upper():
+                                        eslesen_ts = ts
+                                        logger.info(f"  Etkin madde eşleşmesi: {em} → {rapor_etkin}")
+                                        break
+                                if eslesen_ts:
+                                    break
+
+                        if not eslesen_ts:
+                            for ts in tedavi_semalari:
+                                if ts.get('tedavi_parsed'):
+                                    eslesen_ts = ts
+                                    break
+
+                        if eslesen_ts:
+                            rapor_doz_parsed = eslesen_ts.get('tedavi_parsed')
+                            if rapor_doz_parsed:
+                                rapor_dict = {
+                                    'periyot': 1,
+                                    'birim': rapor_doz_parsed.get('birim', 'Günde'),
+                                    'carpan': rapor_doz_parsed.get('periyot', 1),
+                                    'doz': rapor_doz_parsed.get('carpan', 1.0),
+                                }
+                                doz_sonuc = _doz_karsilastir(recete_dict, rapor_dict)
+                                sonuc['doz_uygun'] = doz_sonuc['uygun']
+                                sonuc['doz_aciklama'] = f"{eslesen_ts['etkin_madde']}: {doz_sonuc['aciklama']}"
+                                sonuc['etkin_madde'] = eslesen_ts['etkin_madde']
+
+                                if not doz_sonuc['uygun']:
+                                    sonuc['sorun_var'] = True
+                                    sonuc['sorun_aciklama'] = doz_sonuc['aciklama']
+                                    logger.warning(f"  ⚠️ DOZ AŞIMI ({eslesen_ts['etkin_madde']}): {doz_sonuc['aciklama']}")
+                                else:
+                                    logger.info(f"  ✓ Doz uygun ({eslesen_ts['etkin_madde']}): {doz_sonuc['aciklama']}")
+                else:
+                    logger.warning(f"  Rapor butonu tıklanamadı")
+            finally:
+                ilac_satiri_checkbox_sec(bot, satir_index, sec=False)
+
+            return sonuc
+
+        # 5. Mesajlı ilaç → Detaylı kontrol (İlaç Bilgi aç)
         logger.info(f"🔍 Satır {satir_index}: {ilac_adi} | Rapor:{rapor_kodu} Msj:{msj}")
 
         # Checkbox'ı seç
@@ -9990,7 +10406,7 @@ def ilac_kontrolu_yap(bot, satir_index, session_logger=None):
             logger.warning(f"Satır {satir_index} checkbox seçilemedi")
             return sonuc
 
-        time.sleep(0.2)
+        time.sleep(0.1)
 
         # İlaç Bilgi butonuna tıkla
         if not ilac_bilgi_butonuna_tikla(bot):
@@ -9998,7 +10414,7 @@ def ilac_kontrolu_yap(bot, satir_index, session_logger=None):
             ilac_satiri_checkbox_sec(bot, satir_index, sec=False)
             return sonuc
 
-        time.sleep(0.5)
+        time.sleep(0.3)
 
         try:
             # 5a. Etkin madde oku
@@ -10020,7 +10436,7 @@ def ilac_kontrolu_yap(bot, satir_index, session_logger=None):
 
                 # Mesaj başlığına tıkla (mesaj metnini yüklemek için)
                 ilac_mesaj_basligina_tikla(bot, mesaj_index=0)
-                time.sleep(0.3)
+                time.sleep(0.15)
 
             # 5d. Mesaj metnini oku
             mesaj = ilac_bilgi_penceresi_mesaj_oku(bot)
@@ -10194,6 +10610,506 @@ Sorunlu         : {rapor['sorunlu_sayisi']}
     except Exception as e:
         logger.error(f"Tüm ilaçları kontrol hatası: {e}")
         return rapor
+
+
+# ═══════════════════════════════════════════════════════════════
+# İLAÇ GEÇMİŞİ FONKSİYONLARI
+# Sayfa: IlacListe.jsp (Kullanılan İlaç Listesi)
+# Buton: f:buttonIlacListesi (ReceteIslem2.jsp sayfasında)
+# Tablo: form1:tableExKisiIlacList
+# ═══════════════════════════════════════════════════════════════
+
+
+def ilac_gecmisi_butonuna_tikla(bot):
+    """
+    Reçete işlem sayfasındaki İlaç (İlaç Geçmişi) butonuna tıkla.
+    Bu buton ReceteIslem2.jsp sayfasında bulunur ve IlacListe.jsp sayfasını açar.
+
+    Inspect (2026-03-09):
+    - UIA: Name="İlaç", ControlType=Button
+    - MSHTML: TagName=INPUT, id=f:buttonIlacListesi, class=commandExButton
+    - URL: ReceteIslem2.jsp
+
+    Returns:
+        bool: Tıklama başarılı ise True
+    """
+    try:
+        buton_id = "f:buttonIlacListesi"
+
+        # DOM ile tıkla
+        element = bot.find_element_safe(buton_id, timeout=2)
+        if element:
+            element.click()
+            time.sleep(0.5)
+            logger.info("ilac_gecmisi_butonuna_tikla: Ilac butonu tiklandi (DOM)")
+            return True
+
+        # UIA fallback - Name ile ara
+        try:
+            ilac_btn = bot.main_window.child_window(
+                title="İlaç",
+                control_type="Button"
+            )
+            if ilac_btn.exists(timeout=1):
+                ilac_btn.click_input()
+                time.sleep(0.5)
+                logger.info("ilac_gecmisi_butonuna_tikla: Ilac butonu tiklandi (UIA)")
+                return True
+        except Exception:
+            pass
+
+        logger.warning("ilac_gecmisi_butonuna_tikla: Buton bulunamadi")
+        return False
+
+    except Exception as e:
+        logger.error(f"ilac_gecmisi_butonuna_tikla hatasi: {e}")
+        return False
+
+
+def ilac_gecmisi_sayfasinda_mi(bot):
+    """
+    İlaç geçmişi sayfasının (IlacListe.jsp) açık olup olmadığını kontrol et.
+
+    Kontrol: form1:buttonGeriDon butonu + form1:tableExKisiIlacList tablosu
+
+    Returns:
+        bool: İlaç geçmişi sayfasındaysa True
+    """
+    try:
+        doc = bot._get_html_document(timeout=1)
+        if not doc:
+            return False
+
+        # Geri Dön butonu varsa bu sayfadayız
+        geri_don = doc.getElementById("form1:buttonGeriDon")
+        if geri_don:
+            # Tablo da var mı kontrol et
+            tablo = doc.getElementById("form1:tableExKisiIlacList")
+            if tablo:
+                return True
+
+        return False
+
+    except Exception:
+        return False
+
+
+def ilac_cakismasi_popup_kapat(bot, max_deneme=3):
+    """
+    İlaç çakışması popup penceresini kapat (Tamam butonuna bas).
+    İlaç geçmişi sayfası açılırken bazen ilaç çakışması popup'ı çıkıyor.
+
+    Inspect (2026-03-09):
+    - Dialog: ClassName=#32770, ElementType=Dialog
+    - Tamam butonu: Name="Tamam", AutomationId="2", ClassName="Button"
+
+    Args:
+        max_deneme: Maksimum deneme sayısı
+
+    Returns:
+        bool: Popup kapatıldıysa True, popup yoksa da True
+    """
+    try:
+        import pywinauto
+
+        for deneme in range(max_deneme):
+            try:
+                # #32770 dialog penceresini bul
+                app = pywinauto.Application(backend="uia").connect(
+                    class_name="#32770",
+                    timeout=1
+                )
+                dialog = app.window(class_name="#32770")
+
+                if dialog.exists(timeout=0.5):
+                    # Tamam butonunu bul ve tıkla
+                    try:
+                        tamam_btn = dialog.child_window(
+                            title="Tamam",
+                            control_type="Button"
+                        )
+                        if tamam_btn.exists(timeout=0.3):
+                            tamam_btn.click()
+                            time.sleep(0.3)
+                            logger.info("ilac_cakismasi_popup_kapat: Tamam butonuna tiklandi")
+                            # Tekrar popup gelmiş olabilir, döngü devam etsin
+                            continue
+                    except Exception:
+                        pass
+
+                    # AutomationId ile dene
+                    try:
+                        tamam_btn = dialog.child_window(
+                            auto_id="2",
+                            control_type="Button"
+                        )
+                        if tamam_btn.exists(timeout=0.3):
+                            tamam_btn.click()
+                            time.sleep(0.3)
+                            logger.info("ilac_cakismasi_popup_kapat: Tamam butonuna tiklandi (auto_id)")
+                            continue
+                    except Exception:
+                        pass
+
+            except Exception:
+                # Popup yok veya bağlanamadı - bu normal
+                logger.debug(f"ilac_cakismasi_popup_kapat: Popup bulunamadi (deneme {deneme + 1})")
+                break
+
+        return True
+
+    except Exception as e:
+        logger.error(f"ilac_cakismasi_popup_kapat hatasi: {e}")
+        return True  # Popup kapatılamasa da devam et
+
+
+def ilac_gecmisi_tablosu_oku(bot, max_satir=50):
+    """
+    İlaç geçmişi tablosunu oku (form1:tableExKisiIlacList).
+    Hastanın daha önce kullandığı ilaçları listeler.
+
+    Tablo sütunları (IlacListe.jsp):
+    - {N}:text14 = Reçete No
+    - {N}:text15 = İlaç Adı (atcid attribute mevcut)
+    - {N}:text10 = Reçete Tarihi
+    - {N}:text21 = İlaç Alım Tarihi
+    - {N}:text13 = Verilebileceği Tarih
+    - {N}:text18 = Adet
+    - {N}:text17 = İlaç Kullanımı (doz bilgisi)
+    - {N}:text26 = Rapor Teşhisi / Rapor Takip No
+
+    Etkin madde bilgisi: Her ilaç satırından sonraki lightskyblue renkli
+    TR satırında yer alır (ayrı bir DOM TR).
+
+    Args:
+        bot: BotanikBot instance
+        max_satir: Maksimum okunacak satır sayısı
+
+    Returns:
+        list[dict]: Her ilaç için bilgiler listesi. Boş liste döner hata varsa.
+        Örnek: [
+            {
+                'satir': 0,
+                'recete_no': '3LEO9QB',
+                'ilac_adi': 'TIOFORM DISCAIR 18/12 MCG INH ICIN TOZ 60 DOZ (LABA+LAMA)(8697927553799)',
+                'atcid': '5694',
+                'recete_tarihi': '27/02/2026',
+                'ilac_alim_tarihi': '02/03/2026',
+                'verilebilecegi_tarih': '08/07/2026',
+                'adet': '2',
+                'ilac_kullanimi': 'Günde 1 x 1.0',
+                'rapor_teshis': '05.02 - 540674328',
+                'etkin_madde': 'FORMOTEROL FUMARAT(LABA)-TIOTROPIUM BROMUR MONOHIDRAT(LAMA)'
+            },
+            ...
+        ]
+    """
+    ilaclar = []
+
+    try:
+        doc = bot._get_html_document(timeout=2)
+        if not doc:
+            logger.warning("ilac_gecmisi_tablosu_oku: DOM erisilemiyor")
+            return ilaclar
+
+        for i in range(max_satir):
+            # İlaç adı SPAN'ını kontrol et - yoksa tablo bitti
+            ilac_adi_id = f"form1:tableExKisiIlacList:{i}:text15"
+            ilac_adi_elem = doc.getElementById(ilac_adi_id)
+
+            if not ilac_adi_elem:
+                break
+
+            ilac_adi = ""
+            atcid = ""
+            try:
+                ilac_adi = ilac_adi_elem.innerText or ""
+                ilac_adi = ilac_adi.strip()
+                atcid = ilac_adi_elem.getAttribute("atcid") or ""
+            except Exception:
+                pass
+
+            if not ilac_adi:
+                break
+
+            # Diğer sütunları oku
+            satir_bilgi = {
+                'satir': i,
+                'ilac_adi': ilac_adi,
+                'atcid': atcid,
+                'recete_no': '',
+                'recete_tarihi': '',
+                'ilac_alim_tarihi': '',
+                'verilebilecegi_tarih': '',
+                'adet': '',
+                'ilac_kullanimi': '',
+                'rapor_teshis': '',
+                'etkin_madde': '',
+            }
+
+            # Reçete No
+            try:
+                elem = doc.getElementById(f"form1:tableExKisiIlacList:{i}:text14")
+                if elem:
+                    satir_bilgi['recete_no'] = (elem.innerText or "").strip()
+            except Exception:
+                pass
+
+            # Reçete Tarihi
+            try:
+                elem = doc.getElementById(f"form1:tableExKisiIlacList:{i}:text10")
+                if elem:
+                    satir_bilgi['recete_tarihi'] = (elem.innerText or "").strip()
+            except Exception:
+                pass
+
+            # İlaç Alım Tarihi
+            try:
+                elem = doc.getElementById(f"form1:tableExKisiIlacList:{i}:text21")
+                if elem:
+                    satir_bilgi['ilac_alim_tarihi'] = (elem.innerText or "").strip()
+            except Exception:
+                pass
+
+            # Verilebileceği Tarih
+            try:
+                elem = doc.getElementById(f"form1:tableExKisiIlacList:{i}:text13")
+                if elem:
+                    satir_bilgi['verilebilecegi_tarih'] = (elem.innerText or "").strip()
+            except Exception:
+                pass
+
+            # Adet
+            try:
+                elem = doc.getElementById(f"form1:tableExKisiIlacList:{i}:text18")
+                if elem:
+                    satir_bilgi['adet'] = (elem.innerText or "").strip()
+            except Exception:
+                pass
+
+            # İlaç Kullanımı (doz)
+            try:
+                elem = doc.getElementById(f"form1:tableExKisiIlacList:{i}:text17")
+                if elem:
+                    doz = (elem.innerText or "").strip()
+                    # &nbsp; temizle
+                    doz = doz.replace('\xa0', ' ').strip()
+                    satir_bilgi['ilac_kullanimi'] = doz
+            except Exception:
+                pass
+
+            # Rapor Teşhisi / Takip No
+            try:
+                elem = doc.getElementById(f"form1:tableExKisiIlacList:{i}:text26")
+                if elem:
+                    satir_bilgi['rapor_teshis'] = (elem.innerText or "").strip()
+            except Exception:
+                pass
+
+            ilaclar.append(satir_bilgi)
+
+        # Etkin madde bilgilerini al (lightskyblue satırlardan)
+        # Etkin madde bilgisi ayrı TR satırlarında, ilaç satırından hemen sonra gelir.
+        # DOM'da TR traverse ederek alıyoruz.
+        try:
+            tablo = doc.getElementById("form1:tableExKisiIlacList")
+            if tablo:
+                tbody_elems = tablo.getElementsByTagName("TBODY")
+                if tbody_elems and tbody_elems.length > 0:
+                    tbody = tbody_elems.item(0)
+                    tr_elems = tbody.getElementsByTagName("TR")
+
+                    ilac_index = 0
+                    if tr_elems:
+                        for tr_i in range(tr_elems.length):
+                            tr = tr_elems.item(tr_i)
+                            if not tr:
+                                continue
+
+                            tr_id = ""
+                            try:
+                                tr_id = tr.id or ""
+                            except Exception:
+                                pass
+
+                            # İlaç satırı mı? (TR_parentof_form1:tableExKisiIlacList:N:rowAction2)
+                            if "TR_parentof_form1:tableExKisiIlacList:" in tr_id:
+                                continue
+
+                            # Etkin madde satırı mı? (lightskyblue arka plan)
+                            try:
+                                bg = tr.style.backgroundColor if tr.style else ""
+                            except Exception:
+                                bg = ""
+
+                            if not bg:
+                                try:
+                                    bg = tr.getAttribute("style") or ""
+                                except Exception:
+                                    bg = ""
+
+                            if "lightskyblue" in str(bg).lower():
+                                # Bu satırın innerText'ini al
+                                try:
+                                    etkin_text = (tr.innerText or "").strip()
+                                    if etkin_text and ilac_index < len(ilaclar):
+                                        ilaclar[ilac_index]['etkin_madde'] = etkin_text
+                                        ilac_index += 1
+                                except Exception:
+                                    ilac_index += 1
+        except Exception as e:
+            logger.debug(f"Etkin madde okuma hatasi: {e}")
+
+        logger.info(f"ilac_gecmisi_tablosu_oku: {len(ilaclar)} ilac okundu")
+        return ilaclar
+
+    except Exception as e:
+        logger.error(f"ilac_gecmisi_tablosu_oku hatasi: {e}")
+        return ilaclar
+
+
+def ilac_gecmisi_geri_don(bot):
+    """
+    İlaç geçmişi sayfasından (IlacListe.jsp) geri dön.
+    form1:buttonGeriDon butonuna tıklar.
+
+    Returns:
+        bool: Başarılı ise True
+    """
+    try:
+        geri_don_id = "form1:buttonGeriDon"
+        element = bot.find_element_safe(geri_don_id, timeout=2)
+        if element:
+            element.click()
+            time.sleep(0.3)
+            logger.info("ilac_gecmisi_geri_don: Geri Don butonuna tiklandi")
+            return True
+
+        # UIA fallback
+        try:
+            geri_btn = bot.main_window.child_window(
+                title="Geri Dön",
+                control_type="Button"
+            )
+            if geri_btn.exists(timeout=1):
+                geri_btn.click_input()
+                time.sleep(0.3)
+                logger.info("ilac_gecmisi_geri_don: Geri Don butonuna tiklandi (UIA)")
+                return True
+        except Exception:
+            pass
+
+        logger.warning("ilac_gecmisi_geri_don: Geri Don butonu bulunamadi")
+        return False
+
+    except Exception as e:
+        logger.error(f"ilac_gecmisi_geri_don hatasi: {e}")
+        return False
+
+
+def ilac_gecmisi_birlikte_kullanim_kontrol(bot, hedef_ilac_etkin_madde, yasakli_gruplar):
+    """
+    İlaç geçmişi sayfasını açarak hastanın geçmiş ilaçlarıyla
+    birlikte kullanım kontrolü yap.
+
+    Bu fonksiyon tam akışı yönetir:
+    1. İlaç butonuna tıkla (ilaç geçmişi sayfasını aç)
+    2. Çakışma popup'ını kapat (varsa)
+    3. Tabloyu oku
+    4. birlikte_kullanim_kontrol() ile kontrol et
+    5. Geri dön
+
+    Args:
+        bot: BotanikBot instance
+        hedef_ilac_etkin_madde: Kontrol edilen ilacın etkin maddesi
+        yasakli_gruplar: Birlikte kullanılamayacak grup kodları listesi
+
+    Returns:
+        dict: {
+            'basarili': bool,
+            'uygun': bool veya None (kontrol yapılamadıysa),
+            'cakisan_ilaclar': list,
+            'aciklama': str,
+            'gecmis_ilaclar': list  # tüm okunan ilaçlar
+        }
+    """
+    from kontrol_kurallari import birlikte_kullanim_kontrol, etkin_madde_grup_bul
+
+    sonuc = {
+        'basarili': False,
+        'uygun': None,
+        'cakisan_ilaclar': [],
+        'aciklama': '',
+        'gecmis_ilaclar': []
+    }
+
+    try:
+        # 1. İlaç butonuna tıkla
+        if not ilac_gecmisi_butonuna_tikla(bot):
+            sonuc['aciklama'] = "Ilac gecmisi butonu tiklanamadi"
+            return sonuc
+
+        # 2. Popup'ları kapat (birden fazla gelebilir)
+        time.sleep(0.5)
+        ilac_cakismasi_popup_kapat(bot, max_deneme=5)
+
+        # 3. Sayfanın yüklenmesini bekle
+        time.sleep(1)
+
+        # 4. Tabloyu oku
+        ilaclar = ilac_gecmisi_tablosu_oku(bot)
+        sonuc['gecmis_ilaclar'] = ilaclar
+
+        if not ilaclar:
+            sonuc['basarili'] = True
+            sonuc['uygun'] = True
+            sonuc['aciklama'] = "Ilac gecmisinde ilac bulunamadi"
+            # Geri dön
+            ilac_gecmisi_geri_don(bot)
+            return sonuc
+
+        # 5. Etkin maddeleri topla
+        diger_etkin_maddeler = []
+        for ilac in ilaclar:
+            em = ilac.get('etkin_madde', '')
+            if em:
+                # "FORMOTEROL FUMARAT(LABA)-TIOTROPIUM BROMUR MONOHIDRAT(LAMA)" gibi
+                # formatı temizle - parantez içindeki grup adlarını kaldır
+                import re
+                em_temiz = re.sub(r'\([^)]*\)', '', em)
+                # Tire ile ayrılmış maddeleri + ile birleştir
+                em_temiz = em_temiz.replace(' - ', '+').replace('-', '+')
+                # Fazla boşlukları temizle
+                em_temiz = ' '.join(em_temiz.split()).strip()
+                if em_temiz:
+                    diger_etkin_maddeler.append(em_temiz)
+
+        # 6. Birlikte kullanım kontrolü
+        kontrol = birlikte_kullanim_kontrol(
+            hedef_ilac_etkin_madde,
+            diger_etkin_maddeler,
+            yasakli_gruplar
+        )
+
+        sonuc['basarili'] = True
+        sonuc['uygun'] = kontrol['uygun']
+        sonuc['cakisan_ilaclar'] = kontrol.get('cakisan_ilaclar', [])
+        sonuc['aciklama'] = kontrol['aciklama']
+
+        # 7. Geri dön
+        ilac_gecmisi_geri_don(bot)
+
+        return sonuc
+
+    except Exception as e:
+        logger.error(f"ilac_gecmisi_birlikte_kullanim_kontrol hatasi: {e}")
+        sonuc['aciklama'] = f"Hata: {e}"
+        # Geri dönmeyi dene
+        try:
+            ilac_gecmisi_geri_don(bot)
+        except Exception:
+            pass
+        return sonuc
 
 
 if __name__ == "__main__":

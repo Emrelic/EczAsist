@@ -97,6 +97,16 @@ def talep_pattern_analiz(db, urun_id: int, ay_sayisi: int = 12) -> dict:
     ort_parti = toplam_miktar / talep_sayisi if talep_sayisi > 0 else 0
     aylik_ort = toplam_miktar / ay_sayisi
 
+    # Gunluk talep istatistikleri (sifir gunler dahil - ROP hesaplamasi icin)
+    gunluk_ort = toplam_miktar / toplam_gun if toplam_gun > 0 else 0
+    if toplam_gun > 0 and talep_sayisi > 0:
+        # Varyans = sum(x_i^2)/N - mean^2  (sifir gunler 0^2=0 katki yapar)
+        kareler_toplami = sum(x**2 for x in parti_buyuklukleri)
+        gunluk_varyans = kareler_toplami / toplam_gun - gunluk_ort ** 2
+        gunluk_std = math.sqrt(max(0, gunluk_varyans))
+    else:
+        gunluk_std = 0
+
     # CV (Coefficient of Variation)
     if talep_sayisi > 1:
         ortalama = sum(parti_buyuklukleri) / len(parti_buyuklukleri)
@@ -132,7 +142,10 @@ def talep_pattern_analiz(db, urun_id: int, ay_sayisi: int = 12) -> dict:
         'cv': cv,
         'adi': adi,
         'sinif': sinif,
-        'parti_std': std_sapma
+        'parti_std': std_sapma,
+        'gunluk_ort': gunluk_ort,
+        'gunluk_std': gunluk_std,
+        'toplam_gun': toplam_gun
     }
 
 
@@ -487,8 +500,6 @@ def finansal_periyot_analiz(db, urun_id: int, kar_marji: float, yillik_faiz: flo
             satisli_dilim += 1
 
     # Çoğunluk kuralı: dilimlerin yarısından fazlasında satış varsa
-    cogunluk_esik = math.ceil(dilim_sayisi / 2) + (0 if dilim_sayisi % 2 == 1 else 1)
-    # Basit çoğunluk: yarıdan fazla
     cogunluk_saglandi = satisli_dilim > dilim_sayisi / 2
 
     if cogunluk_saglandi:
@@ -577,8 +588,105 @@ def minimum_stok_hesapla(
 
     return {
         'min_bilimsel': min_onerilen,
-        'min_finansal': min_onerilen,
+        'min_finansal': 0,
         'min_onerilen': min_onerilen,
+        'aciklama': aciklama
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ROP (Reorder Point) + Safety Stock - Bilimsel Yontem
+# Referans: Silver, Pyke & Thomas "Inventory and Production Management in Supply Chains"
+# ═══════════════════════════════════════════════════════════════════════════════
+
+Z_SCORE_TABLOSU = {
+    90.0: 1.282,
+    95.0: 1.645,
+    97.5: 1.960,
+    99.0: 2.326
+}
+
+
+def rop_safety_stock_hesapla(
+    analiz: dict,
+    servis_seviyesi: float = 95.0,
+    tedarik_suresi: int = 0,
+    inceleme_periyodu: int = 1
+) -> dict:
+    """
+    ROP (Reorder Point) + Safety Stock bazli minimum stok hesapla.
+
+    Dunya genelinde en yaygin kabul goren envanter yonetimi yontemi.
+    Periyodik gozden gecirme modeli (Periodic Review) kullanilir.
+
+    Formuller:
+        PP = tedarik_suresi + inceleme_periyodu  (Protection Period, gun)
+        d_bar = gunluk ortalama talep (sifir gunler dahil)
+        sigma_d = gunluk talep standart sapmasi (sifir gunler dahil)
+        Z = servis seviyesi z-skoru (standart normal dagilim)
+        SS = Z * sigma_d * sqrt(PP)
+        ROP = d_bar * PP + SS
+        Min Stok = ceil(ROP)
+
+    Args:
+        analiz: talep_pattern_analiz() sonucu
+        servis_seviyesi: Servis seviyesi yuzde (90, 95, 97.5, 99)
+        tedarik_suresi: Tedarik suresi gun (0 = ayni gun teslimat)
+        inceleme_periyodu: Siparis/inceleme periyodu gun (1 = gunluk)
+
+    Returns:
+        dict: min_bilimsel (SS), min_finansal (ROP), min_onerilen (ceil(ROP)),
+              safety_stock, rop, z_skor, pp, guvenilirlik, aciklama
+    """
+    if not analiz or analiz.get('sinif') == 'NO_DEMAND':
+        return {
+            'min_bilimsel': 0,
+            'min_finansal': 0,
+            'min_onerilen': 0,
+            'safety_stock': 0,
+            'rop': 0,
+            'z_skor': 0,
+            'pp': 0,
+            'guvenilirlik': 'YOK',
+            'aciklama': 'Talep yok'
+        }
+
+    d_bar = analiz.get('gunluk_ort', 0)
+    sigma_d = analiz.get('gunluk_std', 0)
+    sinif = analiz.get('sinif', 'SMOOTH')
+
+    z = Z_SCORE_TABLOSU.get(servis_seviyesi, 1.645)
+    pp = max(1, tedarik_suresi + inceleme_periyodu)
+
+    # Safety Stock = Z * sigma_d * sqrt(PP)
+    safety_stock = z * sigma_d * math.sqrt(pp)
+
+    # ROP = d_bar * PP + SS
+    rop = d_bar * pp + safety_stock
+    min_onerilen = math.ceil(rop) if rop > 0.01 else 0
+
+    # Guvenilirlik (Syntetos-Boylan sinifina gore)
+    if sinif in ('SMOOTH', 'ERRATIC'):
+        guvenilirlik = 'YUKSEK'
+    elif sinif in ('INTERMITTENT', 'LUMPY'):
+        guvenilirlik = 'DUSUK'
+    else:
+        guvenilirlik = 'YOK'
+
+    aciklama = (
+        f'ROP: d={d_bar:.3f}/g, \u03c3={sigma_d:.2f}, SS={safety_stock:.1f}, '
+        f'Z={z}, PP={pp}g | {sinif} ({guvenilirlik})'
+    )
+
+    return {
+        'min_bilimsel': math.ceil(safety_stock) if safety_stock > 0.01 else 0,
+        'min_finansal': round(rop, 2),
+        'min_onerilen': min_onerilen,
+        'safety_stock': round(safety_stock, 2),
+        'rop': round(rop, 2),
+        'z_skor': z,
+        'pp': pp,
+        'guvenilirlik': guvenilirlik,
         'aciklama': aciklama
     }
 
@@ -591,7 +699,10 @@ def tum_ilaclari_analiz_et(
     sadece_stoklu: bool = False,
     hareket_yili: int = 0,
     hesaplama_modu: str = "frekans",
-    progress_callback=None
+    progress_callback=None,
+    servis_seviyesi: float = 95.0,
+    tedarik_suresi: int = 0,
+    inceleme_periyodu: int = 1
 ) -> list:
     """
     Tum ilaclari analiz et ve minimum stok onerisi olustur
@@ -603,7 +714,10 @@ def tum_ilaclari_analiz_et(
         yillik_faiz: Yillik mevduat faizi
         sadece_stoklu: Sadece stokta olan ilaclari analiz et
         hareket_yili: Son kac yil icinde hareket gormesi gerektigi (0=filtre yok)
-        hesaplama_modu: "frekans" (12ay, 3+ satış kuralı) veya "finansal" (24ay, başabaş periyodu)
+        hesaplama_modu: "frekans", "finansal" veya "rop" (ROP + Safety Stock)
+        servis_seviyesi: ROP icin servis seviyesi yuzde (90, 95, 97.5, 99)
+        tedarik_suresi: ROP icin tedarik suresi (gun)
+        inceleme_periyodu: ROP icin inceleme periyodu (gun)
         progress_callback: Ilerleme callback fonksiyonu (current, total)
 
     Returns:
@@ -717,10 +831,36 @@ def tum_ilaclari_analiz_et(
                 'CV': round(analiz['cv'], 2),
                 'ADI': round(analiz['adi'], 1),
                 'Sinif': analiz['sinif'],
-                'MinBilimsel': fin_sonuc['min_onerilen'],
+                'MinBilimsel': 0,
                 'MinFinansal': fin_sonuc['min_onerilen'],
                 'MinOnerilen': fin_sonuc['min_onerilen'],
                 'Aciklama': fin_sonuc['aciklama']
+            })
+        elif hesaplama_modu == 'rop':
+            # ROP + Safety Stock bazli analiz (bilimsel yontem)
+            analiz = talep_pattern_analiz(db, urun_id, ay_sayisi)
+            if not analiz:
+                continue
+
+            rop_sonuc = rop_safety_stock_hesapla(
+                analiz, servis_seviyesi, tedarik_suresi, inceleme_periyodu
+            )
+
+            sonuclar.append({
+                'UrunId': urun_id,
+                'UrunAdi': ilac['UrunAdi'],
+                'MevcutMin': ilac.get('MevcutMin', 0) or 0,
+                'Stok': ilac.get('Stok', 0) or 0,
+                'AylikOrt': round(analiz['aylik_ort'], 1),
+                'TalepSayisi': analiz['talep_sayisi'],
+                'OrtParti': round(analiz['ort_parti'], 1),
+                'CV': round(analiz['cv'], 2),
+                'ADI': round(analiz['adi'], 1),
+                'Sinif': analiz['sinif'],
+                'MinBilimsel': rop_sonuc['min_bilimsel'],
+                'MinFinansal': rop_sonuc['min_finansal'],
+                'MinOnerilen': rop_sonuc['min_onerilen'],
+                'Aciklama': rop_sonuc['aciklama']
             })
         else:
             # Frekans bazlı analiz (12 ay, 3+ satış kuralı)

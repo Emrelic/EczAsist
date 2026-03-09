@@ -1737,6 +1737,59 @@ class BotanikDB:
         """
         return self.sorgu_calistir(sql)
 
+    def etkin_madde_getir_ilac_adiyla(self, urun_adi: str) -> List[str]:
+        """
+        İlaç adına göre etkin madde(ler)ini getirir.
+        Örnek: "VENTOLIN INHALER" → ["SALBUTAMOL"]
+
+        Args:
+            urun_adi: İlaç adı (kısmi eşleşme yapılır)
+
+        Returns:
+            List[str]: Etkin madde adları listesi
+        """
+        # SQL injection koruması - tek tırnak escape
+        safe_adi = urun_adi.replace("'", "''")
+        sql = f"""
+        SELECT DISTINCT em.EMLAdi
+        FROM EtkenMaddeListesi em
+        JOIN UrunEtkMad uem ON em.EMLId = uem.UEMEMLId
+        JOIN Urun u ON uem.UEMUrunId = u.UrunId
+        WHERE u.UrunAdi LIKE '%{safe_adi}%'
+        AND u.UrunSilme = 0
+        ORDER BY em.EMLAdi
+        """
+        sonuclar = self.sorgu_calistir(sql)
+        if sonuclar:
+            return [s['EMLAdi'] for s in sonuclar]
+        return []
+
+    def etkin_madde_getir_barkod_ile(self, barkod: str) -> List[str]:
+        """
+        Barkod numarasına göre etkin madde(ler)ini getirir.
+
+        Args:
+            barkod: İlaç barkodu
+
+        Returns:
+            List[str]: Etkin madde adları listesi
+        """
+        safe_barkod = barkod.replace("'", "''")
+        sql = f"""
+        SELECT DISTINCT em.EMLAdi
+        FROM EtkenMaddeListesi em
+        JOIN UrunEtkMad uem ON em.EMLId = uem.UEMEMLId
+        JOIN Urun u ON uem.UEMUrunId = u.UrunId
+        LEFT JOIN UrunBarkod ub ON u.UrunId = ub.UBUrunId
+        WHERE (ub.UBBarkod = '{safe_barkod}' OR u.UrunBarkod = '{safe_barkod}')
+        AND u.UrunSilme = 0
+        ORDER BY em.EMLAdi
+        """
+        sonuclar = self.sorgu_calistir(sql)
+        if sonuclar:
+            return [s['EMLAdi'] for s in sonuclar]
+        return []
+
     def mf_esdeger_kodlu_ilaclar_getir(self, esdeger_id: int) -> List[Dict]:
         """
         Belirli eşdeğer koda sahip ilaçları getir

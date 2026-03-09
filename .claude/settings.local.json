@@ -79,7 +79,19 @@
       "Bash(start \"\" \"zam_arveles.png\")",
       "WebSearch",
       "WebFetch(domain:www.hangikredi.com)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "WebFetch(domain:www.ilacabak.com)",
+      "WebFetch(domain:www.izmireczaciodasi.org.tr)",
+      "WebFetch(domain:ahmetalpman.com)",
+      "WebFetch(domain:www.sivaseo.org.tr)",
+      "WebFetch(domain:www.eczacininsesi.com)",
+      "WebFetch(domain:www.eskisehireo.org.tr)",
+      "WebFetch(domain:www.kayserieo.org.tr)",
+      "WebFetch(domain:www.studocu.com)",
+      "WebFetch(domain:www.sanliurfaeo.org.tr)",
+      "WebFetch(domain:gaziantepeczaciodasi.com.gaziantepeo.org.tr)",
+      "Bash(tasklist:*)",
+      "Bash(wmic process:*)"
     ],
     "deny": [],
     "ask": []

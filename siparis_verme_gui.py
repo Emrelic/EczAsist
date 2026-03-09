@@ -113,6 +113,9 @@ class SiparisVermeGUI:
         self.manuel_miktarlar = {}
         self.manuel_mf_girisler = {}  # {urun_id: "5+1"}
 
+        # Depo yöneticisi (kalıcı oturum)
+        self._depo_manager = None
+
         self._arayuz_olustur()
         self._baglanti_kur()
         self._siparis_db_baslat()
@@ -854,6 +857,13 @@ class SiparisVermeGUI:
             bg=self.R_ACCENT, fg='white', font=('Arial', 9, 'bold'), relief='raised', padx=10
         )
         self.depo_ara_btn.pack(side=tk.LEFT, padx=20, pady=2)
+
+        # Tarayıcıları Kapat butonu
+        self.depo_kapat_btn = tk.Button(
+            header, text="Tarayıcıları Kapat", command=self._depo_tarayicilari_kapat,
+            bg='#B71C1C', fg='white', font=('Arial', 8, 'bold'), relief='flat', padx=5
+        )
+        self.depo_kapat_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
         # Durum etiketi
         self.depo_durum_label = tk.Label(header, text="", bg=self.R_SUCCESS, fg='yellow',
@@ -5078,7 +5088,7 @@ class SiparisVermeGUI:
             messagebox.showerror("Hata", f"Kaydetme hatası: {e}")
 
     def _depolarda_ara(self):
-        """Kesin listedeki ürünleri depolarda ara"""
+        """Kesin listedeki ürünleri depolarda ara (DepoManager ile kalıcı oturum)"""
         if not self.kesin_siparis_listesi:
             messagebox.showwarning("Uyarı", "Kesin sipariş listesi boş!")
             return
@@ -5093,117 +5103,41 @@ class SiparisVermeGUI:
         self.depo_ara_btn.config(state='disabled', text="Aranıyor...")
         self.depo_durum_label.config(text=f"0/{len(barkodlu_urunler)} ürün arandı")
 
+        def _durum_guncelle(mesaj):
+            """Thread-safe durum güncelleme"""
+            self.parent.after(0, lambda m=mesaj: self.depo_durum_label.config(text=m))
+
         def arama_thread():
             try:
-                # BotSiparis modüllerini import et
-                import sys
-                import os
+                from depolar.depo_manager import DepoManager
+                from medula_settings import get_medula_settings
 
-                # BotSiparis kök klasörünü path'e ekle
-                bot_root = os.path.join(os.path.dirname(__file__), "BotSiparis - Kopya")
-                bot_src = os.path.join(bot_root, "src")
+                # DepoManager'ı lazy-init: ilk çağrıda oluştur, sonrakilerde mevcut oturumu kullan
+                if self._depo_manager is None or not self._depo_manager.is_initialized():
+                    ayarlar = get_medula_settings()
+                    self._depo_manager = DepoManager(
+                        lambda: ayarlar.get("depo_ayarlari", {})
+                    )
 
-                # Hem kök hem src'yi path'e ekle (sıra önemli)
-                for p in [bot_root, bot_src]:
-                    if p not in sys.path:
-                        sys.path.insert(0, p)
+                    # Tarayıcıları başlat ve login ol
+                    _durum_guncelle("Tarayıcılar başlatılıyor...")
+                    login_sonuclari = self._depo_manager.init_all(progress_callback=_durum_guncelle)
 
-                from src.depolar.selcuk import SelcukDepo
-                from src.depolar.alliance import AllianceDepo
-                from src.depolar.sancak import SancakDepo
-                from src.depolar.iskoop import IskoopDepo
-                from src.depolar.farmazon import FarmazonDepo
-                from dotenv import load_dotenv
+                    if not login_sonuclari or not any(login_sonuclari.values()):
+                        self._depo_manager = None
+                        self.parent.after(0, lambda: messagebox.showerror(
+                            "Hata", "Hiçbir depoya giriş yapılamadı!"
+                        ))
+                        return
 
-                # .env dosyasını yükle
-                env_path = os.path.join(os.path.dirname(__file__), "BotSiparis - Kopya", ".env")
-                load_dotenv(env_path)
-
-                # Depo sırası: Selçuk, Alliance, Sancak, İskoop, Farmazon
-                depolar = []
-
-                # Selçuk - login(hesap_kodu, username, password)
-                if os.environ.get('SELCUK_ENABLED', 'false').lower() == 'true':
-                    depolar.append({
-                        'key': 'Selcuk',
-                        'class': SelcukDepo,
-                        'login_args': (
-                            os.environ.get('SELCUK_HESAP_KODU'),
-                            os.environ.get('SELCUK_USERNAME'),
-                            os.environ.get('SELCUK_PASSWORD')
-                        )
-                    })
-
-                # Alliance - login(eczane_kodu, username, password)
-                if os.environ.get('ALLIANCE_ENABLED', 'false').lower() == 'true':
-                    depolar.append({
-                        'key': 'Alliance',
-                        'class': AllianceDepo,
-                        'login_args': (
-                            os.environ.get('ALLIANCE_ECZANE_KODU'),
-                            os.environ.get('ALLIANCE_USERNAME'),
-                            os.environ.get('ALLIANCE_PASSWORD')
-                        )
-                    })
-
-                # Sancak - login(username, password)
-                if os.environ.get('SANCAK_ENABLED', 'false').lower() == 'true':
-                    depolar.append({
-                        'key': 'Sancak',
-                        'class': SancakDepo,
-                        'login_args': (
-                            os.environ.get('SANCAK_USERNAME'),
-                            os.environ.get('SANCAK_PASSWORD')
-                        )
-                    })
-
-                # İskoop - login(username, password)
-                if os.environ.get('ISKOOP_ENABLED', 'false').lower() == 'true':
-                    depolar.append({
-                        'key': 'Iskoop',
-                        'class': IskoopDepo,
-                        'login_args': (
-                            os.environ.get('ISKOOP_USERNAME'),
-                            os.environ.get('ISKOOP_PASSWORD')
-                        )
-                    })
-
-                # Farmazon - login(username, password)
-                if os.environ.get('FARMAZON_ENABLED', 'false').lower() == 'true':
-                    depolar.append({
-                        'key': 'Farmazon',
-                        'class': FarmazonDepo,
-                        'login_args': (
-                            os.environ.get('FARMAZON_USERNAME'),
-                            os.environ.get('FARMAZON_PASSWORD')
-                        )
-                    })
-
-                if not depolar:
-                    self.parent.after(0, lambda: messagebox.showwarning(
-                        "Uyarı", "Hiçbir depo etkinleştirilmemiş!\n.env dosyasını kontrol edin."
-                    ))
-                    return
-
-                # Her depo için driver başlat ve login ol
-                aktif_depolar = []
-                for depo_info in depolar:
-                    try:
-                        depo = depo_info['class']()
-                        if depo.init_driver():
-                            if depo.login(*depo_info['login_args']):
-                                aktif_depolar.append({'key': depo_info['key'], 'depo': depo})
-                                logger.info(f"{depo_info['key']} deposuna giriş başarılı")
-                            else:
-                                logger.warning(f"{depo_info['key']} deposuna giriş başarısız")
-                    except Exception as e:
-                        logger.error(f"{depo_info['key']} depo hatası: {e}")
-
-                if not aktif_depolar:
-                    self.parent.after(0, lambda: messagebox.showerror(
-                        "Hata", "Hiçbir depoya giriş yapılamadı!"
-                    ))
-                    return
+                # Depo key → Treeview sütun adı eşlemesi
+                key_to_column = {
+                    "selcuk": "Selcuk",
+                    "alliance": "Alliance",
+                    "sancak": "Sancak",
+                    "iskoop": "Iskoop",
+                    "farmazon": "Farmazon"
+                }
 
                 # Her ürün için arama yap
                 for idx, siparis in enumerate(self.kesin_siparis_listesi):
@@ -5212,65 +5146,69 @@ class SiparisVermeGUI:
                         continue
 
                     # Durum güncelle
-                    self.parent.after(0, lambda i=idx, t=len(barkodlu_urunler):
-                        self.depo_durum_label.config(text=f"{i+1}/{t} aranıyor...")
+                    _durum_guncelle(f"{idx+1}/{len(barkodlu_urunler)} aranıyor...")
+
+                    # TÜM aktif depolarda ara
+                    sonuclar = self._depo_manager.search_product(
+                        str(barkod), progress_callback=_durum_guncelle
                     )
 
-                    # Her depoda ara
-                    for depo_bilgi in aktif_depolar:
-                        depo_key = depo_bilgi['key']
-                        depo = depo_bilgi['depo']
+                    # Sonuçları kesin_siparis_listesi'ne yaz
+                    for depo_key, sonuc in sonuclar.items():
+                        col_name = key_to_column.get(depo_key, depo_key.capitalize())
 
-                        try:
-                            # Barkodu ara
-                            if depo.search_barcode(str(barkod)):
-                                # Stok durumu kontrol et
-                                sonuc = depo.check_stock_status()
+                        if sonuc.get('stok_var'):
+                            mf_sart = sonuc.get('sart', '')
+                            fiyat = sonuc.get('fiyat')
+                            fiyat_str = f" {fiyat:.2f}₺" if fiyat else ""
 
-                                if sonuc.get('stok_var'):
-                                    # MF varsa göster
-                                    mf_sart = sonuc.get('sart', '')
-                                    if mf_sart:
-                                        siparis[depo_key] = f"✓ {mf_sart}"
-                                    else:
-                                        siparis[depo_key] = "✓ Var"
-                                elif sonuc.get('mesaj') == 'Depoyu Ara':
-                                    siparis[depo_key] = "📞 Ara"
-                                else:
-                                    siparis[depo_key] = "✗ Yok"
+                            if mf_sart:
+                                siparis[col_name] = f"✓ {mf_sart}{fiyat_str}"
                             else:
-                                siparis[depo_key] = "- Yok"
-                        except Exception as e:
-                            logger.error(f"{depo_key} arama hatası ({barkod}): {e}")
-                            siparis[depo_key] = "! Hata"
+                                siparis[col_name] = f"✓ Var{fiyat_str}"
+                        elif sonuc.get('mesaj') == 'Depoyu Ara':
+                            siparis[col_name] = "📞 Ara"
+                        elif sonuc.get('pahali'):
+                            siparis[col_name] = "💰 Pahalı"
+                        elif sonuc.get('mesaj') == 'Bulunamadı':
+                            siparis[col_name] = "- Yok"
+                        else:
+                            siparis[col_name] = "✗ Yok"
 
                     # Listeyi güncelle
                     self.parent.after(0, self._kesin_liste_guncelle)
 
-                # Tarayıcıları kapat
-                for depo_bilgi in aktif_depolar:
-                    try:
-                        depo_bilgi['depo'].close()
-                    except:
-                        pass
-
-                # Tamamlandı
+                # Tamamlandı (tarayıcılar AÇIK KALIR)
                 self.parent.after(0, lambda: self._depo_arama_tamamlandi(len(barkodlu_urunler)))
 
             except Exception as e:
                 logger.error(f"Depo arama hatası: {e}")
-                self.parent.after(0, lambda: messagebox.showerror("Hata", f"Depo arama hatası:\n{e}"))
+                self.parent.after(0, lambda err=str(e): messagebox.showerror(
+                    "Hata", f"Depo arama hatası:\n{err}"
+                ))
             finally:
-                self.parent.after(0, lambda: self.depo_ara_btn.config(state='normal', text="🔍 DEPOLARDA ARA"))
+                self.parent.after(0, lambda: self.depo_ara_btn.config(
+                    state='normal', text="🔍 DEPOLARDA ARA"
+                ))
 
         # Thread başlat
         thread = threading.Thread(target=arama_thread, daemon=True)
         thread.start()
 
     def _depo_arama_tamamlandi(self, toplam):
-        """Depo araması tamamlandığında"""
+        """Depo araması tamamlandığında (tarayıcılar açık kalır)"""
         self.depo_durum_label.config(text=f"✓ {toplam} ürün arandı")
         self._kesin_liste_guncelle()
+
+    def _depo_tarayicilari_kapat(self):
+        """Depo tarayıcılarını kapat"""
+        if self._depo_manager and self._depo_manager.is_initialized():
+            self._depo_manager.close_all()
+            self._depo_manager = None
+            self.depo_durum_label.config(text="Tarayıcılar kapatıldı")
+            logger.info("Depo tarayıcıları kapatıldı")
+        else:
+            self.depo_durum_label.config(text="Açık tarayıcı yok")
 
     def _min_stok_analiz_ac(self):
         """Minimum Stok Analizi penceresini aç"""
@@ -5332,12 +5270,58 @@ class SiparisVermeGUI:
         tk.Radiobutton(mod_frame, text="Frekans Bazlı", variable=hesaplama_modu_var,
                        value='frekans', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 5))
         tk.Radiobutton(mod_frame, text="Finansal Başabaş", variable=hesaplama_modu_var,
-                       value='finansal', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 2))
+                       value='finansal', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 5))
+        tk.Radiobutton(mod_frame, text="ROP (Bilimsel)", variable=hesaplama_modu_var,
+                       value='rop', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 2))
 
         # Durum etiketi
         durum_label = tk.Label(param_frame, text="Hareket süresi içinde stok/satış/alış hareketi olan ilaçlar analiz edilir",
                               font=('Arial', 9), bg='#E3F2FD', fg='#666')
         durum_label.pack(side=tk.RIGHT, padx=10)
+
+        # ROP parametre satırı (başlangıçta gizli)
+        rop_param_frame = tk.Frame(analiz_win, bg='#E8F5E9', relief='ridge', bd=1)
+
+        tk.Label(rop_param_frame, text="ROP Parametreleri:", font=('Arial', 9, 'bold'),
+                bg='#E8F5E9', fg='#2E7D32').pack(side=tk.LEFT, padx=(10, 10), pady=5)
+
+        tk.Label(rop_param_frame, text="Servis Seviyesi:", font=('Arial', 9),
+                bg='#E8F5E9').pack(side=tk.LEFT, padx=(5, 3))
+        servis_var = tk.DoubleVar(value=95.0)
+        servis_combo = ttk.Combobox(rop_param_frame, textvariable=servis_var, width=5, state='readonly')
+        servis_combo['values'] = [90.0, 95.0, 97.5, 99.0]
+        servis_combo.pack(side=tk.LEFT, padx=(0, 3), pady=5)
+        tk.Label(rop_param_frame, text="%", font=('Arial', 9), bg='#E8F5E9').pack(side=tk.LEFT, padx=(0, 15))
+
+        tk.Label(rop_param_frame, text="Tedarik Suresi:", font=('Arial', 9),
+                bg='#E8F5E9').pack(side=tk.LEFT, padx=(5, 3))
+        tedarik_var = tk.IntVar(value=0)
+        ttk.Spinbox(rop_param_frame, from_=0, to=30, textvariable=tedarik_var, width=3).pack(side=tk.LEFT, padx=(0, 3), pady=5)
+        tk.Label(rop_param_frame, text="gun", font=('Arial', 9), bg='#E8F5E9').pack(side=tk.LEFT, padx=(0, 15))
+
+        tk.Label(rop_param_frame, text="Inceleme Periyodu:", font=('Arial', 9),
+                bg='#E8F5E9').pack(side=tk.LEFT, padx=(5, 3))
+        inceleme_var = tk.IntVar(value=1)
+        ttk.Spinbox(rop_param_frame, from_=1, to=30, textvariable=inceleme_var, width=3).pack(side=tk.LEFT, padx=(0, 3), pady=5)
+        tk.Label(rop_param_frame, text="gun", font=('Arial', 9), bg='#E8F5E9').pack(side=tk.LEFT, padx=(0, 15))
+
+        tk.Label(rop_param_frame, text="PP=Tedarik+Inceleme | SS=Z*\u03c3*\u221aPP | Min=\u2308d*PP+SS\u2309",
+                font=('Arial', 8), bg='#E8F5E9', fg='#666').pack(side=tk.RIGHT, padx=10, pady=5)
+
+        # Mod degisikliklerini izle
+        def mod_degisti(*args):
+            modu = hesaplama_modu_var.get()
+            if modu == 'rop':
+                rop_param_frame.pack(fill=tk.X, padx=10, pady=(0, 5), before=tablo_frame)
+            else:
+                rop_param_frame.pack_forget()
+            if modu == 'finansal':
+                ay_combo.config(state='disabled')
+                ay_var.set(24)
+            else:
+                ay_combo.config(state='readonly')
+
+        hesaplama_modu_var.trace_add('write', mod_degisti)
 
         # Tablo çerçevesi
         tablo_frame = tk.Frame(analiz_win, bg='#ECEFF1')
@@ -5417,7 +5401,10 @@ class SiparisVermeGUI:
                     sadece_stoklu=stoklu_var.get(),
                     hareket_yili=hareket_yili_var.get(),
                     hesaplama_modu=hesaplama_modu_var.get(),
-                    progress_callback=progress_cb
+                    progress_callback=progress_cb,
+                    servis_seviyesi=servis_var.get(),
+                    tedarik_suresi=tedarik_var.get(),
+                    inceleme_periyodu=inceleme_var.get()
                 )
 
                 # Reçete ile sipariş listesindeki ilaçları filtrele
@@ -5431,6 +5418,18 @@ class SiparisVermeGUI:
                         logger.info(f"Min stok analizden {len(_recete_set)} reçete ile sipariş ilacı çıkarıldı")
                 except Exception as e:
                     logger.warning(f"Reçete ile sipariş filtresi uygulanamadı: {e}")
+
+                # Mod bazlı sütun başlıkları güncelle
+                modu = hesaplama_modu_var.get()
+                if modu == 'rop':
+                    tree.heading('min_bil', text='Em.Stok (SS)')
+                    tree.heading('min_fin', text='ROP')
+                elif modu == 'finansal':
+                    tree.heading('min_bil', text='Min (Bilim)')
+                    tree.heading('min_fin', text='Min (Finans)')
+                else:
+                    tree.heading('min_bil', text='Min (Frekans)')
+                    tree.heading('min_fin', text='-')
 
                 # Tabloyu temizle ve doldur
                 for item in tree.get_children():

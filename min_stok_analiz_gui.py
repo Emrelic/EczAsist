@@ -46,6 +46,10 @@ class MinStokAnalizGUI:
         self.sadece_stoklu = tk.BooleanVar(value=False)
         self.sadece_degisecek = tk.BooleanVar(value=False)
         self.hareket_yili = tk.IntVar(value=2)  # Son 2 yil varsayilan
+        self.hesaplama_modu = tk.StringVar(value='frekans')
+        self.servis_seviyesi = tk.DoubleVar(value=95.0)
+        self.tedarik_suresi = tk.IntVar(value=0)
+        self.inceleme_periyodu = tk.IntVar(value=1)
 
         self._arayuz_olustur()
 
@@ -133,9 +137,52 @@ class MinStokAnalizGUI:
                  bg='#1976D2', fg='white', font=('Arial', 11, 'bold'),
                  relief='raised', bd=2, padx=20, pady=5).grid(row=0, column=15, padx=(10,10), pady=10)
 
-        # Durum etiketi (ayri satirda)
+        # SATIR 1.5: Durum etiketi
         self.durum_label = tk.Label(param_frame, text="Hazır", font=('Arial', 9), bg='#E3F2FD', fg='#666')
         self.durum_label.grid(row=1, column=0, columnspan=16, pady=(0,5), sticky='w', padx=10)
+
+        # SATIR 2: Hesaplama modu secimi
+        mod_frame = tk.Frame(param_frame, bg='#E8EAF6', relief='ridge', bd=1, padx=5, pady=2)
+        mod_frame.grid(row=2, column=0, columnspan=16, padx=10, pady=(0, 5), sticky='w')
+
+        tk.Label(mod_frame, text="Hesaplama:", font=('Arial', 9, 'bold'),
+                bg='#E8EAF6').pack(side=tk.LEFT, padx=(2, 5))
+        tk.Radiobutton(mod_frame, text="Frekans Bazlı", variable=self.hesaplama_modu,
+                       value='frekans', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 5))
+        tk.Radiobutton(mod_frame, text="Finansal Başabaş", variable=self.hesaplama_modu,
+                       value='finansal', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 5))
+        tk.Radiobutton(mod_frame, text="ROP (Bilimsel)", variable=self.hesaplama_modu,
+                       value='rop', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 10))
+
+        # ROP parametreleri (ayni satir, sag tarafta)
+        self.rop_inner = tk.Frame(mod_frame, bg='#E8F5E9', relief='groove', bd=1, padx=3, pady=1)
+
+        tk.Label(self.rop_inner, text="Servis:", font=('Arial', 8, 'bold'), bg='#E8F5E9').pack(side=tk.LEFT, padx=(5, 2))
+        rop_servis_combo = ttk.Combobox(self.rop_inner, textvariable=self.servis_seviyesi, width=5, state='readonly')
+        rop_servis_combo['values'] = [90.0, 95.0, 97.5, 99.0]
+        rop_servis_combo.pack(side=tk.LEFT, padx=(0, 2))
+        tk.Label(self.rop_inner, text="% | Tedarik:", font=('Arial', 8), bg='#E8F5E9').pack(side=tk.LEFT)
+        ttk.Spinbox(self.rop_inner, from_=0, to=30, textvariable=self.tedarik_suresi, width=3).pack(side=tk.LEFT, padx=(2, 0))
+        tk.Label(self.rop_inner, text="g | Inceleme:", font=('Arial', 8), bg='#E8F5E9').pack(side=tk.LEFT)
+        ttk.Spinbox(self.rop_inner, from_=1, to=30, textvariable=self.inceleme_periyodu, width=3).pack(side=tk.LEFT, padx=(2, 0))
+        tk.Label(self.rop_inner, text="g", font=('Arial', 8), bg='#E8F5E9').pack(side=tk.LEFT, padx=(0, 5))
+
+        # Mod degisikliklerini izle
+        self.ay_combo_ref = ay_combo
+
+        def _mod_degisti(*args):
+            modu = self.hesaplama_modu.get()
+            if modu == 'rop':
+                self.rop_inner.pack(side=tk.LEFT, padx=(10, 0))
+            else:
+                self.rop_inner.pack_forget()
+            if modu == 'finansal':
+                self.ay_combo_ref.config(state='disabled')
+                self.ay_sayisi.set(24)
+            else:
+                self.ay_combo_ref.config(state='readonly')
+
+        self.hesaplama_modu.trace_add('write', _mod_degisti)
 
         # Parametre degisikliklerini izle
         self.kar_marji.trace_add('write', self._basabas_guncelle)
@@ -278,7 +325,11 @@ class MinStokAnalizGUI:
                     yillik_faiz=self.yillik_faiz.get() / 100,
                     sadece_stoklu=self.sadece_stoklu.get(),
                     hareket_yili=self.hareket_yili.get(),
-                    progress_callback=progress_cb
+                    hesaplama_modu=self.hesaplama_modu.get(),
+                    progress_callback=progress_cb,
+                    servis_seviyesi=self.servis_seviyesi.get(),
+                    tedarik_suresi=self.tedarik_suresi.get(),
+                    inceleme_periyodu=self.inceleme_periyodu.get()
                 )
                 self.parent.after(0, self._tabloyu_doldur)
             except Exception as e:
@@ -290,6 +341,18 @@ class MinStokAnalizGUI:
 
     def _tabloyu_doldur(self):
         """Tabloyu sonuclarla doldur"""
+        # Mod bazli sutun basliklari guncelle
+        modu = self.hesaplama_modu.get()
+        if modu == 'rop':
+            self.tree.heading('min_bil', text='Em.Stok')
+            self.tree.heading('min_fin', text='ROP')
+        elif modu == 'finansal':
+            self.tree.heading('min_bil', text='Bilim')
+            self.tree.heading('min_fin', text='Finans')
+        else:
+            self.tree.heading('min_bil', text='Frekans')
+            self.tree.heading('min_fin', text='-')
+
         # Temizle
         for item in self.tree.get_children():
             self.tree.delete(item)
@@ -447,10 +510,17 @@ class MinStokAnalizGUI:
             ws = wb.active
             ws.title = "Min Stok Analizi"
 
-            # Basliklar
+            # Basliklar (mod bazli)
+            modu = self.hesaplama_modu.get()
+            if modu == 'rop':
+                col10, col11 = 'Emniyet Stoku (SS)', 'ROP'
+            elif modu == 'finansal':
+                col10, col11 = 'Min (Bilim)', 'Min (Finans)'
+            else:
+                col10, col11 = 'Min (Frekans)', '-'
             headers = [
                 'Ilac Adi', 'Stok', 'Mevcut Min', 'Aylik Ort', 'Talep Sayisi',
-                'Ort Parti', 'CV', 'ADI', 'Sinif', 'Min (Bilim)', 'Min (Finans)',
+                'Ort Parti', 'CV', 'ADI', 'Sinif', col10, col11,
                 'ONERILEN', 'Aciklama'
             ]
             for col, header in enumerate(headers, 1):

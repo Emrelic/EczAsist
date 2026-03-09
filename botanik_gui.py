@@ -1532,23 +1532,177 @@ class BotanikGUI:
         # Son reçete numarasını kontrol et
         son_recete = self.grup_durumu.son_recete_al(grup)
 
-        if son_recete:
-            # Son reçete var, otomatik aç
-            self.log_ekle(f"📋 Son reçete: {son_recete}")
-            self.log_ekle(f"🔍 Reçete açılıyor...")
+        # Medula hazırlama + reçete akışını thread'de başlat
+        def _grup_akisi():
+            """Medula'yı hazırla ve gruba göre reçete akışını başlat"""
+            # Önce Medula'yı hazırla ve bağlan
+            if not self.medula_hazirla_ve_baglan():
+                self.root.after(0, lambda: self.log_ekle("❌ Medula hazırlanamadı, işlem iptal"))
+                return
 
-            # Thread'de reçete açma işlemini başlat
-            thread = threading.Thread(target=self.recete_ac, args=(grup, son_recete))
-            thread.daemon = True
-            thread.start()
-        else:
-            # İlk reçete - Yeni akış başlat
-            self.log_ekle(f"ℹ İlk reçete - Otomatik başlatılıyor...")
+            if son_recete:
+                self.root.after(0, lambda r=son_recete: self.log_ekle(f"📋 Son reçete: {r}"))
+                self.recete_ac(grup, son_recete)
+            else:
+                self.root.after(0, lambda: self.log_ekle(f"ℹ İlk reçete - Başlatılıyor..."))
+                self.ilk_recete_akisi(grup)
 
-            # Thread'de yeni akışı başlat
-            thread = threading.Thread(target=self.ilk_recete_akisi, args=(grup,))
-            thread.daemon = True
-            thread.start()
+        thread = threading.Thread(target=_grup_akisi)
+        thread.daemon = True
+        thread.start()
+
+    def medula_hazirla_ve_baglan(self):
+        """
+        Medula penceresini hazırla ve bağlan.
+        1. Pencere var mı kontrol et
+        2. Yoksa aç ve giriş yap
+        3. Varsa ama düşmüşse: geri butonu → giriş butonu (3 kere) → taskkill
+        4. Toplam 7 deneme, her turda 3 giriş denemesi, sonra taskkill
+
+        Returns:
+            bool: Medula hazır ve bağlı ise True
+        """
+        from botanik_bot import medula_taskkill, medula_ac_ve_giris_yap
+        from pywinauto import Desktop
+        import win32gui
+        import win32con
+
+        MAX_TUR = 7  # Toplam deneme turu
+
+        for tur in range(1, MAX_TUR + 1):
+            self.root.after(0, lambda t=tur: self.log_ekle(f"🔄 Medula hazırlama turu {t}/{MAX_TUR}"))
+
+            # ─── 1. Pencere var mı kontrol et ───
+            medula_hwnd = None
+            try:
+                desktop = Desktop(backend="uia")
+                for window in desktop.windows():
+                    try:
+                        if "MEDULA" in window.window_text():
+                            medula_hwnd = window.handle
+                            break
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.debug(f"Pencere kontrol hatası: {e}")
+
+            # ─── 2. Pencere yok → aç ve giriş yap ───
+            if not medula_hwnd:
+                self.root.after(0, lambda: self.log_ekle("📍 MEDULA penceresi bulunamadı, açılıyor..."))
+                try:
+                    if medula_ac_ve_giris_yap(self.medula_settings):
+                        time.sleep(1)
+                        if self.bot is None:
+                            self.bot = BotanikBot()
+                        if self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
+                            self.root.after(0, lambda: self.log_ekle("✓ MEDULA açıldı ve bağlandı"))
+                            try:
+                                console_pencereyi_ayarla()
+                            except Exception:
+                                pass
+                            return True
+                        else:
+                            self.root.after(0, lambda: self.log_ekle("⚠ MEDULA açıldı ama bağlantı kurulamadı"))
+                    else:
+                        self.root.after(0, lambda: self.log_ekle("⚠ MEDULA açılamadı"))
+                except Exception as e:
+                    self.root.after(0, lambda err=str(e): self.log_ekle(f"⚠ Hata: {err}"))
+
+                if tur < MAX_TUR:
+                    time.sleep(2)
+                continue
+
+            # ─── 3. Pencere var → restore et ve bağlan ───
+            try:
+                placement = win32gui.GetWindowPlacement(medula_hwnd)
+                if placement[1] == win32con.SW_SHOWMINIMIZED:
+                    win32gui.ShowWindow(medula_hwnd, win32con.SW_RESTORE)
+                    time.sleep(0.3)
+
+                win32gui.SetForegroundWindow(medula_hwnd)
+                time.sleep(0.2)
+            except Exception as e:
+                logger.debug(f"Pencere restore hatası: {e}")
+
+            # Bot'a bağlan
+            if self.bot is None:
+                self.bot = BotanikBot()
+
+            if not self.bot.baglanti_kur("MEDULA", ilk_baglanti=True):
+                self.root.after(0, lambda: self.log_ekle("⚠ MEDULA penceresine bağlanılamadı, taskkill..."))
+                medula_taskkill()
+                self.bot = None
+                if tur < MAX_TUR:
+                    time.sleep(2)
+                continue
+
+            # ─── 4. Bağlandı, oturum düşmüş mü kontrol et ───
+            if self.bot.cikis_butonu_var_mi() or self.bot.genel_duyurular_sayfasi_mi():
+                self.root.after(0, lambda: self.log_ekle("✓ MEDULA oturumu aktif"))
+                try:
+                    console_pencereyi_ayarla()
+                except Exception:
+                    pass
+                return True
+
+            # ─── 5. Oturum düşmüş → geri butonu + giriş butonu ───
+            self.root.after(0, lambda: self.log_ekle("⚠ Oturum düşmüş, kurtarma başlıyor..."))
+
+            # Önce geri butonuna bas
+            try:
+                self.bot.geri_don_butonuna_tikla()
+                time.sleep(0.5)
+            except Exception:
+                pass
+
+            # 3 kere giriş butonuna bas
+            giris_basarili = False
+            for giris_deneme in range(1, 4):
+                self.root.after(0, lambda d=giris_deneme: self.log_ekle(f"  🔑 Giriş denemesi {d}/3..."))
+                try:
+                    if self.bot.giris_butonuna_tikla():
+                        time.sleep(2)
+                        # Önce Genel Duyurular sayfası kontrol et (giriş başarılı demek)
+                        if self.bot.genel_duyurular_sayfasi_mi():
+                            self.root.after(0, lambda: self.log_ekle("✓ Genel Duyurular sayfası tespit edildi - giriş başarılı"))
+                            giris_basarili = True
+                            break
+                        # Çıkış butonu kontrolü (yedek)
+                        if self.bot.cikis_butonu_var_mi():
+                            self.root.after(0, lambda: self.log_ekle("✓ Giriş başarılı"))
+                            giris_basarili = True
+                            break
+                        else:
+                            self.root.after(0, lambda: self.log_ekle("  ⚠ Giriş butonu tıklandı ama oturum açılmadı"))
+                    else:
+                        self.root.after(0, lambda: self.log_ekle("  ⚠ Giriş butonu bulunamadı"))
+                except Exception as e:
+                    logger.debug(f"Giriş denemesi hatası: {e}")
+
+                time.sleep(1)
+
+            if giris_basarili:
+                try:
+                    console_pencereyi_ayarla()
+                except Exception:
+                    pass
+                return True
+
+            # ─── 6. 3 giriş denemesi başarısız → taskkill ───
+            self.root.after(0, lambda: self.log_ekle("⚠ 3 giriş denemesi başarısız, taskkill yapılıyor..."))
+            medula_taskkill()
+            self.taskkill_sayaci += 1
+            if self.aktif_oturum_id:
+                self.database.artir(self.aktif_oturum_id, "taskkill_sayisi")
+            self.bot = None
+
+            if tur < MAX_TUR:
+                time.sleep(2)
+
+        # 7 tur başarısız
+        self.root.after(0, lambda: self.log_ekle(f"❌ {MAX_TUR} deneme başarısız, Medula hazırlanamadı!"))
+        self.root.after(0, self.hata_sesi_calar)
+        return False
 
     def _mevcut_ekrandan_cik(self):
         """
@@ -5114,6 +5268,17 @@ veya sadece reçete numaraları:
                             basari = ogrenme_sonuc.get('basari', False)
                             medula_no = ogrenme_sonuc.get('recete_no')
                             takip_adet = 0
+
+                            # Algoritmik öğrenme bekliyor mu?
+                            if ogrenme_sonuc.get('algoritmik_ogren_bekliyor'):
+                                bekleyen = ogrenme_sonuc.get('bekleyen_ilac', {})
+                                ilac_adi_bek = bekleyen.get('ilac_adi', '?')
+                                mesaj_bek = bekleyen.get('mesaj_metni', '')[:100]
+                                self.root.after(0, lambda a=ilac_adi_bek, m=mesaj_bek: self.log_ekle(
+                                    f"📚 ALGORİTMİK ÖĞRENME: {a}\n   Mesaj: {m}...\n   Claude Code'da kuralı öğretin, sonra sistemi devam ettirin."))
+                                # Sistemi durdur - kullanıcı Claude Code'da kuralı öğretecek
+                                self.stop_requested = True
+                                break
 
                             # Öğrenme sonucunu logla
                             msj_sayi = ogrenme_sonuc.get('mesajli_ilac_sayisi', 0)

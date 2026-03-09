@@ -47,5 +47,42 @@
   "yasakli_tesis_numaralari": [
     "11349969"
   ],
-  "pencere_yerlesimi": "standart"
+  "pencere_yerlesimi": "standart",
+  "depo_ayarlari": {
+    "selcuk": {
+      "enabled": true,
+      "hesap_kodu": "1203407286",
+      "username": "sel45268330742",
+      "password": "Ozgcrn2015."
+    },
+    "alliance": {
+      "enabled": true,
+      "eczane_kodu": "59397",
+      "username": "ikizlerecz",
+      "password": "108475"
+    },
+    "sancak": {
+      "enabled": true,
+      "username": "8680001515028",
+      "password": "284223"
+    },
+    "iskoop": {
+      "enabled": true,
+      "username": "i015913",
+      "password": "Ozgcrn2015,"
+    },
+    "farmazon": {
+      "enabled": false,
+      "username": "ikizler.eczanesi.bagcilar@gmail.com",
+      "password": "Ozgcrn2015."
+    },
+    "depo_siralama": [
+      "selcuk",
+      "alliance",
+      "sancak",
+      "iskoop",
+      "farmazon"
+    ],
+    "headless": false
+  }
 }

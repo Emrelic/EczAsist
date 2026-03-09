@@ -91,6 +91,17 @@ class MedulaSettings:
             # "standart": MEDULA %60, Konsol %20, GUI %20 (yan yana)
             # "genis_medula": MEDULA %80, GUI %20, Konsol GUI arkasında
             "pencere_yerlesimi": "standart",
+
+            # Depo Ayarları (Sipariş Verme Modülü)
+            "depo_ayarlari": {
+                "selcuk":   {"enabled": True, "hesap_kodu": "", "username": "", "password": ""},
+                "alliance": {"enabled": True, "eczane_kodu": "", "username": "", "password": ""},
+                "sancak":   {"enabled": True, "username": "", "password": ""},
+                "iskoop":   {"enabled": True, "username": "", "password": ""},
+                "farmazon": {"enabled": False, "username": "", "password": ""},
+                "depo_siralama": ["selcuk", "alliance", "sancak", "iskoop", "farmazon"],
+                "headless": False
+            },
         }
 
         self.ayarlar = self.yukle()
@@ -179,6 +190,9 @@ class MedulaSettings:
                     if key not in yuklu_ayarlar:
                         yuklu_ayarlar[key] = value
 
+                # DEPO AYARLARI .ENV MİGRASYONU
+                self._migrate_env_to_depo_ayarlari(yuklu_ayarlar)
+
                 logger.info("✓ MEDULA ayarları yüklendi")
                 return yuklu_ayarlar
             except Exception as e:
@@ -250,6 +264,122 @@ class MedulaSettings:
         if 0 <= index < len(kullanicilar):
             return kullanicilar[index]
         return None
+
+    # ===== DEPO AYARLARI =====
+
+    def get_depo_ayarlari(self):
+        """Depo ayarlarını getir"""
+        return self.ayarlar.get("depo_ayarlari", self.varsayilan_ayarlar.get("depo_ayarlari", {}))
+
+    def _migrate_env_to_depo_ayarlari(self, yuklu_ayarlar):
+        """BotSiparis .env dosyasından depo credential'larını migrate et
+
+        Eğer depo_ayarlari key'i yoksa veya tüm credential'lar boşsa,
+        BotSiparis - Kopya/.env dosyasını okuyup migrate eder.
+        """
+        import os
+
+        depo_ayarlari = yuklu_ayarlar.get("depo_ayarlari", {})
+
+        # Credential'lar zaten dolu mu kontrol et
+        credentials_exist = False
+        for key in ["selcuk", "alliance", "sancak", "iskoop", "farmazon"]:
+            depo = depo_ayarlari.get(key, {})
+            if depo.get("username") or depo.get("password"):
+                credentials_exist = True
+                break
+
+        if credentials_exist:
+            return  # Zaten dolu, migrasyon gereksiz
+
+        # .env dosyasını bul
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        env_path = os.path.join(script_dir, "BotSiparis - Kopya", ".env")
+
+        if not os.path.exists(env_path):
+            logger.debug("BotSiparis .env dosyası bulunamadı, migrasyon atlanıyor")
+            return
+
+        logger.info(f"Depo credential migrasyonu başlıyor: {env_path}")
+
+        # .env dosyasını parse et (basit key=value)
+        env_vars = {}
+        try:
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        env_vars[key.strip()] = value.strip()
+        except Exception as e:
+            logger.error(f".env parse hatası: {e}")
+            return
+
+        # Migrate et
+        migrated = False
+
+        # Alliance
+        if env_vars.get("ALLIANCE_USERNAME"):
+            depo_ayarlari.setdefault("alliance", {})
+            depo_ayarlari["alliance"]["eczane_kodu"] = env_vars.get("ALLIANCE_ECZANE_KODU", "")
+            depo_ayarlari["alliance"]["username"] = env_vars.get("ALLIANCE_USERNAME", "")
+            depo_ayarlari["alliance"]["password"] = env_vars.get("ALLIANCE_PASSWORD", "")
+            depo_ayarlari["alliance"]["enabled"] = env_vars.get("ALLIANCE_ENABLED", "true").lower() == "true"
+            migrated = True
+
+        # Selçuk
+        if env_vars.get("SELCUK_USERNAME"):
+            depo_ayarlari.setdefault("selcuk", {})
+            depo_ayarlari["selcuk"]["hesap_kodu"] = env_vars.get("SELCUK_HESAP_KODU", "")
+            depo_ayarlari["selcuk"]["username"] = env_vars.get("SELCUK_USERNAME", "")
+            depo_ayarlari["selcuk"]["password"] = env_vars.get("SELCUK_PASSWORD", "")
+            depo_ayarlari["selcuk"]["enabled"] = env_vars.get("SELCUK_ENABLED", "true").lower() == "true"
+            migrated = True
+
+        # Sancak
+        if env_vars.get("SANCAK_USERNAME"):
+            depo_ayarlari.setdefault("sancak", {})
+            depo_ayarlari["sancak"]["username"] = env_vars.get("SANCAK_USERNAME", "")
+            depo_ayarlari["sancak"]["password"] = env_vars.get("SANCAK_PASSWORD", "")
+            depo_ayarlari["sancak"]["enabled"] = env_vars.get("SANCAK_ENABLED", "true").lower() == "true"
+            migrated = True
+
+        # İskoop
+        if env_vars.get("ISKOOP_USERNAME"):
+            depo_ayarlari.setdefault("iskoop", {})
+            depo_ayarlari["iskoop"]["username"] = env_vars.get("ISKOOP_USERNAME", "")
+            depo_ayarlari["iskoop"]["password"] = env_vars.get("ISKOOP_PASSWORD", "")
+            depo_ayarlari["iskoop"]["enabled"] = env_vars.get("ISKOOP_ENABLED", "true").lower() == "true"
+            migrated = True
+
+        # Farmazon
+        if env_vars.get("FARMAZON_USERNAME"):
+            depo_ayarlari.setdefault("farmazon", {})
+            depo_ayarlari["farmazon"]["username"] = env_vars.get("FARMAZON_USERNAME", "")
+            depo_ayarlari["farmazon"]["password"] = env_vars.get("FARMAZON_PASSWORD", "")
+            depo_ayarlari["farmazon"]["enabled"] = env_vars.get("FARMAZON_ENABLED", "false").lower() == "true"
+            migrated = True
+
+        # Depo sıralaması
+        if env_vars.get("DEPO_SIRALAMA"):
+            siralama = [s.strip() for s in env_vars["DEPO_SIRALAMA"].split(",")]
+            # Sadece desteklenen depoları al
+            desteklenen = {"selcuk", "alliance", "sancak", "iskoop", "farmazon"}
+            siralama = [s for s in siralama if s in desteklenen]
+            if siralama:
+                depo_ayarlari["depo_siralama"] = siralama
+
+        # Headless
+        depo_ayarlari["headless"] = env_vars.get("HEADLESS", "False").lower() == "true"
+
+        if migrated:
+            yuklu_ayarlar["depo_ayarlari"] = depo_ayarlari
+            # Hemen kaydet
+            self.ayarlar = yuklu_ayarlar
+            self.kaydet()
+            logger.info("✓ Depo credential'ları .env'den migrate edildi ve kaydedildi")
 
     def update_kullanici(self, index, ad=None, kullanici_index=None, sifre=None):
         """Kullanıcı bilgilerini güncelle"""
