@@ -73,9 +73,11 @@ class DepoEkstreModul:
         self.tutar_duzeltme_delta_depo = 0  # Tutar düzeltmelerinin net etkisi
         self.tutar_duzeltme_delta_eczane = 0
 
-        # Seçili satırlar (manuel eşleştirme için)
-        self.secili_depo_satir = None  # (fatura, kayit)
-        self.secili_eczane_satir = None  # (fatura, kayit)
+        # Seçili satırlar (manuel eşleştirme için - çoklu seçim destekli)
+        self.secili_depo_satirlar = []  # [(fatura, kayit), ...]
+        self.secili_eczane_satirlar = []  # [(fatura, kayit), ...]
+        self._secili_depo_items = []  # treeview item id'leri
+        self._secili_eczane_items = []  # treeview item id'leri
 
         # Sonuç penceresi referansları (güncellemeler için)
         self._sonuc_pencere = None
@@ -674,8 +676,10 @@ class DepoEkstreModul:
         self.manuel_eklenenler = []
         self.tutar_duzeltme_delta_depo = 0
         self.tutar_duzeltme_delta_eczane = 0
-        self.secili_depo_satir = None
-        self.secili_eczane_satir = None
+        self.secili_depo_satirlar = []
+        self.secili_eczane_satirlar = []
+        self._secili_depo_items = []
+        self._secili_eczane_items = []
         self._sonuc_widgets = {}
 
         # Sütun eşleştirmeleri
@@ -1464,7 +1468,7 @@ class DepoEkstreModul:
 
         tk.Label(
             info_frame,
-            text="💡 Her iki taraftan birer satır seçin, sonra 'Manuel Eşleştir' butonuna tıklayın",
+            text="💡 Her iki taraftan bir veya birden fazla satır seçin, sonra 'Manuel Eşleştir' butonuna tıklayın",
             font=("Arial", 9),
             bg='#FFEBEE',
             fg='#C62828'
@@ -1516,7 +1520,7 @@ class DepoEkstreModul:
             columns=("fatura", "tarih", "tip", "tutar"),
             show="headings",
             height=8,
-            selectmode="browse"
+            selectmode="extended"
         )
         for col, text, width in [("fatura", "Fatura No", 120), ("tarih", "Tarih", 80), ("tip", "Tip", 60), ("tutar", "Tutar", 100)]:
             depo_tree.heading(col, text=text)
@@ -1534,21 +1538,50 @@ class DepoEkstreModul:
             item_id = depo_tree.insert("", "end", values=(fatura, kayit.get('tarih', ''), kayit.get('tip', ''), tutar))
             self._kirmizi_depo_data[item_id] = {'fatura': fatura, 'kayit': kayit.copy()}
 
-        # Depo seçim olayı
+        # Depo seçim toplamı label
+        self._depo_secim_toplam_label = tk.Label(
+            depo_frame,
+            text="",
+            font=("Arial", 9, "bold"),
+            bg='#FFCDD2',
+            fg='#1A237E'
+        )
+        self._depo_secim_toplam_label.pack(fill="x", pady=(3, 0))
+
+        # Depo seçim olayı (çoklu seçim)
         def depo_secildi(event):
             selection = depo_tree.selection()
             if selection:
-                item_id = selection[0]
-                data = self._kirmizi_depo_data.get(item_id)
-                if data:
-                    self._secili_depo_item = item_id
-                    self.secili_depo_satir = (data['fatura'], data['kayit'])
-                    self._kirmizi_secim_guncelle()
+                self._secili_depo_items = list(selection)
+                self.secili_depo_satirlar = []
+                toplam = 0
+                for item_id in selection:
+                    data = self._kirmizi_depo_data.get(item_id)
+                    if data:
+                        self.secili_depo_satirlar.append((data['fatura'], data['kayit']))
+                        toplam += self._get_tutar(data['kayit'])[0]
+                if len(selection) > 1:
+                    self._depo_secim_toplam_label.config(text=f"Seçili: {len(selection)} satır | Toplam: {toplam:,.2f} ₺")
+                elif len(selection) == 1:
+                    self._depo_secim_toplam_label.config(text=f"Seçili: 1 satır | Toplam: {toplam:,.2f} ₺")
+                else:
+                    self._depo_secim_toplam_label.config(text="")
+                self._kirmizi_secim_guncelle()
+            else:
+                self.secili_depo_satirlar = []
+                self._secili_depo_items = []
+                self._depo_secim_toplam_label.config(text="")
+                self._kirmizi_secim_guncelle()
 
         depo_tree.bind("<<TreeviewSelect>>", depo_secildi)
 
         # Depo sağ tıklama menüsü
         depo_menu = tk.Menu(depo_tree, tearoff=0)
+        depo_menu.add_command(label="🔗 Manuel Eşleştir", command=self._kirmizi_manuel_eslestir)
+        depo_menu.add_command(label="🔗 Tutarı Karşı Tarafla Eşitle ve Eşleştir", command=lambda: self._tutari_esitle_ve_eslestir('depo'))
+        depo_menu.add_separator()
+        depo_menu.add_command(label="🔍 İade Fatura Detay Karşılaştır", command=lambda: self._iade_fatura_detay_ac(depo_tree))
+        depo_menu.add_separator()
         depo_menu.add_command(label="✏️ Tutarı Düzelt", command=lambda: self._kirmizi_tutar_duzelt(depo_tree, 'depo'))
         depo_menu.add_separator()
         depo_menu.add_command(label="➕ Eczane'ye de Ekle ve Eşleştir", command=lambda: self._diger_tarafa_ekle(depo_tree, 'depo'))
@@ -1558,7 +1591,9 @@ class DepoEkstreModul:
         def depo_context_menu(event):
             item = depo_tree.identify_row(event.y)
             if item:
-                depo_tree.selection_set(item)
+                # Sağ tıklanan satır zaten seçili ise mevcut çoklu seçimi koru
+                if item not in depo_tree.selection():
+                    depo_tree.selection_set(item)
                 depo_menu.post(event.x_root, event.y_root)
 
         depo_tree.bind("<Button-3>", depo_context_menu)
@@ -1581,7 +1616,7 @@ class DepoEkstreModul:
             columns=("fatura", "tarih", "tip", "tutar"),
             show="headings",
             height=8,
-            selectmode="browse"
+            selectmode="extended"
         )
         for col, text, width in [("fatura", "Fatura No", 120), ("tarih", "Tarih", 80), ("tip", "Tip", 60), ("tutar", "Tutar", 100)]:
             eczane_tree.heading(col, text=text)
@@ -1599,21 +1634,50 @@ class DepoEkstreModul:
             item_id = eczane_tree.insert("", "end", values=(fatura, kayit.get('tarih', ''), kayit.get('tip', ''), tutar))
             self._kirmizi_eczane_data[item_id] = {'fatura': fatura, 'kayit': kayit.copy()}
 
-        # Eczane seçim olayı
+        # Eczane seçim toplamı label
+        self._eczane_secim_toplam_label = tk.Label(
+            eczane_frame,
+            text="",
+            font=("Arial", 9, "bold"),
+            bg='#F8BBD0',
+            fg='#1A237E'
+        )
+        self._eczane_secim_toplam_label.pack(fill="x", pady=(3, 0))
+
+        # Eczane seçim olayı (çoklu seçim)
         def eczane_secildi(event):
             selection = eczane_tree.selection()
             if selection:
-                item_id = selection[0]
-                data = self._kirmizi_eczane_data.get(item_id)
-                if data:
-                    self._secili_eczane_item = item_id
-                    self.secili_eczane_satir = (data['fatura'], data['kayit'])
-                    self._kirmizi_secim_guncelle()
+                self._secili_eczane_items = list(selection)
+                self.secili_eczane_satirlar = []
+                toplam = 0
+                for item_id in selection:
+                    data = self._kirmizi_eczane_data.get(item_id)
+                    if data:
+                        self.secili_eczane_satirlar.append((data['fatura'], data['kayit']))
+                        toplam += self._get_tutar(data['kayit'])[0]
+                if len(selection) > 1:
+                    self._eczane_secim_toplam_label.config(text=f"Seçili: {len(selection)} satır | Toplam: {toplam:,.2f} ₺")
+                elif len(selection) == 1:
+                    self._eczane_secim_toplam_label.config(text=f"Seçili: 1 satır | Toplam: {toplam:,.2f} ₺")
+                else:
+                    self._eczane_secim_toplam_label.config(text="")
+                self._kirmizi_secim_guncelle()
+            else:
+                self.secili_eczane_satirlar = []
+                self._secili_eczane_items = []
+                self._eczane_secim_toplam_label.config(text="")
+                self._kirmizi_secim_guncelle()
 
         eczane_tree.bind("<<TreeviewSelect>>", eczane_secildi)
 
         # Eczane sağ tıklama menüsü
         eczane_menu = tk.Menu(eczane_tree, tearoff=0)
+        eczane_menu.add_command(label="🔗 Manuel Eşleştir", command=self._kirmizi_manuel_eslestir)
+        eczane_menu.add_command(label="🔗 Tutarı Karşı Tarafla Eşitle ve Eşleştir", command=lambda: self._tutari_esitle_ve_eslestir('eczane'))
+        eczane_menu.add_separator()
+        eczane_menu.add_command(label="🔍 İade Fatura Detay Karşılaştır", command=lambda: self._iade_fatura_detay_ac(eczane_tree))
+        eczane_menu.add_separator()
         eczane_menu.add_command(label="✏️ Tutarı Düzelt", command=lambda: self._kirmizi_tutar_duzelt(eczane_tree, 'eczane'))
         eczane_menu.add_separator()
         eczane_menu.add_command(label="➕ Depo'ya da Ekle ve Eşleştir", command=lambda: self._diger_tarafa_ekle(eczane_tree, 'eczane'))
@@ -1623,35 +1687,40 @@ class DepoEkstreModul:
         def eczane_context_menu(event):
             item = eczane_tree.identify_row(event.y)
             if item:
-                eczane_tree.selection_set(item)
+                # Sağ tıklanan satır zaten seçili ise mevcut çoklu seçimi koru
+                if item not in eczane_tree.selection():
+                    eczane_tree.selection_set(item)
                 eczane_menu.post(event.x_root, event.y_root)
 
         eczane_tree.bind("<Button-3>", eczane_context_menu)
         self._kirmizi_eczane_tree = eczane_tree
 
     def _kirmizi_secim_guncelle(self):
-        """Kırmızı panel seçim durumunu güncelle"""
-        depo_secili = self.secili_depo_satir is not None
-        eczane_secili = self.secili_eczane_satir is not None
+        """Kırmızı panel seçim durumunu güncelle (çoklu seçim destekli)"""
+        depo_satirlar = getattr(self, 'secili_depo_satirlar', [])
+        eczane_satirlar = getattr(self, 'secili_eczane_satirlar', [])
+        depo_secili = len(depo_satirlar) > 0
+        eczane_secili = len(eczane_satirlar) > 0
 
         if depo_secili and eczane_secili:
-            depo_fatura = self.secili_depo_satir[0]
-            eczane_fatura = self.secili_eczane_satir[0]
+            depo_bilgi = f"{len(depo_satirlar)} satır" if len(depo_satirlar) > 1 else depo_satirlar[0][0]
+            eczane_bilgi = f"{len(eczane_satirlar)} satır" if len(eczane_satirlar) > 1 else eczane_satirlar[0][0]
             self._kirmizi_secim_label.config(
-                text=f"Seçim: Depo({depo_fatura}) | Eczane({eczane_fatura})",
+                text=f"Seçim: Depo({depo_bilgi}) | Eczane({eczane_bilgi})",
                 fg='#2E7D32'
             )
-            # Buton aktif
             self._manuel_eslestir_btn.config(state='normal', bg='#4CAF50')
         elif depo_secili:
+            depo_bilgi = f"{len(depo_satirlar)} satır" if len(depo_satirlar) > 1 else depo_satirlar[0][0]
             self._kirmizi_secim_label.config(
-                text=f"Seçim: Depo({self.secili_depo_satir[0]}) | Eczane(-)",
+                text=f"Seçim: Depo({depo_bilgi}) | Eczane(-)",
                 fg='#1565C0'
             )
             self._manuel_eslestir_btn.config(state='disabled', bg='#9E9E9E')
         elif eczane_secili:
+            eczane_bilgi = f"{len(eczane_satirlar)} satır" if len(eczane_satirlar) > 1 else eczane_satirlar[0][0]
             self._kirmizi_secim_label.config(
-                text=f"Seçim: Depo(-) | Eczane({self.secili_eczane_satir[0]})",
+                text=f"Seçim: Depo(-) | Eczane({eczane_bilgi})",
                 fg='#1565C0'
             )
             self._manuel_eslestir_btn.config(state='disabled', bg='#9E9E9E')
@@ -1777,16 +1846,18 @@ class DepoEkstreModul:
             self.manuel_iptal_edilenler_depo.append((fatura, kayit.copy()))
             del self._kirmizi_depo_data[item_id]
             # Seçimi temizle
-            if hasattr(self, '_secili_depo_item') and self._secili_depo_item == item_id:
-                self.secili_depo_satir = None
-                self._secili_depo_item = None
+            secili_items = getattr(self, '_secili_depo_items', [])
+            if item_id in secili_items:
+                secili_items.remove(item_id)
+                self.secili_depo_satirlar = [(d['fatura'], d['kayit']) for iid in secili_items if (d := self._kirmizi_depo_data.get(iid))]
         else:
             self.manuel_iptal_edilenler_eczane.append((fatura, kayit.copy()))
             del self._kirmizi_eczane_data[item_id]
             # Seçimi temizle
-            if hasattr(self, '_secili_eczane_item') and self._secili_eczane_item == item_id:
-                self.secili_eczane_satir = None
-                self._secili_eczane_item = None
+            secili_items = getattr(self, '_secili_eczane_items', [])
+            if item_id in secili_items:
+                secili_items.remove(item_id)
+                self.secili_eczane_satirlar = [(d['fatura'], d['kayit']) for iid in secili_items if (d := self._kirmizi_eczane_data.get(iid))]
 
         tree.delete(item_id)
         self._kirmizi_secim_guncelle()
@@ -1794,56 +1865,209 @@ class DepoEkstreModul:
         messagebox.showinfo("Başarılı", f"Satır iptal edildi: {fatura}")
 
     def _kirmizi_manuel_eslestir(self):
-        """Seçili depo ve eczane satırlarını manuel eşleştir"""
-        if self.secili_depo_satir is None or self.secili_eczane_satir is None:
-            messagebox.showwarning("Uyarı", "Lütfen hem Depo hem Eczane tarafından birer satır seçin!")
+        """Seçili depo ve eczane satırlarını manuel eşleştir (çoklu seçim destekli)"""
+        depo_satirlar = getattr(self, 'secili_depo_satirlar', [])
+        eczane_satirlar = getattr(self, 'secili_eczane_satirlar', [])
+
+        if not depo_satirlar or not eczane_satirlar:
+            messagebox.showwarning("Uyarı", "Lütfen hem Depo hem Eczane tarafından en az birer satır seçin!")
             return
 
-        depo_fatura, depo_kayit = self.secili_depo_satir
-        eczane_fatura, eczane_kayit = self.secili_eczane_satir
+        # Toplamları hesapla
+        depo_toplam = sum(self._get_tutar(k)[0] for _, k in depo_satirlar)
+        eczane_toplam = sum(self._get_tutar(k)[0] for _, k in eczane_satirlar)
+        fark = abs(depo_toplam - eczane_toplam)
 
-        depo_tutar = self._get_tutar(depo_kayit)[0]
-        eczane_tutar = self._get_tutar(eczane_kayit)[0]
-        fark = abs(depo_tutar - eczane_tutar)
-
+        # Onay mesajı oluştur
         mesaj = f"Aşağıdaki satırları manuel eşleştirmek istiyor musunuz?\n\n"
-        mesaj += f"📦 Depo: {depo_fatura} - {depo_tutar:,.2f} ₺\n"
-        mesaj += f"🏥 Eczane: {eczane_fatura} - {eczane_tutar:,.2f} ₺\n"
+        mesaj += f"📦 DEPO ({len(depo_satirlar)} satır):\n"
+        for fatura, kayit in depo_satirlar:
+            tutar = self._get_tutar(kayit)[0]
+            mesaj += f"  • {fatura} - {tutar:,.2f} ₺\n"
+        mesaj += f"  Toplam: {depo_toplam:,.2f} ₺\n\n"
+
+        mesaj += f"🏥 ECZANE ({len(eczane_satirlar)} satır):\n"
+        for fatura, kayit in eczane_satirlar:
+            tutar = self._get_tutar(kayit)[0]
+            mesaj += f"  • {fatura} - {tutar:,.2f} ₺\n"
+        mesaj += f"  Toplam: {eczane_toplam:,.2f} ₺\n"
+
         if fark > 0.01:
             mesaj += f"\n⚠️ Tutar farkı: {fark:,.2f} ₺"
 
         if not messagebox.askyesno("Manuel Eşleştirme Onayı", mesaj):
             return
 
-        # Manuel eşleştirme listesine ekle
-        self.manuel_eslestirilenler.append((depo_fatura, depo_kayit.copy(), eczane_fatura, eczane_kayit.copy()))
+        # Manuel eşleştirme listesine grup olarak ekle
+        # Yeni format: dict with 'depo' and 'eczane' lists
+        grup = {
+            'depo': [(f, k.copy()) for f, k in depo_satirlar],
+            'eczane': [(f, k.copy()) for f, k in eczane_satirlar],
+            'depo_toplam': depo_toplam,
+            'eczane_toplam': eczane_toplam
+        }
+        self.manuel_eslestirilenler.append(grup)
 
-        # Tree'lerden satırları sil
-        if hasattr(self, '_secili_depo_item') and self._secili_depo_item:
+        # Tree'lerden seçili satırları sil
+        depo_items = getattr(self, '_secili_depo_items', [])
+        for item_id in depo_items:
             try:
-                self._kirmizi_depo_tree.delete(self._secili_depo_item)
-                if self._secili_depo_item in self._kirmizi_depo_data:
-                    del self._kirmizi_depo_data[self._secili_depo_item]
+                self._kirmizi_depo_tree.delete(item_id)
+                if item_id in self._kirmizi_depo_data:
+                    del self._kirmizi_depo_data[item_id]
             except:
                 pass
 
-        if hasattr(self, '_secili_eczane_item') and self._secili_eczane_item:
+        eczane_items = getattr(self, '_secili_eczane_items', [])
+        for item_id in eczane_items:
             try:
-                self._kirmizi_eczane_tree.delete(self._secili_eczane_item)
-                if self._secili_eczane_item in self._kirmizi_eczane_data:
-                    del self._kirmizi_eczane_data[self._secili_eczane_item]
+                self._kirmizi_eczane_tree.delete(item_id)
+                if item_id in self._kirmizi_eczane_data:
+                    del self._kirmizi_eczane_data[item_id]
             except:
                 pass
 
         # Seçimleri temizle
-        self.secili_depo_satir = None
-        self.secili_eczane_satir = None
-        self._secili_depo_item = None
-        self._secili_eczane_item = None
+        self.secili_depo_satirlar = []
+        self.secili_eczane_satirlar = []
+        self._secili_depo_items = []
+        self._secili_eczane_items = []
+        if hasattr(self, '_depo_secim_toplam_label'):
+            self._depo_secim_toplam_label.config(text="")
+        if hasattr(self, '_eczane_secim_toplam_label'):
+            self._eczane_secim_toplam_label.config(text="")
         self._kirmizi_secim_guncelle()
 
         self._sonuclari_guncelle()
-        messagebox.showinfo("Başarılı", f"Manuel eşleştirme yapıldı!\n\n📦 {depo_fatura} ↔ 🏥 {eczane_fatura}")
+
+        depo_bilgi = ", ".join(f for f, _ in grup['depo'])
+        eczane_bilgi = ", ".join(f for f, _ in grup['eczane'])
+        messagebox.showinfo("Başarılı",
+                           f"Manuel eşleştirme yapıldı!\n\n"
+                           f"📦 Depo: {depo_bilgi}\n"
+                           f"🏥 Eczane: {eczane_bilgi}\n\n"
+                           f"Depo Toplam: {depo_toplam:,.2f} ₺\n"
+                           f"Eczane Toplam: {eczane_toplam:,.2f} ₺")
+
+    def _tutari_esitle_ve_eslestir(self, duzeltilecek_taraf):
+        """
+        Sağ tıklanan tarafın tutarını karşı taraftaki seçili satırın tutarına eşitleyip eşleştir.
+        duzeltilecek_taraf: 'depo' veya 'eczane' - tutarı değiştirilecek taraf
+        """
+        depo_satirlar = getattr(self, 'secili_depo_satirlar', [])
+        eczane_satirlar = getattr(self, 'secili_eczane_satirlar', [])
+
+        if not depo_satirlar or not eczane_satirlar:
+            messagebox.showwarning("Uyarı",
+                                   "Bu işlem için her iki taraftan da birer satır seçili olmalıdır!\n\n"
+                                   "Önce bir taraftan satır seçin, sonra diğer taraftan da satır seçin,\n"
+                                   "ardından düzeltilecek taraftaki satıra sağ tıklayın.")
+            return
+
+        if len(depo_satirlar) != 1 or len(eczane_satirlar) != 1:
+            messagebox.showwarning("Uyarı", "Bu işlem için her iki taraftan yalnızca birer satır seçili olmalıdır!")
+            return
+
+        depo_fatura, depo_kayit = depo_satirlar[0]
+        eczane_fatura, eczane_kayit = eczane_satirlar[0]
+
+        depo_tutar, depo_tip = self._get_tutar(depo_kayit)
+        eczane_tutar, eczane_tip = self._get_tutar(eczane_kayit)
+
+        if duzeltilecek_taraf == 'eczane':
+            # Eczane tutarı depo tutarına eşitlenecek
+            referans_tutar = depo_tutar
+            eski_tutar = eczane_tutar
+            duzeltilen_ad = "🏥 Eczane"
+            referans_ad = "📦 Depo"
+            duzeltilen_fatura = eczane_fatura
+            referans_fatura = depo_fatura
+        else:
+            # Depo tutarı eczane tutarına eşitlenecek
+            referans_tutar = eczane_tutar
+            eski_tutar = depo_tutar
+            duzeltilen_ad = "📦 Depo"
+            referans_ad = "🏥 Eczane"
+            duzeltilen_fatura = depo_fatura
+            referans_fatura = eczane_fatura
+
+        fark = abs(eski_tutar - referans_tutar)
+
+        mesaj = (
+            f"{duzeltilen_ad} tarafındaki tutarı {referans_ad} tarafına eşitleyip eşleştirmek istiyor musunuz?\n\n"
+            f"{referans_ad}: {referans_fatura} → {referans_tutar:,.2f} ₺ (referans)\n"
+            f"{duzeltilen_ad}: {duzeltilen_fatura} → {eski_tutar:,.2f} ₺ → {referans_tutar:,.2f} ₺\n\n"
+            f"Tutar farkı: {fark:,.2f} ₺\n\n"
+            f"İşlem: Tutar eşitlenecek ve iki satır manuel eşleştirme olarak kaydedilecek."
+        )
+
+        if not messagebox.askyesno("Tutarı Eşitle ve Eşleştir", mesaj):
+            return
+
+        # Tutarı düzelt
+        if duzeltilecek_taraf == 'eczane':
+            if eczane_tip == 'B':
+                delta = referans_tutar - eski_tutar
+                eczane_kayit['borc'] = referans_tutar
+            else:
+                delta = -(referans_tutar - eski_tutar)
+                eczane_kayit['alacak'] = referans_tutar
+            self.tutar_duzeltme_delta_eczane += delta
+        else:
+            if depo_tip == 'B':
+                delta = referans_tutar - eski_tutar
+                depo_kayit['borc'] = referans_tutar
+            else:
+                delta = -(referans_tutar - eski_tutar)
+                depo_kayit['alacak'] = referans_tutar
+            self.tutar_duzeltme_delta_depo += delta
+
+        # Manuel eşleştirme olarak kaydet
+        grup = {
+            'depo': [(depo_fatura, depo_kayit.copy())],
+            'eczane': [(eczane_fatura, eczane_kayit.copy())],
+            'depo_toplam': self._get_tutar(depo_kayit)[0],
+            'eczane_toplam': self._get_tutar(eczane_kayit)[0]
+        }
+        self.manuel_eslestirilenler.append(grup)
+
+        # Her iki tree'den satırları sil
+        depo_items = getattr(self, '_secili_depo_items', [])
+        for item_id in depo_items:
+            try:
+                self._kirmizi_depo_tree.delete(item_id)
+                if item_id in self._kirmizi_depo_data:
+                    del self._kirmizi_depo_data[item_id]
+            except:
+                pass
+
+        eczane_items = getattr(self, '_secili_eczane_items', [])
+        for item_id in eczane_items:
+            try:
+                self._kirmizi_eczane_tree.delete(item_id)
+                if item_id in self._kirmizi_eczane_data:
+                    del self._kirmizi_eczane_data[item_id]
+            except:
+                pass
+
+        # Seçimleri temizle
+        self.secili_depo_satirlar = []
+        self.secili_eczane_satirlar = []
+        self._secili_depo_items = []
+        self._secili_eczane_items = []
+        if hasattr(self, '_depo_secim_toplam_label'):
+            self._depo_secim_toplam_label.config(text="")
+        if hasattr(self, '_eczane_secim_toplam_label'):
+            self._eczane_secim_toplam_label.config(text="")
+        self._kirmizi_secim_guncelle()
+
+        self._sonuclari_guncelle()
+
+        messagebox.showinfo("Başarılı",
+                           f"Tutar eşitlendi ve eşleştirme yapıldı!\n\n"
+                           f"📦 Depo: {depo_fatura} → {self._get_tutar(depo_kayit)[0]:,.2f} ₺\n"
+                           f"🏥 Eczane: {eczane_fatura} → {self._get_tutar(eczane_kayit)[0]:,.2f} ₺\n\n"
+                           f"Düzeltme: {fark:,.2f} ₺ fark giderildi")
 
     def _diger_tarafa_ekle(self, tree, orijinal_kaynak):
         """Seçili satırı diğer tarafa da ekleyerek eşleştir"""
@@ -1900,16 +2124,18 @@ class DepoEkstreModul:
             if item_id in self._kirmizi_depo_data:
                 del self._kirmizi_depo_data[item_id]
             # Seçimi temizle
-            if hasattr(self, '_secili_depo_item') and self._secili_depo_item == item_id:
-                self.secili_depo_satir = None
-                self._secili_depo_item = None
+            secili_items = getattr(self, '_secili_depo_items', [])
+            if item_id in secili_items:
+                secili_items.remove(item_id)
+                self.secili_depo_satirlar = [(d['fatura'], d['kayit']) for iid in secili_items if (d := self._kirmizi_depo_data.get(iid))]
         else:
             if item_id in self._kirmizi_eczane_data:
                 del self._kirmizi_eczane_data[item_id]
             # Seçimi temizle
-            if hasattr(self, '_secili_eczane_item') and self._secili_eczane_item == item_id:
-                self.secili_eczane_satir = None
-                self._secili_eczane_item = None
+            secili_items = getattr(self, '_secili_eczane_items', [])
+            if item_id in secili_items:
+                secili_items.remove(item_id)
+                self.secili_eczane_satirlar = [(d['fatura'], d['kayit']) for iid in secili_items if (d := self._kirmizi_eczane_data.get(iid))]
 
         self._kirmizi_secim_guncelle()
         self._sonuclari_guncelle()
@@ -1964,22 +2190,32 @@ class DepoEkstreModul:
             return
 
         # Manuel iptal edilenlerin tutarını hesapla (bunlar toplamdan düşülecek)
-        iptal_depo_tutar = sum(self._get_tutar(k)[0] for _, k in self.manuel_iptal_edilenler_depo)
-        iptal_eczane_tutar = sum(self._get_tutar(k)[0] for _, k in self.manuel_iptal_edilenler_eczane)
+        # Borç kaydı iptal edildi → toplamdan düş (pozitif değer)
+        # Alacak kaydı (iade) iptal edildi → toplama geri ekle (negatif değer, yani çıkarılınca artar)
+        iptal_depo_tutar = 0
+        for _, k in self.manuel_iptal_edilenler_depo:
+            tutar, tip = self._get_tutar(k)
+            iptal_depo_tutar += tutar if tip == 'B' else -tutar
+        iptal_eczane_tutar = 0
+        for _, k in self.manuel_iptal_edilenler_eczane:
+            tutar, tip = self._get_tutar(k)
+            iptal_eczane_tutar += tutar if tip == 'B' else -tutar
 
         # Manuel eklenenlerin tutarını hesapla (bunlar diğer tarafa eklenecek)
-        # Orijinal 'depo' ise → Eczane'ye eklendi → Eczane toplamına ekle
-        # Orijinal 'eczane' ise → Depo'ya eklendi → Depo toplamına ekle
+        # Borç kaydı → diğer tarafa artı olarak eklenir
+        # Alacak kaydı (iade) → diğer taraftan düşülür (negatif etki)
         eklenen_depoya = 0  # Eczane'de vardı, Depo'ya eklendi
         eklenen_eczaneye = 0  # Depo'da vardı, Eczane'ye eklendi
         for item in self.manuel_eklenenler:
-            tutar = self._get_tutar(item['kayit'])[0]
+            tutar, tip = self._get_tutar(item['kayit'])
+            # Alacak (iade) kaydı ise negatif etki yapar
+            etki = tutar if tip == 'B' else -tutar
             if item['orijinal'] == 'depo':
                 # Depo'da vardı → Eczane'ye eklendi
-                eklenen_eczaneye += tutar
+                eklenen_eczaneye += etki
             else:
                 # Eczane'de vardı → Depo'ya eklendi
-                eklenen_depoya += tutar
+                eklenen_depoya += etki
 
         # Tutar düzeltme deltalarını al
         duzeltme_depo = getattr(self, 'tutar_duzeltme_delta_depo', 0)
@@ -2111,7 +2347,7 @@ class DepoEkstreModul:
         tree_fr = tk.Frame(tree_container, bg='#E8EAF6')
         tree_fr.pack(fill="both", expand=True)
 
-        tree = ttk.Treeview(tree_fr, columns=("depo_fatura", "depo_tutar", "sep", "eczane_fatura", "eczane_tutar", "fark"), show="headings", height=8)
+        tree = ttk.Treeview(tree_fr, columns=("depo_fatura", "depo_tutar", "sep", "eczane_fatura", "eczane_tutar", "fark"), show="headings", height=10)
         for col, text, width in [("depo_fatura", "Depo Fatura No", 150), ("depo_tutar", "Depo Tutar", 120), ("sep", "↔", 20), ("eczane_fatura", "Eczane Fatura No", 150), ("eczane_tutar", "Eczane Tutar", 120), ("fark", "Fark", 100)]:
             tree.heading(col, text=text)
             tree.column(col, width=width, minwidth=width, anchor="e" if "tutar" in col or col == "fark" else ("center" if col == "sep" else "w"))
@@ -2124,25 +2360,77 @@ class DepoEkstreModul:
         toplam_depo = 0
         toplam_eczane = 0
 
-        for depo_fatura, depo_kayit, eczane_fatura, eczane_kayit in self.manuel_eslestirilenler:
-            depo_tutar = self._get_tutar(depo_kayit)[0]
-            eczane_tutar = self._get_tutar(eczane_kayit)[0]
-            fark = depo_tutar - eczane_tutar
-            toplam_depo += depo_tutar
-            toplam_eczane += eczane_tutar
+        for idx, grup in enumerate(self.manuel_eslestirilenler):
+            # Eski format uyumluluğu: tuple ise dict'e çevir
+            if isinstance(grup, tuple):
+                grup = {
+                    'depo': [(grup[0], grup[1])],
+                    'eczane': [(grup[2], grup[3])],
+                    'depo_toplam': self._get_tutar(grup[1])[0],
+                    'eczane_toplam': self._get_tutar(grup[3])[0]
+                }
+                self.manuel_eslestirilenler[idx] = grup
 
-            tree.insert("", "end", values=(
-                depo_fatura,
-                f"{depo_tutar:,.2f} ₺",
-                "↔",
-                eczane_fatura,
-                f"{eczane_tutar:,.2f} ₺",
-                f"{fark:,.2f} ₺" if abs(fark) > 0.01 else "✓"
-            ), tags=('eslesti',))
+            depo_satirlari = grup['depo']
+            eczane_satirlari = grup['eczane']
+            grup_depo_toplam = grup['depo_toplam']
+            grup_eczane_toplam = grup['eczane_toplam']
+            toplam_depo += grup_depo_toplam
+            toplam_eczane += grup_eczane_toplam
 
-        tree.tag_configure('eslesti', background='#C5CAE9')
+            coklu_grup = len(depo_satirlari) > 1 or len(eczane_satirlari) > 1
 
-        # Toplam satırı
+            if coklu_grup:
+                # Çoklu eşleşme: önce alt toplam satırı (ana satır rengi), sonra detaylar
+                fark = grup_depo_toplam - grup_eczane_toplam
+                tree.insert("", "end", values=(
+                    f"▸ TOPLAM ({len(depo_satirlari)} satır)",
+                    f"{grup_depo_toplam:,.2f} ₺",
+                    "↔",
+                    f"▸ TOPLAM ({len(eczane_satirlari)} satır)",
+                    f"{grup_eczane_toplam:,.2f} ₺",
+                    f"{fark:,.2f} ₺" if abs(fark) > 0.01 else "✓"
+                ), tags=('ana_satir',))
+
+                # Detay satırları alt toplam satırının altında
+                max_satirlar = max(len(depo_satirlari), len(eczane_satirlari))
+                for i in range(max_satirlar):
+                    d_fatura = depo_satirlari[i][0] if i < len(depo_satirlari) else ""
+                    d_tutar = f"{self._get_tutar(depo_satirlari[i][1])[0]:,.2f} ₺" if i < len(depo_satirlari) else ""
+                    e_fatura = eczane_satirlari[i][0] if i < len(eczane_satirlari) else ""
+                    e_tutar = f"{self._get_tutar(eczane_satirlari[i][1])[0]:,.2f} ₺" if i < len(eczane_satirlari) else ""
+
+                    tree.insert("", "end", values=(
+                        f"    {d_fatura}" if d_fatura else "",
+                        d_tutar,
+                        "",
+                        f"    {e_fatura}" if e_fatura else "",
+                        e_tutar,
+                        ""
+                    ), tags=('detay',))
+            else:
+                # Tekli eşleşme (1:1) - ana satır rengiyle göster
+                d_fatura = depo_satirlari[0][0]
+                d_tutar = self._get_tutar(depo_satirlari[0][1])[0]
+                e_fatura = eczane_satirlari[0][0]
+                e_tutar = self._get_tutar(eczane_satirlari[0][1])[0]
+                fark = d_tutar - e_tutar
+
+                tree.insert("", "end", values=(
+                    d_fatura,
+                    f"{d_tutar:,.2f} ₺",
+                    "↔",
+                    e_fatura,
+                    f"{e_tutar:,.2f} ₺",
+                    f"{fark:,.2f} ₺" if abs(fark) > 0.01 else "✓"
+                ), tags=('ana_satir',))
+
+        # Ana satır rengi: tekli satırlar ve alt toplam satırları aynı renk
+        tree.tag_configure('ana_satir', background='#C5CAE9')
+        # Detay satırları: farklı, daha açık renk
+        tree.tag_configure('detay', background='#E8EAF6')
+
+        # Genel toplam satırı
         toplam_fark = toplam_depo - toplam_eczane
         tk.Label(
             tree_container,
@@ -2361,26 +2649,15 @@ class DepoEkstreModul:
             )
 
     def _manuel_eslestirme_panel_guncelle(self):
-        """Manuel eşleştirme panelini güncelle"""
+        """Manuel eşleştirme panelini güncelle (çoklu eşleşme destekli)"""
         if hasattr(self, '_manuel_eslestirme_tree') and self._manuel_eslestirme_tree:
-            # Mevcut tree'yi temizle
-            for item in self._manuel_eslestirme_tree.get_children():
-                self._manuel_eslestirme_tree.delete(item)
-
-            # Yeni verileri ekle
-            for depo_fatura, depo_kayit, eczane_fatura, eczane_kayit in self.manuel_eslestirilenler:
-                depo_tutar = self._get_tutar(depo_kayit)[0]
-                eczane_tutar = self._get_tutar(eczane_kayit)[0]
-                fark = depo_tutar - eczane_tutar
-
-                self._manuel_eslestirme_tree.insert("", "end", values=(
-                    depo_fatura,
-                    f"{depo_tutar:,.2f} ₺",
-                    "↔",
-                    eczane_fatura,
-                    f"{eczane_tutar:,.2f} ₺",
-                    f"{fark:,.2f} ₺" if abs(fark) > 0.01 else "✓"
-                ), tags=('eslesti',))
+            # Rebuild: panel'i tamamen yeniden oluştur (tag_configure'ler tree oluşturulurken yapılmalı)
+            if hasattr(self, '_eslestirme_content_frame') and self._eslestirme_content_frame:
+                for widget in self._eslestirme_content_frame.winfo_children():
+                    widget.destroy()
+                self._manuel_eslestirme_tree = None
+                self._build_manuel_eslestirme_panel(self._eslestirme_content_frame)
+                return
 
         # Info label güncelle
         if hasattr(self, '_manuel_eslestirme_info_label'):
@@ -2493,6 +2770,1037 @@ class DepoEkstreModul:
         except Exception as e:
             logger.error(f"Excel export hatası: {e}")
             messagebox.showerror("Hata", f"Excel'e aktarma hatası:\n{e}")
+
+    # =========================================================================
+    # İADE FATURA DETAY KARŞILAŞTIRMA
+    # =========================================================================
+
+    def _iade_fatura_detay_ac(self, tree):
+        """Seçili satır(lar)ın iade faturası detayını karşılaştırma penceresini aç (çoklu seçim destekli)"""
+        selection = tree.selection()
+        if not selection:
+            messagebox.showwarning("Uyarı", "Lütfen en az bir satır seçin!")
+            return
+
+        # Seçili satırların bilgilerini topla
+        secili_faturalar = []
+        for item_id in selection:
+            if tree == getattr(self, '_kirmizi_depo_tree', None):
+                data = self._kirmizi_depo_data.get(item_id)
+            elif tree == getattr(self, '_kirmizi_eczane_tree', None):
+                data = self._kirmizi_eczane_data.get(item_id)
+            else:
+                data = None
+
+            if data:
+                secili_faturalar.append({
+                    'fatura_no': data['fatura'],
+                    'tarih': data['kayit'].get('tarih', ''),
+                    'tutar': self._get_tutar(data['kayit'])[0]
+                })
+
+        if not secili_faturalar:
+            messagebox.showwarning("Uyarı", "Satır verisi bulunamadı!")
+            return
+
+        # Başlık bilgisi
+        if len(secili_faturalar) == 1:
+            baslik_text = (
+                f"Fatura: {secili_faturalar[0]['fatura_no']} | "
+                f"Tarih: {secili_faturalar[0]['tarih']} | "
+                f"Tutar: {secili_faturalar[0]['tutar']:,.2f} ₺"
+            )
+            pencere_baslik = f"🔍 İade Fatura Detay - {secili_faturalar[0]['fatura_no']}"
+        else:
+            toplam_tutar = sum(f['tutar'] for f in secili_faturalar)
+            fatura_nolar = ", ".join(f['fatura_no'] for f in secili_faturalar)
+            baslik_text = (
+                f"{len(secili_faturalar)} Fatura: {fatura_nolar} | "
+                f"Toplam: {toplam_tutar:,.2f} ₺"
+            )
+            pencere_baslik = f"🔍 İade Fatura Detay - {len(secili_faturalar)} Fatura (Konsolide)"
+
+        # Yeni pencere oluştur
+        pencere = tk.Toplevel(self._sonuc_pencere or self.root)
+        pencere.title(pencere_baslik)
+        pencere.geometry("1400x850")
+        pencere.configure(bg='#ECEFF1')
+        pencere.transient(self._sonuc_pencere or self.root)
+
+        pencere.update_idletasks()
+        x = (pencere.winfo_screenwidth() - 1400) // 2
+        y = max(10, (pencere.winfo_screenheight() - 850) // 2)
+        pencere.geometry(f"1400x850+{x}+{y}")
+
+        # Başlık
+        baslik_frame = tk.Frame(pencere, bg='#1565C0', pady=8)
+        baslik_frame.pack(fill="x")
+        tk.Label(
+            baslik_frame, text=f"🔍 İade Fatura Detay Karşılaştırma | {baslik_text}",
+            font=("Arial", 11, "bold"), bg='#1565C0', fg='white'
+        ).pack()
+
+        # === ANA İÇERİK: PanedWindow ile üst (paneller) ve alt (sonuçlar) ===
+        paned = tk.PanedWindow(pencere, orient=tk.VERTICAL, bg='#ECEFF1', sashwidth=6, sashrelief="raised")
+        paned.pack(fill="both", expand=True, padx=10, pady=(10, 0))
+
+        # --- ÜST KISIM: İki panel yan yana ---
+        panels_frame = tk.Frame(paned, bg='#ECEFF1')
+        panels_frame.columnconfigure(0, weight=1)
+        panels_frame.columnconfigure(1, weight=1)
+        panels_frame.rowconfigure(0, weight=1)
+        paned.add(panels_frame, minsize=200)
+
+        # === SOL PANEL: DEPO (metin yapıştırma / HTML yükleme) ===
+        depo_frame = tk.LabelFrame(
+            panels_frame, text="📦 DEPO TARAFI (Yapıştır / HTML Yükle)",
+            font=("Arial", 11, "bold"), bg='#E3F2FD', fg='#0D47A1', padx=8, pady=8
+        )
+        depo_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+
+        depo_ust_frame = tk.Frame(depo_frame, bg='#E3F2FD')
+        depo_ust_frame.pack(fill="x", pady=(0, 5))
+
+        tk.Label(
+            depo_ust_frame,
+            text="Metin yapıştırın veya HTML fatura yükleyin:",
+            font=("Arial", 9), bg='#E3F2FD', fg='#1565C0', justify="left"
+        ).pack(side="left", anchor="w")
+
+        tk.Button(
+            depo_ust_frame, text="📂 HTML Fatura Yükle",
+            font=("Arial", 9, "bold"), bg='#1565C0', fg='white', cursor="hand2",
+            padx=8, pady=2,
+            command=lambda: self._html_fatura_yukle(depo_text, depo_info_label)
+        ).pack(side="right", padx=(5, 0))
+
+        # Text + scrollbar düzgün layout: frame içinde
+        depo_text_frame = tk.Frame(depo_frame, bg='#E3F2FD')
+        depo_text_frame.pack(fill="both", expand=True)
+
+        depo_text = tk.Text(depo_text_frame, font=("Consolas", 9), wrap="none", height=12, bg='white', fg='#212121')
+        depo_text_scroll_y = ttk.Scrollbar(depo_text_frame, orient="vertical", command=depo_text.yview)
+        depo_text_scroll_x = ttk.Scrollbar(depo_text_frame, orient="horizontal", command=depo_text.xview)
+        depo_text.configure(yscrollcommand=depo_text_scroll_y.set, xscrollcommand=depo_text_scroll_x.set)
+
+        depo_text_scroll_y.pack(side="right", fill="y")
+        depo_text_scroll_x.pack(side="bottom", fill="x")
+        depo_text.pack(side="left", fill="both", expand=True)
+
+        # Depo parse bilgi label
+        depo_info_label = tk.Label(
+            depo_frame, text="", font=("Arial", 9, "bold"), bg='#E3F2FD', fg='#0D47A1'
+        )
+        depo_info_label.pack(anchor="w", pady=(3, 0))
+
+        # === SAĞ PANEL: BOTANİK (otomatik - çoklu fatura) ===
+        botanik_frame = tk.LabelFrame(
+            panels_frame, text="🏥 BOTANİK TARAFI (Otomatik)",
+            font=("Arial", 11, "bold"), bg='#E8F5E9', fg='#1B5E20', padx=8, pady=8
+        )
+        botanik_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+
+        botanik_info_label = tk.Label(
+            botanik_frame, text="Botanik veritabanından iade faturaları yükleniyor...",
+            font=("Arial", 9), bg='#E8F5E9', fg='#2E7D32'
+        )
+        botanik_info_label.pack(anchor="w", pady=(0, 5))
+
+        # Botanik tree + scrollbar düzgün layout
+        botanik_tree_frame = tk.Frame(botanik_frame, bg='#E8F5E9')
+        botanik_tree_frame.pack(fill="both", expand=True)
+
+        botanik_tree = ttk.Treeview(
+            botanik_tree_frame,
+            columns=("fatura", "urun", "barkod", "miktar", "birim_fiyat", "toplam"),
+            show="headings", height=12
+        )
+        for col, text, width, anchor in [
+            ("fatura", "Fatura", 90, "w"),
+            ("urun", "Ürün Adı", 220, "w"),
+            ("barkod", "Barkod", 110, "w"),
+            ("miktar", "Miktar", 50, "center"),
+            ("birim_fiyat", "Birim Fiyat", 90, "e"),
+            ("toplam", "Toplam Tutar", 100, "e")
+        ]:
+            botanik_tree.heading(col, text=text)
+            botanik_tree.column(col, width=width, anchor=anchor)
+
+        botanik_scroll = ttk.Scrollbar(botanik_tree_frame, orient="vertical", command=botanik_tree.yview)
+        botanik_tree.configure(yscrollcommand=botanik_scroll.set)
+        botanik_scroll.pack(side="right", fill="y")
+        botanik_tree.pack(side="left", fill="both", expand=True)
+
+        # Botanik verilerini tüm seçili faturalar için yükle (konsolide)
+        self._botanik_iade_satirlari = []
+        self._botanik_iade_konsolide_yukle(secili_faturalar, botanik_tree, botanik_info_label)
+
+        # --- ALT KISIM: Butonlar + Sonuç alanı ---
+        alt_frame = tk.Frame(paned, bg='#ECEFF1')
+        paned.add(alt_frame, minsize=150)
+
+        # Buton çubuğu
+        buton_frame = tk.Frame(alt_frame, bg='#ECEFF1', pady=5)
+        buton_frame.pack(fill="x")
+
+        tk.Button(
+            buton_frame, text="🔍 KARŞILAŞTIR", font=("Arial", 12, "bold"),
+            bg='#4CAF50', fg='white', cursor="hand2", padx=20, pady=5,
+            command=lambda: self._iade_fatura_karsilastir(pencere, depo_text, None, None)
+        ).pack(side="left", padx=10)
+
+        tk.Button(
+            buton_frame, text="🔄 Botanik'ten Yeniden Yükle", font=("Arial", 10),
+            bg='#2196F3', fg='white', cursor="hand2",
+            command=lambda: self._botanik_iade_konsolide_yukle(secili_faturalar, botanik_tree, botanik_info_label)
+        ).pack(side="left", padx=10)
+
+        # Sonuç alanı
+        sonuc_frame = tk.LabelFrame(
+            alt_frame, text="📊 Karşılaştırma Sonuçları",
+            font=("Arial", 11, "bold"), bg='#FFF3E0', fg='#E65100', padx=8, pady=8
+        )
+        sonuc_frame.pack(fill="both", expand=True, pady=(0, 5))
+
+        self._iade_sonuc_frame = sonuc_frame
+        self._iade_sonuc_tree = None
+
+        tk.Label(
+            sonuc_frame,
+            text="Depo bilgilerini yapıştırın veya HTML yükleyin, sonra 'KARŞILAŞTIR' butonuna basın.",
+            font=("Arial", 10), bg='#FFF3E0', fg='#F57C00', justify="center"
+        ).pack(pady=20)
+
+    def _botanik_iade_konsolide_yukle(self, secili_faturalar, tree, info_label):
+        """Birden fazla fatura için Botanik'ten iade detaylarını konsolide yükle"""
+        try:
+            from botanik_db import BotanikDB
+            db = BotanikDB()
+            if not db.baglan():
+                info_label.config(text="❌ Veritabanına bağlanılamadı!")
+                return
+
+            # Tree temizle
+            for item in tree.get_children():
+                tree.delete(item)
+
+            tum_satirlar = []
+            toplam = 0
+            fatura_sayilari = {}
+
+            for fatura_bilgi in secili_faturalar:
+                fatura_no = fatura_bilgi['fatura_no']
+                tarih = fatura_bilgi['tarih']
+
+                results = db.iade_fatura_detay_getir(fatura_no=fatura_no, fatura_tarihi=tarih)
+
+                if results:
+                    fatura_sayilari[fatura_no] = len(results)
+                    for r in results:
+                        miktar = float(r.get('Miktar', 0) or 0)
+                        birim_fiyat = float(r.get('BirimFiyat', 0) or 0)
+                        toplam_tutar = float(r.get('ToplamTutar', 0) or 0)
+                        urun_adi = r.get('UrunAdi', '')
+                        barkod = r.get('Barkod', '') or ''
+                        etiket_fiyat = float(r.get('EtiketFiyat', 0) or 0)
+
+                        toplam += abs(toplam_tutar)
+
+                        tree.insert("", "end", values=(
+                            fatura_no,
+                            urun_adi, barkod, miktar,
+                            f"{abs(birim_fiyat):,.2f} ₺",
+                            f"{abs(toplam_tutar):,.2f} ₺"
+                        ))
+
+                        tum_satirlar.append({
+                            'fatura_no': fatura_no,
+                            'urun_adi': urun_adi,
+                            'barkod': barkod,
+                            'miktar': abs(miktar),
+                            'birim_fiyat': abs(birim_fiyat),
+                            'toplam_tutar': abs(toplam_tutar),
+                            'etiket_fiyat': etiket_fiyat,
+                            'kaynak': r.get('Kaynak', '')
+                        })
+                else:
+                    fatura_sayilari[fatura_no] = 0
+
+            db.kapat()
+
+            if not tum_satirlar:
+                info_label.config(text=f"⚠️ Seçili faturalar için iade detayı bulunamadı")
+            else:
+                fatura_ozet = " + ".join(f"{no}({sayi})" for no, sayi in fatura_sayilari.items())
+                info_label.config(
+                    text=f"✅ {len(tum_satirlar)} kalem | {len(fatura_sayilari)} fatura [{fatura_ozet}] | Toplam: {toplam:,.2f} ₺"
+                )
+
+            self._botanik_iade_satirlari = tum_satirlar
+
+        except Exception as e:
+            logger.error(f"Botanik iade fatura yükleme hatası: {e}")
+            info_label.config(text=f"❌ Hata: {e}")
+
+    def _html_fatura_yukle(self, depo_text_widget, info_label):
+        """HTML fatura dosyası seç ve parse et"""
+        from tkinter import filedialog
+        parent_pencere = depo_text_widget.winfo_toplevel()
+        dosya = filedialog.askopenfilename(
+            title="İade Fatura HTML Dosyası Seçin",
+            filetypes=[("HTML dosyaları", "*.html *.htm"), ("Tüm dosyalar", "*.*")],
+            initialdir=os.path.expanduser("~/Downloads"),
+            parent=parent_pencere
+        )
+        if not dosya:
+            return
+
+        try:
+            # Encoding dene
+            for enc in ['utf-8', 'cp1254', 'latin-1']:
+                try:
+                    with open(dosya, 'r', encoding=enc) as f:
+                        html_icerik = f.read()
+                    break
+                except UnicodeDecodeError:
+                    continue
+            else:
+                messagebox.showerror("Hata", "Dosya okunamadı (encoding hatası)", parent=parent_pencere)
+                return
+
+            satirlar = self._html_fatura_parse(html_icerik)
+            if not satirlar:
+                messagebox.showwarning("Uyarı", "HTML dosyasında ürün satırı bulunamadı!", parent=parent_pencere)
+                return
+
+            # Parse edilen verileri _depo_html_satirlari olarak sakla
+            self._depo_html_satirlari = satirlar
+
+            # Text widget'a formatlanmış özet yaz
+            depo_text_widget.delete("1.0", tk.END)
+
+            # Fatura meta bilgisi varsa başa yaz
+            meta = getattr(self, '_html_fatura_meta', {})
+            if meta:
+                depo_text_widget.insert(tk.END,
+                    f"FATURA: {meta.get('no', '?')} | "
+                    f"TARİH: {meta.get('tarih', '?')} | "
+                    f"TİP: {meta.get('tip', '?')} | "
+                    f"TOPLAM: {meta.get('odenecek', '?')} TL\n"
+                    f"{'─' * 100}\n"
+                )
+
+            # Sütun başlıkları
+            baslik = f"{'Barkod':<15} {'Ürün Adı':<38} {'Etiket':>10} {'KDV%':>5} {'Depocu':>10} {'K.İsk%':>6} {'Net Fyt':>10} {'Adet':>5} {'Tutar':>12}"
+            depo_text_widget.insert(tk.END, baslik + "\n")
+            depo_text_widget.insert(tk.END, "─" * len(baslik) + "\n")
+
+            toplam = 0
+            for s in satirlar:
+                tutar = s.get('tutar', 0) or 0
+                toplam += tutar
+                barkod = s.get('barkod', '') or ''
+                etiket = f"{s['etiket_fiyat']:,.2f}" if s.get('etiket_fiyat') else "-"
+                kdv = f"{s['kdv_orani']:.0f}" if s.get('kdv_orani') is not None else "-"
+                depocu = f"{s['depocu_fiyat']:,.2f}" if s.get('depocu_fiyat') else "-"
+                kurum = f"{s['kurum_iskonto']:.1f}" if s.get('kurum_iskonto') is not None else "-"
+                net = f"{s['net_fiyat']:,.2f}" if s.get('net_fiyat') else "-"
+                satir = f"{barkod:<15} {s['urun_adi']:<38} {etiket:>10} {kdv:>5} {depocu:>10} {kurum:>6} {net:>10} {s['miktar']:>5} {tutar:>12,.2f}"
+                depo_text_widget.insert(tk.END, satir + "\n")
+
+            depo_text_widget.insert(tk.END, f"{'─' * len(baslik)}\n")
+            depo_text_widget.insert(tk.END, f"{'TOPLAM':>89} {toplam:>12,.2f}\n")
+
+            info_label.config(
+                text=f"✅ HTML fatura yüklendi: {len(satirlar)} kalem | Toplam: {toplam:,.2f} ₺ | {os.path.basename(dosya)}"
+            )
+
+        except Exception as e:
+            logger.error(f"HTML fatura yükleme hatası: {e}", exc_info=True)
+            messagebox.showerror("Hata", f"HTML fatura parse edilemedi:\n{e}", parent=parent_pencere)
+
+    def _html_fatura_parse(self, html_icerik):
+        """
+        Selçuk Ecza HTML fatura formatını parse et.
+        Sütunlar: Barkod, Ürün Adı, Etiket Fyt, KDV%, Ecz.Kar%, Depocu Fyt,
+                   Kurum İsk, Satış İsk, Net Fyt, Miktar (alınan+bedava), Tutar
+        """
+        import re
+        import json
+
+        satirlar = []
+
+        # Fatura meta bilgisi (QR JSON)
+        qr_match = re.search(r'id="qrvalue"[^>]*>(.*?)</div>', html_icerik, re.DOTALL)
+        if qr_match:
+            try:
+                self._html_fatura_meta = json.loads(qr_match.group(1).strip())
+            except json.JSONDecodeError:
+                self._html_fatura_meta = {}
+        else:
+            self._html_fatura_meta = {}
+
+        def temizle_sayi(s):
+            """Türkçe/Amerikan sayı formatını float'a çevir"""
+            s = s.strip().replace(' ', '').replace('\xa0', '')
+            if not s or s == '-':
+                return None
+            # Türkçe: 1.650,61 → 1650.61
+            if ',' in s and '.' in s:
+                last_comma = s.rfind(',')
+                last_dot = s.rfind('.')
+                if last_comma > last_dot:
+                    s = s.replace('.', '').replace(',', '.')
+                else:
+                    s = s.replace(',', '')
+            elif ',' in s:
+                s = s.replace(',', '.')
+            s = s.replace('₺', '').replace('TL', '').strip()
+            try:
+                return abs(float(s))
+            except ValueError:
+                return None
+
+        # Ürün satırlarını bul: <tr><td>13-haneli-barkod</td>...
+        rows = re.findall(r'<tr><td[^>]*>(\d{13})</td>(.*?)</tr>', html_icerik, re.DOTALL)
+
+        for barkod, rest in rows:
+            # Tüm td hücrelerini al
+            cells = re.findall(r'<td[^>]*>(.*?)</td>', rest, re.DOTALL)
+            cleaned = [re.sub(r'<[^>]+>', '', c).strip().replace('\n', ' ').replace('\t', '') for c in cells]
+            cleaned = [' '.join(c.split()) for c in cleaned]  # Çoklu boşlukları teke indir
+
+            if len(cleaned) < 9:
+                continue
+
+            # Sütun sırası: 0:ÜrünAdı, 1:EtiketFyt, 2:KDV%, 3:EczKar%, 4:DepocuFyt,
+            #               5:KurumIsk, 6:SatışIsk, 7:NetFyt, 8:Miktar(a+b), 9:Tutar
+            urun_adi = cleaned[0]
+            etiket_fiyat = temizle_sayi(cleaned[1])
+            kdv_orani = temizle_sayi(cleaned[2])
+            depocu_fiyat = temizle_sayi(cleaned[4])
+            kurum_iskonto = temizle_sayi(cleaned[5]) if cleaned[5] else None
+            net_fiyat = temizle_sayi(cleaned[7])
+
+            # Miktar: "4 + 2,00" veya "1 + 0,00" formatı
+            miktar = 1
+            miktar_raw = cleaned[8] if len(cleaned) > 8 else ""
+            if '+' in miktar_raw:
+                try:
+                    parcalar = miktar_raw.split('+')
+                    miktar = sum(abs(float(p.strip().replace(',', '.'))) for p in parcalar)
+                    miktar = int(miktar)
+                except ValueError:
+                    miktar = 1
+            elif miktar_raw:
+                try:
+                    miktar = int(float(miktar_raw.replace(',', '.')))
+                except ValueError:
+                    miktar = 1
+
+            tutar = temizle_sayi(cleaned[9]) if len(cleaned) > 9 else None
+
+            satirlar.append({
+                'urun_adi': urun_adi,
+                'barkod': barkod,
+                'etiket_fiyat': etiket_fiyat,
+                'kdv_orani': kdv_orani,
+                'depocu_fiyat': depocu_fiyat,
+                'kurum_iskonto': kurum_iskonto,
+                'net_fiyat': net_fiyat,
+                'miktar': miktar,
+                'tutar': tutar,
+            })
+
+        return satirlar
+
+    def _depo_metin_parse(self, metin):
+        """
+        Depo sisteminden yapıştırılan iade fatura metnini parse et.
+        Tab-separated format beklenir.
+        """
+        satirlar = []
+        lines = metin.strip().split('\n')
+        if not lines:
+            return satirlar
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Tab ile ayır
+            parts = line.split('\t')
+            if len(parts) < 2:
+                # Tab yoksa birden fazla boşlukla dene
+                parts = [p for p in line.split('  ') if p.strip()]
+
+            if len(parts) < 3:
+                continue
+
+            # Başlık satırını ve fatura ayırıcı satırları atla
+            ilk_hucre = parts[0].strip().upper()
+            if ilk_hucre in ['ÜRÜN ADI', 'URUN ADI', 'ÜRÜN', 'FATURA', 'ADI', '', 'ÜRÜN ADI']:
+                continue
+            # Tek kelimelik satırları atla (fatura numarası vs.)
+            if len(parts) <= 2 and not any(c.isdigit() and '.' in parts[-1] for c in parts[-1] if c.isdigit()):
+                # Tek hücrede sadece metin varsa muhtemelen fatura başlığı
+                all_alpha = all(not p.strip() or not any(c.isdigit() for c in p.strip()) for p in parts)
+                if all_alpha:
+                    continue
+
+            # Ürün adı ilk sütun
+            urun_adi = parts[0].strip()
+            if not urun_adi:
+                continue
+
+            # Sayısal değerleri bul
+            def temizle_sayi(s):
+                """Sayısal değeri temizle: -1,650.61 → 1650.61"""
+                s = s.strip().replace(' ', '')
+                # Türkçe format: 1.650,61 veya Amerikan format: 1,650.61
+                if ',' in s and '.' in s:
+                    # Hangisi son: o ondalık ayıracı
+                    last_comma = s.rfind(',')
+                    last_dot = s.rfind('.')
+                    if last_comma > last_dot:
+                        # Türkçe: 1.650,61
+                        s = s.replace('.', '').replace(',', '.')
+                    else:
+                        # Amerikan: 1,650.61
+                        s = s.replace(',', '')
+                elif ',' in s:
+                    s = s.replace(',', '.')
+
+                s = s.replace('₺', '').replace('TL', '').strip()
+                try:
+                    return abs(float(s))
+                except ValueError:
+                    return None
+
+            # Miktarı bul: "-1 + 0" veya "-2 + 0" formatı
+            miktar = None
+            miktar_idx = None
+            for i, part in enumerate(parts):
+                part_clean = part.strip()
+                if '+' in part_clean and any(c.isdigit() for c in part_clean):
+                    # "-1 + 0" formatı
+                    try:
+                        parcalar = part_clean.split('+')
+                        m = sum(abs(int(p.strip())) for p in parcalar)
+                        miktar = m
+                        miktar_idx = i
+                        break
+                    except ValueError:
+                        pass
+
+            # Tutarı bul: son sütun genellikle tutar
+            tutar = None
+            for i in range(len(parts) - 1, -1, -1):
+                val = temizle_sayi(parts[i])
+                if val is not None and val > 0:
+                    tutar = val
+                    break
+
+            # Etiket fiyatı: ikinci sütun genelde etiket fiyatı
+            etiket_fiyat = None
+            if len(parts) > 1:
+                etiket_fiyat = temizle_sayi(parts[1])
+
+            # Net fiyat: "Net Fyt" sütunu (genelde 8. sütun, 0-indexed: 7)
+            net_fiyat = None
+            # Depocu fiyat sütunu (genelde 6. sütun, 0-indexed: 5)
+            depocu_fiyat = None
+
+            # Sütun indexlerine göre parse (standart Selçuk Ecza formatı)
+            # 0: Ürün Adı, 1: Etiket Fyt, 2: KDV, 3: Ecz.Kar., 4: Depocu Fyt,
+            # 5: Kurum Isk, 6: Satış Isk, 7: Net Fyt, 8: Miktarı, 9: Tutarı
+            kdv_orani = None
+            kurum_iskonto = None
+
+            if len(parts) >= 10:
+                # Tam format: Ürün, Etiket, KDV, Ecz.Kar, Depocu, Kurum Isk, Satış Isk, Net Fyt, Miktar, Tutar
+                kdv_orani = temizle_sayi(parts[2])
+                depocu_fiyat = temizle_sayi(parts[4])
+                kurum_iskonto = temizle_sayi(parts[5])
+                net_fiyat = temizle_sayi(parts[7])
+            elif len(parts) == 9:
+                # Satış Isk boş olduğunda 9 parça: Ürün, Etiket, KDV, Ecz.Kar, Depocu, Kurum Isk, Net Fyt, Miktar, Tutar
+                kdv_orani = temizle_sayi(parts[2])
+                depocu_fiyat = temizle_sayi(parts[4])
+                kurum_iskonto = temizle_sayi(parts[5])
+                net_fiyat = temizle_sayi(parts[6])
+
+            # Miktar bulunamadıysa ve tutar/net_fiyat varsa hesapla
+            if miktar is None and tutar and net_fiyat and net_fiyat > 0:
+                miktar = round(tutar / net_fiyat)
+
+            if miktar is None:
+                miktar = 1  # Default
+
+            satirlar.append({
+                'urun_adi': urun_adi,
+                'etiket_fiyat': etiket_fiyat,
+                'kdv_orani': kdv_orani,
+                'depocu_fiyat': depocu_fiyat,
+                'kurum_iskonto': kurum_iskonto,
+                'net_fiyat': net_fiyat,
+                'miktar': miktar,
+                'tutar': tutar,
+                'barkod': None  # Depo formatında barkod yok
+            })
+
+        return satirlar
+
+    def _ilac_ismi_normalize(self, isim):
+        """İlaç ismini karşılaştırma için normalize et"""
+        if not isim:
+            return ""
+        # Büyük harf, gereksiz boşluklar temizle
+        s = isim.upper().strip()
+        # Noktalama temizle
+        for ch in ['.', ',', '(', ')', '/', '-', "'", '"']:
+            s = s.replace(ch, ' ')
+        # Çoklu boşlukları teke indir
+        s = ' '.join(s.split())
+        return s
+
+    def _ilac_ismi_benzerlik(self, isim1, isim2):
+        """İki ilaç isminin benzerlik skoru (0-1)"""
+        n1 = self._ilac_ismi_normalize(isim1)
+        n2 = self._ilac_ismi_normalize(isim2)
+
+        if n1 == n2:
+            return 1.0
+
+        # Kelime bazlı karşılaştırma
+        words1 = set(n1.split())
+        words2 = set(n2.split())
+
+        if not words1 or not words2:
+            return 0.0
+
+        ortak = words1 & words2
+        toplam = words1 | words2
+
+        return len(ortak) / len(toplam)
+
+    def _iade_fatura_karsilastir(self, pencere, depo_text_widget, _unused1, _unused2):
+        """İade fatura detaylarını karşılaştır ve sonuçları göster (konsolide)"""
+        try:
+            # HTML'den yüklenen veriler varsa onları kullan
+            depo_satirlari = getattr(self, '_depo_html_satirlari', None)
+
+            if not depo_satirlari:
+                # Text widget'tan parse et
+                depo_metin = depo_text_widget.get("1.0", tk.END)
+                if not depo_metin.strip():
+                    messagebox.showwarning("Uyarı",
+                                           "Lütfen depo iade fatura bilgilerini yapıştırın\nveya HTML fatura yükleyin!",
+                                           parent=pencere)
+                    return
+
+                depo_satirlari = self._depo_metin_parse(depo_metin)
+                if not depo_satirlari:
+                    messagebox.showwarning("Uyarı",
+                                           "Depo metni parse edilemedi!\n\n"
+                                           "Beklenen format (tab veya çift boşluk):\n"
+                                           "Ürün Adı  Etiket Fyt  KDV  ...  Miktarı  Tutarı\n\n"
+                                           "Veya '📂 HTML Fatura Yükle' butonunu kullanın.",
+                                           parent=pencere)
+                    return
+
+            logger.info(f"Karşılaştırma: {len(depo_satirlari)} depo satırı")
+
+            # Botanik verilerini al
+            botanik_satirlari = getattr(self, '_botanik_iade_satirlari', [])
+            logger.info(f"Botanik: {len(botanik_satirlari)} satır")
+
+            if botanik_satirlari:
+                # Eşleştirme yap
+                eslesme_sonuclari = self._iade_satirlari_eslestir(depo_satirlari, botanik_satirlari)
+                # Sonuçları göster
+                self._iade_sonuclari_goster(eslesme_sonuclari, depo_satirlari, botanik_satirlari)
+            else:
+                # Botanik verisi yok - sadece depo parse sonuçlarını göster
+                self._depo_parse_sonuclari_goster(depo_satirlari)
+
+        except Exception as e:
+            import traceback
+            hata_detay = traceback.format_exc()
+            logger.error(f"Karşılaştırma hatası: {hata_detay}")
+            # Hata detayını dosyaya yaz
+            try:
+                with open("depo_ekstre_hata.log", "a", encoding="utf-8") as f:
+                    f.write(f"\n{'='*60}\n{datetime.now()}\n{hata_detay}\n")
+            except Exception:
+                pass
+            messagebox.showerror("Hata",
+                                 f"Karşılaştırma sırasında hata oluştu:\n\n{e}\n\n"
+                                 f"Detay: depo_ekstre_hata.log dosyasına yazıldı.",
+                                 parent=pencere)
+
+    def _depo_parse_sonuclari_goster(self, depo_satirlari):
+        """Botanik verisi yokken sadece depo parse sonuçlarını formatlanmış tablo olarak göster"""
+        # Sonuç frame temizle
+        for widget in self._iade_sonuc_frame.winfo_children():
+            widget.destroy()
+
+        tree_container = tk.Frame(self._iade_sonuc_frame, bg='#FFF3E0')
+        tree_container.pack(fill="both", expand=True)
+
+        toplam_tutar = sum(d.get('tutar', 0) or 0 for d in depo_satirlari)
+        ozet = (
+            f"📦 Depo Faturası: {len(depo_satirlari)} kalem | "
+            f"Toplam: {toplam_tutar:,.2f} ₺ | "
+            f"⚠️ Botanik verisi yüklenmedi - sadece depo tarafı gösteriliyor"
+        )
+        tk.Label(
+            tree_container, text=ozet,
+            font=("Arial", 10, "bold"), bg='#FFF3E0', fg='#E65100'
+        ).pack(pady=5)
+
+        tree_fr = tk.Frame(tree_container, bg='#FFF3E0')
+        tree_fr.pack(fill="both", expand=True)
+
+        columns = ("no", "urun", "miktar", "etiket_fyt", "net_fyt", "tutar", "kdv", "kurum_isk")
+        tree = ttk.Treeview(tree_fr, columns=columns, show="headings", height=14)
+
+        for col, text, width, anchor in [
+            ("no", "#", 35, "center"),
+            ("urun", "Ürün Adı", 280, "w"),
+            ("miktar", "Miktar", 55, "center"),
+            ("etiket_fyt", "Etiket Fyt", 95, "e"),
+            ("net_fyt", "Net Fyt", 95, "e"),
+            ("tutar", "Tutar", 100, "e"),
+            ("kdv", "KDV %", 55, "center"),
+            ("kurum_isk", "Kurum İsk %", 75, "center"),
+        ]:
+            tree.heading(col, text=text)
+            tree.column(col, width=width, minwidth=width, anchor=anchor)
+
+        tree_scroll = ttk.Scrollbar(tree_fr, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=tree_scroll.set)
+        tree.pack(side="left", fill="both", expand=True)
+        tree_scroll.pack(side="right", fill="y")
+
+        for i, d in enumerate(depo_satirlari, 1):
+            etiket = f"{d['etiket_fiyat']:,.2f}" if d.get('etiket_fiyat') else "-"
+            net = f"{d['net_fiyat']:,.2f}" if d.get('net_fiyat') else "-"
+            tutar = f"{d['tutar']:,.2f}" if d.get('tutar') else "-"
+            kdv = f"{d['kdv_orani']:.0f}" if d.get('kdv_orani') is not None else "-"
+            kurum = f"{d['kurum_iskonto']:.1f}" if d.get('kurum_iskonto') is not None else "-"
+
+            tree.insert("", "end", values=(
+                i, d['urun_adi'], d['miktar'], etiket, net, tutar, kdv, kurum
+            ))
+
+        # Alt toplam satırı
+        tk.Label(
+            tree_container,
+            text=f"Toplam: {len(depo_satirlari)} kalem | {toplam_tutar:,.2f} ₺",
+            font=("Arial", 10, "bold"), bg='#FFF3E0', fg='#BF360C'
+        ).pack(pady=(3, 5))
+
+    def _iade_satirlari_eslestir(self, depo_satirlari, botanik_satirlari):
+        """
+        Depo ve Botanik satırlarını eşleştir.
+        Öncelik: Barkod > İlaç ismi benzerliği
+        Aynı isimli birden fazla satırda miktar+tutar yakınlığı da dikkate alınır.
+        """
+        eslesmeler = []
+        kullanilan_botanik = set()
+        kullanilan_depo = set()
+
+        # Tüm olası eşleşmeleri skorla
+        adaylar = []
+        for d_idx, depo in enumerate(depo_satirlari):
+            for b_idx, botanik in enumerate(botanik_satirlari):
+                skor = 0.0
+
+                # Barkod eşleşmesi
+                if depo.get('barkod') and botanik.get('barkod'):
+                    if depo['barkod'] == botanik['barkod']:
+                        skor = 1.0
+
+                # İsim benzerliği
+                if skor < 1.0:
+                    skor = self._ilac_ismi_benzerlik(depo['urun_adi'], botanik['urun_adi'])
+
+                if skor >= 0.4:
+                    # Miktar eşleşmesi bonus (aynı isimli çoklu satırları doğru eşleştirmek için)
+                    d_miktar = int(depo.get('miktar', 0) or 0)
+                    b_miktar = int(botanik.get('miktar', 0) or 0)
+                    d_tutar = float(depo.get('tutar', 0) or 0)
+                    b_tutar = float(botanik.get('toplam_tutar', 0) or 0)
+
+                    miktar_bonus = 0.05 if d_miktar == b_miktar else 0
+                    tutar_bonus = 0.03 if abs(d_tutar - b_tutar) < 1.0 else 0
+
+                    adaylar.append({
+                        'depo_idx': d_idx,
+                        'botanik_idx': b_idx,
+                        'skor': skor + miktar_bonus + tutar_bonus,
+                        'benzerlik': skor
+                    })
+
+        # En yüksek skordan başlayarak eşleştir (greedy)
+        adaylar.sort(key=lambda x: x['skor'], reverse=True)
+
+        for aday in adaylar:
+            d_idx = aday['depo_idx']
+            b_idx = aday['botanik_idx']
+
+            if d_idx in kullanilan_depo or b_idx in kullanilan_botanik:
+                continue
+
+            eslesmeler.append({
+                'depo_idx': d_idx,
+                'botanik_idx': b_idx,
+                'depo': depo_satirlari[d_idx],
+                'botanik': botanik_satirlari[b_idx],
+                'benzerlik': aday['benzerlik']
+            })
+            kullanilan_depo.add(d_idx)
+            kullanilan_botanik.add(b_idx)
+
+        # Eşleşmeyenler
+        eslesmeyen_depo = [
+            (i, depo_satirlari[i]) for i in range(len(depo_satirlari))
+            if i not in kullanilan_depo
+        ]
+        eslesmeyen_botanik = [
+            (i, botanik_satirlari[i]) for i in range(len(botanik_satirlari))
+            if i not in kullanilan_botanik
+        ]
+
+        return {
+            'eslesmeler': eslesmeler,
+            'eslesmeyen_depo': eslesmeyen_depo,
+            'eslesmeyen_botanik': eslesmeyen_botanik
+        }
+
+    def _iade_sonuclari_goster(self, sonuclar, depo_satirlari, botanik_satirlari):
+        """İade karşılaştırma sonuçlarını göster"""
+        # Sonuç frame'i temizle
+        for widget in self._iade_sonuc_frame.winfo_children():
+            widget.destroy()
+
+        eslesmeler = sonuclar['eslesmeler']
+        eslesmeyen_depo = sonuclar['eslesmeyen_depo']
+        eslesmeyen_botanik = sonuclar['eslesmeyen_botanik']
+
+        # Kategorize et
+        tam_tutan = []       # Miktar + Tutar tutuyor
+        kurus_fark = []      # Miktar tutuyor, tutar 1 kuruş fark
+        tutar_farkli = []    # Miktar tutuyor ama tutar farklı
+        miktar_farkli = []   # Miktar tutmuyor
+
+        for eslesme in eslesmeler:
+            depo = eslesme['depo']
+            botanik = eslesme['botanik']
+
+            d_miktar = int(depo.get('miktar', 0) or 0)
+            b_miktar = int(botanik.get('miktar', 0) or 0)
+            d_tutar = float(depo.get('tutar', 0) or 0)
+            b_tutar = float(botanik.get('toplam_tutar', 0) or 0)
+            tutar_fark = abs(d_tutar - b_tutar)
+
+            miktar_esit = (d_miktar == b_miktar)
+
+            if miktar_esit and tutar_fark <= 0.001:
+                tam_tutan.append(eslesme)
+            elif miktar_esit and tutar_fark <= 0.05:
+                kurus_fark.append(eslesme)
+            elif miktar_esit:
+                tutar_farkli.append(eslesme)
+            else:
+                miktar_farkli.append(eslesme)
+
+        # === SONUÇ TREE ===
+        tree_container = tk.Frame(self._iade_sonuc_frame, bg='#FFF3E0')
+        tree_container.pack(fill="both", expand=True)
+
+        # Özet
+        ozet_text = (
+            f"🟢 Tam Tutan: {len(tam_tutan)} | "
+            f"🟡 Kuruş Fark: {len(kurus_fark)} | "
+            f"🟠 Tutar Farklı: {len(tutar_farkli)} | "
+            f"🔴 Miktar Farklı: {len(miktar_farkli)} | "
+            f"❌ Depo'da Fazla: {len(eslesmeyen_depo)} | "
+            f"❌ Botanik'te Fazla: {len(eslesmeyen_botanik)}"
+        )
+        tk.Label(
+            tree_container, text=ozet_text,
+            font=("Arial", 9, "bold"), bg='#FFF3E0', fg='#E65100'
+        ).pack(pady=5)
+
+        # Depo ve Botanik toplamları
+        depo_toplam = sum(float(d.get('tutar', 0) or 0) for d in depo_satirlari)
+        botanik_toplam = sum(float(b.get('toplam_tutar', 0) or 0) for b in botanik_satirlari)
+        fark = abs(depo_toplam - botanik_toplam)
+
+        toplam_text = (
+            f"Depo Toplam: {depo_toplam:,.2f} ₺ | "
+            f"Botanik Toplam: {botanik_toplam:,.2f} ₺ | "
+            f"Fark: {fark:,.2f} ₺"
+        )
+        tk.Label(
+            tree_container, text=toplam_text,
+            font=("Arial", 10, "bold"), bg='#FFF3E0', fg='#BF360C'
+        ).pack(pady=(0, 5))
+
+        tree_fr = tk.Frame(tree_container, bg='#FFF3E0')
+        tree_fr.pack(fill="both", expand=True)
+
+        columns = ("durum", "depo_urun", "d_miktar", "d_birim", "d_tutar",
+                    "kdv_dahil", "sep", "b_urun", "b_miktar", "b_birim", "b_tutar", "duzeltme")
+        tree = ttk.Treeview(tree_fr, columns=columns, show="headings", height=12)
+
+        col_specs = [
+            ("durum", "Durum", 40, "center"),
+            ("depo_urun", "Depo Ürün", 200, "w"),
+            ("d_miktar", "Adet", 45, "center"),
+            ("d_birim", "Net Fyt", 85, "e"),
+            ("d_tutar", "Tutar", 95, "e"),
+            ("kdv_dahil", "KDV Dahil Birim", 100, "e"),
+            ("sep", "↔", 20, "center"),
+            ("b_urun", "Botanik Ürün", 200, "w"),
+            ("b_miktar", "Adet", 45, "center"),
+            ("b_birim", "Birim Fyt", 85, "e"),
+            ("b_tutar", "Tutar", 95, "e"),
+            ("duzeltme", "Düzeltme", 200, "w"),
+        ]
+        for col, text, width, anchor in col_specs:
+            tree.heading(col, text=text)
+            tree.column(col, width=width, minwidth=width, anchor=anchor)
+
+        tree_scroll = ttk.Scrollbar(tree_fr, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=tree_scroll.set)
+        tree.pack(side="left", fill="both", expand=True)
+        tree_scroll.pack(side="right", fill="y")
+
+        # KDV dahil birim fiyat hesaplama: (tutar / miktar) × (1 + KDV%/100)
+        def kdv_dahil_birim(d):
+            """Fatura tutarını adet sayısına böl, KDV ekle → Botanik birim fiyatı"""
+            tutar = float(d.get('tutar', 0) or 0)
+            miktar = max(int(d.get('miktar', 1) or 1), 1)
+            kdv = d.get('kdv_orani')
+            birim_kdvsiz = tutar / miktar
+            kdv_oran = float(kdv) if kdv is not None else 10.0
+            return birim_kdvsiz * (1 + kdv_oran / 100)
+
+        def fmt_kdv_dahil(d):
+            return f"{kdv_dahil_birim(d):,.2f}"
+
+        # 1. Tam tutan satırlar
+        for eslesme in tam_tutan:
+            d = eslesme['depo']
+            b = eslesme['botanik']
+            tree.insert("", "end", values=(
+                "🟢", d['urun_adi'],
+                d['miktar'], f"{d.get('net_fiyat') or float(d.get('tutar', 0) or 0) / max(d['miktar'], 1):,.2f}",
+                f"{float(d.get('tutar', 0) or 0):,.2f}",
+                fmt_kdv_dahil(d),
+                "↔",
+                b['urun_adi'], b['miktar'],
+                f"{float(b['birim_fiyat']):,.2f}", f"{float(b['toplam_tutar']):,.2f}",
+                "✓ Tutuyor"
+            ), tags=('tutan',))
+
+        # 2. Kuruş fark satırlar
+        for eslesme in kurus_fark:
+            d = eslesme['depo']
+            b = eslesme['botanik']
+            fark_tutar = float(d.get('tutar', 0) or 0) - float(b.get('toplam_tutar', 0) or 0)
+            tree.insert("", "end", values=(
+                "🟡", d['urun_adi'],
+                d['miktar'], f"{d.get('net_fiyat') or float(d.get('tutar', 0) or 0) / max(d['miktar'], 1):,.2f}",
+                f"{float(d.get('tutar', 0) or 0):,.2f}",
+                fmt_kdv_dahil(d),
+                "↔",
+                b['urun_adi'], b['miktar'],
+                f"{float(b['birim_fiyat']):,.2f}", f"{float(b['toplam_tutar']):,.2f}",
+                f"~{fark_tutar:+,.2f} ₺ kuruş fark"
+            ), tags=('kurus',))
+
+        # 3. Tutar farklı satırlar
+        for eslesme in tutar_farkli:
+            d = eslesme['depo']
+            b = eslesme['botanik']
+            d_tutar = float(d.get('tutar', 0) or 0)
+            b_tutar = float(b.get('toplam_tutar', 0) or 0)
+            fark_tutar = d_tutar - b_tutar
+
+            kdv_birim = kdv_dahil_birim(d)
+            duzeltme = f"Birim→{kdv_birim:,.2f} Toplam→{d_tutar:,.2f}"
+
+            tree.insert("", "end", values=(
+                "🟠", d['urun_adi'],
+                d['miktar'], f"{d.get('net_fiyat') or d_tutar / max(d['miktar'], 1):,.2f}",
+                f"{d_tutar:,.2f}",
+                fmt_kdv_dahil(d),
+                "↔",
+                b['urun_adi'], b['miktar'],
+                f"{float(b['birim_fiyat']):,.2f}", f"{b_tutar:,.2f}",
+                duzeltme
+            ), tags=('tutar_farkli',))
+
+        # 4. Miktar farklı satırlar
+        for eslesme in miktar_farkli:
+            d = eslesme['depo']
+            b = eslesme['botanik']
+            d_tutar = float(d.get('tutar', 0) or 0)
+            b_tutar = float(b.get('toplam_tutar', 0) or 0)
+
+            kdv_birim = kdv_dahil_birim(d)
+            duzeltme = f"Adet→{d['miktar']} Birim→{kdv_birim:,.2f} Toplam→{d_tutar:,.2f}"
+
+            tree.insert("", "end", values=(
+                "🔴", d['urun_adi'],
+                d['miktar'], f"{d.get('net_fiyat') or d_tutar / max(d['miktar'], 1):,.2f}",
+                f"{d_tutar:,.2f}",
+                fmt_kdv_dahil(d),
+                "↔",
+                b['urun_adi'], b['miktar'],
+                f"{float(b['birim_fiyat']):,.2f}", f"{b_tutar:,.2f}",
+                duzeltme
+            ), tags=('miktar_farkli',))
+
+        # 5. Depo'da var Botanik'te yok
+        for idx, depo in eslesmeyen_depo:
+            d_tutar = float(depo.get('tutar', 0) or 0)
+            kdv_birim = kdv_dahil_birim(depo)
+            tree.insert("", "end", values=(
+                "❌", depo['urun_adi'],
+                depo['miktar'], f"{depo.get('net_fiyat') or d_tutar / max(depo['miktar'], 1):,.2f}",
+                f"{d_tutar:,.2f}",
+                fmt_kdv_dahil(depo),
+                "",
+                "— BOTANİK'TE YOK —", "", "", "",
+                f"Ekle: {depo['miktar']} ad. {kdv_birim:,.2f} ₺"
+            ), tags=('depo_fazla',))
+
+        # 6. Botanik'te var Depo'da yok
+        for idx, botanik in eslesmeyen_botanik:
+            tree.insert("", "end", values=(
+                "❌", "— DEPO'DA YOK —",
+                "", "", "", "",
+                "",
+                botanik['urun_adi'], botanik['miktar'],
+                f"{float(botanik['birim_fiyat']):,.2f}", f"{float(botanik['toplam_tutar']):,.2f}",
+                "Botanik'ten çıkar"
+            ), tags=('botanik_fazla',))
+
+        # Renkler
+        tree.tag_configure('tutan', background='#C8E6C9')
+        tree.tag_configure('kurus', background='#FFF9C4')
+        tree.tag_configure('tutar_farkli', background='#FFE0B2')
+        tree.tag_configure('miktar_farkli', background='#FFCDD2')
+        tree.tag_configure('depo_fazla', background='#E1BEE7')
+        tree.tag_configure('botanik_fazla', background='#B3E5FC')
+
+        self._iade_sonuc_tree = tree
 
     def _ana_menuye_don(self):
         """Ana menüye dön"""
