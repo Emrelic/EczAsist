@@ -36,6 +36,7 @@ class PrimRaporlamaGUI:
         # Data
         self.rapor_verileri = []
         self.personel_listesi = []
+        self.brut_kar_esik = None
 
         # UI
         self._arayuz_olustur()
@@ -180,38 +181,86 @@ class PrimRaporlamaGUI:
                                     font=('Segoe UI', 9), bg='#FFF3E0', fg='#666')
         self.durum_label.pack(side=tk.RIGHT, padx=10)
 
+        # İkinci satir - Brut Kar filtresi
+        row2 = tk.Frame(filtre_frame, bg='#FFF3E0')
+        row2.pack(fill=tk.X, pady=(5, 0))
+
+        tk.Label(row2, text="Brut Kar % >=", font=('Segoe UI', 10, 'bold'),
+                 bg='#FFF3E0', fg='#E65100').pack(side=tk.LEFT, padx=(0, 3))
+
+        self.brut_kar_filtre_var = tk.StringVar(value="")
+        self.brut_kar_filtre_entry = tk.Entry(row2, textvariable=self.brut_kar_filtre_var,
+                                               width=6, font=('Segoe UI', 10),
+                                               justify=tk.CENTER)
+        self.brut_kar_filtre_entry.pack(side=tk.LEFT, padx=(0, 5))
+
+        tk.Button(row2, text="Filtrele", font=('Segoe UI', 9, 'bold'),
+                  bg='#E65100', fg='white', relief=tk.FLAT, padx=10, pady=2,
+                  command=self._brut_kar_filtrele).pack(side=tk.LEFT, padx=(0, 5))
+
+        tk.Button(row2, text="Filtreyi Kaldir", font=('Segoe UI', 9),
+                  bg='#78909C', fg='white', relief=tk.FLAT, padx=10, pady=2,
+                  command=self._brut_kar_filtre_kaldir).pack(side=tk.LEFT, padx=(0, 10))
+
+        self.filtre_durum_label = tk.Label(row2, text="",
+                                            font=('Segoe UI', 9, 'italic'),
+                                            bg='#FFF3E0', fg='#E65100')
+        self.filtre_durum_label.pack(side=tk.LEFT, padx=(5, 0))
+
+        # Sutun Ayarlari butonu
+        tk.Button(row2, text="Sutun Ayarlari", font=('Segoe UI', 9),
+                  bg='#37474F', fg='white', relief=tk.FLAT, padx=10, pady=2,
+                  command=self._sutun_ayarlari_goster).pack(side=tk.RIGHT, padx=(10, 0))
+
     def _tablo_olustur(self, parent):
         """Sonuc tablosu"""
         tablo_frame = tk.Frame(parent, bg='#ECEFF1')
         tablo_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
 
-        # Sutun tanimlari
+        # Sutun tanimlari: (id, baslik, varsayilan_genislik, anchor, varsayilan_gorunur)
         self.sutunlar = [
-            ("UrunAdi", "Urun Adi", 240, tk.W),
-            ("Barkod", "Barkod", 110, tk.W),
-            ("Tarih", "Tarih", 85, tk.CENTER),
-            ("Etiket", "Etiket", 75, tk.E),
-            ("SatisFiy", "Satis Fiy", 75, tk.E),
-            ("Adet", "Adet", 45, tk.CENTER),
-            ("Indirimler", "Indirimler", 75, tk.E),
-            ("Tutar", "Tutar", 85, tk.E),
-            ("AlisFiy", "Alis Fiy", 75, tk.E),
-            ("BrutKar", "Brut Kar", 85, tk.E),
-            ("BrutKarYuzde", "Brut Kar %", 70, tk.E),
-            ("Altidabirlik", "1/6 Prim", 80, tk.E),
-            ("AltidabirlikOran", "1/6 Oran %", 75, tk.E),
-            ("Personel", "Personel", 130, tk.W),
+            ("UrunAdi", "Urun Adi", 240, tk.W, True),
+            ("Barkod", "Barkod", 110, tk.W, True),
+            ("Tarih", "Tarih", 85, tk.CENTER, True),
+            ("Etiket", "Etiket", 75, tk.E, True),
+            ("SatisFiy", "Satis Fiy", 75, tk.E, True),
+            ("Adet", "Adet", 45, tk.CENTER, True),
+            ("Indirimler", "Indirimler", 75, tk.E, True),
+            ("Tutar", "Tutar", 85, tk.E, True),
+            ("AlisFiy", "Alis Fiy", 75, tk.E, True),
+            ("BrutKar", "Brut Kar", 85, tk.E, True),
+            ("BrutKarYuzde", "Brut Kar %", 70, tk.E, True),
+            ("Masraf", "Masraf %15", 80, tk.E, True),
+            ("NetKar", "Net Kar", 85, tk.E, True),
+            ("Prim10", "%10 Prim", 80, tk.E, True),
+            ("NetKarPrim", "Net Kar-Prim", 85, tk.E, True),
+            ("Prim10BrutKar", "%10/BrutKar", 80, tk.E, False),
+            ("Prim10NetKar", "%10/NetKar", 80, tk.E, False),
+            ("AltBrutKar", "1/6/BrutKar", 80, tk.E, False),
+            ("AltNetKar", "1/6/NetKar", 80, tk.E, False),
+            ("BrutKarMF", "Brut Kar MF", 80, tk.CENTER, True),
+            ("Altidabirlik", "1/6 Prim", 80, tk.E, True),
+            ("AltidabirlikOran", "1/6 Oran %", 75, tk.E, True),
+            ("Personel", "Personel", 130, tk.W, True),
         ]
+
+        # Sutun gorunurluk ayarlari
+        self.sutun_genislikleri = {}
+        self.sutun_gorunur = {}
+        for col_id, baslik, width, anchor, gorunur in self.sutunlar:
+            self.sutun_genislikleri[col_id] = width
+            self.sutun_gorunur[col_id] = gorunur
 
         self.tree = ttk.Treeview(tablo_frame,
                                   columns=[c[0] for c in self.sutunlar],
                                   show='headings', height=25)
 
         # Sutun ayarlari
-        for col_id, baslik, width, anchor in self.sutunlar:
+        for col_id, baslik, width, anchor, gorunur in self.sutunlar:
             self.tree.heading(col_id, text=baslik,
                               command=lambda c=col_id: self._sutun_sirala(c))
-            self.tree.column(col_id, width=width, minwidth=40, anchor=anchor)
+            gosterilen_w = width if gorunur else 0
+            self.tree.column(col_id, width=gosterilen_w, minwidth=0, anchor=anchor)
 
         # Renk tagleri - 1/6 prim brut kar % baremine gore 8 kademe
         self.tree.tag_configure('kar_15_ustu', background='#2E7D32', foreground='white')  # Koyu yesil >=15%
@@ -262,10 +311,13 @@ class PrimRaporlamaGUI:
         ozet_items = [
             ("satir", "Satir:"),
             ("adet", "Top. Adet:"),
-            ("indirim", "Top. İndirim:"),
+            ("indirim", "Top. Indirim:"),
             ("tutar", "Net Tutar:"),
-            ("brut_kar", "Top. Brut Kar:"),
-            ("altidabirlik", "Top. 1/6 Prim:"),
+            ("brut_kar", "Brut Kar:"),
+            ("masraf", "Masraf %15:"),
+            ("net_kar", "Net Kar:"),
+            ("prim_10", "%10 Prim:"),
+            ("altidabirlik", "1/6 Prim:"),
         ]
 
         for key, baslik in ozet_items:
@@ -317,6 +369,102 @@ class PrimRaporlamaGUI:
 
         self.baslangic_entry.set_date(yeni_baslangic)
         self.bitis_entry.set_date(yeni_bitis)
+
+    def _sutun_ayarlari_goster(self):
+        """Sutun gorunurluk ayarlari popup penceresi"""
+        popup = tk.Toplevel(self.parent)
+        popup.title("Sutun Ayarlari")
+        popup.geometry("320x580")
+        popup.configure(bg='#ECEFF1')
+        popup.transient(self.parent)
+        popup.grab_set()
+        popup.resizable(False, False)
+
+        tk.Label(popup, text="Gorunecek Sutunlari Secin",
+                 font=('Segoe UI', 11, 'bold'), bg='#37474F', fg='white',
+                 pady=8).pack(fill=tk.X)
+
+        # Scrollable frame
+        canvas = tk.Canvas(popup, bg='#ECEFF1', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(popup, orient="vertical", command=canvas.yview)
+        scroll_frame = tk.Frame(canvas, bg='#ECEFF1')
+
+        scroll_frame.bind("<Configure>",
+                          lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=5)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
+
+        # Checkbox'lar
+        cb_vars = {}
+        for col_id, baslik, width, anchor, varsayilan in self.sutunlar:
+            var = tk.BooleanVar(value=self.sutun_gorunur.get(col_id, varsayilan))
+            cb_vars[col_id] = var
+            tk.Checkbutton(scroll_frame, text=baslik, variable=var,
+                           font=('Segoe UI', 10), bg='#ECEFF1',
+                           activebackground='#ECEFF1',
+                           anchor=tk.W).pack(fill=tk.X, padx=5, pady=1)
+
+        # Butonlar
+        btn_frame = tk.Frame(popup, bg='#ECEFF1')
+        btn_frame.pack(fill=tk.X, padx=10, pady=8)
+
+        def tumunu_sec():
+            for v in cb_vars.values():
+                v.set(True)
+
+        def tumunu_kaldir():
+            for v in cb_vars.values():
+                v.set(False)
+
+        def uygula():
+            for col_id, var in cb_vars.items():
+                self.sutun_gorunur[col_id] = var.get()
+                if var.get():
+                    self.tree.column(col_id, width=self.sutun_genislikleri[col_id], minwidth=0)
+                else:
+                    self.tree.column(col_id, width=0, minwidth=0)
+            popup.destroy()
+
+        tk.Button(btn_frame, text="Tumunu Sec", font=('Segoe UI', 9),
+                  bg='#43A047', fg='white', relief=tk.FLAT, padx=8,
+                  command=tumunu_sec).pack(side=tk.LEFT, padx=(0, 5))
+        tk.Button(btn_frame, text="Tumunu Kaldir", font=('Segoe UI', 9),
+                  bg='#E53935', fg='white', relief=tk.FLAT, padx=8,
+                  command=tumunu_kaldir).pack(side=tk.LEFT, padx=(0, 15))
+        tk.Button(btn_frame, text="Uygula", font=('Segoe UI', 10, 'bold'),
+                  bg='#1565C0', fg='white', relief=tk.FLAT, padx=20,
+                  command=uygula).pack(side=tk.RIGHT)
+
+    def _brut_kar_filtrele(self):
+        """Mevcut verileri brut kar % filtresine gore yeniden goster"""
+        if not self.rapor_verileri:
+            self.filtre_durum_label.config(text="Once rapor listeleyin!")
+            return
+
+        filtre_str = self.brut_kar_filtre_var.get().strip().replace(',', '.')
+        if not filtre_str:
+            self.filtre_durum_label.config(text="Bir yuzde degeri girin!")
+            return
+
+        try:
+            self.brut_kar_esik = float(filtre_str)
+        except ValueError:
+            self.filtre_durum_label.config(text="Gecersiz sayi!")
+            return
+
+        self._sonuclari_goster(self.rapor_verileri)
+        self.filtre_durum_label.config(text=f"Filtre aktif: Brut Kar % >= {self.brut_kar_esik}")
+
+    def _brut_kar_filtre_kaldir(self):
+        """Brut kar filtresini kaldir"""
+        self.brut_kar_esik = None
+        self.brut_kar_filtre_var.set("")
+        self.filtre_durum_label.config(text="")
+        if self.rapor_verileri:
+            self._sonuclari_goster(self.rapor_verileri)
 
     def _listele(self):
         """Raporu listele"""
@@ -370,10 +518,15 @@ class PrimRaporlamaGUI:
             self.tree.delete(item)
 
         # Toplamlar
+        gosterilen_satir = 0
         toplam_adet = 0
         toplam_indirim = 0.0
         toplam_tutar = 0.0
         toplam_brut_kar = 0.0
+        toplam_masraf = 0.0
+        toplam_net_kar = 0.0
+        toplam_prim_10 = 0.0
+        toplam_net_kar_prim = 0.0
         toplam_altidabirlik = 0.0
         personel_toplamlari = {}
 
@@ -421,6 +574,11 @@ class PrimRaporlamaGUI:
                 # 1/6 primin satis tutarina orani
                 altidabirlik_oran = (altidabirlik / net_tutar * 100) if net_tutar > 0 and altidabirlik > 0 else 0
 
+            # Brut kar filtresi
+            if self.brut_kar_esik is not None and not iade:
+                if brut_kar_yuzde < self.brut_kar_esik:
+                    continue
+
             # Renk tagi - 1/6 oran % baremine gore 8 kademe
             if altidabirlik_oran >= 15:
                 tag = 'kar_15_ustu'
@@ -438,6 +596,32 @@ class PrimRaporlamaGUI:
                 tag = 'kar_0_4'
             else:
                 tag = 'kar_negatif'
+
+            # Yeni sutunlar: Masraf, Net Kar, %10 Prim, Net Kar-Prim, Oran sutunlari, Brut Kar MF
+            masraf = net_tutar * 0.15
+            net_kar = brut_kar - masraf
+            prim_10 = net_tutar * 0.10
+            net_kar_prim = net_kar - prim_10
+
+            # Oran sutunlari
+            prim10_brut_kar_oran = (prim_10 / brut_kar * 100) if brut_kar > 0 else 0
+            prim10_net_kar_oran = (prim_10 / net_kar * 100) if net_kar > 0 else 0
+            alt_brut_kar_oran = (altidabirlik / brut_kar * 100) if brut_kar > 0 else 0
+            alt_net_kar_oran = (altidabirlik / net_kar * 100) if net_kar > 0 else 0
+
+            # Brut Kar MF: depocu=%80 satis varsayimiyla 10+X esdeğer MF
+            # X = 8 / (1 - brut_kar_yuzde/100) - 10
+            brut_kar_mf_str = "-"
+            if alis_fiyati > 0 and brut_kar_yuzde > 0 and brut_kar_yuzde < 100:
+                pay = 1 - brut_kar_yuzde / 100
+                if pay > 0:
+                    x_val = 8.0 / pay - 10.0
+                    if x_val >= 0:
+                        # Virgullu gosterim (10+5,5 gibi)
+                        x_str = f"{x_val:.1f}".replace('.', ',')
+                        brut_kar_mf_str = f"10+{x_str}"
+                    else:
+                        brut_kar_mf_str = "10+0"
 
             barkod = str(s.get('Barkod') or '')
 
@@ -460,34 +644,57 @@ class PrimRaporlamaGUI:
                 f"~{alis_fiyati:,.2f}" if alis_tahmini else (f"{alis_fiyati:,.2f}" if alis_fiyati > 0 else "-"),
                 f"{brut_kar:,.2f}" if alis_fiyati > 0 else "-",
                 f"%{brut_kar_yuzde:,.1f}" if alis_fiyati > 0 else "-",
+                f"{masraf:,.2f}" if alis_fiyati > 0 else "-",
+                f"{net_kar:,.2f}" if alis_fiyati > 0 else "-",
+                f"{prim_10:,.2f}",
+                f"{net_kar_prim:,.2f}" if alis_fiyati > 0 else "-",
+                f"%{prim10_brut_kar_oran:,.1f}" if prim10_brut_kar_oran != 0 else "-",
+                f"%{prim10_net_kar_oran:,.1f}" if prim10_net_kar_oran != 0 else "-",
+                f"%{alt_brut_kar_oran:,.1f}" if alt_brut_kar_oran != 0 else "-",
+                f"%{alt_net_kar_oran:,.1f}" if alt_net_kar_oran != 0 else "-",
+                brut_kar_mf_str,
                 f"{altidabirlik:,.2f}" if altidabirlik != 0 else "-",
                 f"%{altidabirlik_oran:,.1f}" if altidabirlik_oran != 0 else "-",
                 personel,
             ), tags=tuple(tags))
+
+            gosterilen_satir += 1
 
             # Toplamlar
             toplam_adet += adet
             toplam_indirim += indirimler
             toplam_tutar += net_tutar
             toplam_brut_kar += brut_kar
+            toplam_masraf += masraf
+            toplam_net_kar += net_kar
+            toplam_prim_10 += prim_10
+            toplam_net_kar_prim += net_kar_prim
             toplam_altidabirlik += altidabirlik
 
             # Personel bazli toplamlar
             if personel not in personel_toplamlari:
                 personel_toplamlari[personel] = {
-                    'adet': 0, 'tutar': 0.0, 'brut_kar': 0.0, 'altidabirlik': 0.0
+                    'adet': 0, 'tutar': 0.0, 'brut_kar': 0.0,
+                    'masraf': 0.0, 'net_kar': 0.0, 'prim_10': 0.0,
+                    'altidabirlik': 0.0
                 }
             personel_toplamlari[personel]['adet'] += adet
             personel_toplamlari[personel]['tutar'] += net_tutar
             personel_toplamlari[personel]['brut_kar'] += brut_kar
+            personel_toplamlari[personel]['masraf'] += masraf
+            personel_toplamlari[personel]['net_kar'] += net_kar
+            personel_toplamlari[personel]['prim_10'] += prim_10
             personel_toplamlari[personel]['altidabirlik'] += altidabirlik
 
         # Ozet guncelle
-        self.ozet_labels['satir'].config(text=str(len(sonuclar)))
+        self.ozet_labels['satir'].config(text=f"{gosterilen_satir}/{len(sonuclar)}" if self.brut_kar_esik is not None else str(len(sonuclar)))
         self.ozet_labels['adet'].config(text=str(toplam_adet))
         self.ozet_labels['indirim'].config(text=f"{toplam_indirim:,.2f} TL")
         self.ozet_labels['tutar'].config(text=f"{toplam_tutar:,.2f} TL")
         self.ozet_labels['brut_kar'].config(text=f"{toplam_brut_kar:,.2f} TL")
+        self.ozet_labels['masraf'].config(text=f"{toplam_masraf:,.2f} TL")
+        self.ozet_labels['net_kar'].config(text=f"{toplam_net_kar:,.2f} TL")
+        self.ozet_labels['prim_10'].config(text=f"{toplam_prim_10:,.2f} TL")
         self.ozet_labels['altidabirlik'].config(text=f"{toplam_altidabirlik:,.2f} TL")
 
         # Personel bazli ozet
@@ -499,7 +706,7 @@ class PrimRaporlamaGUI:
                      font=('Segoe UI', 10, 'bold'), bg='#E3F2FD').pack(side=tk.LEFT, padx=(10, 10))
 
             for personel, toplamlar in sorted(personel_toplamlari.items()):
-                metin = f"{personel}: {toplamlar['adet']} ad. | {toplamlar['tutar']:,.2f} TL | 1/6 Prim: {toplamlar['altidabirlik']:,.2f} TL"
+                metin = f"{personel}: {toplamlar['adet']} ad. | {toplamlar['tutar']:,.2f} TL | Net Kar: {toplamlar['net_kar']:,.2f} TL | %10 Prim: {toplamlar['prim_10']:,.2f} TL | 1/6: {toplamlar['altidabirlik']:,.2f} TL"
                 tk.Label(self.personel_ozet_frame, text=metin,
                          font=('Segoe UI', 9), bg='#E3F2FD', fg='#333',
                          relief=tk.GROOVE, padx=8, pady=2).pack(side=tk.LEFT, padx=(0, 8))
@@ -507,8 +714,9 @@ class PrimRaporlamaGUI:
         # Durum guncelle
         baslangic = self.baslangic_entry.get_date().strftime('%d/%m/%Y')
         bitis = self.bitis_entry.get_date().strftime('%d/%m/%Y')
+        filtre_metin = f" | Filtre: >=%{self.brut_kar_esik}" if self.brut_kar_esik is not None else ""
         self.durum_label.config(
-            text=f"{len(sonuclar)} kayit | {baslangic} - {bitis}")
+            text=f"{gosterilen_satir}/{len(sonuclar)} kayit | {baslangic} - {bitis}{filtre_metin}")
         self.listele_btn.config(state=tk.NORMAL)
 
     def _sutun_sirala(self, sutun_id):
@@ -709,7 +917,7 @@ class PrimRaporlamaGUI:
             # Baslik satiri (tarih araligi)
             baslangic_str = self.baslangic_entry.get_date().strftime('%d/%m/%Y')
             bitis_str = self.bitis_entry.get_date().strftime('%d/%m/%Y')
-            ws.merge_cells('A1:N1')
+            ws.merge_cells('A1:W1')
             title_cell = ws.cell(row=1, column=1,
                                  value=f"{baslangic_str} - {bitis_str} Tarih Araligindaki Prim Raporu")
             title_cell.font = Font(bold=True, size=13)
@@ -718,7 +926,9 @@ class PrimRaporlamaGUI:
             # Sutun basliklari
             basliklar = ["Urun Adi", "Barkod", "Tarih", "Etiket", "Satis Fiy", "Adet", "Indirimler",
                          "Tutar", "Alis Fiy", "Brut Kar", "Brut Kar %",
-                         "1/6 Prim", "1/6 Oran %", "Personel"]
+                         "Masraf %15", "Net Kar", "%10 Prim", "Net Kar-Prim",
+                         "%10/BrutKar", "%10/NetKar", "1/6/BrutKar", "1/6/NetKar",
+                         "Brut Kar MF", "1/6 Prim", "1/6 Oran %", "Personel"]
 
             for col_idx, baslik in enumerate(basliklar, 1):
                 cell = ws.cell(row=2, column=col_idx, value=baslik)
@@ -732,6 +942,9 @@ class PrimRaporlamaGUI:
             toplam_indirim_xl = 0.0
             toplam_tutar = 0.0
             toplam_brut_kar = 0.0
+            toplam_masraf_xl = 0.0
+            toplam_net_kar_xl = 0.0
+            toplam_prim_10_xl = 0.0
             toplam_altidabirlik_xl = 0.0
 
             # Veri satirlari
@@ -777,6 +990,30 @@ class PrimRaporlamaGUI:
                 barkod_xl = str(s.get('Barkod') or '')
                 urun_adi_xl = f"İADE: {s.get('UrunAdi', '')}" if iade else s.get('UrunAdi', '')
 
+                # Yeni sutunlar hesaplama
+                masraf_xl = net_tutar * 0.15
+                net_kar_xl = brut_kar - masraf_xl
+                prim_10_xl = net_tutar * 0.10
+                net_kar_prim_xl = net_kar_xl - prim_10_xl
+
+                # Oran sutunlari
+                prim10_brut_kar_xl = (prim_10_xl / brut_kar * 100) if brut_kar > 0 else 0
+                prim10_net_kar_xl = (prim_10_xl / net_kar_xl * 100) if net_kar_xl > 0 else 0
+                alt_brut_kar_xl = (altidabirlik / brut_kar * 100) if brut_kar > 0 else 0
+                alt_net_kar_xl = (altidabirlik / net_kar_xl * 100) if net_kar_xl > 0 else 0
+
+                # Brut Kar MF
+                brut_kar_mf_xl = "-"
+                if alis_fiyati > 0 and brut_kar_yuzde > 0 and brut_kar_yuzde < 100:
+                    pay = 1 - brut_kar_yuzde / 100
+                    if pay > 0:
+                        x_val = 8.0 / pay - 10.0
+                        if x_val >= 0:
+                            x_str = f"{x_val:.1f}".replace('.', ',')
+                            brut_kar_mf_xl = f"10+{x_str}"
+                        else:
+                            brut_kar_mf_xl = "10+0"
+
                 degerler = [
                     urun_adi_xl,
                     barkod_xl,
@@ -789,6 +1026,15 @@ class PrimRaporlamaGUI:
                     round(alis_fiyati, 2) if alis_fiyati > 0 else None,
                     round(brut_kar, 2) if alis_fiyati > 0 else None,
                     round(brut_kar_yuzde, 1) if alis_fiyati > 0 else None,
+                    round(masraf_xl, 2) if alis_fiyati > 0 else None,
+                    round(net_kar_xl, 2) if alis_fiyati > 0 else None,
+                    round(prim_10_xl, 2),
+                    round(net_kar_prim_xl, 2) if alis_fiyati > 0 else None,
+                    round(prim10_brut_kar_xl, 1) if prim10_brut_kar_xl != 0 else None,
+                    round(prim10_net_kar_xl, 1) if prim10_net_kar_xl != 0 else None,
+                    round(alt_brut_kar_xl, 1) if alt_brut_kar_xl != 0 else None,
+                    round(alt_net_kar_xl, 1) if alt_net_kar_xl != 0 else None,
+                    brut_kar_mf_xl,
                     round(altidabirlik, 2) if altidabirlik != 0 else None,
                     round(altidabirlik_oran, 1) if altidabirlik_oran != 0 else None,
                     personel,
@@ -799,7 +1045,7 @@ class PrimRaporlamaGUI:
                     cell.border = thin_border
                     if col_idx == 3:  # Tarih
                         cell.alignment = tarih_align
-                    elif col_idx >= 4 and col_idx <= 13:  # Sayisal sutunlar
+                    elif col_idx >= 4 and col_idx <= 22:  # Sayisal sutunlar
                         cell.alignment = sayi_align
                         if isinstance(val, (int, float)) and val is not None:
                             cell.number_format = '#,##0.00' if col_idx != 6 else '#,##0'
@@ -824,7 +1070,7 @@ class PrimRaporlamaGUI:
                 else:
                     row_fill = fill_negatif
 
-                for col_idx in range(1, 15):
+                for col_idx in range(1, 24):
                     cell = ws.cell(row=row_idx, column=col_idx)
                     cell.fill = row_fill
                     # Koyu arka plan icin beyaz yazi
@@ -835,6 +1081,9 @@ class PrimRaporlamaGUI:
                 toplam_indirim_xl += indirimler
                 toplam_tutar += net_tutar
                 toplam_brut_kar += brut_kar
+                toplam_masraf_xl += masraf_xl
+                toplam_net_kar_xl += net_kar_xl
+                toplam_prim_10_xl += prim_10_xl
                 toplam_altidabirlik_xl += altidabirlik
 
             # Toplam satiri
@@ -842,7 +1091,10 @@ class PrimRaporlamaGUI:
             toplam_degerler = [
                 "TOPLAM", None, None, None, None, toplam_adet, round(toplam_indirim_xl, 2),
                 round(toplam_tutar, 2), None, round(toplam_brut_kar, 2), None,
-                round(toplam_altidabirlik_xl, 2), None, None
+                round(toplam_masraf_xl, 2), round(toplam_net_kar_xl, 2),
+                round(toplam_prim_10_xl, 2), round(toplam_net_kar_xl - toplam_prim_10_xl, 2),
+                None, None, None, None,
+                None, round(toplam_altidabirlik_xl, 2), None, None
             ]
             for col_idx, val in enumerate(toplam_degerler, 1):
                 cell = ws.cell(row=toplam_row, column=col_idx, value=val)
@@ -853,7 +1105,7 @@ class PrimRaporlamaGUI:
                     cell.alignment = sayi_align
 
             # Sutun genislikleri
-            genislikler = [40, 15, 12, 12, 12, 8, 12, 14, 12, 14, 12, 12, 12, 18]
+            genislikler = [40, 15, 12, 12, 12, 8, 12, 14, 12, 14, 12, 12, 12, 12, 14, 12, 12, 12, 12, 12, 12, 12, 18]
             for i, g in enumerate(genislikler, 1):
                 ws.column_dimensions[get_column_letter(i)].width = g
 

@@ -617,8 +617,32 @@ class AnaMenu:
 
     def rapor_kontrol_ac(self):
         """Rapor Kontrol modülünü aç"""
-        messagebox.showinfo("Bilgi", "Rapor Kontrol modülü henüz geliştirme aşamasında.")
-        # TODO: Rapor kontrol modülü eklenecek
+        try:
+            self.root.withdraw()
+
+            from recete_rapor_kontrol_gui import ReceteRaporKontrolGUI
+
+            # Yeni pencere oluştur
+            kontrol_root = tk.Toplevel()
+
+            # Ana menüye dönüş callback'i
+            def ana_menuye_don():
+                self.root.deiconify()
+
+            # Pencere kapatma
+            kontrol_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(kontrol_root))
+
+            # ReceteRaporKontrolGUI'yi başlat
+            app = ReceteRaporKontrolGUI(kontrol_root, ana_menu_callback=ana_menuye_don)
+
+        except ImportError as e:
+            logger.error(f"Rapor Kontrol import hatası: {e}")
+            messagebox.showerror("Hata", "Rapor Kontrol modülü yüklenemedi.")
+            self.root.deiconify()
+        except Exception as e:
+            logger.error(f"Rapor Kontrol açma hatası: {e}")
+            messagebox.showerror("Hata", f"Rapor Kontrol modülü açılamadı:\n{e}")
+            self.root.deiconify()
 
     def t_cetvel_ac(self):
         """T Cetvel modülünü aç"""

@@ -562,6 +562,120 @@ class BotanikDB:
         """
         return self.sorgu_calistir(sql)
 
+    def iade_fatura_detay_getir(self, fatura_no: str = None, fatura_tarihi: str = None, depo_adi: str = None) -> List[Dict]:
+        """
+        İade faturası detaylarını getir.
+        FaturaCikis tablosundan fatura no veya tarihe göre sorgular.
+        IadeTakip tablosundan da tarihe göre sorgular.
+        İkisini birleştirip döndürür.
+        """
+        results = []
+
+        # 1. FaturaCikis'ten iade faturası satırları
+        if fatura_no:
+            safe_fatura_no = str(fatura_no).replace("'", "''")
+            sql = f"""
+            SELECT
+                fc.FGFaturaNo as FaturaNo,
+                CAST(fc.FGFaturaTarihi as date) as FaturaTarihi,
+                COALESCE(d.DepoAdi, 'Bilinmiyor') as DepoAdi,
+                u.UrunAdi,
+                u.UrunId,
+                (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
+                fcs.FSUrunAdet as Miktar,
+                fcs.FSEtiketFiyat as EtiketFiyat,
+                fcs.FSBirimFiyat as BirimFiyat,
+                fcs.FSUrunAdet * fcs.FSBirimFiyat as ToplamTutar,
+                fcs.FSMaliyet as Maliyet,
+                u.UrunFiyatEtiket as GuncelEtiketFiyat,
+                fc.FGToplamTutar as FaturaToplamTutar,
+                'FATURA_CIKIS' as Kaynak
+            FROM FaturaCikis fc
+            JOIN FaturaCikisSatir fcs ON fc.FGId = fcs.FSFGId
+            JOIN Urun u ON fcs.FSUrunId = u.UrunId
+            LEFT JOIN Depo d ON fc.FGIlgiliId = d.DepoId AND fc.FGIlgiliTipi = 1
+            WHERE fc.FGSilme = 0
+            AND fc.FGFaturaNo = '{safe_fatura_no}'
+            ORDER BY u.UrunAdi
+            """
+            fc_results = self.sorgu_calistir(sql)
+            if fc_results:
+                results.extend(fc_results)
+
+        # 2. FaturaCikis'ten tarihe göre (fatura no yoksa veya sonuç boşsa)
+        if not results and fatura_tarihi:
+            safe_tarih = str(fatura_tarihi).replace("'", "''")
+            depo_filtre = ""
+            if depo_adi:
+                safe_depo = str(depo_adi).replace("'", "''")
+                depo_filtre = f"AND d.DepoAdi LIKE '%{safe_depo}%'"
+
+            sql = f"""
+            SELECT
+                fc.FGFaturaNo as FaturaNo,
+                CAST(fc.FGFaturaTarihi as date) as FaturaTarihi,
+                COALESCE(d.DepoAdi, 'Bilinmiyor') as DepoAdi,
+                u.UrunAdi,
+                u.UrunId,
+                (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
+                fcs.FSUrunAdet as Miktar,
+                fcs.FSEtiketFiyat as EtiketFiyat,
+                fcs.FSBirimFiyat as BirimFiyat,
+                fcs.FSUrunAdet * fcs.FSBirimFiyat as ToplamTutar,
+                fcs.FSMaliyet as Maliyet,
+                u.UrunFiyatEtiket as GuncelEtiketFiyat,
+                fc.FGToplamTutar as FaturaToplamTutar,
+                'FATURA_CIKIS' as Kaynak
+            FROM FaturaCikis fc
+            JOIN FaturaCikisSatir fcs ON fc.FGId = fcs.FSFGId
+            JOIN Urun u ON fcs.FSUrunId = u.UrunId
+            LEFT JOIN Depo d ON fc.FGIlgiliId = d.DepoId AND fc.FGIlgiliTipi = 1
+            WHERE fc.FGSilme = 0
+            AND CAST(fc.FGFaturaTarihi as date) = '{safe_tarih}'
+            {depo_filtre}
+            ORDER BY fc.FGFaturaNo, u.UrunAdi
+            """
+            fc_results = self.sorgu_calistir(sql)
+            if fc_results:
+                results.extend(fc_results)
+
+        # 3. IadeTakip'ten tarihe göre (FaturaCikis'te bulunamazsa)
+        if not results and fatura_tarihi:
+            safe_tarih = str(fatura_tarihi).replace("'", "''")
+            depo_filtre = ""
+            if depo_adi:
+                safe_depo = str(depo_adi).replace("'", "''")
+                depo_filtre = f"AND d.DepoAdi LIKE '%{safe_depo}%'"
+
+            sql = f"""
+            SELECT
+                CAST(it.ITId as nvarchar(50)) as FaturaNo,
+                CAST(it.ITKayitTarihi as date) as FaturaTarihi,
+                COALESCE(d.DepoAdi, 'Depo') as DepoAdi,
+                u.UrunAdi,
+                u.UrunId,
+                (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
+                it.ITUrunAdet as Miktar,
+                u.UrunFiyatEtiket as EtiketFiyat,
+                it.ITBirimMaliyet as BirimFiyat,
+                it.ITUrunAdet * it.ITBirimMaliyet as ToplamTutar,
+                it.ITBirimMaliyet as Maliyet,
+                u.UrunFiyatEtiket as GuncelEtiketFiyat,
+                NULL as FaturaToplamTutar,
+                'IADE_TAKIP' as Kaynak
+            FROM IadeTakip it
+            JOIN Urun u ON it.ITUrunId = u.UrunId
+            LEFT JOIN Depo d ON it.ITDepoId = d.DepoId
+            WHERE CAST(it.ITKayitTarihi as date) = '{safe_tarih}'
+            {depo_filtre}
+            ORDER BY u.UrunAdi
+            """
+            it_results = self.sorgu_calistir(sql)
+            if it_results:
+                results.extend(it_results)
+
+        return results
+
     def depo_listesi_getir(self) -> List[Dict]:
         """Tüm depoları getir"""
         sql = """
