@@ -38,6 +38,20 @@ YASAKLI_KOMUTLAR = [
 
 ---
 
+## KRİTİK KURAL - MEDULA OTOMASYON
+
+### Koordinat Bazlı Tıklama KESİNLİKLE YASAKTIR!
+
+`pyautogui.click(x, y)` ile element tıklama **ASLA YAPILMAZ**. Medula web elementleri y=0,x=0 pozisyonunda görünür, koordinat güvenilmez.
+
+**Doğru yöntemler:**
+- Menü linkleri / Butonlar → `elem.invoke()`
+- Combobox → `elem.click_input()` + `pyautogui.press("up/down/enter")`
+- Checkbox → `elem.click_input()`
+- pyautogui SADECE keyboard için: `press()`, `hotkey()` - tıklama için ASLA
+
+---
+
 ## Kullanıcı Kısaltmaları
 
 - **\*sss** = "Soracağın soru var ise sor" anlamına gelir. Kullanıcı bu kısaltmayı kullandığında, varsa sorularımı sormalıyım.

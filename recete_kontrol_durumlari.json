@@ -1,18 +1,27 @@
 {
   "C": {
-    "son_recete": "Reçete",
-    "toplam_kontrol": 0
+    "son_recete": "",
+    "toplam_kontrol": 0,
+    "son_kontrol_tarihi": null
   },
   "A": {
-    "son_recete": "Reçete",
-    "toplam_kontrol": 0
+    "son_recete": "",
+    "toplam_kontrol": 0,
+    "son_kontrol_tarihi": null
   },
   "GK": {
     "son_recete": "",
-    "toplam_kontrol": 0
+    "toplam_kontrol": 0,
+    "son_kontrol_tarihi": null
   },
   "B": {
-    "son_recete": "Reçete",
-    "toplam_kontrol": 0
+    "son_recete": "",
+    "toplam_kontrol": 0,
+    "son_kontrol_tarihi": null
+  },
+  "CK": {
+    "son_recete": "",
+    "toplam_kontrol": 0,
+    "son_kontrol_tarihi": null
   }
 }
