@@ -1,5 +1,32 @@
 # Proje: BotanikTakip
 
+## KRİTİK GÜVENLİK KURALI - MEDULA & REÇETE/RAPOR VERİLERİ
+
+### Medula Reçete ve Rapor Sistemi
+**SADECE OKUMA YAPILIR! VERİ DEĞİŞTİRME KESİNLİKLE YASAKTIR!**
+
+Aşağıdaki işlemler **KESİNLİKLE YASAKTIR:**
+- Reçete verisi değiştirme, düzeltme, ekleme, silme
+- Rapor verisi değiştirme, düzeltme, ekleme, silme
+- İlaç bilgisi değiştirme, kaydetme, güncelleme
+- E-Reçete Kaydet, İlaç Ekle, İlaç Sil, Reçete Sil butonlarına basma
+- Herhangi bir form alanına veri girişi yapma
+- Herhangi bir veriyi yeniden kaydetme/güncelleme
+
+**İZİN VERİLEN İŞLEMLER (SADECE BUNLAR):**
+- Element text okuma (window_text, DataItem okuma)
+- Checkbox toggle (ilaç seçimi - sadece okuma amaçlı)
+- Rapor butonu tıklama (rapor sayfasını görüntüleme)
+- Geri Dön butonu tıklama (navigasyon)
+- Sonraki/Önceki Reçete butonu tıklama (navigasyon)
+- İlaç Bilgi butonu tıklama (bilgi görüntüleme)
+- Kapat butonu tıklama (pencere kapatma)
+- Sorgula butonu tıklama (liste sorgulama)
+
+**KIRMIZI ÇİZGİ:** Sistem SADECE okur, kontrol eder, loglar. Hiçbir reçete/rapor verisini değiştirmez.
+
+---
+
 ## KRİTİK GÜVENLİK KURALI - VERİTABANI ERİŞİMİ
 
 ### Botanik EOS Veritabanı (SQL Server)

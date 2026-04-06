@@ -95,8 +95,8 @@ class MedulaBaglanti:
     """
 
     MAX_GIRIS_DENEME = 4       # Giriş butonuna kaç kez basılacak
-    GIRIS_BEKLEME = 3          # Her giriş denemesi arası bekleme (sn)
-    EXE_ACILMA_BEKLEME = 12    # Exe başlatıldıktan sonra bekleme (sn)
+    GIRIS_BEKLEME = 2          # Her giriş denemesi arası bekleme (sn)
+    EXE_ACILMA_BEKLEME = 5     # Exe başlatıldıktan sonra minimum bekleme (sn)
     KEEPALIVE_ARALIK = 30      # Oturum canlı tutma aralığı (saniye)
 
     def __init__(self, log_callback=None):
@@ -106,6 +106,7 @@ class MedulaBaglanti:
         self.log = log_callback or (lambda msg, tag="info": logger.info(msg))
         self._keepalive_thread = None
         self._keepalive_aktif = False
+        self._son_aktivite = time.time()
 
     # === PENCERE TARAMA ===
 
@@ -124,8 +125,7 @@ class MedulaBaglanti:
                 t = win32gui.GetWindowText(hwnd)
                 if "MEDULA" in t:
                     medula.append((hwnd, t))
-                elif "BotanikEOS" in t and "(T)" in t:
-                    giris.append((hwnd, t))
+                # BotanikEOS penceresine dokunulmuyor - sadece MEDULA aranır
 
         win32gui.EnumWindows(callback, None)
         return {"medula": medula, "giris": giris}
@@ -176,44 +176,120 @@ class MedulaBaglanti:
 
     def medula_ac_ve_baglan(self):
         """
-        Medula'yı aç ve bağlan. Tam akış:
-        1. MEDULA penceresi açık mı? → Bağlan
-        2. Giriş penceresi açık mı? → Giriş yap (birkaç deneme)
-        3. Hiçbiri yok? → Exe başlat → Giriş yap
-        4. Hepsi başarısız? → taskkill → Exe başlat → Giriş yap (son şans)
+        Medula'yı aç ve bağlan.
+        SADECE MEDULA penceresi aranır - BotanikEOS'a dokunulmaz.
         """
-        # 1. MEDULA penceresi zaten açık mı?
+        import subprocess as sp
+
+        # MEDULA penceresi açık mı?
         sonuc = self._pencereleri_tara()
         if sonuc["medula"]:
             self.log("Medula zaten açık, bağlanılıyor...", "info")
             return self.medula_baglan()
 
-        # 2. Giriş penceresi açık mı?
-        if sonuc["giris"]:
-            self.log("Giriş penceresi bulundu, giriş yapılıyor...", "info")
-            basarili = self._giris_yap()
-            if basarili:
-                return True
-            # Giriş başarısız - taskkill ve yeniden dene
-            self.log("Giriş başarısız, Medula yeniden başlatılıyor...", "warning")
-            self._medula_kapat()
-            time.sleep(2)
-            return self._exe_baslat_ve_giris_yap()
+        # MEDULA yok - BotanikMedula.exe başlat → giriş penceresi → giriş yap → MEDULA bekle
+        self.log("MEDULA penceresi yok, BotanikMedula.exe başlatılıyor...", "info")
+        try:
+            sp.Popen([MEDULA_EXE], cwd=os.path.dirname(MEDULA_EXE))
+        except Exception as e:
+            self.log(f"BotanikMedula.exe başlatılamadı: {e}", "error")
+            return False
 
-        # 3. Hiçbiri yok - exe'den başlat
-        return self._exe_baslat_ve_giris_yap()
+        # Giriş penceresi (SifreSorForm) açılana kadar bekle
+        from pywinauto import Desktop
+        giris_win = None
+        for i in range(20):
+            time.sleep(1)
+            try:
+                desktop = Desktop(backend="uia")
+                for w in desktop.windows():
+                    try:
+                        if w.element_info.automation_id == "SifreSorForm":
+                            giris_win = w
+                            self.log(f"Giriş penceresi açıldı ({i+1} sn)", "info")
+                            break
+                    except:
+                        pass
+                if giris_win:
+                    break
+            except:
+                pass
+
+        if giris_win:
+            # Kullanıcı seç + şifre gir + giriş yap
+            try:
+                import pyautogui
+                pyautogui.FAILSAFE = False
+                giris_win.set_focus()
+                time.sleep(0.3)
+                # Kullanıcı combobox
+                combo = giris_win.child_window(auto_id="cmbKullanicilar")
+                combo.click_input()
+                time.sleep(0.3)
+                # "16-botan" kullanıcısını seç
+                for item in combo.children():
+                    try:
+                        if "botan" in item.window_text().lower():
+                            item.click_input()
+                            self.log("Kullanıcı seçildi: botan", "info")
+                            break
+                    except:
+                        pass
+                time.sleep(0.3)
+                # Şifre
+                sifre = giris_win.child_window(auto_id="txtSifre")
+                sifre.click_input()
+                time.sleep(0.1)
+                sifre.type_keys(MEDULA_SIFRE, with_spaces=True)
+                time.sleep(0.1)
+                # Giriş butonu
+                giris_win.child_window(auto_id="btnGirisYap").click_input()
+                self.log("Giriş yapılıyor...", "info")
+            except Exception as e:
+                self.log(f"Giriş hatası: {e}", "error")
+
+        # MEDULA penceresi açılana kadar bekle
+        for i in range(30):
+            time.sleep(1)
+            sonuc = self._pencereleri_tara()
+            if sonuc["medula"]:
+                self.log(f"MEDULA açıldı ({i+1} sn), bağlanılıyor...", "info")
+                return self.medula_baglan()
+        self.log("MEDULA açılamadı!", "error")
+        return False
 
     # === EXE BAŞLATMA ===
 
     def _exe_baslat_ve_giris_yap(self):
-        """Exe'yi başlat, giriş yap. Başarısız olursa taskkill edip tekrar dene."""
+        """Exe'yi başlat, giriş penceresi çıkınca hemen giriş yap."""
         if not os.path.exists(MEDULA_EXE):
             self.log(f"Medula exe bulunamadı: {MEDULA_EXE}", "error")
             return False
 
         self.log("Medula başlatılıyor...", "info")
         subprocess.Popen([MEDULA_EXE])
-        time.sleep(self.EXE_ACILMA_BEKLEME)
+
+        # Sabit bekleme yerine giriş penceresi görünene kadar bekle
+        from pywinauto import Desktop
+        for i in range(20):  # max 20 sn
+            time.sleep(1)
+            try:
+                desktop = Desktop(backend="uia")
+                for w in desktop.windows():
+                    try:
+                        title = w.window_text()
+                        if "BotanikEOS" in title and "(T)" in title and "MEDULA" not in title:
+                            self.log(f"Giriş penceresi göründü ({i+1} sn)", "info")
+                            break
+                    except Exception:
+                        continue
+                else:
+                    continue
+                break
+            except Exception:
+                continue
+        else:
+            self.log("Giriş penceresi açılmadı, yine de giriş deneniyor...", "warning")
 
         basarili = self._giris_yap()
         if basarili:
@@ -222,7 +298,7 @@ class MedulaBaglanti:
         # Son şans: taskkill ve tekrar dene
         self.log("Giriş başarısız, taskkill ile kapatılıp tekrar deneniyor...", "warning")
         self._medula_kapat()
-        time.sleep(3)
+        time.sleep(2)
 
         self.log("Medula tekrar başlatılıyor...", "info")
         subprocess.Popen([MEDULA_EXE])
@@ -234,16 +310,15 @@ class MedulaBaglanti:
 
     def _giris_yap(self):
         """
-        Giriş penceresini bul, kullanıcı seç, şifre gir, giriş butonuna
-        birkaç kez 2sn aralıkla bas. Her denemeden sonra MEDULA penceresi
-        açıldı mı kontrol et.
+        Giriş penceresini bul, kullanıcı seç, şifre gir, giriş butonuna bas.
+        Hızlı akış: kullanıcı → şifre → enter ard arda yapılır.
         """
         try:
             from pywinauto import Desktop
             import pyautogui
 
             desktop = Desktop(backend="uia")
-            time.sleep(2)
+            time.sleep(0.5)
 
             # Giriş penceresini bul
             giris_window = self._giris_penceresi_bul(desktop)
@@ -251,7 +326,7 @@ class MedulaBaglanti:
                 return False
 
             giris_window.set_focus()
-            time.sleep(0.5)
+            time.sleep(0.3)
 
             # 1. Kullanıcı seç
             if not self._kullanici_sec(giris_window):
@@ -261,25 +336,34 @@ class MedulaBaglanti:
             if not self._sifre_gir(giris_window):
                 return False
 
-            # 3. Giriş butonuna birkaç kez bas, her seferinde kontrol et
-            for deneme in range(1, self.MAX_GIRIS_DENEME + 1):
-                self.log(f"Giriş deneme {deneme}/{self.MAX_GIRIS_DENEME}...", "info")
+            # 3. Hemen giriş butonuna bas (bekleme yok)
+            try:
+                giris_btn = giris_window.child_window(auto_id=MEDULA_IDS["giris_butonu"])
+                giris_btn.click_input()
+                self.log("Giriş butonuna basıldı", "info")
+            except Exception as e:
+                self.log(f"Giriş butonu tıklanamadı: {e}", "warning")
 
-                try:
-                    giris_btn = giris_window.child_window(auto_id=MEDULA_IDS["giris_butonu"])
-                    giris_btn.click_input()
-                except Exception as e:
-                    self.log(f"Giriş butonu tıklanamadı: {e}", "warning")
-
-                time.sleep(self.GIRIS_BEKLEME)
-
-                # MEDULA penceresi açıldı mı?
+            # 4. MEDULA penceresinin açılmasını bekle (poll ile, sabit bekleme yok)
+            for deneme in range(self.MAX_GIRIS_DENEME * 5):  # ~20 sn max
+                time.sleep(1)
                 sonuc = self._pencereleri_tara()
                 if sonuc["medula"]:
                     self.log("Medula açıldı!", "success")
                     return self.medula_baglan()
 
-            self.log(f"{self.MAX_GIRIS_DENEME} deneme sonrası Medula açılamadı", "error")
+                # Her 5 sn'de bir giriş butonuna tekrar bas (pencere açılmadıysa)
+                if deneme > 0 and deneme % 5 == 0:
+                    self.log(f"Medula henüz açılmadı, giriş tekrar deneniyor...", "info")
+                    try:
+                        giris_window = self._giris_penceresi_bul(desktop, max_bekleme=2)
+                        if giris_window:
+                            giris_btn = giris_window.child_window(auto_id=MEDULA_IDS["giris_butonu"])
+                            giris_btn.click_input()
+                    except Exception:
+                        pass
+
+            self.log(f"Medula açılamadı", "error")
             return False
 
         except Exception as e:
@@ -312,7 +396,7 @@ class MedulaBaglanti:
         try:
             combo = giris_window.child_window(auto_id=MEDULA_IDS["giris_kullanici_combo"])
             combo.click_input()
-            time.sleep(0.5)
+            time.sleep(0.3)
 
             items = combo.descendants(control_type="ListItem")
             for item in items:
@@ -320,7 +404,7 @@ class MedulaBaglanti:
                     if "botan" in item.window_text().lower():
                         item.click_input()
                         self.log("Kullanıcı seçildi: botan", "success")
-                        time.sleep(0.3)
+                        time.sleep(0.15)
                         return True
                 except Exception:
                     continue
@@ -337,12 +421,12 @@ class MedulaBaglanti:
             import pyautogui
             sifre = giris_window.child_window(auto_id=MEDULA_IDS["giris_sifre"])
             sifre.click_input()
-            time.sleep(0.2)
-            pyautogui.hotkey("ctrl", "a")
             time.sleep(0.1)
+            pyautogui.hotkey("ctrl", "a")
+            time.sleep(0.05)
             sifre.type_keys(MEDULA_SIFRE, with_spaces=True)
             self.log("Şifre girildi", "info")
-            time.sleep(0.3)
+            time.sleep(0.1)
             return True
         except Exception as e:
             self.log(f"Şifre girme hatası: {e}", "error")
@@ -388,39 +472,73 @@ class MedulaBaglanti:
 
     # === OTURUM CANLI TUTMA (KEEPALIVE) ===
 
+    KEEPALIVE_ESIK = 90  # Saniye - bu süre boyunca Medula'ya tıklanmamışsa keepalive tetiklenir
+    AKTIVITE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "medula_aktivite.tmp")
+
+    def _son_aktivite_zamani(self):
+        """Son Medula aktivite zamanını oku.
+        Hem kendi _son_aktivite değişkenine hem de subprocess'in yazdığı dosyaya bakar.
+        En yeni olanı döndürür."""
+        en_yeni = self._son_aktivite
+
+        # Subprocess'in yazdığı aktivite dosyasını oku
+        try:
+            if os.path.exists(self.AKTIVITE_FILE):
+                with open(self.AKTIVITE_FILE, "r") as f:
+                    dosya_zamani = float(f.read().strip())
+                    if dosya_zamani > en_yeni:
+                        en_yeni = dosya_zamani
+        except:
+            pass
+
+        return en_yeni
+
+    def aktivite_bildir(self):
+        """Medula'ya tıklama yapıldığında çağrılır - keepalive zamanlayıcısını sıfırlar"""
+        self._son_aktivite = time.time()
+        # Dosyaya da yaz (subprocess de okuyabilsin)
+        try:
+            with open(self.AKTIVITE_FILE, "w") as f:
+                f.write(str(self._son_aktivite))
+        except:
+            pass
+
     def keepalive_baslat(self):
         """
-        Arka planda periyodik olarak Medula web sayfasındaki sol menüde
-        e-Reçete Sorgu linkine tıklayarak oturumu canlı tut.
-        Bu tıklama web sunucusuna istek göndererek session timeout'u sıfırlar.
+        Oturum canlı tutma - DEVRE DIŞI BIRAKILDI.
+        Giriş butonuna otomatik basma, aktif tarama akışını bozuyordu.
         """
+        logger.info("Keepalive devre dışı - otomatik giriş yapılmayacak")
+        return
+
         if self._keepalive_aktif:
             return
 
         self._keepalive_aktif = True
+        self._son_aktivite = time.time()
 
         def keepalive_loop():
-            import win32gui, win32con
-
             while self._keepalive_aktif and self.bagli:
                 try:
-                    time.sleep(self.KEEPALIVE_ARALIK)
+                    time.sleep(10)  # Her 10 saniyede kontrol et
                     if not self._keepalive_aktif or not self.bagli:
                         break
 
                     if not self.medula_hwnd or not self.main_window:
                         continue
 
-                    # 1. WM_MOUSEMOVE gönder (pencere aktivitesi)
-                    try:
-                        win32gui.PostMessage(self.medula_hwnd, 0x0200, 0, 0)
-                    except:
-                        pass
+                    # Son aktiviteden bu yana geçen süre
+                    son_zaman = self._son_aktivite_zamani()
+                    gecen = time.time() - son_zaman
+                    if gecen < self.KEEPALIVE_ESIK:
+                        continue
 
-                    # 2. Oturum düşmüşse Giriş butonuna bas (sayfa değişmez)
-                    if not self.oturum_aktif_mi():
-                        logger.info("Keepalive: Oturum düşmüş, Giriş butonuna basılıyor")
-                        try:
+                    # 90 saniye geçti, oturum kontrol et
+                    logger.info(f"Keepalive: {gecen:.0f}sn aktivite yok, oturum kontrol ediliyor")
+
+                    try:
+                        if not self.oturum_aktif_mi():
+                            logger.info("Keepalive: Oturum düşmüş, Giriş butonuna basılıyor")
                             for elem in self.main_window.descendants(control_type="Button"):
                                 try:
                                     if elem.element_info.automation_id == "btnMedulayaGirisYap":
@@ -429,15 +547,20 @@ class MedulaBaglanti:
                                         break
                                 except:
                                     pass
-                        except:
-                            pass
+                        else:
+                            logger.debug("Keepalive: Oturum hala aktif")
+                    except Exception:
+                        pass
+
+                    # Aktivite zamanını güncelle (tekrar 90sn beklesin)
+                    self._son_aktivite = time.time()
 
                 except Exception as e:
                     logger.debug(f"Keepalive hatası: {e}")
 
         self._keepalive_thread = threading.Thread(target=keepalive_loop, daemon=True)
         self._keepalive_thread.start()
-        self.log("Oturum canlı tutma başlatıldı", "info")
+        self.log("Oturum canlı tutma başlatıldı (90sn inaktivite eşiği)", "info")
 
     def keepalive_durdur(self):
         """Keepalive döngüsünü durdur"""
@@ -1370,7 +1493,12 @@ class ReceteRaporKontrolGUI:
         self.root = root
         self.ana_menu_callback = ana_menu_callback
         self.root.title("Reçete / Rapor Kontrol")
-        self.root.geometry("750x650")
+        ekran_w = root.winfo_screenwidth()
+        pencere_w = 600
+        pencere_h = 950
+        pencere_x = ekran_w - pencere_w
+        self.root.geometry(f"{pencere_w}x{pencere_h}+{pencere_x}+0")
+        self.root.resizable(True, True)
         self.root.configure(bg="#1E3A5F")
 
         # Log alanı (önce oluştur ki MedulaBaglanti kullanabilsin)
@@ -1382,6 +1510,10 @@ class ReceteRaporKontrolGUI:
         # Kontrol durumu
         self.kontrol_aktif = False
         self.aktif_grup = None
+        self._subprocess_proc = None
+
+        # Escape kısayolu - taramayı durdur
+        self.root.bind_all("<Escape>", lambda e: self._taramayi_durdur())
 
         # Grup durumlarını yükle
         self.grup_durumlari = self._durumlari_yukle()
@@ -1475,10 +1607,14 @@ class ReceteRaporKontrolGUI:
         ust_ayar_frame = tk.Frame(icerik_frame, bg="#1E3A5F")
         ust_ayar_frame.pack(fill="x", pady=(0, 5))
 
-        # Renkli Reçete Excel Yükle butonu + drop alanı
+        # Ay seçimi (önce pack - sağda sabit kalması için)
         self.renkli_recete_dosya = None
         self.renkli_recete_listesi = []
 
+        ay_frame = tk.Frame(ust_ayar_frame, bg="#37474F", bd=1, relief="groove")
+        ay_frame.pack(side="right", padx=(5, 0))
+
+        # Renkli Reçete Excel Yükle butonu + hatırla checkbox (kalan alan)
         renkli_frame = tk.Frame(ust_ayar_frame, bg="#37474F", bd=1, relief="groove")
         renkli_frame.pack(side="left", fill="x", expand=True, padx=(0, 5))
 
@@ -1495,11 +1631,20 @@ class ReceteRaporKontrolGUI:
             renkli_frame, text="Yüklenmedi",
             font=("Segoe UI", 8), fg="#FF9800", bg="#37474F"
         )
-        self.renkli_durum_label.pack(side="left", padx=5)
+        self.renkli_durum_label.pack(side="left", padx=3)
 
-        # Ay seçimi
-        ay_frame = tk.Frame(ust_ayar_frame, bg="#37474F", bd=1, relief="groove")
-        ay_frame.pack(side="right", padx=(5, 0))
+        # "Hatırla" checkbox
+        self.renkli_hatirla_var = tk.BooleanVar(value=True)
+        self.renkli_hatirla_cb = tk.Checkbutton(
+            renkli_frame, text="✓",
+            variable=self.renkli_hatirla_var,
+            font=("Segoe UI", 7), fg="#90CAF9", bg="#37474F",
+            selectcolor="#263238", activebackground="#37474F",
+        )
+        self.renkli_hatirla_cb.pack(side="left", padx=0)
+
+        # Otomatik yükleme: kaydedilmiş excel dosyası varsa aç
+        self._renkli_excel_hatirla()
 
         tk.Label(ay_frame, text="Dönem:", font=("Segoe UI", 9),
                  fg="#87CEEB", bg="#37474F").pack(side="left", padx=(5, 2), pady=3)
@@ -1528,14 +1673,14 @@ class ReceteRaporKontrolGUI:
         # Ayırıcı
         tk.Frame(icerik_frame, bg="#3D5A80", height=2).pack(fill="x", pady=3)
 
-        # Tümünü Kontrol Et butonu
+        # Tümünü Kontrol Et / Durdur toggle butonu
         tumunu_btn = tk.Button(
             icerik_frame,
             text="TÜMÜNÜ KONTROL ET",
             font=("Segoe UI", 14, "bold"),
             fg="white", bg="#00695C", activebackground="#004D40",
             bd=0, padx=20, pady=12, cursor="hand2",
-            command=self._tumunu_kontrol_et
+            command=self._tumunu_toggle
         )
         tumunu_btn.pack(fill="x", pady=(0, 8))
         self.tumunu_btn = tumunu_btn
@@ -1572,6 +1717,14 @@ class ReceteRaporKontrolGUI:
         )
         temizle_btn.pack(side="right")
 
+        rapor_btn = tk.Button(
+            secenek_frame, text="Raporu Göster",
+            font=("Segoe UI", 9, "bold"), fg="white", bg="#1565C0",
+            activebackground="#0D47A1", bd=0, padx=10, pady=3,
+            command=self._rapor_tablosu_goster
+        )
+        rapor_btn.pack(side="right", padx=(0, 5))
+
         # === LOG ALANI ===
         log_frame = tk.Frame(icerik_frame, bg="#0D2137", bd=1, relief="sunken")
         log_frame.pack(fill="both", expand=True, pady=(8, 0))
@@ -1591,12 +1744,14 @@ class ReceteRaporKontrolGUI:
         scrollbar.pack(side="right", fill="y")
         self.log_text.pack(fill="both", expand=True, padx=5, pady=2)
 
-        # Tag'ler
-        self.log_text.tag_configure("info", foreground="#87CEEB")
-        self.log_text.tag_configure("success", foreground="#4CAF50")
-        self.log_text.tag_configure("warning", foreground="#FF9800")
-        self.log_text.tag_configure("error", foreground="#F44336")
+        # Tag'ler - kontrol sonuçlarına göre renkler
+        self.log_text.tag_configure("info", foreground="#87CEEB")           # Nötr - açık mavi
+        self.log_text.tag_configure("success", foreground="#0D2137", background="#A5D6A7")  # Uygun - yeşil arka plan
+        self.log_text.tag_configure("warning", foreground="#0D2137", background="#FFE082")  # Şüpheli/bilinemeyen - sarı
+        self.log_text.tag_configure("error", foreground="#FFFFFF", background="#E53935")    # Uygunsuz - kırmızı
+        self.log_text.tag_configure("sorun", foreground="#FFFFFF", background="#D84315")    # Sorun - koyu turuncu
         self.log_text.tag_configure("header", foreground="#FFFFFF", font=("Consolas", 10, "bold"))
+        self.log_text.tag_configure("neutral", foreground="#B0BEC5")        # Nötr - gri (GEÇ satırları)
 
     def _grup_satiri_olustur(self, parent, grup):
         """Tek bir grup için buton + durum label satırı"""
@@ -1614,10 +1769,14 @@ class ReceteRaporKontrolGUI:
             font=("Segoe UI", 11, "bold"),
             fg="white", bg=grup["renk"], activebackground=grup["hover"],
             bd=0, padx=15, pady=8, width=22, anchor="w", cursor="hand2",
-            command=lambda k=kod: self._grup_kontrol_baslat(k)
+            command=lambda k=kod: self._grup_toggle(k)
         )
         btn.pack(side="left")
         self.grup_butonlari[kod] = btn
+        # Orijinal rengi sakla
+        btn._renk_normal = grup["renk"]
+        btn._renk_hover = grup["hover"]
+        btn._ad = grup["ad"]
 
         durum_text = f"Son: {son_recete}" if son_recete else "Henüz başlanmadı"
         if toplam > 0:
@@ -1843,14 +2002,43 @@ class ReceteRaporKontrolGUI:
             sayi = len(self.renkli_recete_listesi)
             dosya_adi = os.path.basename(dosya_yolu)
             self.renkli_durum_label.config(
-                text=f"{dosya_adi} ({sayi} reçete)", fg="#4CAF50"
+                text=f"✓ {dosya_adi} ({sayi} reçete)", fg="#4CAF50"
             )
             self.renkli_btn.config(bg="#4A148C")
             self.log_yaz(f"Renkli reçete listesi yüklendi: {sayi} reçete ({dosya_adi})", "success")
 
+            # Dosya yolunu hatırla (checkbox işaretliyse JSON'a kaydet)
+            if self.renkli_hatirla_var.get():
+                self._renkli_excel_kaydet(dosya_yolu)
+
         except Exception as e:
             self.log_yaz(f"Renkli reçete yükleme hatası: {e}", "error")
             self.renkli_durum_label.config(text="Yükleme hatası!", fg="#F44336")
+
+    def _renkli_excel_kaydet(self, dosya_yolu):
+        """Renkli reçete excel dosya yolunu JSON'a kaydet"""
+        try:
+            durum = {}
+            if os.path.exists(DURUM_DOSYASI):
+                with open(DURUM_DOSYASI, "r", encoding="utf-8") as f:
+                    durum = json.load(f)
+            durum["_renkli_excel_dosya"] = dosya_yolu
+            with open(DURUM_DOSYASI, "w", encoding="utf-8") as f:
+                json.dump(durum, f, indent=2, ensure_ascii=False)
+        except:
+            pass
+
+    def _renkli_excel_hatirla(self):
+        """Kaydedilmiş renkli reçete excel dosyasını otomatik yükle"""
+        try:
+            if os.path.exists(DURUM_DOSYASI):
+                with open(DURUM_DOSYASI, "r", encoding="utf-8") as f:
+                    durum = json.load(f)
+                dosya = durum.get("_renkli_excel_dosya", "")
+                if dosya and os.path.exists(dosya):
+                    self._renkli_excel_isle(dosya)
+        except:
+            pass
 
     def renkli_recete_kontrol(self, recete_no):
         """
@@ -1904,6 +2092,11 @@ class ReceteRaporKontrolGUI:
         self.log_yaz("Sıra: C -> A -> B -> C Kan Ürünü -> Geçici Koruma", "info")
         self.log_yaz("=" * 40, "header")
 
+        self.aktif_grup = "TUMU"
+        self.tumunu_btn.config(text="DURDUR (Esc)", bg="#B71C1C", activebackground="#7F0000")
+        for btn in self.grup_butonlari.values():
+            btn.config(state="disabled")
+
         def kontrol_thread():
             self.kontrol_aktif = True
             try:
@@ -1913,9 +2106,423 @@ class ReceteRaporKontrolGUI:
                     self._grup_kontrol_islemi(grup["kod"])
             finally:
                 self.kontrol_aktif = False
+                self.aktif_grup = None
+                self.root.after(0, self._butonlari_normal_yap)
                 self.root.after(0, lambda: self.log_yaz("Tüm kontroller tamamlandı", "header"))
 
         threading.Thread(target=kontrol_thread, daemon=True).start()
+
+    def _medula_hazirla(self):
+        """Medula bağlantısını kontrol et, yoksa/düşmüşse yeniden bağlan.
+        Worker thread'den çağrılır. GUI güncellemeleri root.after ile yapılır.
+        descendants() taraması yapmaz - SPAN popup sorununu önler.
+        Returns: True=hazır, False=bağlanılamadı
+        """
+        import subprocess as sp
+        import win32gui
+
+        def _log(msg, tag="info"):
+            self.root.after(0, lambda m=msg, t=tag: self.log_yaz(m, t))
+
+        def _pencere_bul(filtre):
+            """win32gui ile pencere ara. filtre(title)->bool"""
+            sonuc = [None]
+            def cb(hwnd, _):
+                if win32gui.IsWindowVisible(hwnd):
+                    t = win32gui.GetWindowText(hwnd)
+                    if t and filtre(t):
+                        sonuc[0] = hwnd
+            win32gui.EnumWindows(cb, None)
+            return sonuc[0]
+
+        def _medula_hwnd():
+            return _pencere_bul(lambda t: "MEDULA" in t)
+
+        def _giris_hwnd():
+            return _pencere_bul(lambda t: "BotanikEOS" in t and "(T)" in t and "MEDULA" not in t)
+
+        def _medula_web_oturum_bekle():
+            """MEDULA penceresi açıldıktan sonra web oturumunun aktif olmasını bekle.
+            recete_tarama.py subprocess zaten kendi oturum kontrolünü yapıyor,
+            bu yüzden burada sadece pencere var mı kontrol yeterli."""
+            self.medula.medula_baglan()
+            if self.medula.bagli:
+                self.root.after(0, lambda: self._medula_baglanti_sonuc(True))
+                return True
+            return False
+
+        def _hizli_giris_yap():
+            """Giriş penceresine kullanıcı+şifre+enter hızlıca gir.
+            Sadece giriş penceresi elementlerine dokunur, MEDULA descendants taramaz."""
+            import pyautogui
+            pyautogui.FAILSAFE = False
+            from pywinauto import Desktop
+
+            hwnd = _giris_hwnd()
+            if not hwnd:
+                _log("Giriş penceresi bulunamadı!", "error")
+                return False
+
+            desktop = Desktop(backend="uia")
+            giris = desktop.window(handle=hwnd)
+            giris.set_focus()
+            time.sleep(0.3)
+
+            # Kullanıcı seç
+            try:
+                combo = giris.child_window(auto_id="cmbKullanicilar")
+                combo.click_input()
+                time.sleep(0.3)
+                for item in combo.descendants(control_type="ListItem"):
+                    if "botan" in item.window_text().lower():
+                        item.click_input()
+                        break
+            except Exception as e:
+                _log(f"Kullanıcı seçilemedi: {e}", "error")
+                return False
+
+            time.sleep(0.15)
+
+            # Şifre gir
+            try:
+                sifre = giris.child_window(auto_id="txtSifre")
+                sifre.click_input()
+                time.sleep(0.1)
+                pyautogui.hotkey("ctrl", "a")
+                time.sleep(0.05)
+                sifre.type_keys(MEDULA_SIFRE, with_spaces=True)
+            except Exception as e:
+                _log(f"Şifre girilemedi: {e}", "error")
+                return False
+
+            time.sleep(0.1)
+
+            # Giriş butonuna bas
+            try:
+                btn = giris.child_window(auto_id="btnGirisYap")
+                btn.click_input()
+                _log("Giriş butonuna basıldı, MEDULA bekleniyor...", "info")
+            except Exception as e:
+                _log(f"Giriş butonu tıklanamadı: {e}", "error")
+                return False
+
+            # MEDULA penceresi açılana kadar bekle
+            for i in range(20):
+                time.sleep(1)
+                if _medula_hwnd():
+                    _log(f"MEDULA açıldı! ({i+1} sn)", "success")
+                    return True
+                if i == 5:
+                    try:
+                        giris.child_window(auto_id="btnGirisYap").click_input()
+                    except:
+                        pass
+
+            _log("MEDULA penceresi açılamadı", "error")
+            return False
+
+        # === ANA AKIŞ ===
+
+        # 1. MEDULA penceresi zaten açık mı? → Direkt bağlan, subprocess halleder
+        if _medula_hwnd():
+            _log("Medula penceresi açık, bağlanılıyor...", "info")
+            _medula_web_oturum_bekle()
+            _log("Medula bağlı, subprocess'e bırakılıyor", "success")
+            return True
+
+        # 2. MEDULA yok - BotanikMedula.exe başlat → giriş → MEDULA bekle
+        _log("MEDULA penceresi yok, BotanikMedula.exe başlatılıyor...", "info")
+        try:
+            sp.Popen([MEDULA_EXE], cwd=os.path.dirname(MEDULA_EXE))
+        except Exception as e:
+            _log(f"BotanikMedula.exe başlatılamadı: {e}", "error")
+            self.root.after(0, lambda: self._medula_baglanti_sonuc(False))
+            return False
+
+        # Giriş penceresi (SifreSorForm) bekle
+        from pywinauto import Desktop as Dsk
+        giris_win = None
+        for i in range(20):
+            time.sleep(1)
+            try:
+                dsk = Dsk(backend="uia")
+                for w in dsk.windows():
+                    try:
+                        if w.element_info.automation_id == "SifreSorForm":
+                            giris_win = w
+                            _log(f"Giriş penceresi açıldı ({i+1} sn)", "info")
+                            break
+                    except:
+                        pass
+                if giris_win:
+                    break
+            except:
+                pass
+
+        if giris_win:
+            try:
+                import pyautogui
+                pyautogui.FAILSAFE = False
+                giris_win.set_focus()
+                time.sleep(0.3)
+                combo = giris_win.child_window(auto_id="cmbKullanicilar")
+                combo.click_input()
+                time.sleep(0.3)
+                for item in combo.children():
+                    try:
+                        if "botan" in item.window_text().lower():
+                            item.click_input()
+                            _log("Kullanıcı: botan", "info")
+                            break
+                    except:
+                        pass
+                time.sleep(0.3)
+                sifre = giris_win.child_window(auto_id="txtSifre")
+                sifre.click_input()
+                time.sleep(0.1)
+                sifre.type_keys(MEDULA_SIFRE, with_spaces=True)
+                time.sleep(0.1)
+                giris_win.child_window(auto_id="btnGirisYap").click_input()
+                _log("Giriş yapılıyor...", "info")
+            except Exception as e:
+                _log(f"Giriş hatası: {e}", "error")
+
+        # MEDULA penceresi bekle
+        for i in range(30):
+            time.sleep(1)
+            if _medula_hwnd():
+                _log(f"MEDULA açıldı ({i+1} sn)", "success")
+                _medula_web_oturum_bekle()
+                return True
+            if (i + 1) % 10 == 0:
+                _log(f"MEDULA bekleniyor... ({i+1} sn)", "info")
+
+        _log("MEDULA açılamadı!", "error")
+        self.root.after(0, lambda: self._medula_baglanti_sonuc(False))
+        return False
+
+    def _rapor_tablosu_goster(self):
+        """Tarama raporu JSON'ını oku ve yeni pencerede tablo olarak göster"""
+        rapor_json = os.path.join(PROJE_DIZINI, "tarama_rapor.json")
+        if not os.path.exists(rapor_json):
+            self.log_yaz("Henüz rapor yok! Önce bir tarama yapın.", "warning")
+            return
+
+        try:
+            with open(rapor_json, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            self.log_yaz(f"Rapor dosyası okunamadı: {e}", "error")
+            return
+
+        satirlar = data.get("satirlar", [])
+        grup = data.get("grup", "?")
+        tarih = data.get("tarih", "")[:16].replace("T", " ")
+
+        if not satirlar:
+            self.log_yaz("Rapor boş!", "warning")
+            return
+
+        # Yeni pencere
+        rapor_win = tk.Toplevel(self.root)
+        rapor_win.title(f"Kontrol Raporu - {grup} Grubu ({tarih})")
+        rapor_win.geometry("1200x600")
+        rapor_win.configure(bg="#1E3A5F")
+
+        # Üst bilgi
+        ust = tk.Frame(rapor_win, bg="#1E3A5F")
+        ust.pack(fill="x", padx=5, pady=5)
+        tk.Label(ust, text=f"Kontrol Raporu - {grup} Grubu  |  {tarih}  |  {len(satirlar)} satır",
+                 font=("Segoe UI", 12, "bold"), fg="white", bg="#1E3A5F").pack(side="left")
+
+        # Excel'e aktar butonu
+        def excel_ac():
+            masaustu = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop")
+            import glob as g
+            dosyalar = sorted(g.glob(os.path.join(masaustu, f"Kontrol_Raporu_{grup}_*.xlsx")))
+            if dosyalar:
+                os.startfile(dosyalar[-1])
+            else:
+                self.log_yaz("Excel dosyası bulunamadı!", "warning")
+
+        tk.Button(ust, text="Excel Aç", font=("Segoe UI", 10, "bold"),
+                  fg="white", bg="#1565C0", activebackground="#0D47A1",
+                  bd=0, padx=10, pady=3, command=excel_ac).pack(side="right")
+
+        # Treeview tablo
+        from tkinter import ttk
+        sutunlar = ("recete_no", "recete_turu", "ilac_adi", "etkin_madde",
+                     "rapor_kodu", "msj", "renkli_kontrol", "rapor_kontrol",
+                     "sut_kontrol", "sonuc", "aciklama")
+        basliklar = ("Reçete No", "Tür", "İlaç Adı", "Etkin Madde",
+                     "Rapor", "Msj", "Renkli", "Rapor K.", "SUT K.", "Sonuç", "Açıklama")
+        genislikler = (85, 70, 280, 170, 60, 35, 90, 90, 80, 65, 300)
+
+        style = ttk.Style()
+        style.configure("Rapor.Treeview", font=("Segoe UI", 9), rowheight=24)
+        style.configure("Rapor.Treeview.Heading", font=("Segoe UI", 9, "bold"))
+
+        tablo_frame = tk.Frame(rapor_win, bg="#1E3A5F")
+        tablo_frame.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+
+        tree = ttk.Treeview(tablo_frame, columns=sutunlar, show="headings",
+                            style="Rapor.Treeview", selectmode="browse")
+
+        for col, baslik, gen in zip(sutunlar, basliklar, genislikler):
+            tree.heading(col, text=baslik)
+            tree.column(col, width=gen, minwidth=30)
+
+        # Scrollbar
+        yscroll = ttk.Scrollbar(tablo_frame, orient="vertical", command=tree.yview)
+        xscroll = ttk.Scrollbar(tablo_frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
+        yscroll.pack(side="right", fill="y")
+        xscroll.pack(side="bottom", fill="x")
+        tree.pack(fill="both", expand=True)
+
+        # Tag renkler
+        tree.tag_configure("OK", background="#C8E6C9")
+        tree.tag_configure("SORUN", background="#FFCDD2", foreground="#B71C1C")
+        tree.tag_configure("UYARI", background="#FFF9C4")
+        tree.tag_configure("YENİ", background="#B3E5FC")
+        tree.tag_configure("recete", background="#E8EAF6", font=("Segoe UI", 9, "bold"))
+
+        # Veri ekle
+        onceki_recete = None
+        for satir in satirlar:
+            recete_no = satir.get("recete_no", "")
+            yeni_recete = recete_no != onceki_recete
+            onceki_recete = recete_no
+
+            degerler = (
+                recete_no if yeni_recete else "",
+                satir.get("recete_turu", "") if yeni_recete else "",
+                satir.get("ilac_adi", ""),
+                satir.get("etkin_madde", ""),
+                satir.get("rapor_kodu", ""),
+                satir.get("msj", ""),
+                satir.get("renkli_kontrol", "-"),
+                satir.get("rapor_kontrol", "-"),
+                satir.get("sut_kontrol", "-"),
+                satir.get("sonuc", ""),
+                satir.get("aciklama", ""),
+            )
+
+            sonuc = satir.get("sonuc", "")
+            tag = sonuc if sonuc in ("OK", "SORUN", "UYARI") else "YENİ" if sonuc == "YENİ" else ""
+            tree.insert("", "end", values=degerler, tags=(tag,))
+
+        # Alt bilgi
+        sorun_sayisi = sum(1 for s in satirlar if s.get("sonuc") == "SORUN")
+        uyari_sayisi = sum(1 for s in satirlar if s.get("sonuc") == "UYARI")
+        yeni_sayisi = sum(1 for s in satirlar if s.get("sonuc") == "YENİ")
+        ok_sayisi = sum(1 for s in satirlar if s.get("sonuc") == "OK")
+
+        alt = tk.Frame(rapor_win, bg="#1E3A5F")
+        alt.pack(fill="x", padx=5, pady=3)
+        tk.Label(alt, text=f"OK: {ok_sayisi}", fg="#4CAF50", bg="#1E3A5F",
+                 font=("Segoe UI", 10, "bold")).pack(side="left", padx=5)
+        tk.Label(alt, text=f"Sorun: {sorun_sayisi}", fg="#F44336", bg="#1E3A5F",
+                 font=("Segoe UI", 10, "bold")).pack(side="left", padx=5)
+        tk.Label(alt, text=f"Uyarı: {uyari_sayisi}", fg="#FF9800", bg="#1E3A5F",
+                 font=("Segoe UI", 10, "bold")).pack(side="left", padx=5)
+        tk.Label(alt, text=f"Yeni: {yeni_sayisi}", fg="#03A9F4", bg="#1E3A5F",
+                 font=("Segoe UI", 10, "bold")).pack(side="left", padx=5)
+
+    def _pencereleri_konumlandir(self):
+        """Tarama başladığında pencereleri konumlandır:
+        Medula sol %60, Botanik Takip sağ %40 - yan yana, tam yükseklik"""
+        try:
+            import win32gui, win32con
+
+            # Ekran boyutu (taskbar hariç çalışma alanı)
+            import ctypes
+            user32 = ctypes.windll.user32
+
+            # Çalışma alanı (taskbar hariç)
+            from ctypes import wintypes
+            rect = wintypes.RECT()
+            user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)  # SPI_GETWORKAREA
+            ekran_w = rect.right - rect.left
+            ekran_h = rect.bottom - rect.top
+
+            # Medula: sol %60
+            medula_w = int(ekran_w * 0.60)
+            def enum_cb(hwnd, _):
+                if win32gui.IsWindowVisible(hwnd):
+                    title = win32gui.GetWindowText(hwnd)
+                    if "MEDULA" in title:
+                        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                        win32gui.MoveWindow(hwnd, 0, 0, medula_w, ekran_h, True)
+            win32gui.EnumWindows(enum_cb, None)
+
+            # Botanik Takip: sağ %40, yükseklik 100px kısa (görev çubuğu üstünde kalması için)
+            bt_w = ekran_w - medula_w
+            bt_x = medula_w
+            bt_h = ekran_h - 50
+            self.root.after(0, lambda: self.root.geometry(
+                f"{bt_w}x{bt_h}+{bt_x}+0"))
+
+        except Exception as e:
+            logger.debug(f"Pencere konumlandırma hatası: {e}")
+
+    def _taramayi_durdur(self):
+        """Taramayı durdur - STOP dosyası oluştur ve subprocess'i terminate et"""
+        if not self.kontrol_aktif:
+            return
+
+        self.log_yaz("TARAMA DURDURULUYOR...", "warning")
+
+        # 1. STOP dosyası oluştur (subprocess kendi döngüsünde kontrol eder)
+        try:
+            stop_path = os.path.join(PROJE_DIZINI, "tarama_stop.flag")
+            with open(stop_path, "w") as f:
+                f.write("stop")
+        except:
+            pass
+
+        # 2. Subprocess'i terminate et
+        if self._subprocess_proc:
+            try:
+                self._subprocess_proc.terminate()
+                self.log_yaz("Subprocess durduruldu", "warning")
+            except:
+                pass
+            self._subprocess_proc = None
+
+        self.kontrol_aktif = False
+        self._butonlari_normal_yap()
+
+    def _butonlari_durdur_yap(self, aktif_kod=None):
+        """Aktif grubun butonunu DURDUR haline getir, diğerlerini devre dışı bırak"""
+        for kod, btn in self.grup_butonlari.items():
+            if kod == aktif_kod:
+                btn.config(text="  DURDUR (Esc)", bg="#B71C1C", activebackground="#7F0000")
+            else:
+                btn.config(state="disabled")
+        self.tumunu_btn.config(state="disabled")
+
+    def _butonlari_normal_yap(self):
+        """Tüm butonları normal haline döndür"""
+        for kod, btn in self.grup_butonlari.items():
+            btn.config(text=f"  {btn._ad}", bg=btn._renk_normal,
+                      activebackground=btn._renk_hover, state="normal")
+        self.tumunu_btn.config(text="TÜMÜNÜ KONTROL ET", bg="#00695C",
+                              activebackground="#004D40", state="normal")
+
+    def _grup_toggle(self, grup_kodu):
+        """Grup butonu toggle - basınca başlat, tekrar basınca durdur"""
+        if self.kontrol_aktif and self.aktif_grup == grup_kodu:
+            self._taramayi_durdur()
+        elif not self.kontrol_aktif:
+            self._grup_kontrol_baslat(grup_kodu)
+
+    def _tumunu_toggle(self):
+        """Tümünü Kontrol Et toggle"""
+        if self.kontrol_aktif:
+            self._taramayi_durdur()
+        else:
+            self._tumunu_kontrol_et()
 
     def _grup_kontrol_baslat(self, grup_kodu):
         """Belirli bir grubun kontrolünü subprocess ile başlat"""
@@ -1929,32 +2536,68 @@ class ReceteRaporKontrolGUI:
 
         self.log_yaz(f"{'━' * 40}", "header")
         self.log_yaz(f"{grup_adi} kontrolü başlatılıyor - {secilen_donem}", "header")
-        self.log_yaz(f"Subprocess ile recete_tarama.py çalıştırılıyor...", "info")
 
-        def subprocess_thread():
+        self.aktif_grup = grup_kodu
+        self._butonlari_durdur_yap(grup_kodu)
+
+        def kontrol_thread():
             self.kontrol_aktif = True
             try:
+                # Önce Medula hazır mı kontrol et, değilse aç ve bağlan
+                self.root.after(0, lambda: self.log_yaz("Medula bağlantısı kontrol ediliyor...", "info"))
+                if not self._medula_hazirla():
+                    self.root.after(0, lambda: self.log_yaz(
+                        "Medula bağlantısı kurulamadı! Kontrol iptal edildi.", "error"))
+                    return
+
+                # Pencereleri konumlandır: Medula sol, Botanik Takip sağ
+                self._pencereleri_konumlandir()
+
+                # Medula hazır, subprocess başlat
+                self.root.after(0, lambda: self.log_yaz(
+                    "Subprocess ile recete_tarama.py çalıştırılıyor...", "info"))
+
                 import subprocess as sp
                 tarama_script = os.path.join(PROJE_DIZINI, "recete_tarama.py")
                 proc = sp.Popen(
-                    ["python", tarama_script, grup_kodu, str(donem_offset)],
+                    ["python", "-u", tarama_script, grup_kodu, str(donem_offset),
+                     "--bastan" if self.bastan_var.get() else "--devam"],
                     stdout=sp.PIPE, stderr=sp.STDOUT,
                     text=True, encoding="utf-8", errors="replace",
                     cwd=PROJE_DIZINI
                 )
-                # stdout'u satır satır oku ve GUI log'a yaz
+                self._subprocess_proc = proc
+
+                # stdout'u satır satır oku ve GUI log'a + terminale yaz
                 for line in proc.stdout:
                     line = line.rstrip()
                     if not line:
                         continue
-                    # Log seviyesini parse et
+                    # Terminale yaz
+                    print(line, flush=True)
+                    # Son reçete bilgisini parse et (label güncelleme)
+                    if "[SON_RECETE]" in line:
+                        try:
+                            parts = line.split("[SON_RECETE]")[1].strip().split(":")
+                            if len(parts) == 2:
+                                grp, rno = parts[0].strip(), parts[1].strip()
+                                self.root.after(0, lambda g=grp, r=rno: self.grup_durumu_guncelle(g, r))
+                        except:
+                            pass
+                        continue  # Bu satırı loga yazma
+
+                    # Log seviyesini parse et - kontrol sonuçlarına göre renk
                     tag = "info"
-                    if "[HATA!]" in line or "[SORUN]" in line:
-                        tag = "error"
-                    elif "[UYARI]" in line or "[YENİ]" in line:
-                        tag = "warning"
-                    elif "[  OK  ]" in line or "[  OK ]" in line:
-                        tag = "success"
+                    if "[SORUN]" in line or "Doz aşımı" in line or "UYGUNSUZ" in line or "RAPORSUZ yazılmış" in line:
+                        tag = "error"       # Kırmızı - uygunsuz
+                    elif "[HATA!]" in line:
+                        tag = "sorun"       # Koyu turuncu - sistem hatası
+                    elif "[????]" in line or "KontrolEdilemedi" in line or "KONTROLEDİLEMEDİ" in line:
+                        tag = "warning"     # Sarı - bilinemeyen
+                    elif "[  OK  ]" in line or "[  OK ]" in line or "UYGUN" in line:
+                        tag = "success"     # Yeşil - uygun
+                    elif "[GEÇ ]" in line:
+                        tag = "neutral"     # Gri - nötr (raporsuz mesajsız)
                     elif "[=====]" in line:
                         tag = "header"
                     self.root.after(0, lambda l=line, t=tag: self.log_yaz(l, t))
@@ -1967,8 +2610,11 @@ class ReceteRaporKontrolGUI:
                 self.root.after(0, lambda e=e: self.log_yaz(f"Subprocess hatası: {e}", "error"))
             finally:
                 self.kontrol_aktif = False
+                self._subprocess_proc = None
+                self.aktif_grup = None
+                self.root.after(0, self._butonlari_normal_yap)
 
-        threading.Thread(target=subprocess_thread, daemon=True).start()
+        threading.Thread(target=kontrol_thread, daemon=True).start()
 
     def _donem_offset_hesapla(self):
         """GUI'deki dönem seçimine göre Medula dropdown offset hesapla"""
