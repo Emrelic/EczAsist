@@ -112,7 +112,21 @@
       "Bash(curl -s -L \"https://www.ilacabak.com/ara?q=CEDRINA+200+MG\")",
       "Bash(curl -s -L \"https://www.ilacabak.com/ara.php?arama=CEDRINA\")",
       "Bash(curl -s -L \"https://www.ilacabak.com/aralist.php?Id=C\")",
-      "Bash(curl -s -L \"https://www.ilacabak.com/cedrina-200-mg-30-film-tablet-6177\")"
+      "Bash(curl -s -L \"https://www.ilacabak.com/cedrina-200-mg-30-film-tablet-6177\")",
+      "Bash(sed:*)",
+      "Bash(curl -s \"https://www.google.com/search?q=SUT+4.2.15+klopidogrel+prasugrel+tikagrelor+kullan%C4%B1m+kurallar%C4%B1&hl=tr&num=10\" -H \"User-Agent: Mozilla/5.0\")",
+      "Bash(curl -s \"https://www.google.com/search?q=%22SUT+4.2.15%22+klopidogrel+sgk+rapor+s%C3%BCresi&hl=tr&num=10\" -H \"User-Agent: Mozilla/5.0\")",
+      "WebFetch(domain:www.gaziantepeo.org.tr)",
+      "WebFetch(domain:www.aydineczaciodasi.org.tr)",
+      "WebFetch(domain:www.istanbuleczaciodasi.org.tr)",
+      "WebFetch(domain:www.saglikaktuel.com)",
+      "WebFetch(domain:www.kocaelieo.org.tr)",
+      "WebFetch(domain:www.samsuneczaciodasi.org.tr)",
+      "WebFetch(domain:www.manisaeczaciodasi.org.tr)",
+      "WebFetch(domain:eczacidergisi.com.tr)",
+      "WebFetch(domain:www.beo.org.tr)",
+      "WebFetch(domain:www.teis.org.tr)",
+      "WebFetch(domain:www.vaneczaciodasi.org.tr)"
     ],
     "deny": [],
     "ask": []
