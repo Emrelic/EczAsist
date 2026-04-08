@@ -83,6 +83,7 @@ class BotanikDB:
         try:
             conn_str = self._connection_string_olustur()
             self.conn = pyodbc.connect(conn_str, timeout=30)
+            self.conn.timeout = 300  # Query timeout: 5 dakika
             self.cursor = self.conn.cursor()
             logger.info(f"Veritabanına bağlandı: {self.config['database']}")
             return True

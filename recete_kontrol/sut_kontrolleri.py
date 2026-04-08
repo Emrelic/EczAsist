@@ -48,7 +48,8 @@ SUT_MADDESI_KATEGORI = {
 RAPOR_KODU_KATEGORI = {
     '07.02': 'DIYABET_DPP4_SGLT2',   # Diyabet ilaçları
     '07.02.1': 'DIYABET_DPP4_SGLT2',
-    '07.01': 'DIYABET_DPP4_SGLT2',
+    # NOT: 07.01 genel endokrin kodu - 07.01.5 Puberte Prekoks, 07.01.1 BH Eksikliği
+    # Sadece 07.02.x diyabet. 07.01 diyabet DEĞİL!
     '04.02': 'STATIN',                 # Kardiyovasküler (statin/klopidogrel/beta bloker)
     '04.02.1': 'KLOPIDOGREL',          # Antiplatelet
     '04.05': 'KOMBINE_ANTIHIPERTANSIF', # Antihipertansif
@@ -247,8 +248,18 @@ ETKIN_MADDE_KATEGORI = {
     'SIPROFLOKSASIN': 'ANTIBIYOTIK_FLOROKINOLON',
     'SIPROFLOKSASIN HCL': 'ANTIBIYOTIK_FLOROKINOLON',
 
+    # Makrolid antibiyotik (EK-4/E - oral form KY, kısıtlama yok)
+    'KLARITROMISIN': 'RAPORSUZ_BILGILENDIRME',
+
     # Potasyum Sitrat (EK-4/F - Üroloji/Nefroloji raporlu)
     'POTASYUM SITRAT': 'POTASYUM_SITRAT',
+
+    # MAO-B İnhibitörleri (Parkinson)
+    'SELEGILIN': 'RAPORSUZ_BILGILENDIRME',
+    'SELEGILIN HCL': 'RAPORSUZ_BILGILENDIRME',
+    'RASAGILIN': 'RAPORSUZ_BILGILENDIRME',
+    'RASAGILIN MEZILAT': 'RAPORSUZ_BILGILENDIRME',
+    'SAFINAMID': 'RAPORSUZ_BILGILENDIRME',
 
     # Raporsuz verilebilen - mesaj bilgilendirme
     'IBUPROFEN': 'RAPORSUZ_BILGILENDIRME',
@@ -275,7 +286,8 @@ ETKIN_MADDE_KATEGORI = {
 ILAC_ADI_KATEGORI = {
     'PRIMOLUT': 'KADIN_HORMON',
     'IBURAMIN': 'RAPORSUZ_BILGILENDIRME',
-    'CEDRINA': 'TRIMETAZIDIN',
+    # CEDRINA = Ketiapin (antipsikotik) - Psikiyatri uzman raporu gerekir
+    'CEDRINA': 'PSIKIYATRI',
     'OLAXINN': 'PSIKIYATRI',
     'JARDIANCE': 'DIYABET_DPP4_SGLT2',
     'FORZIGA': 'DIYABET_DPP4_SGLT2',
@@ -295,6 +307,7 @@ ILAC_ADI_KATEGORI = {
     'DESMONT': 'SOLUNUM',
     'OCERAL': 'RAPORSUZ_BILGILENDIRME',
     'ANDOREX': 'RAPORSUZ_BILGILENDIRME',
+    'MACROL': 'RAPORSUZ_BILGILENDIRME',
     'AKINETON': 'RECETE_TURU_YESIL',
     'ENOX': 'DMAH',
     'ANTI-ASIDOZ': 'POTASYUM_SITRAT',
@@ -304,6 +317,28 @@ ILAC_ADI_KATEGORI = {
     'CITOLES': 'PSIKIYATRI',
     'ABIZOL': 'PSIKIYATRI',
     'DUXET': 'PSIKIYATRI',
+    # Statinler
+    'ATOR': 'STATIN',
+    'LIPITOR': 'STATIN',
+    'CRESTOR': 'STATIN',
+    'ROZACT': 'STATIN',
+    'ROSUVA': 'STATIN',
+    'KOLESTER': 'STATIN',
+    'PRAVATOR': 'STATIN',
+    # ARB / Antihipertansifler (mono)
+    'HIPERSAR': 'MONO_ANTIHIPERTANSIF',
+    'MICARDIS': 'MONO_ANTIHIPERTANSIF',
+    'ATACAND': 'MONO_ANTIHIPERTANSIF',
+    'KARVEA': 'MONO_ANTIHIPERTANSIF',
+    'LOSARTAN': 'MONO_ANTIHIPERTANSIF',
+    'COZAAR': 'MONO_ANTIHIPERTANSIF',
+    # Psikiyatri ek
+    'DESYREL': 'PSIKIYATRI',
+    'SECITA': 'PSIKIYATRI',
+    'DEPAKIN': 'PSIKIYATRI',
+    'RISPERDAL': 'PSIKIYATRI',
+    'KETILEPT': 'PSIKIYATRI',
+    'ZYPREXA': 'PSIKIYATRI',
 }
 
 
@@ -336,11 +371,12 @@ def sut_kategorisi_tespit_et(ilac_sonuc: Dict) -> Optional[str]:
             if em in etkin_madde_upper or etkin_madde_upper in em:
                 return kategori
 
-    # 2b. İlaç adından etkin madde tahmin et (BB ilaçlarda etkin_madde boş gelebilir)
+    # 2b. İlaç adından kategori tahmin et (etkin madde eşleşmediyse veya boşsa)
     ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
-    if ilac_adi and not etkin_madde:
+    if ilac_adi:
+        ilac_kisa = ilac_adi.split()[0] if ilac_adi else ""
         for em, kategori in ILAC_ADI_KATEGORI.items():
-            if em in ilac_adi:
+            if em in ilac_adi or em == ilac_kisa:
                 return kategori
 
     # 3. Rapor kodu ile eşleştir
@@ -380,6 +416,24 @@ def sut_kategorisi_tespit_et(ilac_sonuc: Dict) -> Optional[str]:
                 sonuclar = ticari_isimde_ara(marka)
                 if sonuclar:
                     return sonuclar[0][2]
+    except (ImportError, Exception):
+        pass
+
+    # 5. Öğrenilen ilaçlar DB (AI tarafından belirlenen kategori)
+    try:
+        from kontrol_kurallari import get_ogrenilen_ilaclar
+        ogrenilen = get_ogrenilen_ilaclar()
+        if ilac_adi:
+            kayit = ogrenilen.ilac_bul(ilac_adi)
+            if kayit and kayit.get("farmakolojik_grup"):
+                logger.info(f"AI öğrenilen kategori: {ilac_adi} → {kayit['farmakolojik_grup']}")
+                return kayit["farmakolojik_grup"]
+        if etkin_madde:
+            kayitlar = ogrenilen.etkin_madde_ile_bul(etkin_madde)
+            for k in kayitlar:
+                if k.get("farmakolojik_grup"):
+                    logger.info(f"AI öğrenilen kategori (etkin madde): {etkin_madde} → {k['farmakolojik_grup']}")
+                    return k["farmakolojik_grup"]
     except (ImportError, Exception):
         pass
 
@@ -985,10 +1039,279 @@ def kontrol_antibiyotik_florokinolon(ilac_sonuc: Dict) -> KontrolRaporu:
 
 
 def kontrol_raporsuz_bilgilendirme(ilac_sonuc: Dict) -> KontrolRaporu:
-    """Raporsuz verilebilen ilaçlar - mesaj sadece bilgilendirme"""
-    return KontrolRaporu(KontrolSonucu.UYGUN,
-                         "Raporsuz verilebilir - mesaj bilgilendirme amaçlı",
-                         uyari="Aynı reçetede etkin madde tekrarı kontrol edilmeli")
+    """
+    Raporsuz verilebilen ilaçlar - detaylı SUT kontrolleri.
+
+    Bu kategori: NSAİD'ler, antihistaminikler, dekonjestanlar, antifungaller,
+    makrolid antibiyotikler, MAO-B inhibitörleri (Parkinson) vb.
+
+    Her alt grup için SUT mevzuatına göre:
+    - Rapor gereksinimi
+    - Uzman/branş kısıtlaması
+    - Doz/süre kısıtlamaları
+    - Kombinasyon kontrolleri
+    """
+    metin = _tum_metinleri_birlesir(ilac_sonuc)
+    rapor_kodu = ilac_sonuc.get('rapor_kodu', '')
+    etkin_madde = (ilac_sonuc.get('etkin_madde') or '').upper().strip()
+    ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper().strip()
+    recete_turu = ilac_sonuc.get('recete_turu', 'Normal')
+
+    detaylar = {
+        'etkin_madde': etkin_madde,
+        'ilac_adi': ilac_adi,
+        'rapor_kodu': rapor_kodu,
+        'alt_kategori': 'bilinmiyor',
+    }
+
+    # ── Alt kategori tespiti ──
+    # MAO-B İnhibitörleri (Selegilin, Rasagilin, Safinamid) - Parkinson
+    maob_maddeler = ['SELEGILIN', 'RASAGILIN', 'SAFINAMID']
+    maob_ticari = ['AZILECT', 'XADAGO']
+    is_maob = any(m in etkin_madde for m in maob_maddeler) or any(t in ilac_adi for t in maob_ticari)
+
+    # NSAİD'ler (İbuprofen, Parasetamol vb.)
+    nsaid_maddeler = ['IBUPROFEN', 'PARASETAMOL', 'NAPROKSEN', 'DIKLOFENAK',
+                      'MELOKSIKAM', 'PIROKSIKAM', 'INDOMETAZIN', 'KETOPROFEN',
+                      'FLURBIPROFEN', 'DEKSKETOPROFEN', 'ETODOLAK', 'LORNOKSIKAM',
+                      'TENOKSIKAM', 'ASETILSALISILIK']
+    is_nsaid = any(m in etkin_madde for m in nsaid_maddeler)
+
+    # Makrolid antibiyotikler (Klaritromisin, Azitromisin)
+    makrolid_maddeler = ['KLARITROMISIN', 'AZITROMISIN', 'ERITROMISIN', 'ROKSITROMISIN']
+    makrolid_ticari = ['MACROL', 'KLACID', 'DEZEST', 'AZITRO']
+    is_makrolid = (any(m in etkin_madde for m in makrolid_maddeler) or
+                   any(t in ilac_adi for t in makrolid_ticari))
+
+    # Antihistaminikler (Desloratadin, Klorfeniramin, Setirizin)
+    antihist_maddeler = ['DESLORATADIN', 'KLORFENIRAMIN', 'SETIRIZIN', 'LORATADIN',
+                         'FEKSOFENADRIN', 'LEVOSETRIZIN', 'EBASTIN', 'RUPATADIN']
+    is_antihistaminik = any(m in etkin_madde for m in antihist_maddeler)
+
+    # Dekonjestanlar / Soğuk algınlığı kombinasyonları
+    dekonjestan_maddeler = ['FENILEFRIN', 'PSEUDOEFEDRIN', 'OKSIMETAZOLIN']
+    dekonjestan_ticari = ['IBUCOLD', 'A-FERIN', 'THERAFLU', 'TYLOLHOT', 'NUROFEN']
+    is_dekonjestan = (any(m in etkin_madde for m in dekonjestan_maddeler) or
+                      any(t in ilac_adi for t in dekonjestan_ticari))
+
+    # Topikal antifungal/antiseptik (Oksikonazol, Benzidamin)
+    topikal_maddeler = ['OKSIKONAZOL', 'BENZIDAMIN', 'MIKONAZOL', 'KLOTRIMAZOL',
+                        'TERBINAFIN', 'KETOKONAZOL', 'NISTATIN']
+    topikal_ticari = ['TRAVAZOL', 'OCERAL', 'ANDOREX', 'TANTUM']
+    is_topikal = (any(m in etkin_madde for m in topikal_maddeler) or
+                  any(t in ilac_adi for t in topikal_ticari))
+
+    # ══════════════════════════════════════════════════════════════
+    # 1. MAO-B İnhibitörleri (Selegilin, Rasagilin, Safinamid)
+    # SUT: Nöroloji uzmanı raporsuz yazabilir, diğer hekimler rapor ile
+    # Parkinson tanısı (G20) gerekli
+    # Doz: Selegilin maks 10 mg/gün, Rasagilin maks 1 mg/gün
+    # Kombinasyon: SSRI/SNRI ile birlikte kullanım kontrendike (serotonin sendromu)
+    # ══════════════════════════════════════════════════════════════
+    if is_maob:
+        detaylar['alt_kategori'] = 'MAO-B_INHIBITORU'
+
+        uyarilar = []
+        uyarilar.append("Nöroloji uzmanı raporsuz yazabilir, diğer hekimler rapor ile yazabilir")
+
+        # Selegilin spesifik kontroller
+        if 'SELEGILIN' in etkin_madde:
+            uyarilar.append("Selegilin maks doz: 10 mg/gün (genellikle 5 mg 2x1)")
+            uyarilar.append("Tiraminden zengin gıdalarla etkileşim riski (peynir efekti)")
+
+            # Doz bilgisi metin veya raporda varsa kontrol et
+            if metin:
+                doz_match = re.search(r'(\d+)\s*mg', metin, re.IGNORECASE)
+                if doz_match:
+                    doz = int(doz_match.group(1))
+                    if doz > 10:
+                        return KontrolRaporu(
+                            KontrolSonucu.UYGUN_DEGIL,
+                            f"Selegilin dozu ({doz} mg) maksimum dozu (10 mg/gün) aşıyor",
+                            detaylar=detaylar,
+                            uyari="SUT: Selegilin günlük maks doz 10 mg"
+                        )
+
+        elif 'RASAGILIN' in etkin_madde:
+            uyarilar.append("Rasagilin maks doz: 1 mg/gün")
+        elif 'SAFINAMID' in etkin_madde:
+            uyarilar.append("Safinamid maks doz: 100 mg/gün, L-DOPA ile birlikte kullanılmalı")
+
+        # Kombinasyon uyarısı (tüm MAO-B inhibitörleri için)
+        uyarilar.append("KOMBİNASYON UYARISI: SSRI/SNRI ile birlikte serotonin sendromu riski")
+        uyarilar.append("Aynı reçetede etkin madde tekrarı kontrol edilmeli")
+
+        # Rapor varsa
+        if rapor_kodu:
+            # Parkinson tanısı kontrolü
+            parkinson_bulundu = False
+            if metin:
+                parkinson_bulundu = (_turkce_ara(metin, 'parkinson') or
+                                     bool(re.search(r'G20|G21|G22', metin, re.IGNORECASE)))
+            if parkinson_bulundu:
+                detaylar['tani'] = 'Parkinson (G20)'
+                return KontrolRaporu(
+                    KontrolSonucu.UYGUN,
+                    f"MAO-B inhibitörü - Parkinson tanısı raporda mevcut ({rapor_kodu})",
+                    detaylar=detaylar,
+                    uyari=" | ".join(uyarilar)
+                )
+            else:
+                return KontrolRaporu(
+                    KontrolSonucu.KONTROL_EDILEMEDI,
+                    f"MAO-B inhibitörü - rapor mevcut ({rapor_kodu}) ama Parkinson tanısı (G20) doğrulanamadı",
+                    detaylar=detaylar,
+                    uyari=" | ".join(uyarilar)
+                )
+
+        # Rapor yok - nöroloji uzmanı raporsuz yazabilir
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            "MAO-B inhibitörü (Parkinson) - raporsuz verilebilir (nöroloji uzmanı)",
+            detaylar=detaylar,
+            uyari=" | ".join(uyarilar)
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    # 2. Makrolid Antibiyotikler (EK-4/E)
+    # SUT: Ayaktan tedavide raporsuz, kısıtlama yok
+    # Süre: Klaritromisin genellikle 7-14 gün, Azitromisin 3-5 gün
+    # Uyarı: Uzun QT sendromu riski, ilaç etkileşimleri
+    # ══════════════════════════════════════════════════════════════
+    if is_makrolid:
+        detaylar['alt_kategori'] = 'MAKROLID_ANTIBIYOTIK'
+
+        uyarilar = ["EK-4/E: Ayaktan tedavide tüm hekimler raporsuz yazabilir"]
+
+        if 'KLARITROMISIN' in etkin_madde or 'MACROL' in ilac_adi or 'KLACID' in ilac_adi:
+            uyarilar.append("Klaritromisin: Genellikle 7-14 gün, maks 14 gün")
+            uyarilar.append("Statin ile etkileşim: Rabdomiyoliz riski (özellikle simvastatin)")
+        elif 'AZITROMISIN' in etkin_madde:
+            uyarilar.append("Azitromisin: Genellikle 3-5 gün tedavi")
+
+        uyarilar.append("Aynı reçetede etkin madde tekrarı kontrol edilmeli")
+
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            "Makrolid antibiyotik - ayaktan tedavide raporsuz verilebilir (EK-4/E)",
+            detaylar=detaylar,
+            uyari=" | ".join(uyarilar)
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    # 3. NSAİD'ler (İbuprofen, Parasetamol vb.)
+    # SUT: Raporsuz, tüm hekimler yazabilir
+    # Doz: İbuprofen maks 2400 mg/gün, Parasetamol maks 4000 mg/gün
+    # Süre: Uzun süreli kullanımda GİS koruma gerekli
+    # Kombinasyon: İki NSAİD aynı reçetede UYGUN DEĞİL
+    # ══════════════════════════════════════════════════════════════
+    if is_nsaid:
+        detaylar['alt_kategori'] = 'NSAID'
+
+        uyarilar = ["Raporsuz verilebilir - tüm hekimler yazabilir"]
+
+        if 'IBUPROFEN' in etkin_madde:
+            uyarilar.append("İbuprofen maks doz: 2400 mg/gün (genellikle 400-600 mg 3x1)")
+        elif 'PARASETAMOL' in etkin_madde:
+            uyarilar.append("Parasetamol maks doz: 4000 mg/gün (genellikle 500 mg 3-4x1)")
+        elif 'DIKLOFENAK' in etkin_madde:
+            uyarilar.append("Diklofenak maks doz: 150 mg/gün")
+        elif 'NAPROKSEN' in etkin_madde:
+            uyarilar.append("Naproksen maks doz: 1100 mg/gün")
+
+        uyarilar.append("KOMBİNASYON: Aynı reçetede birden fazla NSAİD kontrol edilmeli")
+        uyarilar.append("Uzun süreli kullanımda GİS koruyucu (PPI) gerekebilir")
+
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            "NSAİD - raporsuz verilebilir",
+            detaylar=detaylar,
+            uyari=" | ".join(uyarilar)
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    # 4. Antihistaminikler (Desloratadin, Setirizin vb.)
+    # SUT: Raporsuz, tüm hekimler yazabilir
+    # 1. jenerasyon (Klorfeniramin): Sedasyon uyarısı
+    # 2. jenerasyon (Desloratadin, Setirizin): Daha güvenli profil
+    # ══════════════════════════════════════════════════════════════
+    if is_antihistaminik:
+        detaylar['alt_kategori'] = 'ANTIHISTAMINIK'
+
+        uyarilar = ["Raporsuz verilebilir - tüm hekimler yazabilir"]
+
+        jenerasyon1 = ['KLORFENIRAMIN', 'DIFENHIDRAMIN', 'PROMETAZIN', 'HIDROKSIZIN']
+        if any(m in etkin_madde for m in jenerasyon1):
+            uyarilar.append("1. jenerasyon antihistaminik: Sedasyon uyarısı, araç kullanımı")
+        else:
+            uyarilar.append("2. jenerasyon antihistaminik: Sedasyon riski düşük")
+
+        uyarilar.append("Aynı reçetede etkin madde tekrarı kontrol edilmeli")
+
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            "Antihistaminik - raporsuz verilebilir",
+            detaylar=detaylar,
+            uyari=" | ".join(uyarilar)
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    # 5. Dekonjestanlar / Soğuk algınlığı kombinasyonları
+    # SUT: Raporsuz, tüm hekimler
+    # Süre: Nazal dekonjestanlar maks 5-7 gün
+    # Uyarı: Pseudoefedrin - hipertansiyon, kardiyak risk
+    # ══════════════════════════════════════════════════════════════
+    if is_dekonjestan:
+        detaylar['alt_kategori'] = 'DEKONJESTAN'
+
+        uyarilar = ["Raporsuz verilebilir - tüm hekimler yazabilir"]
+
+        if 'PSEUDOEFEDRIN' in etkin_madde:
+            uyarilar.append("Pseudoefedrin: Hipertansiyon/kardiyak hastada dikkat")
+        if 'FENILEFRIN' in etkin_madde:
+            uyarilar.append("Fenilefrin: Nazal form maks 5-7 gün")
+
+        uyarilar.append("Soğuk algınlığı kombinasyonlarında etkin madde çakışması kontrol edilmeli")
+
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            "Dekonjestan/soğuk algınlığı ilacı - raporsuz verilebilir",
+            detaylar=detaylar,
+            uyari=" | ".join(uyarilar)
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    # 6. Topikal antifungal/antiseptik
+    # SUT: Raporsuz, tüm hekimler
+    # Süre: Topikal antifungal genellikle 2-4 hafta
+    # ══════════════════════════════════════════════════════════════
+    if is_topikal:
+        detaylar['alt_kategori'] = 'TOPIKAL_ANTIFUNGAL'
+
+        uyarilar = ["Raporsuz verilebilir - tüm hekimler yazabilir"]
+
+        if 'BENZIDAMIN' in etkin_madde or 'ANDOREX' in ilac_adi or 'TANTUM' in ilac_adi:
+            uyarilar.append("Benzidamin: Antiinflamatuar gargara/sprey, kısa süreli kullanım")
+        else:
+            uyarilar.append("Topikal antifungal: Genellikle 2-4 hafta tedavi süresi")
+
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            "Topikal antifungal/antiseptik - raporsuz verilebilir",
+            detaylar=detaylar,
+            uyari=" | ".join(uyarilar)
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    # 7. Genel raporsuz bilgilendirme (alt kategori tespit edilemedi)
+    # ══════════════════════════════════════════════════════════════
+    detaylar['alt_kategori'] = 'GENEL_RAPORSUZ'
+    return KontrolRaporu(
+        KontrolSonucu.UYGUN,
+        "Raporsuz verilebilir - mesaj bilgilendirme amaçlı",
+        detaylar=detaylar,
+        uyari="Aynı reçetede etkin madde tekrarı kontrol edilmeli"
+    )
 
 
 def kontrol_mono_antihipertansif(ilac_sonuc: Dict) -> KontrolRaporu:

@@ -287,6 +287,40 @@ def _db_baglan():
         )
     """)
 
+    # İlaç kontrol ayarları tablosu
+    # Hangi ilaç/etkin madde/grup/uyarı kodu için hangi kontrollerin yapılıp yapılmayacağı
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ilac_kontrol_ayarlari (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hedef_tipi TEXT NOT NULL,
+            hedef_deger TEXT NOT NULL,
+            kontrol_tipi TEXT NOT NULL,
+            aktif INTEGER NOT NULL DEFAULT 1,
+            aciklama TEXT,
+            olusturma_tarihi TEXT NOT NULL,
+            guncelleme_tarihi TEXT,
+            UNIQUE(hedef_tipi, hedef_deger, kontrol_tipi)
+        )
+    """)
+
+    # Öğrenilen ilaç veritabanı
+    # Sistem tarafından keşfedilen ilaçların adı, etkin maddesi, ATC/farmakolojik grubu
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ogrenilen_ilaclar (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ilac_adi TEXT NOT NULL,
+            etkin_madde TEXT,
+            atc_grup TEXT,
+            farmakolojik_grup TEXT,
+            sgk_kodu TEXT,
+            rapor_kodu TEXT,
+            ilk_gorulme_tarihi TEXT NOT NULL,
+            son_gorulme_tarihi TEXT,
+            gorulme_sayisi INTEGER DEFAULT 1,
+            UNIQUE(ilac_adi)
+        )
+    """)
+
     conn.commit()
     return conn
 
@@ -677,3 +711,344 @@ class KontrolRaporu:
     def kapat(self):
         if self.conn:
             self.conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════
+# ÖĞRENİLEN İLAÇLAR VERİTABANI
+# ═══════════════════════════════════════════════════════════════
+
+class OgrenilenIlaclar:
+    """Sistem tarafından keşfedilen ilaçların veritabanı.
+
+    Her karşılaşılan ilacın adı, etkin maddesi, ATC/farmakolojik grubu kaydedilir.
+    Tekrar karşılaşıldığında görülme sayısı ve tarihi güncellenir.
+    """
+
+    def __init__(self):
+        self.conn = _db_baglan()
+
+    def ilac_kaydet(self, ilac_adi, etkin_madde=None, atc_grup=None,
+                    farmakolojik_grup=None, sgk_kodu=None, rapor_kodu=None):
+        """İlacı veritabanına kaydet veya güncelle (görülme sayısı artır)."""
+        if not ilac_adi:
+            return
+        ilac_adi_upper = ilac_adi.strip().upper()
+        now = datetime.now().isoformat()
+
+        mevcut = self.conn.execute(
+            "SELECT id, gorulme_sayisi FROM ogrenilen_ilaclar WHERE ilac_adi = ?",
+            (ilac_adi_upper,)
+        ).fetchone()
+
+        if mevcut:
+            self.conn.execute("""
+                UPDATE ogrenilen_ilaclar
+                SET etkin_madde = COALESCE(?, etkin_madde),
+                    atc_grup = COALESCE(?, atc_grup),
+                    farmakolojik_grup = COALESCE(?, farmakolojik_grup),
+                    sgk_kodu = COALESCE(?, sgk_kodu),
+                    rapor_kodu = COALESCE(?, rapor_kodu),
+                    son_gorulme_tarihi = ?,
+                    gorulme_sayisi = gorulme_sayisi + 1
+                WHERE id = ?
+            """, (etkin_madde, atc_grup, farmakolojik_grup, sgk_kodu,
+                  rapor_kodu, now, mevcut['id']))
+        else:
+            self.conn.execute("""
+                INSERT INTO ogrenilen_ilaclar
+                (ilac_adi, etkin_madde, atc_grup, farmakolojik_grup,
+                 sgk_kodu, rapor_kodu, ilk_gorulme_tarihi, son_gorulme_tarihi, gorulme_sayisi)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+            """, (ilac_adi_upper, etkin_madde, atc_grup, farmakolojik_grup,
+                  sgk_kodu, rapor_kodu, now, now))
+
+        self.conn.commit()
+
+    def ilac_bul(self, ilac_adi):
+        """İlaç adına göre kayıt bul."""
+        if not ilac_adi:
+            return None
+        row = self.conn.execute(
+            "SELECT * FROM ogrenilen_ilaclar WHERE ilac_adi = ?",
+            (ilac_adi.strip().upper(),)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def etkin_madde_ile_bul(self, etkin_madde):
+        """Etkin maddeye göre tüm ilaçları bul."""
+        if not etkin_madde:
+            return []
+        rows = self.conn.execute(
+            "SELECT * FROM ogrenilen_ilaclar WHERE etkin_madde = ? ORDER BY ilac_adi",
+            (etkin_madde.strip().upper(),)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def grup_ile_bul(self, atc_grup=None, farmakolojik_grup=None):
+        """ATC veya farmakolojik gruba göre ilaçları bul."""
+        if atc_grup:
+            rows = self.conn.execute(
+                "SELECT * FROM ogrenilen_ilaclar WHERE atc_grup = ? ORDER BY ilac_adi",
+                (atc_grup.strip().upper(),)
+            ).fetchall()
+        elif farmakolojik_grup:
+            rows = self.conn.execute(
+                "SELECT * FROM ogrenilen_ilaclar WHERE farmakolojik_grup = ? ORDER BY ilac_adi",
+                (farmakolojik_grup.strip().upper(),)
+            ).fetchall()
+        else:
+            return []
+        return [dict(r) for r in rows]
+
+    def tum_ilaclar(self):
+        """Tüm öğrenilen ilaçları getir."""
+        rows = self.conn.execute(
+            "SELECT * FROM ogrenilen_ilaclar ORDER BY ilac_adi"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def istatistik(self):
+        """Özet istatistikler."""
+        row = self.conn.execute("""
+            SELECT
+                COUNT(*) as toplam_ilac,
+                COUNT(DISTINCT etkin_madde) as farkli_etkin_madde,
+                COUNT(DISTINCT atc_grup) as farkli_atc_grup,
+                COUNT(DISTINCT farmakolojik_grup) as farkli_farmakolojik_grup
+            FROM ogrenilen_ilaclar
+        """).fetchone()
+        return dict(row) if row else {}
+
+    def kapat(self):
+        if self.conn:
+            self.conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════
+# İLAÇ KONTROL AYARLARI (BYPASS SİSTEMİ)
+# ═══════════════════════════════════════════════════════════════
+
+# Hedef tipleri
+HEDEF_TIPI_ILAC = "ilac"               # Belirli bir ilaç adı (ör: "TRAVAZOL")
+HEDEF_TIPI_ETKIN_MADDE = "etkin_madde"  # Belirli bir etkin madde (ör: "METFORMIN")
+HEDEF_TIPI_ATC_GRUP = "atc_grup"       # ATC/farmakolojik grup (ör: "TOPİKAL ANTİFUNGALLER")
+HEDEF_TIPI_UYARI_KODU = "uyari_kodu"   # Belirli bir uyarı kodu (ör: "280")
+
+# Kontrol tipleri
+KONTROL_TIPI_UYARI_KODU = "uyari_kodu"     # Uyarı kodu kontrolü
+KONTROL_TIPI_SUT = "sut"                    # SUT kontrolü
+KONTROL_TIPI_ILAC_MESAJI = "ilac_mesaji"    # İlaç mesajı kontrolü (var/yok)
+KONTROL_TIPI_DOZ = "doz"                    # Doz kontrolü
+KONTROL_TIPI_HEPSI = "hepsi"               # Tüm kontroller
+
+# Öncelik sırası: ilac > etkin_madde > atc_grup > uyari_kodu
+HEDEF_ONCELIK = {
+    HEDEF_TIPI_ILAC: 4,
+    HEDEF_TIPI_ETKIN_MADDE: 3,
+    HEDEF_TIPI_ATC_GRUP: 2,
+    HEDEF_TIPI_UYARI_KODU: 1,
+}
+
+
+class KontrolAyarlari:
+    """İlaç kontrol bypass ayarları yöneticisi.
+
+    Hangi ilaç/etkin madde/ATC grup/uyarı kodu için hangi kontrollerin
+    yapılıp yapılmayacağını yönetir.
+
+    Kullanım örnekleri:
+        ayarlar.ayar_kaydet("ilac", "TRAVAZOL", "uyari_kodu", aktif=False)
+        ayarlar.ayar_kaydet("atc_grup", "TOPİKAL ANTİFUNGALLER", "uyari_kodu", aktif=False)
+        ayarlar.ayar_kaydet("ilac", "GLİFOR", "ilac_mesaji", aktif=False)
+
+        if ayarlar.kontrol_aktif_mi("ilac_mesaji", ilac_adi="GLİFOR"):
+            # mesaj kontrolü yap
+        else:
+            # bypass
+    """
+
+    def __init__(self):
+        self.conn = _db_baglan()
+        self._cache = {}  # (hedef_tipi, hedef_deger, kontrol_tipi) → aktif
+        self._cache_yukle()
+
+    def _cache_yukle(self):
+        """Tüm ayarları RAM cache'e yükle."""
+        try:
+            rows = self.conn.execute(
+                "SELECT hedef_tipi, hedef_deger, kontrol_tipi, aktif FROM ilac_kontrol_ayarlari"
+            ).fetchall()
+            for row in rows:
+                key = (row['hedef_tipi'], row['hedef_deger'].upper(), row['kontrol_tipi'])
+                self._cache[key] = bool(row['aktif'])
+            logger.debug(f"Kontrol ayarları cache yüklendi: {len(self._cache)} kayıt")
+        except Exception as e:
+            logger.warning(f"Kontrol ayarları cache yükleme hatası: {e}")
+
+    def ayar_kaydet(self, hedef_tipi, hedef_deger, kontrol_tipi, aktif=True, aciklama=None):
+        """Kontrol ayarı kaydet veya güncelle.
+
+        Args:
+            hedef_tipi: "ilac", "etkin_madde", "atc_grup", "uyari_kodu"
+            hedef_deger: Hedef değer (ilaç adı, etkin madde, grup adı, uyarı kodu)
+            kontrol_tipi: "uyari_kodu", "sut", "ilac_mesaji", "doz", "hepsi"
+            aktif: True=kontrol yap, False=kontrol yapma (bypass)
+            aciklama: Açıklama metni
+        """
+        if not hedef_deger:
+            return
+        hedef_deger_upper = hedef_deger.strip().upper()
+        now = datetime.now().isoformat()
+        aktif_int = 1 if aktif else 0
+
+        mevcut = self.conn.execute(
+            "SELECT id FROM ilac_kontrol_ayarlari WHERE hedef_tipi = ? AND hedef_deger = ? AND kontrol_tipi = ?",
+            (hedef_tipi, hedef_deger_upper, kontrol_tipi)
+        ).fetchone()
+
+        if mevcut:
+            self.conn.execute("""
+                UPDATE ilac_kontrol_ayarlari
+                SET aktif = ?, aciklama = COALESCE(?, aciklama), guncelleme_tarihi = ?
+                WHERE id = ?
+            """, (aktif_int, aciklama, now, mevcut['id']))
+        else:
+            self.conn.execute("""
+                INSERT INTO ilac_kontrol_ayarlari
+                (hedef_tipi, hedef_deger, kontrol_tipi, aktif, aciklama, olusturma_tarihi)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (hedef_tipi, hedef_deger_upper, kontrol_tipi, aktif_int, aciklama, now))
+
+        self.conn.commit()
+        key = (hedef_tipi, hedef_deger_upper, kontrol_tipi)
+        self._cache[key] = bool(aktif_int)
+        durum = "AKTİF" if aktif else "PASİF"
+        logger.info(f"Kontrol ayarı: {hedef_tipi}={hedef_deger_upper}, {kontrol_tipi} → {durum}")
+
+    def ayar_sil(self, hedef_tipi, hedef_deger, kontrol_tipi):
+        """Ayarı sil (varsayılan davranışa dön = kontrol yap)."""
+        if not hedef_deger:
+            return
+        hedef_deger_upper = hedef_deger.strip().upper()
+        self.conn.execute(
+            "DELETE FROM ilac_kontrol_ayarlari WHERE hedef_tipi = ? AND hedef_deger = ? AND kontrol_tipi = ?",
+            (hedef_tipi, hedef_deger_upper, kontrol_tipi)
+        )
+        self.conn.commit()
+        key = (hedef_tipi, hedef_deger_upper, kontrol_tipi)
+        self._cache.pop(key, None)
+
+    def _ayar_getir(self, hedef_tipi, hedef_deger, kontrol_tipi):
+        """Cache'den tekil ayar sorgula. None = ayar yok."""
+        if not hedef_deger:
+            return None
+        key = (hedef_tipi, hedef_deger.strip().upper(), kontrol_tipi)
+        if key in self._cache:
+            return self._cache[key]
+        # "hepsi" kontrolünü de dene
+        key_hepsi = (hedef_tipi, hedef_deger.strip().upper(), KONTROL_TIPI_HEPSI)
+        if key_hepsi in self._cache:
+            return self._cache[key_hepsi]
+        return None
+
+    def kontrol_aktif_mi(self, kontrol_tipi, ilac_adi=None, etkin_madde=None,
+                         atc_grup=None, farmakolojik_grup=None, uyari_kodu=None):
+        """Belirtilen kontrol bu ilaç/madde/grup için aktif mi?
+
+        Öncelik: ilac > etkin_madde > atc_grup > uyari_kodu
+        Hiç ayar yoksa varsayılan = True (kontrol yap).
+
+        Returns:
+            bool: True=kontrol yap, False=bypass
+        """
+        # İlaç adından kısa adı çıkar (ör: "TRAVAZOL 20 MG KREM" → "TRAVAZOL")
+        ilac_kisa = None
+        if ilac_adi:
+            ilac_kisa = ilac_adi.strip().upper().split()[0] if ilac_adi.strip() else None
+
+        # 1. İlaç adı (tam ve kısa)
+        if ilac_adi:
+            sonuc = self._ayar_getir(HEDEF_TIPI_ILAC, ilac_adi.strip(), kontrol_tipi)
+            if sonuc is not None:
+                return sonuc
+        if ilac_kisa:
+            sonuc = self._ayar_getir(HEDEF_TIPI_ILAC, ilac_kisa, kontrol_tipi)
+            if sonuc is not None:
+                return sonuc
+
+        # 2. Etkin madde
+        if etkin_madde:
+            sonuc = self._ayar_getir(HEDEF_TIPI_ETKIN_MADDE, etkin_madde.strip(), kontrol_tipi)
+            if sonuc is not None:
+                return sonuc
+
+        # 3. ATC grup / Farmakolojik grup
+        if atc_grup:
+            sonuc = self._ayar_getir(HEDEF_TIPI_ATC_GRUP, atc_grup.strip(), kontrol_tipi)
+            if sonuc is not None:
+                return sonuc
+        if farmakolojik_grup:
+            sonuc = self._ayar_getir(HEDEF_TIPI_ATC_GRUP, farmakolojik_grup.strip(), kontrol_tipi)
+            if sonuc is not None:
+                return sonuc
+
+        # 4. Uyarı kodu
+        if uyari_kodu:
+            sonuc = self._ayar_getir(HEDEF_TIPI_UYARI_KODU, uyari_kodu.strip(), kontrol_tipi)
+            if sonuc is not None:
+                return sonuc
+
+        # Varsayılan: kontrol yap
+        return True
+
+    def tum_ayarlar(self):
+        """Tüm ayarları getir."""
+        rows = self.conn.execute(
+            "SELECT * FROM ilac_kontrol_ayarlari ORDER BY hedef_tipi, hedef_deger"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def hedef_ayarlari(self, hedef_tipi, hedef_deger):
+        """Belirli bir hedef için tüm ayarları getir."""
+        if not hedef_deger:
+            return []
+        rows = self.conn.execute(
+            "SELECT * FROM ilac_kontrol_ayarlari WHERE hedef_tipi = ? AND hedef_deger = ?",
+            (hedef_tipi, hedef_deger.strip().upper())
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def bypass_ozet(self):
+        """Bypass (pasif) olan tüm ayarları özetle."""
+        rows = self.conn.execute(
+            "SELECT * FROM ilac_kontrol_ayarlari WHERE aktif = 0 ORDER BY hedef_tipi, hedef_deger"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def kapat(self):
+        if self.conn:
+            self.conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════
+# GLOBAL SINGLETON ERİŞİMCİLER
+# ═══════════════════════════════════════════════════════════════
+
+_kontrol_ayarlari_instance = None
+_ogrenilen_ilaclar_instance = None
+
+
+def get_kontrol_ayarlari():
+    """KontrolAyarlari singleton'ı döndür."""
+    global _kontrol_ayarlari_instance
+    if _kontrol_ayarlari_instance is None:
+        _kontrol_ayarlari_instance = KontrolAyarlari()
+    return _kontrol_ayarlari_instance
+
+
+def get_ogrenilen_ilaclar():
+    """OgrenilenIlaclar singleton'ı döndür."""
+    global _ogrenilen_ilaclar_instance
+    if _ogrenilen_ilaclar_instance is None:
+        _ogrenilen_ilaclar_instance = OgrenilenIlaclar()
+    return _ogrenilen_ilaclar_instance
