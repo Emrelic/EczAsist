@@ -841,12 +841,15 @@ def recete_tum_bilgi_topla(medula):
     medula_satir_haritasi = {}  # row → ilaç_adi_text
 
     # Yöntem 1: aid_cache'den (f:tbl1:{row}:t6)
+    _bos_satir = 0
     for row in range(20):
         t6 = aid_cache.get(f"f:tbl1:{row}:t6")
         if not t6:
-            if row > 0:
-                break  # İlk satır yoksa bile devam et ama ardışık boşlukta dur
+            _bos_satir += 1
+            if _bos_satir >= 3:
+                break  # 3 ardışık boş satırda dur (cache'de olmayan satırları atla)
             continue
+        _bos_satir = 0
         try:
             t6_txt = (t6.window_text() or "").upper()
             if t6_txt:
@@ -868,12 +871,44 @@ def recete_tum_bilgi_topla(medula):
     for i, ilac_item in enumerate(ilaclar):
         ilac_kisa = (ilac_item.get("ilac_adi", "") or "").upper().split()[0] if ilac_item.get("ilac_adi") else ""
         ilac_item["medula_satir_idx"] = i  # Varsayılan: sıra numarası
+        eslesti = False
         if ilac_kisa and medula_satir_haritasi:
             for row, t6_txt in medula_satir_haritasi.items():
                 if row not in kullanilan_satirlar and ilac_kisa in t6_txt:
                     ilac_item["medula_satir_idx"] = row
                     kullanilan_satirlar.add(row)
+                    eslesti = True
                     break
+
+        # Haritada bulunamazsa: aid_cache'den tüm satırları tara (cache'de olmayan t6'lar için)
+        if not eslesti and ilac_kisa:
+            for row in range(20):
+                if row in kullanilan_satirlar or row in medula_satir_haritasi:
+                    continue
+                t6 = aid_cache.get(f"f:tbl1:{row}:t6")
+                if not t6:
+                    # Cache'de yoksa element_bul ile dene
+                    try:
+                        t6 = element_bul(medula, f"f:tbl1:{row}:t6")
+                    except:
+                        pass
+                if not t6:
+                    continue
+                try:
+                    txt = (t6.window_text() or "").upper()
+                    if txt and ilac_kisa in txt:
+                        ilac_item["medula_satir_idx"] = row
+                        kullanilan_satirlar.add(row)
+                        medula_satir_haritasi[row] = txt  # Haritayı güncelle
+                        log(f"  [OKU ] Satır eşleştirme (genişletilmiş): {ilac_kisa} → row {row}", "info")
+                        eslesti = True
+                        break
+                except:
+                    pass
+
+            # Hâlâ bulunamadıysa: haritadaki kullanılmamış satırları atla, kendi adıyla doğrudan element_bul
+            if not eslesti:
+                log(f"  [UYARI] {ilac_kisa}: Medula satırı bulunamadı, varsayılan idx={i}", "warn")
 
     # Element ID ile doğrulama/tamamlama + REÇETE DOZU okuma
     # GERÇEK medula satır indeksini kullan (enumerate değil!)
@@ -2559,24 +2594,32 @@ def ilac_detayli_kontrol(medula, cur, conn, grup, recete_no, recete_turu,
     ilac_adi = ilac.get("ilac_adi", "")[:45]
 
     # Satır indeksini ilaç adıyla doğrula (rapor sayfasına giderken doğru checkbox tıklamak için)
-    # Cache varsa önce cache'den dene (descendants taraması yapmaz)
+    # Cache varsa önce cache'den dene, bulamazsa element_bul ile dene
     _aid_cache = ilac.get("_aid_cache", {})
-    if _aid_cache:
-        ilac_kisa = (ilac.get("ilac_adi", "") or "").upper().split()[0] if ilac.get("ilac_adi") else ""
-        if ilac_kisa:
-            for row in range(20):
-                t6 = _aid_cache.get(f"f:tbl1:{row}:t6")
-                if not t6:
-                    break
+    ilac_kisa = (ilac.get("ilac_adi", "") or "").upper().split()[0] if ilac.get("ilac_adi") else ""
+    if ilac_kisa:
+        _dogrulandi = False
+        for row in range(20):
+            t6 = _aid_cache.get(f"f:tbl1:{row}:t6") if _aid_cache else None
+            if not t6:
                 try:
-                    txt = (t6.window_text() or "").upper()
-                    if ilac_kisa in txt:
-                        if row != satir_idx:
-                            log(f"    [OKU ] Satır düzeltme: idx {satir_idx} → {row} ({ilac_adi})", "info")
-                            satir_idx = row
-                        break
+                    t6 = element_bul(medula, f"f:tbl1:{row}:t6")
                 except:
                     pass
+            if not t6:
+                continue  # Bu satır yok, sonraki satıra bak (break değil!)
+            try:
+                txt = (t6.window_text() or "").upper()
+                if ilac_kisa in txt:
+                    if row != satir_idx:
+                        log(f"    [OKU ] Satır düzeltme: idx {satir_idx} → {row} ({ilac_adi})", "info")
+                        satir_idx = row
+                    _dogrulandi = True
+                    break
+            except:
+                pass
+        if not _dogrulandi:
+            log(f"    [UYARI] {ilac_adi}: Satır doğrulanamadı (idx={satir_idx})", "warn")
 
     # Mevcut DB kuralını da kontrol et
     kural = db_kural_bul(cur, etkin)
