@@ -2106,10 +2106,18 @@ def erecete_aciklama_oku(medula):
     sonuc["tum_metin"] = " ".join(parcalar_set)
 
     # Geri dön
-    geri = element_bul(medula, "form1:buttonGeriDon")
-    if geri:
-        geri.invoke()
-        time.sleep(0.5)
+    try:
+        geri = element_bul(medula, "form1:buttonGeriDon")
+        if geri:
+            geri.invoke()
+            time.sleep(0.5)
+    except Exception:
+        # COM hatası olabilir — sayfa zaten kapanmış olabilir
+        try:
+            import pyautogui
+            pyautogui.press("escape")
+        except:
+            pass
 
     return sonuc
 
