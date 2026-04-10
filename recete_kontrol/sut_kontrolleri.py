@@ -506,15 +506,63 @@ def sut_kategorisi_tespit_et(ilac_sonuc: Dict) -> Optional[str]:
 # ═══════════════════════════════════════════════════════════════════════
 
 def _turkce_normalize(metin: str) -> str:
-    """Türkçe karakterleri ASCII karşılıklarına çevir + lowercase.
-    İ→i, ı→i, Ü→u, ü→u, Ö→o, ö→o, Ş→s, ş→s, Ç→c, ç→c, Ğ→g, ğ→g"""
-    t = metin
-    for tr_char, ascii_char in [('İ','i'),('ı','i'),('Ü','u'),('ü','u'),
-                                 ('Ö','o'),('ö','o'),('Ş','s'),('ş','s'),
-                                 ('Ç','c'),('ç','c'),('Ğ','g'),('ğ','g'),
-                                 ('I','i')]:
-        t = t.replace(tr_char, ascii_char)
-    return t.lower()
+    """Kapsamlı Türkçe/Latince metin normalizasyonu — büyük/küçük harf ve
+    fonetik farklılıkları ortadan kaldırarak eşleştirme doğruluğunu artırır.
+
+    Dönüşümler:
+      1. Lowercase
+      2. Türkçe özel karakterler → ASCII (İ/ı→i, Ö/ö→o, Ü/ü→u, Ş/ş→s, Ç/ç→c, Ğ/ğ→g)
+      3. Avrupa aksanlı karakterler → ASCII (â→a, é→e, ñ→n, vb.)
+      4. Digraph / fonetik dönüşümler (ph→f, th→t, sh→s, ch→c, ck→k, qu→k, wh→v)
+      5. Harf denkliği (x→ks, w→v, q→k, y→i geçişleri)
+    """
+    # 1. Türkçe büyük harfleri ÖNCE dönüştür (İ.lower() = i+combining dot sorunu)
+    _TR_BUYUK = str.maketrans({
+        'İ': 'i', 'I': 'i',
+        'Ö': 'o', 'Ü': 'u', 'Ş': 's', 'Ç': 'c', 'Ğ': 'g',
+    })
+    t = metin.translate(_TR_BUYUK)
+
+    # 2. Lowercase (artık İ sorunu yok)
+    t = t.lower()
+
+    # 3. Kalan Türkçe + Avrupa aksanlı karakterler + harf denkliği
+    _NORM_MAP = str.maketrans({
+        'ı': 'i', 'ö': 'o', 'ü': 'u', 'ş': 's', 'ç': 'c', 'ğ': 'g',
+        # Avrupa aksanlı
+        'â': 'a', 'à': 'a', 'á': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a',
+        'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
+        'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
+        'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o',
+        'ù': 'u', 'ú': 'u', 'û': 'u',
+        'ñ': 'n', 'ý': 'y', 'ÿ': 'y',
+        # Harf denkliği
+        'w': 'v', 'q': 'k',
+    })
+    t = t.translate(_NORM_MAP)
+    # ß → ss (translate tek char → tek char, bu özel)
+    t = t.replace('ß', 'ss')
+
+    # 4. Digraph / fonetik dönüşümler (sıra önemli — uzun olanlar önce)
+    _DIGRAPHS = [
+        ('ph', 'f'),
+        ('th', 't'),
+        ('sh', 's'),
+        ('ch', 'c'),
+        ('ck', 'k'),
+        ('qu', 'k'),
+        ('wh', 'v'),
+        ('gh', 'g'),
+        ('ae', 'e'),
+        ('oe', 'o'),
+    ]
+    for digraph, replacement in _DIGRAPHS:
+        t = t.replace(digraph, replacement)
+
+    # x → ks
+    t = t.replace('x', 'ks')
+
+    return t
 
 
 def _turkce_ara(metin: str, aranan: str) -> bool:
