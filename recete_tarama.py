@@ -2765,21 +2765,16 @@ def ilac_detayli_kontrol(medula, cur, conn, grup, recete_no, recete_turu,
     etkin = ilac.get("etkin_madde", "")
     ilac_adi = ilac.get("ilac_adi", "")[:45]
 
-    # Satır indeksini ilaç adıyla doğrula (rapor sayfasına giderken doğru checkbox tıklamak için)
-    # Cache varsa önce cache'den dene, bulamazsa element_bul ile dene
+    # Satır indeksini doğrula (sadece cache'ten — element_bul çağırmadan)
+    # recete_tum_bilgi_topla zaten medula_satir_haritasi ile eşleştirme yapmıştı
     _aid_cache = ilac.get("_aid_cache", {})
     ilac_kisa = (ilac.get("ilac_adi", "") or "").upper().split()[0] if ilac.get("ilac_adi") else ""
-    if ilac_kisa:
+    if ilac_kisa and _aid_cache:
         _dogrulandi = False
         for row in range(20):
-            t6 = _aid_cache.get(f"f:tbl1:{row}:t6") if _aid_cache else None
+            t6 = _aid_cache.get(f"f:tbl1:{row}:t6")
             if not t6:
-                try:
-                    t6 = element_bul(medula, f"f:tbl1:{row}:t6")
-                except:
-                    pass
-            if not t6:
-                continue  # Bu satır yok, sonraki satıra bak (break değil!)
+                continue
             try:
                 txt = (t6.window_text() or "").upper()
                 if ilac_kisa in txt:
