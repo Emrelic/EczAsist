@@ -80,6 +80,15 @@ RAPOR_KODU_KATEGORI = {
     '20.02': 'GENEL_RAPORLU',
     '06.06': 'GIS',                    # GİS
     '03.00': 'POTASYUM_SITRAT',        # Üroloji/Nefroloji raporlu
+    '15.08': 'GENEL_RAPORLU',          # Nörojenik Mesane (Üroloji)
+    '15.01': 'GIS',                     # Gastroenteroloji
+    '15.02': 'GIS',                     # GIS raporlu
+    '08.01': 'GENEL_RAPORLU',          # Hematoloji
+    '08.02': 'GENEL_RAPORLU',          # Hematoloji
+    '09.01': 'GENEL_RAPORLU',          # Kadın Hastalıkları
+    '16.01': 'GENEL_RAPORLU',          # Organ Nakli
+    '01.01': 'GENEL_RAPORLU',          # Romatoloji
+    '13.01': 'GENEL_RAPORLU',          # Dermatoloji
 }
 
 # Etkin madde -> kategori eşleştirme (büyük harf, boşluklar düzeltilmiş)
@@ -1045,16 +1054,17 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
     ldl_degeri = None
     ldl_eslesen = ""
 
-    # Çeşitli LDL formatları: "LDL: 142", "LDL=142", "LDL 142", "LDL-C: 142", "LDL kolesterol: 142"
+    # Çeşitli LDL formatları: "LDL: 142", "LDL=142", "LDL 142", "LDL-C: 142",
+    # "LDL kolesterol: 142", "LDL Kolesterol (İndirekt, hesaplamalı) 112.8"
     ldl_patterns = [
-        r'ldl[- ]*c?\s*[:=]?\s*(\d+)',
-        r'ldl[^0-9]{0,20}(\d{2,3})',
+        r'ldl[- ]*c?\s*[:=]?\s*(\d+(?:[.,]\d+)?)',
+        r'ldl[^0-9]{0,50}(\d{2,3}(?:[.,]\d+)?)',
     ]
     for pattern in ldl_patterns:
         ldl_match = re.findall(pattern, metin_lower)
         if ldl_match:
             try:
-                ldl_degeri = int(ldl_match[0])
+                ldl_degeri = int(float(ldl_match[0].replace(',', '.')))
                 ldl_eslesen = _eslesen_parcayi_bul(birlesik_metin, 'ldl')
                 break
             except ValueError:
@@ -1356,7 +1366,7 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
 
     # Endikasyonlar
     varfarin = bool(re.search(r'varfarin|kumadin|coumadin|warfarin', metin_lower))
-    inr = bool(re.search(r'inr', metin_lower))
+    inr = bool(re.search(r'[iı]nr', metin_lower))
     af = any(k in metin_lower for k in ['atriyal fibrilasyon', 'atrial fibrilasyon', 'atriyal fib',
                                          'a.fibrilasyon', 'a.fib']) or 'I48' in teshis_metin
     dvt = any(k in metin_lower for k in ['derin ven', 'dvt', 'derin venöz'])
@@ -1369,12 +1379,20 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
 
     # INR kontrolü
     inr_degeri = None
-    inr_match = re.findall(r'inr\s*[:=]?\s*([\d,.]+)', metin_lower)
+    inr_match = re.findall(r'[iı]nr\s*[:=]?\s*([\d,.]+)', metin_lower)
     if inr_match:
         try:
             inr_degeri = float(inr_match[0].replace(',', '.'))
         except:
             pass
+    # INR aralık ifadesi: "INR değerinin 2-3 arasında tutulamadığından" vb.
+    if not inr_match:
+        inr_aralik = re.findall(r'[iı]nr[^0-9]{0,30}(\d)[- ]+(\d)', metin_lower)
+        if inr_aralik:
+            inr_match = inr_aralik  # inr boolean zaten True, sayısal değer aralık olarak mevcut
+
+    # INR "tutulamadı/tutulamıyor" ifadesi — SUT şartı karşılanmış demek
+    inr_tutulamadi = bool(re.search(r'[iı]nr[^.]{0,60}(tutulam|saglanam|sa[gğ]lanam)', metin_lower))
 
     # Sonuç
     eslesen = ""
@@ -1410,12 +1428,14 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
     # AF + varfarin/INR
     if af or icd_af:
         eslesen = _eslesen_parcayi_bul(birlesik, 'fibrilasyon') or _eslesen_parcayi_bul(birlesik, 'I48')
-        if varfarin and inr:
+        if varfarin and (inr or inr_tutulamadi):
             inr_bilgi = f" (INR: {inr_degeri})" if inr_degeri else ""
+            tutulamadi_bilgi = " — INR hedef aralıkta tutulamadığı belirtilmiş" if inr_tutulamadi else ""
             return KontrolRaporu(
                 sonuc=KontrolSonucu.UYGUN,
-                mesaj=f'AF + varfarin denenmiş + INR bilgisi mevcut{inr_bilgi}',
-                detaylar={**detaylar, 'endikasyon': 'AF', 'varfarin_bilgi': True, 'inr': inr_degeri},
+                mesaj=f'AF + varfarin denenmiş + INR bilgisi mevcut{inr_bilgi}{tutulamadi_bilgi}',
+                detaylar={**detaylar, 'endikasyon': 'AF', 'varfarin_bilgi': True, 'inr': inr_degeri,
+                          'inr_tutulamadi': inr_tutulamadi},
                 sut_kurali=sut_kurali,
                 aranan_ibare='AF + varfarin + INR',
                 bulunan_metin=eslesen

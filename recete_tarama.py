@@ -2301,7 +2301,28 @@ def uyari_kodu_kontrol(uyari_kodlari, recete_teshisleri, rapor_aciklamalari, rap
             if any(g in ilac_adi_upper for g in GABAPENTIN_PREGABALIN):
                 noropatik_agri_kural = True
 
-        # ── ÖZEL KURAL 2: "Antidepresan tedavi" uyarı kodu ──
+        # ── ÖZEL KURAL 2: Oksibutin intoleransı (Solifenacin/Fesoterodin) ──
+        # Uyarı kodu 275 vb. "Oral Oksibutinine yanıt alınamayan ya da tolere edemeyen"
+        # Bu bir hekim beyanıdır - Medula uyarı kodunu kabul ettiyse doktor onaylamış demektir
+        OKSIBUTIN_ILACLAR = [
+            "SOLIFENASIN", "FESOTERODIN", "KINZY", "VESICARE", "TOVIAZ",
+            "SOLIDAR", "SOLIFENAX", "UROTOL",
+        ]
+        oksibutin_kural = False
+        if "oksibutin" in aciklama_norm or "oksibutinin" in aciklama_norm:
+            if any(g in ilac_adi_upper for g in OKSIBUTIN_ILACLAR):
+                oksibutin_kural = True
+
+        if oksibutin_kural:
+            sonuclar.append({
+                **uk, "durum": "UYGUN", "eslesen_oran": 1.0,
+                "eslesen_kaynak": "Uyarı kodu (hekim beyanı)",
+                "eslesen_metin": uk["aciklama"][:80],
+                "_ozel_kural": "Oksibutin intoleransı: uyarı kodu girilmiş = hekim beyanı kabul edildi"
+            })
+            continue
+
+        # ── ÖZEL KURAL 3: "Antidepresan tedavi" uyarı kodu ──
         # Antidepresan ilaçlarda uyarı kodu "antidepresan tedavi" ise
         # reçete teşhisi, rapor teşhisi veya açıklamalarında ilişkili kelimeler aranır
         antidepresan_kural = False
@@ -2841,28 +2862,11 @@ def ilac_detayli_kontrol(medula, cur, conn, grup, recete_no, recete_turu,
     etkin = ilac.get("etkin_madde", "")
     ilac_adi = ilac.get("ilac_adi", "")[:45]
 
-    # Satır indeksini doğrula (sadece cache'ten — element_bul çağırmadan)
-    # recete_tum_bilgi_topla zaten medula_satir_haritasi ile eşleştirme yapmıştı
-    _aid_cache = ilac.get("_aid_cache", {})
-    ilac_kisa = (ilac.get("ilac_adi", "") or "").upper().split()[0] if ilac.get("ilac_adi") else ""
-    if ilac_kisa and _aid_cache:
-        _dogrulandi = False
-        for row in range(20):
-            t6 = _aid_cache.get(f"f:tbl1:{row}:t6")
-            if not t6:
-                continue
-            try:
-                txt = (t6.window_text() or "").upper()
-                if ilac_kisa in txt:
-                    if row != satir_idx:
-                        log(f"    [OKU ] Satır düzeltme: idx {satir_idx} → {row} ({ilac_adi})", "info")
-                        satir_idx = row
-                    _dogrulandi = True
-                    break
-            except:
-                pass
-        if not _dogrulandi:
-            log(f"    [UYARI] {ilac_adi}: Satır doğrulanamadı (idx={satir_idx})", "warn")
+    # Satır indeksi: recete_tum_bilgi_topla'da medula_satir_haritasi ile zaten eşleştirildi
+    # medula_satir_idx kullan (ilac dict'e yazılmış), ek doğrulamaya gerek yok
+    if ilac.get("medula_satir_idx") is not None and ilac["medula_satir_idx"] != satir_idx:
+        log(f"    [OKU ] Satır düzeltme: idx {satir_idx} → {ilac['medula_satir_idx']} ({ilac_adi})", "info")
+        satir_idx = ilac["medula_satir_idx"]
 
     # Mevcut DB kuralını da kontrol et
     kural = db_kural_bul(cur, etkin)
