@@ -2295,11 +2295,79 @@ def uyari_kodu_kontrol(uyari_kodlari, recete_teshisleri, rapor_aciklamalari, rap
         aciklama_norm = _turkce_normalize(uk["aciklama"])
         ilac_adi_upper = (uk.get("ilac_adi", "") or "").upper()
 
-        # ── ÖZEL KURAL: Gabapentin/Pregabalin + "nöropatik ağrı" uyarı kodu ──
+        # ── ÖZEL KURAL 1: Gabapentin/Pregabalin + "nöropatik ağrı" uyarı kodu ──
         noropatik_agri_kural = False
         if "noropatik" in aciklama_norm:
             if any(g in ilac_adi_upper for g in GABAPENTIN_PREGABALIN):
                 noropatik_agri_kural = True
+
+        # ── ÖZEL KURAL 2: "Antidepresan tedavi" uyarı kodu ──
+        # Antidepresan ilaçlarda uyarı kodu "antidepresan tedavi" ise
+        # reçete teşhisi, rapor teşhisi veya açıklamalarında ilişkili kelimeler aranır
+        antidepresan_kural = False
+        if "antidepresan" in aciklama_norm:
+            antidepresan_kural = True
+
+        if antidepresan_kural:
+            # Antidepresan tedavi kapsamındaki tanı/endikasyon kelimeleri
+            antidepresan_ifadeler = [
+                # Depresyon
+                "depresyon", "depresif", "depresiv", "depression", "majordepresif",
+                "major depresif", "major depresyon",
+                # Anksiyete
+                "anksiyete", "anksiete", "anxiety", "anksiyoz",
+                "yaygin anksiyete", "sosyal anksiyete", "panik",
+                # Duygudurum
+                "duygudurum", "bipolar", "mani", "manik",
+                # OKB
+                "obsesif", "obsesif kompulsif", "okb", "ocd",
+                # TSSB
+                "travma sonrasi stres", "tssb", "ptsd",
+                # Diğer psikiyatrik
+                "kaygı", "kaygi", "korku", "fobi", "fobia", "agorafobi",
+                "bulimia", "anoreksiya", "yeme bozuklugu",
+                "somatoform", "somatizasyon",
+                "distimi", "distimik", "siklotemik",
+                "uyum bozuklugu", "uyku bozuklugu", "insomnia",
+                # ICD kodları (F30-F49 arası psikiyatri)
+                "f30", "f31", "f32", "f33", "f34", "f38", "f39",
+                "f40", "f41", "f42", "f43", "f44", "f45", "f48",
+                # Genel
+                "psikiyatri", "ruhsal", "mental",
+            ]
+
+            en_iyi_kaynak = ""
+            en_iyi_metin = ""
+            bulundu = False
+
+            for kaynak_adi, kaynak_metinler in kaynaklar:
+                if not kaynak_metinler:
+                    continue
+                kaynak_birlesik = _turkce_normalize(" ".join(kaynak_metinler))
+                for ifade in antidepresan_ifadeler:
+                    if ifade in kaynak_birlesik:
+                        en_iyi_kaynak = kaynak_adi
+                        for km in kaynak_metinler:
+                            if ifade in _turkce_normalize(km):
+                                en_iyi_metin = km[:80]
+                                break
+                        bulundu = True
+                        break
+                if bulundu:
+                    break
+
+            if bulundu:
+                sonuclar.append({
+                    **uk, "durum": "UYGUN", "eslesen_oran": 1.0,
+                    "eslesen_kaynak": en_iyi_kaynak, "eslesen_metin": en_iyi_metin
+                })
+            else:
+                sonuclar.append({
+                    **uk, "durum": "UYGUNSUZ", "eslesen_oran": 0,
+                    "eslesen_kaynak": "", "eslesen_metin": "",
+                    "_ozel_kural": "Antidepresan: ilişkili tanı/endikasyon ifadesi bulunamadı"
+                })
+            continue
 
         if noropatik_agri_kural:
             # Reçete/rapor AÇIKLAMALARINDA "nöropatik ağrı" ifadesini ara
