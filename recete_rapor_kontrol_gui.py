@@ -1558,6 +1558,9 @@ class ReceteRaporKontrolGUI:
         self.recete_combolar = {}  # kod → Combobox widget
         self.recete_listeleri = {}  # kod → [(sira, recete_no), ...]
         self.medula_durum_label = None
+        self.timing_labels = {}    # kod → Label (ortalama süre göstergesi)
+        self._recete_sureleri = []  # [(sure_sn), ...] aktif tarama süreleri
+        self._recete_baslangic = None  # son reçete başlangıç zamanı
 
         self._gui_olustur()
 
@@ -1808,6 +1811,10 @@ class ReceteRaporKontrolGUI:
         scrollbar.pack(side="right", fill="y")
         self.log_text.pack(fill="both", expand=True, padx=5, pady=2)
 
+        # Kopyalama desteği (disabled state'te Ctrl+C çalışması için)
+        self.log_text.bind("<Control-c>", self._log_kopyala)
+        self.log_text.bind("<Control-a>", lambda e: (self.log_text.tag_add("sel", "1.0", "end"), "break")[1])
+
         # Tag'ler - kontrol sonuçlarına göre renkler
         self.log_text.tag_configure("info", foreground="#87CEEB")           # Nötr - açık mavi
         self.log_text.tag_configure("success", foreground="#0D2137", background="#A5D6A7")  # Uygun - yeşil arka plan
@@ -1863,6 +1870,14 @@ class ReceteRaporKontrolGUI:
         durum_lbl.pack(side="left", padx=5)
         self.durum_labels[kod] = durum_lbl
 
+        # Süre göstergesi label'ı
+        timing_lbl = tk.Label(
+            satir, text="",
+            font=("Consolas", 9), fg="#FFB74D", bg="#1E3A5F"
+        )
+        timing_lbl.pack(side="left", padx=5)
+        self.timing_labels[kod] = timing_lbl
+
     def _durum_label_guncelle(self, kod):
         """Bir grubun durum label'ını ve combobox'ını güncelle"""
         if kod not in self.durum_labels:
@@ -1871,6 +1886,15 @@ class ReceteRaporKontrolGUI:
         toplam = durum.get("toplam_kontrol", 0)
         durum_text = f"{toplam} reçete" if toplam > 0 else ""
         self.durum_labels[kod].config(text=durum_text)
+
+    def _sure_guncelle(self, son_sure, ortalama, toplam_n):
+        """Aktif grubun süre göstergesini güncelle"""
+        kod = self.aktif_grup
+        if not kod or kod not in self.timing_labels:
+            return
+        son_str = f"{son_sure:.1f}s"
+        ort_str = f"{ortalama:.1f}s"
+        self.timing_labels[kod].config(text=f"Son: {son_str} | Ort: {ort_str} ({toplam_n} rx)")
 
     COMBOBOX_HAFIZA = os.path.join(PROJE_DIZINI, "recete_combobox_hafiza.json")
 
@@ -2145,6 +2169,16 @@ class ReceteRaporKontrolGUI:
 
     # === LOG ===
 
+    def _log_kopyala(self, event=None):
+        """Disabled text widget'tan seçili metni kopyala"""
+        try:
+            secili = self.log_text.get("sel.first", "sel.last")
+            self.root.clipboard_clear()
+            self.root.clipboard_append(secili)
+        except tk.TclError:
+            pass
+        return "break"
+
     def log_yaz(self, mesaj, tag="info"):
         """Log alanına mesaj yaz"""
         if not self.log_text:
@@ -2188,10 +2222,14 @@ class ReceteRaporKontrolGUI:
 
         def kontrol_thread():
             self.kontrol_aktif = True
+            self._recete_sureleri = []
+            self._recete_baslangic = None
             try:
                 for grup in GRUP_TANIMLARI:
                     if not self.kontrol_aktif:
                         break
+                    self._recete_sureleri = []
+                    self._recete_baslangic = None
                     self._grup_kontrol_islemi(grup["kod"])
             finally:
                 self.kontrol_aktif = False
@@ -2477,6 +2515,8 @@ class ReceteRaporKontrolGUI:
 
         def kontrol_thread():
             self.kontrol_aktif = True
+            self._recete_sureleri = []
+            self._recete_baslangic = None
             try:
                 # Önce Medula hazır mı kontrol et, değilse aç ve bağlan
                 self.root.after(0, lambda: self.log_yaz("Medula bağlantısı kontrol ediliyor...", "info"))
@@ -2520,6 +2560,19 @@ class ReceteRaporKontrolGUI:
                         continue
                     # Terminale yaz
                     print(line, flush=True)
+                    # Reçete başlangıç zamanı (süre ölçümü)
+                    if "[RECETE_BASLADI]" in line:
+                        import time as _time
+                        simdi = _time.time()
+                        if self._recete_baslangic is not None:
+                            sure = simdi - self._recete_baslangic
+                            self._recete_sureleri.append(sure)
+                            ort = sum(self._recete_sureleri) / len(self._recete_sureleri)
+                            n = len(self._recete_sureleri)
+                            self.root.after(0, lambda s=sure, o=ort, nn=n: self._sure_guncelle(s, o, nn))
+                        self._recete_baslangic = simdi
+                        continue
+
                     # Son reçete bilgisini parse et (label güncelleme)
                     if "[SON_RECETE]" in line:
                         try:
@@ -2556,6 +2609,15 @@ class ReceteRaporKontrolGUI:
                     self.root.after(0, lambda l=line, t=tag: self.log_yaz(l, t))
 
                 proc.wait()
+                # Son reçetenin süresini de hesapla
+                import time as _time
+                if self._recete_baslangic is not None:
+                    sure = _time.time() - self._recete_baslangic
+                    self._recete_sureleri.append(sure)
+                    ort = sum(self._recete_sureleri) / len(self._recete_sureleri)
+                    n = len(self._recete_sureleri)
+                    self.root.after(0, lambda s=sure, o=ort, nn=n: self._sure_guncelle(s, o, nn))
+                    self._recete_baslangic = None
                 self.root.after(0, lambda: self.log_yaz(
                     f"Subprocess tamamlandı (exit: {proc.returncode})",
                     "success" if proc.returncode == 0 else "error"))

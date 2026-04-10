@@ -227,8 +227,13 @@ def medula_yeniden_baslat():
     return None
 
 
+_aid_cache_global = {}  # recete_tum_bilgi_topla'dan doldurulan cache
+
 def element_bul(medula, auto_id):
     """Tek bir elementi automation_id ile bul (child_window öncelikli - daha hızlı)"""
+    # Önce global cache'e bak (recete_tum_bilgi_topla'dan doldurulur)
+    if auto_id in _aid_cache_global:
+        return _aid_cache_global[auto_id]
     try:
         cw = medula.child_window(auto_id=auto_id)
         if cw.exists(timeout=0.3):
@@ -239,7 +244,10 @@ def element_bul(medula, auto_id):
     try:
         for elem in medula.descendants():
             try:
-                if elem.element_info.automation_id == auto_id:
+                aid = elem.element_info.automation_id
+                if aid:
+                    _aid_cache_global[aid] = elem
+                if aid == auto_id:
                     return elem
             except:
                 pass
@@ -460,6 +468,10 @@ def recete_tum_bilgi_topla(medula):
         "teshisler": [],
         "uyari_kodlari": [],
         "doktor_uzmanligi": "",
+        "doktor_adi": "",
+        "hasta_adi": "",
+        "erecete_no": "",
+        "fatura_turu": "",
         "recete_aciklamalari": [],
         "recete_teshisleri_input": [],
         "_aid_cache": {},
@@ -526,6 +538,9 @@ def recete_tum_bilgi_topla(medula):
             pass
 
     sonuc["_aid_cache"] = aid_cache
+    # Global cache'i güncelle (element_bul descendants fallback'ini engeller)
+    global _aid_cache_global
+    _aid_cache_global = aid_cache
 
     # f:tbl1 tablo pozisyonu (cache'den)
     tbl_elem = aid_cache.get("f:tbl1")
@@ -1079,6 +1094,61 @@ def recete_tum_bilgi_topla(medula):
         ilac["doz_aciklama"] = aciklama_doz
 
     sonuc["ilaclar"] = ilaclar
+
+    # ── 9. Ek bilgiler (DataItem'lardan pozisyon bazlı — ek maliyet yok) ──
+    # Medula web elementleri automation_id taşımıyor, DataItem pozisyonundan okunur.
+    # Label'ın sağındaki (aynı y, daha büyük x) değeri bulma yardımcısı
+    def _label_yanindaki_deger(label_text, y_tolerans=10):
+        """data_items'ten label'ın sağındaki ilk değer DataItem'ını bul"""
+        label_y = None
+        label_x = None
+        for txt, y, x, aid, elem in data_items:
+            if label_text in txt:
+                label_y = y
+                label_x = x
+                break
+        if label_y is None:
+            return ""
+        # Aynı y satırında, label'dan sağdaki ilk anlamlı değer
+        adaylar = []
+        for txt, y, x, aid, elem in data_items:
+            if abs(y - label_y) <= y_tolerans and x > label_x and txt != ":" and txt != label_text:
+                adaylar.append((x, txt))
+        if adaylar:
+            adaylar.sort(key=lambda t: t[0])
+            # ":" olan ilk sonucu atla
+            for _, txt in adaylar:
+                if txt.strip() not in (":", ""):
+                    return txt.strip()
+        return ""
+
+    # e-Reçete No (y=291 satırında "e-Reçete No" label'ından sonra)
+    sonuc["erecete_no"] = _label_yanindaki_deger("e-Reçete No")
+    # Kapsam / Fatura Türü (y=161 satırında "Kapsam:" label'ından sonra)
+    kapsam = _label_yanindaki_deger("Kapsam")
+    if kapsam:
+        sonuc["fatura_turu"] = kapsam
+    # Hasta adı (BotanikEOS'tan — cache'den)
+    sonuc["hasta_adi"] = ""
+    lbl_musteri = aid_cache.get("lblMusteriAdi")
+    if lbl_musteri:
+        try:
+            sonuc["hasta_adi"] = (lbl_musteri.window_text() or "").strip()
+        except:
+            pass
+    # Doktor adı (BotanikEOS label'ından)
+    lbl_doktor = aid_cache.get("lblDoktorAdiSoyadi")
+    if lbl_doktor:
+        try:
+            d_txt = (lbl_doktor.window_text() or "").strip()
+            if d_txt:
+                sonuc["doktor_adi"] = d_txt
+        except:
+            pass
+    # Hasta TC — DataItem olarak genellikle görünmez (INPUT alanı)
+    # BotanikEOS'un lblBilgi'sinden parse edilebilir ama TC yok
+    # Tesis Kodu — aynı şekilde INPUT, DataItem'da label var ama değer yok
+    # Bu alanlar şimdilik boş kalır — gerektiğinde element_bul ile okunabilir
 
     # Uyarı kodları log
     if sonuc["uyari_kodlari"]:
@@ -1833,17 +1903,22 @@ def _gunluk_doz_hesapla(doz, carpan, periyot_sayi, periyot_birim):
 # ========== RAPOR SAYFASI ==========
 def rapor_ac(medula):
     """Rapor butonuna tıkla ve rapor sayfası açılana kadar bekle"""
+    global _aid_cache_global
+    _aid_cache_global = {}  # Sayfa değişiyor, cache geçersiz
     if not element_tikla(medula, "f:buttonRaporGoruntule"):
         log("    Rapor butonu bulunamadı", "warn")
         return False
 
-    for _ in range(10):
-        time.sleep(0.5)
-        # Rapor sayfası yüklendiğinde Geri Dön butonu görünür
-        if element_bul(medula, "form1:buttonGeriDon"):
+    # Optimize: exists(timeout=) ile aktif bekleme (eski: 10×sleep(0.5) = 5sn)
+    try:
+        cw = medula.child_window(auto_id="form1:buttonGeriDon", found_index=0)
+        if cw.exists(timeout=4):
             return True
-        if element_bul(medula, "form1:tableEx1"):
-            return True
+    except:
+        pass
+    # Fallback: tableEx1 kontrolü
+    if element_bul(medula, "form1:tableEx1"):
+        return True
     log("    Rapor sayfası açılmadı", "warn")
     return False
 
@@ -1972,52 +2047,59 @@ def erecete_aciklama_oku(medula):
         return None
 
     btn.invoke()
-    time.sleep(2)
+    time.sleep(1.5)
 
-    # Scroll ile tüm içeriği oku
+    # Optimize: TEK descendants() çağrısı + scroll sonrası sadece yeni elementleri oku
     sonuc = {"aciklamalar": [], "tanilar": [], "tum_metin": ""}
-    parcalar = []
+    parcalar_set = set()
 
-    # 2 kere scroll yaparak tüm sayfayı oku
-    for scroll_round in range(3):
-        if scroll_round > 0:
-            pyautogui.scroll(-5)
-            time.sleep(0.5)
+    tani_keywords = ('diyabet', 'diabetes', 'mellitus', 'hipertansiyon',
+                     'astim', 'koah', 'kronik', 'insülin')
+    aciklama_keywords = ('metformin', 'sülfonil', 'sulfonil', 'glisemik',
+                         'monoterapi', 'kontrol', 'tedavi edildi')
 
+    def _elementleri_tara():
         for d in medula.descendants():
             try:
                 txt = d.window_text() or ''
                 ts = txt.strip()
-                if len(ts) < 5:
+                if len(ts) < 5 or ts in parcalar_set:
                     continue
                 r = d.rectangle()
                 if r.top < 200:
                     continue
 
-                parcalar.append(ts)
+                parcalar_set.add(ts)
 
                 tl = ts.lower()
-                # Tanı metinleri
-                if any(k in tl for k in ['diyabet', 'diabetes', 'mellitus', 'hipertansiyon',
-                                          'astim', 'koah', 'kronik', 'insülin']):
+                if any(k in tl for k in tani_keywords):
                     if ts not in sonuc["tanilar"]:
                         sonuc["tanilar"].append(ts)
-
-                # Açıklama metinleri (metformin, glisemik vb.)
-                if any(k in tl for k in ['metformin', 'sülfonil', 'sulfonil', 'glisemik',
-                                          'monoterapi', 'kontrol', 'tedavi edildi']):
+                if any(k in tl for k in aciklama_keywords):
                     if ts not in sonuc["aciklamalar"]:
                         sonuc["aciklamalar"].append(ts)
             except:
                 pass
 
-    sonuc["tum_metin"] = " ".join(set(parcalar))
+    # İlk okuma
+    _elementleri_tara()
+
+    # Scroll ile ek içerik (sadece yeni element varsa descendants çağır)
+    for _ in range(2):
+        eski_boyut = len(parcalar_set)
+        pyautogui.scroll(-5)
+        time.sleep(0.3)
+        _elementleri_tara()
+        if len(parcalar_set) == eski_boyut:
+            break  # Yeni element yok, scroll gereksiz
+
+    sonuc["tum_metin"] = " ".join(parcalar_set)
 
     # Geri dön
     geri = element_bul(medula, "form1:buttonGeriDon")
     if geri:
         geri.invoke()
-        time.sleep(1)
+        time.sleep(0.5)
 
     return sonuc
 
@@ -2237,6 +2319,7 @@ def rapor_tum_metinleri_oku(medula):
     AutomationID yok - DataItem/Text/Custom elementlerinden pozisyon bazlı okur.
     Returns: dict {aciklamalar, tanilar, etkin_maddeler, dozlar, doktor_bransi, tum_metin}
     """
+    import re
     sonuc = {
         "aciklamalar": [],
         "tanilar": [],
@@ -2286,7 +2369,6 @@ def rapor_tum_metinleri_oku(medula):
                 sonuc["tanilar"].append(txt_s)
 
             # ICD kodu (E11.9, I10, J44 vb.)
-            import re
             if re.match(r'^[A-Z]\d{2}(\.\d+)?$', txt_s):
                 sonuc["icd_kodlari"].append(txt_s)
 
@@ -2332,7 +2414,7 @@ def rapor_ac_oku_geri_don(medula, satir_idx):
     sonuc = rapor_tum_metinleri_oku(medula)
 
     # 2. BotanikEOS'un açtığı küçük doz penceresinden oku
-    time.sleep(1)  # Pencere açılması için kısa bekleme
+    time.sleep(0.3)  # Pencere açılması için kısa bekleme
     eos_dozlar = botanik_eos_doz_penceresi_oku()
     if eos_dozlar:
         sonuc["eos_dozlar"] = eos_dozlar
@@ -2352,17 +2434,22 @@ def rapor_ac_oku_geri_don(medula, satir_idx):
 
 def rapor_geri_don(medula):
     """Rapor sayfasından reçete sayfasına geri dön"""
+    global _aid_cache_global
+    # Sadece rapor sayfası elementlerini temizle (form1: prefix), reçete elementlerini koru
+    _aid_cache_global = {k: v for k, v in _aid_cache_global.items() if not k.startswith("form1:")}
     if element_bul(medula, "form1:buttonGeriDon"):
         element_tikla(medula, "form1:buttonGeriDon")
     elif element_bul(medula, "f:buttonGeriDon"):
         return True
-    time.sleep(1)
-    for _ in range(8):
-        if element_bul(medula, "f:tbl1") or element_bul(medula, "f:buttonSonraki"):
+    # Optimize: exists() ile aktif bekleme (eski: sleep(1) + 8×sleep(0.5) = 5sn)
+    try:
+        cw = medula.child_window(auto_id="f:tbl1", found_index=0)
+        if cw.exists(timeout=3):
             return True
-        time.sleep(0.5)
-    # Son çare: f:buttonSonraki'yi ara (reçete sayfasında olduğumuzun kanıtı)
-    if element_bul(medula, "f:tbl1"):
+    except:
+        pass
+    # Fallback
+    if element_bul(medula, "f:buttonSonraki"):
         return True
     return False
 
@@ -3861,14 +3948,14 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                 log(f"Reçete değişmiyor ({recete_no}) - tarama bitti", "info")
                 break
             element_tikla(medula, "f:buttonSonraki")
-            time.sleep(5)
+            time.sleep(2)
             continue
         else:
             tekrar_sayaci = 0
             onceki_recete = recete_no
 
         if not recete_no:
-            time.sleep(3)
+            time.sleep(1)
             toplu = recete_tum_bilgi_topla(medula)
             recete_no = toplu["recete_no"]
             if not recete_no:
@@ -3879,7 +3966,7 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
         if recete_no in _kontrol_edilmis:
             log(f"  {recete_no} zaten kontrol edilmiş - atlanıyor", "info")
             element_tikla(medula, "f:buttonSonraki")
-            time.sleep(2)
+            time.sleep(0.5)
             continue
 
         recete_turu = toplu["recete_turu"]
@@ -3888,18 +3975,36 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
         recete_teshisleri = toplu["teshisler"]
         recete_aciklamalari = toplu["recete_aciklamalari"]
         doktor_uzmanligi = toplu["doktor_uzmanligi"]
+        doktor_adi = toplu.get("doktor_adi", "")
+        erecete_no = toplu.get("erecete_no", "")
+        fatura_turu = toplu.get("fatura_turu", "")
+        hasta_adi = toplu.get("hasta_adi", "")
 
         log(f"", "info")
+        print(f"[RECETE_BASLADI] {sayac}", flush=True)
         log(f"━━━ Reçete #{sayac}: {recete_no} ━━━", "header")
 
         # === ADIM 1: REÇETE TÜRÜ + ALT TÜR + DOKTOR ===
         tur_bilgi = f"[{recete_turu}]" if recete_turu != "Normal" else "[Beyaz]"
         if recete_alt_turu and recete_alt_turu != "Ayaktan":
             tur_bilgi += f" ({recete_alt_turu})"
-        if doktor_uzmanligi:
-            log(f"  Tür: {tur_bilgi} | Doktor: {doktor_uzmanligi}", "info")
+        doktor_str = doktor_uzmanligi
+        if doktor_adi and doktor_adi != doktor_uzmanligi:
+            doktor_str = f"{doktor_uzmanligi} ({doktor_adi})" if doktor_uzmanligi else doktor_adi
+        if doktor_str:
+            log(f"  Tür: {tur_bilgi} | Doktor: {doktor_str}", "info")
         else:
             log(f"  Tür: {tur_bilgi}", "info")
+        # Ek bilgiler (varsa)
+        ek_bilgiler = []
+        if hasta_adi:
+            ek_bilgiler.append(f"Hasta: {hasta_adi}")
+        if erecete_no:
+            ek_bilgiler.append(f"eRx: {erecete_no}")
+        if fatura_turu:
+            ek_bilgiler.append(f"Kapsam: {fatura_turu}")
+        if ek_bilgiler:
+            log(f"  {' | '.join(ek_bilgiler)}", "info")
 
         # === ADIM 2: RENKLİ REÇETE KONTROLÜ ===
         renkli_sonuc = "-"
@@ -4022,10 +4127,11 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                 s.pop("_rapor_verisi", None)
 
         # ═══════════════════════════════════════════════════════════════
-        # === ADIM 5: UYARI KODLARI KONTROLÜ (EN SON — tüm veriler toplandıktan sonra) ===
-        # Sıralı arama: 1.Reçete teşhis INPUT → 2.E-Reçete tanı listesi →
-        #   3.Reçete açıklamaları → 4.Rapor teşhis → 5.Rapor açıklamaları →
-        #   6.E-Reçete teşhis/açıklamaları (henüz okunmadıysa git oku)
+        # === ADIM 5: UYARI KODLARI KONTROLÜ ===
+        # Sıralı arama:
+        #   1. Reçete teşhisi (INPUT + tanı listesi)
+        #   2. Rapor teşhisi + rapor açıklamaları (yoksa rapor sayfasını aç)
+        #   3. E-Reçete sayfası açıklamaları (hala eşleşme yoksa)
         # ═══════════════════════════════════════════════════════════════
         if uyari_kodlari:
             # Tespit edilen uyarı kodlarını DB'ye kaydet (combobox için)
@@ -4037,63 +4143,72 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
 
             log(f"  ═══ UYARI KODU KONTROLÜ ({len(uyari_kodlari)} adet) ═══", "header")
 
-            # ── Kaynak 1: Reçete Teşhis INPUT'ları (f:tableEx1:{row}:text3) ──
-            # Zaten toplandı: recete_teshisleri_input
-            kaynak_1 = recete_teshisleri_input
-            if kaynak_1:
-                log(f"    [1] Reçete teşhis: {', '.join(kaynak_1[:2])}", "info")
+            # ── KAYNAK 1: Reçete teşhisi ──
+            kaynak_teshis = recete_teshisleri_input + recete_teshisleri
+            if kaynak_teshis:
+                log(f"    [1] Reçete teşhis: {', '.join(kaynak_teshis[:3])}", "info")
 
-            # ── Kaynak 2: E-Reçete Tanı Listesi (form1:tableEx3) ──
-            # Zaten toplandı: recete_teshisleri
-            kaynak_2 = recete_teshisleri
-            if kaynak_2:
-                log(f"    [2] Tanı listesi: {', '.join(kaynak_2[:2])}", "info")
+            # İlk kontrol: sadece reçete teşhisiyle
+            uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, kaynak_teshis, [], [])
+            eslesmeyen = [uks for uks in uk_sonuclar if uks["durum"] == "UYGUNSUZ"]
 
-            # ── Kaynak 3: Reçete Açıklamaları (form1:tableEx1 Açıklama Listesi) ──
-            # Zaten toplandı: recete_aciklamalari
-            kaynak_3 = recete_aciklamalari
-            if kaynak_3:
-                log(f"    [3] Açıklamalar: {', '.join(kaynak_3[:2])}", "info")
-
-            # ── Kaynak 4+5: Rapor teşhis + açıklamaları (ilaç kontrollerinde okundu) ──
+            # ── KAYNAK 2: Rapor teşhisi + rapor açıklamaları ──
             rapor_aciklamalari_toplam = []
             rapor_tanilari_toplam = []
-            for s in rapor_satirlari:
-                rv = s.get("_rapor_verisi", {})
-                if rv:
-                    rapor_aciklamalari_toplam.extend(rv.get("aciklamalar", []))
-                    rapor_tanilari_toplam.extend(rv.get("tanilar", []))
-                    rapor_tanilari_toplam.extend(rv.get("icd_kodlari", []))
-            if rapor_tanilari_toplam:
-                log(f"    [4] Rapor teşhis: {', '.join(rapor_tanilari_toplam[:2])}", "info")
-            if rapor_aciklamalari_toplam:
-                log(f"    [5] Rapor açıklama: {rapor_aciklamalari_toplam[0][:60]}", "info")
+            if eslesmeyen:
+                # Önce ilaç kontrollerinde okunmuş rapor verisi var mı?
+                for s in rapor_satirlari:
+                    rv = s.get("_rapor_verisi", {})
+                    if rv:
+                        rapor_aciklamalari_toplam.extend(rv.get("aciklamalar", []))
+                        rapor_tanilari_toplam.extend(rv.get("tanilar", []))
+                        rapor_tanilari_toplam.extend(rv.get("icd_kodlari", []))
 
-            # Tüm kaynakları birleştir
-            tum_teshisler = kaynak_1 + kaynak_2 + rapor_tanilari_toplam
-            tum_aciklamalar = kaynak_3 + rapor_aciklamalari_toplam
+                # Rapor verisi yoksa (hiçbir ilaç DD değilse) → rapor sayfasını aç
+                if not rapor_tanilari_toplam and not rapor_aciklamalari_toplam:
+                    # İlk raporlu ilacın checkbox'ını seç ve rapor aç
+                    raporlu_idx = None
+                    for il in ilaclar:
+                        if il.get("rapor_kodu"):
+                            raporlu_idx = il.get("medula_satir_idx", 0)
+                            break
+                    if raporlu_idx is not None:
+                        log(f"    [2] Rapor verisi yok — rapor sayfasından okunuyor...", "info")
+                        rapor_verisi = rapor_ac_oku_geri_don(medula, raporlu_idx)
+                        if rapor_verisi:
+                            rapor_tanilari_toplam.extend(rapor_verisi.get("tanilar", []))
+                            rapor_tanilari_toplam.extend(rapor_verisi.get("icd_kodlari", []))
+                            rapor_aciklamalari_toplam.extend(rapor_verisi.get("aciklamalar", []))
+                            if rapor_verisi.get("tum_metin"):
+                                rapor_aciklamalari_toplam.append(rapor_verisi["tum_metin"])
 
-            # İlk kontrol: mevcut verilerle
-            uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, tum_teshisler, tum_aciklamalar, [])
+                if rapor_tanilari_toplam:
+                    log(f"    [2] Rapor teşhis: {', '.join(rapor_tanilari_toplam[:2])}", "info")
+                if rapor_aciklamalari_toplam:
+                    log(f"    [2] Rapor açıklama: {rapor_aciklamalari_toplam[0][:60]}", "info")
 
-            # Eşleşmeyen uyarı kodları var mı?
-            eslesmeyen_uk = [uks for uks in uk_sonuclar if uks["durum"] == "UYGUNSUZ"]
+                # Tekrar kontrol: reçete teşhis + rapor verileriyle
+                tum_teshisler = kaynak_teshis + rapor_tanilari_toplam
+                tum_aciklamalar = recete_aciklamalari + rapor_aciklamalari_toplam
+                uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, tum_teshisler, tum_aciklamalar, [])
+                eslesmeyen = [uks for uks in uk_sonuclar if uks["durum"] == "UYGUNSUZ"]
 
-            # ── Kaynak 6: Eşleşme bulunamazsa E-Reçete sayfasına git ──
-            if eslesmeyen_uk and not rapor_aciklamalari_toplam:
-                # Rapor verisi hiç okunmamışsa (hiçbir ilaç DD değilse) e-reçete sayfasına git
-                log(f"    [6] {len(eslesmeyen_uk)} uyarı kodu eşleşmedi — E-Reçete sayfasından ek veri okunuyor...", "warn")
+            # ── KAYNAK 3: E-Reçete sayfası açıklamaları (hala eşleşmeyen varsa) ──
+            if eslesmeyen:
+                log(f"    [3] {len(eslesmeyen)} uyarı kodu eşleşmedi — E-Reçete sayfasından okunuyor...", "warn")
                 erecete = erecete_aciklama_oku(medula)
                 if erecete:
+                    tum_teshisler_ek = kaynak_teshis + rapor_tanilari_toplam
+                    tum_aciklamalar_ek = recete_aciklamalari + rapor_aciklamalari_toplam
                     if erecete.get("tanilar"):
-                        tum_teshisler.extend(erecete["tanilar"])
-                        log(f"    [6] E-Reçete tanı: {erecete['tanilar'][0][:60]}", "info")
+                        tum_teshisler_ek.extend(erecete["tanilar"])
+                        log(f"    [3] E-Reçete tanı: {erecete['tanilar'][0][:60]}", "info")
                     if erecete.get("aciklamalar"):
-                        tum_aciklamalar.extend(erecete["aciklamalar"])
+                        tum_aciklamalar_ek.extend(erecete["aciklamalar"])
                     if erecete.get("tum_metin"):
-                        tum_aciklamalar.append(erecete["tum_metin"])
-                    # Yeniden kontrol
-                    uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, tum_teshisler, tum_aciklamalar, [])
+                        tum_aciklamalar_ek.append(erecete["tum_metin"])
+                    # Son kontrol
+                    uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, tum_teshisler_ek, tum_aciklamalar_ek, [])
 
             # Sonuçları logla (çerçeveli)
             for uks in uk_sonuclar:
@@ -4132,19 +4247,12 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                 log("Sonraki butonu bulunamadı - tarama bitti", "info")
                 break
 
-        # Sayfa yüklenene kadar bekle
-        time.sleep(0.3)
-        for bekle in range(6):
-            if durduruldu_mu():
-                break
-            # child_window daha hızlı — descendants taraması yapma
-            try:
-                cw = medula.child_window(auto_id="f:tbl1", found_index=0)
-                if cw.exists(timeout=0.3):
-                    break
-            except:
-                pass
-            time.sleep(0.3)
+        # Sayfa yüklenene kadar bekle (optimize: tek exists çağrısı)
+        try:
+            cw = medula.child_window(auto_id="f:tbl1", found_index=0)
+            cw.exists(timeout=2)
+        except:
+            pass
 
     # Özet
     try:
