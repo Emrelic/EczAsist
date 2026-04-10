@@ -525,12 +525,17 @@ def recete_tum_bilgi_topla(medula):
             elif "ComboBox" in ctrl_type:
                 combo_items.append(elem)
 
-            # Text/Custom → uyarı kodları ("256 - ... => İLAÇ")
-            elif ctrl_type in ("ControlType.Text", "ControlType.Custom"):
+            # Text/Custom → uyarı kodları ("256 - ... => İLAÇ") + "Girilebilcek uyarılar" metni
+            elif "Text" in ctrl_type or "Custom" in ctrl_type:
                 try:
                     txt = elem.window_text()
-                    if txt and "=>" in txt:
-                        _uyari_kodu_ekle(sonuc, txt.strip(), re)
+                    if txt:
+                        txt_s = txt.strip()
+                        if "=>" in txt_s:
+                            _uyari_kodu_ekle(sonuc, txt_s, re)
+                        # "Girilebilcek uyarılar:" metni — uyarı kodu alanının dolu olduğunun kanıtı
+                        if "Girilebilcek" in txt_s or "Girilebilecek" in txt_s:
+                            sonuc["_uyari_alani_metni"] = txt_s
                 except:
                     pass
 
@@ -1155,6 +1160,8 @@ def recete_tum_bilgi_topla(medula):
         log(f"  [OKU ] Uyarı kodları: {len(sonuc['uyari_kodlari'])} adet", "info")
         for uk in sonuc["uyari_kodlari"]:
             log(f"    [OKU ] Uyarı {uk['kod']}: {uk['aciklama']} => {uk['ilac_adi']}", "info")
+    if sonuc.get("_uyari_alani_metni"):
+        log(f"  [OKU ] Uyarı alanı: {sonuc['_uyari_alani_metni'][:100]}", "info")
 
     log(f"  [SÜRE] Toplu bilgi toplama: {time.time()-t0:.1f}s ({len(tum_elementler)} element, {len(ilaclar)} ilaç)", "info")
     return sonuc
@@ -2280,9 +2287,16 @@ def uyari_kodu_kontrol(uyari_kodlari, recete_teshisleri, rapor_aciklamalari, rap
             eslesme = 0
             eslesen_kelimeler = []
             for kelime in kelimeler:
+                # Tam kelime eşleşmesi
                 if kelime in kaynak_birlesik:
                     eslesme += 1
                     eslesen_kelimeler.append(kelime)
+                # Kısmi kök eşleşmesi: kelimenin ilk 5+ harfi kaynakta geçiyor mu
+                elif len(kelime) >= 5:
+                    kok = kelime[:min(len(kelime)-2, 7)]  # İlk 5-7 harf (suffix'siz kök)
+                    if len(kok) >= 4 and kok in kaynak_birlesik:
+                        eslesme += 0.7  # Kısmi eşleşme katkısı
+                        eslesen_kelimeler.append(f"{kelime}~{kok}")
 
             if kelimeler:
                 oran = eslesme / len(kelimeler)
@@ -2296,11 +2310,12 @@ def uyari_kodu_kontrol(uyari_kodlari, recete_teshisleri, rapor_aciklamalari, rap
                 if eslesen_kelimeler:
                     for km in kaynak_metinler:
                         km_norm = _turkce_normalize(km)
-                        if eslesen_kelimeler[0] in km_norm:
+                        aranan = eslesen_kelimeler[0].split("~")[0]  # Kök kısmını at
+                        if aranan in km_norm or (len(aranan) >= 5 and aranan[:5] in km_norm):
                             en_iyi_metin = km[:80]
                             break
 
-        if en_iyi_oran >= 0.4:  # %40 eşleşme yeterli
+        if en_iyi_oran >= 0.3:  # %30 eşleşme yeterli (kısmi kök eşleşmeleri dahil)
             sonuclar.append({
                 **uk, "durum": "UYGUN", "eslesen_oran": en_iyi_oran,
                 "eslesen_kaynak": en_iyi_kaynak, "eslesen_metin": en_iyi_metin
