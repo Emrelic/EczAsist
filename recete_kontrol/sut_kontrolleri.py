@@ -854,7 +854,7 @@ def kontrol_klopidogrel(ilac_sonuc: Dict) -> KontrolRaporu:
     teshis_metin = ' '.join(recete_teshisleri).upper() if recete_teshisleri else ''
 
     birlesik = (tum_metin or '') + ' ' + teshis_metin
-    metin_lower = birlesik.replace('İ', 'i').replace('I', 'ı').lower() if birlesik else ''
+    metin_lower = _turkce_normalize(birlesik) if birlesik else ''
 
     sut_kurali = 'SUT 4.2.15 — Klopidogrel/Prasugrel/Tikagrelor kullanım kuralları'
     detaylar = {'ilac_adi': ilac_adi, 'rapor_kodu': rapor_kodu}
@@ -872,7 +872,7 @@ def kontrol_klopidogrel(ilac_sonuc: Dict) -> KontrolRaporu:
     # AKS / MI
     aks_var = any(k in metin_lower for k in ['akut koroner', 'aks', 'stemi', 'nstemi',
                                               'unstabil angina', 'unstable angina'])
-    mi_var = any(k in metin_lower for k in ['miyokard', 'infarktüs', 'infarktusu'])
+    mi_var = any(k in metin_lower for k in ['miyokard', 'infarktusu', 'infarktus'])
     if aks_var or mi_var:
         endikasyonlar.append('AKS/MI')
         for k in ['akut koroner', 'stemi', 'nstemi', 'miyokard']:
@@ -881,11 +881,21 @@ def kontrol_klopidogrel(ilac_sonuc: Dict) -> KontrolRaporu:
                 eslesen_metinler.append(p)
                 break
 
-    # Anjiografi / KAH
-    anjio_var = any(k in metin_lower for k in ['anjio', 'angiografi', 'anjiografi'])
+    # Raporda "12 ay klopidogrel kullanımı uygundur" → stent/AKS sonrası onay
+    klopidogrel_onay = any(k in metin_lower for k in [
+        'klopidogrel kullanimi uygundur', 'clopidogrel kullanimi uygundur',
+        '12 ay klopidogrel', '12 ay clopidogrel',
+    ])
+    if klopidogrel_onay and not stent_var and not aks_var and not mi_var:
+        endikasyonlar.append('Doktor onayı (12 ay)')
+        eslesen_metinler.append(_eslesen_parcayi_bul(birlesik, 'klopidogrel') or
+                                _eslesen_parcayi_bul(birlesik, 'clopidogrel') or '')
+
+    # Anjiografi / KAH (çeşitli yazımlar: anjio/angio/anjiyo/angyo)
+    anjio_var = any(k in metin_lower for k in ['anjio', 'angio', 'anjiyo', 'angyo', 'angiyo'])
     kah_var = any(k in metin_lower for k in ['koroner arter', 'iskemik kalp'])
     bypass_var = any(k in metin_lower for k in ['bypass', 'kabg'])
-    perkutan_var = any(k in metin_lower for k in ['perkütan', 'perkutan', 'pkag', 'ptca'])
+    perkutan_var = any(k in metin_lower for k in ['perkutan', 'pkag', 'ptca'])
     if anjio_var or kah_var or bypass_var or perkutan_var:
         endikasyonlar.append('KAH/Anjiografi')
         for k in ['anjio', 'koroner arter', 'bypass', 'kabg', 'perkütan']:
@@ -928,9 +938,9 @@ def kontrol_klopidogrel(ilac_sonuc: Dict) -> KontrolRaporu:
                                                      'aspirin kontrendik', 'asetilsalisilik intolerans',
                                                      'gastrointestinal intolerans',
                                                      'aspirin allerjisi', 'asa allerjisi'])
-    # ASA gerektiren endikasyonlar (stent ve AKS hariç)
+    # ASA gerektiren endikasyonlar (stent, AKS ve doktor onayı hariç)
     asa_gereken = any(e in endikasyonlar for e in ['İskemik inme', 'Periferik arter', 'KAH/Anjiografi', 'KAH (ICD)'])
-    asa_gereksiz = any(e in endikasyonlar for e in ['Koroner stent', 'AKS/MI'])
+    asa_gereksiz = any(e in endikasyonlar for e in ['Koroner stent', 'AKS/MI', 'Doktor onayı (12 ay)'])
 
     # ── 3. Tarih bilgisi ──
     tarih_match = re.findall(r'\d{2}[./]\d{2}[./]\d{4}', birlesik)
