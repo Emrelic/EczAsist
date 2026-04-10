@@ -2437,7 +2437,9 @@ def rapor_tum_metinleri_oku(medula):
             if len(txt_s) > 30 and any(k in txt_lower for k in
                     ["metformin", "sülfonil", "glisemik", "monoterapi", "kontrol",
                      "varfarin", "inr", "stent", "anjiografi", "ldl", "trigliserid",
-                     "beta blok", "ejeksiyon", "dispne", "atak", "tedavi"]):
+                     "beta blok", "ejeksiyon", "dispne", "atak", "tedavi",
+                     "nöropatik", "noropatik", "neuropat", "gabapentin", "pregabalin",
+                     "epilepsi", "fibromiyalji", "ağrı", "agri"]):
                 sonuc["aciklamalar"].append(txt_s)
 
             # Tanı
@@ -4202,10 +4204,6 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                 if satir["sonuc"] == "UYGUNSUZ":
                     toplam_sorun += 1
 
-            # _rapor_verisi iç kullanım alanını temizle (Excel'e yazılmasın)
-            for s in rapor_satirlari:
-                s.pop("_rapor_verisi", None)
-
         # ═══════════════════════════════════════════════════════════════
         # === ADIM 5: UYARI KODLARI KONTROLÜ ===
         # Sıralı arama:
@@ -4243,6 +4241,9 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                         rapor_aciklamalari_toplam.extend(rv.get("aciklamalar", []))
                         rapor_tanilari_toplam.extend(rv.get("tanilar", []))
                         rapor_tanilari_toplam.extend(rv.get("icd_kodlari", []))
+                        # tum_metin: filtre uygulanmamış tam rapor metni (uyarı kodu eşleşmesi için)
+                        if rv.get("tum_metin"):
+                            rapor_aciklamalari_toplam.append(rv["tum_metin"])
 
                 # Rapor verisi yoksa (hiçbir ilaç DD değilse) → rapor sayfasını aç
                 if not rapor_tanilari_toplam and not rapor_aciklamalari_toplam:
@@ -4317,6 +4318,10 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                     log(f"    │ Sonuç  : ✗ EŞLEŞME BULUNAMADI (%{int(oran*100)})", "sorun")
                     log(f"    └───────────────────────────────────", "info")
                     toplam_sorun += 1
+
+        # _rapor_verisi iç kullanım alanını temizle (Excel'e yazılmasın)
+        for s in rapor_satirlari:
+            s.pop("_rapor_verisi", None)
 
         # Son kontrol edilen reçeteyi kaydet (kaldığı yerden devam için)
         if recete_no:
