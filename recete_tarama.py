@@ -230,17 +230,20 @@ def medula_yeniden_baslat():
 _aid_cache_global = {}  # recete_tum_bilgi_topla'dan doldurulan cache
 
 def element_bul(medula, auto_id):
-    """Tek bir elementi automation_id ile bul (child_window öncelikli - daha hızlı)"""
-    # Önce global cache'e bak (recete_tum_bilgi_topla'dan doldurulur)
+    """Tek bir elementi automation_id ile bul (cache → child_window → descendants fallback)"""
+    # 1. Global cache (en hızlı — 0ms)
     if auto_id in _aid_cache_global:
         return _aid_cache_global[auto_id]
+    # 2. child_window (hızlı — WinForms elementleri için)
     try:
         cw = medula.child_window(auto_id=auto_id)
-        if cw.exists(timeout=0.3):
-            return cw.wrapper_object()
+        if cw.exists(timeout=0.1):  # 0.3→0.1 (cache varsa buraya düşmemeli)
+            found = cw.wrapper_object()
+            _aid_cache_global[auto_id] = found
+            return found
     except:
         pass
-    # Fallback: descendants tarama (IE embedded browser elementleri child_window ile bulunamayabilir)
+    # 3. Fallback: descendants tarama (yavaş — IE embedded browser elementleri için)
     try:
         for elem in medula.descendants():
             try:
@@ -485,6 +488,7 @@ def recete_tum_bilgi_topla(medula):
     except Exception as e:
         log(f"descendants() hatası: {e}", "error")
         return sonuc
+    t_desc = time.time() - t0
 
     # ── 2. Element'leri sınıflandır ──
     # automation_id bazlı cache (sonraki element_bul çağrılarını hızlandırır)
@@ -933,30 +937,27 @@ def recete_tum_bilgi_topla(medula):
     # Element ID ile doğrulama/tamamlama + REÇETE DOZU okuma
     # GERÇEK medula satır indeksini kullan (enumerate değil!)
     def _cache_input_oku(auto_id):
-        """Cache'deki veya element_bul ile input elementinden değer oku"""
+        """Cache'deki input elementinden değer oku (hızlı: sadece cache + window_text)"""
         el = aid_cache.get(auto_id)
         if not el:
-            el = element_bul(medula, auto_id)
-        if not el:
-            return 0.0
+            return 0.0  # Cache'te yoksa element_bul çağırma — çok yavaş
         val = ""
+        # window_text en hızlı yöntem — önce dene
         try:
-            val = el.get_value() or ""
+            val = el.window_text() or ""
         except:
             pass
+        # Boşsa get_value dene (ama legacy_properties ÇAĞIRMA — çok yavaş)
+        if not val:
+            try:
+                val = el.get_value() or ""
+            except:
+                pass
         if not val:
             try:
                 val = el.iface_value.CurrentValue or ""
             except:
                 pass
-        if not val:
-            try:
-                lp = el.legacy_properties()
-                val = lp.get("Value", "") or ""
-            except:
-                pass
-        if not val:
-            val = el.window_text() or ""
         val = val.strip().replace(",", ".")
         try:
             return float(val) if val else 0.0
@@ -1163,7 +1164,9 @@ def recete_tum_bilgi_topla(medula):
     if sonuc.get("_uyari_alani_metni"):
         log(f"  [OKU ] Uyarı alanı: {sonuc['_uyari_alani_metni'][:100]}", "info")
 
-    log(f"  [SÜRE] Toplu bilgi toplama: {time.time()-t0:.1f}s ({len(tum_elementler)} element, {len(ilaclar)} ilaç)", "info")
+    t_toplam = time.time() - t0
+    t_isleme = t_toplam - t_desc
+    log(f"  [SÜRE] Toplu: {t_toplam:.1f}s (descendants: {t_desc:.1f}s + işleme: {t_isleme:.1f}s) | {len(tum_elementler)} element, {len(ilaclar)} ilaç", "info")
     return sonuc
 
 
@@ -4187,12 +4190,14 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
 
                 # BB/CC/DD karar ağacı
                 gercek_idx = ilac.get("medula_satir_idx", idx)
+                t_ilac = time.time()
                 satir = ilac_detayli_kontrol(
                     medula, cur, conn, grup, recete_no, recete_turu,
                     ilac, gercek_idx, renkli_sonuc, recete_teshisleri=recete_teshisleri,
                     doktor_uzmanligi=doktor_uzmanligi,
                     recete_alt_turu=recete_alt_turu
                 )
+                log(f"    [SÜRE] İlaç kontrol: {time.time()-t_ilac:.1f}s ({ilac.get('ilac_adi','')[:30]})", "info")
 
                 # Renkli kontrol bilgisini ilk ilaca ekle
                 if idx == 0:
@@ -4242,8 +4247,10 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                         rapor_tanilari_toplam.extend(rv.get("tanilar", []))
                         rapor_tanilari_toplam.extend(rv.get("icd_kodlari", []))
                         # tum_metin: filtre uygulanmamış tam rapor metni (uyarı kodu eşleşmesi için)
-                        if rv.get("tum_metin"):
-                            rapor_aciklamalari_toplam.append(rv["tum_metin"])
+                        tm = rv.get("tum_metin", "")
+                        # Çöp metin kontrolü — rapor sayfası açılamadıysa reçete sayfası metni gelir
+                        if tm and "Fatura Sonland" not in tm and "Reçete No" not in tm:
+                            rapor_aciklamalari_toplam.append(tm)
 
                 # Rapor verisi yoksa (hiçbir ilaç DD değilse) → rapor sayfasını aç
                 if not rapor_tanilari_toplam and not rapor_aciklamalari_toplam:
@@ -4328,6 +4335,7 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
             _son_recete_kaydet(grup, recete_no, sayac)
 
         # Sonraki reçete
+        t_nav = time.time()
         if not element_tikla(medula, "f:buttonSonraki"):
             # Kurtarma: Escape + tekrar dene
             pyautogui.press("escape")
@@ -4342,6 +4350,7 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
             cw.exists(timeout=2)
         except:
             pass
+        log(f"  [SÜRE] Navigasyon (Sonraki): {time.time()-t_nav:.1f}s", "info")
 
     # Özet
     try:
