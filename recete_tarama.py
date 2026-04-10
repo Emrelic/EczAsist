@@ -2257,9 +2257,20 @@ def uyari_kodu_kontrol(uyari_kodlari, recete_teshisleri, rapor_aciklamalari, rap
       3. Rapor tanıları (rapor sayfasından okunan ICD + tanı)
       4. Rapor açıklamaları (rapor sayfasından okunan metinler)
 
+    Özel kurallar:
+      - Gabapentin/Pregabalin ilaçlarında "nöropatik ağrı" uyarı kodu →
+        reçete/rapor açıklamalarında "nöropatik ağrı" ifadesi aranır
+
     Returns: list of dict [{kod, aciklama, ilac_adi, durum, eslesen_oran, eslesen_kaynak, eslesen_metin}, ...]
     """
     from recete_kontrol.sut_kontrolleri import _turkce_normalize
+
+    # Gabapentin/Pregabalin ilaç isimleri (nöropatik ağrı özel kuralı)
+    GABAPENTIN_PREGABALIN = [
+        "GABAPENTIN", "PREGABALIN", "NERUDA", "LYRICA", "NEURONTIN",
+        "GABATEVA", "GABANTIN", "GABAGAMMA", "GABABOZAN",
+        "PREGABIN", "PREGENTA", "PREGOBIN", "PREGALIN",
+    ]
 
     # Kaynakları ayrı ayrı hazırla
     kaynaklar = [
@@ -2271,6 +2282,60 @@ def uyari_kodu_kontrol(uyari_kodlari, recete_teshisleri, rapor_aciklamalari, rap
     sonuclar = []
     for uk in uyari_kodlari:
         aciklama_norm = _turkce_normalize(uk["aciklama"])
+        ilac_adi_upper = (uk.get("ilac_adi", "") or "").upper()
+
+        # ── ÖZEL KURAL: Gabapentin/Pregabalin + "nöropatik ağrı" uyarı kodu ──
+        noropatik_agri_kural = False
+        if "noropatik" in aciklama_norm:
+            if any(g in ilac_adi_upper for g in GABAPENTIN_PREGABALIN):
+                noropatik_agri_kural = True
+
+        if noropatik_agri_kural:
+            # Reçete/rapor AÇIKLAMALARINDA "nöropatik ağrı" ifadesini ara
+            # NOT: Teşhiste değil, açıklamalarda aranır!
+            aranan_alternatifler = ["noropatik agri", "neuropathic pain", "noropatik ag"]
+
+            # Sadece açıklama kaynakları (teşhis hariç)
+            aciklama_kaynaklari = [
+                ("Reçete açıklama", rapor_aciklamalari),  # rapor_aciklamalari = reçete + rapor açıklamaları birleşik
+                ("Reçete teşhis", recete_teshisleri),     # teşhiste de aranabilir ama son sırada
+                ("Rapor tanı", rapor_tanilari),
+            ]
+
+            en_iyi_kaynak = ""
+            en_iyi_metin = ""
+            bulundu = False
+
+            for kaynak_adi, kaynak_metinler in aciklama_kaynaklari:
+                if not kaynak_metinler:
+                    continue
+                kaynak_birlesik = _turkce_normalize(" ".join(kaynak_metinler))
+                for ifade in aranan_alternatifler:
+                    if ifade in kaynak_birlesik:
+                        en_iyi_kaynak = kaynak_adi
+                        for km in kaynak_metinler:
+                            if ifade in _turkce_normalize(km):
+                                en_iyi_metin = km[:80]
+                                break
+                        bulundu = True
+                        break
+                if bulundu:
+                    break
+
+            if bulundu:
+                sonuclar.append({
+                    **uk, "durum": "UYGUN", "eslesen_oran": 1.0,
+                    "eslesen_kaynak": en_iyi_kaynak, "eslesen_metin": en_iyi_metin
+                })
+            else:
+                sonuclar.append({
+                    **uk, "durum": "UYGUNSUZ", "eslesen_oran": 0,
+                    "eslesen_kaynak": "", "eslesen_metin": "",
+                    "_ozel_kural": "Gabapentin/Pregabalin: 'nöropatik ağrı' ifadesi reçete/rapor açıklamalarında bulunamadı"
+                })
+            continue
+
+        # ── GENEL KURAL: Kelime bazlı eşleşme ──
         # Anahtar kelimeler: 3 harften uzun, anlamlı kelimeler
         kelimeler = [k for k in aciklama_norm.split() if len(k) > 3]
 
@@ -4163,8 +4228,8 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
             if kaynak_teshis:
                 log(f"    [1] Reçete teşhis: {', '.join(kaynak_teshis[:3])}", "info")
 
-            # İlk kontrol: sadece reçete teşhisiyle
-            uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, kaynak_teshis, [], [])
+            # İlk kontrol: reçete teşhisi + reçete açıklamaları
+            uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, kaynak_teshis, recete_aciklamalari, [])
             eslesmeyen = [uks for uks in uk_sonuclar if uks["durum"] == "UYGUNSUZ"]
 
             # ── KAYNAK 2: Rapor teşhisi + rapor açıklamaları ──
@@ -4244,7 +4309,11 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                 else:
                     log(f"    ┌─── Uyarı Kodu {kod} ───", "info")
                     log(f"    │ Uyarı  : {acik} => {ilac}", "info")
-                    log(f"    │ Aranan : {acik}", "info")
+                    ozel = uks.get("_ozel_kural", "")
+                    if ozel:
+                        log(f"    │ Kural  : {ozel}", "info")
+                    else:
+                        log(f"    │ Aranan : {acik}", "info")
                     log(f"    │ Sonuç  : ✗ EŞLEŞME BULUNAMADI (%{int(oran*100)})", "sorun")
                     log(f"    └───────────────────────────────────", "info")
                     toplam_sorun += 1
