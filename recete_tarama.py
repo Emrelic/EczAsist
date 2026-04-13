@@ -836,27 +836,37 @@ def recete_tum_bilgi_topla(medula):
     tablo_items.sort(key=lambda item: (item[1], item[2]))
 
     ilaclar = []
+    # Y-yakınlık eşiği: aynı satırın metadata'sı (SGK, rapor kodu, msj, doz) ilaç adından
+    # en fazla bu kadar piksel uzakta olabilir. Daha uzaktaysa başka bir satıra ait demektir.
+    SATIR_Y_ESIGI = 60
     for txt, y, x in tablo_items:
         txt_upper = txt.upper()
         if (len(txt) > 12 and any(k in txt_upper for k in ILAC_ANAHTAR)
                 and not txt.startswith("SGK") and not any(a in txt for a in ATLA)):
             ilaclar.append({"ilac_adi": txt, "etkin_madde": "", "sgk_kodu": "",
                            "rapor_kodu": "", "msj": "",
-                           "eos_rapor_doz_metin": ""})
-        elif txt.startswith("SGK") and "-" in txt and ilaclar:
+                           "eos_rapor_doz_metin": "", "_y": y})
+            continue
+        if not ilaclar:
+            continue
+        son = ilaclar[-1]
+        # Son ilacın y'sinden çok uzaktaki metadata satırı başka bir kalemin verisi olabilir
+        if abs(y - son.get("_y", y)) > SATIR_Y_ESIGI:
+            continue
+        if txt.startswith("SGK") and "-" in txt:
             parts = txt.split("-", 1)
-            ilaclar[-1]["sgk_kodu"] = parts[0].strip()
-            ilaclar[-1]["etkin_madde"] = parts[1].strip() if len(parts) > 1 else ""
-        elif "." in txt and "/" not in txt and len(txt) <= 8 and txt[0].isdigit() and ilaclar:
-            ilaclar[-1]["rapor_kodu"] = txt
-        elif txt.lower() in ["var", "yok"] and ilaclar:
-            ilaclar[-1]["msj"] = txt.lower()
-        elif _doz_satiri_mi(txt) and ilaclar:
-            if "eos_rapor_doz_listesi" not in ilaclar[-1]:
-                ilaclar[-1]["eos_rapor_doz_listesi"] = []
-            ilaclar[-1]["eos_rapor_doz_listesi"].append(txt)
-            if not ilaclar[-1]["eos_rapor_doz_metin"]:
-                ilaclar[-1]["eos_rapor_doz_metin"] = txt
+            son["sgk_kodu"] = parts[0].strip()
+            son["etkin_madde"] = parts[1].strip() if len(parts) > 1 else ""
+        elif "." in txt and "/" not in txt and len(txt) <= 8 and txt[0].isdigit():
+            son["rapor_kodu"] = txt
+        elif txt.lower() in ["var", "yok"]:
+            son["msj"] = txt.lower()
+        elif _doz_satiri_mi(txt):
+            if "eos_rapor_doz_listesi" not in son:
+                son["eos_rapor_doz_listesi"] = []
+            son["eos_rapor_doz_listesi"].append(txt)
+            if not son["eos_rapor_doz_metin"]:
+                son["eos_rapor_doz_metin"] = txt
 
     # ── 8. MEDULA TABLO SATIR İNDEKSİ EŞLEŞTİRME ──
     # tum_elementler'den f:tbl1:{row}:t6 automation_id'li elementleri bul
@@ -2601,14 +2611,23 @@ def rapor_ac_oku_geri_don(medula, satir_idx):
     if eos_dozlar:
         sonuc["eos_dozlar"] = eos_dozlar
         for ed in eos_dozlar:
-            log(f"    [OKU ] EOS Doz: {ed.get('etkin','?')[:20]} | Doz: {ed.get('doz','')} | R:{ed.get('rapor_kodu','')}", "info")
+            etkin_v = ed.get('etkin', '') or ''
+            doz_v = ed.get('doz', '') or ''
+            rk_v = ed.get('rapor_kodu', '') or ''
+            if etkin_v.startswith('Etkin satır') and doz_v.startswith('Doz satır') and rk_v.startswith('Rapor Kodu satır'):
+                continue
+            log(f"    [OKU ] EOS Doz: {etkin_v[:20]} | Doz: {doz_v} | R:{rk_v}", "info")
 
     if sonuc["aciklamalar"]:
         log(f"    Rapor açıklama: {sonuc['aciklamalar'][0]}", "info")
     if sonuc["tanilar"]:
         log(f"    [OKU ] Rapor tanı: {sonuc['tanilar'][0]}", "info")
     if sonuc["dozlar"]:
-        log(f"    [OKU ] Rapor doz: {sonuc['dozlar'][0]}", "info")
+        if len(sonuc["dozlar"]) == 1:
+            log(f"    [OKU ] Rapor doz: {sonuc['dozlar'][0]}", "info")
+        else:
+            # Çoklu ilaçlı raporda [0] yanıltıcı — hepsini listele
+            log(f"    [OKU ] Rapor dozları ({len(sonuc['dozlar'])}): {' | '.join(sonuc['dozlar'])}", "info")
 
     rapor_geri_don(medula)
     return sonuc
@@ -3708,7 +3727,7 @@ def _ai_kod_yaz(kategori, ilac_adi, etkin_madde, rapor_kodu, mesaj_metni, acikla
 
     # 4. Claude'a yazdır
     log(f"  [AI] Claude kod yazıyor: {kategori}...", "info")
-    cikti = _ai_claude_calistir(prompt, timeout=300, dosya_yazabilir=True)
+    cikti = _ai_claude_calistir(prompt, timeout=900, dosya_yazabilir=True)
 
     if not cikti:
         log(f"  [AI] Kod yazma başarısız: {kategori}", "warn")
@@ -4434,21 +4453,18 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
     except:
         toplam_db = "?"
 
-    # Kontrol sonuçları özeti (DB'den)
+    # Kontrol sonuçları özeti (mevcut tarama — rapor_satirlari'ndan)
     toplam_uygun = 0
     toplam_uygunsuz = 0
     toplam_gecildi = 0
-    try:
-        cur.execute("SELECT genel_sonuc, COUNT(*) FROM kontrol_sonuclari WHERE grup = ? GROUP BY genel_sonuc", (grup,))
-        for row in cur.fetchall():
-            if row[0] == "UYGUN":
-                toplam_uygun = row[1]
-            elif row[0] == "UYGUNSUZ":
-                toplam_uygunsuz = row[1]
-            elif row[0] == "GECİLDİ":
-                toplam_gecildi = row[1]
-    except:
-        pass
+    for s in rapor_satirlari:
+        sonuc_v = s.get("sonuc", "")
+        if sonuc_v == "UYGUN":
+            toplam_uygun += 1
+        elif sonuc_v == "UYGUNSUZ":
+            toplam_uygunsuz += 1
+        elif sonuc_v == "GECİLDİ":
+            toplam_gecildi += 1
 
     conn.close()
 
