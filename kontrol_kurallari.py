@@ -317,9 +317,25 @@ def _db_baglan():
             ilk_gorulme_tarihi TEXT NOT NULL,
             son_gorulme_tarihi TEXT,
             gorulme_sayisi INTEGER DEFAULT 1,
+            sut_arastirildi_tarih TEXT,         -- AI ile SUT araştırma tarihi (6 ay TTL)
+            sut_kategori TEXT,                   -- Araştırma sonucu kategori
+            sut_aciklama TEXT,                   -- Araştırma açıklaması
             UNIQUE(ilac_adi)
         )
     """)
+    # Migration: eski tablolara yeni kolonları ekle
+    try:
+        conn.execute("ALTER TABLE ogrenilen_ilaclar ADD COLUMN sut_arastirildi_tarih TEXT")
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE ogrenilen_ilaclar ADD COLUMN sut_kategori TEXT")
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE ogrenilen_ilaclar ADD COLUMN sut_aciklama TEXT")
+    except Exception:
+        pass
 
     conn.commit()
     return conn
@@ -773,6 +789,56 @@ class OgrenilenIlaclar:
             (ilac_adi.strip().upper(),)
         ).fetchone()
         return dict(row) if row else None
+
+    def sut_arastirma_gerekli_mi(self, ilac_adi, ttl_gun=180):
+        """Bu ilaç için SUT araştırması gerekli mi?
+        - Kayıt yoksa: True (hiç araştırılmamış)
+        - Kayıt var ama sut_arastirildi_tarih boşsa: True
+        - Son araştırma > ttl_gun önce ise: True (güncel değil)
+        - Aksi halde: False (son ttl_gun içinde araştırılmış, DB değeri geçerli)
+        Returns: (arastir: bool, mevcut_kayit: dict|None)
+        """
+        kayit = self.ilac_bul(ilac_adi)
+        if not kayit:
+            return True, None
+        tarih_str = kayit.get("sut_arastirildi_tarih")
+        if not tarih_str:
+            return True, kayit
+        try:
+            son = datetime.fromisoformat(tarih_str)
+            gecen = (datetime.now() - son).days
+            if gecen > ttl_gun:
+                return True, kayit
+            return False, kayit
+        except Exception:
+            return True, kayit
+
+    def sut_arastirma_kaydet(self, ilac_adi, kategori, aciklama="", etkin_madde=None):
+        """AI tarafından yapılan SUT araştırmasının sonucunu kaydet (tarih damgası ile)."""
+        if not ilac_adi:
+            return
+        ilac_adi_upper = ilac_adi.strip().upper()
+        now = datetime.now().isoformat()
+        mevcut = self.ilac_bul(ilac_adi_upper)
+        if mevcut:
+            self.conn.execute("""
+                UPDATE ogrenilen_ilaclar
+                SET sut_arastirildi_tarih = ?,
+                    sut_kategori = ?,
+                    sut_aciklama = ?,
+                    farmakolojik_grup = COALESCE(?, farmakolojik_grup),
+                    etkin_madde = COALESCE(?, etkin_madde)
+                WHERE ilac_adi = ?
+            """, (now, kategori, aciklama, kategori, etkin_madde, ilac_adi_upper))
+        else:
+            self.conn.execute("""
+                INSERT INTO ogrenilen_ilaclar
+                (ilac_adi, etkin_madde, farmakolojik_grup, ilk_gorulme_tarihi,
+                 son_gorulme_tarihi, gorulme_sayisi,
+                 sut_arastirildi_tarih, sut_kategori, sut_aciklama)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+            """, (ilac_adi_upper, etkin_madde, kategori, now, now, now, kategori, aciklama))
+        self.conn.commit()
 
     def etkin_madde_ile_bul(self, etkin_madde):
         """Etkin maddeye göre tüm ilaçları bul."""

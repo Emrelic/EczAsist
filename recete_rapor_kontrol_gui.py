@@ -1726,6 +1726,19 @@ class ReceteRaporKontrolGUI:
         tumunu_btn.pack(fill="x", pady=(0, 8))
         self.tumunu_btn = tumunu_btn
 
+        # Duraklat / Devam Et toggle butonu
+        self.duraklatildi = False
+        self.duraklat_btn = tk.Button(
+            icerik_frame,
+            text="⏸ DURAKLAT",
+            font=("Segoe UI", 11, "bold"),
+            fg="white", bg="#F57C00", activebackground="#E65100",
+            bd=0, padx=15, pady=8, cursor="hand2",
+            state="disabled",
+            command=self._duraklat_toggle
+        )
+        self.duraklat_btn.pack(fill="x", pady=(0, 8))
+
         # Ayırıcı
         tk.Frame(icerik_frame, bg="#3D5A80", height=2).pack(fill="x", pady=3)
 
@@ -2458,6 +2471,13 @@ class ReceteRaporKontrolGUI:
             else:
                 btn.config(state="disabled")
         self.tumunu_btn.config(state="disabled")
+        # Duraklat butonu aktif
+        try:
+            self.duraklat_btn.config(state="normal", text="⏸ DURAKLAT",
+                                     bg="#F57C00", activebackground="#E65100")
+            self.duraklatildi = False
+        except Exception:
+            pass
 
     def _butonlari_normal_yap(self):
         """Tüm butonları normal haline döndür"""
@@ -2466,6 +2486,43 @@ class ReceteRaporKontrolGUI:
                       activebackground=btn._renk_hover, state="normal")
         self.tumunu_btn.config(text="TÜMÜNÜ KONTROL ET", bg="#00695C",
                               activebackground="#004D40", state="normal")
+        # Duraklat butonu pasif
+        try:
+            self.duraklat_btn.config(state="disabled", text="⏸ DURAKLAT",
+                                     bg="#F57C00", activebackground="#E65100")
+            self.duraklatildi = False
+        except Exception:
+            pass
+
+    def _duraklat_toggle(self):
+        """Subprocess'i duraklat/devam ettir (psutil.suspend/resume)"""
+        if not self._subprocess_proc:
+            self.log_yaz("Duraklatacak aktif tarama yok", "warning")
+            return
+        try:
+            import psutil
+            p = psutil.Process(self._subprocess_proc.pid)
+            if not self.duraklatildi:
+                # Alt süreçleri de duraklat
+                for c in p.children(recursive=True):
+                    try: c.suspend()
+                    except: pass
+                p.suspend()
+                self.duraklatildi = True
+                self.duraklat_btn.config(text="▶ DEVAM ET", bg="#388E3C",
+                                         activebackground="#1B5E20")
+                self.log_yaz("⏸ Tarama duraklatıldı", "warning")
+            else:
+                p.resume()
+                for c in p.children(recursive=True):
+                    try: c.resume()
+                    except: pass
+                self.duraklatildi = False
+                self.duraklat_btn.config(text="⏸ DURAKLAT", bg="#F57C00",
+                                         activebackground="#E65100")
+                self.log_yaz("▶ Tarama devam ediyor", "info")
+        except Exception as e:
+            self.log_yaz(f"Duraklat/Devam hatası: {e}", "error")
 
     def _grup_toggle(self, grup_kodu):
         """Grup butonu toggle - basınca başlat, tekrar basınca durdur"""
@@ -2492,8 +2549,9 @@ class ReceteRaporKontrolGUI:
         grup_adi = next((g["ad"] for g in GRUP_TANIMLARI if g["kod"] == grup_kodu), grup_kodu)
 
         # Combobox'ta seçili reçete var mı? (geri dönme)
+        # "Baştan başla" işaretliyse combobox seçimini yoksay
         secili_recete = None
-        if not acik_receteden and grup_kodu in self.recete_combolar:
+        if not acik_receteden and not self.bastan_var.get() and grup_kodu in self.recete_combolar:
             secim = self.recete_combolar[grup_kodu].get()
             if secim and "#" in secim:
                 try:
@@ -2549,12 +2607,14 @@ class ReceteRaporKontrolGUI:
                     cmd_args,
                     stdout=sp.PIPE, stderr=sp.STDOUT,
                     text=True, encoding="utf-8", errors="replace",
-                    cwd=PROJE_DIZINI
+                    cwd=PROJE_DIZINI,
+                    bufsize=1  # Satır-bazlı tamponlama — her satır geldiği anda GUI'ye aksın
                 )
                 self._subprocess_proc = proc
 
                 # stdout'u satır satır oku ve GUI log'a + terminale yaz
-                for line in proc.stdout:
+                # iter(readline, '') — default for-loop'un block-buffer davranışını önler
+                for line in iter(proc.stdout.readline, ''):
                     line = line.rstrip()
                     if not line:
                         continue
