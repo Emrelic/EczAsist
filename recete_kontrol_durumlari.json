@@ -1,13 +1,13 @@
 {
   "C": {
-    "son_recete": "",
-    "toplam_kontrol": 0,
-    "son_kontrol_tarihi": null
+    "son_recete": "3MAUGJZ",
+    "toplam_kontrol": 156,
+    "son_kontrol_tarihi": "2026-04-16T00:45:28.428547"
   },
   "A": {
-    "son_recete": "3LH87NZ",
-    "toplam_kontrol": 20,
-    "son_kontrol_tarihi": "2026-04-07T22:54:54.291863"
+    "son_recete": "3MLTJXQ",
+    "toplam_kontrol": 586,
+    "son_kontrol_tarihi": "2026-04-15T19:35:09.846427"
   },
   "GK": {
     "son_recete": "",
@@ -15,14 +15,18 @@
     "son_kontrol_tarihi": null
   },
   "B": {
-    "son_recete": "",
-    "toplam_kontrol": 0,
-    "son_kontrol_tarihi": null
+    "son_recete": "3M75K97",
+    "toplam_kontrol": 1,
+    "son_kontrol_tarihi": "2026-04-14T20:46:53.175916"
   },
   "CK": {
     "son_recete": "",
     "toplam_kontrol": 0,
     "son_kontrol_tarihi": null
   },
-  "_renkli_excel_dosya": "C:/Users/ana/OneDrive/Desktop/2.04.2026 Reçete Listesi.xlsx"
+  "_renkli_excel_dosya": {
+    "son_recete": "",
+    "toplam_kontrol": 0,
+    "son_kontrol_tarihi": null
+  }
 }
