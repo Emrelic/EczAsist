@@ -1,0 +1,53 @@
+{
+  "aktif_sablon": "Sancak ecza manuel",
+  "sablonlar": {
+    "Selçuk Ecza (Varsayılan)": {
+      "aciklama": "Selçuk Ecza Deposu standart Excel formatı (sistem varsayılanı)",
+      "header_satir": 0,
+      "veri_baslangic_offset": 0,
+      "sutunlar": {
+        "fatura_no": "Fatura No",
+        "tarih": "Tarih",
+        "fatura_tutari": "Fatura Tutarı",
+        "borc": "",
+        "alacak": "İade",
+        "tip": "Tip",
+        "aciklama": ""
+      },
+      "fatura_no_regex": "",
+      "duzenlenebilir": false
+    },
+    "Sancak Ecza": {
+      "aciklama": "Sancak Ecza Deposu — başlık 2. satırda, fatura no Açıklama içinde gömülü",
+      "header_satir": 1,
+      "veri_baslangic_offset": 1,
+      "sutunlar": {
+        "fatura_no": "Açıklama",
+        "tarih": "Tarih",
+        "fatura_tutari": "",
+        "borc": "Borç",
+        "alacak": "Alacak",
+        "tip": "Evrak",
+        "aciklama": "Açıklama"
+      },
+      "fatura_no_regex": "^([A-Za-z0-9]+)",
+      "duzenlenebilir": true
+    },
+    "Sancak ecza manuel": {
+      "aciklama": "",
+      "header_satir": 1,
+      "veri_baslangic_offset": 2,
+      "sutunlar": {
+        "fatura_no": "D",
+        "tarih": "A",
+        "fatura_tutari": "E",
+        "borc": "E",
+        "alacak": "F",
+        "tip": "B",
+        "aciklama": "D"
+      },
+      "fatura_no_regex": "D",
+      "duzenlenebilir": true
+    }
+  }
+}

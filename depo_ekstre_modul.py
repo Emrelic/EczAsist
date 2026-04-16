@@ -60,6 +60,12 @@ class DepoEkstreModul:
         # Filtre ayarları
         self.ekstre_filtreler = self._ekstre_filtre_yukle()
 
+        # Depo Excel şablonları (Selçuk varsayılan, Sancak vb. eklenebilir)
+        self.depo_sablonlari_data = self._depo_sablon_yukle()
+        self.aktif_depo_sablon = tk.StringVar(
+            value=self.depo_sablonlari_data.get('aktif_sablon', 'Selçuk Ecza (Varsayılan)')
+        )
+
         # Sonuçlar
         self.ekstre_sonuclar = None
 
@@ -175,6 +181,28 @@ class DepoEkstreModul:
             wraplength=250
         )
         self.file1_label.pack(fill="x")
+
+        # Depo Excel format şablonu seçici
+        sablon_row = tk.Frame(file1_frame, bg='#BBDEFB')
+        sablon_row.pack(fill="x", pady=(6, 0))
+        tk.Label(
+            sablon_row, text="📋 Format:", font=("Arial", 8, "bold"),
+            bg='#BBDEFB', fg='#0D47A1'
+        ).pack(side="left")
+        self.depo_sablon_combo = ttk.Combobox(
+            sablon_row, textvariable=self.aktif_depo_sablon,
+            values=list(self.depo_sablonlari_data.get('sablonlar', {}).keys()),
+            state="readonly", font=("Arial", 8), width=24
+        )
+        self.depo_sablon_combo.pack(side="left", padx=4)
+        self.depo_sablon_combo.bind(
+            "<<ComboboxSelected>>",
+            lambda e: self._depo_sablon_aktif_kaydet()
+        )
+        tk.Button(
+            sablon_row, text="⚙️", font=("Arial", 8), bg='#FF9800', fg='white',
+            cursor="hand2", bd=1, padx=4, command=self.depo_sablon_ayarlari_ac
+        ).pack(side="left", padx=2)
 
         # Dosya 2 - ECZANE OTOMASYONU (Sağ)
         file2_frame = tk.LabelFrame(
@@ -333,6 +361,432 @@ class DepoEkstreModul:
             logger.info("Filtre ayarları kaydedildi")
         except Exception as e:
             logger.error(f"Filtre ayarları kaydedilemedi: {e}")
+
+    # ========== DEPO EXCEL ŞABLON SİSTEMİ ==========
+
+    def _depo_sablon_dosya_yolu(self):
+        return os.path.join(os.path.dirname(__file__), 'depo_excel_sablonlari.json')
+
+    def _depo_sablon_yukle(self):
+        """Depo Excel şablonlarını JSON'dan yükle"""
+        varsayilan = {
+            "aktif_sablon": "Selçuk Ecza (Varsayılan)",
+            "sablonlar": {
+                "Selçuk Ecza (Varsayılan)": {
+                    "aciklama": "Sistem varsayılanı",
+                    "header_satir": 0,
+                    "veri_baslangic_offset": 0,
+                    "sutunlar": {
+                        "fatura_no": "Fatura No", "tarih": "Tarih",
+                        "borc": "Fatura Tutarı", "alacak": "İade", "tip": "Tip"
+                    },
+                    "fatura_no_regex": "",
+                    "duzenlenebilir": False
+                }
+            }
+        }
+        try:
+            yol = self._depo_sablon_dosya_yolu()
+            if os.path.exists(yol):
+                with open(yol, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.error(f"Depo şablonları yüklenemedi: {e}")
+        return varsayilan
+
+    def _depo_sablon_kaydet(self):
+        """Şablonları JSON'a kaydet"""
+        try:
+            with open(self._depo_sablon_dosya_yolu(), 'w', encoding='utf-8') as f:
+                json.dump(self.depo_sablonlari_data, f, ensure_ascii=False, indent=2)
+            logger.info("Depo şablonları kaydedildi")
+        except Exception as e:
+            logger.error(f"Depo şablonları kaydedilemedi: {e}")
+
+    def _depo_sablon_aktif_kaydet(self):
+        self.depo_sablonlari_data['aktif_sablon'] = self.aktif_depo_sablon.get()
+        self._depo_sablon_kaydet()
+
+    def _depo_sablon_combo_yenile(self):
+        if hasattr(self, 'depo_sablon_combo'):
+            self.depo_sablon_combo['values'] = list(
+                self.depo_sablonlari_data.get('sablonlar', {}).keys()
+            )
+
+    def _excel_oku_guvenli(self, dosya_yolu, header_satir=0):
+        """
+        Excel okuma — openpyxl bozuk styles.xml hatasında raw XML fallback.
+        Sancak gibi bozuk xlsx dosyalarını da okuyabilir.
+        """
+        import pandas as pd
+        try:
+            return pd.read_excel(dosya_yolu, header=header_satir)
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Standart Excel okuma başarısız ({e}), raw XML fallback deneniyor")
+            return self._xlsx_raw_xml_oku(dosya_yolu, header_satir)
+
+    def _xlsx_raw_xml_oku(self, dosya_yolu, header_satir=0):
+        """Bozuk xlsx için ham XML parser (inlineStr + sharedStrings desteği)"""
+        import zipfile
+        import pandas as pd
+        from xml.etree import ElementTree as ET
+
+        ns = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+        ns_t = '{http://schemas.openxmlformats.org/spreadsheetml/2006/main}'
+
+        with zipfile.ZipFile(dosya_yolu) as z:
+            shared = []
+            if 'xl/sharedStrings.xml' in z.namelist():
+                ss_root = ET.fromstring(z.read('xl/sharedStrings.xml').decode('utf-8'))
+                for si in ss_root.findall(f'{ns_t}si'):
+                    shared.append(''.join(t.text or '' for t in si.iter(f'{ns_t}t')))
+            sheet_path = next(
+                (n for n in z.namelist() if n.startswith('xl/worksheets/sheet') and n.endswith('.xml')),
+                'xl/worksheets/sheet1.xml'
+            )
+            sheet = ET.fromstring(z.read(sheet_path).decode('utf-8'))
+
+        def col_idx(ref):
+            letters = ''.join(c for c in ref if c.isalpha())
+            n = 0
+            for c in letters:
+                n = n * 26 + (ord(c.upper()) - ord('A') + 1)
+            return n - 1
+
+        rows = []
+        for row in sheet.iter(f'{ns_t}row'):
+            row_data = {}
+            for c in row.findall(f'{ns_t}c'):
+                ref = c.get('r', '')
+                t = c.get('t', '')
+                val = ''
+                if t == 'inlineStr':
+                    isn = c.find(f'{ns_t}is')
+                    if isn is not None:
+                        val = ''.join((tt.text or '') for tt in isn.iter(f'{ns_t}t'))
+                elif t == 's':
+                    v = c.find(f'{ns_t}v')
+                    if v is not None and v.text:
+                        try:
+                            val = shared[int(v.text)]
+                        except Exception:
+                            val = v.text
+                else:
+                    v = c.find(f'{ns_t}v')
+                    val = v.text if v is not None else ''
+                row_data[col_idx(ref)] = val
+            rows.append(row_data)
+
+        if not rows:
+            return pd.DataFrame()
+        max_col = max((max(r.keys()) for r in rows if r), default=0) + 1
+        matrix = [[r.get(i, '') for i in range(max_col)] for r in rows]
+
+        if header_satir >= len(matrix):
+            return pd.DataFrame(matrix)
+        headers = [str(h) if h not in (None, '') else f'col{i}' for i, h in enumerate(matrix[header_satir])]
+        data = matrix[header_satir + 1:]
+        df = pd.DataFrame(data, columns=headers)
+        # Sayısal kolonları çevir (TR format: 1.234,56 → 1234.56; ASCII format korunur)
+        def _sayi_cevir(s):
+            s = str(s).strip()
+            if not s:
+                return s
+            if ',' in s:
+                # Türkçe sayı: noktalar binlik, virgül ondalık
+                s = s.replace('.', '').replace(',', '.')
+            try:
+                return float(s)
+            except Exception:
+                return s
+        for col in df.columns:
+            converted = df[col].apply(_sayi_cevir)
+            if converted.apply(lambda x: isinstance(x, float)).any():
+                df[col] = converted
+        return df
+
+    def _depo_sablon_uygula(self, df, sablon):
+        """
+        Şablonu DataFrame'e uygular: sütun adlarını sistem alanlarına eşler,
+        fatura_no için regex ile çıkarım yapar. Yeni DataFrame döner.
+        """
+        import pandas as pd
+        import re
+
+        sutunlar = sablon.get('sutunlar', {})
+        offset = sablon.get('veri_baslangic_offset', 0)
+        if offset > 0 and len(df) > offset:
+            df = df.iloc[offset:].reset_index(drop=True)
+
+        yeni = pd.DataFrame()
+        # Standart sistem alanları → şablonda tanımlanan kaynak sütunları
+        alan_map = {
+            'fatura_no': 'Fatura No',
+            'tarih': 'Tarih',
+            'fatura_tutari': 'Fatura Tutarı',
+            'borc': 'Borç',
+            'alacak': 'İade',
+            'tip': 'Tip',
+            'aciklama': 'Açıklama',
+        }
+        for sistem_alan, hedef_kolon in alan_map.items():
+            kaynak = sutunlar.get(sistem_alan, '')
+            if kaynak and kaynak in df.columns:
+                yeni[hedef_kolon] = df[kaynak]
+            else:
+                yeni[hedef_kolon] = ''
+
+        # Fatura Tutarı öncelikli; yoksa Borç kullan (eşleştirme tek alan üzerinden gider)
+        def _bos_mu(seri):
+            try:
+                return seri.astype(str).str.strip().replace('nan', '').eq('').all()
+            except Exception:
+                return True
+        if _bos_mu(yeni['Fatura Tutarı']) and not _bos_mu(yeni['Borç']):
+            yeni['Fatura Tutarı'] = yeni['Borç']
+
+        # Fatura no regex çıkarımı (Sancak: Açıklama'dan kod)
+        regex = sablon.get('fatura_no_regex', '')
+        if regex:
+            try:
+                pat = re.compile(regex)
+                yeni['Fatura No'] = yeni['Fatura No'].astype(str).apply(
+                    lambda s: (pat.search(s).group(1) if pat.search(s) and pat.search(s).groups()
+                               else (pat.search(s).group(0) if pat.search(s) else s))
+                )
+            except Exception as e:
+                logger.error(f"Fatura no regex hatası: {e}")
+        return yeni
+
+    def depo_sablon_ayarlari_ac(self):
+        """Depo Excel şablon yönetim penceresi"""
+        pencere = tk.Toplevel(self.root)
+        pencere.title("📋 Depo Excel Format Şablonları")
+        pencere.geometry("700x500")
+        pencere.configure(bg='#ECEFF1')
+
+        tk.Label(
+            pencere, text="📋 Depo Excel Format Şablonları",
+            font=("Arial", 13, "bold"), bg='#ECEFF1', fg='#1565C0'
+        ).pack(pady=10)
+        tk.Label(
+            pencere,
+            text="Farklı depoların Excel formatlarını şablon olarak kaydedip kullanabilirsiniz.",
+            font=("Arial", 9), bg='#ECEFF1', fg='#37474F'
+        ).pack(pady=(0, 10))
+
+        list_frame = tk.Frame(pencere, bg='#ECEFF1')
+        list_frame.pack(fill="both", expand=True, padx=20, pady=5)
+
+        listbox = tk.Listbox(list_frame, font=("Arial", 10), height=10)
+        listbox.pack(side="left", fill="both", expand=True)
+        sb = tk.Scrollbar(list_frame, command=listbox.yview)
+        sb.pack(side="right", fill="y")
+        listbox.config(yscrollcommand=sb.set)
+
+        def listele():
+            listbox.delete(0, tk.END)
+            for ad in self.depo_sablonlari_data.get('sablonlar', {}).keys():
+                isaret = "★ " if ad == self.aktif_depo_sablon.get() else "   "
+                listbox.insert(tk.END, f"{isaret}{ad}")
+        listele()
+
+        def secili_ad():
+            sel = listbox.curselection()
+            if not sel:
+                return None
+            return listbox.get(sel[0]).replace("★ ", "").strip()
+
+        def yeni_sablon():
+            self._sablon_duzenle_pencere(None, listele)
+
+        def duzenle():
+            ad = secili_ad()
+            if not ad:
+                messagebox.showinfo("Bilgi", "Önce bir şablon seçin")
+                return
+            self._sablon_duzenle_pencere(ad, listele)
+
+        def sil():
+            ad = secili_ad()
+            if not ad:
+                return
+            sablon = self.depo_sablonlari_data['sablonlar'].get(ad, {})
+            if not sablon.get('duzenlenebilir', True):
+                messagebox.showwarning("Uyarı", f"'{ad}' varsayılan şablondur, silinemez.")
+                return
+            if messagebox.askyesno("Sil", f"'{ad}' şablonunu silmek istiyor musunuz?"):
+                del self.depo_sablonlari_data['sablonlar'][ad]
+                if self.aktif_depo_sablon.get() == ad:
+                    self.aktif_depo_sablon.set("Selçuk Ecza (Varsayılan)")
+                self._depo_sablon_kaydet()
+                self._depo_sablon_combo_yenile()
+                listele()
+
+        def aktif_yap():
+            ad = secili_ad()
+            if not ad:
+                return
+            self.aktif_depo_sablon.set(ad)
+            self._depo_sablon_aktif_kaydet()
+            listele()
+
+        btn_frame = tk.Frame(pencere, bg='#ECEFF1')
+        btn_frame.pack(fill="x", padx=20, pady=10)
+        for txt, cmd, color in [
+            ("➕ Yeni Şablon", yeni_sablon, '#388E3C'),
+            ("✏️ Düzenle", duzenle, '#1976D2'),
+            ("⭐ Aktif Yap", aktif_yap, '#F57C00'),
+            ("🗑️ Sil", sil, '#D32F2F'),
+            ("Kapat", pencere.destroy, '#455A64'),
+        ]:
+            tk.Button(btn_frame, text=txt, command=cmd, font=("Arial", 9, "bold"),
+                      bg=color, fg='white', padx=10, pady=5, cursor="hand2"
+                      ).pack(side="left", padx=4)
+
+    def _sablon_duzenle_pencere(self, sablon_adi, refresh_callback):
+        """Şablon ekleme/düzenleme penceresi — örnek Excel'den sütun seçimi"""
+        import pandas as pd
+
+        is_yeni = sablon_adi is None
+        mevcut = {} if is_yeni else self.depo_sablonlari_data['sablonlar'].get(sablon_adi, {})
+
+        win = tk.Toplevel(self.root)
+        win.title(f"{'Yeni' if is_yeni else 'Düzenle'} — Depo Excel Şablonu")
+        win.geometry("650x600")
+        win.configure(bg='#FAFAFA')
+
+        # Şablon adı
+        tk.Label(win, text="Şablon Adı:", font=("Arial", 10, "bold"),
+                 bg='#FAFAFA').pack(anchor="w", padx=15, pady=(10, 2))
+        ad_var = tk.StringVar(value=sablon_adi or "")
+        tk.Entry(win, textvariable=ad_var, font=("Arial", 10), width=50
+                 ).pack(anchor="w", padx=15)
+
+        # Header satır numarası
+        hr_frame = tk.Frame(win, bg='#FAFAFA')
+        hr_frame.pack(anchor="w", padx=15, pady=(10, 2), fill="x")
+        tk.Label(hr_frame, text="Başlık satırı (0=ilk satır):",
+                 font=("Arial", 10, "bold"), bg='#FAFAFA').pack(side="left")
+        header_var = tk.IntVar(value=mevcut.get('header_satir', 0))
+        tk.Spinbox(hr_frame, from_=0, to=20, textvariable=header_var,
+                   width=5, font=("Arial", 10)).pack(side="left", padx=5)
+
+        offset_frame = tk.Frame(win, bg='#FAFAFA')
+        offset_frame.pack(anchor="w", padx=15, pady=2, fill="x")
+        tk.Label(offset_frame, text="Veri başlangıç offset (atlanacak satır):",
+                 font=("Arial", 10, "bold"), bg='#FAFAFA').pack(side="left")
+        offset_var = tk.IntVar(value=mevcut.get('veri_baslangic_offset', 0))
+        tk.Spinbox(offset_frame, from_=0, to=20, textvariable=offset_var,
+                   width=5, font=("Arial", 10)).pack(side="left", padx=5)
+
+        # Örnek Excel yükleme + sütun listesi
+        kolon_listesi = tk.StringVar(value="(Örnek Excel yükleyin)")
+        sutunlar_state = {'liste': []}
+
+        # Sistem alanları için combobox'lar
+        sis_frame = tk.LabelFrame(
+            win, text="🔗 Sistem Alanı → Excel Sütunu Eşlemesi",
+            font=("Arial", 10, "bold"), bg='#FAFAFA', fg='#1565C0', padx=10, pady=10
+        )
+        sis_frame.pack(fill="x", padx=15, pady=10)
+
+        alan_widgets = {}
+        sistem_alanlari = [
+            ('fatura_no', 'Fatura No (zorunlu)'),
+            ('tarih', 'Fatura Tarihi'),
+            ('fatura_tutari', 'Fatura Tutarı'),
+            ('borc', 'Borç'),
+            ('alacak', 'Alacak / İade'),
+            ('tip', 'İşlem Tipi / Tür'),
+            ('aciklama', 'Açıklama'),
+        ]
+        mevcut_sutunlar = mevcut.get('sutunlar', {})
+        for i, (alan, etiket) in enumerate(sistem_alanlari):
+            tk.Label(sis_frame, text=etiket + ":", font=("Arial", 9),
+                     bg='#FAFAFA').grid(row=i, column=0, sticky="w", pady=3)
+            v = tk.StringVar(value=mevcut_sutunlar.get(alan, ''))
+            cb = ttk.Combobox(sis_frame, textvariable=v, width=35,
+                              font=("Arial", 9))
+            cb.grid(row=i, column=1, sticky="w", padx=8, pady=3)
+            alan_widgets[alan] = (v, cb)
+
+        # Fatura no regex
+        rg_frame = tk.Frame(win, bg='#FAFAFA')
+        rg_frame.pack(fill="x", padx=15, pady=5)
+        tk.Label(rg_frame, text="Fatura No Regex (boş = sütunu olduğu gibi al):",
+                 font=("Arial", 9, "bold"), bg='#FAFAFA').pack(anchor="w")
+        regex_var = tk.StringVar(value=mevcut.get('fatura_no_regex', ''))
+        tk.Entry(rg_frame, textvariable=regex_var, font=("Consolas", 9),
+                 width=60).pack(anchor="w", pady=2)
+        tk.Label(rg_frame,
+                 text='Örn: ^([A-Za-z0-9]+)  →  "SNC2026000106127-ECZ..." → "SNC2026000106127"',
+                 font=("Arial", 8), bg='#FAFAFA', fg='#666').pack(anchor="w")
+
+        def ornek_yukle():
+            yol = filedialog.askopenfilename(
+                title="Örnek Excel Seç",
+                filetypes=[("Excel", "*.xlsx *.xls")]
+            )
+            if not yol:
+                return
+            try:
+                df = self._excel_oku_guvenli(yol, header_satir=header_var.get())
+                kolonlar = [str(c) for c in df.columns]
+                sutunlar_state['liste'] = kolonlar
+                kolon_listesi.set(f"✓ {len(kolonlar)} sütun bulundu: " + ", ".join(kolonlar[:6]) + ("..." if len(kolonlar) > 6 else ""))
+                for v, cb in alan_widgets.values():
+                    cb['values'] = [''] + kolonlar
+            except Exception as e:
+                messagebox.showerror("Hata", f"Excel okunamadı: {e}")
+
+        oy_frame = tk.Frame(win, bg='#FAFAFA')
+        oy_frame.pack(fill="x", padx=15, pady=5)
+        tk.Button(oy_frame, text="📂 Örnek Excel Yükle (sütun adlarını çek)",
+                  command=ornek_yukle, font=("Arial", 9, "bold"),
+                  bg='#1976D2', fg='white', cursor="hand2", padx=10, pady=4
+                  ).pack(side="left")
+        tk.Label(oy_frame, textvariable=kolon_listesi, font=("Arial", 8),
+                 bg='#FAFAFA', fg='#388E3C', wraplength=400, justify="left"
+                 ).pack(side="left", padx=10)
+
+        def kaydet():
+            yeni_ad = ad_var.get().strip()
+            if not yeni_ad:
+                messagebox.showwarning("Uyarı", "Şablon adı boş olamaz")
+                return
+            if not alan_widgets['fatura_no'][0].get():
+                messagebox.showwarning("Uyarı", "Fatura No sütunu zorunludur")
+                return
+            yeni_sablon = {
+                "aciklama": mevcut.get('aciklama', ''),
+                "header_satir": header_var.get(),
+                "veri_baslangic_offset": offset_var.get(),
+                "sutunlar": {alan: v.get() for alan, (v, _) in alan_widgets.items()},
+                "fatura_no_regex": regex_var.get(),
+                "duzenlenebilir": True
+            }
+            # Eski adı sil (yeniden adlandırma)
+            if not is_yeni and yeni_ad != sablon_adi:
+                self.depo_sablonlari_data['sablonlar'].pop(sablon_adi, None)
+            self.depo_sablonlari_data['sablonlar'][yeni_ad] = yeni_sablon
+            self._depo_sablon_kaydet()
+            self._depo_sablon_combo_yenile()
+            if refresh_callback:
+                refresh_callback()
+            messagebox.showinfo("Kaydedildi", f"'{yeni_ad}' şablonu kaydedildi")
+            win.destroy()
+
+        btn_frame = tk.Frame(win, bg='#FAFAFA')
+        btn_frame.pack(side="bottom", fill="x", padx=15, pady=10)
+        tk.Button(btn_frame, text="💾 Kaydet", command=kaydet,
+                  font=("Arial", 10, "bold"), bg='#388E3C', fg='white',
+                  padx=20, pady=6, cursor="hand2").pack(side="right", padx=5)
+        tk.Button(btn_frame, text="İptal", command=win.destroy,
+                  font=("Arial", 10), bg='#757575', fg='white',
+                  padx=15, pady=6, cursor="hand2").pack(side="right")
+
+    # ========== /DEPO EXCEL ŞABLON SİSTEMİ ==========
 
     def ekstre_filtre_ayarlari_ac(self):
         """Filtre ayarları penceresini aç"""
@@ -628,7 +1082,17 @@ class DepoEkstreModul:
             return
 
         try:
-            df_depo = pd.read_excel(dosya1)
+            # Aktif depo şablonunu uygula
+            sablon_adi = self.aktif_depo_sablon.get()
+            sablon = self.depo_sablonlari_data.get('sablonlar', {}).get(sablon_adi, {})
+            header_satir = sablon.get('header_satir', 0)
+            df_depo_raw = self._excel_oku_guvenli(dosya1, header_satir=header_satir)
+            if sablon and sablon.get('sutunlar'):
+                df_depo = self._depo_sablon_uygula(df_depo_raw, sablon)
+                logger.info(f"Depo şablonu uygulandı: '{sablon_adi}' (header={header_satir})")
+            else:
+                df_depo = df_depo_raw
+
             df_eczane = pd.read_excel(dosya2)
             self._ekstre_sonuc_penceresi_olustur(df_depo, df_eczane, dosya1, dosya2)
 
