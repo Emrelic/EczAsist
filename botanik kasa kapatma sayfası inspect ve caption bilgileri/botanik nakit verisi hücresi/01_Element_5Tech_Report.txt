@@ -1,0 +1,68 @@
+﻿================================================================================
+           ELEMENT RAPORU - 5 TEKNOLOJI ILE TAM ANALIZ
+           Tarih: 2025-12-20 21:26:06
+           Pozisyon: X=1288, Y=481
+================================================================================
+
+### UI AUTOMATİON ###
+------------------------------------------------------------
+  Name: Islem Tutar4String satır 14
+  AutomationId: 
+  ClassName: 
+  ControlType: ControlType.Custom
+  LocalizedControlType: 
+  ElementType: 
+
+  Konum: X=1256, Y=472
+  Boyut: 66x18
+  BoundingRect: 1256;472;66;18
+
+  IsVisible: True
+  IsEnabled: True
+  IsOffscreen: False
+  HasKeyboardFocus: True
+
+  [SELECTORS]
+
+
+### WİN32 API ###
+------------------------------------------------------------
+  Name: 
+  AutomationId: 
+  ClassName: WindowsForms10.Window.8.app.0.2dac507_r8_ad1
+  ControlType: 
+  LocalizedControlType: 
+  ElementType: WinForms Control
+
+  Konum: X=517, Y=224
+  Boyut: 823x539
+  BoundingRect: 517;224;823;539
+
+  IsVisible: True
+  IsEnabled: True
+  IsOffscreen: False
+  HasKeyboardFocus: False
+
+  WindowHandle: 0x15075C
+  WindowTitle: 
+  WindowClassName: WindowsForms10.Window.8.app.0.2dac507_r8_ad1
+  ProcessId: 5220
+
+  [SELECTORS]
+
+
+### WEBVİEW2/CDP ###
+------------------------------------------------------------
+  [Bu noktada tespit yapilamadi]
+
+### MSHTML ###
+------------------------------------------------------------
+  [Bu noktada tespit yapilamadi]
+
+### PLAYWRİGHT ###
+------------------------------------------------------------
+  [Playwright atlandi - manuel mod gerektirir]
+
+================================================================================
+OZET: 2 teknolojiden veri toplandi
+================================================================================

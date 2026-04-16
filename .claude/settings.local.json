@@ -126,7 +126,9 @@
       "WebFetch(domain:eczacidergisi.com.tr)",
       "WebFetch(domain:www.beo.org.tr)",
       "WebFetch(domain:www.teis.org.tr)",
-      "WebFetch(domain:www.vaneczaciodasi.org.tr)"
+      "WebFetch(domain:www.vaneczaciodasi.org.tr)",
+      "Bash(sqlite3 \"C:\\\\Users\\\\ana\\\\OneDrive\\\\Desktop\\\\BOT takip 20\\\\kontrol_kurallari.db\" \".schema\")",
+      "Bash(sqlite3:*)"
     ],
     "deny": [],
     "ask": []

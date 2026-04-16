@@ -1,0 +1,26 @@
+﻿================================================================================
+              UI ELEMENT INSPECTOR - TAM YAKALAMA OZETI
+              Tarih: 2025-12-20 21:24:17
+================================================================================
+
+Mouse Pozisyonu: X=1192, Y=422
+Kaydedilen Dosya Sayisi: 4
+
+DOSYALAR:
+  01_Element_5Tech_Report.txt  - 5 Teknoloji ile element ozellikleri
+  02_Page_Structure_ElementList.txt - Sayfa yapisi ve element listesi
+  03_SourceCode.html           - Web sayfasi kaynak kodu (varsa)
+  04_Screenshot_FullScreen.png - Tum ekran goruntusu
+  05_Screenshot_Window.png     - Elementin bulundugu pencere goruntusu
+  06_Screenshot_Element.png    - Secilen elementin goruntusu (varsa)
+
+KISAYOL TUSLARI:
+  F1  = Start Inspection (Pencere Gizlenir)
+  F2  = Stop Inspection
+  F3  = Start Inspection (Pencere Gorunur)
+  F4  = DEKLANSOR (Basili Tut = Aktif)
+  F5  = Refresh Element
+  F6  = Masaustu + Arsiv (TXT Rapor)
+  F7  = TAM YAKALAMA (Masaustu + Arsiv)
+  F8  = SADECE ARSIV (Tam Yakalama)
+  Ctrl+S = Hizli Export

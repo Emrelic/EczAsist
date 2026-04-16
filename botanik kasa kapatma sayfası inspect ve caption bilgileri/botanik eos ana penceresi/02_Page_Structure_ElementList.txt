@@ -1,0 +1,859 @@
+﻿================================================================================
+           SAYFA YAPISI VE ELEMENT LISTESI
+           Tarih: 2025-12-20 21:51:02
+================================================================================
+
+Pencere Handle: 0xA0C38
+Pencere Basligi: BotanikEOS 2.1.207.0 Emre Gökmen (T)
+Pencere Sinifi: WindowsForms10.Window.8.app.0.2dac507_r8_ad1
+
+ELEMENT LISTESI (UI Automation)
+================================================================================
+
+No    ControlType               Name                 AutomationId    ClassName
+----------------------------------------------------------------------------------------------------
+1     ControlType.Window        BotanikEOS 2.1.207.0 E... BotanikMdi      WindowsForms10.Windo...
+2     ControlType.Button        Talep İstek          btnTalepIste... WindowsForms10.Windo...
+3     ControlType.Button                             btnMiniYazar... WindowsForms10.Windo...
+4     ControlType.Button                             btnFaceBook     WindowsForms10.Windo...
+5     ControlType.Button                             btnWatsappGi... WindowsForms10.Windo...
+6     ControlType.Button                             btnVideo        WindowsForms10.Windo...
+7     ControlType.Button        ERx                  btnERecetele... WindowsForms10.Windo...
+8     ControlType.ToolBar       toolStrip2           tsBilgiBari     WindowsForms10.Windo...
+9     ControlType.ComboBox      Yetkiniz yok (Saat 21:... 1378502         WindowsForms10.COMBO...
+10    ControlType.Edit          Yetkiniz yok (Saat 21:... 1001            Edit
+11    ControlType.List                               ListBox         ComboLBox
+12    ControlType.ListItem      Yetkiniz yok (Saat 21:...                 
+13    ControlType.Button        Açılır Düğme         DropDown        
+14    ControlType.Custom        Tutma                                
+15    ControlType.ComboBox                                           
+16    ControlType.Button        Aç                                   
+17    ControlType.ToolBar       toolStrip1           toolStrip1      WindowsForms10.Windo...
+18    ControlType.Custom        Tutma                                
+19    ControlType.Button        Yeni Satış                           
+20    ControlType.Button        DermoStş                             
+21    ControlType.Button        Sipariş                              
+22    ControlType.Button        Reçeteler                            
+23    ControlType.Button        Perakndlr                            
+24    ControlType.Button        Takas Oku                            
+25    ControlType.Button        CARİ                                 
+26    ControlType.Button        MEDULA                               
+27    ControlType.Button        MedulaFx                             
+28    ControlType.Button        Özel Krm                             
+29    ControlType.Button        1                                    
+30    ControlType.Button        7
+2
+1                              
+31    ControlType.Button        KK Sor                               
+32    ControlType.Button        Dikkat                               
+33    ControlType.Button        0                                    
+34    ControlType.Button        152
+113                             
+35    ControlType.Button        YzrKasa                              
+36    ControlType.Button        BotRAS                               
+37    ControlType.Button        YetkiKapat                           
+38    ControlType.Button        Ajanda                               
+39    ControlType.Button        ÇEK                                  
+40    ControlType.Button        Video                                
+41    ControlType.Button        Uzak Yard                            
+42    ControlType.Button        FaturaOku                            
+43    ControlType.Button        Emanetler                            
+44    ControlType.MenuBar       EczaneMenu           menuStrip1      WindowsForms10.Windo...
+45    ControlType.MenuItem      Kartlar                              
+46    ControlType.MenuItem      Benim Eczanem                        
+47    ControlType.MenuItem      Ürün Kartı Ekleme Tale...                 
+48    ControlType.MenuItem      Ürün ve Barkod Taleple...                 
+49    ControlType.MenuItem      Hasta Kartı                          
+50    ControlType.MenuItem      Kurum Kartı                          
+51    ControlType.MenuItem      Depo Kartı                           
+52    ControlType.MenuItem      Doktor Kartı                         
+53    ControlType.MenuItem      Eczane Kartları                      
+54    ControlType.MenuItem      Personel Kartı                       
+55    ControlType.MenuItem      Banka Kartı                          
+56    ControlType.MenuItem      Kategoriler                          
+57    ControlType.MenuItem      Hastaneler                           
+58    ControlType.MenuItem      EFatura Entegrator                   
+59    ControlType.MenuItem      Fatura Başlık Kartı                  
+60    ControlType.MenuItem      Firmacı                              
+61    ControlType.MenuItem      507 Terminal KartTanım...                 
+62    ControlType.MenuItem      Reçete İşlemleri                     
+63    ControlType.MenuItem      Reçete ve Perakende İT...                 
+64    ControlType.MenuItem      Reçete Formları                      
+65    ControlType.MenuItem      Psikotrop Defteri                    
+66    ControlType.MenuItem      FarmaInBox Girişi                    
+67    ControlType.MenuItem      Deneme Reçeteleri                    
+68    ControlType.Separator                                          
+69    ControlType.MenuItem      Renkli Reçete Giriş                  
+70    ControlType.MenuItem      Renkli Reçete Karekod ...                 
+71    ControlType.Separator                                          
+72    ControlType.MenuItem      Medikal Reçete Giriş                 
+73    ControlType.MenuItem      Medikal Dönem Sonlandı...                 
+74    ControlType.Separator                                          
+75    ControlType.MenuItem      Cetas Reçete Girişi                  
+76    ControlType.MenuItem      Cetas Reçete Listesi                 
+77    ControlType.MenuItem      Cetas Faturalanacak Re...                 
+78    ControlType.MenuItem      Cetas Fatura Listesi                 
+79    ControlType.MenuItem      Cetas İcmale Gönderile...                 
+80    ControlType.MenuItem      Cetas İcmal Listesi                  
+81    ControlType.MenuItem      Fatura İşlemleri                     
+82    ControlType.MenuItem      EFatura Okuma                        
+83    ControlType.MenuItem      Fatura Kontrol                       
+84    ControlType.MenuItem      Giriş Faturası Oluştur                 
+85    ControlType.MenuItem      Çıkış/İade Faturası Ol...                 
+86    ControlType.MenuItem      Fatura Listesi                       
+87    ControlType.MenuItem      Silinen Faturalar                    
+88    ControlType.Separator                                          
+89    ControlType.MenuItem      Depo Ekstreleri                      
+90    ControlType.MenuItem      Depo Özet Ekstre                     
+91    ControlType.MenuItem      Verilen Evraklar                     
+92    ControlType.Separator                                          
+93    ControlType.MenuItem      Kurum Faturası                       
+94    ControlType.MenuItem      Fatura İade İşlemleri                 
+95    ControlType.MenuItem      Renkli Faturalar                     
+96    ControlType.MenuItem      Medula EFatura Kes                   
+97    ControlType.MenuItem      Cari Hesap İşlemleri                 
+98    ControlType.Separator                                          
+99    ControlType.MenuItem      Kesilen Kurum Faturala...                 
+100   ControlType.MenuItem      Kesilen EFaturalar                   
+101   ControlType.MenuItem      Portaldan Kullanılan E...                 
+102   ControlType.MenuItem      Takas İşlemleri                      
+103   ControlType.MenuItem      Takas Paketleri                      
+104   ControlType.MenuItem      Takas Hesaplaşma                     
+105   ControlType.MenuItem      Silinen Takaslar                     
+106   ControlType.MenuItem      Kapatılan Takaslar                   
+107   ControlType.MenuItem      Eczane Yardım                        
+108   ControlType.MenuItem      Ayarlar                              
+109   ControlType.MenuItem      Yazarkasa Ayarları                   
+110   ControlType.MenuItem      Tarif Etiketi Tasarımı                 
+111   ControlType.MenuItem      Hasta/Kasa Fişi Ayarla...                 
+112   ControlType.MenuItem      Emanet Etiketi Tasarım...                 
+113   ControlType.Separator                                          
+114   ControlType.MenuItem      Stok İşlemleri                       
+115   ControlType.MenuItem      ITS Karekod Stok Konto...                 
+116   ControlType.MenuItem      Stok Kontrol (Mevcut S...                 
+117   ControlType.MenuItem      Stok Sayım Kontrolleri                 
+118   ControlType.MenuItem      Aktif Karekod ITS Pane...                 
+119   ControlType.MenuItem      Manuel Miad Temizleme                 
+120   ControlType.MenuItem      Stok Hareket Sorgulama                 
+121   ControlType.Separator                                          
+122   ControlType.Separator                                          
+123   ControlType.Separator                                          
+124   ControlType.MenuItem      Stok Sıfırla (SADECE S...                 
+125   ControlType.MenuItem      Mesaj Renkleri                       
+126   ControlType.MenuItem      Döviz Kurları                        
+127   ControlType.MenuItem      Depocu Fiyatı Hesaplam...                 
+128   ControlType.MenuItem      Karekodsuz Miad Girişi                 
+129   ControlType.MenuItem      Çözelti Hesaplama                    
+130   ControlType.MenuItem      Medula Reçete Grupları                 
+131   ControlType.Separator                                          
+132   ControlType.MenuItem      Matbu Formlar                        
+133   ControlType.MenuItem      Botanik Fiyat Öneriler...                 
+134   ControlType.MenuItem      Ürün Bilgi Düzenleme                 
+135   ControlType.MenuItem      Ürün Bilgileri                       
+136   ControlType.MenuItem      Raf Düzenleme                        
+137   ControlType.MenuItem      Kampanya Tanımlama                   
+138   ControlType.MenuItem      Kampanyalı Ürünler                   
+139   ControlType.MenuItem      UTS Paneli                           
+140   ControlType.MenuItem      İhale İşlemleri                      
+141   ControlType.MenuItem      KDV - Fiyat Değiştirme                 
+142   ControlType.MenuItem      Kasa                                 
+143   ControlType.MenuItem      Başlangıç Kasası                     
+144   ControlType.MenuItem      Kasa Kapama                          
+145   ControlType.MenuItem      Masraf Girişi                        
+146   ControlType.MenuItem      Hızlı Masraf Girişi                  
+147   ControlType.Separator                                          
+148   ControlType.MenuItem      Tahsilat Listesi                     
+149   ControlType.MenuItem      Yazılan Para Listesi                 
+150   ControlType.MenuItem      Masraf Listesi                       
+151   ControlType.MenuItem      Pos Listesi                          
+152   ControlType.MenuItem      Günlük İşlemler                      
+153   ControlType.MenuItem      Raporlar                             
+154   ControlType.MenuItem      Genel Rapor                          
+155   ControlType.MenuItem      Personel Hareketleri                 
+156   ControlType.MenuItem      Satış Saat veya Adet G...                 
+157   ControlType.MenuItem      Envanter                             
+158   ControlType.MenuItem      Ürün Çıkış Raporu Özet                 
+159   ControlType.MenuItem      Ürün Çıkıs Raporu Deta...                 
+160   ControlType.Separator                                          
+161   ControlType.MenuItem      Tüm Raporlar                         
+162   ControlType.Separator                                          
+163   ControlType.MenuItem      Hasta                                
+164   ControlType.MenuItem      HastaTakibi                          
+165   ControlType.MenuItem      Hasta Listesi                        
+166   ControlType.MenuItem      Hasta Kayıt Bilgilendi...                 
+167   ControlType.MenuItem      Hasta Borç Listesi                   
+168   ControlType.MenuItem      Emanet Listesi                       
+169   ControlType.MenuItem      Yazdırılabilir Emanetl...                 
+170   ControlType.MenuItem      Ürün Tarihçesi                       
+171   ControlType.MenuItem      Eksik Listesi                        
+172   ControlType.MenuItem      Favori İlaç Listesi                  
+173   ControlType.MenuItem      Tam Ürün Listesi                     
+174   ControlType.MenuItem      Hatalı Reçeteler                     
+175   ControlType.MenuItem      Renkli Reçete Ürün Lis...                 
+176   ControlType.MenuItem      Reçeteli Satış Dökümü                 
+177   ControlType.MenuItem      Silinen Reçeteler                    
+178   ControlType.MenuItem      Ürün Raporları                       
+179   ControlType.MenuItem      Ürün Bilgileri                       
+180   ControlType.MenuItem      Satışı Takip Edilenler                 
+181   ControlType.MenuItem      Tekli Satis Listesi                  
+182   ControlType.MenuItem      Çapraz Satışlar Listes...                 
+183   ControlType.MenuItem      Eski Fiyat Listesi                   
+184   ControlType.MenuItem      Manuel Ürün Farkları                 
+185   ControlType.MenuItem      Prim Raporları                       
+186   ControlType.MenuItem      Özel Raporlar 1                      
+187   ControlType.MenuItem      Gün Sonu Kontrolleri                 
+188   ControlType.MenuItem      Eczacı Özel                          
+189   ControlType.MenuItem      Medula Döküm Raporları                 
+190   ControlType.MenuItem      SGK Mesajları                        
+191   ControlType.MenuItem      Yazılan Mesajlar                     
+192   ControlType.MenuItem      KAREKOD                              
+193   ControlType.MenuItem      Miadi Dolan Karekodlar...                 
+194   ControlType.MenuItem      Arada Kalan Karekodlar...                 
+195   ControlType.Separator                                          
+196   ControlType.MenuItem      Tüm Aktif Karekodlar M...                 
+197   ControlType.MenuItem      Karekod Tamir                        
+198   ControlType.MenuItem      Karekodlarda Boşluk Te...                 
+199   ControlType.MenuItem      Karekod Ürün Bağlama D...                 
+200   ControlType.MenuItem      Karekod Düzelt                       
+201   ControlType.MenuItem      Tekrarlayan Karekodlar...                 
+202   ControlType.MenuItem      ITS Sorunlu Karekodlar                 
+203   ControlType.Separator                                          
+204   ControlType.MenuItem      Miadı Geçen Karekod İm...                 
+205   ControlType.MenuItem      Deaktif Edilen Karekod...                 
+206   ControlType.MenuItem      Aktif Karekod ITS Pane...                 
+207   ControlType.MenuItem      Bildirimden Raporlar                 
+208   ControlType.MenuItem      Servis                               
+209   ControlType.MenuItem      Ürünsüz Karekod Bul                  
+210   ControlType.MenuItem      Emanet Küpür Adetlerin...                 
+211   ControlType.MenuItem      Hasta Birleştir                      
+212   ControlType.Separator                                          
+213   ControlType.MenuItem      Bulunamayan Ürünleri L...                 
+214   ControlType.MenuItem      Web Stok Kontrol                     
+215   ControlType.MenuItem      Stok AlVer                           
+216   ControlType.MenuItem      ITS Sorunlu Karekodlar                 
+217   ControlType.MenuItem      Veri Aktarımları                     
+218   ControlType.MenuItem      Bağlantı Değiş                       
+219   ControlType.MenuItem      Explorer Geçmisini Tem...                 
+220   ControlType.MenuItem      Botanik                              
+221   ControlType.MenuItem      Tema Seçme                           
+222   ControlType.MenuItem      Neler Yeni                           
+223   ControlType.MenuItem      Ödeme Bilgileri/Kontro...                 
+224   ControlType.MenuItem      Versiyon Kontrol Et                  
+225   ControlType.Separator                                          
+226   ControlType.Separator                                          
+227   ControlType.MenuItem      Botanik Sözleşmelerim                 
+228   ControlType.MenuItem      Botanik Yardım                       
+229   ControlType.MenuItem      Hakkında                             
+230   ControlType.MenuItem      Talep Formu                          
+231   ControlType.MenuItem      ECP/MEDCLAIM                         
+232   ControlType.MenuItem      Kayıt                                
+233   ControlType.MenuItem      Reçete Oku                           
+234   ControlType.MenuItem      SMS                                  
+235   ControlType.MenuItem      Toplu SMS                            
+236   ControlType.MenuItem      Favorilerim                          
+237   ControlType.MenuItem      Çıkış/İade Faturası                  
+238   ControlType.MenuItem      Masraf Girişi                        
+239   ControlType.MenuItem      Kurum Faturası                       
+240   ControlType.MenuItem      ARA                                  
+241   ControlType.Edit                                               
+242   ControlType.MenuItem      YARDIM                               
+243   ControlType.MenuItem      BotanikTV Anlatım Vide...                 
+244   ControlType.MenuItem      Botanik Yardım                       
+245   ControlType.Separator                                          
+246   ControlType.MenuItem      Alpemix Uzak Yardım                  
+247   ControlType.Separator                                          
+248   ControlType.MenuItem      Hakkında                             
+249   ControlType.Pane                               1573420         WindowsForms10.MDICL...
+250   ControlType.Window        Kasa Kapatma         KasaKapamaFo... WindowsForms10.Windo...
+251   ControlType.Table                              gridControl1    WindowsForms10.Windo...
+252   ControlType.ScrollBar     Vertical             1771262         WindowsForms10.Windo...
+253   ControlType.Button        Üstteki Çizgi                        
+254   ControlType.Custom        Pozisyon                             
+255   ControlType.Button        Alttaki Sayfa                        
+256   ControlType.Button        Alttaki Çizgi                        
+257   ControlType.Custom        Başlık Paneli                        
+258   ControlType.Header        Islem Adi1                           
+259   ControlType.Button        Islem Adi1 ColumnFilte...                 
+260   ControlType.Header        Islem Tutar1String                   
+261   ControlType.Button        Islem Tutar1String Col...                 
+262   ControlType.Header        Islem Adi2                           
+263   ControlType.Button        Islem Adi2 ColumnFilte...                 
+264   ControlType.Header        Islem Tutar2String                   
+265   ControlType.Button        Islem Tutar2String Col...                 
+266   ControlType.Header        Islem Adi3                           
+267   ControlType.Button        Islem Adi3 ColumnFilte...                 
+268   ControlType.Header        Islem Tutar3String                   
+269   ControlType.Button        Islem Tutar3String Col...                 
+270   ControlType.Header        Islem Adi4                           
+271   ControlType.Button        Islem Adi4 ColumnFilte...                 
+272   ControlType.Header        Islem Tutar4String                   
+273   ControlType.Button        Islem Tutar4String Col...                 
+274   ControlType.Custom        Veri Paneli                          
+275   ControlType.ListItem      Satır 1                              
+276   ControlType.Custom        Islem Adi1 satır 1                   
+277   ControlType.Custom        Islem Tutar1String sat...                 
+278   ControlType.Custom        Islem Adi2 satır 1                   
+279   ControlType.Custom        Islem Tutar2String sat...                 
+280   ControlType.Custom        Islem Adi3 satır 1                   
+281   ControlType.Custom        Islem Tutar3String sat...                 
+282   ControlType.Custom        Islem Adi4 satır 1                   
+283   ControlType.Custom        Islem Tutar4String sat...                 
+284   ControlType.ListItem      Satır 2                              
+285   ControlType.Custom        Islem Adi1 satır 2                   
+286   ControlType.Custom        Islem Tutar1String sat...                 
+287   ControlType.Custom        Islem Adi2 satır 2                   
+288   ControlType.Custom        Islem Tutar2String sat...                 
+289   ControlType.Custom        Islem Adi3 satır 2                   
+290   ControlType.Custom        Islem Tutar3String sat...                 
+291   ControlType.Custom        Islem Adi4 satır 2                   
+292   ControlType.Custom        Islem Tutar4String sat...                 
+293   ControlType.ListItem      Satır 3                              
+294   ControlType.Custom        Islem Adi1 satır 3                   
+295   ControlType.Custom        Islem Tutar1String sat...                 
+296   ControlType.Custom        Islem Adi2 satır 3                   
+297   ControlType.Custom        Islem Tutar2String sat...                 
+298   ControlType.Custom        Islem Adi3 satır 3                   
+299   ControlType.Custom        Islem Tutar3String sat...                 
+300   ControlType.Custom        Islem Adi4 satır 3                   
+301   ControlType.Custom        Islem Tutar4String sat...                 
+302   ControlType.ListItem      Satır 4                              
+303   ControlType.Custom        Islem Adi1 satır 4                   
+304   ControlType.Custom        Islem Tutar1String sat...                 
+305   ControlType.Custom        Islem Adi2 satır 4                   
+306   ControlType.Custom        Islem Tutar2String sat...                 
+307   ControlType.Custom        Islem Adi3 satır 4                   
+308   ControlType.Custom        Islem Tutar3String sat...                 
+309   ControlType.Custom        Islem Adi4 satır 4                   
+310   ControlType.Custom        Islem Tutar4String sat...                 
+311   ControlType.ListItem      Satır 5                              
+312   ControlType.Custom        Islem Adi1 satır 5                   
+313   ControlType.Custom        Islem Tutar1String sat...                 
+314   ControlType.Custom        Islem Adi2 satır 5                   
+315   ControlType.Custom        Islem Tutar2String sat...                 
+316   ControlType.Custom        Islem Adi3 satır 5                   
+317   ControlType.Custom        Islem Tutar3String sat...                 
+318   ControlType.Custom        Islem Adi4 satır 5                   
+319   ControlType.Custom        Islem Tutar4String sat...                 
+320   ControlType.ListItem      Satır 6                              
+321   ControlType.Custom        Islem Adi1 satır 6                   
+322   ControlType.Custom        Islem Tutar1String sat...                 
+323   ControlType.Custom        Islem Adi2 satır 6                   
+324   ControlType.Custom        Islem Tutar2String sat...                 
+325   ControlType.Custom        Islem Adi3 satır 6                   
+326   ControlType.Custom        Islem Tutar3String sat...                 
+327   ControlType.Custom        Islem Adi4 satır 6                   
+328   ControlType.Custom        Islem Tutar4String sat...                 
+329   ControlType.ListItem      Satır 7                              
+330   ControlType.Custom        Islem Adi1 satır 7                   
+331   ControlType.Custom        Islem Tutar1String sat...                 
+332   ControlType.Custom        Islem Adi2 satır 7                   
+333   ControlType.Custom        Islem Tutar2String sat...                 
+334   ControlType.Custom        Islem Adi3 satır 7                   
+335   ControlType.Custom        Islem Tutar3String sat...                 
+336   ControlType.Custom        Islem Adi4 satır 7                   
+337   ControlType.Custom        Islem Tutar4String sat...                 
+338   ControlType.ListItem      Satır 8                              
+339   ControlType.Custom        Islem Adi1 satır 8                   
+340   ControlType.Custom        Islem Tutar1String sat...                 
+341   ControlType.Custom        Islem Adi2 satır 8                   
+342   ControlType.Custom        Islem Tutar2String sat...                 
+343   ControlType.Custom        Islem Adi3 satır 8                   
+344   ControlType.Custom        Islem Tutar3String sat...                 
+345   ControlType.Custom        Islem Adi4 satır 8                   
+346   ControlType.Custom        Islem Tutar4String sat...                 
+347   ControlType.ListItem      Satır 9                              
+348   ControlType.Custom        Islem Adi1 satır 9                   
+349   ControlType.Custom        Islem Tutar1String sat...                 
+350   ControlType.Custom        Islem Adi2 satır 9                   
+351   ControlType.Custom        Islem Tutar2String sat...                 
+352   ControlType.Custom        Islem Adi3 satır 9                   
+353   ControlType.Custom        Islem Tutar3String sat...                 
+354   ControlType.Custom        Islem Adi4 satır 9                   
+355   ControlType.Custom        Islem Tutar4String sat...                 
+356   ControlType.ListItem      Satır 10                             
+357   ControlType.Custom        Islem Adi1 satır 10                  
+358   ControlType.Custom        Islem Tutar1String sat...                 
+359   ControlType.Custom        Islem Adi2 satır 10                  
+360   ControlType.Custom        Islem Tutar2String sat...                 
+361   ControlType.Custom        Islem Adi3 satır 10                  
+362   ControlType.Custom        Islem Tutar3String sat...                 
+363   ControlType.Custom        Islem Adi4 satır 10                  
+364   ControlType.Custom        Islem Tutar4String sat...                 
+365   ControlType.ListItem      Satır 11                             
+366   ControlType.Custom        Islem Adi1 satır 11                  
+367   ControlType.Custom        Islem Tutar1String sat...                 
+368   ControlType.Custom        Islem Adi2 satır 11                  
+369   ControlType.Custom        Islem Tutar2String sat...                 
+370   ControlType.Custom        Islem Adi3 satır 11                  
+371   ControlType.Custom        Islem Tutar3String sat...                 
+372   ControlType.Custom        Islem Adi4 satır 11                  
+373   ControlType.Custom        Islem Tutar4String sat...                 
+374   ControlType.ListItem      Satır 12                             
+375   ControlType.Custom        Islem Adi1 satır 12                  
+376   ControlType.Custom        Islem Tutar1String sat...                 
+377   ControlType.Custom        Islem Adi2 satır 12                  
+378   ControlType.Custom        Islem Tutar2String sat...                 
+379   ControlType.Custom        Islem Adi3 satır 12                  
+380   ControlType.Custom        Islem Tutar3String sat...                 
+381   ControlType.Custom        Islem Adi4 satır 12                  
+382   ControlType.Custom        Islem Tutar4String sat...                 
+383   ControlType.ListItem      Satır 13                             
+384   ControlType.Custom        Islem Adi1 satır 13                  
+385   ControlType.Custom        Islem Tutar1String sat...                 
+386   ControlType.Custom        Islem Adi2 satır 13                  
+387   ControlType.Custom        Islem Tutar2String sat...                 
+388   ControlType.Custom        Islem Adi3 satır 13                  
+389   ControlType.Custom        Islem Tutar3String sat...                 
+390   ControlType.Custom        Islem Adi4 satır 13                  
+391   ControlType.Custom        Islem Tutar4String sat...                 
+392   ControlType.ListItem      Satır 14                             
+393   ControlType.Custom        Islem Adi1 satır 14                  
+394   ControlType.Custom        Islem Tutar1String sat...                 
+395   ControlType.Custom        Islem Adi2 satır 14                  
+396   ControlType.Custom        Islem Tutar2String sat...                 
+397   ControlType.Custom        Islem Adi3 satır 14                  
+398   ControlType.Custom        Islem Tutar3String sat...                 
+399   ControlType.Custom        Islem Adi4 satır 14                  
+400   ControlType.Custom        Islem Tutar4String sat...                 
+401   ControlType.ListItem      Satır 15                             
+402   ControlType.Custom        Islem Adi1 satır 15                  
+403   ControlType.Custom        Islem Tutar1String sat...                 
+404   ControlType.Custom        Islem Adi2 satır 15                  
+405   ControlType.Custom        Islem Tutar2String sat...                 
+406   ControlType.Custom        Islem Adi3 satır 15                  
+407   ControlType.Custom        Islem Tutar3String sat...                 
+408   ControlType.Custom        Islem Adi4 satır 15                  
+409   ControlType.Custom        Islem Tutar4String sat...                 
+410   ControlType.ListItem      Satır 16                             
+411   ControlType.Custom        Islem Adi1 satır 16                  
+412   ControlType.Custom        Islem Tutar1String sat...                 
+413   ControlType.Custom        Islem Adi2 satır 16                  
+414   ControlType.Custom        Islem Tutar2String sat...                 
+415   ControlType.Custom        Islem Adi3 satır 16                  
+416   ControlType.Custom        Islem Tutar3String sat...                 
+417   ControlType.Custom        Islem Adi4 satır 16                  
+418   ControlType.Custom        Islem Tutar4String sat...                 
+419   ControlType.ListItem      Satır 17                             
+420   ControlType.Custom        Islem Adi1 satır 17                  
+421   ControlType.Custom        Islem Tutar1String sat...                 
+422   ControlType.Custom        Islem Adi2 satır 17                  
+423   ControlType.Custom        Islem Tutar2String sat...                 
+424   ControlType.Custom        Islem Adi3 satır 17                  
+425   ControlType.Custom        Islem Tutar3String sat...                 
+426   ControlType.Custom        Islem Adi4 satır 17                  
+427   ControlType.Custom        Islem Tutar4String sat...                 
+428   ControlType.ListItem      Satır 18                             
+429   ControlType.Custom        Islem Adi1 satır 18                  
+430   ControlType.Custom        Islem Tutar1String sat...                 
+431   ControlType.Custom        Islem Adi2 satır 18                  
+432   ControlType.Custom        Islem Tutar2String sat...                 
+433   ControlType.Custom        Islem Adi3 satır 18                  
+434   ControlType.Custom        Islem Tutar3String sat...                 
+435   ControlType.Custom        Islem Adi4 satır 18                  
+436   ControlType.Custom        Islem Tutar4String sat...                 
+437   ControlType.ListItem      Satır 19                             
+438   ControlType.Custom        Islem Adi1 satır 19                  
+439   ControlType.Custom        Islem Tutar1String sat...                 
+440   ControlType.Custom        Islem Adi2 satır 19                  
+441   ControlType.Custom        Islem Tutar2String sat...                 
+442   ControlType.Custom        Islem Adi3 satır 19                  
+443   ControlType.Custom        Islem Tutar3String sat...                 
+444   ControlType.Custom        Islem Adi4 satır 19                  
+445   ControlType.Custom        Islem Tutar4String sat...                 
+446   ControlType.ListItem      Satır 20                             
+447   ControlType.Custom        Islem Adi1 satır 20                  
+448   ControlType.Custom        Islem Tutar1String sat...                 
+449   ControlType.Custom        Islem Adi2 satır 20                  
+450   ControlType.Custom        Islem Tutar2String sat...                 
+451   ControlType.Custom        Islem Adi3 satır 20                  
+452   ControlType.Custom        Islem Tutar3String sat...                 
+453   ControlType.Custom        Islem Adi4 satır 20                  
+454   ControlType.Custom        Islem Tutar4String sat...                 
+455   ControlType.ListItem      Satır 21                             
+456   ControlType.Custom        Islem Adi1 satır 21                  
+457   ControlType.Custom        Islem Tutar1String sat...                 
+458   ControlType.Custom        Islem Adi2 satır 21                  
+459   ControlType.Custom        Islem Tutar2String sat...                 
+460   ControlType.Custom        Islem Adi3 satır 21                  
+461   ControlType.Custom        Islem Tutar3String sat...                 
+462   ControlType.Custom        Islem Adi4 satır 21                  
+463   ControlType.Custom        Islem Tutar4String sat...                 
+464   ControlType.ListItem      Satır 22                             
+465   ControlType.Custom        Islem Adi1 satır 22                  
+466   ControlType.Custom        Islem Tutar1String sat...                 
+467   ControlType.Custom        Islem Adi2 satır 22                  
+468   ControlType.Custom        Islem Tutar2String sat...                 
+469   ControlType.Custom        Islem Adi3 satır 22                  
+470   ControlType.Custom        Islem Tutar3String sat...                 
+471   ControlType.Custom        Islem Adi4 satır 22                  
+472   ControlType.Custom        Islem Tutar4String sat...                 
+473   ControlType.ListItem      Satır 23                             
+474   ControlType.Custom        Islem Adi1 satır 23                  
+475   ControlType.Custom        Islem Tutar1String sat...                 
+476   ControlType.Custom        Islem Adi2 satır 23                  
+477   ControlType.Custom        Islem Tutar2String sat...                 
+478   ControlType.Custom        Islem Adi3 satır 23                  
+479   ControlType.Custom        Islem Tutar3String sat...                 
+480   ControlType.Custom        Islem Adi4 satır 23                  
+481   ControlType.Custom        Islem Tutar4String sat...                 
+482   ControlType.ListItem      Satır 24                             
+483   ControlType.Custom        Islem Adi1 satır 24                  
+484   ControlType.Custom        Islem Tutar1String sat...                 
+485   ControlType.Custom        Islem Adi2 satır 24                  
+486   ControlType.Custom        Islem Tutar2String sat...                 
+487   ControlType.Custom        Islem Adi3 satır 24                  
+488   ControlType.Custom        Islem Tutar3String sat...                 
+489   ControlType.Custom        Islem Adi4 satır 24                  
+490   ControlType.Custom        Islem Tutar4String sat...                 
+491   ControlType.ListItem      Satır 25                             
+492   ControlType.Custom        Islem Adi1 satır 25                  
+493   ControlType.Custom        Islem Tutar1String sat...                 
+494   ControlType.Custom        Islem Adi2 satır 25                  
+495   ControlType.Custom        Islem Tutar2String sat...                 
+496   ControlType.Custom        Islem Adi3 satır 25                  
+497   ControlType.Custom        Islem Tutar3String sat...                 
+498   ControlType.Custom        Islem Adi4 satır 25                  
+499   ControlType.Custom        Islem Tutar4String sat...                 
+500   ControlType.ListItem      Satır 26                             
+
+Toplam Element: 590
+(Ilk 500 element gosterildi)
+
+ELEMENT HIYERARSISI
+================================================================================
+[Window] BotanikEOS 2.1.207.0 Emre Gökm... (BotanikMdi)
+  [Button] Talep İstek (btnTalepIstek)
+  [Button]  (btnMiniYazarKasa)
+  [Button]  (btnFaceBook)
+  [Button]  (btnWatsappGiris)
+  [Button]  (btnVideo)
+  [Button] ERx (btnEReceteler)
+  [ToolBar] toolStrip2 (tsBilgiBari)
+    [ComboBox] Yetkiniz yok (Saat 21:17) (1378502)
+      [Edit] Yetkiniz yok (Saat 21:17) (1001)
+      [List]  (ListBox)
+        [ListItem] Yetkiniz yok (Saat 21:17) ()
+      [Button] Açılır Düğme (DropDown)
+    [Custom] Tutma ()
+  [ToolBar] toolStrip1 (toolStrip1)
+    [Custom] Tutma ()
+    [Button] Yeni Satış ()
+    [Button] DermoStş ()
+    [Button] Sipariş ()
+    [Button] Reçeteler ()
+    [Button] Perakndlr ()
+    [Button] Takas Oku ()
+    [Button] CARİ ()
+    [Button] MEDULA ()
+    [Button] MedulaFx ()
+    [Button] Özel Krm ()
+    [Button] 1 ()
+    [Button] 7
+2
+1 ()
+    [Button] KK Sor ()
+    [Button] Dikkat ()
+    [Button] 0 ()
+    [Button] 152
+113 ()
+    [Button] YzrKasa ()
+    [Button] BotRAS ()
+    [Button] YetkiKapat ()
+    [Button] Ajanda ()
+    [Button] ÇEK ()
+    [Button] Video ()
+    [Button] Uzak Yard ()
+    [Button] FaturaOku ()
+    [Button] Emanetler ()
+  [MenuBar] EczaneMenu (menuStrip1)
+    [MenuItem] Kartlar ()
+      [MenuItem] Benim Eczanem ()
+      [MenuItem] Ürün Kartı Ekleme Talebi ()
+      [MenuItem] Ürün ve Barkod Talepleri ()
+      [MenuItem] Hasta Kartı ()
+      [MenuItem] Kurum Kartı ()
+      [MenuItem] Depo Kartı ()
+      [MenuItem] Doktor Kartı ()
+      [MenuItem] Eczane Kartları ()
+      [MenuItem] Personel Kartı ()
+      [MenuItem] Banka Kartı ()
+      [MenuItem] Kategoriler ()
+      [MenuItem] Hastaneler ()
+      [MenuItem] EFatura Entegrator ()
+      [MenuItem] Fatura Başlık Kartı ()
+      [MenuItem] Firmacı ()
+      [MenuItem] 507 Terminal KartTanımlama ()
+    [MenuItem] Reçete İşlemleri ()
+      [MenuItem] Reçete ve Perakende İTS İşleml... ()
+      [MenuItem] Reçete Formları ()
+      [MenuItem] Psikotrop Defteri ()
+      [MenuItem] FarmaInBox Girişi ()
+      [MenuItem] Deneme Reçeteleri ()
+      [Separator]  ()
+      [MenuItem] Renkli Reçete Giriş ()
+      [MenuItem] Renkli Reçete Karekod Kontrol ()
+      [Separator]  ()
+      [MenuItem] Medikal Reçete Giriş ()
+      [MenuItem] Medikal Dönem Sonlandırma Giri... ()
+      [Separator]  ()
+      [MenuItem] Cetas Reçete Girişi ()
+      [MenuItem] Cetas Reçete Listesi ()
+      [MenuItem] Cetas Faturalanacak Reçeteler ()
+      [MenuItem] Cetas Fatura Listesi ()
+      [MenuItem] Cetas İcmale Gönderilecek Reçe... ()
+      [MenuItem] Cetas İcmal Listesi ()
+    [MenuItem] Fatura İşlemleri ()
+      [MenuItem] EFatura Okuma ()
+      [MenuItem] Fatura Kontrol ()
+      [MenuItem] Giriş Faturası Oluştur ()
+      [MenuItem] Çıkış/İade Faturası Oluştur ()
+      [MenuItem] Fatura Listesi ()
+      [MenuItem] Silinen Faturalar ()
+      [Separator]  ()
+      [MenuItem] Depo Ekstreleri ()
+      [MenuItem] Depo Özet Ekstre ()
+      [MenuItem] Verilen Evraklar ()
+      [Separator]  ()
+      [MenuItem] Kurum Faturası ()
+      [MenuItem] Fatura İade İşlemleri ()
+      [MenuItem] Renkli Faturalar ()
+      [MenuItem] Medula EFatura Kes ()
+      [MenuItem] Cari Hesap İşlemleri ()
+      [Separator]  ()
+      [MenuItem] Kesilen Kurum Faturaları ()
+      [MenuItem] Kesilen EFaturalar ()
+      [MenuItem] Portaldan Kullanılan EFatura N... ()
+    [MenuItem] Takas İşlemleri ()
+      [MenuItem] Takas Paketleri ()
+      [MenuItem] Takas Hesaplaşma ()
+      [MenuItem] Silinen Takaslar ()
+      [MenuItem] Kapatılan Takaslar ()
+    [MenuItem] Eczane Yardım ()
+      [MenuItem] Ayarlar ()
+      [MenuItem] Yazarkasa Ayarları ()
+      [MenuItem] Tarif Etiketi Tasarımı ()
+      [MenuItem] Hasta/Kasa Fişi Ayarları ()
+      [MenuItem] Emanet Etiketi Tasarımı ()
+      [Separator]  ()
+      [MenuItem] Stok İşlemleri ()
+        [MenuItem] ITS Karekod Stok Kontol ()
+        [MenuItem] Stok Kontrol (Mevcut Stokların... ()
+        [MenuItem] Stok Sayım Kontrolleri ()
+        [MenuItem] Aktif Karekod ITS Panel Karşıl... ()
+        [MenuItem] Manuel Miad Temizleme ()
+        [MenuItem] Stok Hareket Sorgulama ()
+        [Separator]  ()
+        [Separator]  ()
+        [Separator]  ()
+        [MenuItem] Stok Sıfırla (SADECE SAYIM YAP... ()
+      [MenuItem] Mesaj Renkleri ()
+      [MenuItem] Döviz Kurları ()
+      [MenuItem] Depocu Fiyatı Hesaplama ()
+      [MenuItem] Karekodsuz Miad Girişi ()
+      [MenuItem] Çözelti Hesaplama ()
+      [MenuItem] Medula Reçete Grupları ()
+      [Separator]  ()
+      [MenuItem] Matbu Formlar ()
+      [MenuItem] Botanik Fiyat Önerileri ()
+      [MenuItem] Ürün Bilgi Düzenleme ()
+        [MenuItem] Ürün Bilgileri ()
+        [MenuItem] Raf Düzenleme ()
+      [MenuItem] Kampanya Tanımlama ()
+      [MenuItem] Kampanyalı Ürünler ()
+      [MenuItem] UTS Paneli ()
+      [MenuItem] İhale İşlemleri ()
+      [MenuItem] KDV - Fiyat Değiştirme ()
+    [MenuItem] Kasa ()
+      [MenuItem] Başlangıç Kasası ()
+      [MenuItem] Kasa Kapama ()
+      [MenuItem] Masraf Girişi ()
+      [MenuItem] Hızlı Masraf Girişi ()
+      [Separator]  ()
+      [MenuItem] Tahsilat Listesi ()
+      [MenuItem] Yazılan Para Listesi ()
+      [MenuItem] Masraf Listesi ()
+      [MenuItem] Pos Listesi ()
+      [MenuItem] Günlük İşlemler ()
+    [MenuItem] Raporlar ()
+      [MenuItem] Genel Rapor ()
+      [MenuItem] Personel Hareketleri ()
+      [MenuItem] Satış Saat veya Adet Grafiği ()
+      [MenuItem] Envanter ()
+      [MenuItem] Ürün Çıkış Raporu Özet ()
+      [MenuItem] Ürün Çıkıs Raporu Detaylı ()
+      [Separator]  ()
+      [MenuItem] Tüm Raporlar ()
+      [Separator]  ()
+      [MenuItem] Hasta ()
+        [MenuItem] HastaTakibi ()
+        [MenuItem] Hasta Listesi ()
+        [MenuItem] Hasta Kayıt Bilgilendirme ()
+      [MenuItem] Hasta Borç Listesi ()
+      [MenuItem] Emanet Listesi ()
+      [MenuItem] Yazdırılabilir Emanetler ()
+      [MenuItem] Ürün Tarihçesi ()
+      [MenuItem] Eksik Listesi ()
+      [MenuItem] Favori İlaç Listesi ()
+      [MenuItem] Tam Ürün Listesi ()
+      [MenuItem] Hatalı Reçeteler ()
+      [MenuItem] Renkli Reçete Ürün Listeleri ()
+      [MenuItem] Reçeteli Satış Dökümü ()
+      [MenuItem] Silinen Reçeteler ()
+      [MenuItem] Ürün Raporları ()
+        [MenuItem] Ürün Bilgileri ()
+        [MenuItem] Satışı Takip Edilenler ()
+        [MenuItem] Tekli Satis Listesi ()
+        [MenuItem] Çapraz Satışlar Listesi ()
+      [MenuItem] Eski Fiyat Listesi ()
+      [MenuItem] Manuel Ürün Farkları ()
+      [MenuItem] Prim Raporları ()
+      ... ve 3 element daha
+    [MenuItem] KAREKOD ()
+      [MenuItem] Miadi Dolan Karekodlar Menusu ()
+      [MenuItem] Arada Kalan Karekodlar Menusu ()
+      [Separator]  ()
+      [MenuItem] Tüm Aktif Karekodlar Menüsü ()
+      [MenuItem] Karekod Tamir ()
+        [MenuItem] Karekodlarda Boşluk Temizleme ()
+        [MenuItem] Karekod Ürün Bağlama Düzelt ()
+        [MenuItem] Karekod Düzelt ()
+        [MenuItem] Tekrarlayan Karekodları Düzelt ()
+      [MenuItem] ITS Sorunlu Karekodlar ()
+      [Separator]  ()
+      [MenuItem] Miadı Geçen Karekod İmhası ()
+      [MenuItem] Deaktif Edilen Karekodlar ()
+      [MenuItem] Aktif Karekod ITS Panel Karşıl... ()
+      [MenuItem] Bildirimden Raporlar ()
+    [MenuItem] Servis ()
+      [MenuItem] Ürünsüz Karekod Bul ()
+      [MenuItem] Emanet Küpür Adetlerini Düzelt ()
+      [MenuItem] Hasta Birleştir ()
+      [Separator]  ()
+      [MenuItem] Bulunamayan Ürünleri Listele ()
+      [MenuItem] Web Stok Kontrol ()
+      [MenuItem] Stok AlVer ()
+      [MenuItem] ITS Sorunlu Karekodlar ()
+      [MenuItem] Veri Aktarımları ()
+      [MenuItem] Bağlantı Değiş ()
+      [MenuItem] Explorer Geçmisini Temizle ()
+    [MenuItem] Botanik ()
+      [MenuItem] Tema Seçme ()
+      [MenuItem] Neler Yeni ()
+      [MenuItem] Ödeme Bilgileri/Kontrol ()
+      [MenuItem] Versiyon Kontrol Et ()
+      [Separator]  ()
+      [Separator]  ()
+      [MenuItem] Botanik Sözleşmelerim ()
+      [MenuItem] Botanik Yardım ()
+      [MenuItem] Hakkında ()
+      [MenuItem] Talep Formu ()
+    [MenuItem] ECP/MEDCLAIM ()
+      [MenuItem] Kayıt ()
+      [MenuItem] Reçete Oku ()
+    [MenuItem] SMS ()
+      [MenuItem] Toplu SMS ()
+    [MenuItem] Favorilerim ()
+      [MenuItem] Çıkış/İade Faturası ()
+      [MenuItem] Masraf Girişi ()
+      [MenuItem] Kurum Faturası ()
+    [MenuItem] ARA ()
+    [MenuItem] YARDIM ()
+      [MenuItem] BotanikTV Anlatım Videoları ()
+      [MenuItem] Botanik Yardım ()
+      [Separator]  ()
+      [MenuItem] Alpemix Uzak Yardım ()
+      [Separator]  ()
+      [MenuItem] Hakkında ()
+  [Pane]  (1573420)
+    [Window] Kasa Kapatma (KasaKapamaFormYeni)
+      [Table]  (gridControl1)
+        [ScrollBar] Vertical (1771262)
+          [Button] Üstteki Çizgi ()
+          [Custom] Pozisyon ()
+          [Button] Alttaki Sayfa ()
+          [Button] Alttaki Çizgi ()
+        [Custom] Başlık Paneli ()
+          [Header] Islem Adi1 ()
+            [Button] Islem Adi1 ColumnFilterButton ()
+          [Header] Islem Tutar1String ()
+            [Button] Islem Tutar1String ColumnFilte... ()
+          [Header] Islem Adi2 ()
+            [Button] Islem Adi2 ColumnFilterButton ()
+          [Header] Islem Tutar2String ()
+            [Button] Islem Tutar2String ColumnFilte... ()
+          [Header] Islem Adi3 ()
+            [Button] Islem Adi3 ColumnFilterButton ()
+          [Header] Islem Tutar3String ()
+            [Button] Islem Tutar3String ColumnFilte... ()
+          ... ve 2 element daha
+        [Custom] Veri Paneli ()
+          [ListItem] Satır 1 ()
+            [Custom] Islem Adi1 satır 1 ()
+            [Custom] Islem Tutar1String satır 1 ()
+            [Custom] Islem Adi2 satır 1 ()
+            ... ve 5 element daha
+          [ListItem] Satır 2 ()
+            [Custom] Islem Adi1 satır 2 ()
+            [Custom] Islem Tutar1String satır 2 ()
+            [Custom] Islem Adi2 satır 2 ()
+            ... ve 5 element daha
+          [ListItem] Satır 3 ()
+            [Custom] Islem Adi1 satır 3 ()
+            [Custom] Islem Tutar1String satır 3 ()
+            [Custom] Islem Adi2 satır 3 ()
+            ... ve 5 element daha
+          [ListItem] Satır 4 ()
+            [Custom] Islem Adi1 satır 4 ()
+            [Custom] Islem Tutar1String satır 4 ()
+            [Custom] Islem Adi2 satır 4 ()
+            ... ve 5 element daha
+          [ListItem] Satır 5 ()
+            [Custom] Islem Adi1 satır 5 ()
+            [Custom] Islem Tutar1String satır 5 ()
+            [Custom] Islem Adi2 satır 5 ()
+            ... ve 5 element daha
+          [ListItem] Satır 6 ()
+            [Custom] Islem Adi1 satır 6 ()
+            [Custom] Islem Tutar1String satır 6 ()
+            [Custom] Islem Adi2 satır 6 ()
+            ... ve 5 element daha
+          ... ve 23 element daha
+      [Pane] panelControl1 (panelControl1)
+        [Pane]  (tarihPaketi1)
+          [ComboBox]  (cmbGecisTipi)
+          [ComboBox]  (dtpBitis)
+          [ComboBox]  (dtpBaslama)
+          [Text] Bitiş (labelControl2)
+          [Text] Cumartesi (lblBitisGunu)
+          [Text] Cumartesi (lblBaslamaGunu)
+          ... ve 3 element daha
+        [List] 2 (rdbTarihTipi)
+          [RadioButton] Reçete Tarihi ()
+          [RadioButton] Kayıt Tarihi ()
+          [RadioButton] İşlem Tarihi ()
+        [Button] EPosta Yolla (btnEPostaYollama)
+        [Button] Maliyet Kontrol (btnAnaliz)
+        [Button] Mini Kasa (btnMiniKasa)
+        [Button] Eski Kapatılanlar (btnKapatilanListesi)
+        [Button] Kasayı KAPAT (btnKapat)
+        [Button] Tarih Aralığı Raporu (btnTarihAraligi)
+        [Button] Kapanış Raporu (btnKasaKapama)
+        [Button] Yazdır (btnYazdir)
+        [Edit]  (txtKasaNotu)
+          [ScrollBar] Vertical (1115802)
+            [Button] Üstteki Çizgi ()
+            [Button] Alttaki Çizgi ()
+          [Document]  (1050486)
+            [ScrollBar] Dikey Kaydırma Çubuğu (Vertical ScrollBar)
+              [Button] Küçük miktarda geri (SmallDecrement)
+              ... ve 1 element daha
+      [TitleBar] Kasa Kapatma (TitleBar)
+        [MenuBar] Sistem Menü Çubuğu (KasaKapamaFormYeni)
+          [MenuItem] Sistem (Item 1)
+        [Button] Kapat (Close)
+  [TitleBar] BotanikEOS 2.1.207.0 Emre Gökm... (TitleBar)
+    [MenuBar] Sistem Menü Çubuğu (BotanikMdi)
+      [MenuItem] Sistem (Item 1)
+    [Button] Simge Durumuna Küçült (Minimize)
+    [Button] Ekranı Kapla (Maximize)
+    [Button] Kapat (Close)
