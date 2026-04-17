@@ -3,10 +3,24 @@
 
 $ErrorActionPreference = 'Stop'
 
-$proje    = 'C:\Users\user\OneDrive\Belgeler\GitHub\EczAsist'
-$giris    = Join-Path $proje 'ana_menu.py'
-$ikon     = Join-Path $proje 'assets\eczasist.ico'
-$pythonw  = 'C:\Users\user\AppData\Local\Programs\Python\Python313\pythonw.exe'
+$proje = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$giris = Join-Path $proje 'ana_menu.py'
+$ikon  = Join-Path $proje 'assets\eczasist.ico'
+
+$adaylar = @(
+    "$env:LOCALAPPDATA\Python\bin\pythonw.exe",
+    "$env:LOCALAPPDATA\Programs\Python\Python313\pythonw.exe",
+    "$env:LOCALAPPDATA\Programs\Python\Python312\pythonw.exe",
+    "$env:LOCALAPPDATA\Programs\Python\Python311\pythonw.exe"
+)
+$pythonw = $adaylar | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $pythonw) {
+    $cmd = Get-Command pythonw.exe -ErrorAction SilentlyContinue |
+        Where-Object { $_.Source -notmatch 'WindowsApps' } |
+        Select-Object -First 1
+    if ($cmd) { $pythonw = $cmd.Source }
+}
+if (-not $pythonw) { throw "pythonw.exe bulunamadi" }
 
 $ws       = New-Object -ComObject WScript.Shell
 $hedefler = @(
