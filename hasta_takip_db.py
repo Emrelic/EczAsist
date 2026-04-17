@@ -28,6 +28,8 @@ class HastaTakipDB:
         sadece_takipli: bool = True,
         eski_kayit_gun: int = 30,
         kaynak: str = "BIRLESIK",
+        sadece_raporlu: bool = False,
+        raporsuz_istisna_urunler: Optional[List[int]] = None,
     ) -> List[Dict]:
         """
         Bugün + tolerans_gun içinde yazdırma günü gelen hastaları/ilaçları döndür.
@@ -46,6 +48,7 @@ class HastaTakipDB:
         """
         bugun = date.today().isoformat()
         sonuclar: List[Dict] = []
+        istisnalar = set(raporsuz_istisna_urunler or [])
 
         if kaynak in ("RECETE", "BIRLESIK"):
             sonuclar.extend(
@@ -63,7 +66,30 @@ class HastaTakipDB:
                 )
             )
 
+        if sadece_raporlu:
+            sonuclar = [
+                s for s in sonuclar
+                if self._raporlu_mu(s) or s.get("urun_id") in istisnalar
+            ]
+
         return self._birlesik_ve_tekilsizlestir(sonuclar)
+
+    @staticmethod
+    def _raporlu_mu(satir: Dict) -> bool:
+        """Satırın raporlu olup olmadığını güvenli şekilde değerlendir.
+
+        RECETE kaynağı için rapor_kod_id int (0 veya null = raporsuz).
+        MEDULA kaynağı için rapor_kod_id string (boş/null/whitespace = raporsuz).
+        """
+        rk = satir.get("rapor_kod_id")
+        if rk is None:
+            return False
+        if isinstance(rk, str):
+            return bool(rk.strip())
+        try:
+            return int(rk) > 0
+        except (TypeError, ValueError):
+            return False
 
     def _recete_ilaclari_sorgula(
         self, bugun: str, tolerans_gun: int, rapor_tolerans_gun: int,
@@ -475,6 +501,64 @@ class HastaTakipDB:
         ORDER BY em.EtkinMaddeAdi
         """
         return self.db.sorgu_calistir(sql, (int(rapor_id),))
+
+    def hastanin_etkin_madde_ilaclari(
+        self, musteri_id: int, sgk_kodu: str, lookback_gun: int = 365
+    ) -> List[Dict]:
+        """Hastanın verilen etken madde (SGK kodu) ile kullandığı ilaçlar.
+
+        Bağlantı: Urun.UrunSGKKodId -> Etkin.EtkinId -> Etkin.EtkinKodu ==
+        EtkinMadde.EtkinMaddeSGKKodu. Son 'lookback_gun' içinde yazdırılmış
+        ReceteIlaclari ve EldenIlaclari kayıtlarından tekilleştirilmiş ilaç
+        listesi döner (en son tarih öne gelir).
+        """
+        if not musteri_id or not sgk_kodu:
+            return []
+        sql = """
+        SELECT urun_adi, MAX(son_tarih) AS son_tarih, SUM(adet) AS toplam_adet
+        FROM (
+            SELECT
+                LTRIM(RTRIM(u.UrunAdi)) AS urun_adi,
+                ra.RxReceteTarihi       AS son_tarih,
+                ri.RIAdet               AS adet
+            FROM ReceteIlaclari ri
+            INNER JOIN ReceteAna ra ON ra.RxId = ri.RIRxId
+            INNER JOIN Urun u       ON u.UrunId = ri.RIUrunId
+            INNER JOIN Etkin e      ON e.EtkinId = u.UrunSGKKodId
+            WHERE ra.RxMusteriId = ?
+              AND e.EtkinKodu = ?
+              AND (ri.RISilme IS NULL OR ri.RISilme = 0)
+              AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)
+              AND ra.RxReceteTarihi >= DATEADD(day, -?, CAST(GETDATE() AS date))
+
+            UNION ALL
+
+            SELECT
+                LTRIM(RTRIM(u.UrunAdi)) AS urun_adi,
+                ea.RxReceteTarihi       AS son_tarih,
+                ei.RIAdet               AS adet
+            FROM EldenIlaclari ei
+            INNER JOIN EldenAna ea  ON ea.RxId = ei.RIRxId
+            INNER JOIN Urun u       ON u.UrunId = ei.RIUrunId
+            INNER JOIN Etkin e      ON e.EtkinId = u.UrunSGKKodId
+            WHERE ea.RxMusteriId = ?
+              AND e.EtkinKodu = ?
+              AND (ei.RISilme IS NULL OR ei.RISilme = 0)
+              AND (ea.RxSilme IS NULL OR ea.RxSilme = 0)
+              AND ea.RxReceteTarihi >= DATEADD(day, -?, CAST(GETDATE() AS date))
+        ) t
+        GROUP BY urun_adi
+        ORDER BY son_tarih DESC
+        """
+        try:
+            return self.db.sorgu_calistir(
+                sql,
+                (int(musteri_id), sgk_kodu, int(lookback_gun),
+                 int(musteri_id), sgk_kodu, int(lookback_gun)),
+            )
+        except Exception as e:
+            logger.warning("hastanin_etkin_madde_ilaclari hata: %s", e)
+            return []
 
     def raporun_iliskili_ilaclari(self, rapor_id: int, musteri_id: int) -> List[Dict]:
         """Hastanın bu rapor numarasıyla yazdırılmış ilaçları (son 500 satır)."""

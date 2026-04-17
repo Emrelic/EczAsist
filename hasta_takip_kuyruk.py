@@ -44,6 +44,17 @@ class HastaTakipAyarlari:
     # Sadece takipli hastalar (Musteri.MusteriTakipli=1)
     sadece_takipli: bool = True
 
+    # Sadece raporlu ilaçlar (raporsuz ilaçlar listelenmez — istisnalar hariç)
+    sadece_raporlu: bool = True
+
+    # Raporsuz olsa bile listelenecek ürün kimlikleri (Urun.UrunId listesi)
+    raporsuz_istisna_urunler: list = field(default_factory=list)
+
+    # Toplu gönderim (batch) bekleme penceresi. Bugün atılması gereken bir mesaj
+    # varsa, bu kadar gün içinde başka ilaç da yazdırılacaksa beraber atmak için
+    # mesaj ertelenir. 0 = erteleme yok (anlık gönder). Maksimum bekleme süresi.
+    batch_bekleme_gun: int = 5
+
     # Veri kaynağı: "RECETE" | "MEDULA" | "BIRLESIK"
     kaynak: str = "BIRLESIK"
 
@@ -76,6 +87,12 @@ class HastaTakipAyarlari:
         "Lütfen yenilemek için doktorunuza başvurunuz.\n"
         "{eczane_adi}  {eczane_tel}"
     )
+    # Rapor başına bir paragraf. Rapor numarası benzersiz, tanıları virgülle ayrılı.
+    rapor_bitis_rapor_formati: str = (
+        "• {rapor_ozet} (Bitiş: {bitis} — {kalan_gun} gün kaldı)\n"
+        "  Kullandığınız ilaçlar: {ilaclar}\n"
+    )
+    # (Eski alan geriye-uyum icin korunuyor — yeni akis kullanmaz)
     rapor_bitis_tani_satir_formati: str = (
         "Tanı: {rapor_kodu} - {rapor_kod_aciklama}\n"
         "ICD: {icd_kodu} - {icd_aciklamasi}\n"
@@ -179,13 +196,140 @@ class MesajKuyrugu:
     # -----------------------------------------------------------------
     # Kuyruk işlemleri
     # -----------------------------------------------------------------
+    def bekleyen_raporsuz_temizle(self) -> int:
+        """Bekleyen kuyruk kayıtlarındaki raporsuz ilaçları Botanik DB'den
+        doğrulayarak temizle.
+
+        Geçmiş tarama sadece_raporlu=False iken yapılmışsa kuyruğa raporsuz
+        ilaçlar girmiş olabilir. Bu metod her bekleyen kaydın ilac_json'ındaki
+        ürünleri Botanik DB'de kontrol eder; rapor_kod_id'si 0/null olanları
+        (raporsuz) çıkarır. İlac_json boş kalan kayıtları iptal eder.
+
+        Returns: temizlenen ilaç adedi.
+        """
+        try:
+            from botanik_db import BotanikDB
+            bdb = BotanikDB()
+            bdb.baglan()
+        except Exception as e:
+            logger.warning("Raporsuz temizlik: Botanik DB açılamadı: %s", e)
+            return 0
+
+        silinen = 0
+        bos_kayitlar: list = []
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT id, musteri_id, ilac_json FROM mesaj_kuyrugu "
+                "WHERE durum='bekliyor'"
+            ).fetchall()
+
+            for row in rows:
+                try:
+                    ilaclar = json.loads(row["ilac_json"])
+                except Exception:
+                    continue
+                if not isinstance(ilaclar, list):
+                    continue
+
+                kalan: list = []
+                degisti = False
+                for il in ilaclar:
+                    urun_adi = (il.get("urun_adi") or "").strip()
+                    if not urun_adi:
+                        continue
+
+                    raporlu = self._urun_raporlu_mu(bdb, row["musteri_id"], urun_adi)
+                    if raporlu is True:
+                        kalan.append(il)
+                    elif raporlu is False:
+                        silinen += 1
+                        degisti = True
+                    else:
+                        # Bilinmiyor — güvenlik için koru
+                        kalan.append(il)
+
+                if not degisti:
+                    continue
+                if not kalan:
+                    bos_kayitlar.append(row["id"])
+                else:
+                    c.execute(
+                        "UPDATE mesaj_kuyrugu SET ilac_json=? WHERE id=?",
+                        (json.dumps(kalan, ensure_ascii=False), row["id"]),
+                    )
+
+            for kid in bos_kayitlar:
+                c.execute("DELETE FROM mesaj_kuyrugu WHERE id=?", (kid,))
+
+        if silinen:
+            logger.info(
+                "Raporsuz temizlik: %d ilaç silindi, %d boş kayıt kaldırıldı.",
+                silinen, len(bos_kayitlar),
+            )
+        return silinen
+
+    @staticmethod
+    def _urun_raporlu_mu(bdb, musteri_id: int, urun_adi: str) -> Optional[bool]:
+        """Botanik DB'de (musteri_id + urun_adi) için rapor durumu.
+        True=raporlu, False=raporsuz, None=bilinmiyor.
+        Hem ReceteIlaclari hem MedulaHastaIlaclari kontrol edilir."""
+        try:
+            sql = """
+            SELECT TOP 1 ri.RIRaporKodId AS rk
+            FROM ReceteIlaclari ri
+            INNER JOIN ReceteAna ra ON ra.RxId = ri.RIRxId
+            LEFT  JOIN Urun      u  ON u.UrunId = ri.RIUrunId
+            WHERE ra.RxMusteriId = ?
+              AND LTRIM(RTRIM(u.UrunAdi)) = ?
+              AND ri.RISilme = 0 AND ra.RxSilme = 0
+              AND (ri.RIIade IS NULL OR ri.RIIade = 0)
+            ORDER BY ri.RIBitisTarihi DESC
+            """
+            res = bdb.sorgu_calistir(sql, (musteri_id, urun_adi))
+            if res:
+                rk = res[0].get("rk")
+                try:
+                    return int(rk or 0) > 0
+                except (TypeError, ValueError):
+                    return False
+
+            sql_m = """
+            SELECT TOP 1 mhi.RaporKodu AS rk
+            FROM MedulaHastaIlaclari mhi
+            WHERE mhi.MusteriId = ?
+              AND LTRIM(RTRIM(mhi.UrunAdi)) = ?
+            ORDER BY mhi.VerilecekTarih DESC
+            """
+            res = bdb.sorgu_calistir(sql_m, (musteri_id, urun_adi))
+            if res:
+                rk = res[0].get("rk")
+                if rk is None:
+                    return False
+                if isinstance(rk, str):
+                    return bool(rk.strip())
+                try:
+                    return int(rk) > 0
+                except (TypeError, ValueError):
+                    return False
+        except Exception as e:
+            logger.debug("Rapor durumu sorgu hatası (%s, %s): %s", musteri_id, urun_adi, e)
+        return None
+
     def hasta_mesajlarini_upsert(
         self, hasta_satirlari: List[Dict], ayarlar: HastaTakipAyarlari,
     ) -> int:
         """
         DB tarama sonucunu kuyruğa yazar/günceller.
         Aynı hasta için 'bekliyor' tek kayıt olur; yeni ilaçlar mevcut kayda eklenir.
+        sadece_raporlu aktifse, tarama öncesi bekleyen kayıtlardaki raporsuz
+        ilaçlar Botanik DB üzerinden doğrulanarak temizlenir.
         """
+        if ayarlar.sadece_raporlu:
+            try:
+                self.bekleyen_raporsuz_temizle()
+            except Exception as e:
+                logger.warning("Raporsuz temizlik başarısız: %s", e)
+
         if not hasta_satirlari:
             return 0
 
@@ -213,7 +357,6 @@ class MesajKuyrugu:
                 "kac_gun_kaldi": s.get("kac_gun_kaldi"),
             })
 
-        planli = self._planli_gonderim_tarihi(ayarlar)
         simdi = datetime.now().isoformat(timespec="seconds")
 
         yeni = 0
@@ -226,6 +369,7 @@ class MesajKuyrugu:
                 ).fetchone()
 
                 if row is None:
+                    planli = self._planli_gonderim_tarihi(ayarlar, g["ilaclar"])
                     c.execute(
                         "INSERT INTO mesaj_kuyrugu(musteri_id, hasta_adi, cep_tel, "
                         "tckn, toplam_ziyaret, son_ziyaret, takipli, "
@@ -240,12 +384,11 @@ class MesajKuyrugu:
                 else:
                     mevcut = json.loads(row["ilac_json"])
                     anahtar = {i.get("urun_adi") for i in mevcut}
-                    eklendi = False
                     for il in g["ilaclar"]:
                         if il.get("urun_adi") not in anahtar:
                             mevcut.append(il)
-                            eklendi = True
-                    # İstatistikleri her tarama sonunda güncelle
+                    # Batch planını birleşmiş ilaç listesi üzerinden hesapla
+                    planli = self._planli_gonderim_tarihi(ayarlar, mevcut)
                     c.execute(
                         "UPDATE mesaj_kuyrugu SET ilac_json=?, planli_gonderim=?, "
                         "tckn=?, toplam_ziyaret=?, son_ziyaret=?, takipli=? "
@@ -258,12 +401,23 @@ class MesajKuyrugu:
         return yeni
 
     @staticmethod
-    def _planli_gonderim_tarihi(ayarlar: HastaTakipAyarlari) -> date:
-        """Ayarlara göre bu kuyruk öğesinin gönderim gününü hesapla."""
+    def _planli_gonderim_tarihi(
+        ayarlar: HastaTakipAyarlari,
+        ilaclar: Optional[List[Dict]] = None,
+    ) -> date:
+        """Ayarlara göre bu kuyruk öğesinin gönderim gününü hesapla.
+
+        anlık modda batch_bekleme_gun > 0 ise ilaçların yazdırma tarihlerinden
+        batch hesaplanır: en erken ilaçtan itibaren pencere_gun içindeki
+        ilaçların beraber atılacağı son gün planlı gönderim tarihidir.
+        """
         bugun = date.today()
         mod = ayarlar.gonderim_modu
 
         if mod == "anlik":
+            pencere = getattr(ayarlar, "batch_bekleme_gun", 0) or 0
+            if pencere > 0 and ilaclar:
+                return MesajKuyrugu._batch_planli_gonderim(ilaclar, bugun, pencere)
             return bugun
 
         if mod == "pazartesi":
@@ -278,6 +432,42 @@ class MesajKuyrugu:
 
         return bugun
 
+    @staticmethod
+    def _batch_planli_gonderim(
+        ilaclar: List[Dict], bugun: date, pencere_gun: int,
+    ) -> date:
+        """Toplu (batch) gönderim planı.
+
+        En erken yazdırma tarihinden (ya da bugünden, hangisi geç) itibaren
+        pencere_gun'luk bir pencere açılır; pencere içindeki ilaçların en geç
+        yazdırma tarihi planlı gönderim günü olur. Pencere dışındaki ilaçlar
+        (daha uzak tarihliler) bu batch'e dahil edilmez; kendi batch'lerini
+        oluştururlar (sonraki tarama döngüsünde).
+
+        Örnek: bugün Perşembe, ilaçlar Perşembe + Salı (5 gün sonra) →
+        pencere Perşembe → Salı, planlı = Salı (beraber atılır).
+        """
+        tarihler: List[date] = []
+        for il in ilaclar:
+            tstr = str(il.get("yazdirma_tarihi") or "")[:10]
+            if not tstr:
+                continue
+            try:
+                tarihler.append(datetime.strptime(tstr, "%Y-%m-%d").date())
+            except ValueError:
+                continue
+        if not tarihler:
+            return bugun
+        # Pencere BUGÜNDEN itibaren pencere_gun gün açılır. Geçmiş (overdue)
+        # ilaçlar zaten "bekliyor" sayılır — pencereyi geriye itmezler. Pencere
+        # içindeki en geç yazdırma tarihi batch gönderim günü olur.
+        pencere_son = bugun + timedelta(days=pencere_gun)
+        pencere_icindekiler = [t for t in tarihler if t <= pencere_son]
+        if not pencere_icindekiler:
+            return bugun
+        # Planlı = pencere içindeki en geç tarih, ama geçmişe gidemez
+        return max(bugun, max(pencere_icindekiler))
+
     def gosterilecek_mesajlar(
         self, ayarlar: HastaTakipAyarlari, bugun: Optional[date] = None,
     ) -> List[Dict]:
@@ -289,15 +479,21 @@ class MesajKuyrugu:
         if not self._calisma_saati_mi(ayarlar):
             return []
 
+        bugun_iso = bugun.isoformat()
         with self._conn() as c:
+            # Ertelenenler (planli_gonderim > bugün) en üstte, ardından
+            # atılmaya hazır olanlar (planli_gonderim <= bugün).
+            # Her grupta planli_gonderim ASC, aynı tarihte hasta_adi ASC.
             rows = c.execute(
                 "SELECT id, musteri_id, hasta_adi, cep_tel, tckn, "
                 "toplam_ziyaret, son_ziyaret, takipli, ilac_json, "
                 "olusturma, planli_gonderim "
                 "FROM mesaj_kuyrugu "
-                "WHERE durum='bekliyor' AND planli_gonderim <= ? "
-                "ORDER BY planli_gonderim ASC, hasta_adi ASC",
-                (bugun.isoformat(),),
+                "WHERE durum='bekliyor' "
+                "ORDER BY "
+                "  CASE WHEN planli_gonderim > ? THEN 0 ELSE 1 END ASC, "
+                "  planli_gonderim ASC, hasta_adi ASC",
+                (bugun_iso,),
             ).fetchall()
 
         sonuc: List[Dict] = []
@@ -312,6 +508,8 @@ class MesajKuyrugu:
                     gun_once = (bugun - g).days
                 except ValueError:
                     pass
+            planli_str = (r["planli_gonderim"] or "")[:10]
+            ertelenen = bool(planli_str) and planli_str > bugun_iso
             sonuc.append({
                 "kuyruk_id": r["id"],
                 "musteri_id": r["musteri_id"],
@@ -325,6 +523,7 @@ class MesajKuyrugu:
                 "ilaclar": ilaclar,
                 "olusturma": r["olusturma"],
                 "planli_gonderim": r["planli_gonderim"],
+                "ertelenen": ertelenen,
                 "mesaj_metni": mesaj,
             })
         return sonuc
@@ -346,47 +545,92 @@ class MesajKuyrugu:
         ilaclar_map: Dict[int, List[Dict]],
         ayarlar: HastaTakipAyarlari,
     ) -> str:
-        """Bir hasta için rapor bitiş mesajı.
+        """Bir hasta için rapor bitiş mesajı — rapor başına bir paragraf.
 
-        Args:
-            tani_satirlari: yaklasan_rapor_bitisleri sonuçları (bu hastaya ait)
-            etkin_maddeler_map: {rapor_id: [etken_madde_dict,...]}
-            ilaclar_map: {rapor_id: [ilac_dict,...]}
+        Her rapor (rapor_id) tek bir paragrafta özetlenir. Aynı rapor altındaki
+        birden fazla tanı virgülle birleştirilir. "Kullandığınız ilaçlar" kısmı
+        önce etken madde bazında hasta ilacından (em['hasta_ilaclari']) derlenir;
+        yoksa rapor_no üzerinden eşleşen ilaçlara (ilaclar_map) düşer.
         """
-        satirlar = []
+        # Rapor bazında grupla: rapor_id -> {"ozet_set": {(kod, aciklama)},
+        #                                   "bitis": en yakın tarih,
+        #                                   "kalan": en küçük kalan_gun,
+        #                                   "sample": ilk tanı satırı}
+        gruplar: Dict[int, Dict] = {}
         for t in tani_satirlari:
-            rapor_id = t.get("rapor_id")
-            em_list = etkin_maddeler_map.get(rapor_id, [])
-            il_list = ilaclar_map.get(rapor_id, [])
+            rid = t.get("rapor_id")
+            if not rid:
+                continue
+            g = gruplar.setdefault(rid, {
+                "ozet_set": [],        # sıralı ekleme için liste+set
+                "ozet_gorulen": set(),
+                "bitis": None,
+                "kalan": None,
+                "sample": t,
+            })
+            kod = (t.get("rapor_kodu") or "").strip()
+            aciklama = (t.get("rapor_kod_aciklama") or "").strip()
+            anahtar = (kod, aciklama)
+            if anahtar not in g["ozet_gorulen"] and (kod or aciklama):
+                g["ozet_gorulen"].add(anahtar)
+                g["ozet_set"].append(anahtar)
+            bitis = str(t.get("bitis") or "")[:10]
+            if bitis and (g["bitis"] is None or bitis < g["bitis"]):
+                g["bitis"] = bitis
+            kalan = t.get("kalan_gun")
+            if kalan is not None and (g["kalan"] is None or kalan < g["kalan"]):
+                g["kalan"] = kalan
 
-            em_metin = ", ".join(
-                (em.get("etkin_madde") or "").strip()
-                for em in em_list if em.get("etkin_madde")
-            ) or "—"
+        # Raporları bitiş tarihine göre sırala
+        sirali_rid = sorted(
+            gruplar.keys(),
+            key=lambda rid: (gruplar[rid]["bitis"] or "9999-12-31"),
+        )
 
-            # İlaç listesi: tekil, en güncel olanlar
+        satirlar = []
+        for rid in sirali_rid:
+            g = gruplar[rid]
+            em_list = etkin_maddeler_map.get(rid, [])
+            il_list = ilaclar_map.get(rid, [])
+
+            # Kullanılan ilaçlar: önce her etken madde için hastanın ilacı
             gorulen = set()
-            il_kisaltilmis = []
-            for il in il_list:
-                ad = (il.get("urun_adi") or "").strip()
-                if ad and ad not in gorulen:
-                    gorulen.add(ad)
-                    il_kisaltilmis.append(ad)
-            il_metin = ", ".join(il_kisaltilmis) if il_kisaltilmis else "—"
+            ilac_adlari: List[str] = []
+            for em in em_list:
+                for hi in (em.get("hasta_ilaclari") or []):
+                    ad = (hi.get("urun_adi") or "").strip()
+                    if ad and ad not in gorulen:
+                        gorulen.add(ad)
+                        ilac_adlari.append(ad)
+            # Fallback: rapor_no bazlı ilaçlar
+            if not ilac_adlari:
+                for il in il_list:
+                    ad = (il.get("urun_adi") or "").strip()
+                    if ad and ad not in gorulen:
+                        gorulen.add(ad)
+                        ilac_adlari.append(ad)
+            ilac_metin = ", ".join(ilac_adlari) if ilac_adlari else "—"
 
-            satirlar.append(
-                ayarlar.rapor_bitis_tani_satir_formati.format(
-                    rapor_kodu=t.get("rapor_kodu") or "",
-                    rapor_kod_aciklama=(t.get("rapor_kod_aciklama") or "").strip(),
-                    icd_kodu=t.get("icd_kodu") or "",
-                    icd_aciklamasi=(t.get("icd_aciklamasi") or "").strip(),
-                    baslama=str(t.get("baslama") or "")[:10],
-                    bitis=str(t.get("bitis") or "")[:10],
-                    kalan_gun=t.get("kalan_gun") if t.get("kalan_gun") is not None else "",
-                    etkin_maddeler=em_metin,
-                    ilaclar=il_metin,
-                )
+            # Rapor özeti: "ICD tanım, ICD tanım"
+            ozet_parcalar = []
+            for kod, aciklama in g["ozet_set"]:
+                if kod and aciklama:
+                    ozet_parcalar.append(f"{kod} - {aciklama}")
+                else:
+                    ozet_parcalar.append(kod or aciklama)
+            rapor_ozet = ", ".join(ozet_parcalar) if ozet_parcalar else "—"
+
+            # Güvenli biçimlendirme: eski şablonu kullananlar için fallback
+            fmt = getattr(ayarlar, "rapor_bitis_rapor_formati", None) or (
+                "• {rapor_ozet} (Bitiş: {bitis} — {kalan_gun} gün kaldı)\n"
+                "  Kullandığınız ilaçlar: {ilaclar}\n"
             )
+            satirlar.append(fmt.format(
+                rapor_ozet=rapor_ozet,
+                bitis=g["bitis"] or "",
+                kalan_gun=g["kalan"] if g["kalan"] is not None else "",
+                ilaclar=ilac_metin,
+            ))
 
         rapor_listesi = "\n".join(satirlar)
         return ayarlar.rapor_bitis_mesaj_sablonu.format(
@@ -397,18 +641,56 @@ class MesajKuyrugu:
         )
 
     @staticmethod
+    def _gun_metni(yazdirma_iso: str, bugun: date) -> str:
+        """'bugün', 'yarın', '3 gün sonra', 'dün', '5 gün önce' gibi
+        göreceli gün etiketi üret. Hatalı/boş tarih → boş."""
+        if not yazdirma_iso:
+            return ""
+        try:
+            d = datetime.strptime(yazdirma_iso[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return ""
+        fark = (d - bugun).days
+        if fark == 0:
+            return "bugün"
+        if fark == 1:
+            return "yarın"
+        if fark == -1:
+            return "dün"
+        if fark > 1:
+            return f"{fark} gün sonra"
+        return f"{-fark} gün önce"
+
+    @staticmethod
     def mesaj_olustur(
         hasta_adi: str, ilaclar: List[Dict], ayarlar: HastaTakipAyarlari,
     ) -> str:
-        """Ayarlar.mesaj_sablonu + her ilaç için satır formatı."""
+        """Ayarlar.mesaj_sablonu + her ilaç için satır formatı.
+
+        Her ilaç satırının sonuna göreceli gün etiketi eklenir
+        (ör. 'DIAMICRON (bugün)', 'BRIMOGUT (yarın)'). Kullanıcı kendi
+        ilac_satir_formati'nda {gun_str} placeholder'ı kullanırsa orada basılır;
+        yoksa satır sonuna otomatik olarak '({gun_str})' eklenir.
+        """
+        bugun = date.today()
+        sablon = ayarlar.ilac_satir_formati or "{urun_adi}"
+        has_gun = "{gun_str}" in sablon
         satirlar = []
         for il in ilaclar:
-            satir = ayarlar.ilac_satir_formati.format(**{
-                "urun_adi": il.get("urun_adi") or "",
-                "bitis_tarihi": il.get("bitis_tarihi") or "",
-                "yazdirma_tarihi": il.get("yazdirma_tarihi") or "",
-                "kaynak": il.get("kaynak") or "",
-            })
+            yt = str(il.get("yazdirma_tarihi") or "")[:10]
+            gun_str = MesajKuyrugu._gun_metni(yt, bugun)
+            try:
+                satir = sablon.format(
+                    urun_adi=il.get("urun_adi") or "",
+                    bitis_tarihi=il.get("bitis_tarihi") or "",
+                    yazdirma_tarihi=il.get("yazdirma_tarihi") or "",
+                    kaynak=il.get("kaynak") or "",
+                    gun_str=gun_str,
+                )
+            except (KeyError, IndexError):
+                satir = str(il.get("urun_adi") or "")
+            if not has_gun and gun_str:
+                satir = f"{satir.rstrip(', ').rstrip()} ({gun_str})"
             satirlar.append(satir)
 
         ilac_listesi = "\n".join(satirlar)
@@ -420,25 +702,82 @@ class MesajKuyrugu:
         )
 
     def gonderildi_isaretle(self, kuyruk_id: int, sonuc: str = "OK") -> None:
+        """Kuyruk kaydını 'gonderildi' olarak işaretle.
+
+        Kayıttaki ilac_json'da yazdırma_tarihi > bugün olan ilaçlar varsa
+        (mesaja alınmamış ileri tarihli ilaçlar), onlar YENİ bir 'bekliyor'
+        kaydına aktarılır. Böylece bu batch gönderildikten sonra ileri tarihli
+        ilaçlar kaybolmaz, bir sonraki batch döngüsünde mesajlanır.
+        """
         simdi = datetime.now().isoformat(timespec="seconds")
+        bugun_iso = date.today().isoformat()
         with self._conn() as c:
             row = c.execute(
-                "SELECT musteri_id, hasta_adi, cep_tel, ilac_json "
+                "SELECT musteri_id, hasta_adi, cep_tel, tckn, toplam_ziyaret, "
+                "son_ziyaret, takipli, ilac_json, planli_gonderim "
                 "FROM mesaj_kuyrugu WHERE id=?",
                 (kuyruk_id,),
             ).fetchone()
             if row is None:
                 return
+
+            try:
+                ilaclar = json.loads(row["ilac_json"]) or []
+            except Exception:
+                ilaclar = []
+
+            gonderilen = [i for i in ilaclar
+                          if not (str(i.get("yazdirma_tarihi") or "")[:10] > bugun_iso)]
+            ileri = [i for i in ilaclar
+                     if str(i.get("yazdirma_tarihi") or "")[:10] > bugun_iso]
+
+            # Gönderilecek mesaj metnine sadece gönderilenleri koymak için
+            # ilac_json'u güncelle.
             c.execute(
-                "UPDATE mesaj_kuyrugu SET durum='gonderildi' WHERE id=?",
-                (kuyruk_id,),
+                "UPDATE mesaj_kuyrugu SET ilac_json=?, durum='gonderildi' "
+                "WHERE id=?",
+                (json.dumps(gonderilen, ensure_ascii=False), kuyruk_id),
             )
             c.execute(
                 "INSERT INTO gonderim_log(musteri_id, hasta_adi, cep_tel, "
                 "mesaj_metni, zaman, sonuc) VALUES (?,?,?,?,?,?)",
                 (row["musteri_id"], row["hasta_adi"], row["cep_tel"],
-                 row["ilac_json"], simdi, sonuc),
+                 json.dumps(gonderilen, ensure_ascii=False), simdi, sonuc),
             )
+
+            # İleri tarihli ilaçları yeni bir 'bekliyor' kaydı olarak aktar
+            if ileri:
+                # Yeni planlı: ileri tarihli ilaçlar kendi batch'lerini oluştursun.
+                # Burada dataclass ayarına erişimimiz yok — varsayılan 5 günlük
+                # pencere ile hesapla (gerçek değer bir sonraki upsert taramasında
+                # zaten yeniden hesaplanacak).
+                from datetime import timedelta
+                tarihler = []
+                for il in ileri:
+                    t = str(il.get("yazdirma_tarihi") or "")[:10]
+                    try:
+                        tarihler.append(datetime.strptime(t, "%Y-%m-%d").date())
+                    except Exception:
+                        pass
+                if tarihler:
+                    baslangic = min(tarihler)
+                    pencere_son = baslangic + timedelta(days=5)
+                    pencere_ici = [t for t in tarihler if t <= pencere_son]
+                    yeni_planli = max(pencere_ici) if pencere_ici else baslangic
+                    yeni_planli = max(date.today(), yeni_planli)
+                else:
+                    yeni_planli = date.today()
+                c.execute(
+                    "INSERT INTO mesaj_kuyrugu(musteri_id, hasta_adi, cep_tel, "
+                    "tckn, toplam_ziyaret, son_ziyaret, takipli, "
+                    "ilac_json, olusturma, planli_gonderim, durum) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?, 'bekliyor')",
+                    (row["musteri_id"], row["hasta_adi"], row["cep_tel"],
+                     row["tckn"], row["toplam_ziyaret"], row["son_ziyaret"],
+                     row["takipli"],
+                     json.dumps(ileri, ensure_ascii=False),
+                     simdi, yeni_planli.isoformat()),
+                )
 
     def iptal_et(self, kuyruk_id: int) -> None:
         with self._conn() as c:
@@ -454,13 +793,51 @@ class MesajKuyrugu:
             ).fetchone()
             return int(r["n"]) if r else 0
 
-    def log_getir(self, limit: int = 500) -> List[Dict]:
+    def log_getir(
+        self,
+        limit: int = 500,
+        tarih_filtresi: str = "hepsi",  # "bugun" | "hafta" | "ay" | "hepsi"
+    ) -> List[Dict]:
+        """Gönderim log kayıtlarını getir — opsiyonel tarih filtresi."""
+        where = ""
+        params: tuple = ()
+        if tarih_filtresi == "bugun":
+            bugun = date.today().isoformat()
+            where = "WHERE substr(zaman,1,10) = ?"
+            params = (bugun,)
+        elif tarih_filtresi == "hafta":
+            baslangic = (date.today() - timedelta(days=6)).isoformat()
+            where = "WHERE substr(zaman,1,10) >= ?"
+            params = (baslangic,)
+        elif tarih_filtresi == "ay":
+            baslangic = (date.today() - timedelta(days=29)).isoformat()
+            where = "WHERE substr(zaman,1,10) >= ?"
+            params = (baslangic,)
+
+        sql = f"SELECT * FROM gonderim_log {where} ORDER BY id DESC LIMIT ?"
         with self._conn() as c:
-            rows = c.execute(
-                "SELECT * FROM gonderim_log ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+            rows = c.execute(sql, params + (limit,)).fetchall()
             return [dict(r) for r in rows]
+
+    def log_ozet(self) -> Dict[str, int]:
+        """Gönderim log için sayaçlar: toplam, bugün, bu hafta."""
+        bugun = date.today().isoformat()
+        hafta_bas = (date.today() - timedelta(days=6)).isoformat()
+        with self._conn() as c:
+            tot = c.execute("SELECT COUNT(*) AS n FROM gonderim_log").fetchone()["n"]
+            bug = c.execute(
+                "SELECT COUNT(*) AS n FROM gonderim_log WHERE substr(zaman,1,10) = ?",
+                (bugun,),
+            ).fetchone()["n"]
+            haf = c.execute(
+                "SELECT COUNT(*) AS n FROM gonderim_log WHERE substr(zaman,1,10) >= ?",
+                (hafta_bas,),
+            ).fetchone()["n"]
+            bug_ok = c.execute(
+                "SELECT COUNT(*) AS n FROM gonderim_log WHERE substr(zaman,1,10) = ? AND sonuc = 'OK'",
+                (bugun,),
+            ).fetchone()["n"]
+        return {"toplam": tot, "bugun": bug, "bugun_ok": bug_ok, "hafta": haf}
 
     def log_isaret_guncelle(self, log_id: int, isaret: str) -> None:
         with self._conn() as c:
