@@ -264,13 +264,13 @@ def ikon_ciz(boyut):
 
 
 def main():
+    # 256x256 tek base imaj çiz → Pillow sizes listesindeki her
+    # boyuta Lanczos ile yüksek kalite resize eder. Küçük entry'leri
+    # ayrı çizmek (SS=4 ile 64px'e küçültme) detay kaybına yol açıyor.
     boyutlar = [16, 24, 32, 48, 64, 128, 256]
-    resimler = [ikon_ciz(b) for b in boyutlar]
-    resimler[0].save(
-        OUT, format="ICO",
-        sizes=[(b, b) for b in boyutlar],
-        append_images=resimler[1:])
-    resimler[-1].save(PNG, format="PNG")
+    base = ikon_ciz(256)
+    base.save(OUT, format="ICO", sizes=[(b, b) for b in boyutlar])
+    base.save(PNG, format="PNG")
     print(f"Üretildi: {OUT}")
     print(f"Üretildi: {PNG}")
 
