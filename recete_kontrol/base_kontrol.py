@@ -29,6 +29,9 @@ class KontrolRaporu:
     mesaj: str
     detaylar: Optional[Dict] = None
     uyari: Optional[str] = None
+    sut_kurali: Optional[str] = None      # Hangi SUT kuralına bakıldı (ör: "SUT 4.2.2 Psikiyatri")
+    aranan_ibare: Optional[str] = None    # Metinde aranan ibare (ör: "uzman raporu (psikiyatri/nöroloji)")
+    bulunan_metin: Optional[str] = None   # Metinde bulunan eşleşme (ör: "psikiyatri uzmanı tarafından...")
 
 
 class BaseKontrol(ABC):

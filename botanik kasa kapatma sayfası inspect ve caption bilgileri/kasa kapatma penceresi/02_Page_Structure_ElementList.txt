@@ -1,0 +1,640 @@
+﻿================================================================================
+           SAYFA YAPISI VE ELEMENT LISTESI
+           Tarih: 2025-12-20 21:22:52
+================================================================================
+
+Pencere Handle: 0x120746
+Pencere Basligi: Kasa Kapatma
+Pencere Sinifi: WindowsForms10.Window.8.app.0.2dac507_r8_ad1
+
+ELEMENT LISTESI (UI Automation)
+================================================================================
+
+No    ControlType               Name                 AutomationId    ClassName
+----------------------------------------------------------------------------------------------------
+1     ControlType.Window        Kasa Kapatma         KasaKapamaFo... WindowsForms10.Windo...
+2     ControlType.Table                              gridControl1    WindowsForms10.Windo...
+3     ControlType.ScrollBar     Vertical             1771262         WindowsForms10.Windo...
+4     ControlType.Button        Üstteki Çizgi                        
+5     ControlType.Custom        Pozisyon                             
+6     ControlType.Button        Alttaki Sayfa                        
+7     ControlType.Button        Alttaki Çizgi                        
+8     ControlType.Custom        Başlık Paneli                        
+9     ControlType.Header        Islem Adi1                           
+10    ControlType.Button        Islem Adi1 ColumnFilte...                 
+11    ControlType.Header        Islem Tutar1String                   
+12    ControlType.Button        Islem Tutar1String Col...                 
+13    ControlType.Header        Islem Adi2                           
+14    ControlType.Button        Islem Adi2 ColumnFilte...                 
+15    ControlType.Header        Islem Tutar2String                   
+16    ControlType.Button        Islem Tutar2String Col...                 
+17    ControlType.Header        Islem Adi3                           
+18    ControlType.Button        Islem Adi3 ColumnFilte...                 
+19    ControlType.Header        Islem Tutar3String                   
+20    ControlType.Button        Islem Tutar3String Col...                 
+21    ControlType.Header        Islem Adi4                           
+22    ControlType.Button        Islem Adi4 ColumnFilte...                 
+23    ControlType.Header        Islem Tutar4String                   
+24    ControlType.Button        Islem Tutar4String Col...                 
+25    ControlType.Custom        Veri Paneli                          
+26    ControlType.ListItem      Satır 1                              
+27    ControlType.Custom        Islem Adi1 satır 1                   
+28    ControlType.Custom        Islem Tutar1String sat...                 
+29    ControlType.Custom        Islem Adi2 satır 1                   
+30    ControlType.Custom        Islem Tutar2String sat...                 
+31    ControlType.Custom        Islem Adi3 satır 1                   
+32    ControlType.Custom        Islem Tutar3String sat...                 
+33    ControlType.Custom        Islem Adi4 satır 1                   
+34    ControlType.Custom        Islem Tutar4String sat...                 
+35    ControlType.ListItem      Satır 2                              
+36    ControlType.Custom        Islem Adi1 satır 2                   
+37    ControlType.Custom        Islem Tutar1String sat...                 
+38    ControlType.Custom        Islem Adi2 satır 2                   
+39    ControlType.Custom        Islem Tutar2String sat...                 
+40    ControlType.Custom        Islem Adi3 satır 2                   
+41    ControlType.Custom        Islem Tutar3String sat...                 
+42    ControlType.Custom        Islem Adi4 satır 2                   
+43    ControlType.Custom        Islem Tutar4String sat...                 
+44    ControlType.ListItem      Satır 3                              
+45    ControlType.Custom        Islem Adi1 satır 3                   
+46    ControlType.Custom        Islem Tutar1String sat...                 
+47    ControlType.Custom        Islem Adi2 satır 3                   
+48    ControlType.Custom        Islem Tutar2String sat...                 
+49    ControlType.Custom        Islem Adi3 satır 3                   
+50    ControlType.Custom        Islem Tutar3String sat...                 
+51    ControlType.Custom        Islem Adi4 satır 3                   
+52    ControlType.Custom        Islem Tutar4String sat...                 
+53    ControlType.ListItem      Satır 4                              
+54    ControlType.Custom        Islem Adi1 satır 4                   
+55    ControlType.Custom        Islem Tutar1String sat...                 
+56    ControlType.Custom        Islem Adi2 satır 4                   
+57    ControlType.Custom        Islem Tutar2String sat...                 
+58    ControlType.Custom        Islem Adi3 satır 4                   
+59    ControlType.Custom        Islem Tutar3String sat...                 
+60    ControlType.Custom        Islem Adi4 satır 4                   
+61    ControlType.Custom        Islem Tutar4String sat...                 
+62    ControlType.ListItem      Satır 5                              
+63    ControlType.Custom        Islem Adi1 satır 5                   
+64    ControlType.Custom        Islem Tutar1String sat...                 
+65    ControlType.Custom        Islem Adi2 satır 5                   
+66    ControlType.Custom        Islem Tutar2String sat...                 
+67    ControlType.Custom        Islem Adi3 satır 5                   
+68    ControlType.Custom        Islem Tutar3String sat...                 
+69    ControlType.Custom        Islem Adi4 satır 5                   
+70    ControlType.Custom        Islem Tutar4String sat...                 
+71    ControlType.ListItem      Satır 6                              
+72    ControlType.Custom        Islem Adi1 satır 6                   
+73    ControlType.Custom        Islem Tutar1String sat...                 
+74    ControlType.Custom        Islem Adi2 satır 6                   
+75    ControlType.Custom        Islem Tutar2String sat...                 
+76    ControlType.Custom        Islem Adi3 satır 6                   
+77    ControlType.Custom        Islem Tutar3String sat...                 
+78    ControlType.Custom        Islem Adi4 satır 6                   
+79    ControlType.Custom        Islem Tutar4String sat...                 
+80    ControlType.ListItem      Satır 7                              
+81    ControlType.Custom        Islem Adi1 satır 7                   
+82    ControlType.Custom        Islem Tutar1String sat...                 
+83    ControlType.Custom        Islem Adi2 satır 7                   
+84    ControlType.Custom        Islem Tutar2String sat...                 
+85    ControlType.Custom        Islem Adi3 satır 7                   
+86    ControlType.Custom        Islem Tutar3String sat...                 
+87    ControlType.Custom        Islem Adi4 satır 7                   
+88    ControlType.Custom        Islem Tutar4String sat...                 
+89    ControlType.ListItem      Satır 8                              
+90    ControlType.Custom        Islem Adi1 satır 8                   
+91    ControlType.Custom        Islem Tutar1String sat...                 
+92    ControlType.Custom        Islem Adi2 satır 8                   
+93    ControlType.Custom        Islem Tutar2String sat...                 
+94    ControlType.Custom        Islem Adi3 satır 8                   
+95    ControlType.Custom        Islem Tutar3String sat...                 
+96    ControlType.Custom        Islem Adi4 satır 8                   
+97    ControlType.Custom        Islem Tutar4String sat...                 
+98    ControlType.ListItem      Satır 9                              
+99    ControlType.Custom        Islem Adi1 satır 9                   
+100   ControlType.Custom        Islem Tutar1String sat...                 
+101   ControlType.Custom        Islem Adi2 satır 9                   
+102   ControlType.Custom        Islem Tutar2String sat...                 
+103   ControlType.Custom        Islem Adi3 satır 9                   
+104   ControlType.Custom        Islem Tutar3String sat...                 
+105   ControlType.Custom        Islem Adi4 satır 9                   
+106   ControlType.Custom        Islem Tutar4String sat...                 
+107   ControlType.ListItem      Satır 10                             
+108   ControlType.Custom        Islem Adi1 satır 10                  
+109   ControlType.Custom        Islem Tutar1String sat...                 
+110   ControlType.Custom        Islem Adi2 satır 10                  
+111   ControlType.Custom        Islem Tutar2String sat...                 
+112   ControlType.Custom        Islem Adi3 satır 10                  
+113   ControlType.Custom        Islem Tutar3String sat...                 
+114   ControlType.Custom        Islem Adi4 satır 10                  
+115   ControlType.Custom        Islem Tutar4String sat...                 
+116   ControlType.ListItem      Satır 11                             
+117   ControlType.Custom        Islem Adi1 satır 11                  
+118   ControlType.Custom        Islem Tutar1String sat...                 
+119   ControlType.Custom        Islem Adi2 satır 11                  
+120   ControlType.Custom        Islem Tutar2String sat...                 
+121   ControlType.Custom        Islem Adi3 satır 11                  
+122   ControlType.Custom        Islem Tutar3String sat...                 
+123   ControlType.Custom        Islem Adi4 satır 11                  
+124   ControlType.Custom        Islem Tutar4String sat...                 
+125   ControlType.ListItem      Satır 12                             
+126   ControlType.Custom        Islem Adi1 satır 12                  
+127   ControlType.Custom        Islem Tutar1String sat...                 
+128   ControlType.Custom        Islem Adi2 satır 12                  
+129   ControlType.Custom        Islem Tutar2String sat...                 
+130   ControlType.Custom        Islem Adi3 satır 12                  
+131   ControlType.Custom        Islem Tutar3String sat...                 
+132   ControlType.Custom        Islem Adi4 satır 12                  
+133   ControlType.Custom        Islem Tutar4String sat...                 
+134   ControlType.ListItem      Satır 13                             
+135   ControlType.Custom        Islem Adi1 satır 13                  
+136   ControlType.Custom        Islem Tutar1String sat...                 
+137   ControlType.Custom        Islem Adi2 satır 13                  
+138   ControlType.Custom        Islem Tutar2String sat...                 
+139   ControlType.Custom        Islem Adi3 satır 13                  
+140   ControlType.Custom        Islem Tutar3String sat...                 
+141   ControlType.Custom        Islem Adi4 satır 13                  
+142   ControlType.Custom        Islem Tutar4String sat...                 
+143   ControlType.ListItem      Satır 14                             
+144   ControlType.Custom        Islem Adi1 satır 14                  
+145   ControlType.Custom        Islem Tutar1String sat...                 
+146   ControlType.Custom        Islem Adi2 satır 14                  
+147   ControlType.Custom        Islem Tutar2String sat...                 
+148   ControlType.Custom        Islem Adi3 satır 14                  
+149   ControlType.Custom        Islem Tutar3String sat...                 
+150   ControlType.Custom        Islem Adi4 satır 14                  
+151   ControlType.Custom        Islem Tutar4String sat...                 
+152   ControlType.ListItem      Satır 15                             
+153   ControlType.Custom        Islem Adi1 satır 15                  
+154   ControlType.Custom        Islem Tutar1String sat...                 
+155   ControlType.Custom        Islem Adi2 satır 15                  
+156   ControlType.Custom        Islem Tutar2String sat...                 
+157   ControlType.Custom        Islem Adi3 satır 15                  
+158   ControlType.Custom        Islem Tutar3String sat...                 
+159   ControlType.Custom        Islem Adi4 satır 15                  
+160   ControlType.Custom        Islem Tutar4String sat...                 
+161   ControlType.ListItem      Satır 16                             
+162   ControlType.Custom        Islem Adi1 satır 16                  
+163   ControlType.Custom        Islem Tutar1String sat...                 
+164   ControlType.Custom        Islem Adi2 satır 16                  
+165   ControlType.Custom        Islem Tutar2String sat...                 
+166   ControlType.Custom        Islem Adi3 satır 16                  
+167   ControlType.Custom        Islem Tutar3String sat...                 
+168   ControlType.Custom        Islem Adi4 satır 16                  
+169   ControlType.Custom        Islem Tutar4String sat...                 
+170   ControlType.ListItem      Satır 17                             
+171   ControlType.Custom        Islem Adi1 satır 17                  
+172   ControlType.Custom        Islem Tutar1String sat...                 
+173   ControlType.Custom        Islem Adi2 satır 17                  
+174   ControlType.Custom        Islem Tutar2String sat...                 
+175   ControlType.Custom        Islem Adi3 satır 17                  
+176   ControlType.Custom        Islem Tutar3String sat...                 
+177   ControlType.Custom        Islem Adi4 satır 17                  
+178   ControlType.Custom        Islem Tutar4String sat...                 
+179   ControlType.ListItem      Satır 18                             
+180   ControlType.Custom        Islem Adi1 satır 18                  
+181   ControlType.Custom        Islem Tutar1String sat...                 
+182   ControlType.Custom        Islem Adi2 satır 18                  
+183   ControlType.Custom        Islem Tutar2String sat...                 
+184   ControlType.Custom        Islem Adi3 satır 18                  
+185   ControlType.Custom        Islem Tutar3String sat...                 
+186   ControlType.Custom        Islem Adi4 satır 18                  
+187   ControlType.Custom        Islem Tutar4String sat...                 
+188   ControlType.ListItem      Satır 19                             
+189   ControlType.Custom        Islem Adi1 satır 19                  
+190   ControlType.Custom        Islem Tutar1String sat...                 
+191   ControlType.Custom        Islem Adi2 satır 19                  
+192   ControlType.Custom        Islem Tutar2String sat...                 
+193   ControlType.Custom        Islem Adi3 satır 19                  
+194   ControlType.Custom        Islem Tutar3String sat...                 
+195   ControlType.Custom        Islem Adi4 satır 19                  
+196   ControlType.Custom        Islem Tutar4String sat...                 
+197   ControlType.ListItem      Satır 20                             
+198   ControlType.Custom        Islem Adi1 satır 20                  
+199   ControlType.Custom        Islem Tutar1String sat...                 
+200   ControlType.Custom        Islem Adi2 satır 20                  
+201   ControlType.Custom        Islem Tutar2String sat...                 
+202   ControlType.Custom        Islem Adi3 satır 20                  
+203   ControlType.Custom        Islem Tutar3String sat...                 
+204   ControlType.Custom        Islem Adi4 satır 20                  
+205   ControlType.Custom        Islem Tutar4String sat...                 
+206   ControlType.ListItem      Satır 21                             
+207   ControlType.Custom        Islem Adi1 satır 21                  
+208   ControlType.Custom        Islem Tutar1String sat...                 
+209   ControlType.Custom        Islem Adi2 satır 21                  
+210   ControlType.Custom        Islem Tutar2String sat...                 
+211   ControlType.Custom        Islem Adi3 satır 21                  
+212   ControlType.Custom        Islem Tutar3String sat...                 
+213   ControlType.Custom        Islem Adi4 satır 21                  
+214   ControlType.Custom        Islem Tutar4String sat...                 
+215   ControlType.ListItem      Satır 22                             
+216   ControlType.Custom        Islem Adi1 satır 22                  
+217   ControlType.Custom        Islem Tutar1String sat...                 
+218   ControlType.Custom        Islem Adi2 satır 22                  
+219   ControlType.Custom        Islem Tutar2String sat...                 
+220   ControlType.Custom        Islem Adi3 satır 22                  
+221   ControlType.Custom        Islem Tutar3String sat...                 
+222   ControlType.Custom        Islem Adi4 satır 22                  
+223   ControlType.Custom        Islem Tutar4String sat...                 
+224   ControlType.ListItem      Satır 23                             
+225   ControlType.Custom        Islem Adi1 satır 23                  
+226   ControlType.Custom        Islem Tutar1String sat...                 
+227   ControlType.Custom        Islem Adi2 satır 23                  
+228   ControlType.Custom        Islem Tutar2String sat...                 
+229   ControlType.Custom        Islem Adi3 satır 23                  
+230   ControlType.Custom        Islem Tutar3String sat...                 
+231   ControlType.Custom        Islem Adi4 satır 23                  
+232   ControlType.Custom        Islem Tutar4String sat...                 
+233   ControlType.ListItem      Satır 24                             
+234   ControlType.Custom        Islem Adi1 satır 24                  
+235   ControlType.Custom        Islem Tutar1String sat...                 
+236   ControlType.Custom        Islem Adi2 satır 24                  
+237   ControlType.Custom        Islem Tutar2String sat...                 
+238   ControlType.Custom        Islem Adi3 satır 24                  
+239   ControlType.Custom        Islem Tutar3String sat...                 
+240   ControlType.Custom        Islem Adi4 satır 24                  
+241   ControlType.Custom        Islem Tutar4String sat...                 
+242   ControlType.ListItem      Satır 25                             
+243   ControlType.Custom        Islem Adi1 satır 25                  
+244   ControlType.Custom        Islem Tutar1String sat...                 
+245   ControlType.Custom        Islem Adi2 satır 25                  
+246   ControlType.Custom        Islem Tutar2String sat...                 
+247   ControlType.Custom        Islem Adi3 satır 25                  
+248   ControlType.Custom        Islem Tutar3String sat...                 
+249   ControlType.Custom        Islem Adi4 satır 25                  
+250   ControlType.Custom        Islem Tutar4String sat...                 
+251   ControlType.ListItem      Satır 26                             
+252   ControlType.Custom        Islem Adi1 satır 26                  
+253   ControlType.Custom        Islem Tutar1String sat...                 
+254   ControlType.Custom        Islem Adi2 satır 26                  
+255   ControlType.Custom        Islem Tutar2String sat...                 
+256   ControlType.Custom        Islem Adi3 satır 26                  
+257   ControlType.Custom        Islem Tutar3String sat...                 
+258   ControlType.Custom        Islem Adi4 satır 26                  
+259   ControlType.Custom        Islem Tutar4String sat...                 
+260   ControlType.ListItem      Satır 27                             
+261   ControlType.Custom        Islem Adi1 satır 27                  
+262   ControlType.Custom        Islem Tutar1String sat...                 
+263   ControlType.Custom        Islem Adi2 satır 27                  
+264   ControlType.Custom        Islem Tutar2String sat...                 
+265   ControlType.Custom        Islem Adi3 satır 27                  
+266   ControlType.Custom        Islem Tutar3String sat...                 
+267   ControlType.Custom        Islem Adi4 satır 27                  
+268   ControlType.Custom        Islem Tutar4String sat...                 
+269   ControlType.ListItem      Satır 28                             
+270   ControlType.Custom        Islem Adi1 satır 28                  
+271   ControlType.Custom        Islem Tutar1String sat...                 
+272   ControlType.Custom        Islem Adi2 satır 28                  
+273   ControlType.Custom        Islem Tutar2String sat...                 
+274   ControlType.Custom        Islem Adi3 satır 28                  
+275   ControlType.Custom        Islem Tutar3String sat...                 
+276   ControlType.Custom        Islem Adi4 satır 28                  
+277   ControlType.Custom        Islem Tutar4String sat...                 
+278   ControlType.ListItem      Satır 29                             
+279   ControlType.Custom        Islem Adi1 satır 29                  
+280   ControlType.Custom        Islem Tutar1String sat...                 
+281   ControlType.Custom        Islem Adi2 satır 29                  
+282   ControlType.Custom        Islem Tutar2String sat...                 
+283   ControlType.Custom        Islem Adi3 satır 29                  
+284   ControlType.Custom        Islem Tutar3String sat...                 
+285   ControlType.Custom        Islem Adi4 satır 29                  
+286   ControlType.Custom        Islem Tutar4String sat...                 
+287   ControlType.ScrollBar     Vertical                             
+288   ControlType.Button        Üstteki Çizgi                        
+289   ControlType.Custom        Pozisyon                             
+290   ControlType.Button        Alttaki Sayfa                        
+291   ControlType.Button        Alttaki Çizgi                        
+292   ControlType.Pane          panelControl1        panelControl... WindowsForms10.Windo...
+293   ControlType.Pane                               tarihPaketi1    WindowsForms10.Windo...
+294   ControlType.ComboBox                           cmbGecisTipi    WindowsForms10.Windo...
+295   ControlType.ComboBox                           dtpBitis        WindowsForms10.Windo...
+296   ControlType.Edit          20 Aralık 2025 Cumarte...                 
+297   ControlType.Button        Aç                                   
+298   ControlType.ComboBox                           dtpBaslama      WindowsForms10.Windo...
+299   ControlType.Edit          20 Aralık 2025 Cumarte...                 
+300   ControlType.Button        Aç                                   
+301   ControlType.Text          Bitiş                labelControl... WindowsForms10.Windo...
+302   ControlType.Text          Cumartesi            lblBitisGunu    WindowsForms10.Windo...
+303   ControlType.Text          Cumartesi            lblBaslamaGu... WindowsForms10.Windo...
+304   ControlType.Text          Başlama              labelControl... WindowsForms10.Windo...
+305   ControlType.Button        Sonraki              btnIleri        WindowsForms10.Windo...
+306   ControlType.Button        Önceki               btnGeri         WindowsForms10.Windo...
+307   ControlType.List          2                    rdbTarihTipi    WindowsForms10.Windo...
+308   ControlType.RadioButton   Reçete Tarihi                        
+309   ControlType.RadioButton   Kayıt Tarihi                         
+310   ControlType.RadioButton   İşlem Tarihi                         
+311   ControlType.Button        EPosta Yolla         btnEPostaYol... WindowsForms10.Windo...
+312   ControlType.Button        Maliyet Kontrol      btnAnaliz       WindowsForms10.Windo...
+313   ControlType.Button        Mini Kasa            btnMiniKasa     WindowsForms10.Windo...
+314   ControlType.Button        Eski Kapatılanlar    btnKapatilan... WindowsForms10.Windo...
+315   ControlType.Button        Kasayı KAPAT         btnKapat        WindowsForms10.Windo...
+316   ControlType.Button        Tarih Aralığı Raporu btnTarihAral... WindowsForms10.Windo...
+317   ControlType.Button        Kapanış Raporu       btnKasaKapam... WindowsForms10.Windo...
+318   ControlType.Button        Yazdır               btnYazdir       WindowsForms10.Windo...
+319   ControlType.Edit                               txtKasaNotu     WindowsForms10.Windo...
+320   ControlType.ScrollBar     Vertical             1115802         WindowsForms10.Windo...
+321   ControlType.Button        Üstteki Çizgi                        
+322   ControlType.Button        Alttaki Çizgi                        
+323   ControlType.Document                           1050486         WindowsForms10.EDIT....
+324   ControlType.ScrollBar     Dikey Kaydırma Çubuğu Vertical Scr... 
+325   ControlType.Button        Küçük miktarda geri  SmallDecreme... 
+326   ControlType.Button        Küçük miktarda ileri SmallIncreme... 
+327   ControlType.Edit                                               
+328   ControlType.ScrollBar     Vertical                             
+329   ControlType.Button        Üstteki Çizgi                        
+330   ControlType.Button        Alttaki Çizgi                        
+331   ControlType.Custom                                             
+332   ControlType.TitleBar      Kasa Kapatma         TitleBar        
+333   ControlType.MenuBar       Sistem Menü Çubuğu   KasaKapamaFo... 
+334   ControlType.MenuItem      Sistem               Item 1          
+335   ControlType.Button        Kapat                Close           
+
+Toplam Element: 335
+
+ELEMENT HIYERARSISI
+================================================================================
+[Window] Kasa Kapatma (KasaKapamaFormYeni)
+  [Table]  (gridControl1)
+    [ScrollBar] Vertical (1771262)
+      [Button] Üstteki Çizgi ()
+      [Custom] Pozisyon ()
+      [Button] Alttaki Sayfa ()
+      [Button] Alttaki Çizgi ()
+    [Custom] Başlık Paneli ()
+      [Header] Islem Adi1 ()
+        [Button] Islem Adi1 ColumnFilterButton ()
+      [Header] Islem Tutar1String ()
+        [Button] Islem Tutar1String ColumnFilte... ()
+      [Header] Islem Adi2 ()
+        [Button] Islem Adi2 ColumnFilterButton ()
+      [Header] Islem Tutar2String ()
+        [Button] Islem Tutar2String ColumnFilte... ()
+      [Header] Islem Adi3 ()
+        [Button] Islem Adi3 ColumnFilterButton ()
+      [Header] Islem Tutar3String ()
+        [Button] Islem Tutar3String ColumnFilte... ()
+      [Header] Islem Adi4 ()
+        [Button] Islem Adi4 ColumnFilterButton ()
+      [Header] Islem Tutar4String ()
+        [Button] Islem Tutar4String ColumnFilte... ()
+    [Custom] Veri Paneli ()
+      [ListItem] Satır 1 ()
+        [Custom] Islem Adi1 satır 1 ()
+        [Custom] Islem Tutar1String satır 1 ()
+        [Custom] Islem Adi2 satır 1 ()
+        [Custom] Islem Tutar2String satır 1 ()
+        [Custom] Islem Adi3 satır 1 ()
+        [Custom] Islem Tutar3String satır 1 ()
+        [Custom] Islem Adi4 satır 1 ()
+        [Custom] Islem Tutar4String satır 1 ()
+      [ListItem] Satır 2 ()
+        [Custom] Islem Adi1 satır 2 ()
+        [Custom] Islem Tutar1String satır 2 ()
+        [Custom] Islem Adi2 satır 2 ()
+        [Custom] Islem Tutar2String satır 2 ()
+        [Custom] Islem Adi3 satır 2 ()
+        [Custom] Islem Tutar3String satır 2 ()
+        [Custom] Islem Adi4 satır 2 ()
+        [Custom] Islem Tutar4String satır 2 ()
+      [ListItem] Satır 3 ()
+        [Custom] Islem Adi1 satır 3 ()
+        [Custom] Islem Tutar1String satır 3 ()
+        [Custom] Islem Adi2 satır 3 ()
+        [Custom] Islem Tutar2String satır 3 ()
+        [Custom] Islem Adi3 satır 3 ()
+        [Custom] Islem Tutar3String satır 3 ()
+        [Custom] Islem Adi4 satır 3 ()
+        [Custom] Islem Tutar4String satır 3 ()
+      [ListItem] Satır 4 ()
+        [Custom] Islem Adi1 satır 4 ()
+        [Custom] Islem Tutar1String satır 4 ()
+        [Custom] Islem Adi2 satır 4 ()
+        [Custom] Islem Tutar2String satır 4 ()
+        [Custom] Islem Adi3 satır 4 ()
+        [Custom] Islem Tutar3String satır 4 ()
+        [Custom] Islem Adi4 satır 4 ()
+        [Custom] Islem Tutar4String satır 4 ()
+      [ListItem] Satır 5 ()
+        [Custom] Islem Adi1 satır 5 ()
+        [Custom] Islem Tutar1String satır 5 ()
+        [Custom] Islem Adi2 satır 5 ()
+        [Custom] Islem Tutar2String satır 5 ()
+        [Custom] Islem Adi3 satır 5 ()
+        [Custom] Islem Tutar3String satır 5 ()
+        [Custom] Islem Adi4 satır 5 ()
+        [Custom] Islem Tutar4String satır 5 ()
+      [ListItem] Satır 6 ()
+        [Custom] Islem Adi1 satır 6 ()
+        [Custom] Islem Tutar1String satır 6 ()
+        [Custom] Islem Adi2 satır 6 ()
+        [Custom] Islem Tutar2String satır 6 ()
+        [Custom] Islem Adi3 satır 6 ()
+        [Custom] Islem Tutar3String satır 6 ()
+        [Custom] Islem Adi4 satır 6 ()
+        [Custom] Islem Tutar4String satır 6 ()
+      [ListItem] Satır 7 ()
+        [Custom] Islem Adi1 satır 7 ()
+        [Custom] Islem Tutar1String satır 7 ()
+        [Custom] Islem Adi2 satır 7 ()
+        [Custom] Islem Tutar2String satır 7 ()
+        [Custom] Islem Adi3 satır 7 ()
+        [Custom] Islem Tutar3String satır 7 ()
+        [Custom] Islem Adi4 satır 7 ()
+        [Custom] Islem Tutar4String satır 7 ()
+      [ListItem] Satır 8 ()
+        [Custom] Islem Adi1 satır 8 ()
+        [Custom] Islem Tutar1String satır 8 ()
+        [Custom] Islem Adi2 satır 8 ()
+        [Custom] Islem Tutar2String satır 8 ()
+        [Custom] Islem Adi3 satır 8 ()
+        [Custom] Islem Tutar3String satır 8 ()
+        [Custom] Islem Adi4 satır 8 ()
+        [Custom] Islem Tutar4String satır 8 ()
+      [ListItem] Satır 9 ()
+        [Custom] Islem Adi1 satır 9 ()
+        [Custom] Islem Tutar1String satır 9 ()
+        [Custom] Islem Adi2 satır 9 ()
+        [Custom] Islem Tutar2String satır 9 ()
+        [Custom] Islem Adi3 satır 9 ()
+        [Custom] Islem Tutar3String satır 9 ()
+        [Custom] Islem Adi4 satır 9 ()
+        [Custom] Islem Tutar4String satır 9 ()
+      [ListItem] Satır 10 ()
+        [Custom] Islem Adi1 satır 10 ()
+        [Custom] Islem Tutar1String satır 10 ()
+        [Custom] Islem Adi2 satır 10 ()
+        [Custom] Islem Tutar2String satır 10 ()
+        [Custom] Islem Adi3 satır 10 ()
+        [Custom] Islem Tutar3String satır 10 ()
+        [Custom] Islem Adi4 satır 10 ()
+        [Custom] Islem Tutar4String satır 10 ()
+      [ListItem] Satır 11 ()
+        [Custom] Islem Adi1 satır 11 ()
+        [Custom] Islem Tutar1String satır 11 ()
+        [Custom] Islem Adi2 satır 11 ()
+        [Custom] Islem Tutar2String satır 11 ()
+        [Custom] Islem Adi3 satır 11 ()
+        [Custom] Islem Tutar3String satır 11 ()
+        [Custom] Islem Adi4 satır 11 ()
+        [Custom] Islem Tutar4String satır 11 ()
+      [ListItem] Satır 12 ()
+        [Custom] Islem Adi1 satır 12 ()
+        [Custom] Islem Tutar1String satır 12 ()
+        [Custom] Islem Adi2 satır 12 ()
+        [Custom] Islem Tutar2String satır 12 ()
+        [Custom] Islem Adi3 satır 12 ()
+        [Custom] Islem Tutar3String satır 12 ()
+        [Custom] Islem Adi4 satır 12 ()
+        [Custom] Islem Tutar4String satır 12 ()
+      [ListItem] Satır 13 ()
+        [Custom] Islem Adi1 satır 13 ()
+        [Custom] Islem Tutar1String satır 13 ()
+        [Custom] Islem Adi2 satır 13 ()
+        [Custom] Islem Tutar2String satır 13 ()
+        [Custom] Islem Adi3 satır 13 ()
+        [Custom] Islem Tutar3String satır 13 ()
+        [Custom] Islem Adi4 satır 13 ()
+        [Custom] Islem Tutar4String satır 13 ()
+      [ListItem] Satır 14 ()
+        [Custom] Islem Adi1 satır 14 ()
+        [Custom] Islem Tutar1String satır 14 ()
+        [Custom] Islem Adi2 satır 14 ()
+        [Custom] Islem Tutar2String satır 14 ()
+        [Custom] Islem Adi3 satır 14 ()
+        [Custom] Islem Tutar3String satır 14 ()
+        [Custom] Islem Adi4 satır 14 ()
+        [Custom] Islem Tutar4String satır 14 ()
+      [ListItem] Satır 15 ()
+        [Custom] Islem Adi1 satır 15 ()
+        [Custom] Islem Tutar1String satır 15 ()
+        [Custom] Islem Adi2 satır 15 ()
+        [Custom] Islem Tutar2String satır 15 ()
+        [Custom] Islem Adi3 satır 15 ()
+        [Custom] Islem Tutar3String satır 15 ()
+        [Custom] Islem Adi4 satır 15 ()
+        [Custom] Islem Tutar4String satır 15 ()
+      [ListItem] Satır 16 ()
+        [Custom] Islem Adi1 satır 16 ()
+        [Custom] Islem Tutar1String satır 16 ()
+        [Custom] Islem Adi2 satır 16 ()
+        [Custom] Islem Tutar2String satır 16 ()
+        [Custom] Islem Adi3 satır 16 ()
+        [Custom] Islem Tutar3String satır 16 ()
+        [Custom] Islem Adi4 satır 16 ()
+        [Custom] Islem Tutar4String satır 16 ()
+      [ListItem] Satır 17 ()
+        [Custom] Islem Adi1 satır 17 ()
+        [Custom] Islem Tutar1String satır 17 ()
+        [Custom] Islem Adi2 satır 17 ()
+        [Custom] Islem Tutar2String satır 17 ()
+        [Custom] Islem Adi3 satır 17 ()
+        [Custom] Islem Tutar3String satır 17 ()
+        [Custom] Islem Adi4 satır 17 ()
+        [Custom] Islem Tutar4String satır 17 ()
+      [ListItem] Satır 18 ()
+        [Custom] Islem Adi1 satır 18 ()
+        [Custom] Islem Tutar1String satır 18 ()
+        [Custom] Islem Adi2 satır 18 ()
+        [Custom] Islem Tutar2String satır 18 ()
+        [Custom] Islem Adi3 satır 18 ()
+        [Custom] Islem Tutar3String satır 18 ()
+        [Custom] Islem Adi4 satır 18 ()
+        [Custom] Islem Tutar4String satır 18 ()
+      [ListItem] Satır 19 ()
+        [Custom] Islem Adi1 satır 19 ()
+        [Custom] Islem Tutar1String satır 19 ()
+        [Custom] Islem Adi2 satır 19 ()
+        [Custom] Islem Tutar2String satır 19 ()
+        [Custom] Islem Adi3 satır 19 ()
+        [Custom] Islem Tutar3String satır 19 ()
+        [Custom] Islem Adi4 satır 19 ()
+        [Custom] Islem Tutar4String satır 19 ()
+      [ListItem] Satır 20 ()
+        [Custom] Islem Adi1 satır 20 ()
+        [Custom] Islem Tutar1String satır 20 ()
+        [Custom] Islem Adi2 satır 20 ()
+        [Custom] Islem Tutar2String satır 20 ()
+        [Custom] Islem Adi3 satır 20 ()
+        [Custom] Islem Tutar3String satır 20 ()
+        [Custom] Islem Adi4 satır 20 ()
+        [Custom] Islem Tutar4String satır 20 ()
+      [ListItem] Satır 21 ()
+        [Custom] Islem Adi1 satır 21 ()
+        [Custom] Islem Tutar1String satır 21 ()
+        [Custom] Islem Adi2 satır 21 ()
+        [Custom] Islem Tutar2String satır 21 ()
+        [Custom] Islem Adi3 satır 21 ()
+        [Custom] Islem Tutar3String satır 21 ()
+        [Custom] Islem Adi4 satır 21 ()
+        [Custom] Islem Tutar4String satır 21 ()
+      [ListItem] Satır 22 ()
+        [Custom] Islem Adi1 satır 22 ()
+        [Custom] Islem Tutar1String satır 22 ()
+        [Custom] Islem Adi2 satır 22 ()
+        [Custom] Islem Tutar2String satır 22 ()
+        [Custom] Islem Adi3 satır 22 ()
+        [Custom] Islem Tutar3String satır 22 ()
+        [Custom] Islem Adi4 satır 22 ()
+        [Custom] Islem Tutar4String satır 22 ()
+      [ListItem] Satır 23 ()
+        [Custom] Islem Adi1 satır 23 ()
+        [Custom] Islem Tutar1String satır 23 ()
+        [Custom] Islem Adi2 satır 23 ()
+        [Custom] Islem Tutar2String satır 23 ()
+        [Custom] Islem Adi3 satır 23 ()
+        [Custom] Islem Tutar3String satır 23 ()
+        [Custom] Islem Adi4 satır 23 ()
+        [Custom] Islem Tutar4String satır 23 ()
+      [ListItem] Satır 24 ()
+        [Custom] Islem Adi1 satır 24 ()
+        [Custom] Islem Tutar1String satır 24 ()
+        [Custom] Islem Adi2 satır 24 ()
+        [Custom] Islem Tutar2String satır 24 ()
+        [Custom] Islem Adi3 satır 24 ()
+        [Custom] Islem Tutar3String satır 24 ()
+        [Custom] Islem Adi4 satır 24 ()
+        [Custom] Islem Tutar4String satır 24 ()
+      [ListItem] Satır 25 ()
+        [Custom] Islem Adi1 satır 25 ()
+        [Custom] Islem Tutar1String satır 25 ()
+        [Custom] Islem Adi2 satır 25 ()
+        [Custom] Islem Tutar2String satır 25 ()
+        [Custom] Islem Adi3 satır 25 ()
+        [Custom] Islem Tutar3String satır 25 ()
+        [Custom] Islem Adi4 satır 25 ()
+        [Custom] Islem Tutar4String satır 25 ()
+      ... ve 4 element daha
+  [Pane] panelControl1 (panelControl1)
+    [Pane]  (tarihPaketi1)
+      [ComboBox]  (cmbGecisTipi)
+      [ComboBox]  (dtpBitis)
+      [ComboBox]  (dtpBaslama)
+      [Text] Bitiş (labelControl2)
+      [Text] Cumartesi (lblBitisGunu)
+      [Text] Cumartesi (lblBaslamaGunu)
+      [Text] Başlama (labelControl1)
+      [Button] Sonraki (btnIleri)
+      [Button] Önceki (btnGeri)
+    [List] 2 (rdbTarihTipi)
+      [RadioButton] Reçete Tarihi ()
+      [RadioButton] Kayıt Tarihi ()
+      [RadioButton] İşlem Tarihi ()
+    [Button] EPosta Yolla (btnEPostaYollama)
+    [Button] Maliyet Kontrol (btnAnaliz)
+    [Button] Mini Kasa (btnMiniKasa)
+    [Button] Eski Kapatılanlar (btnKapatilanListesi)
+    [Button] Kasayı KAPAT (btnKapat)
+    [Button] Tarih Aralığı Raporu (btnTarihAraligi)
+    [Button] Kapanış Raporu (btnKasaKapama)
+    [Button] Yazdır (btnYazdir)
+    [Edit]  (txtKasaNotu)
+      [ScrollBar] Vertical (1115802)
+        [Button] Üstteki Çizgi ()
+        [Button] Alttaki Çizgi ()
+      [Document]  (1050486)
+        [ScrollBar] Dikey Kaydırma Çubuğu (Vertical ScrollBar)
+          [Button] Küçük miktarda geri (SmallDecrement)
+          [Button] Küçük miktarda ileri (SmallIncrement)
+  [TitleBar] Kasa Kapatma (TitleBar)
+    [MenuBar] Sistem Menü Çubuğu (KasaKapamaFormYeni)
+      [MenuItem] Sistem (Item 1)
+    [Button] Kapat (Close)

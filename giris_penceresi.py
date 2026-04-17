@@ -40,7 +40,12 @@ class GirisPenceresi:
                 # Normal giriş penceresini göster
 
         self.root = tk.Tk()
-        self.root.title("Botanik Takip Sistemi - Giriş")
+        self.root.title("Eczasist - Giriş")
+        try:
+            from eczasist_ikon import ikon_uygula
+            ikon_uygula(self.root)
+        except Exception:
+            pass
 
         # Pencere boyutları
         pencere_genislik = 400

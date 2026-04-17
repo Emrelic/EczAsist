@@ -1,0 +1,16 @@
+{
+  "gonderim_modu": "anlik",
+  "periyot_gun": 5,
+  "hafta_sonu_tolerans_gun": 3,
+  "rapor_yazdirma_tolerans_gun": 15,
+  "eski_kayit_gun": 30,
+  "sadece_takipli": true,
+  "kaynak": "BIRLESIK",
+  "calisma_baslangic": "00:00",
+  "calisma_bitis": "23:59",
+  "mesaj_sablonu": "Sayın {hasta_adi}\n\n{ilac_listesi}\n\nilaçlarınızı DOKTORA yazdırma günü gelmiştir. \n\n{eczane_adi}  {eczane_tel}",
+  "ilac_satir_formati": "{urun_adi},",
+  "eczane_adi": "İKİZLER ECZANESİ",
+  "eczane_tel": "0542 515 74 40",
+  "toplu_gonderim_gunu": 0
+}

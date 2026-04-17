@@ -80,7 +80,7 @@ class SiparisVermeGUI:
         # Parametre değişkenleri
         self.sene_sayisi = tk.IntVar(value=1)
         self.ay_sayisi = tk.IntVar(value=6)
-        self.beklenen_zam_orani = tk.DoubleVar(value=0.0)
+        self.beklenen_zam_orani = tk.StringVar(value="0")
 
         # Checkbox değişkenleri
         self.hedef_tarih_aktif = tk.BooleanVar(value=False)
@@ -1086,6 +1086,13 @@ class SiparisVermeGUI:
         # Status bar'da bilgi göster
         self.status_label.config(text=bilgiler.get(strateji, ""))
 
+    def _zam_orani_getir(self):
+        """Zam oranını al - virgül/nokta güvenli"""
+        try:
+            return float(str(self.beklenen_zam_orani.get()).replace(',', '.'))
+        except (ValueError, Exception):
+            return 0.0
+
     def _aktif_faiz_getir(self):
         """Seçili faiz türüne göre aktif faiz oranını döndür"""
         if self.faiz_turu.get() == "mevduat":
@@ -1380,7 +1387,7 @@ class SiparisVermeGUI:
 
         # Parametreleri al
         try:
-            zam_orani = float(self.beklenen_zam_orani.get())
+            zam_orani = self._zam_orani_getir()
             faiz_yillik = self._aktif_faiz_getir()
             depo_vade = int(self.depo_vadesi.get())
             zam_tarihi = self.zam_tarih_entry.get_date()
@@ -1426,7 +1433,7 @@ class SiparisVermeGUI:
 
         # Parametreleri al
         try:
-            zam_orani = float(self.beklenen_zam_orani.get())
+            zam_orani = self._zam_orani_getir()
             faiz_yillik = self._aktif_faiz_getir()
             depo_vade = int(self.depo_vadesi.get())
             zam_tarihi = self.zam_tarih_entry.get_date()
@@ -1462,7 +1469,7 @@ class SiparisVermeGUI:
             return
 
         try:
-            zam_orani = float(self.beklenen_zam_orani.get())
+            zam_orani = self._zam_orani_getir()
             faiz_yillik = self._aktif_faiz_getir()
             depo_vade = int(self.depo_vadesi.get())
             zam_tarihi = self.zam_tarih_entry.get_date()
@@ -2162,6 +2169,7 @@ class SiparisVermeGUI:
 
         def sorgu_thread():
             try:
+                import time as _time
                 from botanik_db import BotanikDB
                 db = BotanikDB()
                 if not db.baglan():
@@ -2172,7 +2180,29 @@ class SiparisVermeGUI:
                 ay = self.ay_sayisi.get()
 
                 # Ana verileri getir
+                t0 = _time.time()
                 veriler = self._verileri_getir_sql(db, sene, ay, secili_tipler)
+                t1 = _time.time()
+                logger.info(f"Sipariş sorgusu: {len(veriler)} satır, {t1-t0:.1f} saniye")
+
+                if not veriler:
+                    db.kapat()
+                    self.parent.after(0, lambda: self._sorgu_tamamlandi(loading, hata="Sorgu sonuç döndürmedi. Veritabanı bağlantısını ve parametreleri kontrol edin."))
+                    return
+
+                # Barkodları ayrı getir (hafif sorgu)
+                urun_idler = [str(v['UrunId']) for v in veriler]
+                if urun_idler:
+                    barkod_sql = f"""
+                    SELECT BarkodUrunId, MIN(BarkodAdi) as BarkodAdi
+                    FROM Barkod
+                    WHERE BarkodSilme = 0 AND BarkodUrunId IN ({','.join(urun_idler)})
+                    GROUP BY BarkodUrunId
+                    """
+                    barkod_sonuc = db.sorgu_calistir(barkod_sql)
+                    barkod_map = {r['BarkodUrunId']: r['BarkodAdi'] for r in barkod_sonuc}
+                    for v in veriler:
+                        v['Barkod'] = barkod_map.get(v['UrunId'], '')
 
                 # MF şartlarını getir
                 mf_sartlari = self._mf_sartlari_getir(db)
@@ -2281,20 +2311,11 @@ class SiparisVermeGUI:
             u.UrunAdi,
             COALESCE(ut.UrunTipAdi, 'Belirsiz') as UrunTipi,
             u.UrunEsdegerId as EsdegerId,
-            -- Stok: Sadece İLAÇ(1) ve PASİF İLAÇ(16) için Karekod, diğerleri için EskiStok
-            CASE
-                WHEN u.UrunUrunTipId IN (1, 16) THEN
-                    (SELECT COUNT(*) FROM Karekod kk WHERE kk.KKUrunId = u.UrunId AND kk.KKDurum = 1)
-                ELSE
-                    (COALESCE(u.UrunStokDepo,0) + COALESCE(u.UrunStokRaf,0) + COALESCE(u.UrunStokAcik,0))
-            END as Stok,
+            (COALESCE(u.UrunStokDepo,0) + COALESCE(u.UrunStokRaf,0) + COALESCE(u.UrunStokAcik,0)) as Stok,
             COALESCE(u.UrunMinimum, 0) as MinStok,
             COALESCE(ao.ToplamCikis, 0) as ToplamCikis,
-            -- Fiyat bilgileri (Depocu fiyat hesaplaması için)
             COALESCE(u.UrunFiyatEtiket, 0) as PSF,
             COALESCE(u.UrunIskontoKamu, 0) as IskontoKamu,
-            -- Barkod (Barkod tablosundan)
-            (SELECT TOP 1 b.BarkodAdi FROM Barkod b WHERE b.BarkodUrunId = u.UrunId ORDER BY b.BarkodSilme ASC) as Barkod,
             {', '.join([f'COALESCE(ao.Ay_{i}, 0) as Ay_{i}' for i in range(ay_sayisi)])}
         FROM Urun u
         INNER JOIN HareketliUrunler hu ON u.UrunId = hu.UrunId
@@ -2355,7 +2376,7 @@ class SiparisVermeGUI:
         min_stok_aktif = self.min_stok_aktif.get()
         min_stok_kaynagi = self.min_stok_kaynagi.get()  # 'botanik' veya 'yerel'
         zam_aktif = self.zam_aktif.get()
-        zam_orani = self.beklenen_zam_orani.get() / 100 if zam_aktif else 0
+        zam_orani = self._zam_orani_getir() / 100 if zam_aktif else 0
         zam_stratejisi = self.zam_stratejisi.get() if zam_aktif else 'pareto'
 
         # Yerel min stok verilerini cache'e al (kaynak 'yerel' ise)
@@ -2553,7 +2574,7 @@ class SiparisVermeGUI:
         faiz_tur = "M" if self.faiz_turu.get() == "mevduat" else "K"
 
         if self.zam_aktif.get():
-            zam_orani = self.beklenen_zam_orani.get()
+            zam_orani = self._zam_orani_getir()
             strateji = self.zam_stratejisi.get()
             strateji_adi = {'pareto': 'Pareto', 'optimum': 'Maks.Kazanç', 'verimlilik': 'Maks.ROI'}.get(strateji, strateji)
             mod_bilgi = f"ZAM: %{zam_orani:.0f} | {strateji_adi} | {hedef_gun} gün"
@@ -3535,7 +3556,7 @@ class SiparisVermeGUI:
             faiz = self._aktif_faiz_getir()
             depo_vade = self.depo_vadesi.get()
             zam_aktif = self.zam_aktif.get()
-            zam_orani = float(self.beklenen_zam_orani.get()) if zam_aktif else 0
+            zam_orani = self._zam_orani_getir() if zam_aktif else 0
             zam_tarihi = self.zam_tarih_entry.get_date() if zam_aktif else None
         except:
             return {'bolge_no': 0, 'bolge_adi': '?', 'renk': '#757575', 'aciklama': 'Hesaplanamadı'}

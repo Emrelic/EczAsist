@@ -1,0 +1,769 @@
+{
+  "tarih": "2026-03-28 18:39",
+  "sayfalar": {
+    "ana_sayfa": {
+      "sol_menu": [
+        {
+          "aid": "form1:menuHtmlCommandExButton11",
+          "txt": "e-Reçete Sorgu"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton11_MOUSE",
+          "txt": "e-Reçete Sorgu"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton21",
+          "txt": "Reçete Giriş"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton21_MOUSE",
+          "txt": "Reçete Giriş"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton31",
+          "txt": "Reçete Listesi"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton31_MOUSE",
+          "txt": "Reçete Listesi"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton41",
+          "txt": "Reçete Listesi (Günlük)"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton41_MOUSE",
+          "txt": "Reçete Listesi (Günlük)"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton51",
+          "txt": "Reçete Sorgu"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton51_MOUSE",
+          "txt": "Reçete Sorgu"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton61",
+          "txt": "İade Reçete Sorgu/Düzeltme"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton61_MOUSE",
+          "txt": "İade Reçete Sorgu/Düzeltme"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton71",
+          "txt": "İlaç Bilgisi"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton71_MOUSE",
+          "txt": "İlaç Bilgisi"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton81",
+          "txt": "Silinmiş Karekod"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton81_MOUSE",
+          "txt": "Silinmiş Karekod"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton91",
+          "txt": "Manuel Reçete Giriş"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton91_MOUSE",
+          "txt": "Manuel Reçete Giriş"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton101",
+          "txt": "Manuel Reçete Liste"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton101_MOUSE",
+          "txt": "Manuel Reçete Liste"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton121",
+          "txt": "Fatura Sonlandırma"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton121_MOUSE",
+          "txt": "Fatura Sonlandırma"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton131",
+          "txt": "Eski Fatura Sorgu"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton131_MOUSE",
+          "txt": "Eski Fatura Sorgu"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton141",
+          "txt": "Ek Fatura"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton141_MOUSE",
+          "txt": "Ek Fatura"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton151",
+          "txt": "İade/Kesinti Sorgu"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton151_MOUSE",
+          "txt": "İade/Kesinti Sorgu"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton161",
+          "txt": "Emekli İlaç Katılım"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton161_MOUSE",
+          "txt": "Emekli İlaç Katılım"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton181",
+          "txt": "Mesaj Görüntüleme"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton181_MOUSE",
+          "txt": "Mesaj Görüntüleme"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton201",
+          "txt": "Şifre Değiştir"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton201_MOUSE",
+          "txt": "Şifre Değiştir"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton211",
+          "txt": "Bilgi Güncelleme"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton211_MOUSE",
+          "txt": "Bilgi Güncelleme"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton221",
+          "txt": "TBMM Uygulaması"
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton221_MOUSE",
+          "txt": "TBMM Uygulaması"
+        }
+      ],
+      "toolbar_butonlar": [
+        {
+          "aid": "btnFOG",
+          "txt": "",
+          "x": 1748,
+          "y": 47
+        },
+        {
+          "aid": "btnHatirlat",
+          "txt": "Ajanda",
+          "x": 734,
+          "y": 76
+        },
+        {
+          "aid": "btnMedRxYaz",
+          "txt": "RXyaz",
+          "x": 657,
+          "y": 78
+        },
+        {
+          "aid": "btnAdresDegis",
+          "txt": "Adres Değiş",
+          "x": 871,
+          "y": 76
+        },
+        {
+          "aid": "btnMajistralDegerlendir",
+          "txt": "Fark",
+          "x": 208,
+          "y": 22
+        },
+        {
+          "aid": "btnAktar",
+          "txt": "Aktar",
+          "x": 55,
+          "y": 22
+        },
+        {
+          "aid": "btnMedulayaGirisYap",
+          "txt": "Giriş",
+          "x": 0,
+          "y": 22
+        },
+        {
+          "aid": "btnFibeAktar",
+          "txt": "FİB",
+          "x": 449,
+          "y": 80
+        },
+        {
+          "aid": "btnKontrolEdildi",
+          "txt": "Kontrol Edilmedi",
+          "x": 355,
+          "y": 80
+        },
+        {
+          "aid": "btnOnceki",
+          "txt": "< Önce",
+          "x": 516,
+          "y": 78
+        },
+        {
+          "aid": "btnOtomatikSonlandirma",
+          "txt": "Sonlan\r\nF7",
+          "x": 1856,
+          "y": 23
+        },
+        {
+          "aid": "btnListelenen",
+          "txt": "List KK",
+          "x": 1795,
+          "y": 23
+        },
+        {
+          "aid": "btnKKITakip",
+          "txt": "0",
+          "x": 841,
+          "y": 76
+        },
+        {
+          "aid": "btnRobot",
+          "txt": "",
+          "x": 812,
+          "y": 76
+        },
+        {
+          "aid": "btnEksikReceteFisi",
+          "txt": "TR",
+          "x": 975,
+          "y": 47
+        },
+        {
+          "aid": "btnHafizanadanTCYapistir",
+          "txt": "TCY",
+          "x": 1046,
+          "y": 47
+        },
+        {
+          "aid": "btnHastaBorcEmanetFisYazdir",
+          "txt": "HBEF",
+          "x": 1009,
+          "y": 47
+        },
+        {
+          "aid": "btnHastaFisiYeni",
+          "txt": "HF",
+          "x": 941,
+          "y": 47
+        },
+        {
+          "aid": "btnReceteNotu",
+          "txt": "",
+          "x": 1249,
+          "y": 23
+        },
+        {
+          "aid": "btnRenkliReceteHastaIlaci",
+          "txt": "RRHI",
+          "x": 1274,
+          "y": 23
+        },
+        {
+          "aid": "btnIncelemeModu",
+          "txt": "",
+          "x": 1181,
+          "y": 23
+        },
+        {
+          "aid": "btnSonraGirim",
+          "txt": "Memo",
+          "x": 1209,
+          "y": 23
+        },
+        {
+          "aid": "btnSonlanmamis",
+          "txt": "HıGi",
+          "x": 1326,
+          "y": 23
+        },
+        {
+          "aid": "btnKasaFisi",
+          "txt": "KF",
+          "x": 907,
+          "y": 47
+        },
+        {
+          "aid": "btnIlacTarifEtiketi",
+          "txt": "",
+          "x": 852,
+          "y": 47
+        },
+        {
+          "aid": "btnTarifYazdir",
+          "txt": "TE",
+          "x": 818,
+          "y": 47
+        },
+        {
+          "aid": "btnMKS",
+          "txt": "DRS",
+          "x": 704,
+          "y": 76
+        },
+        {
+          "aid": "btnPrint",
+          "txt": "Y",
+          "x": 784,
+          "y": 47
+        },
+        {
+          "aid": "btnSonraki",
+          "txt": "Sonra >",
+          "x": 565,
+          "y": 78
+        },
+        {
+          "aid": "btnEReceteler",
+          "txt": "ERx",
+          "x": 484,
+          "y": 78
+        },
+        {
+          "aid": "btnHastaneler",
+          "txt": "H",
+          "x": 1433,
+          "y": 23
+        },
+        {
+          "aid": "btnUrunEtkinGoster",
+          "txt": "R",
+          "x": 1396,
+          "y": 23
+        },
+        {
+          "aid": "btnReceteKaydet",
+          "txt": "F4",
+          "x": 1356,
+          "y": 23
+        },
+        {
+          "aid": "simpleButton5",
+          "txt": "CARİ",
+          "x": 154,
+          "y": 22
+        },
+        {
+          "aid": "simpleButton4",
+          "txt": "Raf",
+          "x": 108,
+          "y": 22
+        },
+        {
+          "aid": "simpleButton10",
+          "txt": "Eksik",
+          "x": 1518,
+          "y": 23
+        },
+        {
+          "aid": "simpleButton14",
+          "txt": "Shift+F9",
+          "x": 1727,
+          "y": 23
+        },
+        {
+          "aid": "simpleButton9",
+          "txt": "Miad",
+          "x": 1470,
+          "y": 23
+        },
+        {
+          "aid": "simpleButton13",
+          "txt": "F9",
+          "x": 1686,
+          "y": 23
+        },
+        {
+          "aid": "simpleButton12",
+          "txt": "ICD F11",
+          "x": 1622,
+          "y": 23
+        },
+        {
+          "aid": "simpleButton11",
+          "txt": "ctrl+E",
+          "x": 1567,
+          "y": 23
+        }
+      ]
+    },
+    "recete_listesi": {
+      "butonlar": [
+        {
+          "aid": "form1:menuHtmlCommandExButton21",
+          "ct": "Button",
+          "txt": "Reçete Giriş",
+          "x": 6,
+          "y": 209,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton21_MOUSE",
+          "ct": "Button",
+          "txt": "Reçete Giriş",
+          "x": 6,
+          "y": 209,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton31",
+          "ct": "Button",
+          "txt": "Reçete Listesi",
+          "x": 6,
+          "y": 231,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton31_MOUSE",
+          "ct": "Button",
+          "txt": "Reçete Listesi",
+          "x": 6,
+          "y": 231,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton41",
+          "ct": "Button",
+          "txt": "Reçete Listesi (Günlük)",
+          "x": 6,
+          "y": 253,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton41_MOUSE",
+          "ct": "Button",
+          "txt": "Reçete Listesi (Günlük)",
+          "x": 6,
+          "y": 253,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton51",
+          "ct": "Button",
+          "txt": "Reçete Sorgu",
+          "x": 6,
+          "y": 275,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton51_MOUSE",
+          "ct": "Button",
+          "txt": "Reçete Sorgu",
+          "x": 6,
+          "y": 275,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton61",
+          "ct": "Button",
+          "txt": "İade Reçete Sorgu/Düzeltme",
+          "x": 6,
+          "y": 297,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton61_MOUSE",
+          "ct": "Button",
+          "txt": "İade Reçete Sorgu/Düzeltme",
+          "x": 6,
+          "y": 297,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton71",
+          "ct": "Button",
+          "txt": "İlaç Bilgisi",
+          "x": 6,
+          "y": 319,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton71_MOUSE",
+          "ct": "Button",
+          "txt": "İlaç Bilgisi",
+          "x": 6,
+          "y": 319,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton81",
+          "ct": "Button",
+          "txt": "Silinmiş Karekod",
+          "x": 6,
+          "y": 341,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton81_MOUSE",
+          "ct": "Button",
+          "txt": "Silinmiş Karekod",
+          "x": 6,
+          "y": 341,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton91",
+          "ct": "Button",
+          "txt": "Manuel Reçete Giriş",
+          "x": 6,
+          "y": 363,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton91_MOUSE",
+          "ct": "Button",
+          "txt": "Manuel Reçete Giriş",
+          "x": 6,
+          "y": 363,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton101",
+          "ct": "Button",
+          "txt": "Manuel Reçete Liste",
+          "x": 6,
+          "y": 385,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton101_MOUSE",
+          "ct": "Button",
+          "txt": "Manuel Reçete Liste",
+          "x": 6,
+          "y": 385,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton121",
+          "ct": "Button",
+          "txt": "Fatura Sonlandırma",
+          "x": 6,
+          "y": 430,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton121_MOUSE",
+          "ct": "Button",
+          "txt": "Fatura Sonlandırma",
+          "x": 6,
+          "y": 430,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton131",
+          "ct": "Button",
+          "txt": "Eski Fatura Sorgu",
+          "x": 6,
+          "y": 452,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton131_MOUSE",
+          "ct": "Button",
+          "txt": "Eski Fatura Sorgu",
+          "x": 6,
+          "y": 452,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton141",
+          "ct": "Button",
+          "txt": "Ek Fatura",
+          "x": 6,
+          "y": 474,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton141_MOUSE",
+          "ct": "Button",
+          "txt": "Ek Fatura",
+          "x": 6,
+          "y": 474,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton151",
+          "ct": "Button",
+          "txt": "İade/Kesinti Sorgu",
+          "x": 6,
+          "y": 496,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton151_MOUSE",
+          "ct": "Button",
+          "txt": "İade/Kesinti Sorgu",
+          "x": 6,
+          "y": 496,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton161",
+          "ct": "Button",
+          "txt": "Emekli İlaç Katılım",
+          "x": 6,
+          "y": 518,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton161_MOUSE",
+          "ct": "Button",
+          "txt": "Emekli İlaç Katılım",
+          "x": 6,
+          "y": 518,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton181",
+          "ct": "Button",
+          "txt": "Mesaj Görüntüleme",
+          "x": 6,
+          "y": 563,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton181_MOUSE",
+          "ct": "Button",
+          "txt": "Mesaj Görüntüleme",
+          "x": 6,
+          "y": 563,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton201",
+          "ct": "Button",
+          "txt": "Şifre Değiştir",
+          "x": 6,
+          "y": 608,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton201_MOUSE",
+          "ct": "Button",
+          "txt": "Şifre Değiştir",
+          "x": 6,
+          "y": 608,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton211",
+          "ct": "Button",
+          "txt": "Bilgi Güncelleme",
+          "x": 6,
+          "y": 630,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton211_MOUSE",
+          "ct": "Button",
+          "txt": "Bilgi Güncelleme",
+          "x": 6,
+          "y": 630,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton221",
+          "ct": "Button",
+          "txt": "TBMM Uygulaması",
+          "x": 6,
+          "y": 652,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:menuHtmlCommandExButton221_MOUSE",
+          "ct": "Button",
+          "txt": "TBMM Uygulaması",
+          "x": 6,
+          "y": 652,
+          "w": 165,
+          "h": 20
+        },
+        {
+          "aid": "form1:buttonSorgula",
+          "ct": "Button",
+          "txt": "Sorgula",
+          "x": 973,
+          "y": 211,
+          "w": 69,
+          "h": 19
+        },
+        {
+          "aid": "form1:buttonSorgula2",
+          "ct": "Button",
+          "txt": "Sorgula",
+          "x": 973,
+          "y": 241,
+          "w": 69,
+          "h": 19
+        },
+        {
+          "aid": "form1:buttonSmsOlarakGonder",
+          "ct": "Button",
+          "txt": "SMS olarak gönder",
+          "x": 973,
+          "y": 271,
+          "w": 177,
+          "h": 19
+        }
+      ],
+      "sekmeler": [],
+      "tum_elementler_sayisi": 145,
+      "recete_sayisi": 0,
+      "recete_ornekleri": [],
+      "sekmeler_sonrasi": []
+    }
+  }
+}

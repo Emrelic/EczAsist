@@ -131,6 +131,13 @@ class AnaMenu:
             "aciklama": "Personel prim raporlama ve analiz",
             "renk": "#FF6F00",  # Amber
             "hover": "#E65100"
+        },
+        "hasta_takip": {
+            "baslik": "Hasta Takip & WA",
+            "icon": "📲",
+            "aciklama": "Yazdırma günü gelen hastalara WhatsApp mesaj",
+            "renk": "#25D366",  # WhatsApp yeşili
+            "hover": "#128C7E"
         }
     }
 
@@ -144,11 +151,16 @@ class AnaMenu:
         self.yetkiler = self.kullanici_yonetimi.kullanici_yetkilerini_al(kullanici['id'])
 
         self.root = tk.Tk()
-        self.root.title(f"Botanik Takip Sistemi - {kullanici.get('ad_soyad', kullanici['kullanici_adi'])}")
+        self.root.title(f"Eczasist - {kullanici.get('ad_soyad', kullanici['kullanici_adi'])}")
+        try:
+            from eczasist_ikon import ikon_uygula
+            ikon_uygula(self.root)
+        except Exception:
+            pass
 
         # Pencere boyutları
         pencere_genislik = 900
-        pencere_yukseklik = 750
+        pencere_yukseklik = 920
 
         # Ekranın ortasına yerleştir
         ekran_genislik = self.root.winfo_screenwidth()
@@ -363,7 +375,8 @@ class AnaMenu:
         modul_listesi = [
             "ilac_takip", "depo_ekstre", "kasa_takip", "rapor_kontrol",
             "t_cetvel", "ek_raporlar", "mf_analiz", "mf_hizli",
-            "siparis_verme", "min_stok_analiz", "stok_maliyet_analiz", "prim_raporlama", "kullanici_yonetimi"
+            "siparis_verme", "min_stok_analiz", "stok_maliyet_analiz", "prim_raporlama",
+            "hasta_takip", "kullanici_yonetimi"
         ]
 
         row = 0
@@ -527,6 +540,8 @@ class AnaMenu:
             self.stok_maliyet_analiz_ac()
         elif modul_key == "prim_raporlama":
             self.prim_raporlama_ac()
+        elif modul_key == "hasta_takip":
+            self.hasta_takip_ac()
         elif modul_key == "kullanici_yonetimi":
             self.kullanici_yonetimi_ac()
 
@@ -857,6 +872,29 @@ class AnaMenu:
         except Exception as e:
             logger.error(f"Stok Maliyet Analiz açma hatası: {e}")
             messagebox.showerror("Hata", f"Stok Maliyet Analizi modülü açılamadı:\n{e}")
+            self.root.deiconify()
+
+    def hasta_takip_ac(self):
+        """Hasta Takip & WhatsApp modülünü aç"""
+        try:
+            self.root.withdraw()
+
+            from hasta_takip_gui import HastaTakipGUI
+
+            pencere = tk.Toplevel()
+
+            def ana_menuye_don():
+                self.root.deiconify()
+
+            pencere.protocol(
+                "WM_DELETE_WINDOW",
+                lambda: self._modul_kapat_ve_don(pencere),
+            )
+            HastaTakipGUI(pencere, ana_menu_callback=ana_menuye_don)
+
+        except Exception as e:
+            logger.error(f"Hasta Takip açma hatası: {e}")
+            messagebox.showerror("Hata", f"Hasta Takip modülü açılamadı:\n{e}")
             self.root.deiconify()
 
     def kullanici_yonetimi_ac(self):

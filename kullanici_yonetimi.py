@@ -39,6 +39,7 @@ class KullaniciYonetimi:
         "min_stok_analiz": "Minimum Stok Analizi",
         "stok_maliyet_analiz": "Stok Maliyet Analizi",
         "prim_raporlama": "Prim Raporlama",
+        "hasta_takip": "Hasta Takip & WhatsApp",
         "kullanici_yonetimi": "Kullanıcı Yönetimi"
     }
 

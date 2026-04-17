@@ -43,6 +43,9 @@ grup_durumlari.json
 
 # Database files (contain sensitive data)
 *.db
+*.db-wal
+*.db-shm
+*.db.bak
 
 # Temporary files
 nul
@@ -64,6 +67,18 @@ ekstre_filtre_ayarlari.json
 # Backup files
 *.backup
 *.backup_*
+*.bak
+*.bak.*
+
+# Runtime artifacts (process IDs, AI temp files)
+*.pid
+_ai_*.ps1
+_ai_*.txt
+_ai_*.json
+
+# Hasta Takip yerel state (user-specific, gonderim log ve kuyruk)
+hasta_takip.db
+hasta_takip_ayarlari.json
 
 # Excel temp files
 ~$*.xlsx
