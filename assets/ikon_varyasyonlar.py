@@ -461,21 +461,17 @@ def v3(boyut: int = 256) -> Image.Image:
     tabak(kol_x2 - int(B * 0.04))
 
     # --- Katman 6: Kafa bağlantısı + kafa (EN ÜSTTE) ---
-    # Spiralin son noktası sağ yanda (cx+amp, ust_y).
-    # Kafa çapraz sağa-yukarı uzanıyor, kol üzerinden atlayıp
-    # topuzun sağından geçerek yukarı çıkıyor.
+    # Spiralin son kıvrımından yatayla tam 60° eğim ile DÜZ bir çizgi.
+    # Kafa kolun üstünde, ~boyun+kafa boyu kadar yukarıda.
     son = noktalar[-1]
-    kafa_boyun = [
-        (son[0], son[1]),
-        (cx + int(B * 0.16), int(B * 0.24)),   # kolun sağ ucu yakını, çapraz
-        (cx + int(B * 0.22), int(B * 0.14)),   # topuz hizası, sağında
-        (cx + int(B * 0.17), int(B * 0.06)),   # çapraz yukarı → kafa
-    ]
+    kafa_y = int(B * 0.10)
+    dy = son[1] - kafa_y
+    dx = int(dy / math.tan(math.radians(60)))
+    kafa_x = son[0] + dx
+    kafa_boyun = [(son[0], son[1]), (kafa_x, kafa_y)]
     cizgi(kafa_boyun)
-
-    kx, ky = kafa_boyun[-1]
-    _yilan_kafa(d, kx, ky, int(y_kalin * 1.9), int(y_kalin * 1.25),
-                yon="sag")
+    _yilan_kafa(d, kafa_x, kafa_y,
+                int(y_kalin * 1.9), int(y_kalin * 1.25), yon="sag")
 
     sahne = layer.resize((boyut, boyut), Image.LANCZOS)
     return _bitir(img, sahne, radius)

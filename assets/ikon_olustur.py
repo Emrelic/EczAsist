@@ -242,17 +242,17 @@ def ikon_ciz(boyut):
     tabak(kol_x2 - int(B * 0.04))
 
     # Kafa bağlantısı + kafa
+    # Spiralin son kıvrımından düz 60° eğimle sağa-yukarı.
+    # Kafa merkezi, kolun üstünde ~boyun+kafa boyu kadar yukarıda.
     son = noktalar[-1]
-    kafa_boyun = [
-        (son[0], son[1]),
-        (cx + int(B * 0.16), int(B * 0.24)),
-        (cx + int(B * 0.22), int(B * 0.14)),
-        (cx + int(B * 0.17), int(B * 0.06)),
-    ]
+    kafa_y = int(B * 0.10)
+    dy = son[1] - kafa_y
+    dx = int(dy / math.tan(math.radians(60)))   # yataya göre 60° → dik çapraz
+    kafa_x = son[0] + dx
+    kafa_boyun = [(son[0], son[1]), (kafa_x, kafa_y)]
     cizgi(kafa_boyun)
-    kx, ky = kafa_boyun[-1]
-    _yilan_kafa(d, kx, ky, int(y_kalin * 1.9), int(y_kalin * 1.25),
-                yon="sag")
+    _yilan_kafa(d, kafa_x, kafa_y,
+                int(y_kalin * 1.9), int(y_kalin * 1.25), yon="sag")
 
     sahne = layer.resize((boyut, boyut), Image.LANCZOS)
     img = Image.alpha_composite(img, sahne)
