@@ -345,7 +345,7 @@ def v3(boyut: int = 256) -> Image.Image:
     num_pts = 360
     baslangic_faz = 3 * math.pi / 2  # kuyruk sol yanda, kafa sağ yanda bitsin
     alt_y = int(B * 0.78)            # kuyruk
-    ust_y = int(B * 0.34)            # kafa bağlantısı (kolun altı)
+    ust_y = int(B * 0.26)            # spiral son → kolun altı, topuza yakın
 
     noktalar = []
     for i in range(num_pts):
@@ -419,16 +419,7 @@ def v3(boyut: int = 256) -> Image.Image:
     d.ellipse((cx - top_r, direk_y1 - top_r,
                cx + top_r, direk_y1 + top_r), fill=ALTIN)
 
-    # --- Katman 4: Ön yılan segmentleri (direk önünde) ---
-    for on_mu, seg in segmentler:
-        if on_mu:
-            cizgi(seg)
-
-    # Kuyruk yuvarlak
-    cap((noktalar[0][0], noktalar[0][1]), y_kalin // 2 + SS)
-
-    # --- Katman 5: Terazi kolu + tabaklar ---
-    # Kol gölgesi
+    # --- Katman 4: Terazi kolu + tabaklar (ön yılandan ÖNCE) ---
     d.rounded_rectangle(
         (kol_x1 + off, kol_y - kol_kalin // 2 + off,
          kol_x2 + off, kol_y + kol_kalin // 2 + off),
@@ -460,16 +451,26 @@ def v3(boyut: int = 256) -> Image.Image:
     tabak(kol_x1 + int(B * 0.04))
     tabak(kol_x2 - int(B * 0.04))
 
-    # --- Katman 6: Kafa bağlantısı + kafa (EN ÜSTTE) ---
-    # Spiralin son kıvrımından yatayla tam 60° eğim ile DÜZ bir çizgi.
-    # Kafa kolun üstünde, ~boyun+kafa boyu kadar yukarıda.
+    # --- Katman 5: Kafa konumu + Ön yılan (son ön segmentle birleşik) ---
+    # Spiralin son noktasından 45° eğimli düz tek polyline → kırılmasız.
     son = noktalar[-1]
-    kafa_y = int(B * 0.10)
+    kafa_y = int(B * 0.08)
     dy = son[1] - kafa_y
-    dx = int(dy / math.tan(math.radians(60)))
+    dx = dy                           # 45° → dx = dy
     kafa_x = son[0] + dx
-    kafa_boyun = [(son[0], son[1]), (kafa_x, kafa_y)]
-    cizgi(kafa_boyun)
+
+    son_on_idx = max(i for i, (m, _) in enumerate(segmentler) if m)
+    for i, (on_mu, seg) in enumerate(segmentler):
+        if on_mu:
+            if i == son_on_idx:
+                cizgi(seg + [(kafa_x, kafa_y)])
+            else:
+                cizgi(seg)
+
+    # Kuyruk yuvarlak uç
+    cap((noktalar[0][0], noktalar[0][1]), y_kalin // 2 + SS)
+
+    # Yılan kafası
     _yilan_kafa(d, kafa_x, kafa_y,
                 int(y_kalin * 1.9), int(y_kalin * 1.25), yon="sag")
 

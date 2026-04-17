@@ -136,7 +136,7 @@ def ikon_ciz(boyut):
     num_pts = 360
     baslangic_faz = 3 * math.pi / 2
     alt_y = int(B * 0.78)
-    ust_y = int(B * 0.34)
+    ust_y = int(B * 0.26)   # spiral son noktası kolun altında, topuza yakın
 
     noktalar = []
     for i in range(num_pts):
@@ -199,17 +199,7 @@ def ikon_ciz(boyut):
     d.ellipse((cx - top_r, direk_y1 - top_r,
                cx + top_r, direk_y1 + top_r), fill=ALTIN)
 
-    # Ön yılan segmentleri
-    for on_mu, seg in segmentler:
-        if on_mu:
-            cizgi(seg)
-
-    # Kuyruk yuvarlak uç
-    k0 = (noktalar[0][0], noktalar[0][1])
-    r = y_kalin // 2 + SS
-    d.ellipse((k0[0] - r, k0[1] - r, k0[0] + r, k0[1] + r), fill=BEYAZ)
-
-    # Terazi kolu
+    # Terazi kolu (ön yılandan ÖNCE → yılan kolun üstüne biner, sarıyor gibi)
     d.rounded_rectangle(
         (kol_x1 + off, kol_y - kol_kalin // 2 + off,
          kol_x2 + off, kol_y + kol_kalin // 2 + off),
@@ -241,16 +231,30 @@ def ikon_ciz(boyut):
     tabak(kol_x1 + int(B * 0.04))
     tabak(kol_x2 - int(B * 0.04))
 
-    # Kafa bağlantısı + kafa
-    # Spiralin son kıvrımından düz 60° eğimle sağa-yukarı.
-    # Kafa merkezi, kolun üstünde ~boyun+kafa boyu kadar yukarıda.
+    # Kafa konumu — 45° düz çizgi, spiralin son noktasından devam.
+    # Kafa topuz (denge noktası) hizasından ~boyun+kafa boyu kadar yukarıda.
     son = noktalar[-1]
-    kafa_y = int(B * 0.10)
+    kafa_y = int(B * 0.08)
     dy = son[1] - kafa_y
-    dx = int(dy / math.tan(math.radians(60)))   # yataya göre 60° → dik çapraz
+    dx = dy                       # 45° → dx = dy
     kafa_x = son[0] + dx
-    kafa_boyun = [(son[0], son[1]), (kafa_x, kafa_y)]
-    cizgi(kafa_boyun)
+
+    # Ön yılan segmentleri — son ön segmentini kafa noktası ile BİRLEŞİK çiz
+    # (tek polyline → joint="curve" ile kırılmasız devam).
+    son_on_idx = max(i for i, (m, _) in enumerate(segmentler) if m)
+    for i, (on_mu, seg) in enumerate(segmentler):
+        if on_mu:
+            if i == son_on_idx:
+                cizgi(seg + [(kafa_x, kafa_y)])
+            else:
+                cizgi(seg)
+
+    # Kuyruk yuvarlak uç
+    k0 = (noktalar[0][0], noktalar[0][1])
+    r = y_kalin // 2 + SS
+    d.ellipse((k0[0] - r, k0[1] - r, k0[0] + r, k0[1] + r), fill=BEYAZ)
+
+    # Yılan kafası (boyn çizgisinin ucunda)
     _yilan_kafa(d, kafa_x, kafa_y,
                 int(y_kalin * 1.9), int(y_kalin * 1.25), yon="sag")
 
