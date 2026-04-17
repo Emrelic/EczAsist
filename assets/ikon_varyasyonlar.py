@@ -451,19 +451,19 @@ def v3(boyut: int = 256) -> Image.Image:
     tabak(kol_x1 + int(B * 0.04))
     tabak(kol_x2 - int(B * 0.04))
 
-    # --- Katman 5: Kafa konumu + Ön yılan (son ön segmentle birleşik) ---
-    # Spiralin son noktasından 45° eğimli düz tek polyline → kırılmasız.
-    son = noktalar[-1]
-    kafa_y = int(B * 0.08)
-    dy = son[1] - kafa_y
-    dx = dy                           # 45° → dx = dy
-    kafa_x = son[0] + dx
-
+    # --- Katman 5: Ön yılan (son ön segmentin yayı atılır, düz 45°) ---
+    # Son spiral kavisinin başlangıç noktasından kafaya direkt çapraz.
     son_on_idx = max(i for i, (m, _) in enumerate(segmentler) if m)
+    bas = segmentler[son_on_idx][1][0]
+    kafa_y = int(B * 0.08)
+    dy = bas[1] - kafa_y
+    dx = dy
+    kafa_x = bas[0] + dx
+
     for i, (on_mu, seg) in enumerate(segmentler):
         if on_mu:
             if i == son_on_idx:
-                cizgi(seg + [(kafa_x, kafa_y)])
+                cizgi([seg[0], (kafa_x, kafa_y)])
             else:
                 cizgi(seg)
 

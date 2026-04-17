@@ -231,21 +231,20 @@ def ikon_ciz(boyut):
     tabak(kol_x1 + int(B * 0.04))
     tabak(kol_x2 - int(B * 0.04))
 
-    # Kafa konumu — 45° düz çizgi, spiralin son noktasından devam.
-    # Kafa topuz (denge noktası) hizasından ~boyun+kafa boyu kadar yukarıda.
-    son = noktalar[-1]
-    kafa_y = int(B * 0.08)
-    dy = son[1] - kafa_y
-    dx = dy                       # 45° → dx = dy
-    kafa_x = son[0] + dx
-
-    # Ön yılan segmentleri — son ön segmentini kafa noktası ile BİRLEŞİK çiz
-    # (tek polyline → joint="curve" ile kırılmasız devam).
+    # Son spiral yayını atla: son ön segmentin kendi kavisi yerine
+    # segmentin BAŞLANGIÇ noktasından kafaya düz 45° tek çizgi.
+    # Böylece yılan son kıvrıldığı yerden direkt çapraz yukarı çıkar.
     son_on_idx = max(i for i, (m, _) in enumerate(segmentler) if m)
+    bas = segmentler[son_on_idx][1][0]      # son arka→ön geçiş noktası
+    kafa_y = int(B * 0.08)
+    dy = bas[1] - kafa_y
+    dx = dy                                 # 45° → dx = dy
+    kafa_x = bas[0] + dx
+
     for i, (on_mu, seg) in enumerate(segmentler):
         if on_mu:
             if i == son_on_idx:
-                cizgi(seg + [(kafa_x, kafa_y)])
+                cizgi([seg[0], (kafa_x, kafa_y)])
             else:
                 cizgi(seg)
 
