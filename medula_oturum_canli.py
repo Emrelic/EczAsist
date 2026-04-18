@@ -354,17 +354,34 @@ class MedulaOturumCanli:
     # ---------------------------------------------------------------- loop
 
     def _dongu(self):
-        while self._calisiyor:
-            try:
-                with self._lock:
-                    gecen = time.monotonic() - self._son_tiklama_ts
-                if gecen >= IDLE_ESIK_SN:
-                    self._oturumu_yenile()
+        # Bu thread'de pywinauto.Application (UIA backend) çağrılabilir → COM init
+        com_init_edildi = False
+        try:
+            import pythoncom
+            pythoncom.CoInitialize()
+            com_init_edildi = True
+        except Exception as e:
+            logger.debug(f"[OTURUM] CoInitialize hatası: {e}")
+
+        try:
+            while self._calisiyor:
+                try:
                     with self._lock:
-                        self._son_tiklama_ts = time.monotonic()
-            except Exception as e:
-                logger.error(f"[OTURUM] Döngü hatası: {e}")
-            time.sleep(TARAMA_ARALIK_SN)
+                        gecen = time.monotonic() - self._son_tiklama_ts
+                    if gecen >= IDLE_ESIK_SN:
+                        self._oturumu_yenile()
+                        with self._lock:
+                            self._son_tiklama_ts = time.monotonic()
+                except Exception as e:
+                    logger.error(f"[OTURUM] Döngü hatası: {e}", exc_info=True)
+                time.sleep(TARAMA_ARALIK_SN)
+        finally:
+            if com_init_edildi:
+                try:
+                    import pythoncom
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
 
     # ---------------------------------------------------------------- api
 

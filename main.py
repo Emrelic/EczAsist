@@ -16,6 +16,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Global crash/exception yakalayıcıları kur (çökme teşhisi için)
+try:
+    from crash_yakala import kur as _crash_kur
+    _crash_kur()
+except Exception as _e:
+    logger.warning(f"crash_yakala kurulamadı: {_e}")
+
 
 def uygulama_baslat():
     """Uygulamayı başlat"""

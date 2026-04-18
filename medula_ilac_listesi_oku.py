@@ -154,11 +154,39 @@ def _elem_value(elem) -> str:
     return ""
 
 
-def ilaclari_oku(medula=None) -> List[Dict]:
+_GUN_FARK_PAT = re.compile(r"(\d+)\s+Gün\b")
+
+
+def _yazilabilir_gun_farki(tr_text: str) -> Optional[int]:
+    """Yazılabilir Tarih hücresinden gün farkını çıkar.
+       - "Yazdırma günü gelmiştir" geçerse → 0 (günü geldi)
+       - "NN Gün" deseni → N gün sonra
+       - Başka durum → None
+    """
+    if not tr_text:
+        return None
+    if GUNU_GELDI_METNI in tr_text:
+        return 0
+    m = _GUN_FARK_PAT.search(tr_text)
+    if m:
+        try:
+            return int(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def ilaclari_oku(medula=None, gelecek_gun: int = 0) -> List[Dict]:
     """MEDULA açık ReceteIslem2.jsp sayfasındaki 'Kullanılan İlaç Listesi'
-    tablosundan GÜNÜ GELMİŞ + RAPOR KODU DOLU satırları döndür.
+    tablosundan RAPOR KODU DOLU satırları döndür.
 
     HTML DOM üzerinden (COM) okur — UIA'dan 100+ kat hızlı.
+
+    Args:
+        medula: (kullanılmıyor; DOM global doc üzerinden okur)
+        gelecek_gun: Bugünden bu kadar gün içinde yazdırma günü gelecek
+            ilaçlar da dahil edilir. 0 = sadece "Yazdırma günü gelmiştir".
+            Örn. 5 → "bugün gelen" + "5 gün içinde gelecek" ilaçlar döner.
 
     Dönüş (her kayıt):
         {
@@ -166,6 +194,8 @@ def ilaclari_oku(medula=None) -> List[Dict]:
           "ilac_alim_tarihi": str, "verilebilecegi_tarih": str,
           "adet": str, "ilac_kullanimi": str, "rapor_kodu": str,
           "satir_no": int,
+          "gun_farki": int,   # 0 = günü geldi, N>0 = N gün sonra
+          "gelecek": bool,    # True ise "ertelenen/sarı" gösterilmeli
         }
     """
     try:
@@ -182,11 +212,9 @@ def ilaclari_oku(medula=None) -> List[Dict]:
     sonuc: List[Dict] = []
     toplam_satir = 0
     gunu_gelen = 0
+    gelecekte_gelen = 0
     rapor_dolu = 0
 
-    # IE8 COM'da doc.all koleksiyonu en güvenli tarama yolu.
-    # N = 0,1,2,... artır; text15 yoksa döngü biter.
-    # (500 satırdan fazlası beklenmez — güvenlik için 500'de durdur.)
     for satir_no in range(500):
         try:
             aid_ilac = f"form1:tableExKisiIlacList:{satir_no}:text15"
@@ -194,14 +222,13 @@ def ilaclari_oku(medula=None) -> List[Dict]:
         except Exception:
             urun_elem = None
         if urun_elem is None:
-            break  # Daha fazla satır yok
+            break
         toplam_satir += 1
 
         urun_adi = _elem_value(urun_elem)
         if not urun_adi:
             continue
 
-        # Rapor kodu
         rapor_kodu = ""
         try:
             e = doc.getElementById(
@@ -213,12 +240,9 @@ def ilaclari_oku(medula=None) -> List[Dict]:
         if rapor_kodu:
             rapor_dolu += 1
 
-        # Yazılabilir hücresi — SPAN-id yok, TR'nin 11. TD'si (0-based: 10)
-        # olarak parent TR'den oku. Daha güvenilir yol: parent TR innerText'inde
-        # "Yazdırma günü gelmiştir" geçiyor mu?
-        gunu_geldi = False
+        # Parent TR'den Yazılabilir hücresinin metnini al
+        tr_text = ""
         try:
-            # urun_elem'in parent TR'sini bul
             parent = urun_elem
             for _ in range(5):
                 if parent is None:
@@ -236,24 +260,29 @@ def ilaclari_oku(medula=None) -> List[Dict]:
                     parent = None
             if parent is not None:
                 try:
-                    ic = parent.innerText or ""
+                    tr_text = parent.innerText or ""
                 except Exception:
-                    ic = ""
-                if GUNU_GELDI_METNI in ic:
-                    gunu_geldi = True
+                    tr_text = ""
         except Exception:
             pass
 
-        if gunu_geldi:
+        gun_farki = _yazilabilir_gun_farki(tr_text)
+        if gun_farki is None:
+            # Yazılabilir tarihi parse edilemedi — atla
+            continue
+        if gun_farki == 0:
             gunu_gelen += 1
+        elif gun_farki > 0:
+            gelecekte_gelen += 1
 
-        # Filtre: günü gelmiş VE rapor kodu dolu olmalı
-        if not gunu_geldi:
+        # Filtre:
+        #   günü gelmiş (=0) HER ZAMAN dahil
+        #   gelecekte gelen (>0) ise sadece gelecek_gun sınırı içinde
+        if gun_farki > gelecek_gun:
             continue
         if not rapor_kodu:
             continue
 
-        # Diğer sütunları topla
         def _g(idx):
             try:
                 e = doc.getElementById(
@@ -273,12 +302,15 @@ def ilaclari_oku(medula=None) -> List[Dict]:
             "ilac_kullanimi": _g("text17"),
             "rapor_kodu": rapor_kodu,
             "satir_no": satir_no,
+            "gun_farki": gun_farki,
+            "gelecek": gun_farki > 0,
         })
 
     logger.info(
         f"Kullanılan İlaç Listesi (DOM): toplam {toplam_satir} satır, "
-        f"{gunu_gelen} günü gelmiş, {rapor_dolu} rapor kodu dolu, "
-        f"{len(sonuc)} ilaç döndürüldü"
+        f"{gunu_gelen} günü gelmiş, {gelecekte_gelen} gelecekte, "
+        f"{rapor_dolu} rapor kodu dolu, "
+        f"{len(sonuc)} ilaç döndürüldü (gelecek_gun={gelecek_gun})"
     )
     return sonuc
 

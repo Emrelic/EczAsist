@@ -21,6 +21,114 @@ class HastaTakipDB:
         if not self.db.conn:
             self.db.baglan()
 
+    # İlaç kategorileri için ad anahtar kelimeleri (uppercase substring match)
+    # Türkçe karakterler hem normal hem ı/i farklı şekilde de eklendi.
+    KATEGORI_ANAHTAR = {
+        "b12_vitamini": [
+            # Siyanokobalamin / hidroksikobalamin ampul ve oral
+            "B12", "COBALAMIN", "KOBALAMIN",
+            # Markalar
+            "DODEX", "BEDODEKA", "BENEXOL", "APIKOBAL",
+            "METHYCOBAL", "SANTAVIT",
+            "NEUROGESIC", "NEUROBION", "NEVRALEX", "NEROKS",
+            "BECOZYME", "BEVITAB",
+        ],
+        "d_vitamini": [
+            # Jenerik
+            "VITAMIN D", "VİTAMİN D", "D VITAMIN", "D VİTAMİN",
+            "D3", "D-3", "D-VIT",
+            "CHOLECALCIFEROL", "KOLEKALSIFEROL", "KOLEKALSİFEROL",
+            # Markalar — ampul, damla, tablet tüm formlar
+            "DEVIT", "DEKRISTOL", "DESUNIN", "DESIFEROL",
+            "OLEDAN", "DEVA D", "DEKAN", "DEVITON", "DIVİT",
+            "VIGANTOL", "DRISDOL", "OSTELIN", "D 1000", "D1000",
+            "D 2000", "D2000", "D 5000", "D5000",
+            "D 10000", "D10000", "D 20000", "D20000",
+        ],
+        "mide_ilaclari": [
+            # PPI (proton pompa inhibitörleri)
+            "OMEPRAZOL", "PANTOPRAZOL", "LANSOPRAZOL", "ESOMEPRAZOL",
+            "RABEPRAZOL", "DEXLANSOPRAZOL",
+            "NEXIUM", "LANSOR", "LOSEC", "ULCORAL", "PANTPAS",
+            "LANTRE", "PRANT", "MIDEPAR", "KONTROLOC",
+            "OMEPRAZID", "PANTOTRAT", "LANSOPAS", "PANTONEX",
+            "NEXPRO", "RABETAS", "OMEP", "HELICOL", "ULCOPROX",
+            # H2 reseptör antagonistleri
+            "RANITIDIN", "FAMOTIDIN", "NIZATIDIN", "DIMETIDIN",
+            "RANITAB", "RANIBERL", "ULFAMID", "FAMODAR", "PEPCID",
+            "PEPCIDIN", "ULCUMIDE",
+            # Antasitler / H2 karma
+            "ANTEPSIN", "SUCRALFATE", "SUKRALFAT",
+        ],
+        "demir": [
+            "DEMİR", "DEMIR", "FE+", "IRON",
+            "FERRO", "FERRUM", "FERROZA", "FERROSANOL",
+            "MALTOFER", "HEMOX", "FERRITON", "FERRIGOLD", "FERRYTAB",
+            "FERRO SANOL", "FERRO VITAL", "FERRO OD",
+            "FER-IN-SOL", "FERINJECT",
+        ],
+        "magnezyum": [
+            "MAGNEZYUM", "MAGNESIUM", "MAGNEZIUM",
+            "MAGNORM", "MAGCEL", "MAGNEX", "MAGNERICH", "MAGTON",
+            "MAGNEMAX", "MAG 365", "MAG365",
+            "MAGNESITRAT", "MAGNUM", "MGS+",
+        ],
+        "hemoroid": [
+            # Kalsiyum dobesilat
+            "DOXIUM", "MODET", "DOBESIFAR", "DOBESILAT",
+            # Diosmin / hesperidin
+            "DAFLON", "DETRALEX", "DIOSMIN", "VENOREX",
+            # Oksirutin / troksirutin / sulodeksit
+            "VENORUTON", "TROXEVASIN", "VESSEL", "SULODEKSIT",
+            # Diğer markalar
+            "LYTON", "FLEBODIA", "VARRIPON",
+        ],
+        "hormonlar": [
+            # Tiroid hormon replasmanı (levotiroksin)
+            "LEVOTIRON", "EUTHYROX", "LEVOXYL", "SYNTHROID",
+            "TEFOR", "TIROL", "TIREOTOM", "TIROXIN",
+            "LEVOTIROKSIN", "LEVOTHYROX", "TIROSYN",
+            # T3 (liyotironin)
+            "TERTROXIN", "LIOTIRONIN", "TIRRAKS",
+            # Antitiroid
+            "PROPIL", "PROPICIL", "PROPILTIYOURASIL",
+            "THYROMAZOL", "METIMAZOL", "TIAMAZOL",
+            # Kortikosteroid (oral, uzun süreli kullanım)
+            "PREDNOL", "PREDNIZON", "PREDNIZOLON", "MEDROL",
+            "METILPREDNIZOLON", "DEPO-MEDROL", "DACORTIN",
+            # HRT / menopoz hormon tedavisi
+            "ANGELIQ", "FEMOSTON", "ESTRABON", "ESTROFEM",
+            "KLIMAKTOR", "KLIMOFEM", "PROVERA", "DUPHASTON",
+            # Desmopresin
+            "MINIRIN", "DESMOPRESIN",
+        ],
+    }
+
+    @classmethod
+    def _kategori_eslesir(
+        cls, satir: Dict, aktif_kategoriler: Dict,
+        ozel_anahtarlar: Optional[List[str]] = None,
+    ) -> bool:
+        """Satırdaki ilaç aktif kategorilerden birine uyuyor mu?
+
+        Ad eşleşme büyük/küçük harf duyarsız, substring kontrolü.
+        """
+        ad = (satir.get("urun_adi") or "").upper()
+        if not ad:
+            return False
+        for kat, aktif in (aktif_kategoriler or {}).items():
+            if not aktif:
+                continue
+            if kat == "ozel":
+                for kw in (ozel_anahtarlar or []):
+                    if kw and kw.upper().strip() in ad:
+                        return True
+                continue
+            for anahtar in cls.KATEGORI_ANAHTAR.get(kat, []):
+                if anahtar in ad:
+                    return True
+        return False
+
     def yazdirma_gunu_gelen_ilaclar(
         self,
         tolerans_gun: int = 0,
@@ -30,25 +138,25 @@ class HastaTakipDB:
         kaynak: str = "BIRLESIK",
         sadece_raporlu: bool = False,
         raporsuz_istisna_urunler: Optional[List[int]] = None,
+        kategori_takibi: Optional[Dict] = None,
+        kategori_ozel_anahtarlar: Optional[str] = None,
     ) -> List[Dict]:
         """
         Bugün + tolerans_gun içinde yazdırma günü gelen hastaları/ilaçları döndür.
 
         Args:
-            tolerans_gun: Hafta sonu toleransı (bu kadar gün sonrasına kadar da listele)
-            rapor_tolerans_gun: Raporlu ilaçlarda bitiş tarihinden bu kadar gün önce yazdırılabilir
-            sadece_takipli: True ise Musteri.MusteriTakipli=1 filtresi uygulanır
-            eski_kayit_gun: Bitiş tarihi bu günden daha eski olanlar gösterilmez (gürültü temizliği)
-            kaynak: 'RECETE' | 'MEDULA' | 'BIRLESIK'
-
-        Returns:
-            [{musteri_id, hasta_adi, cep_tel, takipli, urun_adi, doz,
-              adet_kutu, rapor_kodu, bitis_tarihi, yazdirma_tarihi,
-              kaynak, kac_gun_kaldi}, ...]
+            kategori_takibi: Raporsuz olsa da takip edilecek ilaç kategorileri
+                { "b12_vitamini": True, "d_vitamini": False, ... }
+            kategori_ozel_anahtarlar: "ozel" kategorisi için virgülle ayrılmış
+                anahtar kelime listesi (ör: "KREATIN, OMEGA 3").
         """
         bugun = date.today().isoformat()
         sonuclar: List[Dict] = []
         istisnalar = set(raporsuz_istisna_urunler or [])
+        ozel_liste = [
+            s.strip() for s in (kategori_ozel_anahtarlar or "").split(",")
+            if s.strip()
+        ]
 
         if kaynak in ("RECETE", "BIRLESIK"):
             sonuclar.extend(
@@ -69,7 +177,9 @@ class HastaTakipDB:
         if sadece_raporlu:
             sonuclar = [
                 s for s in sonuclar
-                if self._raporlu_mu(s) or s.get("urun_id") in istisnalar
+                if self._raporlu_mu(s)
+                or s.get("urun_id") in istisnalar
+                or self._kategori_eslesir(s, kategori_takibi or {}, ozel_liste)
             ]
 
         return self._birlesik_ve_tekilsizlestir(sonuclar)

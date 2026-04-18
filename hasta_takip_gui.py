@@ -147,6 +147,12 @@ class HastaTakipGUI:
             font=("Arial", 9),
         ).pack(side="left", padx=4)
 
+        tk.Button(
+            kontrol, text="💊 Kategoriler", command=self._kategori_ayarlari_ac,
+            bg="#00897B", fg="white", bd=0, padx=8, pady=5,
+            font=("Arial", 9, "bold"),
+        ).pack(side="left", padx=4)
+
         # Oturum canlı tutma (arka plan servisi) + canlı geri sayım
         self.var_oturum_canli = tk.BooleanVar(
             value=bool(getattr(self.ayarlar, "oturum_canli_tut", False))
@@ -991,6 +997,8 @@ class HastaTakipGUI:
                     kaynak=a.kaynak,
                     sadece_raporlu=getattr(a, "sadece_raporlu", True),
                     raporsuz_istisna_urunler=getattr(a, "raporsuz_istisna_urunler", []),
+                    kategori_takibi=getattr(a, "kategori_takibi", {}),
+                    kategori_ozel_anahtarlar=getattr(a, "kategori_ozel_anahtarlar", ""),
                 )
                 yeni = self.kuyruk.hasta_mesajlarini_upsert(sonuc, a)
                 self.root.after(0, lambda: self._yazdirma_tamam(len(sonuc), yeni))
@@ -2264,7 +2272,9 @@ class HastaTakipGUI:
             self.durum_bar.config(text="❌ Hasta uyumsuzluğu — işlem iptal.")
             return
 
-        ilaclar = ilaclari_oku(medula)
+        # Batch penceresi kadar gelecekteki ilaçları da dahil et (sarı)
+        batch_gun = int(getattr(self.ayarlar, "batch_bekleme_gun", 5) or 0)
+        ilaclar = ilaclari_oku(medula, gelecek_gun=batch_gun)
         if not ilaclar:
             messagebox.showinfo(
                 "Uygun İlaç Yok",
@@ -2277,23 +2287,43 @@ class HastaTakipGUI:
             return
 
         hasta_adi = pencere_hasta or kuyruk_hasta
-        ilac_dict = [
-            {
+        bugun = date.today()
+        ilac_dict = []
+        for il in ilaclar:
+            gf = int(il.get("gun_farki") or 0)
+            yazdirma = (bugun + timedelta(days=gf)).isoformat()
+            ilac_dict.append({
                 "urun_adi": il["urun_adi"],
-                "yazdirma_tarihi": date.today().isoformat(),
+                "yazdirma_tarihi": yazdirma,
                 "bitis_tarihi": il.get("verilebilecegi_tarih") or "",
                 "rapor_kodu": il.get("rapor_kodu") or "",
                 "kaynak": "MEDULA",
-            }
-            for il in ilaclar
-        ]
+                "gelecek": bool(il.get("gelecek")),
+            })
         mesaj = self.kuyruk.mesaj_olustur(hasta_adi, ilac_dict, self.ayarlar)
 
         self.txt_mesaj.delete("1.0", "end")
         self.txt_mesaj.insert("1.0", mesaj)
+
+        # Gelecek (ertelenen) ilaç satırlarını sarı tagle
+        try:
+            self.txt_mesaj.tag_configure("gelecek", background="#FFF9C4")
+            import re as _re
+            pat = _re.compile(r"\((?:yarın|\d+\s+gün\s+sonra)\)")
+            for idx, satir in enumerate(mesaj.splitlines(), start=1):
+                if pat.search(satir):
+                    self.txt_mesaj.tag_add("gelecek", f"{idx}.0", f"{idx}.end")
+        except Exception as e:
+            logger.debug(f"Sarı tag uygulanamadı: {e}")
+
+        gelecek_sayi = sum(1 for il in ilaclar if il.get("gelecek"))
+        gunu_gelen = len(ilaclar) - gelecek_sayi
         self.durum_bar.config(
-            text=f"✓ {hasta_adi} — {len(ilaclar)} ilaç okundu "
-                 f"(günü gelmiş + raporlu), mesaj güncellendi."
+            text=(
+                f"✓ {hasta_adi} — {gunu_gelen} günü gelmiş + "
+                f"{gelecek_sayi} gelecek ({batch_gun} gün içinde) ilaç, "
+                f"mesaj güncellendi."
+            )
         )
 
     # -----------------------------------------------------------------
@@ -2449,6 +2479,98 @@ class HastaTakipGUI:
         tk.Button(
             btn_frm, text="Kaydet", command=kaydet,
             bg="#43A047", fg="white", bd=0, padx=14, pady=4,
+        ).pack(side="right", padx=6)
+
+    # -----------------------------------------------------------------
+    def _kategori_ayarlari_ac(self):
+        """Raporsuz olsa da takibe dahil edilecek ilaç kategorileri dialog'u."""
+        win = tk.Toplevel(self.root)
+        win.title("💊 Kategori Takibi")
+        win.transient(self.root)
+        win.grab_set()
+        win.resizable(False, False)
+
+        tk.Label(
+            win, text="Raporsuz olsa da takip edilecek kategoriler:",
+            font=("Arial", 10, "bold"), pady=8, padx=12,
+        ).pack(anchor="w")
+        tk.Label(
+            win,
+            text=(
+                "İşaretli kategorilerdeki ilaçlar, raporlu olmasalar bile "
+                "listeye dahil edilir.\n"
+                "Takip bitiş tarihine göre yapılır (erken yazdırma yok — "
+                "raporsuz olduğu için)."
+            ),
+            bg="white", fg="#546E7A", font=("Arial", 9),
+            wraplength=540, justify="left", padx=12, pady=4,
+        ).pack(anchor="w")
+
+        kategoriler = dict(getattr(self.ayarlar, "kategori_takibi", {}) or {})
+        etiketler = {
+            "b12_vitamini":  "💉 B12 Vitamini  (DODEX, BENEXOL, APIKOBAL, METHYCOBAL, BEDODEKA…)",
+            "d_vitamini":    "☀ D Vitamini  (DEVIT damla/ampul, DESIFEROL 1000-20000, OLEDAN, DEKRISTOL, DESUNIN…)",
+            "mide_ilaclari": "🫃 Mide  (PPI: OMEPRAZOL/NEXIUM/LANSOR  +  H2: RANITIDIN/FAMOTIDIN…)",
+            "demir":         "🩸 Demir  (FERRO SANOL, FERRUM, MALTOFER, FERRITON, FERINJECT…)",
+            "magnezyum":     "💊 Magnezyum  (MAGNORM, MAGCEL, MAG 365, MAGNEX, MAGNERICH…)",
+            "hemoroid":      "🩹 Hemoroid / Venotonic  (DOXIUM, MODET, DAFLON, DETRALEX, VENORUTON…)",
+            "hormonlar":     "🦋 Hormonlar  (LEVOTIRON, EUTHYROX, PROPIL, PREDNOL, ANGELIQ, MINIRIN…)",
+            "ozel":          "⚙ Özel Liste  (aşağıda anahtar kelime girin)",
+        }
+
+        varlar = {}
+        frm = tk.Frame(win)
+        frm.pack(fill="x", padx=16, pady=4)
+        for key in ("b12_vitamini", "d_vitamini", "mide_ilaclari",
+                    "demir", "magnezyum", "hemoroid", "hormonlar", "ozel"):
+            v = tk.BooleanVar(value=bool(kategoriler.get(key, False)))
+            varlar[key] = v
+            tk.Checkbutton(
+                frm, text=etiketler.get(key, key), variable=v, anchor="w",
+                font=("Arial", 10),
+            ).pack(fill="x", pady=2)
+
+        # Özel kategori için virgülle ayrılmış anahtar kelimeler
+        tk.Label(
+            win, text="Özel anahtar kelimeler (virgülle ayırın):",
+            font=("Arial", 9, "bold"), pady=4, padx=16,
+        ).pack(anchor="w")
+        var_ozel = tk.StringVar(
+            value=getattr(self.ayarlar, "kategori_ozel_anahtarlar", "") or ""
+        )
+        tk.Entry(
+            win, textvariable=var_ozel, width=58,
+        ).pack(padx=16, pady=(0, 8))
+        tk.Label(
+            win, text="Örn: KREATIN, OMEGA 3, ASPIRIN",
+            bg="white", fg="#90A4AE", font=("Arial", 8, "italic"),
+            padx=16,
+        ).pack(anchor="w")
+
+        btn_frm = tk.Frame(win)
+        btn_frm.pack(fill="x", padx=12, pady=10)
+
+        def kaydet():
+            self.ayarlar.kategori_takibi = {
+                k: bool(v.get()) for k, v in varlar.items()
+            }
+            self.ayarlar.kategori_ozel_anahtarlar = var_ozel.get().strip()
+            self.ayarlar.kaydet()
+            win.destroy()
+            self.durum_bar.config(
+                text="💊 Kategori ayarları uygulandı — DB yeniden taranıyor..."
+            )
+            self.root.update_idletasks()
+            self._yazdirma_yenile()
+
+        tk.Button(
+            btn_frm, text="İptal", command=win.destroy,
+            bg="#B0BEC5", fg="white", bd=0, padx=12, pady=4,
+        ).pack(side="right")
+        tk.Button(
+            btn_frm, text="Kaydet & Yenile", command=kaydet,
+            bg="#43A047", fg="white", bd=0, padx=14, pady=4,
+            font=("Arial", 10, "bold"),
         ).pack(side="right", padx=6)
 
     # -----------------------------------------------------------------

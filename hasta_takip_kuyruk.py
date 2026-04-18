@@ -50,6 +50,24 @@ class HastaTakipAyarlari:
     # Raporsuz olsa bile listelenecek ürün kimlikleri (Urun.UrunId listesi)
     raporsuz_istisna_urunler: list = field(default_factory=list)
 
+    # Raporsuz olsa bile takip edilecek ilaç kategorileri (isim anahtar kelimesi)
+    # Her kategori açıkken, ilaç adında anahtar kelime geçenler raporsuz olsa
+    # da listeye dahil edilir.
+    kategori_takibi: dict = field(default_factory=lambda: {
+        "b12_vitamini": False,
+        "d_vitamini": False,
+        "mide_ilaclari": False,
+        "demir": False,
+        "magnezyum": False,
+        "hemoroid": False,
+        "hormonlar": False,
+        "ozel": False,   # Kullanıcı tanımlı anahtar listesi
+    })
+    # Özel kategori için kullanıcı tanımlı anahtar kelimeler (virgülle ayrılmış)
+    # Örn: "KREATIN, OMEGA 3, ASPIRIN" — ilaç adında bunlardan biri geçenler
+    # raporsuz olsa da listeye dahil edilir.
+    kategori_ozel_anahtarlar: str = ""
+
     # Toplu gönderim (batch) bekleme penceresi. Bugün atılması gereken bir mesaj
     # varsa, bu kadar gün içinde başka ilaç da yazdırılacaksa beraber atmak için
     # mesaj ertelenir. 0 = erteleme yok (anlık gönder). Maksimum bekleme süresi.
@@ -70,7 +88,7 @@ class HastaTakipAyarlari:
     )
 
     # İlaç listesinde her satırın formatı
-    ilac_satir_formati: str = "{urun_adi},"
+    ilac_satir_formati: str = "{sayi}- {urun_adi}"
 
     eczane_adi: str = "İKİZLER ECZANESİ"
     eczane_tel: str = "0542 515 74 40"
@@ -127,6 +145,9 @@ class HastaTakipAyarlari:
         try:
             with open(_AYAR_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            # Eski varsayılan satır formatını yeni numaralı formata migrate et
+            if data.get("ilac_satir_formati") == "{urun_adi},":
+                data["ilac_satir_formati"] = "{sayi}- {urun_adi}"
             return cls(**{k: v for k, v in data.items() if k in cls.__annotations__})
         except Exception as e:
             logger.warning("Ayarlar okunamadı, varsayılan kullanılıyor: %s", e)
@@ -738,14 +759,16 @@ class MesajKuyrugu:
         yoksa satır sonuna otomatik olarak '({gun_str})' eklenir.
         """
         bugun = date.today()
-        sablon = ayarlar.ilac_satir_formati or "{urun_adi}"
+        sablon = ayarlar.ilac_satir_formati or "{sayi}- {urun_adi}"
         has_gun = "{gun_str}" in sablon
+        has_sayi = "{sayi}" in sablon
         satirlar = []
-        for il in ilaclar:
+        for idx, il in enumerate(ilaclar, start=1):
             yt = str(il.get("yazdirma_tarihi") or "")[:10]
             gun_str = MesajKuyrugu._gun_metni(yt, bugun)
             try:
                 satir = sablon.format(
+                    sayi=idx,
                     urun_adi=il.get("urun_adi") or "",
                     bitis_tarihi=il.get("bitis_tarihi") or "",
                     yazdirma_tarihi=il.get("yazdirma_tarihi") or "",
@@ -754,6 +777,8 @@ class MesajKuyrugu:
                 )
             except (KeyError, IndexError):
                 satir = str(il.get("urun_adi") or "")
+                if not has_sayi:
+                    satir = f"{idx}- {satir}"
             if not has_gun and gun_str:
                 satir = f"{satir.rstrip(', ').rstrip()} ({gun_str})"
             satirlar.append(satir)
