@@ -17,7 +17,7 @@ import threading
 import tkinter as tk
 import urllib.parse
 import webbrowser
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from tkinter import messagebox, ttk
 from typing import Optional  # noqa: F401 — method annotation
 
@@ -49,6 +49,13 @@ class HastaTakipGUI:
         except Exception:
             pass
 
+        # Kaydedilmiş pencere yerleşimini uygula (varsa)
+        try:
+            from pencere_yerlesim import hasta_takibe_uygula
+            hasta_takibe_uygula(self.root)
+        except Exception as e:
+            logger.debug(f"Pencere yerleşim uygulanamadı: {e}")
+
         self.ayarlar = HastaTakipAyarlari.yukle()
         self.kuyruk = MesajKuyrugu()
         self.db: HastaTakipDB = None
@@ -68,6 +75,14 @@ class HastaTakipGUI:
             ust, text="Ana Menüye Dön", command=self._kapat,
             bg="#455A64", fg="white", bd=0, padx=12,
         ).pack(side="right", padx=15, pady=10)
+        tk.Button(
+            ust, text="📐 Yerleşimi Kaydet", command=self._yerlesimi_kaydet,
+            bg="#37474F", fg="white", bd=0, padx=12,
+        ).pack(side="right", padx=(0, 6), pady=10)
+        tk.Button(
+            ust, text="📐 Yerleşimi Uygula", command=self._yerlesimi_uygula,
+            bg="#546E7A", fg="white", bd=0, padx=12,
+        ).pack(side="right", padx=(0, 6), pady=10)
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
@@ -96,169 +111,298 @@ class HastaTakipGUI:
         # Tüm sekmeler oluştuktan sonra kuyruğu ekrana yükle
         self._kuyruktan_yukle()
 
+        # Ayarda açıksa oturum canlı tutmayı otomatik başlat
+        if getattr(self.ayarlar, "oturum_canli_tut", False):
+            try:
+                self._oturum_canli_toggle()
+            except Exception as e:
+                logger.debug(f"Otomatik oturum başlatma hatası: {e}")
+
     # ================================================================= SEKME 1
     def _sekme_yazdirma_olustur(self) -> tk.Frame:
+        """Dar ekran için iş akışına göre düzenlenmiş kompakt tasarım:
+
+            [Üst]     Liste yönetimi    : Yenile · Sütunlar · Oturum
+            [Filtre]  Tarih aralığı     : Baş(-15g) · Bit(bugün) · Uygula·Temizle
+            [Tablo]   Hasta kuyruğu
+            [Mini]    Mesaj hazırlığı   : İlaç Listesi · İlaç Geçmişinden Güncelle
+            [Mesaj]   Önizleme kutusu
+            [Alt]     Gönderim+durum    : WhatsApp · Kopyala │ Gönderildi · İptal
+        """
         f = tk.Frame(self.notebook, bg="white")
 
+        # ---- 1. Üst kontrol: LİSTE YÖNETİMİ ----------------------------
         kontrol = tk.Frame(f, bg="white")
-        kontrol.pack(fill="x", padx=10, pady=8)
+        kontrol.pack(fill="x", padx=8, pady=(6, 2))
 
         tk.Button(
-            kontrol, text="🔄 Listeyi Yenile (DB)", command=self._yazdirma_yenile,
-            bg="#1976D2", fg="white", bd=0, padx=14, pady=6,
-        ).pack(side="left", padx=(0, 8))
+            kontrol, text="🔄 Yenile", command=self._yazdirma_yenile,
+            bg="#1976D2", fg="white", bd=0, padx=10, pady=5,
+            font=("Arial", 9, "bold"),
+        ).pack(side="left", padx=(0, 4))
 
-        self.lbl_sayac = tk.Label(
-            kontrol, text="", font=("Arial", 10, "bold"),
-            bg="white", fg="#37474F",
+        tk.Button(
+            kontrol, text="⚙ Sütunlar", command=self._sutun_ayarlari_ac,
+            bg="#546E7A", fg="white", bd=0, padx=8, pady=5,
+            font=("Arial", 9),
+        ).pack(side="left", padx=4)
+
+        # Oturum canlı tutma (arka plan servisi) + canlı geri sayım
+        self.var_oturum_canli = tk.BooleanVar(
+            value=bool(getattr(self.ayarlar, "oturum_canli_tut", False))
         )
-        self.lbl_sayac.pack(side="left", padx=10)
-
+        self.lbl_oturum_durum = tk.Label(
+            kontrol, text="", bg="white", fg="#455A64",
+            font=("Arial", 9),
+        )
+        self.lbl_oturum_durum.pack(side="right", padx=(0, 4))
         tk.Button(
-            kontrol, text="💊 Medulada İlaç Listesi Aç",
-            command=self._medulada_ilac_listesi_ac,
-            bg="#1976D2", fg="white", bd=0, padx=12, pady=6,
-            font=("Arial", 10, "bold"),
-        ).pack(side="left", padx=8)
-
-        tk.Button(
-            kontrol, text="✅ Seçilene Gönder", command=self._secilene_gonder,
-            bg="#43A047", fg="white", bd=0, padx=14, pady=6,
+            kontrol, text="⚡ Şimdi Tazele",
+            command=self._oturum_simdi_yenile,
+            bg="#EF6C00", fg="white", bd=0, padx=8, pady=4,
+            font=("Arial", 9),
         ).pack(side="right", padx=4)
-        tk.Button(
-            kontrol, text="✔ Gönderildi İşaretle", command=self._gonderildi_manuel,
-            bg="#7B1FA2", fg="white", bd=0, padx=10, pady=6,
-        ).pack(side="right", padx=4)
-        tk.Button(
-            kontrol, text="❌ İptal (seçili)", command=self._secili_iptal,
-            bg="#E53935", fg="white", bd=0, padx=14, pady=6,
+        tk.Checkbutton(
+            kontrol, text="🔒 Oturum",
+            variable=self.var_oturum_canli,
+            command=self._oturum_canli_toggle,
+            bg="white", fg="#37474F", font=("Arial", 9, "bold"),
+            activebackground="white",
         ).pack(side="right", padx=4)
 
-        # --- Filtre satırı: Planlı gönderim tarih aralığı --------------
+        # ---- 2. Sayaç satırı -------------------------------------------
+        self.lbl_sayac = tk.Label(
+            f, text="", font=("Arial", 9, "bold"),
+            bg="white", fg="#37474F", anchor="w",
+        )
+        self.lbl_sayac.pack(fill="x", padx=10, pady=(0, 2))
+
+        # ---- 3. Filtre (varsayılan: -15 gün → bugün, aktif) ------------
         filtre = tk.Frame(f, bg="white")
-        filtre.pack(fill="x", padx=10, pady=(0, 4))
+        filtre.pack(fill="x", padx=8, pady=(0, 4))
 
-        tk.Label(filtre, text="📅 Planlı tarih aralığı:", bg="white",
-                 font=("Arial", 9, "bold")).pack(side="left", padx=(0, 8))
+        tk.Label(filtre, text="📅", bg="white",
+                 font=("Arial", 10)).pack(side="left", padx=(0, 4))
 
-        self._filt_bas_aktif = tk.BooleanVar(value=False)
-        self._filt_bit_aktif = tk.BooleanVar(value=False)
+        # Varsayılan: filtre aktif, aralık: bugün-eski_kayit_gun → bugün
+        # (spinbox ile senkron; tarama ile aynı aralığı kapsasın)
+        self._filt_bas_aktif = tk.BooleanVar(value=True)
+        self._filt_bit_aktif = tk.BooleanVar(value=True)
+        _eski = int(getattr(self.ayarlar, "eski_kayit_gun", 30) or 30)
+        varsayilan_bas = date.today() - timedelta(days=_eski)
+        varsayilan_bit = date.today()
 
         tk.Label(filtre, text="Baş:", bg="white",
                  font=("Arial", 9)).pack(side="left")
         if _TAKVIM_VAR:
             self.dt_filt_bas = DateEntry(
-                filtre, width=12, date_pattern="dd.mm.yyyy",
+                filtre, width=10, date_pattern="dd.mm.yyyy",
                 background="#1976D2", foreground="white",
                 borderwidth=2, locale="tr_TR",
             )
-            self.dt_filt_bas.set_date(date.today())
+            self.dt_filt_bas.set_date(varsayilan_bas)
             self.dt_filt_bas.pack(side="left", padx=4)
         else:
-            self.var_filt_bas = tk.StringVar()
-            tk.Entry(filtre, textvariable=self.var_filt_bas, width=12).pack(
+            self.var_filt_bas = tk.StringVar(value=varsayilan_bas.isoformat())
+            tk.Entry(filtre, textvariable=self.var_filt_bas, width=10).pack(
                 side="left", padx=4)
 
         tk.Label(filtre, text="Bit:", bg="white",
-                 font=("Arial", 9)).pack(side="left", padx=(8, 0))
+                 font=("Arial", 9)).pack(side="left", padx=(6, 0))
         if _TAKVIM_VAR:
             self.dt_filt_bit = DateEntry(
-                filtre, width=12, date_pattern="dd.mm.yyyy",
+                filtre, width=10, date_pattern="dd.mm.yyyy",
                 background="#1976D2", foreground="white",
                 borderwidth=2, locale="tr_TR",
             )
-            self.dt_filt_bit.set_date(date.today())
+            self.dt_filt_bit.set_date(varsayilan_bit)
             self.dt_filt_bit.pack(side="left", padx=4)
         else:
-            self.var_filt_bit = tk.StringVar()
-            tk.Entry(filtre, textvariable=self.var_filt_bit, width=12).pack(
+            self.var_filt_bit = tk.StringVar(value=varsayilan_bit.isoformat())
+            tk.Entry(filtre, textvariable=self.var_filt_bit, width=10).pack(
                 side="left", padx=4)
 
         tk.Button(
             filtre, text="Uygula", command=self._filtre_uygula,
-            bg="#455A64", fg="white", bd=0, padx=10, pady=2,
-        ).pack(side="left", padx=(8, 4))
+            bg="#455A64", fg="white", bd=0, padx=8, pady=2,
+            font=("Arial", 9),
+        ).pack(side="left", padx=(6, 2))
         tk.Button(
             filtre, text="Temizle", command=self._filtre_temizle,
-            bg="#90A4AE", fg="white", bd=0, padx=10, pady=2,
-        ).pack(side="left", padx=4)
+            bg="#90A4AE", fg="white", bd=0, padx=8, pady=2,
+            font=("Arial", 9),
+        ).pack(side="left", padx=2)
+
+        # Batch pencere spinbox — ayarlar.batch_bekleme_gun ile senkron
+        tk.Label(filtre, text=" 🔗 Batch:", bg="white",
+                 font=("Arial", 9, "bold")).pack(side="left", padx=(10, 2))
+        self.var_batch = tk.IntVar(
+            value=int(getattr(self.ayarlar, "batch_bekleme_gun", 5) or 0)
+        )
+        self.sp_batch = tk.Spinbox(
+            filtre, from_=0, to=60, width=3, increment=1,
+            textvariable=self.var_batch, font=("Arial", 9, "bold"),
+            command=self._batch_degisti,
+        )
+        self.sp_batch.pack(side="left")
+        tk.Label(filtre, text="gün", bg="white",
+                 font=("Arial", 9)).pack(side="left", padx=(2, 0))
+        self.sp_batch.bind("<Return>", lambda e: self._batch_degisti())
+        self.sp_batch.bind("<FocusOut>", lambda e: self._batch_degisti())
+
+        # Eski kayıt penceresi — bitişi kaç gün öncesinden itibaren taransın
+        tk.Label(filtre, text=" 📅 Son:", bg="white",
+                 font=("Arial", 9, "bold")).pack(side="left", padx=(10, 2))
+        self.var_eski_gun = tk.IntVar(
+            value=int(getattr(self.ayarlar, "eski_kayit_gun", 30) or 0)
+        )
+        self.sp_eski = tk.Spinbox(
+            filtre, from_=0, to=365, width=4, increment=5,
+            textvariable=self.var_eski_gun, font=("Arial", 9, "bold"),
+            command=self._eski_gun_degisti,
+        )
+        self.sp_eski.pack(side="left")
+        tk.Label(filtre, text="gün önce bitmiş", bg="white",
+                 font=("Arial", 9)).pack(side="left", padx=(2, 0))
+        self.sp_eski.bind("<Return>", lambda e: self._eski_gun_degisti())
+        self.sp_eski.bind("<FocusOut>", lambda e: self._eski_gun_degisti())
 
         self._filt_durum_lbl = tk.Label(
-            filtre, text="", bg="white", fg="#455A64", font=("Arial", 9, "italic"),
+            filtre, text="", bg="white", fg="#455A64", font=("Arial", 8, "italic"),
         )
-        self._filt_durum_lbl.pack(side="left", padx=10)
+        self._filt_durum_lbl.pack(side="left", padx=6)
 
-        bol = tk.PanedWindow(f, orient="horizontal", sashrelief="raised", bg="white")
-        bol.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        # ---- 4. Dikey bölme: TABLO (üst) + MESAJ ÖNİZLEME (alt) --------
+        bol = tk.PanedWindow(
+            f, orient="vertical", sashrelief="raised",
+            bg="#CFD8DC", sashwidth=6,
+        )
+        bol.pack(fill="both", expand=True, padx=8, pady=(0, 4))
 
-        # Sol: kuyruktaki hastalar
-        sol = tk.Frame(bol, bg="white")
-        bol.add(sol, minsize=520)
+        # ÜST: hasta tablosu
+        ust = tk.Frame(bol, bg="white")
+        bol.add(ust, minsize=180, stretch="always")
 
-        kols = ("planli_tarih", "hasta", "tc", "tel", "ilac_sayi", "ziyaret", "son_gelis", "gun", "takip")
+        kols = ("planli_tarih", "hasta", "tc", "tel", "ilac_sayi",
+                "menzil", "ziyaret", "son_gelis", "gun", "takip")
         self.tv_yaz = ttk.Treeview(
-            sol, columns=kols, show="headings", selectmode="browse",
+            ust, columns=kols, show="headings", selectmode="browse",
         )
-        for k, b, w, a in [
-            ("planli_tarih", "📅 Planlı Gönderim", 140, "center"),
-            ("hasta",        "Hasta",              180, "w"),
-            ("tc",           "T.C. Kimlik",        100, "center"),
-            ("tel",          "Telefon",            100, "center"),
-            ("ilac_sayi",    "İlaç",               45,  "center"),
-            ("ziyaret",      "Ziyaret",            60,  "center"),
-            ("son_gelis",    "Son Geliş",          90,  "center"),
-            ("gun",          "Gün Önce",           65,  "center"),
-            ("takip",        "Takipli",            55,  "center"),
-        ]:
+        self._sutun_tanimlari = [
+            ("planli_tarih", "📅 Planlı",   110, "center"),
+            ("hasta",        "Hasta",       160, "w"),
+            ("tc",           "T.C.",        100, "center"),
+            ("tel",          "Telefon",     100, "center"),
+            ("ilac_sayi",    "İlaç",         45, "center"),
+            ("menzil",       "🔗 Menzil",    70, "center"),
+            ("ziyaret",      "Ziyaret",      60, "center"),
+            ("son_gelis",    "Son Geliş",    90, "center"),
+            ("gun",          "Gün Önce",     65, "center"),
+            ("takip",        "Takipli",      55, "center"),
+        ]
+        for k, b, w, a in self._sutun_tanimlari:
             self.tv_yaz.heading(k, text=b)
-            self.tv_yaz.column(k, width=w, anchor=a)
+            self.tv_yaz.column(k, width=w, anchor=a, stretch=False)
+        self._sutun_gorunurlugu_uygula()
         self.tv_yaz.pack(side="left", fill="both", expand=True)
-        sb = ttk.Scrollbar(sol, orient="vertical", command=self.tv_yaz.yview)
+        sb = ttk.Scrollbar(ust, orient="vertical", command=self.tv_yaz.yview)
         self.tv_yaz.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.tv_yaz.bind("<<TreeviewSelect>>", lambda e: self._secim_guncelle())
-
-        # Kısayollar: Ctrl+Shift+C → TC, Ctrl+C → mesaj
         self.tv_yaz.bind("<Control-Shift-C>", lambda e: self._tc_kopyala())
         self.tv_yaz.bind("<Control-Shift-c>", lambda e: self._tc_kopyala())
         self.root.bind("<Control-Shift-C>", lambda e: self._tc_kopyala())
         self.root.bind("<Control-Shift-c>", lambda e: self._tc_kopyala())
-        # Sağ tık menüsü: TC kopyala
+        # Sağ tık menüsü
         self.menu_yaz = tk.Menu(self.tv_yaz, tearoff=0)
-        self.menu_yaz.add_command(label="📋 T.C. Kimlik No Kopyala (Ctrl+Shift+C)", command=self._tc_kopyala)
-        self.menu_yaz.add_command(label="📋 Telefonu Kopyala", command=self._tel_kopyala)
-        self.menu_yaz.add_command(label="📋 Hasta Adını Kopyala", command=self._ad_kopyala)
+        self.menu_yaz.add_command(label="📋 T.C. Kimlik No Kopyala (Ctrl+Shift+C)",
+                                  command=self._tc_kopyala)
+        self.menu_yaz.add_command(label="📋 Telefonu Kopyala",
+                                  command=self._tel_kopyala)
+        self.menu_yaz.add_command(label="📋 Hasta Adını Kopyala",
+                                  command=self._ad_kopyala)
         self.menu_yaz.add_separator()
-        self.menu_yaz.add_command(label="💊 Medulada İlaç Listesi Aç", command=self._medulada_ilac_listesi_ac)
+        self.menu_yaz.add_command(label="💊 Medulada İlaç Listesi Aç",
+                                  command=self._medulada_ilac_listesi_ac)
         self.tv_yaz.bind("<Button-3>", self._yaz_sagtik)
 
-        # Sağ: mesaj önizleme + WA Web butonu
-        sag = tk.Frame(bol, bg="#FAFAFA")
-        bol.add(sag, minsize=480)
+        # ALT: mesaj hazırlık mini-bar + önizleme
+        alt = tk.Frame(bol, bg="#FAFAFA")
+        bol.add(alt, minsize=160, stretch="always")
 
+        baslik = tk.Frame(alt, bg="#FAFAFA")
+        baslik.pack(fill="x", padx=10, pady=(6, 2))
         tk.Label(
-            sag, text="Mesaj Önizleme", font=("Arial", 11, "bold"),
-            bg="#FAFAFA",
-        ).pack(anchor="w", padx=12, pady=(10, 6))
-
-        self.txt_mesaj = tk.Text(
-            sag, wrap="word", font=("Consolas", 10),
-            bg="white", relief="solid", bd=1,
-        )
-        self.txt_mesaj.pack(fill="both", expand=True, padx=12, pady=4)
-
-        btn_frame = tk.Frame(sag, bg="#FAFAFA")
-        btn_frame.pack(fill="x", padx=12, pady=8)
-
-        tk.Button(
-            btn_frame, text="📱 WhatsApp Web'de Aç ve Gönder",
-            command=self._wa_ac, bg="#25D366", fg="white",
-            bd=0, padx=16, pady=8, font=("Arial", 10, "bold"),
+            baslik, text="💬 Mesaj Önizleme", font=("Arial", 10, "bold"),
+            bg="#FAFAFA", fg="#1976D2",
         ).pack(side="left")
+
+        # 5. Mesaj HAZIRLIK butonları — mesaj kutusunun hemen üstünde
+        hazirlik = tk.Frame(alt, bg="#FAFAFA")
+        hazirlik.pack(fill="x", padx=10, pady=(0, 4))
         tk.Button(
-            btn_frame, text="📋 Panoya Kopyala", command=self._panoya_kopyala,
-            bg="#546E7A", fg="white", bd=0, padx=12, pady=8,
-        ).pack(side="left", padx=8)
+            hazirlik, text="💊 İlaç Listesi Aç",
+            command=self._medulada_ilac_listesi_ac,
+            bg="#0288D1", fg="white", bd=0, padx=10, pady=5,
+            font=("Arial", 9, "bold"),
+        ).pack(side="left", padx=(0, 4))
+        tk.Button(
+            hazirlik, text="🔄 İlaç Geçmişinden Güncelle",
+            command=self._mesaji_ilac_gecmisinden_guncelle,
+            bg="#1976D2", fg="white", bd=0, padx=10, pady=5,
+            font=("Arial", 9, "bold"),
+        ).pack(side="left", padx=4)
+        # Otobüsten yolcu indir: ileri tarihli ilaçları kayıttan çıkar,
+        # bugünkü ilaçlar hemen gönderilebilir olsun, satır açık sarı görünsün
+        tk.Button(
+            hazirlik, text="🚏 Bekleteni İndir",
+            command=self._bekleteni_indir,
+            bg="#F9A825", fg="white", bd=0, padx=10, pady=5,
+            font=("Arial", 9, "bold"),
+        ).pack(side="left", padx=4)
+
+        mesaj_sarma = tk.Frame(alt, bg="#FAFAFA")
+        mesaj_sarma.pack(fill="both", expand=True, padx=10, pady=(0, 6))
+        self.txt_mesaj = tk.Text(
+            mesaj_sarma, wrap="word", font=("Consolas", 10),
+            bg="white", relief="solid", bd=1, height=6,
+        )
+        self.txt_mesaj.pack(side="left", fill="both", expand=True)
+        msb = ttk.Scrollbar(mesaj_sarma, orient="vertical",
+                            command=self.txt_mesaj.yview)
+        self.txt_mesaj.configure(yscrollcommand=msb.set)
+        msb.pack(side="right", fill="y")
+
+        # ---- 6. Alt bar: GÖNDER + DURUM işaretleme ---------------------
+        # Sol: gönder aksiyonları | Sağ: kuyruk durum işaretleme
+        aksiyon = tk.Frame(f, bg="#ECEFF1")
+        aksiyon.pack(fill="x", padx=8, pady=(2, 6))
+
+        sol_aks = tk.Frame(aksiyon, bg="#ECEFF1")
+        sol_aks.pack(side="left", pady=4)
+        tk.Button(
+            sol_aks, text="📱 WhatsApp'ta Aç", command=self._wa_ac,
+            bg="#25D366", fg="white", bd=0, padx=12, pady=6,
+            font=("Arial", 10, "bold"),
+        ).pack(side="left", padx=(0, 4))
+        tk.Button(
+            sol_aks, text="📋 Kopyala", command=self._panoya_kopyala,
+            bg="#546E7A", fg="white", bd=0, padx=10, pady=6,
+            font=("Arial", 9),
+        ).pack(side="left", padx=2)
+
+        sag_aks = tk.Frame(aksiyon, bg="#ECEFF1")
+        sag_aks.pack(side="right", pady=4)
+        tk.Button(
+            sag_aks, text="✔ Gönderildi", command=self._gonderildi_manuel,
+            bg="#7B1FA2", fg="white", bd=0, padx=10, pady=6,
+            font=("Arial", 9, "bold"),
+        ).pack(side="left", padx=2)
+        tk.Button(
+            sag_aks, text="❌ İptal", command=self._secili_iptal,
+            bg="#E53935", fg="white", bd=0, padx=10, pady=6,
+            font=("Arial", 9),
+        ).pack(side="left", padx=2)
 
         self._kuyruk_sonuclari: list = []
         return f
@@ -879,17 +1023,37 @@ class HastaTakipGUI:
             self.tv_yaz.delete(i)
         a = self._ayarlar_snapshot()
         self._kuyruk_sonuclari = self.kuyruk.gosterilecek_mesajlar(a)
-        # Tarih aralığı filtresi: planli_gonderim'e göre
+        # Tarih aralığı filtresi (üç aşamalı):
+        #   Kayıt aralıkta SAYILIR eğer
+        #     (a) planli_gonderim aralıktaysa VEYA
+        #     (b) kayıt içindeki HERHANGİ bir ilacın yazdırma tarihi aralıktaysa
+        # (b) çok önemli: bir kaydın ilaçları çok eskiden bugüne dağılmış
+        # olabilir. en_erken çok eskide, en_geç çok ileride olabilir — ama
+        # aralarında aralıkta kalan ilaç(lar) olabilir. Bu durumda kayıt
+        # listede görünmeli ki eczacı farkedebilsin.
         bas_str, bit_str = self._filtre_aralik_iso()
         if bas_str or bit_str:
             filtrelenmis = []
             for m in self._kuyruk_sonuclari:
                 p = (m.get("planli_gonderim") or "")[:10]
-                if bas_str and p < bas_str:
-                    continue
-                if bit_str and p > bit_str:
-                    continue
-                filtrelenmis.append(m)
+                yazdirma_tarihleri = []
+                for il in m.get("ilaclar", []) or []:
+                    yt = str(il.get("yazdirma_tarihi") or "")[:10]
+                    if yt:
+                        yazdirma_tarihleri.append(yt)
+
+                def aralikta(ts: str) -> bool:
+                    if not ts:
+                        return False
+                    if bas_str and ts < bas_str:
+                        return False
+                    if bit_str and ts > bit_str:
+                        return False
+                    return True
+
+                herhangi = any(aralikta(t) for t in yazdirma_tarihleri)
+                if aralikta(p) or herhangi:
+                    filtrelenmis.append(m)
             self._kuyruk_sonuclari = filtrelenmis
             if hasattr(self, "_filt_durum_lbl"):
                 parca = []
@@ -898,7 +1062,7 @@ class HastaTakipGUI:
                 if bit_str:
                     parca.append(f"≤ {bit_str}")
                 self._filt_durum_lbl.config(
-                    text=f"Filtre aktif: {' ve '.join(parca)}"
+                    text=f"Filtre: {' ve '.join(parca)} (planlı ya da en erken ilaç)"
                 )
         elif hasattr(self, "_filt_durum_lbl"):
             self._filt_durum_lbl.config(text="")
@@ -915,12 +1079,31 @@ class HastaTakipGUI:
         except Exception:
             pass
         self.tv_yaz.tag_configure("ertelenen", background="#FFEB3B", foreground="#000000")
+        # Açık sarı: bekleteni indirilmiş (yolcu indirilen otobüs)
+        self.tv_yaz.tag_configure("indirildi", background="#FFF9C4", foreground="#000000")
 
         bugun = date.today()
+        bugun_iso = bugun.isoformat()
+        # Menzil = X gün içindeki kalem sayısı (batch pencere)
+        batch_gun = int(getattr(self.ayarlar, "batch_bekleme_gun", 5) or 0)
+        menzil_son = (bugun + timedelta(days=batch_gun)).isoformat()
         GUN_ADI = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
         for m in self._kuyruk_sonuclari:
+            indirildi = bool(m.get("bekleteni_indirildi"))
             ertelenen = bool(m.get("ertelenen"))
-            tags = ("ertelenen",) if ertelenen else ()
+            if indirildi:
+                tags = ("indirildi",)
+            elif ertelenen:
+                tags = ("ertelenen",)
+            else:
+                tags = ()
+            # Menzil sayısı
+            menzil_sayisi = 0
+            for il in m.get("ilaclar", []) or []:
+                yt = str(il.get("yazdirma_tarihi") or "")[:10]
+                if yt and bugun_iso <= yt <= menzil_son:
+                    menzil_sayisi += 1
+
             planli_iso = (m.get("planli_gonderim") or "")[:10]
             planli_goster = "-"
             if planli_iso:
@@ -945,6 +1128,7 @@ class HastaTakipGUI:
                     m.get("tckn") or "-",
                     m["cep_tel"] or "-",
                     len(m["ilaclar"]),
+                    menzil_sayisi,
                     m.get("toplam_ziyaret") if m.get("toplam_ziyaret") is not None else "-",
                     (m.get("son_ziyaret") or "")[:10] or "-",
                     m.get("son_gun_once") if m.get("son_gun_once") is not None else "-",
@@ -1060,7 +1244,9 @@ class HastaTakipGUI:
         if not tel.startswith("90"):
             tel = "90" + tel
 
-        mesaj_metni = self.txt_mesaj.get("1.0", "end").rstrip("\n")
+        mesaj_onizleme = self.txt_mesaj.get("1.0", "end").rstrip("\n")
+        # Hastaya giden metinden eczacı-özel gün etiketlerini temizle
+        mesaj_metni = MesajKuyrugu.gun_etiketlerini_temizle(mesaj_onizleme)
         url = f"https://wa.me/{tel}?text={urllib.parse.quote(mesaj_metni)}"
         chrome_acildi = self._chrome_ile_ac(url)
         self.kuyruk.gonderildi_isaretle(m["kuyruk_id"], "OK")
@@ -1071,12 +1257,14 @@ class HastaTakipGUI:
         )
 
     def _panoya_kopyala(self):
-        mesaj = self.txt_mesaj.get("1.0", "end").rstrip("\n")
-        if not mesaj:
+        mesaj_onizleme = self.txt_mesaj.get("1.0", "end").rstrip("\n")
+        if not mesaj_onizleme:
             return
+        # Hastaya giden metinden gün etiketlerini temizle
+        mesaj = MesajKuyrugu.gun_etiketlerini_temizle(mesaj_onizleme)
         self.root.clipboard_clear()
         self.root.clipboard_append(mesaj)
-        self.durum_bar.config(text="📋 Mesaj panoya kopyalandı.")
+        self.durum_bar.config(text="📋 Mesaj panoya kopyalandı (gün etiketleri çıkarıldı).")
 
     def _kopyala_yardimci(self, alan: str, etiket: str):
         m = self._aktif_mesaj()
@@ -1110,12 +1298,17 @@ class HastaTakipGUI:
             self.menu_yaz.grab_release()
 
     def _medulada_ilac_listesi_ac(self):
-        """Seçili hastanın TC'sini Medula reçete detay sayfasındaki
-        'Reçete Sahibi T.C.' (f:t18) alanına yazıp 'İlaç Listesi'
-        (f:buttonIlacListesi) butonuna basar.
+        """Seçili hastanın TC'si → pano → MEDULA f:t18 (temizle+yapıştır) →
+        f:buttonIlacListesi tıkla. Mümkün olan en hızlı akış.
 
-        NOT: Sadece görüntüleme amaçlıdır. Reçete verisi KAYDEDILMEZ;
-        sadece navigasyon (İlaç Listesi) butonu tıklanır.
+        Adımlar:
+          1. Seçili hastanın TC'sini panoya koy
+          2. MEDULA penceresini öne getir
+          3. f:t18 Reçete Sahibi TC textbox'ına odaklan
+          4. Ctrl+A → Del (temizle) → Ctrl+V (panodan yapıştır)
+          5. f:buttonIlacListesi butonuna invoke()
+
+        NOT: Veri değiştirmez; sadece sorgu/navigasyon.
         """
         m = self._aktif_mesaj()
         if not m:
@@ -1125,15 +1318,40 @@ class HastaTakipGUI:
             messagebox.showwarning("Geçersiz TC", f"Hastanın TC'si geçersiz: '{tc}'")
             return
 
-        self.durum_bar.config(text=f"⏳ Medula'da {tc} sorgulanıyor...")
+        # 1) Panoya kopyala (ana thread'de)
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(tc)
+            self.root.update()  # pano senkron
+        except Exception as e:
+            logger.warning(f"Panoya yazılamadı: {e}")
+
+        self.durum_bar.config(text=f"⏳ MEDULA'da {tc} sorgulanıyor...")
         self.root.update_idletasks()
 
+        # HIZLI YOL: HTML DOM üzerinden (COM) — milisaniyeler içinde
+        try:
+            from medula_html_dom import tc_yaz_ve_ilac_listesi_ac
+            ok, msg = tc_yaz_ve_ilac_listesi_ac(tc)
+            if ok:
+                self.durum_bar.config(
+                    text=f"💊 {m.get('hasta_adi')} ({tc}) için İlaç Listesi açıldı."
+                )
+                return
+            else:
+                logger.warning(f"HTML DOM yolu başarısız, pywinauto fallback: {msg}")
+        except Exception as e:
+            logger.warning(f"HTML DOM yolu istisna, pywinauto fallback: {e}")
+
+        # FALLBACK: pywinauto UIA (yavaş ama her durumda çalışır)
         def worker():
             try:
-                from recete_tarama import element_bul, medula_bul
+                from recete_tarama import element_bul
+                from medula_ilac_listesi_oku import medula_bul  # is_visible fallback'lı
+                from pywinauto.keyboard import send_keys
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror(
-                    "Import Hatası", f"recete_tarama yüklenemedi:\n{type(e).__name__}: {e}"
+                    "Import Hatası", f"{type(e).__name__}: {e}"
                 ))
                 return
 
@@ -1141,88 +1359,94 @@ class HastaTakipGUI:
             if not medula:
                 self.root.after(0, lambda: messagebox.showerror(
                     "Medula Yok",
-                    "Medula penceresi bulunamadı. BotanikEOS/Medula açık olmalı.",
+                    "MEDULA penceresi bulunamadı. BotanikEOS açık olmalı.",
                 ))
                 return
 
+            # 2) Pencereyi öne getir
             try:
                 medula.set_focus()
             except Exception:
                 pass
-            import time
-            time.sleep(0.2)
 
-            tc_input = element_bul(medula, "f:t18")
+            # 3) Elementleri bul — TIMEOUT'LU (MEDULA yanlış sayfadaysa
+            # element_bul'un fallback descendants tarama 30+ saniye sürebilir)
+            import threading as _t
+
+            def _zamanli_bul(auto_id, timeout_sn=4.0):
+                sonuc = [None]
+                def _ara():
+                    try:
+                        sonuc[0] = element_bul(medula, auto_id)
+                    except Exception as e:
+                        logger.debug(f"element_bul({auto_id}) hata: {e}")
+                th = _t.Thread(target=_ara, daemon=True)
+                th.start()
+                th.join(timeout_sn)
+                if th.is_alive():
+                    logger.warning(f"element_bul({auto_id}) timeout ({timeout_sn}s)")
+                    return None
+                return sonuc[0]
+
+            self.root.after(0, lambda: self.durum_bar.config(
+                text=f"⏳ MEDULA sayfası taranıyor (f:t18)..."
+            ))
+            tc_input = _zamanli_bul("f:t18", timeout_sn=4.0)
             if not tc_input:
                 self.root.after(0, lambda: messagebox.showerror(
-                    "Element Yok",
-                    "'Reçete Sahibi T.C.' kutusu (f:t18) bulunamadı.\n"
-                    "Medula'da bir reçete detay sayfası açık olmalı.",
+                    "Reçete Detay Sayfası Açık Değil",
+                    "'Reçete Sahibi T.C.' kutusu (f:t18) 4 saniyede bulunamadı.\n\n"
+                    "MEDULA'da bir reçete detay sayfası (ReceteIslem2) açık "
+                    "olmalı. Reçete Listesi → satıra tıkla → detay sayfasına gir.",
                 ))
+                self.root.after(0, lambda: self.durum_bar.config(text="Hazır"))
                 return
 
-            ilac_btn = element_bul(medula, "f:buttonIlacListesi")
+            self.root.after(0, lambda: self.durum_bar.config(
+                text=f"⏳ İlaç Listesi butonu aranıyor..."
+            ))
+            ilac_btn = _zamanli_bul("f:buttonIlacListesi", timeout_sn=3.0)
             if not ilac_btn:
                 self.root.after(0, lambda: messagebox.showerror(
                     "Element Yok",
-                    "'İlaç Listesi' butonu (f:buttonIlacListesi) bulunamadı.",
+                    "İlaç Listesi butonu (f:buttonIlacListesi) bulunamadı.",
                 ))
+                self.root.after(0, lambda: self.durum_bar.config(text="Hazır"))
                 return
 
-            yazildi = False
-            hata_mesajlari = []
-
-            # YÖNTEM 1: Native set_focus + type_keys
+            # 4) Textbox'ı odakla, temizle (Ctrl+A/Del), panodan yapıştır (Ctrl+V)
+            import time
             try:
-                tc_input.set_focus()
-                time.sleep(0.15)
-                tc_input.type_keys("^a", with_spaces=False, pause=0.02)
-                time.sleep(0.05)
-                tc_input.type_keys("{DEL}", pause=0.02)
-                time.sleep(0.05)
-                tc_input.type_keys(tc, with_spaces=False, pause=0.02)
+                tc_input.click_input()
+            except Exception:
+                try:
+                    tc_input.set_focus()
+                except Exception:
+                    pass
+            time.sleep(0.05)
+            try:
+                send_keys("^a", pause=0.01)
+                send_keys("{DEL}", pause=0.01)
+                send_keys("^v", pause=0.01)
+                time.sleep(0.08)  # IE input commit
                 yazildi = True
-                logger.info("TC yazıldı (native type_keys)")
             except Exception as e1:
-                hata_mesajlari.append(f"type_keys: {type(e1).__name__}: {e1}")
-
-            # YÖNTEM 2: click_input + pywinauto send_keys
-            if not yazildi:
+                logger.warning(f"send_keys başarısız, fallback: {e1}")
+                yazildi = False
+                # Fallback: set_edit_text
                 try:
-                    from pywinauto.keyboard import send_keys
-                    tc_input.click_input()
-                    time.sleep(0.15)
-                    send_keys("^a")
-                    time.sleep(0.05)
-                    send_keys("{DEL}")
-                    time.sleep(0.05)
-                    send_keys(tc)
-                    yazildi = True
-                    logger.info("TC yazıldı (click_input + send_keys)")
-                except Exception as e2:
-                    hata_mesajlari.append(f"send_keys: {type(e2).__name__}: {e2}")
-
-            # YÖNTEM 3: set_edit_text (WinForms)
-            if not yazildi:
-                try:
-                    tc_input.set_edit_text("")
-                    time.sleep(0.05)
                     tc_input.set_edit_text(tc)
                     yazildi = True
-                    logger.info("TC yazıldı (set_edit_text)")
-                except Exception as e3:
-                    hata_mesajlari.append(f"set_edit_text: {type(e3).__name__}: {e3}")
-
+                except Exception as e2:
+                    self.root.after(0, lambda: messagebox.showerror(
+                        "TC Yazılamadı",
+                        f"send_keys: {e1}\nset_edit_text: {e2}",
+                    ))
+                    return
             if not yazildi:
-                self.root.after(0, lambda: messagebox.showerror(
-                    "TC Yazılamadı",
-                    "TC kutusuna yazma başarısız:\n\n" + "\n".join(hata_mesajlari),
-                ))
                 return
 
-            time.sleep(0.2)
-
-            # İlaç Listesi butonuna bas
+            # 5) İlaç Listesi butonuna bas
             try:
                 ilac_btn.invoke()
             except Exception:
@@ -1230,8 +1454,7 @@ class HastaTakipGUI:
                     ilac_btn.click_input()
                 except Exception as e:
                     self.root.after(0, lambda: messagebox.showerror(
-                        "Tıklama Hatası",
-                        f"İlaç Listesi butonu tıklanamadı:\n{type(e).__name__}: {e}",
+                        "Tıklama Hatası", f"{type(e).__name__}: {e}",
                     ))
                     return
 
@@ -1832,7 +2055,483 @@ class HastaTakipGUI:
         self.durum_bar.config(text="Not güncellendi.")
 
     # -----------------------------------------------------------------
+    def _batch_degisti(self):
+        """Spinbox değeri değiştiğinde: ayarı kaydet + kuyruğu yeniden tara."""
+        try:
+            yeni = int(self.var_batch.get())
+        except Exception:
+            return
+        yeni = max(0, min(60, yeni))
+        mevcut = int(getattr(self.ayarlar, "batch_bekleme_gun", 5) or 0)
+        if yeni == mevcut:
+            # Değer değişmedi — yine de menzil sütunu değişmiş olabilir, yükle
+            self._kuyruktan_yukle()
+            return
+        self.ayarlar.batch_bekleme_gun = yeni
+        try:
+            self.ayarlar.kaydet()
+        except Exception as e:
+            logger.debug(f"Batch ayarı kaydedilemedi: {e}")
+        self.durum_bar.config(
+            text=f"🔗 Batch penceresi {yeni} güne ayarlandı — kuyruk yeniden taranıyor..."
+        )
+        self.root.update_idletasks()
+        # Tam DB taraması yap ki kuyruk kayıtları yeni pencereye göre hesaplansın
+        self._yazdirma_yenile()
+
+    # -----------------------------------------------------------------
+    def _eski_gun_degisti(self):
+        """'Son N gün önce bitmiş' spinbox'ı değişince: ayarı kaydet +
+        filtre baş tarihini otomatik geriye çek + DB taramayı yeniden çalıştır.
+
+        ayarlar.eski_kayit_gun → hasta_takip_db SQL'indeki bitiş filtresi:
+            RIBitisTarihi >= DATEADD(DAY, -eski_kayit_gun, bugun)
+
+        Filtre baş tarihi de (bugün - N) yapılır ki kuyruk görünürlüğü
+        tarama aralığıyla uyumlu olsun.
+        """
+        try:
+            yeni = int(self.var_eski_gun.get())
+        except Exception:
+            return
+        yeni = max(0, min(365, yeni))
+        self.ayarlar.eski_kayit_gun = yeni
+        try:
+            self.ayarlar.kaydet()
+        except Exception as e:
+            logger.debug(f"eski_kayit_gun kaydedilemedi: {e}")
+
+        # Filtre baş tarihini geriye çek (görünürlük için)
+        yeni_bas = date.today() - timedelta(days=yeni)
+        try:
+            if hasattr(self, "dt_filt_bas"):
+                self.dt_filt_bas.set_date(yeni_bas)
+            elif hasattr(self, "var_filt_bas"):
+                self.var_filt_bas.set(yeni_bas.isoformat())
+            # Filtreyi de aktif bırak
+            if hasattr(self, "_filt_bas_aktif"):
+                self._filt_bas_aktif.set(True)
+        except Exception as e:
+            logger.debug(f"Filtre tarihi güncellenemedi: {e}")
+
+        self.durum_bar.config(
+            text=f"📅 Son {yeni} gün önce bitmiş ilaçlar dahil "
+                 f"(filtre başı: {yeni_bas.isoformat()}) — DB taranıyor..."
+        )
+        self.root.update_idletasks()
+        self._yazdirma_yenile()
+
+    # -----------------------------------------------------------------
+    def _bekleteni_indir(self):
+        """Seçili kaydın ileri tarihli ilaçlarını kayıttan çıkar.
+
+        Otobüs benzetmesi: bekleyen yolcuları indir, otobüs (bugünkü ilaçlar)
+        bugün yola çıkabilir. Satır açık sarıya (indirildi) döner. İleri
+        tarihli ilaçlar bayrak korunduğu sürece yeniden eklenmez — kayıt
+        gönderildikten sonra doğal olarak sonraki taramada yeni kayıt olurlar.
+        """
+        m = self._aktif_mesaj()
+        if not m:
+            return
+        if bool(m.get("bekleteni_indirildi")):
+            messagebox.showinfo(
+                "Zaten İndirildi",
+                f"{m['hasta_adi']} için bekleten ilaçlar zaten indirildi "
+                f"(satır açık sarı).",
+            )
+            return
+        # Önizleme: kaç ilaç indirilecek?
+        bugun_iso = date.today().isoformat()
+        kalacak = []
+        indirilecek = []
+        for il in m.get("ilaclar", []) or []:
+            yt = str(il.get("yazdirma_tarihi") or "")[:10]
+            if yt and yt > bugun_iso:
+                indirilecek.append(il)
+            else:
+                kalacak.append(il)
+
+        if not indirilecek:
+            messagebox.showinfo(
+                "İleri Tarihli İlaç Yok",
+                f"{m['hasta_adi']} için bekleten (ileri tarihli) ilaç yok. "
+                f"Kayıt zaten bugüne planlı.",
+            )
+            return
+        if not kalacak:
+            messagebox.showwarning(
+                "Bugüne Hazır İlaç Yok",
+                "Tüm ilaçlar ileri tarihli. İndirilecek bir şey yok — "
+                "otobüs zaten kalkmamış.",
+            )
+            return
+
+        indirilecek_isim = ", ".join(
+            (il.get("urun_adi") or "") for il in indirilecek
+        )
+        if not messagebox.askyesno(
+            "Bekleteni İndir",
+            f"{m['hasta_adi']} — şu ileri tarihli {len(indirilecek)} ilaç "
+            f"kayıttan çıkarılsın mı?\n\n"
+            f"{indirilecek_isim}\n\n"
+            f"Kalan {len(kalacak)} ilaç bugün gönderilebilir hale gelecek. "
+            f"Satır açık sarı görünecek."
+        ):
+            return
+
+        try:
+            sayi = self.kuyruk.bekleteni_indir(m["kuyruk_id"])
+        except Exception as e:
+            messagebox.showerror("Hata", f"Bekleteni indirme başarısız:\n{e}")
+            return
+        if sayi <= 0:
+            messagebox.showinfo("Değişiklik Yok", "İndirilecek ilaç bulunamadı.")
+            return
+        self.durum_bar.config(
+            text=f"🚏 {m['hasta_adi']} — {sayi} bekleten ilaç indirildi. "
+                 f"Otobüs kalkabilir."
+        )
+        self._kuyruktan_yukle()
+
+    # -----------------------------------------------------------------
+    def _mesaji_ilac_gecmisinden_guncelle(self):
+        """MEDULA'da açık olan '{HASTA} İlaç Listesi' penceresinden günü
+        gelmiş ilaçları oku, mesaj şablonuna göre önizlemeyi güncelle.
+
+        SALT OKUMA: Hiçbir veri kaydedilmez; MEDULA'daki buton tıklamaz.
+        """
+        m = self._aktif_mesaj()
+        if not m:
+            return
+
+        try:
+            from medula_ilac_listesi_oku import (
+                medula_bul,
+                ilaclari_oku,
+                hasta_dogrula,
+            )
+        except Exception as e:
+            messagebox.showerror(
+                "Import Hatası",
+                f"medula_ilac_listesi_oku yüklenemedi:\n{type(e).__name__}: {e}",
+            )
+            return
+
+        self.durum_bar.config(text="⏳ MEDULA Kullanılan İlaç Listesi okunuyor...")
+        self.root.update_idletasks()
+
+        # SENKRON ÇALIŞTIR — COM apartment affinity için tüm çağrılar ana thread
+        medula = medula_bul()
+        if not medula:
+            try:
+                import win32gui as _wg
+                lst = []
+                def _e(h, _):
+                    if _wg.IsWindowVisible(h):
+                        t = _wg.GetWindowText(h) or ""
+                        c = _wg.GetClassName(h) or ""
+                        if "MEDULA" in t or "BotanikEOS" in t:
+                            lst.append(f"  [{c}] {t}")
+                    return True
+                _wg.EnumWindows(_e, None)
+                ek = "\n\nGörünen pencereler:\n" + ("\n".join(lst) or "  (hiçbiri)")
+            except Exception:
+                ek = ""
+            messagebox.showwarning(
+                "MEDULA Yok",
+                "MEDULA penceresi bulunamadı. BotanikEOS açık olmalı." + ek,
+            )
+            self.durum_bar.config(text="Hazır")
+            return
+
+        # KATI DOĞRULAMA: kuyruk hastası ile MEDULA hastası eşleşiyor mu?
+        kuyruk_hasta = (m.get("hasta_adi") or "").strip()
+        kuyruk_tc = (m.get("tckn") or "").strip()
+        eslesti, dogr_mesaj, pencere_hasta, pencere_tc = hasta_dogrula(
+            kuyruk_hasta, kuyruk_tc,
+        )
+        if not eslesti:
+            messagebox.showerror(
+                "Hasta Uyumsuzluğu — İŞLEM DURDURULDU",
+                f"Mesajın ait olduğu hasta ile MEDULA'da açık İlaç Listesi "
+                f"sayfasındaki hasta FARKLI.\n\n"
+                f"Kuyruk hastası: {kuyruk_hasta} (TC: {kuyruk_tc})\n"
+                f"MEDULA hastası: {pencere_hasta} (TC: {pencere_tc})\n\n"
+                f"{dogr_mesaj}\n\n"
+                f"Yanlış hastaya mesaj göndermemek için işlem iptal edildi. "
+                f"Önce doğru hastanın 'Kullanılan İlaç Listesi' sayfasını aç.",
+            )
+            self.durum_bar.config(text="❌ Hasta uyumsuzluğu — işlem iptal.")
+            return
+
+        ilaclar = ilaclari_oku(medula)
+        if not ilaclar:
+            messagebox.showinfo(
+                "Uygun İlaç Yok",
+                "Açık MEDULA sayfasında 'Yazdırma günü gelmiştir' "
+                "etiketli VE rapor kodu dolu ilaç bulunamadı.\n\n"
+                "Önce 💊 Medulada İlaç Listesi Aç ile 'Kullanılan "
+                "İlaç Listesi' sayfasına girin.",
+            )
+            self.durum_bar.config(text="Uygun ilaç yok.")
+            return
+
+        hasta_adi = pencere_hasta or kuyruk_hasta
+        ilac_dict = [
+            {
+                "urun_adi": il["urun_adi"],
+                "yazdirma_tarihi": date.today().isoformat(),
+                "bitis_tarihi": il.get("verilebilecegi_tarih") or "",
+                "rapor_kodu": il.get("rapor_kodu") or "",
+                "kaynak": "MEDULA",
+            }
+            for il in ilaclar
+        ]
+        mesaj = self.kuyruk.mesaj_olustur(hasta_adi, ilac_dict, self.ayarlar)
+
+        self.txt_mesaj.delete("1.0", "end")
+        self.txt_mesaj.insert("1.0", mesaj)
+        self.durum_bar.config(
+            text=f"✓ {hasta_adi} — {len(ilaclar)} ilaç okundu "
+                 f"(günü gelmiş + raporlu), mesaj güncellendi."
+        )
+
+    # -----------------------------------------------------------------
+    def _oturum_canli_toggle(self):
+        """'Oturumu Açık Tut' checkbox değiştiğinde servisi başlat/durdur."""
+        try:
+            from medula_oturum_canli import get_servis, IDLE_ESIK_SN
+        except Exception as e:
+            messagebox.showerror("Hata", f"Oturum modülü yüklenemedi:\n{e}")
+            self.var_oturum_canli.set(False)
+            return
+        servis = get_servis()
+        if self.var_oturum_canli.get():
+            if servis.basla():
+                self.durum_bar.config(
+                    text=f"🔒 Oturum canlı tutma açık ({IDLE_ESIK_SN}s eşik)."
+                )
+                # Canlı geri sayımı başlat
+                self._oturum_tik_baslat()
+            else:
+                self.var_oturum_canli.set(False)
+                messagebox.showerror(
+                    "Başlatılamadı",
+                    "Oturum canlı tutma başlatılamadı.\n"
+                    "pynput kurulu mu? (pip install pynput)",
+                )
+                return
+        else:
+            servis.dur()
+            self.durum_bar.config(text="🔓 Oturum canlı tutma kapalı.")
+            if hasattr(self, "lbl_oturum_durum"):
+                self.lbl_oturum_durum.config(text="")
+        # Ayarı kaydet
+        try:
+            self.ayarlar.oturum_canli_tut = bool(self.var_oturum_canli.get())
+            self.ayarlar.kaydet()
+        except Exception as e:
+            logger.debug(f"Ayar kaydetme hatası: {e}")
+
+    # -----------------------------------------------------------------
+    def _oturum_tik_baslat(self):
+        """Her 1 saniyede checkbox yanındaki etikete kalan süreyi yaz."""
+        try:
+            from medula_oturum_canli import get_servis, IDLE_ESIK_SN
+            servis = get_servis()
+            if not servis.aktif_mi() or not self.var_oturum_canli.get():
+                if hasattr(self, "lbl_oturum_durum"):
+                    self.lbl_oturum_durum.config(text="")
+                return
+            kalan = int(IDLE_ESIK_SN - servis.idle_saniye())
+            if kalan < 0:
+                kalan = 0
+            if kalan <= 10:
+                renk = "#D84315"
+            elif kalan <= 30:
+                renk = "#EF6C00"
+            else:
+                renk = "#455A64"
+            if hasattr(self, "lbl_oturum_durum"):
+                self.lbl_oturum_durum.config(
+                    text=f"⏱ {kalan}s", fg=renk,
+                )
+        except Exception as e:
+            logger.debug(f"Oturum tik hatası: {e}")
+        # Yeniden zamanla
+        try:
+            self.root.after(1000, self._oturum_tik_baslat)
+        except Exception:
+            pass
+
+    # -----------------------------------------------------------------
+    def _oturum_simdi_yenile(self):
+        """Manuel tetikleme: MEDULA'ya hemen F5 gönder (test için)."""
+        try:
+            from medula_oturum_canli import get_servis
+            servis = get_servis()
+            # Private method ama test butonu olduğu için OK
+            import threading as _t
+            _t.Thread(target=servis._oturumu_yenile, daemon=True).start()
+            self.durum_bar.config(text="⚡ MEDULA tazeleniyor (F5 → Tamam → Enter)...")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Tazeleme başarısız:\n{e}")
+
+    # -----------------------------------------------------------------
+    def _sutun_gorunurlugu_uygula(self):
+        """Ayarlardaki sutun_gorunurlugu dict'ine göre sütunları göster/gizle."""
+        try:
+            gor = getattr(self.ayarlar, "sutun_gorunurlugu", {}) or {}
+            gosterilen = [
+                k for (k, _b, _w, _a) in self._sutun_tanimlari
+                if gor.get(k, True)
+            ]
+            # En az bir sütun açık kalsın
+            if not gosterilen:
+                gosterilen = ["hasta"]
+            self.tv_yaz.configure(displaycolumns=gosterilen)
+        except Exception as e:
+            logger.debug(f"Sütun görünürlüğü uygulanamadı: {e}")
+
+    def _sutun_ayarlari_ac(self):
+        """Sütun aç/kapat dialog'u."""
+        win = tk.Toplevel(self.root)
+        win.title("Sütun Ayarları")
+        win.transient(self.root)
+        win.grab_set()
+        win.resizable(False, False)
+
+        tk.Label(
+            win, text="Yazdırma tablosunda gösterilecek sütunlar:",
+            font=("Arial", 10, "bold"), pady=8, padx=12,
+        ).pack(anchor="w")
+
+        mevcut = dict(getattr(self.ayarlar, "sutun_gorunurlugu", {}) or {})
+        varlar = {}
+        frm = tk.Frame(win)
+        frm.pack(fill="x", padx=16, pady=4)
+        for k, b, _w, _a in self._sutun_tanimlari:
+            v = tk.BooleanVar(value=bool(mevcut.get(k, True)))
+            varlar[k] = v
+            tk.Checkbutton(
+                frm, text=b, variable=v, anchor="w",
+                font=("Arial", 10),
+            ).pack(fill="x", pady=2)
+
+        btn_frm = tk.Frame(win)
+        btn_frm.pack(fill="x", padx=12, pady=10)
+
+        def kaydet():
+            self.ayarlar.sutun_gorunurlugu = {k: bool(v.get()) for k, v in varlar.items()}
+            self.ayarlar.kaydet()
+            self._sutun_gorunurlugu_uygula()
+            self.durum_bar.config(text="⚙ Sütun ayarları uygulandı.")
+            win.destroy()
+
+        def varsayilan():
+            for k, v in varlar.items():
+                vars_def = {
+                    "planli_tarih": True, "hasta": True, "tc": False, "tel": False,
+                    "ilac_sayi": True, "menzil": True,
+                    "ziyaret": True, "son_gelis": False,
+                    "gun": True, "takip": False,
+                }
+                v.set(vars_def.get(k, True))
+
+        tk.Button(
+            btn_frm, text="Varsayılana Dön", command=varsayilan,
+            bg="#90A4AE", fg="white", bd=0, padx=10, pady=4,
+        ).pack(side="left")
+        tk.Button(
+            btn_frm, text="İptal", command=win.destroy,
+            bg="#B0BEC5", fg="white", bd=0, padx=12, pady=4,
+        ).pack(side="right")
+        tk.Button(
+            btn_frm, text="Kaydet", command=kaydet,
+            bg="#43A047", fg="white", bd=0, padx=14, pady=4,
+        ).pack(side="right", padx=6)
+
+    # -----------------------------------------------------------------
+    def _yerlesimi_kaydet(self):
+        """Anki MEDULA + Hasta Takip pencere konumlarını JSON'a yaz."""
+        try:
+            from pencere_yerlesim import yerlesimi_kaydet_simdi, yerlesim_yukle
+        except Exception as e:
+            messagebox.showerror("Hata", f"pencere_yerlesim modülü yüklenemedi:\n{e}")
+            return
+        ok = yerlesimi_kaydet_simdi(tk_root=self.root)
+        data = yerlesim_yukle()
+        medula_var = "medula" in data
+        ht_var = "hasta_takip" in data
+        if ok:
+            mesaj = (
+                f"✓ Yerleşim kaydedildi.\n\n"
+                f"MEDULA: {'✔' if medula_var else '✖ (pencere bulunamadı)'}\n"
+                f"Hasta Takip: {'✔' if ht_var else '✖'}\n\n"
+                f"Program bir sonraki açılışta bu konumlarda açılacak."
+            )
+            messagebox.showinfo("Yerleşim Kaydedildi", mesaj)
+            self.durum_bar.config(text="📐 Pencere yerleşimi kaydedildi.")
+        else:
+            messagebox.showerror("Hata", "Yerleşim kaydedilemedi (log'a bakın).")
+
+    # -----------------------------------------------------------------
+    def _yerlesimi_uygula(self):
+        """Kaydedilmiş yerleşimi MEDULA ve Hasta Takip penceresine uygula."""
+        try:
+            from pencere_yerlesim import (
+                yerlesim_yukle, medulaya_uygula, hasta_takibe_uygula,
+            )
+        except Exception as e:
+            messagebox.showerror("Hata", f"pencere_yerlesim modülü yüklenemedi:\n{e}")
+            return
+
+        data = yerlesim_yukle()
+        if not data:
+            messagebox.showwarning(
+                "Kayıt Yok",
+                "Kaydedilmiş yerleşim bulunamadı.\n\n"
+                "Önce pencereleri istediğin yere getir ve "
+                "📐 Yerleşimi Kaydet butonuna bas.",
+            )
+            return
+
+        medula_ok = False
+        ht_ok = False
+        if "medula" in data:
+            try:
+                medula_ok = medulaya_uygula()
+            except Exception as e:
+                logger.error(f"MEDULA'ya yerleşim uygulanamadı: {e}")
+        if "hasta_takip" in data:
+            try:
+                ht_ok = hasta_takibe_uygula(self.root)
+            except Exception as e:
+                logger.error(f"Hasta Takip'e yerleşim uygulanamadı: {e}")
+
+        parca = []
+        if "medula" in data:
+            parca.append(f"MEDULA: {'✔' if medula_ok else '✖ (pencere açık değil?)'}")
+        if "hasta_takip" in data:
+            parca.append(f"Hasta Takip: {'✔' if ht_ok else '✖'}")
+
+        if medula_ok or ht_ok:
+            self.durum_bar.config(
+                text="📐 Yerleşim uygulandı: " + "  ·  ".join(parca)
+            )
+        else:
+            messagebox.showwarning(
+                "Uygulanamadı",
+                "Yerleşim uygulanamadı.\n\n" + "\n".join(parca),
+            )
+
+    # -----------------------------------------------------------------
     def _kapat(self):
+        try:
+            from medula_oturum_canli import get_servis
+            get_servis().dur()
+        except Exception:
+            pass
         try:
             if self.db:
                 self.db.kapat()

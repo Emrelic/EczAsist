@@ -1430,6 +1430,14 @@ class BotanikBot:
 
             # Pencereyi yerleştir (ayara göre - sadece ilk bağlantıda)
             if ilk_baglanti:
+                # 1) Kullanıcının kaydettiği özel yerleşim varsa onu kullan
+                try:
+                    from pencere_yerlesim import medulaya_uygula
+                    if medulaya_uygula(hwnd=self.main_window.handle):
+                        return True
+                except Exception as e:
+                    logger.debug(f"Özel yerleşim uygulanamadı, varsayılan kullanılacak: {e}")
+
                 try:
                     from medula_settings import get_medula_settings
                     medula_settings = get_medula_settings()

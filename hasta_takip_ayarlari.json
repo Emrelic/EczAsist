@@ -3,8 +3,11 @@
   "periyot_gun": 5,
   "hafta_sonu_tolerans_gun": 3,
   "rapor_yazdirma_tolerans_gun": 15,
-  "eski_kayit_gun": 30,
+  "eski_kayit_gun": 90,
   "sadece_takipli": true,
+  "sadece_raporlu": true,
+  "raporsuz_istisna_urunler": [],
+  "batch_bekleme_gun": 5,
   "kaynak": "BIRLESIK",
   "calisma_baslangic": "00:00",
   "calisma_bitis": "23:59",
@@ -12,5 +15,21 @@
   "ilac_satir_formati": "{urun_adi},",
   "eczane_adi": "İKİZLER ECZANESİ",
   "eczane_tel": "0542 515 74 40",
-  "toplu_gonderim_gunu": 0
+  "toplu_gonderim_gunu": 0,
+  "oturum_canli_tut": true,
+  "sutun_gorunurlugu": {
+    "planli_tarih": true,
+    "hasta": true,
+    "tc": false,
+    "tel": false,
+    "ilac_sayi": true,
+    "ziyaret": true,
+    "son_gelis": false,
+    "gun": true,
+    "takip": false
+  },
+  "rapor_bitis_uyari_gun": 30,
+  "rapor_bitis_mesaj_sablonu": "Sayın {hasta_adi}\nAşağıdaki raporlarınız yaklaşan tarihlerde bitmektedir:\n\n{rapor_listesi}\nLütfen yenilemek için doktorunuza başvurunuz.\n{eczane_adi}  {eczane_tel}",
+  "rapor_bitis_rapor_formati": "• {rapor_ozet} (Bitiş: {bitis} — {kalan_gun} gün kaldı)\n  Kullandığınız ilaçlar: {ilaclar}\n",
+  "rapor_bitis_tani_satir_formati": "Tanı: {rapor_kodu} - {rapor_kod_aciklama}\nICD: {icd_kodu} - {icd_aciklamasi}\nBaşlama: {baslama} | Bitiş: {bitis} (kalan: {kalan_gun} gün)\nEtken Maddeler: {etkin_maddeler}\nİlaçlar: {ilaclar}\n"
 }

@@ -99,7 +99,28 @@ class HastaTakipDB:
 
         # RIBitisTarihi = ilacın hastada biteceği tarih (Botanik hesaplıyor).
         # Raporlu ise bitiş tarihinden rapor_tolerans_gun önce yazdırma açılır.
+        #
+        # ÖNEMLİ: Bir hasta aynı ilacı sonradan yeni bir reçeteyle tekrar almış
+        # olabilir (daha ileri bitiş tarihli). Bu durumda ESKİ reçete satırı
+        # MEDULA'da "Yazdırma günü gelmiştir" göstermez çünkü hasta zaten yeni
+        # kutusunu almıştır. Sorgu SADECE her (musteri_id, urun_id) için
+        # en geç bitiş tarihli satırı döndürür.
         sql = f"""
+        WITH LatestRx AS (
+            SELECT
+                ri.RIRxId, ri.RIUrunId, ri.RIBitisTarihi, ri.RIDoz, ri.RIAdet,
+                ri.RIRaporNo, ri.RIRaporKodId, ra.RxMusteriId, ra.RxReceteTarihi,
+                ROW_NUMBER() OVER (
+                    PARTITION BY ra.RxMusteriId, ri.RIUrunId
+                    ORDER BY ri.RIBitisTarihi DESC, ra.RxReceteTarihi DESC
+                ) AS rn
+            FROM ReceteIlaclari ri
+            INNER JOIN ReceteAna ra ON ra.RxId = ri.RIRxId
+            WHERE ri.RISilme = 0
+              AND ra.RxSilme = 0
+              AND (ri.RIIade IS NULL OR ri.RIIade = 0)
+              AND ri.RIBitisTarihi IS NOT NULL
+        )
         SELECT
             m.MusteriId                                    AS musteri_id,
             LTRIM(RTRIM(ISNULL(m.MusteriTCKN, '')))        AS tckn,
@@ -107,35 +128,31 @@ class HastaTakipDB:
             LTRIM(RTRIM(ISNULL(m.MusteriTelCep, '')))      AS cep_tel,
             CAST(m.MusteriTakipli AS INT)                  AS takipli,
             LTRIM(RTRIM(u.UrunAdi))                        AS urun_adi,
-            ri.RIUrunId                                    AS urun_id,
-            ri.RIDoz                                       AS doz,
-            ri.RIAdet                                      AS adet_kutu,
-            ri.RIRaporNo                                   AS rapor_no,
-            ri.RIRaporKodId                                AS rapor_kod_id,
-            ri.RIBitisTarihi                               AS bitis_tarihi,
-            CASE WHEN ri.RIRaporKodId IS NOT NULL AND ri.RIRaporKodId > 0
-                 THEN DATEADD(DAY, -?, ri.RIBitisTarihi)
-                 ELSE ri.RIBitisTarihi END                 AS yazdirma_tarihi,
-            ra.RxReceteTarihi                              AS recete_tarihi,
+            lr.RIUrunId                                    AS urun_id,
+            lr.RIDoz                                       AS doz,
+            lr.RIAdet                                      AS adet_kutu,
+            lr.RIRaporNo                                   AS rapor_no,
+            lr.RIRaporKodId                                AS rapor_kod_id,
+            lr.RIBitisTarihi                               AS bitis_tarihi,
+            CASE WHEN lr.RIRaporKodId IS NOT NULL AND lr.RIRaporKodId > 0
+                 THEN DATEADD(DAY, -?, lr.RIBitisTarihi)
+                 ELSE lr.RIBitisTarihi END                 AS yazdirma_tarihi,
+            lr.RxReceteTarihi                              AS recete_tarihi,
             (SELECT COUNT(DISTINCT r2.RxId) FROM ReceteAna r2
               WHERE r2.RxMusteriId = m.MusteriId AND r2.RxSilme = 0) AS toplam_ziyaret,
             (SELECT MAX(r2.RxReceteTarihi) FROM ReceteAna r2
               WHERE r2.RxMusteriId = m.MusteriId AND r2.RxSilme = 0) AS son_ziyaret,
             'RECETE'                                       AS kaynak
-        FROM ReceteIlaclari ri
-        INNER JOIN ReceteAna ra  ON ra.RxId      = ri.RIRxId
-        INNER JOIN Musteri   m   ON m.MusteriId  = ra.RxMusteriId
-        LEFT  JOIN Urun      u   ON u.UrunId     = ri.RIUrunId
-        WHERE ri.RISilme = 0
-          AND ra.RxSilme = 0
-          AND (ri.RIIade IS NULL OR ri.RIIade = 0)
-          AND ri.RIBitisTarihi IS NOT NULL
+        FROM LatestRx lr
+        INNER JOIN Musteri m   ON m.MusteriId  = lr.RxMusteriId
+        LEFT  JOIN Urun    u   ON u.UrunId     = lr.RIUrunId
+        WHERE lr.rn = 1
           AND (
-                CASE WHEN ri.RIRaporKodId IS NOT NULL AND ri.RIRaporKodId > 0
-                     THEN DATEADD(DAY, -?, ri.RIBitisTarihi)
-                     ELSE ri.RIBitisTarihi END
+                CASE WHEN lr.RIRaporKodId IS NOT NULL AND lr.RIRaporKodId > 0
+                     THEN DATEADD(DAY, -?, lr.RIBitisTarihi)
+                     ELSE lr.RIBitisTarihi END
               ) <= DATEADD(DAY,  ?, ?)
-          AND ri.RIBitisTarihi >= DATEADD(DAY, -?, ?)
+          AND lr.RIBitisTarihi >= DATEADD(DAY, -?, ?)
           {takipli_filtre}
         ORDER BY bitis_tarihi ASC
         """

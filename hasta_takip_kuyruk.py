@@ -78,6 +78,25 @@ class HastaTakipAyarlari:
     # Pazartesi mod için gönderim günü (0=Pazartesi, 6=Pazar)
     toplu_gonderim_gunu: int = 0
 
+    # --- MEDULA oturum canlı tutma ---
+    oturum_canli_tut: bool = False
+
+    # --- Tablo sütun görünürlüğü (sekme 1) ---
+    # Anahtarlar: planli_tarih, hasta, tc, tel, ilac_sayi, menzil,
+    #             ziyaret, son_gelis, gun, takip
+    sutun_gorunurlugu: dict = field(default_factory=lambda: {
+        "planli_tarih": True,
+        "hasta": True,
+        "tc": False,
+        "tel": False,
+        "ilac_sayi": True,
+        "menzil": True,
+        "ziyaret": True,
+        "son_gelis": False,
+        "gun": True,
+        "takip": False,
+    })
+
     # --- Rapor bitiş takibi ---
     rapor_bitis_uyari_gun: int = 30  # Bu kadar gün kala raporla
     rapor_bitis_mesaj_sablonu: str = (
@@ -189,6 +208,8 @@ class MesajKuyrugu:
                 ("toplam_ziyaret", "INTEGER"),
                 ("son_ziyaret", "TEXT"),
                 ("takipli", "INTEGER DEFAULT 0"),
+                # Bekleyen ilaç manuel olarak indirildiyse 1 (açık sarı gösterim)
+                ("bekleteni_indirildi", "INTEGER DEFAULT 0"),
             ]:
                 if kol not in mk_kolonlar:
                     c.execute(f"ALTER TABLE mesaj_kuyrugu ADD COLUMN {kol} {tip}")
@@ -363,7 +384,9 @@ class MesajKuyrugu:
         with self._conn() as c:
             for mid, g in gruplu.items():
                 row = c.execute(
-                    "SELECT id, ilac_json FROM mesaj_kuyrugu "
+                    "SELECT id, ilac_json, "
+                    "COALESCE(bekleteni_indirildi, 0) AS bayrak "
+                    "FROM mesaj_kuyrugu "
                     "WHERE musteri_id=? AND durum='bekliyor'",
                     (mid,),
                 ).fetchone()
@@ -382,13 +405,24 @@ class MesajKuyrugu:
                     )
                     yeni += 1
                 else:
-                    mevcut = json.loads(row["ilac_json"])
-                    anahtar = {i.get("urun_adi") for i in mevcut}
-                    for il in g["ilaclar"]:
-                        if il.get("urun_adi") not in anahtar:
-                            mevcut.append(il)
-                    # Batch planını birleşmiş ilaç listesi üzerinden hesapla
-                    planli = self._planli_gonderim_tarihi(ayarlar, mevcut)
+                    # SENKRONİZASYON: kuyruk ilaç listesini DB sonucuna göre
+                    # yeniden kur (eski/taşıl ilaçlar düşer — örn. hasta yeni
+                    # reçeteyle aynı ilacı tekrar almışsa).
+                    bayrak = bool(row["bayrak"])
+                    bugun_iso = date.today().isoformat()
+
+                    # DB sonucu zaten her (müşteri, ilaç) için son alımı içerir
+                    mevcut = list(g["ilaclar"])
+                    # Bekleteni indirildi → ileri tarihli ilaçları atla
+                    if bayrak:
+                        mevcut = [
+                            il for il in mevcut
+                            if str(il.get("yazdirma_tarihi") or "")[:10] <= bugun_iso
+                        ]
+                    if bayrak:
+                        planli = date.today()
+                    else:
+                        planli = self._planli_gonderim_tarihi(ayarlar, mevcut)
                     c.execute(
                         "UPDATE mesaj_kuyrugu SET ilac_json=?, planli_gonderim=?, "
                         "tckn=?, toplam_ziyaret=?, son_ziyaret=?, takipli=? "
@@ -487,7 +521,8 @@ class MesajKuyrugu:
             rows = c.execute(
                 "SELECT id, musteri_id, hasta_adi, cep_tel, tckn, "
                 "toplam_ziyaret, son_ziyaret, takipli, ilac_json, "
-                "olusturma, planli_gonderim "
+                "olusturma, planli_gonderim, "
+                "COALESCE(bekleteni_indirildi, 0) AS bekleteni_indirildi "
                 "FROM mesaj_kuyrugu "
                 "WHERE durum='bekliyor' "
                 "ORDER BY "
@@ -524,6 +559,7 @@ class MesajKuyrugu:
                 "olusturma": r["olusturma"],
                 "planli_gonderim": r["planli_gonderim"],
                 "ertelenen": ertelenen,
+                "bekleteni_indirildi": bool(r["bekleteni_indirildi"]),
                 "mesaj_metni": mesaj,
             })
         return sonuc
@@ -639,6 +675,35 @@ class MesajKuyrugu:
             eczane_adi=ayarlar.eczane_adi,
             eczane_tel=ayarlar.eczane_tel,
         )
+
+    # mesaj_olustur tarafından eklenen gün etiketlerini eşler:
+    # " (bugün)", " (yarın)", " (dün)", " (N gün önce)", " (N gün sonra)"
+    _GUN_ETIKET_PAT = None  # lazy init
+
+    @staticmethod
+    def gun_etiketlerini_temizle(mesaj: str) -> str:
+        """Mesaj metninden pharmacist-only gün etiketlerini çıkar.
+
+        '(bugün)', '(yarın)', '(dün)', '(N gün önce)', '(N gün sonra)' gibi
+        parantezli işaretler hasta görmesin diye gönderim öncesi bu fonksiyon
+        ile temizlenir. Önizlemede kalmaya devam eder (eczacıya yardımcı).
+        """
+        import re
+        global _GUN_ETIKET_RE
+        try:
+            re_obj = _GUN_ETIKET_RE  # noqa: F821
+        except NameError:
+            re_obj = None
+        if re_obj is None:
+            re_obj = re.compile(
+                r"\s*\((?:bugün|yarın|dün|\d+\s+gün\s+(?:önce|sonra))\)"
+            )
+            globals()["_GUN_ETIKET_RE"] = re_obj
+        # Satır sonu virgül kalıntılarını da temizle
+        temiz = re_obj.sub("", mesaj or "")
+        # Satır içi fazla boşlukları sadece satır sonunda düzelt
+        satirlar = [s.rstrip().rstrip(",").rstrip() for s in temiz.splitlines()]
+        return "\n".join(satirlar)
 
     @staticmethod
     def _gun_metni(yazdirma_iso: str, bugun: date) -> str:
@@ -778,6 +843,46 @@ class MesajKuyrugu:
                      json.dumps(ileri, ensure_ascii=False),
                      simdi, yeni_planli.isoformat()),
                 )
+
+    def bekleteni_indir(self, kuyruk_id: int) -> int:
+        """Kayıttan ileri tarihli (bekleten) ilaçları çıkar.
+
+        "Otobüsten yolcu indirme": yazdırma_tarihi > bugün olan ilaçlar bu
+        kayıttan silinir, planli_gonderim bugün'e çekilir, bekleteni_indirildi
+        bayrağı açılır (ekranda açık sarı gösterilir). Silinen ilaçlar sonraki
+        taramalarda bayrak korunurken yeniden eklenmez — kayıt 'gonderildi'
+        veya 'iptal' olduktan sonra sonraki taramada doğal olarak tekrar
+        kuyruğa girerler.
+
+        Dönüş: indirilen ilaç sayısı. 0 ise indirilecek ileri tarihli ilaç yok.
+        """
+        bugun_iso = date.today().isoformat()
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT ilac_json FROM mesaj_kuyrugu WHERE id=?",
+                (kuyruk_id,),
+            ).fetchone()
+            if row is None:
+                return 0
+            try:
+                ilaclar = json.loads(row["ilac_json"]) or []
+            except Exception:
+                return 0
+            kalan = [i for i in ilaclar
+                     if str(i.get("yazdirma_tarihi") or "")[:10] <= bugun_iso]
+            indirilen = [i for i in ilaclar
+                         if str(i.get("yazdirma_tarihi") or "")[:10] > bugun_iso]
+            if not indirilen:
+                return 0
+            if not kalan:
+                # Tüm ilaçlar ileri tarihli — indirme anlamsız, değişiklik yapma
+                return 0
+            c.execute(
+                "UPDATE mesaj_kuyrugu SET ilac_json=?, planli_gonderim=?, "
+                "bekleteni_indirildi=1 WHERE id=?",
+                (json.dumps(kalan, ensure_ascii=False), bugun_iso, kuyruk_id),
+            )
+        return len(indirilen)
 
     def iptal_et(self, kuyruk_id: int) -> None:
         with self._conn() as c:
