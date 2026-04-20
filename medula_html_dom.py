@@ -150,6 +150,92 @@ def element_by_id(doc, html_id: str):
         return None
 
 
+def _btnsonraki_tikla(medula_hwnd: int = None) -> bool:
+    """MEDULA toolbar'ındaki WinForms 'Sonra >' butonuna tıkla.
+
+    Yöntem: Win32 EnumChildWindows ile hwnd bul → pywinauto ile
+    bu hwnd'ye attach et → click_input() ile gerçek mouse click gönder.
+
+    Not: Eskiden SendMessage(BM_CLICK) kullanılıyordu ama WinForms
+    butonu bazen BM_CLICK'e tepki vermiyor (mesaj alınıyor ama postback
+    tetiklenmiyor). click_input() gerçek SendInput mouse event gönderiyor.
+    """
+    if medula_hwnd is None:
+        medula_hwnd = _medula_hwnd()
+    if not medula_hwnd:
+        logger.warning("btnSonraki: MEDULA pencere handle'ı yok")
+        return False
+
+    # 1) Win32 EnumChildWindows ile buton hwnd'sini bul
+    button_hwnd = None
+    try:
+        import win32gui
+        bulunan = [None]
+
+        def _enum(h, _):
+            try:
+                text = win32gui.GetWindowText(h) or ""
+                cls = win32gui.GetClassName(h) or ""
+                if "Sonra" in text and "WindowsForms" in cls:
+                    bulunan[0] = h
+                    return False
+            except Exception:
+                pass
+            return True
+
+        win32gui.EnumChildWindows(medula_hwnd, _enum, None)
+        button_hwnd = bulunan[0]
+        if button_hwnd and not win32gui.IsWindowEnabled(button_hwnd):
+            logger.warning("btnSonraki disabled")
+            return False
+    except Exception as e:
+        logger.debug(f"btnSonraki Win32 enum hatası: {e}")
+
+    # 2) pywinauto ile gerçek mouse click
+    try:
+        from pywinauto import Application
+    except ImportError:
+        logger.error("pywinauto yok")
+        return False
+
+    try:
+        app = Application(backend="uia").connect(handle=medula_hwnd, timeout=3)
+
+        # Öncelik: Win32'de bulunan hwnd varsa direkt ona attach
+        btn = None
+        if button_hwnd:
+            try:
+                btn = app.window(handle=button_hwnd)
+                if not btn.exists(timeout=1):
+                    btn = None
+            except Exception:
+                btn = None
+
+        # Fallback: auto_id / title ile ara
+        if btn is None:
+            win = app.window(handle=medula_hwnd)
+            btn = win.child_window(auto_id="btnSonraki", control_type="Button")
+            if not btn.exists(timeout=2):
+                btn = win.child_window(title="Sonra >", control_type="Button")
+            if not btn.exists(timeout=2):
+                logger.warning("btnSonraki: element bulunamadı")
+                return False
+
+        # Gerçek mouse click (SendInput) — WinForms buton için en güvenilir
+        try:
+            btn.click_input()
+            logger.info("btnSonraki click_input() başarılı")
+            return True
+        except Exception as e:
+            logger.warning(f"click_input başarısız, invoke deneniyor: {e}")
+            btn.invoke()
+            logger.info("btnSonraki invoke() başarılı")
+            return True
+    except Exception as e:
+        logger.warning(f"btnSonraki pywinauto: {type(e).__name__}: {e}")
+        return False
+
+
 def _kullanilan_ilac_sayfasi_mi(doc) -> bool:
     """DOM'da 'Kullanılan İlaç Listesi' başlığı var mı?"""
     if doc is None:
@@ -163,12 +249,17 @@ def _kullanilan_ilac_sayfasi_mi(doc) -> bool:
 
 
 def tc_yaz_ve_ilac_listesi_ac(tc: str, medula_hwnd: int = None) -> tuple:
-    """En hızlı akış: HTML DOM üzerinden f:t18 değerini set et ve
-    f:buttonIlacListesi'a click() gönder.
+    """Kullanıcı 5-adım akışı:
 
-    Eğer şu an "Kullanılan İlaç Listesi" sayfası açıksa (kullanıcı önceden
-    bir hastayı açmış), önce form1:buttonGeriDon butonuna basarak ReceteIslem2
-    detay sayfasına dönülür, sayfa yenilenene kadar beklenir, sonra TC yazılır.
+    A) "Kullanılan İlaç Listesi" sayfası AÇIK ise:
+       1) form1:buttonGeriDon tıkla
+       2) btnSonraki (Sonra >) tıkla
+       3) f:t18 textbox'ını temizle
+       4) f:t18'e TC yaz
+       5) f:buttonIlacListesi tıkla
+
+    B) "Kullanılan İlaç Listesi" AÇIK DEĞİLSE:
+       3. adımdan başla (temizle → yaz → İlaç butonu).
 
     Dönüş: (basarili: bool, mesaj: str)
     """
@@ -181,56 +272,108 @@ def tc_yaz_ve_ilac_listesi_ac(tc: str, medula_hwnd: int = None) -> tuple:
     if doc is None:
         return False, "HTMLDocument alınamadı — MEDULA'da web sayfası açık mı?"
 
-    # Şu an Kullanılan İlaç Listesi sayfasındaysak önce Geri Dön
+    def _f_t18_bekle(sure_sn: float):
+        """Sayfa yüklenip f:t18 gelene kadar bekle. (doc, tc_input) döner."""
+        deadline = time.monotonic() + sure_sn
+        while time.monotonic() < deadline:
+            d = html_doc_bul(medula_hwnd)
+            if d is not None:
+                try:
+                    rs = str(getattr(d, "readyState", "complete") or "complete").lower()
+                    if rs == "complete":
+                        t = element_by_id(d, "f:t18")
+                        if t is not None:
+                            return d, t
+                except Exception:
+                    pass
+            time.sleep(0.05)
+        return None, None
+
+    akis_log = []
+
+    # A) Kullanılan İlaç Listesi açıksa: Geri Dön + Sonra >
     if _kullanilan_ilac_sayfasi_mi(doc):
-        logger.info("Kullanılan İlaç Listesi sayfasında — önce Geri Dön")
+        # 1) Geri Dön
         geri = element_by_id(doc, "form1:buttonGeriDon")
         if geri is None:
-            return False, (
-                "Kullanılan İlaç Listesi sayfasındayız ama Geri Dön "
-                "(form1:buttonGeriDon) bulunamadı."
-            )
+            return False, "1) Geri Dön (form1:buttonGeriDon) bulunamadı."
         try:
             geri.click()
         except Exception as e:
-            return False, f"Geri Dön tıklanamadı: {type(e).__name__}: {e}"
+            return False, f"1) Geri Dön tıklanamadı: {type(e).__name__}: {e}"
+        akis_log.append("Geri")
 
-        # Sayfa yeniden yüklensin diye bekle; f:t18 görünene kadar
-        deadline = time.monotonic() + 5.0
+        # Geri click'in postback başlatması için minimum bekleme
+        time.sleep(0.3)
+
+        # Sayfa yüklensin — f:t18 ile TC görünene kadar polling (timeout 20s,
+        # koşul sağlanır sağlanmaz döner)
+        doc, _ = _f_t18_bekle(20.0)
+        if doc is None:
+            return False, "1) Geri Dön sonrası sayfa 20sn'de yüklenmedi."
+
+        # 2) Sonra > (btnSonraki)
+        if not _btnsonraki_tikla(medula_hwnd):
+            return False, "2) 'Sonra >' butonuna (btnSonraki) tıklanamadı."
+        akis_log.append("Sonra")
+        time.sleep(0.3)  # WinForms postback'in başlaması için minimum
+
+        # Sonraki reçete sayfasının hazır olmasını bekle:
+        #   readyState=complete + f:t18 var + f:buttonIlacListesi var
+        # Koşul sağlanır sağlanmaz döner — 20s sadece güvenlik timeout'u.
+        deadline = time.monotonic() + 20.0
         tc_input = None
         while time.monotonic() < deadline:
-            time.sleep(0.2)
-            doc = html_doc_bul(medula_hwnd)
-            if doc is None:
-                continue
-            tc_input = element_by_id(doc, "f:t18")
-            if tc_input is not None:
-                break
+            d = html_doc_bul(medula_hwnd)
+            if d is not None:
+                try:
+                    rs = str(getattr(d, "readyState", "complete") or "complete").lower()
+                    if rs == "complete":
+                        t = element_by_id(d, "f:t18")
+                        ilac = element_by_id(d, "f:buttonIlacListesi")
+                        if t is not None and ilac is not None:
+                            doc = d
+                            tc_input = t
+                            break
+                except Exception:
+                    pass
+            time.sleep(0.05)
         if tc_input is None:
             return False, (
-                "Geri Dön sonrası f:t18 (Reçete Sahibi T.C.) 5 sn'de "
-                "bulunamadı."
+                "2) Sonraki tıklandı ama yeni reçete sayfası 20sn'de "
+                "yüklenmedi (f:t18 / f:buttonIlacListesi bulunamadı)."
             )
     else:
+        # B) Direkt 3. adımdan başla
         tc_input = element_by_id(doc, "f:t18")
         if tc_input is None:
             return False, (
-                "f:t18 (Reçete Sahibi T.C.) bulunamadı.\n"
-                "MEDULA'da bir reçete detay sayfası (ReceteIslem2) açık olmalı."
+                "f:t18 (Reçete Sahibi T.C.) bulunamadı. MEDULA'da "
+                "reçete detay sayfası (ReceteIslem2) açık olmalı."
             )
 
-    ilac_btn = element_by_id(doc, "f:buttonIlacListesi")
-    if ilac_btn is None:
-        return False, "f:buttonIlacListesi butonu bulunamadı."
+    # 3) TC textbox temizle
+    try:
+        tc_input.value = ""
+    except Exception as e:
+        return False, f"3) TC temizlenemedi: {type(e).__name__}: {e}"
+    akis_log.append("Temizle")
 
+    # 4) Panodaki TC'yi yaz
     try:
         tc_input.value = tc
     except Exception as e:
-        return False, f"TC yazılamadı: {type(e).__name__}: {e}"
+        return False, f"4) TC yazılamadı: {type(e).__name__}: {e}"
+    akis_log.append(f"TC={tc}")
 
+    # 5) İlaç butonu
+    ilac_btn = element_by_id(doc, "f:buttonIlacListesi")
+    if ilac_btn is None:
+        return False, "5) f:buttonIlacListesi butonu bulunamadı."
     try:
         ilac_btn.click()
     except Exception as e:
-        return False, f"Buton tıklanamadı: {type(e).__name__}: {e}"
+        return False, f"5) İlaç butonu tıklanamadı: {type(e).__name__}: {e}"
+    akis_log.append("İlaç")
 
-    return True, f"✓ TC {tc} yazıldı, İlaç Listesi butonuna basıldı."
+    return True, f"✓ {' → '.join(akis_log)}"
