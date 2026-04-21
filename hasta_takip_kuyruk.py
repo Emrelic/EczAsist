@@ -117,17 +117,22 @@ class HastaTakipAyarlari:
 
     # --- Rapor bitiş takibi ---
     rapor_bitis_uyari_gun: int = 30  # Bu kadar gün kala raporla
+    # İlaç mesajı atılırken, hastanın bitişe yaklaşan bir raporu varsa,
+    # rapor bitiş bilgisi de aynı mesajın sonuna eklensin.
+    ilac_rapor_birlesik: bool = False
     rapor_bitis_mesaj_sablonu: str = (
         "Sayın {hasta_adi}\n"
-        "Aşağıdaki raporlarınız yaklaşan tarihlerde bitmektedir:\n\n"
-        "{rapor_listesi}\n"
-        "Lütfen yenilemek için doktorunuza başvurunuz.\n"
-        "{eczane_adi}  {eczane_tel}"
+        "{rapor_listesi}"
+        "{eczane_adi}"
     )
-    # Rapor başına bir paragraf. Rapor numarası benzersiz, tanıları virgülle ayrılı.
+    # Rapor başına bir paragraf. Kullanıcı biçimi:
+    #   "{rapor_adi} raporunuzun bitmesine {kalan_gun} gün kalmıştır.
+    #    {ilaclar_kisa} isimli ilaçlar için randevu alarak bu raporu
+    #    yenilemeniz gerekmektedir."
     rapor_bitis_rapor_formati: str = (
-        "• {rapor_ozet} (Bitiş: {bitis} — {kalan_gun} gün kaldı)\n"
-        "  Kullandığınız ilaçlar: {ilaclar}\n"
+        "{rapor_adi} raporunuzun bitmesine {kalan_gun} gün kalmıştır.\n"
+        "{ilaclar_kisa} isimli {ilac_tekil_cogul} için randevu alarak "
+        "bu raporu yenilemeniz gerekmektedir.\n"
     )
     # (Eski alan geriye-uyum icin korunuyor — yeni akis kullanmaz)
     rapor_bitis_tani_satir_formati: str = (
@@ -595,6 +600,65 @@ class MesajKuyrugu:
         return (now.hour, now.minute) >= bas and (now.hour, now.minute) <= bit
 
     @staticmethod
+    def _ilac_marka_adi(urun_adi: str) -> str:
+        """'BRIMOGUT %0.15 5ML GÖZ DAMLASI' -> 'Brimogut' gibi marka ismini
+        çıkar. İlk boşluğa kadarki kısım alınır, title case uygulanır."""
+        if not urun_adi:
+            return ""
+        ilk = urun_adi.strip().split()[0] if urun_adi.strip() else ""
+        ilk = ilk.replace(",", "").strip()
+        if not ilk:
+            return ""
+        if "-" in ilk:
+            parcalar = [p.capitalize() for p in ilk.split("-")]
+            return "-".join(parcalar)
+        return ilk.capitalize()
+
+    @staticmethod
+    def _tr_ve_birlestir(isimler: List[str]) -> str:
+        """Türkçe doğal birleştirme: [A] -> 'A', [A,B] -> 'A ve B',
+        [A,B,C] -> 'A, B ve C'."""
+        isimler = [i for i in isimler if i]
+        if not isimler:
+            return ""
+        if len(isimler) == 1:
+            return isimler[0]
+        if len(isimler) == 2:
+            return f"{isimler[0]} ve {isimler[1]}"
+        return ", ".join(isimler[:-1]) + f" ve {isimler[-1]}"
+
+    @staticmethod
+    def _tr_title(s: str) -> str:
+        """Türkçe kelimeleri Title Case'e çevir: 'BENIGN PROSTAT' -> 'Benign Prostat'."""
+        if not s:
+            return ""
+        return " ".join(
+            p[:1].upper() + p[1:].lower() if p else p
+            for p in s.split()
+        )
+
+    @staticmethod
+    def _rapor_kisa_ad(rapor_kodu: str, rapor_aciklama: str, icd_aciklama: str = "") -> str:
+        """Raporun mesajda kullanılacak kısa adı.
+
+        - Rapor kodu '20' ile başlıyorsa (EK-2 Listede Yer Almayan Hastalıklar -
+          Hasta Katılım Paylı) rapor açıklaması genel bir ibaredir. Bu durumda
+          ICD tanı açıklaması kullanılır (title case).
+        - Diğer kodlarda rapor açıklamasının parantez öncesi kısmı alınır.
+        - '20' kodu olup ICD boşsa rapor açıklamasına düşer.
+        """
+        kod = (rapor_kodu or "").strip()
+        if kod.startswith("20"):
+            icd = (icd_aciklama or "").strip()
+            if icd:
+                return MesajKuyrugu._tr_title(icd)
+        ad = (rapor_aciklama or "").strip()
+        par_idx = ad.find("(")
+        if par_idx > 0:
+            ad = ad[:par_idx].strip()
+        return ad
+
+    @staticmethod
     def rapor_bitis_mesaji_olustur(
         hasta_adi: str,
         tani_satirlari: List[Dict],
@@ -605,21 +669,26 @@ class MesajKuyrugu:
         """Bir hasta için rapor bitiş mesajı — rapor başına bir paragraf.
 
         Her rapor (rapor_id) tek bir paragrafta özetlenir. Aynı rapor altındaki
-        birden fazla tanı virgülle birleştirilir. "Kullandığınız ilaçlar" kısmı
-        önce etken madde bazında hasta ilacından (em['hasta_ilaclari']) derlenir;
-        yoksa rapor_no üzerinden eşleşen ilaçlara (ilaclar_map) düşer.
+        birden fazla tanı virgülle birleştirilir. İlaçlar önce etken madde
+        bazında hasta ilacından (em['hasta_ilaclari']) derlenir; yoksa rapor_no
+        üzerinden eşleşen ilaçlara (ilaclar_map) düşer.
+
+        Şablon placeholder'ları:
+          {rapor_adi}     — kısa rapor açıklaması ("Glokom")
+          {rapor_ozet}    — kod + açıklama ("12.01 - Glokom (H40.1-H40.9)")
+          {kalan_gun}     — bitişe kalan gün sayısı
+          {bitis}         — bitiş tarihi
+          {ilaclar_kisa}  — marka isimleriyle ("Tomec ve Brimogut")
+          {ilaclar}       — tam ürün adlarıyla virgüllü liste
+          {ilac_tekil_cogul} — "ilaç" veya "ilaçlar" (otomatik)
         """
-        # Rapor bazında grupla: rapor_id -> {"ozet_set": {(kod, aciklama)},
-        #                                   "bitis": en yakın tarih,
-        #                                   "kalan": en küçük kalan_gun,
-        #                                   "sample": ilk tanı satırı}
         gruplar: Dict[int, Dict] = {}
         for t in tani_satirlari:
             rid = t.get("rapor_id")
             if not rid:
                 continue
             g = gruplar.setdefault(rid, {
-                "ozet_set": [],        # sıralı ekleme için liste+set
+                "ozet_set": [],      # list[(kod, aciklama, icd_kodu, icd_aciklama)]
                 "ozet_gorulen": set(),
                 "bitis": None,
                 "kalan": None,
@@ -627,8 +696,10 @@ class MesajKuyrugu:
             })
             kod = (t.get("rapor_kodu") or "").strip()
             aciklama = (t.get("rapor_kod_aciklama") or "").strip()
-            anahtar = (kod, aciklama)
-            if anahtar not in g["ozet_gorulen"] and (kod or aciklama):
+            icd_kodu = (t.get("icd_kodu") or "").strip()
+            icd_aciklama = (t.get("icd_aciklamasi") or "").strip()
+            anahtar = (kod, aciklama, icd_kodu, icd_aciklama)
+            if anahtar not in g["ozet_gorulen"] and (kod or aciklama or icd_aciklama):
                 g["ozet_gorulen"].add(anahtar)
                 g["ozet_set"].append(anahtar)
             bitis = str(t.get("bitis") or "")[:10]
@@ -638,11 +709,18 @@ class MesajKuyrugu:
             if kalan is not None and (g["kalan"] is None or kalan < g["kalan"]):
                 g["kalan"] = kalan
 
-        # Raporları bitiş tarihine göre sırala
         sirali_rid = sorted(
             gruplar.keys(),
             key=lambda rid: (gruplar[rid]["bitis"] or "9999-12-31"),
         )
+
+        # Hasta adı başlığı: Title Case (ABDULLAH GÜN -> Abdullah Gün)
+        hasta_adi_tc = (hasta_adi or "").strip()
+        if hasta_adi_tc:
+            hasta_adi_tc = " ".join(
+                p[:1].upper() + p[1:].lower() if p else p
+                for p in hasta_adi_tc.split()
+            )
 
         satirlar = []
         for rid in sirali_rid:
@@ -650,48 +728,81 @@ class MesajKuyrugu:
             em_list = etkin_maddeler_map.get(rid, [])
             il_list = ilaclar_map.get(rid, [])
 
-            # Kullanılan ilaçlar: önce her etken madde için hastanın ilacı
-            gorulen = set()
-            ilac_adlari: List[str] = []
-            for em in em_list:
-                for hi in (em.get("hasta_ilaclari") or []):
-                    ad = (hi.get("urun_adi") or "").strip()
-                    if ad and ad not in gorulen:
-                        gorulen.add(ad)
-                        ilac_adlari.append(ad)
-            # Fallback: rapor_no bazlı ilaçlar
-            if not ilac_adlari:
-                for il in il_list:
-                    ad = (il.get("urun_adi") or "").strip()
-                    if ad and ad not in gorulen:
-                        gorulen.add(ad)
-                        ilac_adlari.append(ad)
-            ilac_metin = ", ".join(ilac_adlari) if ilac_adlari else "—"
+            # Yenilenmiş etken maddeleri (başka raporda daha geç bitişle
+            # kapsanan) mesajdan çıkar. TÜM etken maddeler yenilenmişse rapor
+            # tamamen atlanır.
+            aktif_em_list = [em for em in em_list if not em.get("yenilenmis")]
+            if em_list and not aktif_em_list:
+                continue
 
-            # Rapor özeti: "ICD tanım, ICD tanım"
+            # Kullanılan ilaçlar: önce her (yenilenmemiş) etken madde için
+            # hastanın ilacı
+            gorulen = set()
+            ilac_tam_adlar: List[str] = []
+            ilac_marka_adlar: List[str] = []
+            for em in aktif_em_list:
+                for hi in (em.get("hasta_ilaclari") or []):
+                    tam = (hi.get("urun_adi") or "").strip()
+                    if tam and tam not in gorulen:
+                        gorulen.add(tam)
+                        ilac_tam_adlar.append(tam)
+                        marka = MesajKuyrugu._ilac_marka_adi(tam)
+                        if marka and marka not in ilac_marka_adlar:
+                            ilac_marka_adlar.append(marka)
+            # Fallback: rapor_no bazlı ilaçlar (yenileme filtresi yok, son çare)
+            if not ilac_tam_adlar:
+                for il in il_list:
+                    tam = (il.get("urun_adi") or "").strip()
+                    if tam and tam not in gorulen:
+                        gorulen.add(tam)
+                        ilac_tam_adlar.append(tam)
+                        marka = MesajKuyrugu._ilac_marka_adi(tam)
+                        if marka and marka not in ilac_marka_adlar:
+                            ilac_marka_adlar.append(marka)
+
+            ilac_metin = ", ".join(ilac_tam_adlar) if ilac_tam_adlar else "—"
+            ilaclar_kisa = MesajKuyrugu._tr_ve_birlestir(ilac_marka_adlar) or "—"
+            ilac_tekil_cogul = "ilaçlar" if len(ilac_marka_adlar) > 1 else "ilaç"
+
+            # Rapor özeti: kod + açıklama; Rapor kısa adı: ICD veya açıklama
             ozet_parcalar = []
-            for kod, aciklama in g["ozet_set"]:
+            kisa_adlar = []
+            for kod, aciklama, icd_kodu, icd_aciklama in g["ozet_set"]:
                 if kod and aciklama:
                     ozet_parcalar.append(f"{kod} - {aciklama}")
                 else:
-                    ozet_parcalar.append(kod or aciklama)
+                    ozet_parcalar.append(kod or aciklama or icd_aciklama)
+                # 20 kodlu raporlar için ICD tanısı öne çıkar
+                kisa = MesajKuyrugu._rapor_kisa_ad(kod, aciklama, icd_aciklama)
+                if kisa and kisa not in kisa_adlar:
+                    kisa_adlar.append(kisa)
             rapor_ozet = ", ".join(ozet_parcalar) if ozet_parcalar else "—"
+            rapor_adi = MesajKuyrugu._tr_ve_birlestir(kisa_adlar) or rapor_ozet
 
-            # Güvenli biçimlendirme: eski şablonu kullananlar için fallback
             fmt = getattr(ayarlar, "rapor_bitis_rapor_formati", None) or (
-                "• {rapor_ozet} (Bitiş: {bitis} — {kalan_gun} gün kaldı)\n"
-                "  Kullandığınız ilaçlar: {ilaclar}\n"
+                "{rapor_adi} raporunuzun bitmesine {kalan_gun} gün kalmıştır.\n"
+                "{ilaclar_kisa} isimli {ilac_tekil_cogul} için randevu alarak "
+                "bu raporu yenilemeniz gerekmektedir.\n"
             )
-            satirlar.append(fmt.format(
-                rapor_ozet=rapor_ozet,
-                bitis=g["bitis"] or "",
-                kalan_gun=g["kalan"] if g["kalan"] is not None else "",
-                ilaclar=ilac_metin,
-            ))
+            # Placeholder esnekliği: eski şablondaki {rapor_ozet}/{ilaclar}/{bitis}
+            # yerlerini de doldurmaya devam et
+            try:
+                satirlar.append(fmt.format(
+                    rapor_adi=rapor_adi,
+                    rapor_ozet=rapor_ozet,
+                    bitis=g["bitis"] or "",
+                    kalan_gun=g["kalan"] if g["kalan"] is not None else "",
+                    ilaclar=ilac_metin,
+                    ilaclar_kisa=ilaclar_kisa,
+                    ilac_tekil_cogul=ilac_tekil_cogul,
+                ))
+            except KeyError:
+                # Şablon bilinmeyen placeholder içeriyorsa ham dön
+                satirlar.append(fmt)
 
         rapor_listesi = "\n".join(satirlar)
         return ayarlar.rapor_bitis_mesaj_sablonu.format(
-            hasta_adi=hasta_adi or "",
+            hasta_adi=hasta_adi_tc or (hasta_adi or ""),
             rapor_listesi=rapor_listesi,
             eczane_adi=ayarlar.eczane_adi,
             eczane_tel=ayarlar.eczane_tel,
@@ -791,13 +902,115 @@ class MesajKuyrugu:
             eczane_tel=ayarlar.eczane_tel,
         )
 
-    def gonderildi_isaretle(self, kuyruk_id: int, sonuc: str = "OK") -> None:
+    @staticmethod
+    def ilac_mesajina_rapor_ek(
+        ilac_mesaji: str,
+        musteri_id: int,
+        hasta_adi: str,
+        hasta_db,
+        ayarlar: "HastaTakipAyarlari",
+    ) -> tuple:
+        """İlaç mesajının sonuna, hastanın bitişi yaklaşan raporlarının
+        bilgisini ekle. 'ilac_rapor_birlesik' ayarı açıksa kullanılır.
+
+        Sadece YENİLENMEMİŞ (başka raporda daha geç bitişle kapsanmayan)
+        rapor satırları işlenir. Dönüş: (birlesik_mesaj, rapor_eklendi_mi).
+        Rapor yoksa orijinal mesaj, False döner.
+        """
+        if hasta_db is None or not musteri_id:
+            return ilac_mesaji, False
+        try:
+            tum = hasta_db.yaklasan_rapor_bitisleri(
+                uyari_gun=int(ayarlar.rapor_bitis_uyari_gun or 30),
+                sadece_takipli=False,
+                sadece_telefonlu=False,
+                eski_gun=0,
+            )
+        except Exception:
+            return ilac_mesaji, False
+        satirlar = [r for r in tum if r.get("musteri_id") == musteri_id]
+        if not satirlar:
+            return ilac_mesaji, False
+
+        # Yenilenmiş raporları çıkar
+        try:
+            en_son = hasta_db.hastanin_etkin_madde_en_son_bitis(musteri_id)
+        except Exception:
+            en_son = {}
+        # Rapor bazlı: tüm EM'leri yenilenmişse raporu at
+        rapor_ids = list({s.get("rapor_id") for s in satirlar if s.get("rapor_id")})
+        em_map: dict = {}
+        il_map: dict = {}
+        gecerli_rids = set()
+        for rid in rapor_ids:
+            try:
+                d = hasta_db.raporun_detayi(rid, musteri_id)
+            except Exception:
+                d = {"etkin_maddeler": [], "ilaclar": []}
+            em_list = d.get("etkin_maddeler") or []
+            # Rapor bitiş (tanı satırlarından max)
+            rapor_bitis = ""
+            for s in satirlar:
+                if s.get("rapor_id") == rid:
+                    b = str(s.get("bitis") or "")[:10]
+                    if b > rapor_bitis:
+                        rapor_bitis = b
+            aktif_em = []
+            for em in em_list:
+                sgk = (em.get("sgk_kodu") or "").strip()
+                son = en_son.get(sgk, "")
+                em["yenilenmis"] = bool(
+                    son and rapor_bitis and son > rapor_bitis
+                )
+                if sgk:
+                    try:
+                        em["hasta_ilaclari"] = (
+                            hasta_db.hastanin_etkin_madde_ilaclari(musteri_id, sgk)
+                        )
+                    except Exception:
+                        em["hasta_ilaclari"] = []
+                else:
+                    em["hasta_ilaclari"] = []
+                if not em["yenilenmis"]:
+                    aktif_em.append(em)
+            if em_list and not aktif_em:
+                continue  # tüm EM'ler yenilenmiş -> rapor atlanır
+            em_map[rid] = em_list
+            il_map[rid] = d.get("ilaclar") or []
+            gecerli_rids.add(rid)
+
+        gecerli_satirlar = [s for s in satirlar if s.get("rapor_id") in gecerli_rids]
+        if not gecerli_satirlar:
+            return ilac_mesaji, False
+
+        rapor_bolumu = MesajKuyrugu.rapor_bitis_mesaji_olustur(
+            hasta_adi, gecerli_satirlar, em_map, il_map, ayarlar,
+        )
+        # rapor_bitis_mesaji_olustur "Sayın ..." başlığı ekliyor; kopyayı çıkar
+        satir_listesi = rapor_bolumu.split("\n", 1)
+        rapor_govde = satir_listesi[1] if len(satir_listesi) > 1 else rapor_bolumu
+        # Sonda tekrar eczane adını da koyuyor — ilacın eczane imzasıyla
+        # çakışmasın diye eczane satırını çıkar
+        ec_ad = (ayarlar.eczane_adi or "").strip()
+        if ec_ad and rapor_govde.rstrip().endswith(ec_ad):
+            rapor_govde = rapor_govde.rstrip()
+            rapor_govde = rapor_govde[: -len(ec_ad)].rstrip()
+
+        birlesik = ilac_mesaji.rstrip() + "\n\n" + rapor_govde.strip() + "\n"
+        return birlesik, True
+
+    def gonderildi_isaretle(
+        self, kuyruk_id: int, sonuc: str = "OK", isaret: str = "💊 İlaç",
+    ) -> None:
         """Kuyruk kaydını 'gonderildi' olarak işaretle.
 
         Kayıttaki ilac_json'da yazdırma_tarihi > bugün olan ilaçlar varsa
         (mesaja alınmamış ileri tarihli ilaçlar), onlar YENİ bir 'bekliyor'
         kaydına aktarılır. Böylece bu batch gönderildikten sonra ileri tarihli
         ilaçlar kaybolmaz, bir sonraki batch döngüsünde mesajlanır.
+
+        isaret: log tablosunda 'isaret' kolonuna yazılır — ilaç mesajı mı,
+        rapor bitiş mesajı mı, birleşik mi fark edilsin diye.
         """
         simdi = datetime.now().isoformat(timespec="seconds")
         bugun_iso = date.today().isoformat()
@@ -830,9 +1043,10 @@ class MesajKuyrugu:
             )
             c.execute(
                 "INSERT INTO gonderim_log(musteri_id, hasta_adi, cep_tel, "
-                "mesaj_metni, zaman, sonuc) VALUES (?,?,?,?,?,?)",
+                "mesaj_metni, zaman, sonuc, isaret) VALUES (?,?,?,?,?,?,?)",
                 (row["musteri_id"], row["hasta_adi"], row["cep_tel"],
-                 json.dumps(gonderilen, ensure_ascii=False), simdi, sonuc),
+                 json.dumps(gonderilen, ensure_ascii=False), simdi, sonuc,
+                 isaret),
             )
 
             # İleri tarihli ilaçları yeni bir 'bekliyor' kaydı olarak aktar

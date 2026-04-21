@@ -746,6 +746,17 @@ class HastaTakipGUI:
         tk.Label(uy, text="Varsayılan 'bitişe kalan gün':", bg="white").pack(side="left")
         tk.Spinbox(uy, from_=0, to=365, width=5, textvariable=self.var_rb_uyari).pack(side="left", padx=4)
 
+        self.var_ilac_rapor_birlesik = tk.BooleanVar(
+            value=bool(getattr(self.ayarlar, "ilac_rapor_birlesik", False))
+        )
+        tk.Checkbutton(
+            g7,
+            text="💊 İlaç mesajına bitişi yaklaşan rapor bilgisini de ekle "
+                 "(aynı hasta için tek birleşik mesaj)",
+            variable=self.var_ilac_rapor_birlesik, bg="white",
+            anchor="w", wraplength=700, justify="left",
+        ).pack(anchor="w", pady=(6, 0))
+
         tk.Label(g7, text="Mesaj şablonu:", bg="white").pack(anchor="w", pady=(6, 2))
         self.txt_rb_sablon = tk.Text(g7, height=6, font=("Consolas", 10))
         self.txt_rb_sablon.pack(fill="x")
@@ -855,35 +866,36 @@ class HastaTakipGUI:
             self.tv_rb_tani.column(k, width=w)
         self.tv_rb_tani.pack(fill="x", padx=10)
 
-        # Etken maddeler + İlaçlar (yan yana)
-        alt = tk.Frame(sag, bg="#FAFAFA")
-        alt.pack(fill="x", padx=10, pady=(6, 0))
-
-        em_frame = tk.Frame(alt, bg="#FAFAFA")
-        em_frame.pack(side="left", fill="both", expand=True, padx=(0, 4))
-        tk.Label(em_frame, text="Etken Maddeler → Kullandığı İlaç", bg="#FAFAFA", fg="#1976D2", font=("Arial", 10, "bold")).pack(anchor="w")
-        self.tv_rb_em = ttk.Treeview(em_frame, columns=("em", "sgk", "doz", "hasta_ilac"), show="headings", height=4)
+        # Etken maddeler (üstte, geniş) + Kullanılan İlaçlar (altta)
+        em_frame = tk.Frame(sag, bg="#FAFAFA")
+        em_frame.pack(fill="x", padx=10, pady=(6, 0))
+        tk.Label(
+            em_frame,
+            text="Etken Madde → Hastanın Kullandığı İlaç(lar)",
+            bg="#FAFAFA", fg="#1976D2", font=("Arial", 10, "bold"),
+        ).pack(anchor="w")
+        self.tv_rb_em = ttk.Treeview(em_frame, columns=("em", "sgk", "doz", "hasta_ilac"), show="headings", height=5)
         self.tv_rb_em.heading("em", text="Etken Madde")
         self.tv_rb_em.heading("sgk", text="SGK")
         self.tv_rb_em.heading("doz", text="Doz")
-        self.tv_rb_em.heading("hasta_ilac", text="Hasta İlacı")
-        self.tv_rb_em.column("em", width=150)
-        self.tv_rb_em.column("sgk", width=70, anchor="center")
-        self.tv_rb_em.column("doz", width=55, anchor="center")
-        self.tv_rb_em.column("hasta_ilac", width=220)
-        self.tv_rb_em.pack(fill="both", expand=True)
+        self.tv_rb_em.heading("hasta_ilac", text="Hastanın Kullandığı İlaç(lar)")
+        self.tv_rb_em.column("em", width=180)
+        self.tv_rb_em.column("sgk", width=80, anchor="center")
+        self.tv_rb_em.column("doz", width=60, anchor="center")
+        self.tv_rb_em.column("hasta_ilac", width=420, anchor="w")
+        self.tv_rb_em.pack(fill="x", expand=False)
 
-        il_frame = tk.Frame(alt, bg="#FAFAFA")
-        il_frame.pack(side="left", fill="both", expand=True, padx=(4, 0))
-        tk.Label(il_frame, text="Kullanılan İlaçlar", bg="#FAFAFA", fg="#1976D2", font=("Arial", 10, "bold")).pack(anchor="w")
+        il_frame = tk.Frame(sag, bg="#FAFAFA")
+        il_frame.pack(fill="x", padx=10, pady=(6, 0))
+        tk.Label(il_frame, text="Rapor No ile Eşleşen Kullanılan İlaçlar", bg="#FAFAFA", fg="#1976D2", font=("Arial", 10, "bold")).pack(anchor="w")
         self.tv_rb_il = ttk.Treeview(il_frame, columns=("ilac", "bitis", "tarih"), show="headings", height=4)
         self.tv_rb_il.heading("ilac", text="İlaç")
         self.tv_rb_il.heading("bitis", text="Bitiş")
         self.tv_rb_il.heading("tarih", text="Reçete Tarihi")
-        self.tv_rb_il.column("ilac", width=220)
-        self.tv_rb_il.column("bitis", width=80, anchor="center")
-        self.tv_rb_il.column("tarih", width=90, anchor="center")
-        self.tv_rb_il.pack(fill="both", expand=True)
+        self.tv_rb_il.column("ilac", width=420)
+        self.tv_rb_il.column("bitis", width=90, anchor="center")
+        self.tv_rb_il.column("tarih", width=100, anchor="center")
+        self.tv_rb_il.pack(fill="x", expand=False)
 
         # Mesaj önizleme
         tk.Label(sag, text="Mesaj Önizleme", bg="#FAFAFA", fg="#1976D2", font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(8, 2))
@@ -1185,8 +1197,20 @@ class HastaTakipGUI:
         m = next((x for x in self._kuyruk_sonuclari if x["kuyruk_id"] == kid), None)
         if not m:
             return
+        metin = m["mesaj_metni"]
+        # "İlaç+Rapor birleşik" ayarı açıksa rapor bilgisini ekle
+        if getattr(self.ayarlar, "ilac_rapor_birlesik", False):
+            try:
+                if self.db is None:
+                    self.db = HastaTakipDB()
+                metin, _ = MesajKuyrugu.ilac_mesajina_rapor_ek(
+                    metin, m.get("musteri_id"), m.get("hasta_adi") or "",
+                    self.db, self.ayarlar,
+                )
+            except Exception as e:
+                logger.warning("İlaç+Rapor birleşik mesaj hatası: %s", e)
         self.txt_mesaj.delete("1.0", "end")
-        self.txt_mesaj.insert("1.0", m["mesaj_metni"])
+        self.txt_mesaj.insert("1.0", metin)
 
     def _aktif_mesaj(self):
         sec = self.tv_yaz.selection()
@@ -1255,13 +1279,26 @@ class HastaTakipGUI:
         mesaj_onizleme = self.txt_mesaj.get("1.0", "end").rstrip("\n")
         # Hastaya giden metinden eczacı-özel gün etiketlerini temizle
         mesaj_metni = MesajKuyrugu.gun_etiketlerini_temizle(mesaj_onizleme)
+        # Birleşik mesaj ayarı açıksa ve önizlemede rapor bölümü yoksa ekle
+        birlesik_mi = False
+        if getattr(self.ayarlar, "ilac_rapor_birlesik", False):
+            try:
+                if self.db is None:
+                    self.db = HastaTakipDB()
+                mesaj_metni, birlesik_mi = MesajKuyrugu.ilac_mesajina_rapor_ek(
+                    mesaj_metni, m.get("musteri_id"), m.get("hasta_adi") or "",
+                    self.db, self.ayarlar,
+                )
+            except Exception as e:
+                logger.warning("İlaç+Rapor birleşik mesaj hatası: %s", e)
         url = f"https://wa.me/{tel}?text={urllib.parse.quote(mesaj_metni)}"
         chrome_acildi = self._chrome_ile_ac(url)
-        self.kuyruk.gonderildi_isaretle(m["kuyruk_id"], "OK")
+        isaret = "💊+📑 İlaç & Rapor" if birlesik_mi else "💊 İlaç"
+        self.kuyruk.gonderildi_isaretle(m["kuyruk_id"], "OK", isaret=isaret)
         self._kuyruktan_yukle()
         ek = "" if chrome_acildi else " (Chrome bulunamadı — varsayılan tarayıcı açıldı)"
         self.durum_bar.config(
-            text=f"✅ {m['hasta_adi']} için WhatsApp açıldı, kuyruktan düşürüldü.{ek}"
+            text=f"✅ {m['hasta_adi']} için WhatsApp açıldı, log'a kaydedildi.{ek}"
         )
 
     def _panoya_kopyala(self):
@@ -1499,10 +1536,12 @@ class HastaTakipGUI:
             f"(Mesaj elle gönderildiyse veya atlandıysa kullanın)",
         ):
             return
-        self.kuyruk.gonderildi_isaretle(m["kuyruk_id"], sonuc="MANUEL")
+        self.kuyruk.gonderildi_isaretle(
+            m["kuyruk_id"], sonuc="MANUEL", isaret="💊 İlaç (Manuel)",
+        )
         self._kuyruktan_yukle()
         self.durum_bar.config(
-            text=f"✔ {m['hasta_adi']} manuel olarak gönderildi olarak işaretlendi."
+            text=f"✔ {m['hasta_adi']} manuel olarak gönderildi, log'a kaydedildi."
         )
 
     def _filtre_uygula(self):
@@ -1728,6 +1767,48 @@ class HastaTakipGUI:
             messagebox.showerror("Hata", str(e))
             return
 
+        # Yenileme kontrolü: aynı etken madde başka bir raporda daha geç
+        # bitişle kapsanıyorsa, o raporun bitiş uyarısı gereksizdir.
+        # Her rapor için: etken maddelerin TÜMÜ yenilenmişse raporu sonuçtan at.
+        mids = {r["musteri_id"] for r in sonuc}
+        self._rb_en_son_bitis: dict = {}  # mid -> {sgk: en_son_bitis}
+        self._rb_rapor_em: dict = {}      # rid -> [em_list]
+        rapor_yenilenmis: dict = {}       # rid -> bool (tüm EM'ler yenilenmişse True)
+        for mid in mids:
+            try:
+                self._rb_en_son_bitis[mid] = self.db.hastanin_etkin_madde_en_son_bitis(mid)
+            except Exception:
+                self._rb_en_son_bitis[mid] = {}
+
+        incelenen_rid = set()
+        for r in sonuc:
+            rid = r.get("rapor_id")
+            if not rid or rid in incelenen_rid:
+                continue
+            incelenen_rid.add(rid)
+            try:
+                em_list = self.db.raporun_etkin_maddeleri(rid) or []
+            except Exception:
+                em_list = []
+            self._rb_rapor_em[rid] = em_list
+            if not em_list:
+                rapor_yenilenmis[rid] = False
+                continue
+            rapor_bitis = str(r.get("bitis") or "")[:10]
+            harita = self._rb_en_son_bitis.get(r["musteri_id"]) or {}
+            tum_yenilenmis = True
+            for em in em_list:
+                sgk = (em.get("sgk_kodu") or "").strip()
+                en_son = harita.get(sgk, "")
+                if not (en_son and rapor_bitis and en_son > rapor_bitis):
+                    tum_yenilenmis = False
+                    break
+            rapor_yenilenmis[rid] = tum_yenilenmis
+
+        # Yenilenmiş raporların tanı satırlarını at
+        hariç_sayisi = sum(1 for rid, y in rapor_yenilenmis.items() if y)
+        sonuc = [r for r in sonuc if not rapor_yenilenmis.get(r.get("rapor_id"))]
+
         self._rb_sonuc = sonuc
         # Hasta bazında grupla
         gruplu: dict = {}
@@ -1752,10 +1833,13 @@ class HastaTakipGUI:
                 "Evet" if ilk.get("takipli") else "Hayır",
             ))
 
+        ek = f" | {hariç_sayisi} rapor yenilenmiş (gizlendi)" if hariç_sayisi else ""
         self.lbl_rb_sayac.config(
-            text=f"Toplam: {len(gruplu)} hasta | {len(sonuc)} tanı satırı"
+            text=f"Toplam: {len(gruplu)} hasta | {len(sonuc)} tanı satırı{ek}"
         )
-        self.durum_bar.config(text=f"Rapor bitiş taraması tamam: {len(gruplu)} hasta")
+        self.durum_bar.config(
+            text=f"Rapor bitiş taraması tamam: {len(gruplu)} hasta{ek}"
+        )
 
     def _rapor_bitis_detay(self):
         sec = self.tv_rb.selection()
@@ -1792,17 +1876,46 @@ class HastaTakipGUI:
         il_map: dict = {}
         tum_em = []
         tum_il = []
-        # SGK kodu -> hastanın kullandığı ilaçlar (cache — aynı madde birkaç raporda geçebilir)
+        # SGK kodu -> hastanın kullandığı ilaçlar (cache)
         hasta_ilac_cache: dict = {}
+        # Yenileme haritası (yukle sırasında doldurulur, yoksa anlık çek)
+        en_son_harita = (getattr(self, "_rb_en_son_bitis", None) or {}).get(mid)
+        if en_son_harita is None:
+            try:
+                en_son_harita = self.db.hastanin_etkin_madde_en_son_bitis(mid)
+            except Exception:
+                en_son_harita = {}
+
+        # Rapor -> bitiş tarihi (tanı satırlarından türet)
+        rapor_bitis_map: dict = {}
+        for t in satirlar:
+            rid = t.get("rapor_id")
+            bitis = str(t.get("bitis") or "")[:10]
+            if rid and bitis:
+                mevcut = rapor_bitis_map.get(rid)
+                if not mevcut or bitis > mevcut:
+                    rapor_bitis_map[rid] = bitis
+
         for rid in rapor_ids:
             try:
                 d = self.db.raporun_detayi(rid, mid)
             except Exception:
                 d = {"etkin_maddeler": [], "ilaclar": []}
             em_list = d.get("etkin_maddeler") or []
-            # Her etken madde için hastanın kullandığı ilaçları bağla
+            rapor_bitis = rapor_bitis_map.get(rid, "")
+
+            # Her etken madde için: (1) yenileme kontrolü, (2) hasta ilaçları
             for em in em_list:
                 sgk = (em.get("sgk_kodu") or "").strip()
+
+                # Yenileme: aynı etken madde başka bir raporda daha geç
+                # bitişle kapsanıyor mu?
+                en_son = en_son_harita.get(sgk, "") if sgk else ""
+                em["yenilenmis"] = bool(
+                    en_son and rapor_bitis and en_son > rapor_bitis
+                )
+                em["en_son_bitis"] = en_son
+
                 if not sgk:
                     em["hasta_ilaclari"] = []
                     continue
@@ -1812,6 +1925,7 @@ class HastaTakipGUI:
                     except Exception:
                         hasta_ilac_cache[sgk] = []
                 em["hasta_ilaclari"] = hasta_ilac_cache[sgk]
+
             em_map[rid] = em_list
             il_map[rid] = d.get("ilaclar") or []
             tum_em.extend(em_list)
@@ -1819,6 +1933,8 @@ class HastaTakipGUI:
 
         for w in self.tv_rb_em.get_children():
             self.tv_rb_em.delete(w)
+        # Satır etiketleri: yenilenmiş etken maddeler gri gösterilir
+        self.tv_rb_em.tag_configure("yenilenmis", foreground="#9E9E9E")
         gorulen_em = set()
         for em in tum_em:
             k = (em.get("etkin_madde"), em.get("sgk_kodu"))
@@ -1827,12 +1943,17 @@ class HastaTakipGUI:
             gorulen_em.add(k)
             hi = em.get("hasta_ilaclari") or []
             hi_text = ", ".join((x.get("urun_adi") or "").strip() for x in hi if x.get("urun_adi"))
+            etkin_ad = em.get("etkin_madde") or ""
+            tags = ()
+            if em.get("yenilenmis"):
+                etkin_ad = f"{etkin_ad}  ✓ yenilenmiş (→{em.get('en_son_bitis','')})"
+                tags = ("yenilenmis",)
             self.tv_rb_em.insert("", "end", values=(
-                em.get("etkin_madde") or "",
+                etkin_ad,
                 em.get("sgk_kodu") or "",
                 em.get("doz") or "",
                 hi_text or "—",
-            ))
+            ), tags=tags)
 
         for w in self.tv_rb_il.get_children():
             self.tv_rb_il.delete(w)
@@ -1891,7 +2012,9 @@ class HastaTakipGUI:
                 (mid, ilk.get("hasta_adi"), tel, mesaj,
                  datetime.now().isoformat(timespec="seconds"), "OK", "📑 Rapor Bitiş"),
             )
-        self.durum_bar.config(text=f"✅ {ilk.get('hasta_adi')} için rapor bitiş mesajı WhatsApp Web'de açıldı.")
+        self.durum_bar.config(
+            text=f"✅ {ilk.get('hasta_adi')} — rapor bitiş mesajı WhatsApp'ta açıldı, log'a kaydedildi."
+        )
 
     def _rb_panoya(self):
         mesaj = self.txt_rb_mesaj.get("1.0", "end").rstrip("\n")
@@ -1942,6 +2065,8 @@ class HastaTakipGUI:
             a.rapor_bitis_mesaj_sablonu = self.txt_rb_sablon.get("1.0", "end").rstrip("\n")
         if hasattr(self, "txt_rb_tani_sablon"):
             a.rapor_bitis_tani_satir_formati = self.txt_rb_tani_sablon.get("1.0", "end").rstrip("\n")
+        if hasattr(self, "var_ilac_rapor_birlesik"):
+            a.ilac_rapor_birlesik = bool(self.var_ilac_rapor_birlesik.get())
         return a
 
     def _ayarlari_kaydet(self):
