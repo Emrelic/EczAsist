@@ -1999,6 +1999,47 @@ class HastaTakipGUI:
             messagebox.showerror("Hata", str(e))
             return
 
+        # Yenileme kontrolü: aynı etken madde başka bir raporda daha geç
+        # bitişle kapsanıyorsa, o raporun bitiş uyarısı gereksizdir.
+        # Her rapor için: etken maddelerin TÜMÜ yenilenmişse raporu sonuçtan at.
+        mids = {r["musteri_id"] for r in sonuc}
+        self._rb_en_son_bitis: dict = {}  # mid -> {sgk: en_son_bitis}
+        self._rb_rapor_em: dict = {}      # rid -> [em_list]
+        rapor_yenilenmis: dict = {}       # rid -> bool (tüm EM'ler yenilenmişse True)
+        for mid in mids:
+            try:
+                self._rb_en_son_bitis[mid] = self.db.hastanin_etkin_madde_en_son_bitis(mid)
+            except Exception:
+                self._rb_en_son_bitis[mid] = {}
+
+        incelenen_rid = set()
+        for r in sonuc:
+            rid = r.get("rapor_id")
+            if not rid or rid in incelenen_rid:
+                continue
+            incelenen_rid.add(rid)
+            try:
+                em_list = self.db.raporun_etkin_maddeleri(rid) or []
+            except Exception:
+                em_list = []
+            self._rb_rapor_em[rid] = em_list
+            if not em_list:
+                rapor_yenilenmis[rid] = False
+                continue
+            rapor_bitis = str(r.get("bitis") or "")[:10]
+            harita = self._rb_en_son_bitis.get(r["musteri_id"]) or {}
+            tum_yenilenmis = True
+            for em in em_list:
+                sgk = (em.get("sgk_kodu") or "").strip()
+                en_son = harita.get(sgk, "")
+                if not (en_son and rapor_bitis and en_son > rapor_bitis):
+                    tum_yenilenmis = False
+                    break
+            rapor_yenilenmis[rid] = tum_yenilenmis
+
+        # Yenilenmiş raporların tanı satırlarını at
+        sonuc = [r for r in sonuc if not rapor_yenilenmis.get(r.get("rapor_id"))]
+
         self._rb_sonuc = sonuc
         # Hasta bazında grupla
         gruplu: dict = {}
@@ -2071,9 +2112,22 @@ class HastaTakipGUI:
             except Exception:
                 d = {"etkin_maddeler": [], "ilaclar": []}
             em_list = d.get("etkin_maddeler") or []
+            # Bu rapor için en geç bitiş (tanı satırlarından)
+            rapor_bitis = ""
+            for t in satirlar:
+                if t.get("rapor_id") == rid:
+                    b = str(t.get("bitis") or "")[:10]
+                    if b > rapor_bitis:
+                        rapor_bitis = b
+            en_son_harita = getattr(self, "_rb_en_son_bitis", {}).get(mid, {}) or {}
             # Her etken madde için hastanın kullandığı ilaçları bağla
             for em in em_list:
                 sgk = (em.get("sgk_kodu") or "").strip()
+                # Yenilenmiş mi? (aynı EM başka raporda daha geç bitişle var)
+                en_son = en_son_harita.get(sgk, "") if sgk else ""
+                em["yenilenmis"] = bool(
+                    en_son and rapor_bitis and en_son > rapor_bitis
+                )
                 if not sgk:
                     em["hasta_ilaclari"] = []
                     continue
@@ -2090,6 +2144,8 @@ class HastaTakipGUI:
 
         for w in self.tv_rb_em.get_children():
             self.tv_rb_em.delete(w)
+        # Yenilenmiş EM'ler gri görünsün
+        self.tv_rb_em.tag_configure("yenilenmis", foreground="#9E9E9E")
         gorulen_em = set()
         for em in tum_em:
             k = (em.get("etkin_madde"), em.get("sgk_kodu"))
@@ -2098,12 +2154,18 @@ class HastaTakipGUI:
             gorulen_em.add(k)
             hi = em.get("hasta_ilaclari") or []
             hi_text = ", ".join((x.get("urun_adi") or "").strip() for x in hi if x.get("urun_adi"))
+            em_adi = em.get("etkin_madde") or ""
+            if em.get("yenilenmis"):
+                em_adi = f"{em_adi}  ✓ yenilenmiş"
+                tags = ("yenilenmis",)
+            else:
+                tags = ()
             self.tv_rb_em.insert("", "end", values=(
-                em.get("etkin_madde") or "",
+                em_adi,
                 em.get("sgk_kodu") or "",
                 em.get("doz") or "",
                 hi_text or "—",
-            ))
+            ), tags=tags)
 
         for w in self.tv_rb_il.get_children():
             self.tv_rb_il.delete(w)
