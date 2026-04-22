@@ -801,6 +801,47 @@ class HastaTakipDB:
         params.insert(0, date.today().isoformat())  # DATEDIFF için
         return self.db.sorgu_calistir(sql, tuple(params))
 
+    def hastanin_etkin_madde_en_son_bitis(self, musteri_id: int) -> Dict[str, str]:
+        """Hastanın tüm aktif raporlarındaki her etken madde için en geç
+        rapor bitiş tarihini döndür.
+
+        Bir etken madde birden fazla raporda geçebilir (yenileme). Yaklaşan
+        bir rapor bitişi için bu haritaya bakıp 'başka bir raporla zaten
+        yenilenmiş mi?' kontrolü yapılır.
+
+        Dönüş: {EtkinMaddeSGKKodu -> 'YYYY-MM-DD'}
+        """
+        if not musteri_id:
+            return {}
+        sql = """
+        SELECT
+            LTRIM(RTRIM(em.EtkinMaddeSGKKodu)) AS sgk_kodu,
+            MAX(rrki.RRKIBitisTarihi)          AS en_son_bitis
+        FROM RaporAna ra
+        INNER JOIN RaporEtkinMadde rem ON rem.EtkinMaddeRaporAnaId = ra.RaporAnaId
+        LEFT  JOIN EtkinMadde em       ON em.EtkinMaddeId = rem.EtkinMaddeId
+        LEFT  JOIN RaporRaporKodlariICD rrki ON rrki.RRKIRaporAnaId = ra.RaporAnaId
+        WHERE ra.RaporAnaMusteriId = ?
+          AND (ra.RaporAnaSilme IS NULL OR ra.RaporAnaSilme = 0)
+          AND (rem.EtkinMaddeSilme IS NULL OR rem.EtkinMaddeSilme = 0)
+          AND (rrki.RRKISilme IS NULL OR rrki.RRKISilme = 0)
+          AND em.EtkinMaddeSGKKodu IS NOT NULL
+          AND LTRIM(RTRIM(em.EtkinMaddeSGKKodu)) <> ''
+        GROUP BY LTRIM(RTRIM(em.EtkinMaddeSGKKodu))
+        """
+        try:
+            sonuc = self.db.sorgu_calistir(sql, (int(musteri_id),))
+        except Exception as e:
+            logger.warning("hastanin_etkin_madde_en_son_bitis hata: %s", e)
+            return {}
+        harita: Dict[str, str] = {}
+        for r in sonuc:
+            sgk = r.get("sgk_kodu")
+            bitis = r.get("en_son_bitis")
+            if sgk and bitis:
+                harita[sgk] = str(bitis)[:10]
+        return harita
+
     def raporun_etkin_maddeleri(self, rapor_id: int) -> List[Dict]:
         """Bir raporun etken madde listesi."""
         sql = """
@@ -830,6 +871,7 @@ class HastaTakipDB:
         """
         if not musteri_id or not sgk_kodu:
             return []
+        sgk_temiz = str(sgk_kodu).strip()
         sql = """
         SELECT urun_adi, MAX(son_tarih) AS son_tarih, SUM(adet) AS toplam_adet
         FROM (
@@ -842,7 +884,7 @@ class HastaTakipDB:
             INNER JOIN Urun u       ON u.UrunId = ri.RIUrunId
             INNER JOIN Etkin e      ON e.EtkinId = u.UrunSGKKodId
             WHERE ra.RxMusteriId = ?
-              AND e.EtkinKodu = ?
+              AND LTRIM(RTRIM(e.EtkinKodu)) = ?
               AND (ri.RISilme IS NULL OR ri.RISilme = 0)
               AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)
               AND ra.RxReceteTarihi >= DATEADD(day, -?, CAST(GETDATE() AS date))
@@ -858,7 +900,7 @@ class HastaTakipDB:
             INNER JOIN Urun u       ON u.UrunId = ei.RIUrunId
             INNER JOIN Etkin e      ON e.EtkinId = u.UrunSGKKodId
             WHERE ea.RxMusteriId = ?
-              AND e.EtkinKodu = ?
+              AND LTRIM(RTRIM(e.EtkinKodu)) = ?
               AND (ei.RISilme IS NULL OR ei.RISilme = 0)
               AND (ea.RxSilme IS NULL OR ea.RxSilme = 0)
               AND ea.RxReceteTarihi >= DATEADD(day, -?, CAST(GETDATE() AS date))
@@ -869,29 +911,33 @@ class HastaTakipDB:
         try:
             return self.db.sorgu_calistir(
                 sql,
-                (int(musteri_id), sgk_kodu, int(lookback_gun),
-                 int(musteri_id), sgk_kodu, int(lookback_gun)),
+                (int(musteri_id), sgk_temiz, int(lookback_gun),
+                 int(musteri_id), sgk_temiz, int(lookback_gun)),
             )
         except Exception as e:
             logger.warning("hastanin_etkin_madde_ilaclari hata: %s", e)
             return []
 
     def raporun_iliskili_ilaclari(self, rapor_id: int, musteri_id: int) -> List[Dict]:
-        """Hastanın bu rapor numarasıyla yazdırılmış ilaçları (son 500 satır)."""
+        """Hastanın bu rapor numarasıyla yazdırılmış ilaçları (ReceteIlaclari).
+        EldenIlaclari tablosunda RIRaporNo kolonu yok — elden satışta rapor
+        no kaydedilmez, o yüzden sadece reçete tablosundan sorgulanır."""
         sql = """
         SELECT TOP 200
-            LTRIM(RTRIM(u.UrunAdi))  AS urun_adi,
-            ri.RIAdet                AS adet,
-            ri.RIBitisTarihi         AS bitis_tarihi,
-            ra.RxReceteTarihi        AS recete_tarihi,
-            ri.RIRaporNo             AS rapor_no
+            LTRIM(RTRIM(u.UrunAdi))   AS urun_adi,
+            LTRIM(RTRIM(e.EtkinKodu)) AS sgk_kodu,
+            ri.RIAdet                 AS adet,
+            ri.RIBitisTarihi          AS bitis_tarihi,
+            ra.RxReceteTarihi         AS recete_tarihi,
+            ri.RIRaporNo              AS rapor_no
         FROM ReceteIlaclari ri
         INNER JOIN ReceteAna ra ON ra.RxId = ri.RIRxId
-        LEFT  JOIN Urun u ON u.UrunId = ri.RIUrunId
+        LEFT  JOIN Urun u       ON u.UrunId = ri.RIUrunId
+        LEFT  JOIN Etkin e      ON e.EtkinId = u.UrunSGKKodId
         WHERE ra.RxMusteriId = ?
           AND ri.RIRaporNo = (SELECT RaporAnaRaporNo FROM RaporAna WHERE RaporAnaId = ?)
-          AND ra.RxSilme = 0
-          AND ri.RISilme = 0
+          AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)
+          AND (ri.RISilme IS NULL OR ri.RISilme = 0)
         ORDER BY ra.RxReceteTarihi DESC
         """
         return self.db.sorgu_calistir(sql, (int(musteri_id), int(rapor_id)))
