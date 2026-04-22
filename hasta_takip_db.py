@@ -102,6 +102,182 @@ class HastaTakipDB:
             # Desmopresin
             "MINIRIN", "DESMOPRESIN",
         ],
+        "tansiyon": [
+            # ACE inhibitörleri
+            "RAMIPRIL", "ENALAPRIL", "LISINOPRIL", "PERINDOPRIL",
+            "KAPTOPRIL", "QUINAPRIL", "TRANDOLAPRIL", "ZOFENOPRIL",
+            "DELIX", "ACEVIL", "ENAP", "CORVASAL", "COVERSYL",
+            "KAPOTEN", "ACUITEL", "PRIL",
+            # ARB'ler
+            "LOSARTAN", "VALSARTAN", "IRBESARTAN", "OLMESARTAN",
+            "TELMISARTAN", "CANDESARTAN", "AZILSARTAN", "SARTAN",
+            "MICARDIS", "DIOVAN", "APROVEL", "COZAAR", "TEVETEN",
+            "ATACAND", "BENICAR", "EDARBI", "KARVEA", "IRDAPIN",
+            # Beta-blokerler
+            "METOPROLOL", "BISOPROLOL", "ATENOLOL", "CARVEDILOL",
+            "NEBIVOLOL", "PROPRANOLOL", "ESMOLOL", "LABETALOL",
+            "CONCOR", "NEBILET", "DILATREND", "BELOC", "TENORMIN",
+            "DIDERAL", "CARVEXAL", "BYOL",
+            # Kalsiyum kanal blokerleri
+            "AMLODIPIN", "NIFEDIPIN", "FELODIPIN", "LERCANIDIPIN",
+            "DILTIAZEM", "VERAPAMIL", "NITRENDIPIN", "BARNIDIPIN",
+            "NORVASC", "AMLOKARD", "NIFEDICOR", "PLENDIL",
+            "LERCADIP", "DILZEM", "ISOPTIN", "BAYPRESS",
+            # Kombinasyonlar
+            "EXFORGE", "TWYNSTA", "RASILAMLO", "TRIPLIXAM",
+            # Renin inh
+            "ALISKIREN", "RASILEZ",
+            # Alfa-blokerler (BPH + HT)
+            "DOKSAZOSIN", "TERAZOSIN", "PRAZOSIN",
+            "CARDURA", "KARDOPAN",
+        ],
+        "seker": [
+            # Metformin
+            "METFORMIN", "GLUCOPHAGE", "GLIFOR", "GLUCO",
+            "DIABEX", "DIAFORMIN", "METFOGAMMA",
+            # Sulfonilüre
+            "GLIBENKLAMID", "GLIKLAZID", "GLIMEPIRID", "GLIPIZID",
+            "DIAMICRON", "DIANIL", "AMARYL", "GLIBEN", "DIABINESE",
+            "GLUCOTROL", "GLUCORED",
+            # DPP-4
+            "SITAGLIPTIN", "VILDAGLIPTIN", "LINAGLIPTIN",
+            "SAXAGLIPTIN", "ALOGLIPTIN", "GLIPTIN",
+            "JANUVIA", "GALVUS", "TRAJENTA", "ONGLYZA",
+            "JANUMET", "GALVUSMET", "JENTADUETO",
+            # SGLT-2
+            "DAPAGLIFLOZIN", "EMPAGLIFLOZIN", "CANAGLIFLOZIN",
+            "ERTUGLIFLOZIN", "GLIFLOZIN",
+            "FORZIGA", "JARDIANCE", "INVOKANA", "STEGLATRO",
+            "XIGDUO", "SYNJARDY", "VOKANAMET",
+            # GLP-1
+            "LIRAGLUTID", "SEMAGLUTID", "DULAGLUTID",
+            "EXENATID", "GLUTID",
+            "VICTOZA", "OZEMPIC", "TRULICITY", "SAXENDA",
+            "RYBELSUS", "BYETTA", "BYDUREON",
+            # Tiazolidindion
+            "PIOGLITAZON", "ACTOS", "GLUBRAVA", "COMPETACT",
+            # Alfa-glukozidaz inh
+            "AKARBOZ", "GLUCOBAY",
+            # İnsülin
+            "INSULIN", "LANTUS", "LEVEMIR", "TRESIBA", "TOUJEO",
+            "HUMALOG", "NOVORAPID", "APIDRA", "FIASP",
+            "HUMULIN", "NOVOMIX", "RYZODEG",
+        ],
+        "kalp": [
+            # Statinler
+            "ATORVASTATIN", "ROSUVASTATIN", "SIMVASTATIN",
+            "PRAVASTATIN", "PITAVASTATIN", "FLUVASTATIN",
+            "CRESTOR", "LIPITOR", "ATOR", "ATEROZ", "ZOCOR",
+            "LIVOSTATIN", "LIVALO", "LESCOL", "STATIN",
+            # Fibratlar
+            "FENOFIBRAT", "GEMFIBROZIL", "BEZAFIBRAT",
+            "LIPANTHYL", "LOPID", "FENOSUP", "CHOLIB",
+            # Antiagregan
+            "CLOPIDOGREL", "PRASUGREL", "TICAGRELOR", "ASPIRIN",
+            "PLAVIX", "EFIENT", "BRILINTA", "ECOPIRIN",
+            "CORAPIN", "COUMADIN",
+            # OAC (NOAC)
+            "RIVAROXABAN", "APIXABAN", "DABIGATRAN", "EDOXABAN",
+            "XARELTO", "ELIQUIS", "PRADAXA", "LIXIANA",
+            "WARFARIN", "COUMADIN",
+            # Nitratlar / antianginal
+            "ISOSORBID", "NITROGLISERIN", "MONONITRAT",
+            "ISORDIL", "MONOKET", "NITRODERM", "DEPONIT", "IMDUR",
+            "TRIMETAZIDIN", "RANOLAZIN", "IVABRADIN",
+            "VASTAREL", "RANEXA", "PROCORALAN", "CORALAN",
+            # Kardiyak glikozid / inotropik
+            "DIGOXIN", "DIGOXINE", "LANOXIN",
+            # Kombine LDL
+            "EZETIMIB", "EZETROL", "INEGY", "ATOZET",
+        ],
+        "depresyon": [
+            # SSRI
+            "FLUOKSETIN", "SERTRALIN", "PAROKSETIN", "PAROXETIN",
+            "ESCITALOPRAM", "CITALOPRAM", "FLUVOKSAMIN", "FLUVOXAMIN",
+            "PROZAC", "LUSTRAL", "PAXIL", "CIPRALEX", "CIPRAM",
+            "FAVERIN", "DEPRIXOL", "ZOLOFT", "SEROXAT", "SELECTRA",
+            # SNRI
+            "VENLAFAKSIN", "VENLAFAXIN", "DULOKSETIN", "MILNASIPRAN",
+            "EFFEXOR", "CYMBALTA", "VENIFLEX", "VENDREX", "VENLAX",
+            # NASSA
+            "MIRTAZAPIN", "REMERON", "MIRTAZ", "SYRON",
+            # Trisiklik
+            "AMITRIPTILIN", "IMIPRAMIN", "KLOMIPRAMIN",
+            "LAROXYL", "ANAFRANIL", "TOFRANIL",
+            # Diğer
+            "BUPROPION", "TRAZODON", "TIANEPTIN",
+            "VORTIOKSETIN", "AGOMELATIN",
+            "WELLBUTRIN", "DESIREL", "STABLON",
+            "BRINTELLIX", "VALDOXAN",
+        ],
+        "antipsikotik": [
+            # Tipik
+            "HALOPERIDOL", "KLORPROMAZIN", "PERFENAZIN",
+            "ZUKLOPENTIKSOL", "FLUPENTIKSOL",
+            "HALDOL", "LARGACTIL", "TRILAFON", "CLOPIXOL",
+            "FLUANXOL",
+            # Atipik
+            "OLANZAPIN", "RISPERIDON", "KETIAPIN", "KETIYAPIN",
+            "ARIPIPRAZOL", "PALIPERIDON", "ZIPRASIDON",
+            "ASENAPIN", "BREKSPIPRAZOL", "KLOZAPIN",
+            "ZYPREXA", "RISPERDAL", "SEROQUEL", "ABILIFY",
+            "INVEGA", "ZELDOX", "SAPHRIS", "REXULTI",
+            "KETIAX", "LEPONEX", "CLOPINE", "ALKERMES",
+            # Depot
+            "ZYPADHERA", "SUSTENNA", "MAINTENA", "XEPLION",
+            "CONSTA", "ARISTADA",
+        ],
+        "antiaritmik": [
+            # Sınıf I
+            "FLEKAINID", "FLECAINID", "PROPAFENON", "DISOPIRAMID",
+            "TAMBOCOR", "RITMONORM", "RYTMONORM",
+            # Sınıf III
+            "AMIODARON", "SOTALOL", "DRONEDARON",
+            "CORDARON", "SOTALEX", "MULTAQ",
+            # Diğer
+            "ADENOZIN", "ADENOSCAN",
+        ],
+        "diuretik": [
+            # Loop
+            "FUROSEMID", "BUMETANID", "TORSEMID", "TORASEMID",
+            "LASIX", "DESAL", "MIKROSEMID", "DIURESIN",
+            # Tiazid
+            "HIDROKLORTIYAZID", "INDAPAMID", "KLORTALIDON",
+            "TENZORE", "CHLORTAL", "ESIDREX",
+            "NATRILIX", "FLUDEX", "TENSIONORM",
+            # K tutucu
+            "SPIRONOLAKTON", "EPLERENON", "TRIAMTEREN", "AMILORID",
+            "ALDACTONE", "INSPRA", "MODURETIC",
+            # Kombinasyon ("CO-" ön ekli formülasyonlar)
+            "CO-DIOVAN", "CO-APROVEL", "CO-MICARDIS",
+            "CO-EXFORGE", "HIDREX",
+        ],
+        "epilepsi": [
+            # Valproat
+            "VALPROAT", "VALPROIK", "VALPROIK ASID",
+            "DEPAKIN", "CONVULEX", "EPILIM", "DEPAKINE",
+            # Karbamazepin / Okskarbazepin
+            "KARBAMAZEPIN", "OKSKARBAZEPIN", "OXKARBAZEPIN",
+            "TEGRETOL", "KARBAZIN", "TRILEPTAL",
+            # Fenitoin / Fenobarbital
+            "FENITOIN", "FENOBARBITAL",
+            "EPDANTOIN", "EPANUTIN", "DILANTIN", "LUMINAL",
+            # Levetirasetam / Brivarasetam
+            "LEVETIRASETAM", "BRIVARASETAM",
+            "KEPPRA", "EPIXX", "BRIVIACT",
+            # Lamotrijin / Lakosamid
+            "LAMOTRIJIN", "LAKOSAMID",
+            "LAMICTAL", "LAMITOR", "LAMIDUS", "LAMIRA", "VIMPAT",
+            # Topiramat
+            "TOPIRAMAT", "TOPAMAX", "EPIMAX", "TOPICTAL",
+            # Pregabalin / Gabapentin
+            "PREGABALIN", "GABAPENTIN",
+            "LYRICA", "NEURONTIN", "GABACOT", "PREGALEN",
+            # Yeni jenerasyon
+            "PERAMPANEL", "ZONISAMID", "KLOBAZAM",
+            "ETOSUKSIMID", "STIRIPENTOL",
+            "FYCOMPA", "ZONEGRAN", "FRISIUM", "ZARONTIN",
+        ],
     }
 
     @classmethod
@@ -140,6 +316,7 @@ class HastaTakipDB:
         raporsuz_istisna_urunler: Optional[List[int]] = None,
         kategori_takibi: Optional[Dict] = None,
         kategori_ozel_anahtarlar: Optional[str] = None,
+        haber_verilenleri_gizle: bool = False,
     ) -> List[Dict]:
         """
         Bugün + tolerans_gun içinde yazdırma günü gelen hastaları/ilaçları döndür.
@@ -163,6 +340,7 @@ class HastaTakipDB:
                 self._recete_ilaclari_sorgula(
                     bugun, tolerans_gun, rapor_tolerans_gun,
                     sadece_takipli, eski_kayit_gun,
+                    haber_verilenleri_gizle=haber_verilenleri_gizle,
                 )
             )
 
@@ -204,8 +382,18 @@ class HastaTakipDB:
     def _recete_ilaclari_sorgula(
         self, bugun: str, tolerans_gun: int, rapor_tolerans_gun: int,
         sadece_takipli: bool, eski_kayit_gun: int,
+        haber_verilenleri_gizle: bool = False,
     ) -> List[Dict]:
         takipli_filtre = "AND m.MusteriTakipli = 1" if sadece_takipli else ""
+        # Botanik EOS'ta "haber verildi" kaydı GunuGelenTakip tablosuna
+        # ilaç satırı (RIId) bazında yazılır. Checkbox işaretliyse bu
+        # kayıtları listeden dışlarız.
+        haber_filtre = (
+            "AND NOT EXISTS ("
+            " SELECT 1 FROM GunuGelenTakip ggt WHERE ggt.GGTRIId = lr.RIId"
+            ")"
+            if haber_verilenleri_gizle else ""
+        )
 
         # RIBitisTarihi = ilacın hastada biteceği tarih (Botanik hesaplıyor).
         # Raporlu ise bitiş tarihinden rapor_tolerans_gun önce yazdırma açılır.
@@ -218,7 +406,7 @@ class HastaTakipDB:
         sql = f"""
         WITH LatestRx AS (
             SELECT
-                ri.RIRxId, ri.RIUrunId, ri.RIBitisTarihi, ri.RIDoz, ri.RIAdet,
+                ri.RIId, ri.RIRxId, ri.RIUrunId, ri.RIBitisTarihi, ri.RIDoz, ri.RIAdet,
                 ri.RIRaporNo, ri.RIRaporKodId, ra.RxMusteriId, ra.RxReceteTarihi,
                 ROW_NUMBER() OVER (
                     PARTITION BY ra.RxMusteriId, ri.RIUrunId
@@ -264,6 +452,7 @@ class HastaTakipDB:
               ) <= DATEADD(DAY,  ?, ?)
           AND lr.RIBitisTarihi >= DATEADD(DAY, -?, ?)
           {takipli_filtre}
+          {haber_filtre}
         ORDER BY bitis_tarihi ASC
         """
         params = (

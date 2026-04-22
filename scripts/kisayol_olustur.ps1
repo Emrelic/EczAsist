@@ -4,7 +4,7 @@
 $ErrorActionPreference = 'Stop'
 
 $proje = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$giris = Join-Path $proje 'ana_menu.py'
+$giris = Join-Path $proje 'main.py'
 $ikon  = Join-Path $proje 'assets\eczasist.ico'
 
 $adaylar = @(

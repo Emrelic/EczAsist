@@ -1,55 +1,55 @@
 {
   "recete_kontrol": {
-    "count": 5491,
-    "total_time": 7722.491850376129
+    "count": 6120,
+    "total_time": 8371.221863269806
   },
   "uyari_kapat": {
     "count": 216,
     "total_time": 321.92114329338074
   },
   "ilac_butonu": {
-    "count": 6502,
-    "total_time": 10935.826632738113
+    "count": 7406,
+    "total_time": 11747.525716543198
   },
   "ilac_ekran_bekleme": {
-    "count": 3381,
-    "total_time": 12292.924855709076
+    "count": 3833,
+    "total_time": 13305.361248970032
   },
   "y_butonu": {
-    "count": 6482,
-    "total_time": 13216.315463542938
+    "count": 7392,
+    "total_time": 14171.480949401855
   },
   "pencere_bulma": {
-    "count": 3360,
-    "total_time": 753.8109595775604
+    "count": 3815,
+    "total_time": 795.0646622180939
   },
   "alinmayanlari_sec": {
-    "count": 3255,
-    "total_time": 1412.0163834095001
+    "count": 3705,
+    "total_time": 1559.9366672039032
   },
   "kapat_butonu": {
-    "count": 6254,
-    "total_time": 2055.146679162979
+    "count": 7154,
+    "total_time": 2073.985321521759
   },
   "ilac_secim_bekleme": {
-    "count": 3255,
-    "total_time": 14366.874969482422
+    "count": 3705,
+    "total_time": 15276.44245147705
   },
   "geri_don_butonu": {
-    "count": 6359,
-    "total_time": 6654.526843070984
+    "count": 7264,
+    "total_time": 7120.184235334396
   },
   "sonra_butonu": {
-    "count": 12870,
-    "total_time": 19293.675024032593
+    "count": 15200,
+    "total_time": 21378.85593676567
   },
   "y_ikinci_deneme": {
     "count": 24,
     "total_time": 67.9694344997406
   },
   "rapor_toplama": {
-    "count": 3165,
-    "total_time": 39439.43436717987
+    "count": 3615,
+    "total_time": 42812.57728767395
   },
   "pencere_restore": {
     "count": 413,
@@ -60,79 +60,87 @@
     "total_time": 73.17448043823242
   },
   "recete_sorgu": {
-    "count": 1167,
-    "total_time": 264.2253465652466
+    "count": 1183,
+    "total_time": 265.8325605392456
   },
   "text_focus": {
-    "count": 1182,
-    "total_time": 177.3783187866211
+    "count": 1198,
+    "total_time": 178.18501043319702
   },
   "text_clear": {
-    "count": 1076,
-    "total_time": 99.49101853370667
+    "count": 1092,
+    "total_time": 99.97618341445923
   },
   "text_write": {
-    "count": 1013,
-    "total_time": 133.4735975265503
+    "count": 1029,
+    "total_time": 134.27958965301514
   },
   "sorgula_butonu": {
-    "count": 996,
-    "total_time": 218.18372774124146
+    "count": 1012,
+    "total_time": 219.79043865203857
   },
   "sag_tik": {
-    "count": 2034,
-    "total_time": 109.999990940094
+    "count": 2484,
+    "total_time": 132.7108235359192
   },
   "takip_et": {
-    "count": 1952,
-    "total_time": 67.20531964302063
+    "count": 2402,
+    "total_time": 80.91937041282654
   },
   "rapor_button_wait": {
-    "count": 2748,
-    "total_time": 2451.501590490341
+    "count": 3196,
+    "total_time": 2496.5123252868652
   },
   "rapor_pencere_acilis": {
-    "count": 2787,
-    "total_time": 3412.178924560547
+    "count": 3235,
+    "total_time": 3636.3856093883514
   },
   "pencere_kapatma": {
-    "count": 2742,
-    "total_time": 3189.2880294322968
+    "count": 3190,
+    "total_time": 3413.497035741806
   },
   "retry_after_reconnect": {
-    "count": 678,
-    "total_time": 1880.5819175243378
+    "count": 696,
+    "total_time": 1916.5890274047852
   },
   "ana_sayfa": {
-    "count": 206,
-    "total_time": 63.836721658706665
+    "count": 221,
+    "total_time": 66.84434008598328
   },
   "buton_hazir_bekleme": {
     "count": 693,
     "total_time": 1900.7981760501862
   },
   "textbox_yazma": {
-    "count": 2011,
-    "total_time": 2624.059907913208
+    "count": 2462,
+    "total_time": 3064.08465385437
   },
   "adim_arasi_bekleme": {
     "count": 38,
     "total_time": 11.429951190948486
   },
   "telefon_kontrol": {
-    "count": 2101,
-    "total_time": 5794.259532690048
+    "count": 2701,
+    "total_time": 6949.294461488724
   },
   "tesis_kontrol": {
-    "count": 3191,
-    "total_time": 6673.381911754608
+    "count": 4059,
+    "total_time": 7815.754555225372
   },
   "giris_butonu": {
-    "count": 26,
-    "total_time": 7.811111927032471
+    "count": 40,
+    "total_time": 12.01770830154419
   },
   "recete_listesi_butonu": {
+    "count": 2,
+    "total_time": 0.6012735366821289
+  },
+  "laba_uyari": {
     "count": 1,
-    "total_time": 0.3005523681640625
+    "total_time": 0.030272483825683594
+  },
+  "retry_after_popup": {
+    "count": 1,
+    "total_time": 2.0002992153167725
   }
 }

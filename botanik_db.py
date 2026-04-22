@@ -7,6 +7,7 @@ import pyodbc
 import logging
 import json
 import os
+import threading
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
 
@@ -77,6 +78,7 @@ class BotanikDB:
             self.config = self.PRODUCTION_CONFIG if production else self.TEST_CONFIG
         self.conn = None
         self.cursor = None
+        self._lock = threading.RLock()
 
     def baglan(self) -> bool:
         """Veritabanına bağlan"""
@@ -152,30 +154,33 @@ class BotanikDB:
         SQL sorgusu çalıştır ve sonuçları döndür.
         GÜVENLİK: Sadece SELECT sorguları çalıştırılabilir!
         """
-        try:
-            # GÜVENLİK KONTROLÜ
-            if not self._guvenlik_kontrolu(sql):
-                logger.error("SORGU REDDEDİLDİ: Güvenlik kontrolünden geçemedi!")
-                return []
-
-            if not self.conn:
-                if not self.baglan():
+        # pyodbc connection/cursor thread-safe değildir. Aynı instance birden
+        # fazla thread'den çağrılırsa C-level access violation oluşur. Bu lock
+        # aynı BotanikDB örneğinde sorguları serileştirir.
+        with self._lock:
+            try:
+                if not self._guvenlik_kontrolu(sql):
+                    logger.error("SORGU REDDEDİLDİ: Güvenlik kontrolünden geçemedi!")
                     return []
 
-            if params:
-                self.cursor.execute(sql, params)
-            else:
-                self.cursor.execute(sql)
+                if not self.conn:
+                    if not self.baglan():
+                        return []
 
-            columns = [column[0] for column in self.cursor.description]
-            results = []
-            for row in self.cursor.fetchall():
-                results.append(dict(zip(columns, row)))
-            return results
+                if params:
+                    self.cursor.execute(sql, params)
+                else:
+                    self.cursor.execute(sql)
 
-        except Exception as e:
-            logger.error(f"Sorgu hatası: {e}")
-            return []
+                columns = [column[0] for column in self.cursor.description]
+                results = []
+                for row in self.cursor.fetchall():
+                    results.append(dict(zip(columns, row)))
+                return results
+
+            except Exception as e:
+                logger.error(f"Sorgu hatası: {e}")
+                return []
 
     def tum_hareketler_getir(
         self,

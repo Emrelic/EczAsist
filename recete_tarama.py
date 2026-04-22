@@ -20,7 +20,12 @@ import pyautogui
 from datetime import datetime
 from pywinauto import Desktop
 
-sys.stdout.reconfigure(encoding='utf-8')
+try:
+    # pythonw.exe altında sys.stdout None olabilir
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding='utf-8')
+except Exception:
+    pass
 pyautogui.FAILSAFE = False
 
 PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))

@@ -61,6 +61,14 @@ class HastaTakipAyarlari:
         "magnezyum": False,
         "hemoroid": False,
         "hormonlar": False,
+        "tansiyon": False,
+        "seker": False,
+        "kalp": False,
+        "depresyon": False,
+        "antipsikotik": False,
+        "antiaritmik": False,
+        "diuretik": False,
+        "epilepsi": False,
         "ozel": False,   # Kullanıcı tanımlı anahtar listesi
     })
     # Özel kategori için kullanıcı tanımlı anahtar kelimeler (virgülle ayrılmış)
@@ -75,6 +83,20 @@ class HastaTakipAyarlari:
 
     # Veri kaynağı: "RECETE" | "MEDULA" | "BIRLESIK"
     kaynak: str = "BIRLESIK"
+
+    # Botanik EOS'ta "Haber Verilenleri Getirme" mantığı: True iken
+    # GunuGelenTakip tablosunda kaydı olan ReceteIlaclari satırları DB
+    # sorgusundan dışlanır. Varsayılan False (işaretsiz = tümü gelir).
+    haber_verilenleri_gizle: bool = False
+
+    # Yerel SQLite DB'deki gonderim_ilac_log'a göre filtre: True iken
+    # (musteri_id, urun_adi, bitis_tarihi) için daha önce mesaj atılmış
+    # ilaçlar listelenmez. Varsayılan False.
+    haber_verilenleri_gizle_yerel: bool = False
+
+    # Daha önce "gönderildi" olarak işaretlenmiş kuyruk kayıtlarını ana
+    # listede tekrar göster (yeşil satır). Varsayılan False.
+    gonderilenleri_goster: bool = False
 
     # Çalışma saatleri: dışında gönderim penceresi açılmaz
     calisma_baslangic: str = "09:00"
@@ -211,6 +233,22 @@ class MesajKuyrugu:
                     isaret       TEXT,
                     not_metni    TEXT
                 );
+
+                -- İlaç bazlı gönderim kaydı: haber verilenler yerel filtre için
+                -- Aynı (hasta, ilaç, bitiş) için bir kez mesaj atıldıysa tekrar atılmaz
+                CREATE TABLE IF NOT EXISTS gonderim_ilac_log (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    gonderim_id   INTEGER,
+                    musteri_id    INTEGER NOT NULL,
+                    hasta_adi     TEXT,
+                    urun_adi      TEXT NOT NULL,
+                    bitis_tarihi  TEXT,
+                    yazdirma_tarihi TEXT,
+                    zaman         TEXT NOT NULL,
+                    sonuc         TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_gil_haber
+                    ON gonderim_ilac_log(musteri_id, urun_adi, bitis_tarihi);
                 """
             )
             # Migration: eski şemaya isaret/not_metni eklensin
@@ -231,9 +269,21 @@ class MesajKuyrugu:
                 ("takipli", "INTEGER DEFAULT 0"),
                 # Bekleyen ilaç manuel olarak indirildiyse 1 (açık sarı gösterim)
                 ("bekleteni_indirildi", "INTEGER DEFAULT 0"),
+                # Kullanıcı "Gönderildi" veya "İlacını Aldı" butonuyla elle
+                # kapattıysa 1: 'Mesaj atılanları da getir' aktif olsa bile
+                # listede görünmez.
+                ("manuel_kapatildi", "INTEGER DEFAULT 0"),
             ]:
                 if kol not in mk_kolonlar:
                     c.execute(f"ALTER TABLE mesaj_kuyrugu ADD COLUMN {kol} {tip}")
+
+            # Eski gonderildi kayıtlarının hepsini manuel kapatılmış say
+            # (yeni kod öncesi tüm gönderimler de listeden düşmeli)
+            c.execute(
+                "UPDATE mesaj_kuyrugu SET manuel_kapatildi=1 "
+                "WHERE durum='gonderildi' "
+                "AND (manuel_kapatildi IS NULL OR manuel_kapatildi=0)"
+            )
 
     # -----------------------------------------------------------------
     # Kuyruk işlemleri
@@ -310,6 +360,115 @@ class MesajKuyrugu:
             )
         return silinen
 
+    def yerel_haber_verilenler_seti(self) -> set:
+        """Yerel DB'de (gonderim_ilac_log) kaydı olan tüm
+        (musteri_id, urun_adi_UPPER, bitis_tarihi) üçlülerini döndür."""
+        sonuc: set = set()
+        with self._conn() as c:
+            for r in c.execute(
+                "SELECT musteri_id, urun_adi, bitis_tarihi FROM gonderim_ilac_log"
+            ).fetchall():
+                urun = (r["urun_adi"] or "").strip().upper()
+                bitis = (r["bitis_tarihi"] or "")[:10]
+                sonuc.add((int(r["musteri_id"]), urun, bitis))
+        return sonuc
+
+    def bekleyen_yeni_alimla_guncelle(self) -> int:
+        """Kuyrukta bekleyen ilaçları, Botanik DB'deki en güncel alımla doğrula.
+
+        Bir hasta kuyruğa eklendikten sonra aynı ilaçtan yeni bir reçete almış
+        olabilir (daha ileri RIBitisTarihi'li). Bu durumda eski kayıt Botanik'te
+        "ilaç biten" olarak görünmez ama bizim kuyrukta kalmaya devam eder.
+        Bu metod her (musteri, urun) çifti için DB'deki en geç bitiş tarihini
+        alıp, kuyruktaki eski ilaçları düşürür.
+
+        Returns: düşürülen ilaç adedi.
+        """
+        try:
+            from botanik_db import BotanikDB
+            bdb = BotanikDB()
+            if not bdb.baglan():
+                return 0
+        except Exception as e:
+            logger.warning("Yeni alım kontrolü: Botanik DB açılamadı: %s", e)
+            return 0
+
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT id, musteri_id, ilac_json FROM mesaj_kuyrugu "
+                "WHERE durum='bekliyor'"
+            ).fetchall()
+
+        kayit_data = []
+        mid_set: set = set()
+        for row in rows:
+            try:
+                ilaclar = json.loads(row["ilac_json"])
+            except Exception:
+                continue
+            if not isinstance(ilaclar, list) or not ilaclar:
+                continue
+            kayit_data.append((row["id"], row["musteri_id"], ilaclar))
+            mid_set.add(int(row["musteri_id"]))
+
+        if not mid_set:
+            bdb.kapat()
+            return 0
+
+        ids_str = ",".join(str(m) for m in mid_set)
+        sql = f"""
+        SELECT ra.RxMusteriId AS mid,
+               LTRIM(RTRIM(u.UrunAdi)) AS urun_adi,
+               CAST(MAX(ri.RIBitisTarihi) AS NVARCHAR(10)) AS max_bitis
+        FROM ReceteIlaclari ri
+        INNER JOIN ReceteAna ra ON ra.RxId = ri.RIRxId
+        INNER JOIN Urun u ON u.UrunId = ri.RIUrunId
+        WHERE ri.RISilme = 0 AND ra.RxSilme = 0
+          AND (ri.RIIade IS NULL OR ri.RIIade = 0)
+          AND ri.RIBitisTarihi IS NOT NULL
+          AND ra.RxMusteriId IN ({ids_str})
+        GROUP BY ra.RxMusteriId, LTRIM(RTRIM(u.UrunAdi))
+        """
+        db_max: Dict = {}
+        for r in bdb.sorgu_calistir(sql):
+            key = (int(r["mid"]), (r["urun_adi"] or "").strip().upper())
+            db_max[key] = (r["max_bitis"] or "")[:10]
+        bdb.kapat()
+
+        silinen = 0
+        iptal_ids: list = []
+        with self._conn() as c:
+            for kid, mid, ilaclar in kayit_data:
+                kalan: list = []
+                degisti = False
+                for il in ilaclar:
+                    urun_adi = (il.get("urun_adi") or "").strip().upper()
+                    kuyruk_bitis = str(il.get("bitis_tarihi") or "")[:10]
+                    db_bitis = db_max.get((int(mid), urun_adi), "")
+                    if db_bitis and kuyruk_bitis and db_bitis > kuyruk_bitis:
+                        silinen += 1
+                        degisti = True
+                        continue
+                    kalan.append(il)
+                if not degisti:
+                    continue
+                if not kalan:
+                    iptal_ids.append(kid)
+                else:
+                    c.execute(
+                        "UPDATE mesaj_kuyrugu SET ilac_json=? WHERE id=?",
+                        (json.dumps(kalan, ensure_ascii=False), kid),
+                    )
+            for kid in iptal_ids:
+                c.execute("DELETE FROM mesaj_kuyrugu WHERE id=?", (kid,))
+
+        if silinen:
+            logger.info(
+                "Yeni alım temizliği: %d ilaç düşüldü, %d hasta kuyruktan çıktı.",
+                silinen, len(iptal_ids),
+            )
+        return silinen
+
     @staticmethod
     def _urun_raporlu_mu(bdb, musteri_id: int, urun_adi: str) -> Optional[bool]:
         """Botanik DB'de (musteri_id + urun_adi) için rapor durumu.
@@ -372,8 +531,30 @@ class MesajKuyrugu:
             except Exception as e:
                 logger.warning("Raporsuz temizlik başarısız: %s", e)
 
+        # Kuyrukta duran ama DB'de yenisi alınmış ilaçları düşür
+        try:
+            self.bekleyen_yeni_alimla_guncelle()
+        except Exception as e:
+            logger.warning("Yeni alım temizliği başarısız: %s", e)
+
         if not hasta_satirlari:
             return 0
+
+        # Yerel haber filtresi: (hasta, ilaç, bitiş) için mesaj atılmış
+        # ilaçları DB sonucundan çıkar — aksi halde upsert onları yeni
+        # 'bekliyor' kaydı olarak kuyruğa geri sokar.
+        haber_seti = self.yerel_haber_verilenler_seti()
+        if haber_seti:
+            hasta_satirlari = [
+                s for s in hasta_satirlari
+                if (
+                    int(s.get("musteri_id") or 0),
+                    (s.get("urun_adi") or "").strip().upper(),
+                    str(s.get("bitis_tarihi") or "")[:10],
+                ) not in haber_seti
+            ]
+            if not hasta_satirlari:
+                return 0
 
         # musteri_id bazlı grupla
         gruplu: Dict[int, Dict] = {}
@@ -535,20 +716,31 @@ class MesajKuyrugu:
             return []
 
         bugun_iso = bugun.isoformat()
+        # Manuel kapatılanlar (WhatsApp'ta Aç / Gönderildi / İlacını Aldı
+        # butonlarıyla) listeden her koşulda düşer.
+        if getattr(ayarlar, "gonderilenleri_goster", False):
+            durum_koşulu = (
+                "durum IN ('bekliyor','gonderildi') "
+                "AND COALESCE(manuel_kapatildi, 0) = 0"
+            )
+        else:
+            durum_koşulu = (
+                "durum='bekliyor' AND COALESCE(manuel_kapatildi, 0) = 0"
+            )
         with self._conn() as c:
             # Ertelenenler (planli_gonderim > bugün) en üstte, ardından
             # atılmaya hazır olanlar (planli_gonderim <= bugün).
             # Her grupta planli_gonderim ASC, aynı tarihte hasta_adi ASC.
             rows = c.execute(
-                "SELECT id, musteri_id, hasta_adi, cep_tel, tckn, "
-                "toplam_ziyaret, son_ziyaret, takipli, ilac_json, "
-                "olusturma, planli_gonderim, "
-                "COALESCE(bekleteni_indirildi, 0) AS bekleteni_indirildi "
-                "FROM mesaj_kuyrugu "
-                "WHERE durum='bekliyor' "
-                "ORDER BY "
-                "  CASE WHEN planli_gonderim > ? THEN 0 ELSE 1 END ASC, "
-                "  planli_gonderim ASC, hasta_adi ASC",
+                f"SELECT id, musteri_id, hasta_adi, cep_tel, tckn, "
+                f"toplam_ziyaret, son_ziyaret, takipli, ilac_json, "
+                f"olusturma, planli_gonderim, durum, "
+                f"COALESCE(bekleteni_indirildi, 0) AS bekleteni_indirildi "
+                f"FROM mesaj_kuyrugu "
+                f"WHERE {durum_koşulu} "
+                f"ORDER BY "
+                f"  CASE WHEN planli_gonderim > ? THEN 0 ELSE 1 END ASC, "
+                f"  planli_gonderim ASC, hasta_adi ASC",
                 (bugun_iso,),
             ).fetchall()
 
@@ -581,6 +773,7 @@ class MesajKuyrugu:
                 "planli_gonderim": r["planli_gonderim"],
                 "ertelenen": ertelenen,
                 "bekleteni_indirildi": bool(r["bekleteni_indirildi"]),
+                "durum": r["durum"] or "bekliyor",
                 "mesaj_metni": mesaj,
             })
         return sonuc
@@ -703,14 +896,16 @@ class MesajKuyrugu:
 
     @staticmethod
     def gun_etiketlerini_temizle(mesaj: str) -> str:
-        """Mesaj metninden pharmacist-only gün etiketlerini çıkar.
+        """Mesaj metninden pharmacist-only ek bilgileri çıkar.
 
-        '(bugün)', '(yarın)', '(dün)', '(N gün önce)', '(N gün sonra)' gibi
-        parantezli işaretler hasta görmesin diye gönderim öncesi bu fonksiyon
-        ile temizlenir. Önizlemede kalmaya devam eder (eczacıya yardımcı).
+        - Gün etiketleri: '(bugün)', '(yarın)', '(dün)', '(N gün önce/sonra)'
+        - İlaç barkodları: '(8699262090694)' gibi parantez içi 10-14 haneli sayılar
+
+        Hasta görmesin diye gönderim öncesi temizlenir. Önizlemede kalmaya
+        devam eder (eczacıya yardımcı bilgi).
         """
         import re
-        global _GUN_ETIKET_RE
+        global _GUN_ETIKET_RE, _BARKOD_RE
         try:
             re_obj = _GUN_ETIKET_RE  # noqa: F821
         except NameError:
@@ -720,8 +915,17 @@ class MesajKuyrugu:
                 r"\s*\((?:bugün|yarın|dün|\d+\s+gün\s+(?:önce|sonra))\)"
             )
             globals()["_GUN_ETIKET_RE"] = re_obj
-        # Satır sonu virgül kalıntılarını da temizle
+        try:
+            barkod_re = _BARKOD_RE  # noqa: F821
+        except NameError:
+            barkod_re = None
+        if barkod_re is None:
+            # Parantez içi 10-14 haneli sayı = ilaç barkodu (EAN-13 tipik)
+            barkod_re = re.compile(r"\s*\(\d{10,14}\)")
+            globals()["_BARKOD_RE"] = barkod_re
+
         temiz = re_obj.sub("", mesaj or "")
+        temiz = barkod_re.sub("", temiz)
         # Satır içi fazla boşlukları sadece satır sonunda düzelt
         satirlar = [s.rstrip().rstrip(",").rstrip() for s in temiz.splitlines()]
         return "\n".join(satirlar)
@@ -791,7 +995,9 @@ class MesajKuyrugu:
             eczane_tel=ayarlar.eczane_tel,
         )
 
-    def gonderildi_isaretle(self, kuyruk_id: int, sonuc: str = "OK") -> None:
+    def gonderildi_isaretle(
+        self, kuyruk_id: int, sonuc: str = "OK", manuel: bool = True,
+    ) -> None:
         """Kuyruk kaydını 'gonderildi' olarak işaretle.
 
         Kayıttaki ilac_json'da yazdırma_tarihi > bugün olan ilaçlar varsa
@@ -821,19 +1027,44 @@ class MesajKuyrugu:
             ileri = [i for i in ilaclar
                      if str(i.get("yazdirma_tarihi") or "")[:10] > bugun_iso]
 
-            # Gönderilecek mesaj metnine sadece gönderilenleri koymak için
-            # ilac_json'u güncelle.
+            # UNIQUE(musteri_id, durum) çakışmasını önle: aynı hastanın eski
+            # 'gonderildi' kaydı varsa temizle. Veri kaybı yok — gönderim
+            # tarihçesi gonderim_log ve gonderim_ilac_log'da tutulur.
             c.execute(
-                "UPDATE mesaj_kuyrugu SET ilac_json=?, durum='gonderildi' "
-                "WHERE id=?",
-                (json.dumps(gonderilen, ensure_ascii=False), kuyruk_id),
+                "DELETE FROM mesaj_kuyrugu WHERE musteri_id=? "
+                "AND durum='gonderildi' AND id<>?",
+                (row["musteri_id"], kuyruk_id),
             )
+
+            # Gönderilecek mesaj metnine sadece gönderilenleri koymak için
+            # ilac_json'u güncelle. Manuel kapat aktifse gosterilecek_mesajlar
+            # bu kaydı hiçbir zaman listeye almaz.
             c.execute(
+                "UPDATE mesaj_kuyrugu SET ilac_json=?, durum='gonderildi', "
+                "manuel_kapatildi=? WHERE id=?",
+                (json.dumps(gonderilen, ensure_ascii=False),
+                 1 if manuel else 0, kuyruk_id),
+            )
+            cur = c.execute(
                 "INSERT INTO gonderim_log(musteri_id, hasta_adi, cep_tel, "
                 "mesaj_metni, zaman, sonuc) VALUES (?,?,?,?,?,?)",
                 (row["musteri_id"], row["hasta_adi"], row["cep_tel"],
                  json.dumps(gonderilen, ensure_ascii=False), simdi, sonuc),
             )
+            gonderim_id = cur.lastrowid
+
+            # İlaç bazlı log: her gönderilen ilaç için ayrı satır
+            for il in gonderilen:
+                c.execute(
+                    "INSERT INTO gonderim_ilac_log(gonderim_id, musteri_id, "
+                    "hasta_adi, urun_adi, bitis_tarihi, yazdirma_tarihi, "
+                    "zaman, sonuc) VALUES (?,?,?,?,?,?,?,?)",
+                    (gonderim_id, row["musteri_id"], row["hasta_adi"],
+                     (il.get("urun_adi") or "").strip(),
+                     str(il.get("bitis_tarihi") or "")[:10],
+                     str(il.get("yazdirma_tarihi") or "")[:10],
+                     simdi, sonuc),
+                )
 
             # İleri tarihli ilaçları yeni bir 'bekliyor' kaydı olarak aktar
             if ileri:
