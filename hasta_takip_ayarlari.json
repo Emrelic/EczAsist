@@ -43,6 +43,7 @@
     "takip": false
   },
   "rapor_bitis_uyari_gun": 30,
+  "ilac_rapor_birlesik": false,
   "rapor_bitis_mesaj_sablonu": "Sayın {hasta_adi}\nAşağıdaki raporlarınız yaklaşan tarihlerde bitmektedir:\n\n{rapor_listesi}\nLütfen yenilemek için doktorunuza başvurunuz.\n{eczane_adi}  {eczane_tel}",
   "rapor_bitis_rapor_formati": "• {rapor_ozet} (Bitiş: {bitis} — {kalan_gun} gün kaldı)\n  Kullandığınız ilaçlar: {ilaclar}\n",
   "rapor_bitis_tani_satir_formati": "Tanı: {rapor_kodu} - {rapor_kod_aciklama}\nICD: {icd_kodu} - {icd_aciklamasi}\nBaşlama: {baslama} | Bitiş: {bitis} (kalan: {kalan_gun} gün)\nEtken Maddeler: {etkin_maddeler}\nİlaçlar: {ilaclar}\n"

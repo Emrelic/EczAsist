@@ -139,6 +139,9 @@ class HastaTakipAyarlari:
 
     # --- Rapor bitiş takibi ---
     rapor_bitis_uyari_gun: int = 30  # Bu kadar gün kala raporla
+    # İlaç mesajına yaklaşan rapor bitiş bilgisini birleştirerek tek WhatsApp
+    # mesajı oluştur (ilac_mesajina_rapor_ek tarafından kullanılır).
+    ilac_rapor_birlesik: bool = False
     rapor_bitis_mesaj_sablonu: str = (
         "Sayın {hasta_adi}\n"
         "Aşağıdaki raporlarınız yaklaşan tarihlerde bitmektedir:\n\n"
