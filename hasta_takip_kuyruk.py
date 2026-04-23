@@ -956,14 +956,22 @@ class MesajKuyrugu:
             ilac_tekil_cogul = "ilaçlar" if len(ilac_marka_adlar) > 1 else "ilaç"
 
             # Rapor özeti: kod + açıklama; Rapor kısa adı: ICD veya açıklama
+            # 20 kodlu raporlar (EK-2 Listede Yer Almayan Hastalıklar) için
+            # rapor açıklaması genel bir ibaredir; ICD tanısı daha bilgilendiricidir.
             ozet_parcalar = []
             kisa_adlar = []
             for kod, aciklama, icd_kodu, icd_aciklama in g["ozet_set"]:
-                if kod and aciklama:
+                if kod.startswith("20") and icd_aciklama:
+                    icd_tc = MesajKuyrugu._tr_title(icd_aciklama)
+                    if icd_kodu:
+                        ozet_parcalar.append(f"{kod} - {icd_tc} ({icd_kodu})")
+                    else:
+                        ozet_parcalar.append(f"{kod} - {icd_tc}")
+                elif kod and aciklama:
                     ozet_parcalar.append(f"{kod} - {aciklama}")
                 else:
                     ozet_parcalar.append(kod or aciklama or icd_aciklama)
-                # 20 kodlu raporlar için ICD tanısı öne çıkar
+                # 20 kodlu raporlar için ICD tanısı öne çıkar (rapor_adi)
                 kisa = MesajKuyrugu._rapor_kisa_ad(kod, aciklama, icd_aciklama)
                 if kisa and kisa not in kisa_adlar:
                     kisa_adlar.append(kisa)

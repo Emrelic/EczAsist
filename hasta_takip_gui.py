@@ -2088,11 +2088,20 @@ class HastaTakipGUI:
         for w in self.tv_rb_tani.get_children():
             self.tv_rb_tani.delete(w)
         for t in satirlar:
+            kod = (t.get("rapor_kodu") or "").strip()
+            rapor_acikl = (t.get("rapor_kod_aciklama") or "").strip()
+            icd_acikl = (t.get("icd_aciklamasi") or "").strip()
+            # 20 kodlu raporlarda (EK-2 Listede Yer Almayan Hastalıklar)
+            # rapor açıklaması genel bir ibaredir; ICD tanısı gösterilir.
+            if kod.startswith("20") and icd_acikl:
+                gosterilecek = self.kuyruk._tr_title(icd_acikl)
+            else:
+                gosterilecek = rapor_acikl
             self.tv_rb_tani.insert("", "end", values=(
                 t.get("rapor_kodu") or "",
-                (t.get("rapor_kod_aciklama") or "").strip()[:50],
+                gosterilecek[:50],
                 t.get("icd_kodu") or "",
-                (t.get("icd_aciklamasi") or "").strip()[:50],
+                icd_acikl[:50],
                 str(t.get("baslama") or "")[:10],
                 str(t.get("bitis") or "")[:10],
                 t.get("kalan_gun") if t.get("kalan_gun") is not None else "",
