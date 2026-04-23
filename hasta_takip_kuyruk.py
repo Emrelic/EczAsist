@@ -150,7 +150,7 @@ class HastaTakipAyarlari:
     # Her rapor için bir blok. Birden fazla rapor olursa bloklar ardışık gelir.
     rapor_bitis_rapor_formati: str = (
         "Aşağıdaki \"ilaç\" raporunuz {kalan_gun} gün sonra bitmektedir.\n"
-        "{rapor_adi} raporunuz ile kullandığınız\n\n"
+        "{rapor_adi} raporu\n\n"
         "{ilaclar_numarali}\n"
         "isimli {ilac_iyelik} kullanabilmek için raporunuzu "
         "yenilemeniz gerekmektedir.\n"
@@ -996,7 +996,7 @@ class MesajKuyrugu:
 
             fmt = getattr(ayarlar, "rapor_bitis_rapor_formati", None) or (
                 "Aşağıdaki \"ilaç\" raporunuz {kalan_gun} gün sonra bitmektedir.\n"
-                "{rapor_adi} raporunuz ile kullandığınız\n\n"
+                "{rapor_adi} raporu\n\n"
                 "{ilaclar_numarali}\n"
                 "isimli {ilac_iyelik} kullanabilmek için raporunuzu "
                 "yenilemeniz gerekmektedir.\n"
