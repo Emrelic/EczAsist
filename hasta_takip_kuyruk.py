@@ -935,14 +935,28 @@ class MesajKuyrugu:
             ilac_tam_adlar: List[str] = []
             ilac_marka_adlar: List[str] = []
             for em in aktif_em_list:
-                for hi in (em.get("hasta_ilaclari") or []):
-                    tam = (hi.get("urun_adi") or "").strip()
-                    if tam and tam not in gorulen:
-                        gorulen.add(tam)
-                        ilac_tam_adlar.append(tam)
-                        marka = MesajKuyrugu._ilac_marka_adi(tam)
-                        if marka and marka not in ilac_marka_adlar:
-                            ilac_marka_adlar.append(marka)
+                em_ilaclari = em.get("hasta_ilaclari") or []
+                if em_ilaclari:
+                    for hi in em_ilaclari:
+                        tam = (hi.get("urun_adi") or "").strip()
+                        if tam and tam not in gorulen:
+                            gorulen.add(tam)
+                            ilac_tam_adlar.append(tam)
+                            marka = MesajKuyrugu._ilac_marka_adi(tam)
+                            if marka and marka not in ilac_marka_adlar:
+                                ilac_marka_adlar.append(marka)
+                else:
+                    # Hasta bu etken madde için hiç ilaç yazdırmamış —
+                    # etken madde adı ile genel ibare ekle
+                    em_adi = (em.get("etkin_madde") or "").strip()
+                    if em_adi:
+                        em_adi_tc = MesajKuyrugu._tr_title(em_adi)
+                        yazi = f"{em_adi_tc} etken maddeli ilaç"
+                        if yazi not in gorulen:
+                            gorulen.add(yazi)
+                            ilac_tam_adlar.append(yazi)
+                            if em_adi_tc not in ilac_marka_adlar:
+                                ilac_marka_adlar.append(em_adi_tc)
             # Fallback: rapor_no bazlı ilaçlar (yenileme filtresi yok, son çare)
             if not ilac_tam_adlar:
                 for il in il_list:
