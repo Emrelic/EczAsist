@@ -143,16 +143,17 @@ class HastaTakipAyarlari:
     # mesajı oluştur (ilac_mesajina_rapor_ek tarafından kullanılır).
     ilac_rapor_birlesik: bool = False
     rapor_bitis_mesaj_sablonu: str = (
-        "Sayın {hasta_adi}\n"
-        "Aşağıdaki raporlarınız yaklaşan tarihlerde bitmektedir:\n\n"
+        "Sayın {hasta_adi}\n\n"
         "{rapor_listesi}\n"
-        "Lütfen yenilemek için doktorunuza başvurunuz.\n"
-        "{eczane_adi}  {eczane_tel}"
+        "En kısa zamanda randevu alınır.\n"
     )
-    # Rapor başına bir paragraf. Rapor numarası benzersiz, tanıları virgülle ayrılı.
+    # Her rapor için bir blok. Birden fazla rapor olursa bloklar ardışık gelir.
     rapor_bitis_rapor_formati: str = (
-        "• {rapor_ozet} (Bitiş: {bitis} — {kalan_gun} gün kaldı)\n"
-        "  Kullandığınız ilaçlar: {ilaclar}\n"
+        "Aşağıdaki \"ilaç\" raporunuz {kalan_gun} gün sonra bitmektedir.\n"
+        "{rapor_adi} raporunuz ile kullandığınız \n"
+        "{ilaclar_numarali}\n"
+        "isimli {ilac_iyelik} kullanabilmek için raporunuzu "
+        "yenilemeniz gerekmektedir.\n"
     )
     # (Eski alan geriye-uyum icin korunuyor — yeni akis kullanmaz)
     rapor_bitis_tani_satir_formati: str = (
@@ -865,13 +866,15 @@ class MesajKuyrugu:
         üzerinden eşleşen ilaçlara (ilaclar_map) düşer.
 
         Şablon placeholder'ları:
-          {rapor_adi}     — kısa rapor açıklaması ("Glokom")
-          {rapor_ozet}    — kod + açıklama ("12.01 - Glokom (H40.1-H40.9)")
-          {kalan_gun}     — bitişe kalan gün sayısı
-          {bitis}         — bitiş tarihi
-          {ilaclar_kisa}  — marka isimleriyle ("Tomec ve Brimogut")
-          {ilaclar}       — tam ürün adlarıyla virgüllü liste
-          {ilac_tekil_cogul} — "ilaç" veya "ilaçlar" (otomatik)
+          {rapor_adi}        — kısa rapor açıklaması ("Glokom")
+          {rapor_ozet}       — kod + açıklama ("12.01 - Glokom (H40.1-H40.9)")
+          {kalan_gun}        — bitişe kalan gün sayısı
+          {bitis}            — bitiş tarihi
+          {ilaclar_kisa}     — marka isimleriyle ("Tomec ve Brimogut")
+          {ilaclar}          — tam ürün adlarıyla virgüllü tek satır liste
+          {ilaclar_numarali} — numaralı çok satırlı ("1) AD,\\n2) AD")
+          {ilac_tekil_cogul} — "ilaç" veya "ilaçlar" (ek'siz)
+          {ilac_iyelik}      — "ilacınızı" veya "ilaçlarınızı" (iyelikli)
         """
         gruplar: Dict[int, Dict] = {}
         for t in tani_satirlari:
@@ -954,6 +957,19 @@ class MesajKuyrugu:
             ilac_metin = ", ".join(ilac_tam_adlar) if ilac_tam_adlar else "—"
             ilaclar_kisa = MesajKuyrugu._tr_ve_birlestir(ilac_marka_adlar) or "—"
             ilac_tekil_cogul = "ilaçlar" if len(ilac_marka_adlar) > 1 else "ilaç"
+            # Çoklu satırda numaralı liste: "1) AD,\n2) AD,\n3) AD"
+            # (son hariç virgüllü — okurken "isimli ilaçlarınızı..." ile bağlansın)
+            if ilac_tam_adlar:
+                n = len(ilac_tam_adlar)
+                numarali_parcalar = []
+                for idx, tam in enumerate(ilac_tam_adlar, start=1):
+                    virgul = "," if idx < n else ""
+                    numarali_parcalar.append(f"{idx}) {tam}{virgul}")
+                ilaclar_numarali = "\n".join(numarali_parcalar)
+            else:
+                ilaclar_numarali = "—"
+            # İyelik ekli tekil/çoğul: "ilacınızı" / "ilaçlarınızı"
+            ilac_iyelik = "ilaçlarınızı" if len(ilac_marka_adlar) > 1 else "ilacınızı"
 
             # Rapor özeti: kod + açıklama; Rapor kısa adı: ICD veya açıklama
             # 20 kodlu raporlar (EK-2 Listede Yer Almayan Hastalıklar) için
@@ -979,9 +995,11 @@ class MesajKuyrugu:
             rapor_adi = MesajKuyrugu._tr_ve_birlestir(kisa_adlar) or rapor_ozet
 
             fmt = getattr(ayarlar, "rapor_bitis_rapor_formati", None) or (
-                "{rapor_adi} raporunuzun bitmesine {kalan_gun} gün kalmıştır.\n"
-                "{ilaclar_kisa} isimli {ilac_tekil_cogul} için randevu alarak "
-                "bu raporu yenilemeniz gerekmektedir.\n"
+                "Aşağıdaki \"ilaç\" raporunuz {kalan_gun} gün sonra bitmektedir.\n"
+                "{rapor_adi} raporunuz ile kullandığınız \n"
+                "{ilaclar_numarali}\n"
+                "isimli {ilac_iyelik} kullanabilmek için raporunuzu "
+                "yenilemeniz gerekmektedir.\n"
             )
             # Placeholder esnekliği: eski şablondaki {rapor_ozet}/{ilaclar}/{bitis}
             # yerlerini de doldurmaya devam et
@@ -993,7 +1011,9 @@ class MesajKuyrugu:
                     kalan_gun=g["kalan"] if g["kalan"] is not None else "",
                     ilaclar=ilac_metin,
                     ilaclar_kisa=ilaclar_kisa,
+                    ilaclar_numarali=ilaclar_numarali,
                     ilac_tekil_cogul=ilac_tekil_cogul,
+                    ilac_iyelik=ilac_iyelik,
                 ))
             except KeyError:
                 # Şablon bilinmeyen placeholder içeriyorsa ham dön
