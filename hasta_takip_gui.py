@@ -228,6 +228,17 @@ class HastaTakipGUI:
             command=self._gonderilenleri_goster_degisti,
         ).pack(side="left", padx=2)
 
+        self.var_ilac_rapor_birlesik = tk.BooleanVar(
+            value=bool(getattr(self.ayarlar, "ilac_rapor_birlesik", False))
+        )
+        tk.Checkbutton(
+            secenek_bar,
+            text="💊+📑 Rapor bitişini de ekle",
+            variable=self.var_ilac_rapor_birlesik, bg="white",
+            font=("Arial", 9),
+            command=self._ilac_rapor_birlesik_degisti,
+        ).pack(side="left", padx=(10, 2))
+
         # ---- 3b. Filtre (varsayılan: -15 gün → bugün, aktif) -----------
         filtre = tk.Frame(f, bg="white")
         filtre.pack(fill="x", padx=8, pady=(0, 4))
@@ -1359,8 +1370,22 @@ class HastaTakipGUI:
         m = next((x for x in self._kuyruk_sonuclari if x["kuyruk_id"] == kid), None)
         if not m:
             return
+        metin = m["mesaj_metni"]
+        self._son_birlesik_mi = False
+        # Birleşik mesaj ayarı açıksa rapor bilgisini ekle
+        if getattr(self.ayarlar, "ilac_rapor_birlesik", False):
+            try:
+                if self.db is None:
+                    self.db = HastaTakipDB()
+                metin, birlesti = MesajKuyrugu.ilac_mesajina_rapor_ek(
+                    metin, m.get("musteri_id"), m.get("hasta_adi") or "",
+                    self.db, self.ayarlar,
+                )
+                self._son_birlesik_mi = bool(birlesti)
+            except Exception as e:
+                logger.warning("İlaç+Rapor birleşik mesaj hatası: %s", e)
         self.txt_mesaj.delete("1.0", "end")
-        self.txt_mesaj.insert("1.0", m["mesaj_metni"])
+        self.txt_mesaj.insert("1.0", metin)
 
     def _aktif_mesaj(self):
         sec = self.tv_yaz.selection()
@@ -1440,8 +1465,11 @@ class HastaTakipGUI:
             pass
 
         chrome_acildi = self._chrome_ile_ac(url)
+        isaret = "💊+📑 İlaç & Rapor" if getattr(self, "_son_birlesik_mi", False) else "💊 İlaç"
         try:
-            self.kuyruk.gonderildi_isaretle(kid, "MESAJ GONDERILDI", manuel=True)
+            self.kuyruk.gonderildi_isaretle(
+                kid, "MESAJ GONDERILDI", manuel=True, isaret=isaret,
+            )
         except Exception as e:
             logger.exception("gonderildi_isaretle hatası")
             messagebox.showerror("Hata", f"Kayıt işaretlenemedi: {e}")
@@ -2260,6 +2288,8 @@ class HastaTakipGUI:
             a.haber_verilenleri_gizle_yerel = bool(self.var_haber_gizle_yerel.get())
         if hasattr(self, "var_gonderilenleri_goster"):
             a.gonderilenleri_goster = bool(self.var_gonderilenleri_goster.get())
+        if hasattr(self, "var_ilac_rapor_birlesik"):
+            a.ilac_rapor_birlesik = bool(self.var_ilac_rapor_birlesik.get())
         a.sadece_takipli = bool(self.var_takipli.get())
         if hasattr(self, "var_sadece_raporlu"):
             a.sadece_raporlu = bool(self.var_sadece_raporlu.get())
@@ -2473,6 +2503,25 @@ class HastaTakipGUI:
         )
 
     # -----------------------------------------------------------------
+    def _ilac_rapor_birlesik_degisti(self):
+        """'Rapor bitişini de ekle' checkbox'ı değişince ayarı kaydet ve
+        varsa seçili mesajın önizlemesini yeniden üret."""
+        yeni = bool(self.var_ilac_rapor_birlesik.get())
+        self.ayarlar.ilac_rapor_birlesik = yeni
+        try:
+            self.ayarlar.kaydet()
+        except Exception as e:
+            logger.debug(f"ilac_rapor_birlesik kaydedilemedi: {e}")
+        # Seçili kayıt varsa önizlemeyi tazele
+        try:
+            self._secim_guncelle()
+        except Exception:
+            pass
+        self.durum_bar.config(
+            text=("💊+📑 İlaç mesajına rapor bitişi eklenecek" if yeni
+                  else "💊 Sadece ilaç mesajı gönderilecek")
+        )
+
     def _gonderilenleri_goster_degisti(self):
         """'Mesaj atılanları da getir' checkbox'ı değişince ayarı kaydet ve
         tabloyu kuyruktan yeniden yükle (DB'ye gidilmez)."""
