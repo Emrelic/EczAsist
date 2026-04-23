@@ -944,8 +944,8 @@ class HastaTakipGUI:
 
         # Mesaj önizleme
         tk.Label(sag, text="Mesaj Önizleme", bg="#FAFAFA", fg="#1976D2", font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(8, 2))
-        self.txt_rb_mesaj = tk.Text(sag, wrap="word", font=("Consolas", 9), height=6, bg="white", relief="solid", bd=1)
-        self.txt_rb_mesaj.pack(fill="x", padx=10)
+        self.txt_rb_mesaj = tk.Text(sag, wrap="word", font=("Consolas", 10), height=14, bg="white", relief="solid", bd=1)
+        self.txt_rb_mesaj.pack(fill="both", expand=True, padx=10, pady=(0, 6))
 
         btn_frame = tk.Frame(sag, bg="#FAFAFA")
         btn_frame.pack(fill="x", padx=10, pady=8)
