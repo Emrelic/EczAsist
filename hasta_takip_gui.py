@@ -1496,13 +1496,13 @@ class HastaTakipGUI:
             logger.exception("gonderildi_isaretle hatası")
             messagebox.showerror("Hata", f"Kayıt işaretlenemedi: {e}")
             return
-        # Birleşik mesajsa dahil edilen raporları log'a yaz
+        # Birleşik mesajsa dahil edilen (tanı × em) kombinasyonlarını log'la
         if birlesik_mi and getattr(self, "_son_birlesik_raporlar", None):
             try:
                 self.kuyruk.rapor_gonderim_kaydet(
                     musteri_id=m.get("musteri_id"),
                     hasta_adi=m.get("hasta_adi") or "",
-                    raporlar=self._son_birlesik_raporlar,
+                    combinations=self._son_birlesik_raporlar,
                     tur="birlesik",
                 )
             except Exception as e:
@@ -2101,24 +2101,62 @@ class HastaTakipGUI:
         # Yenilenmiş raporların tanı satırlarını at
         sonuc = [r for r in sonuc if not rapor_yenilenmis.get(r.get("rapor_id"))]
 
-        # Gönderilmiş raporları işle: toggle AÇIK → tamamen gizle,
-        # toggle KAPALI → listele ama "gönderildi" tag + tarih etiketi
+        # Arşiv: (mid, rapor_kodu, em_sgk, bitis) → zaman
         try:
             gonderilmis_harita = self.kuyruk.gonderilmis_raporlar_tarih_haritasi()
         except Exception:
             gonderilmis_harita = {}
         gizle_toggle = bool(getattr(self.ayarlar, "rapor_haber_verilenleri_gizle_yerel", True))
-        if gizle_toggle and gonderilmis_harita:
-            sonuc = [
-                r for r in sonuc
-                if (int(r.get("musteri_id") or 0), str(r.get("rapor_id") or ""),
-                    str(r.get("bitis") or "")[:10]) not in gonderilmis_harita
+
+        # Her tanı satırı için: tanı tamamen arşivli mi?
+        # Tam arşivli = TÜM aktif em kombinasyonları arşivde.
+        def _tani_arsivli(r):
+            mid_i = int(r.get("musteri_id") or 0)
+            rk = (r.get("rapor_kodu") or "").strip()
+            bitis = str(r.get("bitis") or "")[:10]
+            rid = r.get("rapor_id")
+            em_list = self._rb_rapor_em.get(rid, []) or []
+            en_son_h = self._rb_en_son_bitis.get(mid_i, {}) or {}
+            aktif_em = []
+            for em in em_list:
+                sgk = (em.get("sgk_kodu") or "").strip()
+                en_son = en_son_h.get(sgk, "")
+                if not (en_son and bitis and en_son > bitis):
+                    aktif_em.append(em)
+            if not aktif_em:
+                return (mid_i, rk, "", bitis) in gonderilmis_harita
+            return all(
+                (mid_i, rk, (em.get("sgk_kodu") or "").strip(), bitis) in gonderilmis_harita
+                for em in aktif_em
+            )
+
+        def _tani_son_zaman(r):
+            mid_i = int(r.get("musteri_id") or 0)
+            rk = (r.get("rapor_kodu") or "").strip()
+            bitis = str(r.get("bitis") or "")[:10]
+            rid = r.get("rapor_id")
+            em_list = self._rb_rapor_em.get(rid, []) or []
+            en_son_h = self._rb_en_son_bitis.get(mid_i, {}) or {}
+            aktif_em = [em for em in em_list
+                        if not (en_son_h.get((em.get("sgk_kodu") or "").strip(), "")
+                                and bitis
+                                and en_son_h.get((em.get("sgk_kodu") or "").strip(), "") > bitis)]
+            if not aktif_em:
+                return gonderilmis_harita.get((mid_i, rk, "", bitis), "")
+            zamanlar = [
+                gonderilmis_harita.get((mid_i, rk, (em.get("sgk_kodu") or "").strip(), bitis), "")
+                for em in aktif_em
             ]
-        # Her satıra "gönderildi zamanı" ekle (tag için)
+            return max(zamanlar) if zamanlar else ""
+
+        # Her satıra arşivli/zaman bilgisi ekle
         for r in sonuc:
-            k = (int(r.get("musteri_id") or 0), str(r.get("rapor_id") or ""),
-                 str(r.get("bitis") or "")[:10])
-            r["_gonderildi_zaman"] = gonderilmis_harita.get(k, "")
+            r["_tani_arsivli"] = _tani_arsivli(r)
+            r["_gonderildi_zaman"] = _tani_son_zaman(r)
+
+        # Toggle AÇIKSA: arşivli tanı satırlarını düş
+        if gizle_toggle:
+            sonuc = [r for r in sonuc if not r["_tani_arsivli"]]
 
         self._rb_sonuc = sonuc
         # Hasta bazında grupla
@@ -2137,11 +2175,13 @@ class HastaTakipGUI:
             ilk = satirlar[0]
             en_yakin = min((str(s.get("bitis") or "") for s in satirlar if s.get("bitis")), default="")
             en_yakin_kalan = min((s.get("kalan_gun") for s in satirlar if s.get("kalan_gun") is not None), default="")
-            # Hastanın TÜM raporları gönderilmişse satırı gri göster + etiket
-            tum_gonderilmis = all(s.get("_gonderildi_zaman") for s in satirlar)
-            tags = ("gonderildi_rapor",) if tum_gonderilmis else ()
+            # Hastanın TÜM tanıları arşivde ise gri + etiket. Aksi hâlde
+            # normal görünür (kısmen arşivli olsa bile — çünkü en az bir
+            # tanısına yeni mesaj atmak gerekiyor).
+            tum_arsivli = all(s.get("_tani_arsivli") for s in satirlar)
+            tags = ("gonderildi_rapor",) if tum_arsivli else ()
             hasta_goster = ilk.get("hasta_adi") or ""
-            if tum_gonderilmis:
+            if tum_arsivli:
                 son_zaman = max((s.get("_gonderildi_zaman") or "") for s in satirlar)
                 tarih_kisa = (son_zaman or "")[:10]
                 hasta_goster = f"{hasta_goster}  ✅ {tarih_kisa}"
@@ -2317,22 +2357,49 @@ class HastaTakipGUI:
             return
         url = f"https://wa.me/{tel}?text={urllib.parse.quote(mesaj)}"
         self._chrome_ile_ac(url)
-        # Log'a yaz: genel gonderim_log + her rapor için gonderim_rapor_log
+        # Log'a yaz: gonderim_log + her (tanı × aktif em) kombinasyonu için
+        # gonderim_rapor_log. Arşiv anahtarı: (mid, rapor_kodu, em_sgk, bitis)
         zaman = datetime.now().isoformat(timespec="seconds")
         satirlar = self._rb_hasta_map.get(mid, [])
-        # Aktif hastaya ait tüm rapor_id'leri (bitiş tarihi ile) topla
-        rapor_listesi = []
-        gorulen_rid = set()
+        combinations = []
+        # _rapor_bitis_detay'den gelen em_map (raporun etken maddeleri + yenilenmiş flag)
+        rid_em_map: dict = getattr(self, "_rb_rapor_em", {})
+        # Yenilenmiş EM'leri hesapla (aynı detay akışındaki mantık)
+        en_son_harita = getattr(self, "_rb_en_son_bitis", {}).get(mid, {}) or {}
         for s in satirlar:
             rid = s.get("rapor_id")
-            if not rid or rid in gorulen_rid:
-                continue
-            gorulen_rid.add(rid)
-            rapor_listesi.append({
-                "rapor_id": rid,
-                "rapor_kodu": s.get("rapor_kodu") or "",
-                "bitis_tarihi": str(s.get("bitis") or "")[:10],
-            })
+            rapor_kodu = (s.get("rapor_kodu") or "").strip()
+            icd_kodu = (s.get("icd_kodu") or "").strip()
+            bitis = str(s.get("bitis") or "")[:10]
+            em_list = rid_em_map.get(rid, []) or []
+            # Yenilenmiş EM'leri çıkar
+            aktif_em = []
+            for em in em_list:
+                sgk = (em.get("sgk_kodu") or "").strip()
+                en_son = en_son_harita.get(sgk, "")
+                if en_son and bitis and en_son > bitis:
+                    continue  # yenilenmiş
+                aktif_em.append(em)
+            # Rapor zaten filtrelenmemiş olarak geldi; em yoksa da log'la
+            if aktif_em:
+                for em in aktif_em:
+                    combinations.append({
+                        "rapor_id": rid,
+                        "rapor_kodu": rapor_kodu,
+                        "icd_kodu": icd_kodu,
+                        "em_sgk_kodu": (em.get("sgk_kodu") or "").strip(),
+                        "em_adi": em.get("etkin_madde") or "",
+                        "bitis_tarihi": bitis,
+                    })
+            else:
+                combinations.append({
+                    "rapor_id": rid,
+                    "rapor_kodu": rapor_kodu,
+                    "icd_kodu": icd_kodu,
+                    "em_sgk_kodu": "",
+                    "em_adi": "",
+                    "bitis_tarihi": bitis,
+                })
         with self.kuyruk._conn() as c:
             cur = c.execute(
                 "INSERT INTO gonderim_log(musteri_id, hasta_adi, cep_tel, mesaj_metni, zaman, sonuc, isaret) "
@@ -2345,13 +2412,24 @@ class HastaTakipGUI:
             self.kuyruk.rapor_gonderim_kaydet(
                 musteri_id=mid,
                 hasta_adi=ilk.get("hasta_adi") or "",
-                raporlar=rapor_listesi,
+                combinations=combinations,
                 tur="rapor_bitis",
                 gonderim_id=gonderim_id,
                 zaman=zaman,
             )
         except Exception as e:
             logger.exception("rapor_gonderim_kaydet hatası: %s", e)
+        # Gerçek zamanlı boyama: bu hastanın satırını "gönderildi" işareti
+        # + gri tonu ile göster. Refresh'ten sonra toggle açıksa gizlenecek.
+        try:
+            mevcut = list(self.tv_rb.item(str(mid), "values"))
+            if mevcut and "✅" not in mevcut[0]:
+                mevcut[0] = f"{mevcut[0]}  ✅ şimdi gönderildi"
+                self.tv_rb.item(str(mid), values=mevcut, tags=("gonderildi_rapor",))
+            else:
+                self.tv_rb.item(str(mid), tags=("gonderildi_rapor",))
+        except Exception:
+            pass
         self.durum_bar.config(text=f"✅ {ilk.get('hasta_adi')} için rapor bitiş mesajı WhatsApp Web'de açıldı.")
 
     def _rb_panoya(self):

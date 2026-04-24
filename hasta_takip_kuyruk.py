@@ -268,23 +268,29 @@ class MesajKuyrugu:
                 CREATE INDEX IF NOT EXISTS idx_gil_haber
                     ON gonderim_ilac_log(musteri_id, urun_adi, bitis_tarihi);
 
-                -- Rapor bazlı gönderim kaydı: aynı (hasta, rapor_id, bitiş)
-                -- için mesaj atıldıysa rapor bitiş listesinde tekrar çıkmaz.
+                -- Rapor bazlı gönderim kaydı: mesaja dahil edilen her
+                -- (rapor_kodu × etken_madde × bitis) kombinasyonu bir satır.
+                -- Aynı kombinasyon tekrar listeye gelmez. Ancak aynı hasta
+                -- aynı hastalık+ilaç için FARKLI bitis_tarihiyle yeni bir
+                -- raporu olduğunda tekrar listeye gelir (başka bir kombinasyon).
                 -- tur: 'rapor_bitis' (tek başına) | 'birlesik' (ilaç+rapor)
+                -- NOT: İndeks migration sonrası oluşturulur (em_sgk_kodu
+                -- kolonu eski kurulumlarda olmayabilir).
                 CREATE TABLE IF NOT EXISTS gonderim_rapor_log (
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
                     gonderim_id   INTEGER,
                     musteri_id    INTEGER NOT NULL,
                     hasta_adi     TEXT,
-                    rapor_id      TEXT NOT NULL,
-                    rapor_kodu    TEXT,
+                    rapor_id      TEXT,                -- Medula rapor_id (iz)
+                    rapor_kodu    TEXT,                -- SUT tanı kodu (04.05)
+                    icd_kodu      TEXT,                -- ICD-10 kodu
+                    em_sgk_kodu   TEXT,                -- Etken madde SGK kodu
+                    em_adi        TEXT,                -- Etken madde adı
                     bitis_tarihi  TEXT,
                     zaman         TEXT NOT NULL,
                     tur           TEXT NOT NULL DEFAULT 'rapor_bitis',
                     sonuc         TEXT
                 );
-                CREATE INDEX IF NOT EXISTS idx_grl_haber
-                    ON gonderim_rapor_log(musteri_id, rapor_id, bitis_tarihi);
                 """
             )
             # Migration: eski şemaya isaret/not_metni eklensin
@@ -319,6 +325,23 @@ class MesajKuyrugu:
                 "UPDATE mesaj_kuyrugu SET manuel_kapatildi=1 "
                 "WHERE durum='gonderildi' "
                 "AND (manuel_kapatildi IS NULL OR manuel_kapatildi=0)"
+            )
+
+            # Migration: gonderim_rapor_log yeni kolonlar (icd_kodu,
+            # em_sgk_kodu, em_adi) — 4'lü anahtar filtreleme için
+            cur_grl = c.execute("PRAGMA table_info(gonderim_rapor_log)").fetchall()
+            grl_kolonlar = {row[1] for row in cur_grl}
+            for kol, tip in [
+                ("icd_kodu", "TEXT"),
+                ("em_sgk_kodu", "TEXT"),
+                ("em_adi", "TEXT"),
+            ]:
+                if kol not in grl_kolonlar:
+                    c.execute(f"ALTER TABLE gonderim_rapor_log ADD COLUMN {kol} {tip}")
+            # Yeni 4'lü indeks — kolonlar eklendiği için artık güvenli
+            c.execute(
+                "CREATE INDEX IF NOT EXISTS idx_grl_haber "
+                "ON gonderim_rapor_log(musteri_id, rapor_kodu, em_sgk_kodu, bitis_tarihi)"
             )
 
     # -----------------------------------------------------------------
@@ -416,37 +439,50 @@ class MesajKuyrugu:
         self,
         musteri_id: int,
         hasta_adi: str,
-        raporlar: list,
+        combinations: list,
         tur: str = "rapor_bitis",
         gonderim_id: Optional[int] = None,
         zaman: Optional[str] = None,
     ) -> int:
-        """Mesaja dahil edilen her rapor için gonderim_rapor_log'a kayıt at.
+        """Mesaja dahil edilen her (tanı × etken_madde × bitis) kombinasyonu
+        için gonderim_rapor_log'a kayıt at.
 
-        raporlar: [{rapor_id, rapor_kodu, bitis_tarihi}, ...]
+        combinations: [{rapor_id, rapor_kodu, icd_kodu, em_sgk_kodu,
+                        em_adi, bitis_tarihi}, ...]
+        Arşiv anahtarı: (musteri_id, rapor_kodu, em_sgk_kodu, bitis_tarihi)
+        Aynı hastanın aynı hastalık+etken_madde için FARKLI bitis_tarihi
+        olan başka bir raporu varsa tekrar listeye gelir (farklı anahtar).
+
         Dönüş: eklenen satır sayısı.
         """
-        if not musteri_id or not raporlar:
+        if not musteri_id or not combinations:
             return 0
         zaman = zaman or datetime.now().isoformat(timespec="seconds")
         eklendi = 0
         with self._conn() as c:
-            for r in raporlar:
-                rid = r.get("rapor_id") if isinstance(r, dict) else None
-                if not rid:
+            for r in combinations:
+                if not isinstance(r, dict):
+                    continue
+                rapor_kodu = (r.get("rapor_kodu") or "").strip()
+                bitis = (str(r.get("bitis_tarihi") or "")[:10])
+                # En azından rapor_kodu veya bitis olmalı
+                if not (rapor_kodu or bitis):
                     continue
                 c.execute(
                     "INSERT INTO gonderim_rapor_log "
                     "(gonderim_id, musteri_id, hasta_adi, rapor_id, rapor_kodu, "
-                    "bitis_tarihi, zaman, tur, sonuc) "
-                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    "icd_kodu, em_sgk_kodu, em_adi, bitis_tarihi, zaman, tur, sonuc) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         gonderim_id,
                         int(musteri_id),
                         hasta_adi or "",
-                        str(rid),
-                        (r.get("rapor_kodu") or "") if isinstance(r, dict) else "",
-                        (str(r.get("bitis_tarihi") or "")[:10]) if isinstance(r, dict) else "",
+                        str(r.get("rapor_id") or ""),
+                        rapor_kodu,
+                        (r.get("icd_kodu") or "").strip(),
+                        (r.get("em_sgk_kodu") or "").strip(),
+                        (r.get("em_adi") or "").strip(),
+                        bitis,
                         zaman,
                         tur,
                         "OK",
@@ -456,36 +492,40 @@ class MesajKuyrugu:
         return eklendi
 
     def gonderilmis_raporlar_seti(self) -> set:
-        """Yerel DB'de (gonderim_rapor_log) kaydı olan tüm
-        (musteri_id, rapor_id, bitis_tarihi) üçlülerini döndür.
+        """(musteri_id, rapor_kodu, em_sgk_kodu, bitis_tarihi) 4'lülerini döndür.
 
-        Rapor bitiş listesinden gönderilmişleri gizlemek için kullanılır.
+        4'lü anahtar: hastanın hangi (hastalık, etken_madde, bitis_tarihi)
+        kombinasyonları için mesaj atılmış — filtreleme bunun üzerinden.
         """
         sonuc: set = set()
         with self._conn() as c:
             for r in c.execute(
-                "SELECT musteri_id, rapor_id, bitis_tarihi FROM gonderim_rapor_log"
+                "SELECT musteri_id, rapor_kodu, em_sgk_kodu, bitis_tarihi "
+                "FROM gonderim_rapor_log"
             ).fetchall():
-                rid = str(r["rapor_id"] or "").strip()
+                rk = (r["rapor_kodu"] or "").strip()
+                em_sgk = (r["em_sgk_kodu"] or "").strip()
                 bitis = (r["bitis_tarihi"] or "")[:10]
-                sonuc.add((int(r["musteri_id"]), rid, bitis))
+                sonuc.add((int(r["musteri_id"]), rk, em_sgk, bitis))
         return sonuc
 
     def gonderilmis_raporlar_tarih_haritasi(self) -> dict:
-        """(musteri_id, rapor_id, bitis_tarihi) -> en son gönderim zamanı.
+        """(musteri_id, rapor_kodu, em_sgk_kodu, bitis_tarihi) -> en son
+        gönderim zamanı.
 
-        Toggle kapalıyken gönderilmiş raporları 'gri + tarih' olarak
-        göstermek için kullanılır.
+        Gönderilmiş satırları 'gri + tarih' olarak göstermek için.
         """
         harita: dict = {}
         with self._conn() as c:
             for r in c.execute(
-                "SELECT musteri_id, rapor_id, bitis_tarihi, MAX(zaman) AS zaman "
-                "FROM gonderim_rapor_log GROUP BY musteri_id, rapor_id, bitis_tarihi"
+                "SELECT musteri_id, rapor_kodu, em_sgk_kodu, bitis_tarihi, "
+                "MAX(zaman) AS zaman FROM gonderim_rapor_log "
+                "GROUP BY musteri_id, rapor_kodu, em_sgk_kodu, bitis_tarihi"
             ).fetchall():
-                rid = str(r["rapor_id"] or "").strip()
+                rk = (r["rapor_kodu"] or "").strip()
+                em_sgk = (r["em_sgk_kodu"] or "").strip()
                 bitis = (r["bitis_tarihi"] or "")[:10]
-                harita[(int(r["musteri_id"]), rid, bitis)] = (r["zaman"] or "")[:16]
+                harita[(int(r["musteri_id"]), rk, em_sgk, bitis)] = (r["zaman"] or "")[:16]
         return harita
 
     def bekleyen_yeni_alimla_guncelle(self) -> int:
@@ -1201,15 +1241,10 @@ class MesajKuyrugu:
         if not satirlar:
             return ilac_mesaji, False, []
 
-        # Daha önce (birleşik veya tek başına) mesaj atılmış raporları çıkar
-        if gonderilmis_seti:
-            def _gonderilmis(s):
-                rid = str(s.get("rapor_id") or "")
-                bitis = str(s.get("bitis") or "")[:10]
-                return (int(musteri_id), rid, bitis) in gonderilmis_seti
-            satirlar = [s for s in satirlar if not _gonderilmis(s)]
-            if not satirlar:
-                return ilac_mesaji, False, []
+        # Daha önce (birleşik veya tek başına) mesaj atılmış (rapor_kodu,
+        # em, bitis) kombinasyonlarını çıkar. Bir tanı satırının TÜM em
+        # kombinasyonları arşivlenmişse o tanı atılır; aksi takdirde
+        # em'leri inceleme aşağıda (rapor_id → em_map) yapılır.
 
         # Yenilenmiş raporları çıkar
         try:
@@ -1258,6 +1293,40 @@ class MesajKuyrugu:
             il_map[rid] = d.get("ilaclar") or []
             gecerli_rids.add(rid)
 
+        # Arşiv filtresi: (mid, rapor_kodu, em_sgk, bitis) arşivde ise o
+        # (tanı × em) kombinasyonu mesaja dahil edilmez. Bir rid'in TÜM
+        # kombinasyonları arşivlenmişse rid tamamen atlanır.
+        mid_int = int(musteri_id)
+        if gonderilmis_seti:
+            filtrelenmis_rids = set()
+            for rid in gecerli_rids:
+                em_list = em_map.get(rid, [])
+                aktif_em = [em for em in em_list if not em.get("yenilenmis")]
+                rid_tanilari = [s for s in satirlar if s.get("rapor_id") == rid]
+                # Bu rid için en az bir (tanı × em) kombinasyonu arşivde
+                # DEĞİLSE rid'i tut; hepsi arşivde ise at.
+                kalan_var = False
+                for t in rid_tanilari:
+                    rapor_kodu = (t.get("rapor_kodu") or "").strip()
+                    bitis = str(t.get("bitis") or "")[:10]
+                    if aktif_em:
+                        for em in aktif_em:
+                            em_sgk = (em.get("sgk_kodu") or "").strip()
+                            if (mid_int, rapor_kodu, em_sgk, bitis) not in gonderilmis_seti:
+                                kalan_var = True
+                                break
+                        if kalan_var:
+                            break
+                    else:
+                        if (mid_int, rapor_kodu, "", bitis) not in gonderilmis_seti:
+                            kalan_var = True
+                            break
+                if kalan_var:
+                    filtrelenmis_rids.add(rid)
+            gecerli_rids = filtrelenmis_rids
+            if not gecerli_rids:
+                return ilac_mesaji, False, []
+
         gecerli_satirlar = [s for s in satirlar if s.get("rapor_id") in gecerli_rids]
         if not gecerli_satirlar:
             return ilac_mesaji, False, []
@@ -1276,21 +1345,37 @@ class MesajKuyrugu:
             rapor_govde = rapor_govde[: -len(ec_ad)].rstrip()
 
         birlesik = ilac_mesaji.rstrip() + "\n\n" + rapor_govde.strip() + "\n"
-        # Log kaydı için rapor bazlı özet: (rapor_id -> en geç bitiş)
-        # bir rapor_id birden fazla tanı satırında yer alabilir; bitiş sadece bir
-        dahil = []
-        gorulen_rid = set()
-        for s in gecerli_satirlar:
-            rid = s.get("rapor_id")
-            if not rid or rid in gorulen_rid:
-                continue
-            gorulen_rid.add(rid)
-            dahil.append({
-                "rapor_id": rid,
-                "rapor_kodu": s.get("rapor_kodu") or "",
-                "bitis_tarihi": str(s.get("bitis") or "")[:10],
-            })
-        return birlesik, True, dahil
+        # Log için: her (tanı × aktif_em) kombinasyonu için bir kayıt.
+        # Arşiv anahtarı (mid, rapor_kodu, em_sgk, bitis).
+        combinations = []
+        for rid in gecerli_rids:
+            em_list = em_map.get(rid, [])
+            aktif_em = [em for em in em_list if not em.get("yenilenmis")]
+            rid_tanilari = [s for s in gecerli_satirlar if s.get("rapor_id") == rid]
+            for t in rid_tanilari:
+                rapor_kodu = (t.get("rapor_kodu") or "").strip()
+                icd_kodu = (t.get("icd_kodu") or "").strip()
+                bitis = str(t.get("bitis") or "")[:10]
+                if aktif_em:
+                    for em in aktif_em:
+                        combinations.append({
+                            "rapor_id": rid,
+                            "rapor_kodu": rapor_kodu,
+                            "icd_kodu": icd_kodu,
+                            "em_sgk_kodu": (em.get("sgk_kodu") or "").strip(),
+                            "em_adi": em.get("etkin_madde") or "",
+                            "bitis_tarihi": bitis,
+                        })
+                else:
+                    combinations.append({
+                        "rapor_id": rid,
+                        "rapor_kodu": rapor_kodu,
+                        "icd_kodu": icd_kodu,
+                        "em_sgk_kodu": "",
+                        "em_adi": "",
+                        "bitis_tarihi": bitis,
+                    })
+        return birlesik, True, combinations
 
     # mesaj_olustur tarafından eklenen gün etiketlerini eşler:
     # " (bugün)", " (yarın)", " (dün)", " (N gün önce)", " (N gün sonra)"
