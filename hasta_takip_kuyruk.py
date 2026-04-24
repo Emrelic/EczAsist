@@ -94,6 +94,11 @@ class HastaTakipAyarlari:
     # ilaçlar listelenmez. Varsayılan False.
     haber_verilenleri_gizle_yerel: bool = False
 
+    # Rapor bitiş takibinde daha önce mesaj atılmış raporları gizle: True
+    # iken (musteri_id, rapor_id, bitis_tarihi) için gonderim_rapor_log'da
+    # kayıt varsa listeden düşer. Varsayılan True (önerilen davranış).
+    rapor_haber_verilenleri_gizle_yerel: bool = True
+
     # Daha önce "gönderildi" olarak işaretlenmiş kuyruk kayıtlarını ana
     # listede tekrar göster (yeşil satır). Varsayılan False.
     gonderilenleri_goster: bool = False
@@ -154,6 +159,15 @@ class HastaTakipAyarlari:
         "{ilaclar_numarali}\n"
         "isimli {ilac_iyelik} kullanabilmek için raporunuzu "
         "yenilemeniz gerekmektedir.\n"
+    )
+    # Geçmişte biten raporlar için format (kalan_gun negatifse kullanılır).
+    # {gecmis_gun} = abs(kalan_gun) — mesajda "X gün önce" şeklinde yer alır.
+    rapor_bitis_rapor_formati_gecmis: str = (
+        "Aşağıdaki \"ilaç\" raporunuz {gecmis_gun} gün önce bitmiştir.\n"
+        "{rapor_adi} raporu\n\n"
+        "{ilaclar_numarali}\n"
+        "isimli {ilac_iyelik} kullanabilmek için en kısa zamanda "
+        "raporunuzu yenilemeniz gerekmektedir.\n"
     )
     # (Eski alan geriye-uyum icin korunuyor — yeni akis kullanmaz)
     rapor_bitis_tani_satir_formati: str = (
@@ -253,6 +267,24 @@ class MesajKuyrugu:
                 );
                 CREATE INDEX IF NOT EXISTS idx_gil_haber
                     ON gonderim_ilac_log(musteri_id, urun_adi, bitis_tarihi);
+
+                -- Rapor bazlı gönderim kaydı: aynı (hasta, rapor_id, bitiş)
+                -- için mesaj atıldıysa rapor bitiş listesinde tekrar çıkmaz.
+                -- tur: 'rapor_bitis' (tek başına) | 'birlesik' (ilaç+rapor)
+                CREATE TABLE IF NOT EXISTS gonderim_rapor_log (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    gonderim_id   INTEGER,
+                    musteri_id    INTEGER NOT NULL,
+                    hasta_adi     TEXT,
+                    rapor_id      TEXT NOT NULL,
+                    rapor_kodu    TEXT,
+                    bitis_tarihi  TEXT,
+                    zaman         TEXT NOT NULL,
+                    tur           TEXT NOT NULL DEFAULT 'rapor_bitis',
+                    sonuc         TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_grl_haber
+                    ON gonderim_rapor_log(musteri_id, rapor_id, bitis_tarihi);
                 """
             )
             # Migration: eski şemaya isaret/not_metni eklensin
@@ -376,6 +408,85 @@ class MesajKuyrugu:
                 bitis = (r["bitis_tarihi"] or "")[:10]
                 sonuc.add((int(r["musteri_id"]), urun, bitis))
         return sonuc
+
+    # -----------------------------------------------------------------
+    # Rapor bazlı gönderim log (gonderim_rapor_log)
+    # -----------------------------------------------------------------
+    def rapor_gonderim_kaydet(
+        self,
+        musteri_id: int,
+        hasta_adi: str,
+        raporlar: list,
+        tur: str = "rapor_bitis",
+        gonderim_id: Optional[int] = None,
+        zaman: Optional[str] = None,
+    ) -> int:
+        """Mesaja dahil edilen her rapor için gonderim_rapor_log'a kayıt at.
+
+        raporlar: [{rapor_id, rapor_kodu, bitis_tarihi}, ...]
+        Dönüş: eklenen satır sayısı.
+        """
+        if not musteri_id or not raporlar:
+            return 0
+        zaman = zaman or datetime.now().isoformat(timespec="seconds")
+        eklendi = 0
+        with self._conn() as c:
+            for r in raporlar:
+                rid = r.get("rapor_id") if isinstance(r, dict) else None
+                if not rid:
+                    continue
+                c.execute(
+                    "INSERT INTO gonderim_rapor_log "
+                    "(gonderim_id, musteri_id, hasta_adi, rapor_id, rapor_kodu, "
+                    "bitis_tarihi, zaman, tur, sonuc) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    (
+                        gonderim_id,
+                        int(musteri_id),
+                        hasta_adi or "",
+                        str(rid),
+                        (r.get("rapor_kodu") or "") if isinstance(r, dict) else "",
+                        (str(r.get("bitis_tarihi") or "")[:10]) if isinstance(r, dict) else "",
+                        zaman,
+                        tur,
+                        "OK",
+                    ),
+                )
+                eklendi += 1
+        return eklendi
+
+    def gonderilmis_raporlar_seti(self) -> set:
+        """Yerel DB'de (gonderim_rapor_log) kaydı olan tüm
+        (musteri_id, rapor_id, bitis_tarihi) üçlülerini döndür.
+
+        Rapor bitiş listesinden gönderilmişleri gizlemek için kullanılır.
+        """
+        sonuc: set = set()
+        with self._conn() as c:
+            for r in c.execute(
+                "SELECT musteri_id, rapor_id, bitis_tarihi FROM gonderim_rapor_log"
+            ).fetchall():
+                rid = str(r["rapor_id"] or "").strip()
+                bitis = (r["bitis_tarihi"] or "")[:10]
+                sonuc.add((int(r["musteri_id"]), rid, bitis))
+        return sonuc
+
+    def gonderilmis_raporlar_tarih_haritasi(self) -> dict:
+        """(musteri_id, rapor_id, bitis_tarihi) -> en son gönderim zamanı.
+
+        Toggle kapalıyken gönderilmiş raporları 'gri + tarih' olarak
+        göstermek için kullanılır.
+        """
+        harita: dict = {}
+        with self._conn() as c:
+            for r in c.execute(
+                "SELECT musteri_id, rapor_id, bitis_tarihi, MAX(zaman) AS zaman "
+                "FROM gonderim_rapor_log GROUP BY musteri_id, rapor_id, bitis_tarihi"
+            ).fetchall():
+                rid = str(r["rapor_id"] or "").strip()
+                bitis = (r["bitis_tarihi"] or "")[:10]
+                harita[(int(r["musteri_id"]), rid, bitis)] = (r["zaman"] or "")[:16]
+        return harita
 
     def bekleyen_yeni_alimla_guncelle(self) -> int:
         """Kuyrukta bekleyen ilaçları, Botanik DB'deki en güncel alımla doğrula.
@@ -1008,21 +1119,34 @@ class MesajKuyrugu:
             rapor_ozet = ", ".join(ozet_parcalar) if ozet_parcalar else "—"
             rapor_adi = MesajKuyrugu._tr_ve_birlestir(kisa_adlar) or rapor_ozet
 
-            fmt = getattr(ayarlar, "rapor_bitis_rapor_formati", None) or (
-                "Aşağıdaki \"ilaç\" raporunuz {kalan_gun} gün sonra bitmektedir.\n"
-                "{rapor_adi} raporu\n\n"
-                "{ilaclar_numarali}\n"
-                "isimli {ilac_iyelik} kullanabilmek için raporunuzu "
-                "yenilemeniz gerekmektedir.\n"
-            )
+            # Bitişi geçmiş (kalan_gun < 0) raporlar için ayrı şablon kullan
+            kalan_deger = g["kalan"]
+            if kalan_deger is not None and kalan_deger < 0:
+                fmt = getattr(ayarlar, "rapor_bitis_rapor_formati_gecmis", None) or (
+                    "Aşağıdaki \"ilaç\" raporunuz {gecmis_gun} gün önce bitmiştir.\n"
+                    "{rapor_adi} raporu\n\n"
+                    "{ilaclar_numarali}\n"
+                    "isimli {ilac_iyelik} kullanabilmek için en kısa zamanda "
+                    "raporunuzu yenilemeniz gerekmektedir.\n"
+                )
+            else:
+                fmt = getattr(ayarlar, "rapor_bitis_rapor_formati", None) or (
+                    "Aşağıdaki \"ilaç\" raporunuz {kalan_gun} gün sonra bitmektedir.\n"
+                    "{rapor_adi} raporu\n\n"
+                    "{ilaclar_numarali}\n"
+                    "isimli {ilac_iyelik} kullanabilmek için raporunuzu "
+                    "yenilemeniz gerekmektedir.\n"
+                )
             # Placeholder esnekliği: eski şablondaki {rapor_ozet}/{ilaclar}/{bitis}
-            # yerlerini de doldurmaya devam et
+            # ve yeni {gecmis_gun} — hepsini doldur
+            gecmis_gun = abs(kalan_deger) if (kalan_deger is not None and kalan_deger < 0) else ""
             try:
                 satirlar.append(fmt.format(
                     rapor_adi=rapor_adi,
                     rapor_ozet=rapor_ozet,
                     bitis=g["bitis"] or "",
-                    kalan_gun=g["kalan"] if g["kalan"] is not None else "",
+                    kalan_gun=kalan_deger if kalan_deger is not None else "",
+                    gecmis_gun=gecmis_gun,
                     ilaclar=ilac_metin,
                     ilaclar_kisa=ilaclar_kisa,
                     ilaclar_numarali=ilaclar_numarali,
@@ -1048,16 +1172,22 @@ class MesajKuyrugu:
         hasta_adi: str,
         hasta_db,
         ayarlar: "HastaTakipAyarlari",
+        gonderilmis_seti: Optional[set] = None,
     ) -> tuple:
         """İlaç mesajının sonuna, hastanın bitişi yaklaşan raporlarının
         bilgisini ekle. 'ilac_rapor_birlesik' ayarı açıksa kullanılır.
 
         Sadece YENİLENMEMİŞ (başka raporda daha geç bitişle kapsanmayan)
-        rapor satırları işlenir. Dönüş: (birlesik_mesaj, rapor_eklendi_mi).
-        Rapor yoksa orijinal mesaj, False döner.
+        rapor satırları işlenir. Eğer `gonderilmis_seti` verilirse, o sette
+        bulunan (musteri_id, rapor_id, bitis) üçlüsüne sahip raporlar
+        mesaja dahil edilmez (aynı rapor için tekrar mesaj atmayı önler).
+
+        Dönüş: (birlesik_mesaj, rapor_eklendi_mi, dahil_edilen_raporlar)
+          dahil_edilen_raporlar: [{rapor_id, rapor_kodu, bitis_tarihi}, ...]
+        Rapor yoksa orijinal mesaj, False, [] döner.
         """
         if hasta_db is None or not musteri_id:
-            return ilac_mesaji, False
+            return ilac_mesaji, False, []
         try:
             tum = hasta_db.yaklasan_rapor_bitisleri(
                 uyari_gun=int(ayarlar.rapor_bitis_uyari_gun or 30),
@@ -1066,10 +1196,20 @@ class MesajKuyrugu:
                 eski_gun=0,
             )
         except Exception:
-            return ilac_mesaji, False
+            return ilac_mesaji, False, []
         satirlar = [r for r in tum if r.get("musteri_id") == musteri_id]
         if not satirlar:
-            return ilac_mesaji, False
+            return ilac_mesaji, False, []
+
+        # Daha önce (birleşik veya tek başına) mesaj atılmış raporları çıkar
+        if gonderilmis_seti:
+            def _gonderilmis(s):
+                rid = str(s.get("rapor_id") or "")
+                bitis = str(s.get("bitis") or "")[:10]
+                return (int(musteri_id), rid, bitis) in gonderilmis_seti
+            satirlar = [s for s in satirlar if not _gonderilmis(s)]
+            if not satirlar:
+                return ilac_mesaji, False, []
 
         # Yenilenmiş raporları çıkar
         try:
@@ -1120,7 +1260,7 @@ class MesajKuyrugu:
 
         gecerli_satirlar = [s for s in satirlar if s.get("rapor_id") in gecerli_rids]
         if not gecerli_satirlar:
-            return ilac_mesaji, False
+            return ilac_mesaji, False, []
 
         rapor_bolumu = MesajKuyrugu.rapor_bitis_mesaji_olustur(
             hasta_adi, gecerli_satirlar, em_map, il_map, ayarlar,
@@ -1136,7 +1276,21 @@ class MesajKuyrugu:
             rapor_govde = rapor_govde[: -len(ec_ad)].rstrip()
 
         birlesik = ilac_mesaji.rstrip() + "\n\n" + rapor_govde.strip() + "\n"
-        return birlesik, True
+        # Log kaydı için rapor bazlı özet: (rapor_id -> en geç bitiş)
+        # bir rapor_id birden fazla tanı satırında yer alabilir; bitiş sadece bir
+        dahil = []
+        gorulen_rid = set()
+        for s in gecerli_satirlar:
+            rid = s.get("rapor_id")
+            if not rid or rid in gorulen_rid:
+                continue
+            gorulen_rid.add(rid)
+            dahil.append({
+                "rapor_id": rid,
+                "rapor_kodu": s.get("rapor_kodu") or "",
+                "bitis_tarihi": str(s.get("bitis") or "")[:10],
+            })
+        return birlesik, True, dahil
 
     # mesaj_olustur tarafından eklenen gün etiketlerini eşler:
     # " (bugün)", " (yarın)", " (dün)", " (N gün önce)", " (N gün sonra)"

@@ -849,16 +849,28 @@ class HastaTakipGUI:
 
         tk.Label(top, text="Bitişe kalan (gün):", bg="white").pack(side="left")
         self.var_rb_gun = tk.IntVar(value=self.ayarlar.rapor_bitis_uyari_gun)
-        tk.Spinbox(top, from_=0, to=365, width=5, textvariable=self.var_rb_gun).pack(side="left", padx=4)
+        # Negatif değer girilebilir: -30 → en geç bitiş 30 gün ÖNCE
+        tk.Spinbox(top, from_=-365, to=365, width=6, textvariable=self.var_rb_gun).pack(side="left", padx=4)
 
         tk.Label(top, text="   Geçmişten geri (gün):", bg="white").pack(side="left", padx=(10, 0))
         self.var_rb_geri = tk.IntVar(value=0)
-        tk.Spinbox(top, from_=0, to=90, width=5, textvariable=self.var_rb_geri).pack(side="left", padx=4)
+        # Geniş aralık: geçmişten 365 güne kadar rapor çek
+        tk.Spinbox(top, from_=0, to=365, width=5, textvariable=self.var_rb_geri).pack(side="left", padx=4)
 
         self.var_rb_takipli = tk.BooleanVar(value=False)
         self.var_rb_telefonlu = tk.BooleanVar(value=False)
         tk.Checkbutton(top, text="Sadece takipli", variable=self.var_rb_takipli, bg="white").pack(side="left", padx=(10, 0))
         tk.Checkbutton(top, text="Sadece telefonu olanlar", variable=self.var_rb_telefonlu, bg="white").pack(side="left", padx=(6, 0))
+
+        # Haber verilenleri gizle toggle (rapor bitiş için)
+        self.var_rb_haber_gizle = tk.BooleanVar(
+            value=bool(getattr(self.ayarlar, "rapor_haber_verilenleri_gizle_yerel", True))
+        )
+        tk.Checkbutton(
+            top, text="📬 Gönderilmişleri gizle",
+            variable=self.var_rb_haber_gizle, bg="white",
+            command=self._rb_haber_gizle_degisti,
+        ).pack(side="left", padx=(10, 0))
 
         tk.Button(
             top, text="🔄 Listele", command=self._rapor_bitis_yukle,
@@ -1372,16 +1384,25 @@ class HastaTakipGUI:
             return
         metin = m["mesaj_metni"]
         self._son_birlesik_mi = False
+        self._son_birlesik_raporlar: list = []
         # Birleşik mesaj ayarı açıksa rapor bilgisini ekle
         if getattr(self.ayarlar, "ilac_rapor_birlesik", False):
             try:
                 if self.db is None:
                     self.db = HastaTakipDB()
-                metin, birlesti = MesajKuyrugu.ilac_mesajina_rapor_ek(
+                # Zaten rapor bitiş mesajı atılmış raporları ekleme
+                gonderilmis_seti = set()
+                if getattr(self.ayarlar, "rapor_haber_verilenleri_gizle_yerel", True):
+                    try:
+                        gonderilmis_seti = self.kuyruk.gonderilmis_raporlar_seti()
+                    except Exception:
+                        gonderilmis_seti = set()
+                metin, birlesti, dahil = MesajKuyrugu.ilac_mesajina_rapor_ek(
                     metin, m.get("musteri_id"), m.get("hasta_adi") or "",
-                    self.db, self.ayarlar,
+                    self.db, self.ayarlar, gonderilmis_seti=gonderilmis_seti,
                 )
                 self._son_birlesik_mi = bool(birlesti)
+                self._son_birlesik_raporlar = dahil or []
             except Exception as e:
                 logger.warning("İlaç+Rapor birleşik mesaj hatası: %s", e)
         self.txt_mesaj.delete("1.0", "end")
@@ -1465,7 +1486,8 @@ class HastaTakipGUI:
             pass
 
         chrome_acildi = self._chrome_ile_ac(url)
-        isaret = "💊+📑 İlaç & Rapor" if getattr(self, "_son_birlesik_mi", False) else "💊 İlaç"
+        birlesik_mi = getattr(self, "_son_birlesik_mi", False)
+        isaret = "💊+📑 İlaç & Rapor" if birlesik_mi else "💊 İlaç"
         try:
             self.kuyruk.gonderildi_isaretle(
                 kid, "MESAJ GONDERILDI", manuel=True, isaret=isaret,
@@ -1474,6 +1496,17 @@ class HastaTakipGUI:
             logger.exception("gonderildi_isaretle hatası")
             messagebox.showerror("Hata", f"Kayıt işaretlenemedi: {e}")
             return
+        # Birleşik mesajsa dahil edilen raporları log'a yaz
+        if birlesik_mi and getattr(self, "_son_birlesik_raporlar", None):
+            try:
+                self.kuyruk.rapor_gonderim_kaydet(
+                    musteri_id=m.get("musteri_id"),
+                    hasta_adi=m.get("hasta_adi") or "",
+                    raporlar=self._son_birlesik_raporlar,
+                    tur="birlesik",
+                )
+            except Exception as e:
+                logger.exception("birlesik rapor_gonderim_kaydet hatası: %s", e)
         self._kuyruktan_yukle()
         ek = "" if chrome_acildi else " (Chrome bulunamadı — varsayılan tarayıcı açıldı)"
         self.durum_bar.config(
@@ -2068,6 +2101,25 @@ class HastaTakipGUI:
         # Yenilenmiş raporların tanı satırlarını at
         sonuc = [r for r in sonuc if not rapor_yenilenmis.get(r.get("rapor_id"))]
 
+        # Gönderilmiş raporları işle: toggle AÇIK → tamamen gizle,
+        # toggle KAPALI → listele ama "gönderildi" tag + tarih etiketi
+        try:
+            gonderilmis_harita = self.kuyruk.gonderilmis_raporlar_tarih_haritasi()
+        except Exception:
+            gonderilmis_harita = {}
+        gizle_toggle = bool(getattr(self.ayarlar, "rapor_haber_verilenleri_gizle_yerel", True))
+        if gizle_toggle and gonderilmis_harita:
+            sonuc = [
+                r for r in sonuc
+                if (int(r.get("musteri_id") or 0), str(r.get("rapor_id") or ""),
+                    str(r.get("bitis") or "")[:10]) not in gonderilmis_harita
+            ]
+        # Her satıra "gönderildi zamanı" ekle (tag için)
+        for r in sonuc:
+            k = (int(r.get("musteri_id") or 0), str(r.get("rapor_id") or ""),
+                 str(r.get("bitis") or "")[:10])
+            r["_gonderildi_zaman"] = gonderilmis_harita.get(k, "")
+
         self._rb_sonuc = sonuc
         # Hasta bazında grupla
         gruplu: dict = {}
@@ -2078,22 +2130,34 @@ class HastaTakipGUI:
         for i in self.tv_rb.get_children():
             self.tv_rb.delete(i)
 
+        # Gönderilmişleri görselleştirmek için tag
+        self.tv_rb.tag_configure("gonderildi_rapor", foreground="#9E9E9E")
+
         for mid, satirlar in gruplu.items():
             ilk = satirlar[0]
             en_yakin = min((str(s.get("bitis") or "") for s in satirlar if s.get("bitis")), default="")
             en_yakin_kalan = min((s.get("kalan_gun") for s in satirlar if s.get("kalan_gun") is not None), default="")
+            # Hastanın TÜM raporları gönderilmişse satırı gri göster + etiket
+            tum_gonderilmis = all(s.get("_gonderildi_zaman") for s in satirlar)
+            tags = ("gonderildi_rapor",) if tum_gonderilmis else ()
+            hasta_goster = ilk.get("hasta_adi") or ""
+            if tum_gonderilmis:
+                son_zaman = max((s.get("_gonderildi_zaman") or "") for s in satirlar)
+                tarih_kisa = (son_zaman or "")[:10]
+                hasta_goster = f"{hasta_goster}  ✅ {tarih_kisa}"
             self.tv_rb.insert("", "end", iid=str(mid), values=(
-                ilk.get("hasta_adi") or "",
+                hasta_goster,
                 ilk.get("tckn") or "-",
                 ilk.get("cep_tel") or "-",
                 len(satirlar),
                 (en_yakin or "")[:10],
                 en_yakin_kalan,
                 "Evet" if ilk.get("takipli") else "Hayır",
-            ))
+            ), tags=tags)
 
+        ek = " (gönderilmişler gizli)" if gizle_toggle else ""
         self.lbl_rb_sayac.config(
-            text=f"Toplam: {len(gruplu)} hasta | {len(sonuc)} tanı satırı"
+            text=f"Toplam: {len(gruplu)} hasta | {len(sonuc)} tanı satırı{ek}"
         )
         self._progress_durdur(f"Rapor bitiş taraması tamam: {len(gruplu)} hasta")
 
@@ -2253,14 +2317,41 @@ class HastaTakipGUI:
             return
         url = f"https://wa.me/{tel}?text={urllib.parse.quote(mesaj)}"
         self._chrome_ile_ac(url)
-        # Log'a yaz
+        # Log'a yaz: genel gonderim_log + her rapor için gonderim_rapor_log
+        zaman = datetime.now().isoformat(timespec="seconds")
+        satirlar = self._rb_hasta_map.get(mid, [])
+        # Aktif hastaya ait tüm rapor_id'leri (bitiş tarihi ile) topla
+        rapor_listesi = []
+        gorulen_rid = set()
+        for s in satirlar:
+            rid = s.get("rapor_id")
+            if not rid or rid in gorulen_rid:
+                continue
+            gorulen_rid.add(rid)
+            rapor_listesi.append({
+                "rapor_id": rid,
+                "rapor_kodu": s.get("rapor_kodu") or "",
+                "bitis_tarihi": str(s.get("bitis") or "")[:10],
+            })
         with self.kuyruk._conn() as c:
-            c.execute(
+            cur = c.execute(
                 "INSERT INTO gonderim_log(musteri_id, hasta_adi, cep_tel, mesaj_metni, zaman, sonuc, isaret) "
                 "VALUES (?,?,?,?,?,?,?)",
                 (mid, ilk.get("hasta_adi"), tel, mesaj,
-                 datetime.now().isoformat(timespec="seconds"), "OK", "📑 Rapor Bitiş"),
+                 zaman, "OK", "📑 Rapor Bitiş"),
             )
+            gonderim_id = cur.lastrowid
+        try:
+            self.kuyruk.rapor_gonderim_kaydet(
+                musteri_id=mid,
+                hasta_adi=ilk.get("hasta_adi") or "",
+                raporlar=rapor_listesi,
+                tur="rapor_bitis",
+                gonderim_id=gonderim_id,
+                zaman=zaman,
+            )
+        except Exception as e:
+            logger.exception("rapor_gonderim_kaydet hatası: %s", e)
         self.durum_bar.config(text=f"✅ {ilk.get('hasta_adi')} için rapor bitiş mesajı WhatsApp Web'de açıldı.")
 
     def _rb_panoya(self):
@@ -2552,6 +2643,21 @@ class HastaTakipGUI:
             text=("🏠 Yerel log'daki haber verilenler gizlendi" if yeni
                   else "🏠 Yerel log filtresi kapalı")
         )
+
+    def _rb_haber_gizle_degisti(self):
+        """Rapor bitiş sekmesindeki 'Gönderilmişleri gizle' toggle değişti.
+        Ayarı kaydet ve mevcut listeyi yeniden çiz (DB'ye gitmez)."""
+        yeni = bool(self.var_rb_haber_gizle.get())
+        self.ayarlar.rapor_haber_verilenleri_gizle_yerel = yeni
+        try:
+            self.ayarlar.kaydet()
+        except Exception as e:
+            logger.debug(f"rapor_haber_verilenleri_gizle_yerel kaydedilemedi: {e}")
+        # Listeyi yeniden çek (filtre yeniden uygulansın)
+        try:
+            self._rapor_bitis_yukle()
+        except Exception:
+            pass
 
     def _haber_gizle_degisti(self):
         """'Haber verilenleri getirme' checkbox'ı değişince ayarı kaydet.
