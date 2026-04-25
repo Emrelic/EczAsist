@@ -93,12 +93,14 @@ class HastaTakipGUI:
         self.sekme_portfoy = self._sekme_portfoy_olustur()
         self.sekme_devamlilik = self._sekme_devamlilik_olustur()
         self.sekme_rapor_bitis = self._sekme_rapor_bitis_olustur()
+        self.sekme_dogum_gunu = self._sekme_dogum_gunu_olustur()
         self.sekme_log = self._sekme_log_olustur()
 
         self.notebook.add(self.sekme_yazdirma, text="📬 Yazdırma Günü Gelen")
         self.notebook.add(self.sekme_portfoy, text="📊 Hasta Portföyü")
         self.notebook.add(self.sekme_devamlilik, text="📅 Devamlılık")
         self.notebook.add(self.sekme_rapor_bitis, text="📑 Rapor Bitiş Takibi")
+        self.notebook.add(self.sekme_dogum_gunu, text="🎂 Doğum Günü")
         self.notebook.add(self.sekme_ayarlar, text="⚙ Ayarlar")
         self.notebook.add(self.sekme_log, text="🧾 Gönderim Log")
 
@@ -830,6 +832,23 @@ class HastaTakipGUI:
         self.txt_rb_tani_sablon.pack(fill="x")
         self.txt_rb_tani_sablon.insert("1.0", self.ayarlar.rapor_bitis_tani_satir_formati)
 
+        # Doğum günü şablonu
+        g8 = grup(
+            "Doğum Günü Mesaj Şablonu "
+            "(placeholders: {hasta_adi} {yas} {eczane_adi} {eczane_tel})"
+        )
+        self.txt_dg_sablon = tk.Text(g8, height=6, font=("Consolas", 10))
+        self.txt_dg_sablon.pack(fill="x")
+        self.txt_dg_sablon.insert(
+            "1.0",
+            getattr(
+                self.ayarlar, "dogum_gunu_mesaj_sablonu",
+                "Sayın {hasta_adi},\n\nDoğum gününüzü en içten dileklerimizle "
+                "kutlar, sağlıklı ve mutlu nice yıllar dileriz. 🎂\n\n"
+                "{eczane_adi}\n{eczane_tel}",
+            ),
+        )
+
         # Kaydet
         tk.Button(
             icerik, text="💾 Ayarları Kaydet", command=self._ayarlari_kaydet,
@@ -984,6 +1003,411 @@ class HastaTakipGUI:
         self._rb_sonuc: list = []     # ham tanı satırları
         self._rb_hasta_map: dict = {} # musteri_id -> tanı satırları
         return f
+
+    # ================================================================= SEKME DOGUM GUNU
+    def _sekme_dogum_gunu_olustur(self) -> tk.Frame:
+        """Bugün doğum günü olan hastaları listele; operatör tek tek
+        WhatsApp'tan kutlama mesajı gönderir."""
+        f = tk.Frame(self.notebook, bg="white")
+
+        # ---- Üst kontrol ----
+        top = tk.Frame(f, bg="white")
+        top.pack(fill="x", padx=10, pady=8)
+
+        tk.Button(
+            top, text="🔄 Listele", command=self._dogum_gunu_yukle,
+            bg="#1976D2", fg="white", bd=0, padx=14, pady=6,
+            font=("Arial", 10, "bold"),
+        ).pack(side="left")
+
+        tk.Label(top, text="  Geçmişten geri (gün):", bg="white").pack(side="left", padx=(12, 2))
+        self.var_dg_geri = tk.IntVar(value=0)
+        tk.Spinbox(
+            top, from_=0, to=14, width=4, textvariable=self.var_dg_geri,
+        ).pack(side="left")
+        tk.Label(
+            top, text="(0 = sadece bugün; geri kaçırılan günleri yakalamak için artır)",
+            bg="white", fg="#607D8B", font=("Arial", 8),
+        ).pack(side="left", padx=(4, 0))
+
+        self.var_dg_takipli = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            top, text="Sadece takipli", variable=self.var_dg_takipli, bg="white",
+        ).pack(side="left", padx=(12, 0))
+
+        self.var_dg_telefonlu = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            top, text="Sadece telefonu olanlar", variable=self.var_dg_telefonlu, bg="white",
+        ).pack(side="left", padx=(6, 0))
+
+        self.lbl_dg_sayac = tk.Label(top, text="", bg="white", fg="#455A64")
+        self.lbl_dg_sayac.pack(side="left", padx=12)
+
+        # ---- 2. satır: ziyaret/son geliş filtresi ----
+        filt = tk.Frame(f, bg="white")
+        filt.pack(fill="x", padx=10, pady=(0, 6))
+
+        tk.Label(filt, text="🔍 Ziyaret Filtresi:", bg="white",
+                 font=("Arial", 9, "bold"), fg="#1976D2").pack(side="left")
+
+        tk.Label(filt, text="  Son", bg="white").pack(side="left", padx=(8, 2))
+        self.var_dg_son_gun = tk.IntVar(value=0)
+        tk.Spinbox(
+            filt, from_=0, to=3650, increment=30, width=5,
+            textvariable=self.var_dg_son_gun,
+        ).pack(side="left")
+        tk.Label(filt, text="gün içinde gelmiş", bg="white").pack(side="left", padx=(2, 0))
+
+        self.var_dg_kombin = tk.StringVar(value="VEYA")
+        ttk.Combobox(
+            filt, state="readonly", width=6,
+            textvariable=self.var_dg_kombin, values=["VEYA", "VE"],
+        ).pack(side="left", padx=(10, 0))
+
+        tk.Label(filt, text="  En az", bg="white").pack(side="left", padx=(10, 2))
+        self.var_dg_min_ziyaret = tk.IntVar(value=0)
+        tk.Spinbox(
+            filt, from_=0, to=999, width=4,
+            textvariable=self.var_dg_min_ziyaret,
+        ).pack(side="left")
+        tk.Label(filt, text="kez gelmiş", bg="white").pack(side="left", padx=(2, 0))
+
+        tk.Label(
+            filt, text="  (0 = filtresiz · 'Listele' ile uygulanır)",
+            bg="white", fg="#607D8B", font=("Arial", 8),
+        ).pack(side="left", padx=(10, 0))
+
+        # Hızlı önayar düğmeleri
+        def _onayar(son_gun: int, min_z: int, mod: str = "VEYA"):
+            self.var_dg_son_gun.set(son_gun)
+            self.var_dg_min_ziyaret.set(min_z)
+            self.var_dg_kombin.set(mod)
+            self._dogum_gunu_yukle()
+
+        tk.Button(
+            filt, text="6 ay / 5 kez", bd=0, padx=8, pady=2,
+            bg="#ECEFF1", fg="#37474F", font=("Arial", 8),
+            command=lambda: _onayar(180, 5, "VEYA"),
+        ).pack(side="right", padx=(2, 0))
+        tk.Button(
+            filt, text="Temizle", bd=0, padx=8, pady=2,
+            bg="#ECEFF1", fg="#37474F", font=("Arial", 8),
+            command=lambda: _onayar(0, 0, "VEYA"),
+        ).pack(side="right", padx=(2, 0))
+
+        # ---- Bölme: sol liste, sağ mesaj önizleme ----
+        bol = tk.PanedWindow(f, orient="horizontal", sashrelief="raised", bg="white")
+        bol.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+        # Sol — hasta listesi
+        sol = tk.Frame(bol, bg="white")
+        bol.add(sol, minsize=480)
+
+        kolonlar = (
+            "hasta", "tel", "dogum_tarihi", "yas",
+            "ziyaret", "son_gelis", "takipli", "durum",
+        )
+        self.tv_dg = ttk.Treeview(
+            sol, columns=kolonlar, show="headings", selectmode="browse",
+        )
+        for kol, baslik, gen in [
+            ("hasta", "Hasta Adı", 220),
+            ("tel", "Telefon", 100),
+            ("dogum_tarihi", "Doğum Tarihi", 95),
+            ("yas", "Yaş", 45),
+            ("ziyaret", "Ziyaret", 60),
+            ("son_gelis", "Son Geliş", 110),
+            ("takipli", "Takipli", 55),
+            ("durum", "Durum", 105),
+        ]:
+            self.tv_dg.heading(kol, text=baslik)
+            self.tv_dg.column(kol, width=gen, anchor="w" if kol == "hasta" else "center")
+
+        sb_dg = ttk.Scrollbar(sol, orient="vertical", command=self.tv_dg.yview)
+        self.tv_dg.configure(yscrollcommand=sb_dg.set)
+        self.tv_dg.pack(side="left", fill="both", expand=True)
+        sb_dg.pack(side="right", fill="y")
+
+        # Renk: gönderilmiş satırlar yeşil
+        self.tv_dg.tag_configure("gonderildi", background="#C8E6C9")
+        self.tv_dg.tag_configure("telefonsuz", background="#FFE0B2")
+
+        self.tv_dg.bind("<<TreeviewSelect>>", lambda e: self._dogum_gunu_secim_degisti())
+        self.tv_dg.bind("<Double-1>", lambda e: self._dogum_gunu_wa_ac())
+
+        # Sağ — mesaj önizleme
+        sag = tk.Frame(bol, bg="white")
+        bol.add(sag, minsize=380)
+
+        tk.Label(
+            sag, text="Mesaj Önizleme", bg="white",
+            font=("Arial", 10, "bold"), fg="#1976D2",
+        ).pack(anchor="w", padx=8, pady=(2, 4))
+
+        self.txt_dg_mesaj = tk.Text(sag, height=14, font=("Consolas", 10), wrap="word")
+        self.txt_dg_mesaj.pack(fill="both", expand=True, padx=8)
+
+        # Alt buton bar
+        alt = tk.Frame(sag, bg="white")
+        alt.pack(fill="x", padx=8, pady=8)
+
+        tk.Button(
+            alt, text="📱 WhatsApp ile Gönder",
+            command=self._dogum_gunu_wa_ac,
+            bg="#25D366", fg="white", bd=0, padx=14, pady=8,
+            font=("Arial", 10, "bold"),
+        ).pack(side="left")
+
+        tk.Button(
+            alt, text="📋 Kopyala",
+            command=self._dogum_gunu_kopyala,
+            bg="#546E7A", fg="white", bd=0, padx=10, pady=8,
+        ).pack(side="left", padx=6)
+
+        tk.Button(
+            alt, text="↻ Şablondan Tazele",
+            command=self._dogum_gunu_mesaj_yenile,
+            bg="#90A4AE", fg="white", bd=0, padx=10, pady=8,
+        ).pack(side="left", padx=6)
+
+        # Bilgi notu
+        tk.Label(
+            sag,
+            text="ℹ Gönderilen mesajlar 🧾 Gönderim Log sekmesinde görünür.",
+            bg="white", fg="#607D8B", font=("Arial", 8),
+            wraplength=380, justify="left",
+        ).pack(anchor="w", padx=8, pady=(0, 6))
+
+        # State
+        self._dg_kayitlar: list = []      # Listelenen ham kayıtlar
+        self._dg_gonderilen: set = set()  # Bu oturumda gönderilen musteri_id'ler
+
+        return f
+
+    # ----------- doğum günü iş mantığı --------------------------------
+    def _dogum_gunu_yukle(self):
+        """Bugün doğum günü olan hastaları çek ve tabloyu doldur."""
+        try:
+            if self.db is None:
+                self.db = HastaTakipDB()
+            kayitlar = self.db.bugun_dogum_gunu_olanlar(
+                gun_oncesi=int(self.var_dg_geri.get() or 0),
+                sadece_telefonlu=bool(self.var_dg_telefonlu.get()),
+                sadece_takipli=bool(self.var_dg_takipli.get()),
+            )
+        except Exception as e:
+            logger.exception("Doğum günü listesi alınamadı")
+            messagebox.showerror("Hata", f"Doğum günü listesi alınamadı:\n{e}")
+            return
+
+        # Ziyaret filtresi (Python tarafında)
+        son_gun = int(self.var_dg_son_gun.get() or 0)
+        min_z = int(self.var_dg_min_ziyaret.get() or 0)
+        kombin = (self.var_dg_kombin.get() or "VEYA").upper()
+        toplam_ham = len(kayitlar)
+        if son_gun > 0 or min_z > 0:
+            bugun = date.today()
+            son_aktif = son_gun > 0
+            z_aktif = min_z > 0
+            filtreli: list = []
+            for k in kayitlar:
+                ziyaret = int(k.get("ziyaret_sayisi") or 0)
+                sg = (k.get("son_gelis") or "")[:10]
+                son_uyuyor = False
+                if son_aktif and sg:
+                    try:
+                        sd = datetime.fromisoformat(sg).date()
+                        son_uyuyor = (bugun - sd).days <= son_gun
+                    except Exception:
+                        pass
+                z_uyuyor = (z_aktif and ziyaret >= min_z)
+                if son_aktif and z_aktif:
+                    ok = (son_uyuyor or z_uyuyor) if kombin == "VEYA" else (son_uyuyor and z_uyuyor)
+                elif son_aktif:
+                    ok = son_uyuyor
+                else:
+                    ok = z_uyuyor
+                if ok:
+                    filtreli.append(k)
+            kayitlar = filtreli
+
+        self._dg_kayitlar = kayitlar
+        self.tv_dg.delete(*self.tv_dg.get_children())
+
+        for k in kayitlar:
+            mid = int(k.get("musteri_id") or 0)
+            tel = (k.get("cep_tel") or "").strip()
+            dt = (k.get("dogum_tarihi") or "")[:10]
+            try:
+                dt_g = datetime.fromisoformat(dt).strftime("%d.%m.%Y") if dt else ""
+            except Exception:
+                dt_g = dt
+            takipli = "✓" if k.get("takipli") else ""
+
+            ziyaret = int(k.get("ziyaret_sayisi") or 0)
+            sg = (k.get("son_gelis") or "")[:10]
+            sgun = k.get("son_gelisten_gun")
+            if sg:
+                try:
+                    sg_g = datetime.fromisoformat(sg).strftime("%d.%m.%Y")
+                except Exception:
+                    sg_g = sg
+                if sgun is not None:
+                    try:
+                        sg_g = f"{sg_g} ({int(sgun)}g)"
+                    except Exception:
+                        pass
+            else:
+                sg_g = "—"
+
+            tags: tuple = ()
+            durum = ""
+            if mid in self._dg_gonderilen:
+                tags = ("gonderildi",)
+                durum = "✅ Gönderildi"
+            elif not tel or len(tel) < 10:
+                tags = ("telefonsuz",)
+                durum = "📵 Tel yok"
+
+            self.tv_dg.insert(
+                "", "end", iid=str(mid),
+                values=(k.get("hasta_adi", ""), tel, dt_g, k.get("yas", ""),
+                        ziyaret, sg_g, takipli, durum),
+                tags=tags,
+            )
+
+        if (son_gun > 0 or min_z > 0) and toplam_ham != len(kayitlar):
+            sayac_metin = (
+                f"Eşleşen: {len(kayitlar)} / {toplam_ham} · "
+                f"Bugün: {date.today().strftime('%d.%m.%Y')}"
+            )
+        else:
+            sayac_metin = (
+                f"Toplam: {len(kayitlar)} hasta · "
+                f"Bugün: {date.today().strftime('%d.%m.%Y')}"
+            )
+        self.lbl_dg_sayac.config(text=sayac_metin)
+        self.txt_dg_mesaj.delete("1.0", "end")
+        if self.tv_dg.get_children():
+            ilk = self.tv_dg.get_children()[0]
+            self.tv_dg.selection_set(ilk)
+            self.tv_dg.focus(ilk)
+
+    def _dogum_gunu_secili_kayit(self) -> Optional[Dict]:
+        sec = self.tv_dg.selection()
+        if not sec:
+            return None
+        try:
+            mid = int(sec[0])
+        except Exception:
+            return None
+        for k in self._dg_kayitlar:
+            if int(k.get("musteri_id") or 0) == mid:
+                return k
+        return None
+
+    def _dogum_gunu_mesaj_olustur(self, kayit: Dict) -> str:
+        sablon = getattr(
+            self.ayarlar, "dogum_gunu_mesaj_sablonu",
+            "Sayın {hasta_adi},\n\nDoğum gününüzü en içten dileklerimizle "
+            "kutlar, sağlıklı ve mutlu nice yıllar dileriz. 🎂\n\n"
+            "{eczane_adi}\n{eczane_tel}",
+        )
+        try:
+            return sablon.format(
+                hasta_adi=kayit.get("hasta_adi", ""),
+                yas=kayit.get("yas", ""),
+                eczane_adi=self.ayarlar.eczane_adi,
+                eczane_tel=self.ayarlar.eczane_tel,
+            )
+        except KeyError as e:
+            return sablon.replace("{" + str(e).strip("'") + "}", "")
+
+    def _dogum_gunu_secim_degisti(self):
+        kayit = self._dogum_gunu_secili_kayit()
+        self.txt_dg_mesaj.delete("1.0", "end")
+        if not kayit:
+            return
+        self.txt_dg_mesaj.insert("1.0", self._dogum_gunu_mesaj_olustur(kayit))
+
+    def _dogum_gunu_mesaj_yenile(self):
+        kayit = self._dogum_gunu_secili_kayit()
+        if not kayit:
+            return
+        self.txt_dg_mesaj.delete("1.0", "end")
+        self.txt_dg_mesaj.insert("1.0", self._dogum_gunu_mesaj_olustur(kayit))
+
+    def _dogum_gunu_kopyala(self):
+        metin = self.txt_dg_mesaj.get("1.0", "end").rstrip("\n")
+        if not metin.strip():
+            return
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(metin)
+            self.durum_bar.config(text="📋 Mesaj panoya kopyalandı.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Pano hatası: {e}")
+
+    def _dogum_gunu_wa_ac(self):
+        """Seçili hastanın doğum günü mesajını WhatsApp ile aç."""
+        kayit = self._dogum_gunu_secili_kayit()
+        if not kayit:
+            messagebox.showinfo("Seçim Yok", "Önce listeden bir hasta seçin.")
+            return
+
+        tel = (kayit.get("cep_tel") or "").strip()
+        if not tel or len(tel) < 10:
+            messagebox.showwarning(
+                "Telefon Yok",
+                f"{kayit.get('hasta_adi','')} için cep telefonu tanımlı değil.",
+            )
+            return
+        if tel.startswith("+"):
+            tel = tel[1:]
+        if tel.startswith("0"):
+            tel = "90" + tel[1:]
+        if not tel.startswith("90"):
+            tel = "90" + tel
+
+        mesaj = self.txt_dg_mesaj.get("1.0", "end").rstrip("\n")
+        if not mesaj.strip():
+            mesaj = self._dogum_gunu_mesaj_olustur(kayit)
+
+        url = f"https://wa.me/{tel}?text={urllib.parse.quote(mesaj)}"
+        chrome_acildi = self._chrome_ile_ac(url)
+
+        # gonderim_log'a kaydet (isaret = "🎂 Doğum Günü")
+        try:
+            with self.kuyruk._conn() as c:
+                c.execute(
+                    "INSERT INTO gonderim_log(musteri_id, hasta_adi, cep_tel, "
+                    "mesaj_metni, zaman, sonuc, isaret) VALUES (?,?,?,?,?,?,?)",
+                    (
+                        int(kayit.get("musteri_id") or 0),
+                        kayit.get("hasta_adi", ""),
+                        kayit.get("cep_tel", ""),
+                        mesaj,
+                        datetime.now().isoformat(timespec="seconds"),
+                        "OK",
+                        "🎂 Doğum Günü",
+                    ),
+                )
+        except Exception as e:
+            logger.exception("Doğum günü gönderim_log kaydı başarısız: %s", e)
+
+        # Görsel: satırı yeşile boya
+        mid = int(kayit.get("musteri_id") or 0)
+        self._dg_gonderilen.add(mid)
+        try:
+            self.tv_dg.set(str(mid), "durum", "✅ Gönderildi")
+            self.tv_dg.item(str(mid), tags=("gonderildi",))
+        except Exception:
+            pass
+
+        ek = "" if chrome_acildi else " (Chrome bulunamadı — varsayılan tarayıcı açıldı)"
+        self.durum_bar.config(
+            text=f"🎂 {kayit.get('hasta_adi','')} için WhatsApp açıldı.{ek}"
+        )
 
     # ================================================================= SEKME LOG
     ISARET_SECENEK = [
@@ -2489,6 +2913,8 @@ class HastaTakipGUI:
             a.rapor_bitis_mesaj_sablonu = self.txt_rb_sablon.get("1.0", "end").rstrip("\n")
         if hasattr(self, "txt_rb_tani_sablon"):
             a.rapor_bitis_tani_satir_formati = self.txt_rb_tani_sablon.get("1.0", "end").rstrip("\n")
+        if hasattr(self, "txt_dg_sablon"):
+            a.dogum_gunu_mesaj_sablonu = self.txt_dg_sablon.get("1.0", "end").rstrip("\n")
         return a
 
     def _ayarlari_kaydet(self):

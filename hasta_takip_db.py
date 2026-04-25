@@ -741,6 +741,105 @@ class HastaTakipDB:
         """
         return self.db.sorgu_calistir(sql, (bitis.isoformat(),))
 
+    def bugun_dogum_gunu_olanlar(
+        self,
+        gun_oncesi: int = 0,
+        sadece_telefonlu: bool = True,
+        sadece_takipli: bool = False,
+    ) -> List[Dict]:
+        """Bugün (veya son ``gun_oncesi`` gün içinde) doğum günü olan hastaları
+        döndür.
+
+        SQL filtresi same-month match yapar (ay-rollover vakaları için yeterince
+        geniş tutulur). Asıl filtreleme Python tarafında MM-DD bazlı yapılır;
+        29 Şubat doğumlular non-leap yıllarda 28 Şubat'a kaydırılır.
+
+        gun_oncesi=0  → sadece bugünkü doğum günleri
+        gun_oncesi=N  → bugün ve önceki N gündeki doğum günleri (yakalama)
+        """
+        gun_oncesi = max(0, int(gun_oncesi))
+        where = ["m.MusteriDogumTarihi IS NOT NULL"]
+        if sadece_telefonlu:
+            where.append(
+                "m.MusteriTelCep IS NOT NULL AND LTRIM(RTRIM(m.MusteriTelCep)) <> ''"
+            )
+        if sadece_takipli:
+            where.append("m.MusteriTakipli = 1")
+        # Pencerede yer alan ayları kapsa (max 31'e kadar gun_oncesi destekli)
+        where.append(
+            "MONTH(m.MusteriDogumTarihi) IN ("
+            "MONTH(GETDATE()), "
+            "MONTH(DATEADD(DAY, -?, GETDATE())))"
+        )
+        sql = f"""
+        SELECT
+            m.MusteriId                              AS musteri_id,
+            LTRIM(RTRIM(ISNULL(m.MusteriTCKN, '')))  AS tckn,
+            LTRIM(RTRIM(m.MusteriAdiSoyadi))         AS hasta_adi,
+            LTRIM(RTRIM(ISNULL(m.MusteriTelCep,''))) AS cep_tel,
+            m.MusteriDogumTarihi                     AS dogum_tarihi,
+            CAST(m.MusteriTakipli AS INT)            AS takipli,
+            ISNULL(rx.recete_adedi, 0)               AS ziyaret_sayisi,
+            rx.son_recete_tarihi                     AS son_gelis,
+            DATEDIFF(DAY, rx.son_recete_tarihi, GETDATE()) AS son_gelisten_gun
+        FROM Musteri m
+        LEFT JOIN (
+            SELECT
+                RxMusteriId,
+                COUNT(DISTINCT RxId)        AS recete_adedi,
+                MAX(RxReceteTarihi)         AS son_recete_tarihi
+            FROM ReceteAna
+            WHERE RxSilme = 0
+            GROUP BY RxMusteriId
+        ) rx ON rx.RxMusteriId = m.MusteriId
+        WHERE {" AND ".join(where)}
+        ORDER BY MONTH(m.MusteriDogumTarihi) ASC,
+                 DAY(m.MusteriDogumTarihi)   ASC,
+                 m.MusteriAdiSoyadi          ASC
+        """
+        raw = self.db.sorgu_calistir(sql, (gun_oncesi,))
+
+        bugun = date.today()
+        sonuc: List[Dict] = []
+        for row in raw:
+            dt = row.get("dogum_tarihi")
+            if dt is None:
+                continue
+            if isinstance(dt, datetime):
+                dt = dt.date()
+            elif isinstance(dt, str):
+                try:
+                    dt = datetime.fromisoformat(dt[:10]).date()
+                except Exception:
+                    continue
+            elif not isinstance(dt, date):
+                continue
+            try:
+                bu_yilki = dt.replace(year=bugun.year)
+            except ValueError:
+                bu_yilki = date(bugun.year, dt.month, 28)
+            delta = (bugun - bu_yilki).days
+            if 0 <= delta <= gun_oncesi:
+                yas = bugun.year - dt.year
+                if (bugun.month, bugun.day) < (dt.month, dt.day):
+                    yas -= 1
+                r = dict(row)
+                r["dogum_tarihi"] = dt.isoformat()
+                r["bu_yilki_dogum_gunu"] = bu_yilki.isoformat()
+                r["yas"] = yas
+                r["gun_farki"] = delta
+                sg = r.get("son_gelis")
+                if isinstance(sg, datetime):
+                    r["son_gelis"] = sg.date().isoformat()
+                elif isinstance(sg, date):
+                    r["son_gelis"] = sg.isoformat()
+                elif isinstance(sg, str) and sg:
+                    r["son_gelis"] = sg[:10]
+                else:
+                    r["son_gelis"] = ""
+                sonuc.append(r)
+        return sonuc
+
     def yaklasan_rapor_bitisleri(
         self,
         uyari_gun: int = 30,

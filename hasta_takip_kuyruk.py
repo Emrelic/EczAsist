@@ -169,6 +169,15 @@ class HastaTakipAyarlari:
         "isimli {ilac_iyelik} kullanabilmek için en kısa zamanda "
         "raporunuzu yenilemeniz gerekmektedir.\n"
     )
+    # --- Doğum günü mesajı ---
+    # Placeholders: {hasta_adi} {yas} {eczane_adi} {eczane_tel}
+    dogum_gunu_mesaj_sablonu: str = (
+        "Sayın {hasta_adi},\n\n"
+        "Doğum gününüzü en içten dileklerimizle kutlar, "
+        "sağlıklı ve mutlu nice yıllar dileriz. 🎂\n\n"
+        "{eczane_adi}\n{eczane_tel}"
+    )
+
     # (Eski alan geriye-uyum icin korunuyor — yeni akis kullanmaz)
     rapor_bitis_tani_satir_formati: str = (
         "Tanı: {rapor_kodu} - {rapor_kod_aciklama}\n"
