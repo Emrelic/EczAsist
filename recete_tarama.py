@@ -20,6 +20,15 @@ import pyautogui
 from datetime import datetime
 from pywinauto import Desktop
 
+try:
+    import win32process
+    import win32api
+    import win32con
+except ImportError:
+    win32process = None
+    win32api = None
+    win32con = None
+
 sys.stdout.reconfigure(encoding='utf-8')
 pyautogui.FAILSAFE = False
 
@@ -96,60 +105,151 @@ def log(msg, level="info"):
 
 
 # ========== MEDULA ==========
-def medula_bul():
-    """BotanikEOS ana penceresini bul (Medula embedded browser burada).
-    Title'da "MEDULA" olan veya kullanıcı adı içeren BotanikEOS penceresi aranır.
-    Küçük şifre penceresi (kullanıcı adı yok) ve görünmez pencereler atlanır.
+def _process_adi(handle):
+    """Bir HWND'in process exe adını döndürür ('botanikmedula', 'botanikeczane', ...).
+    pywin32 yoksa veya hata olursa boş string döner."""
+    if win32process is None or win32api is None:
+        return ""
+    try:
+        _tid, pid = win32process.GetWindowThreadProcessId(int(handle))
+        if not pid:
+            return ""
+        # PROCESS_QUERY_LIMITED_INFORMATION = 0x1000 — düşük yetkiyle exe path okumaya yeter
+        h = win32api.OpenProcess(0x1000, False, pid)
+        try:
+            exe_path = win32process.GetModuleFileNameEx(h, 0)
+        finally:
+            win32api.CloseHandle(h)
+        return os.path.splitext(os.path.basename(exe_path or ""))[0].lower()
+    except Exception:
+        return ""
+
+
+def medula_bul(diag=False):
+    """BotanikEOS embedded Medula tarayıcı penceresini bul.
+
+    Doğru hedef BotanikMedula.exe process'idir — BotanikEczane.exe ana uygulaması
+    da "BotanikEOS ... (T)" başlığı taşır ama Medula otomasyonu için yanlış pencere.
+
+    Eşleştirme önceliği:
+      1. Process adı "BotanikMedula" olan görünür pencere (en güvenilir)
+      2. Title'da "MEDULA" olan görünür pencere (oturum aktifken)
+      3. Eski heuristic: BotanikEOS + (T) + 3+ kelime (kullanıcı adı içeren)
+
+    diag=True olursa enumeration sırasında neyi atladığı loglanır.
     """
     desktop = Desktop(backend="uia")
-    # 1. Önce MEDULA title'lı pencere (oturum açık)
-    for w in desktop.windows():
-        try:
-            title = w.window_text()
-            if "MEDULA" in title:
-                win = desktop.window(handle=w.handle)
-                if win.is_visible():
-                    return win
-        except:
-            pass
-    # 2. BotanikEOS ana penceresi (kullanıcı adı olan)
-    for w in desktop.windows():
-        try:
-            title = w.window_text()
-            if "BotanikEOS" in title and "(T)" in title:
-                parcalar = title.replace("(T)", "").strip().split()
-                if len(parcalar) >= 3:
-                    win = desktop.window(handle=w.handle)
-                    if win.is_visible():
-                        return win
-        except:
-            pass
+    aday_pencereler = []
+    try:
+        for w in desktop.windows():
+            try:
+                title = (w.window_text() or "")
+                if not title:
+                    continue
+                handle = w.handle
+                visible = False
+                try:
+                    visible = desktop.window(handle=handle).is_visible()
+                except Exception:
+                    visible = False
+                proc = _process_adi(handle)
+                aday_pencereler.append((handle, title, visible, proc))
+            except Exception:
+                continue
+    except Exception as e:
+        if diag:
+            log(f"  [TANI] desktop.windows() hatası: {e}", "warn")
+        return None
+
+    # 1. Process adıyla eşleşen — en güvenilir
+    for handle, title, visible, proc in aday_pencereler:
+        if proc == "botanikmedula" and visible:
+            try:
+                return desktop.window(handle=handle)
+            except Exception:
+                pass
+
+    # 2. Title'da MEDULA varsa
+    for handle, title, visible, proc in aday_pencereler:
+        if "MEDULA" in title and visible:
+            try:
+                return desktop.window(handle=handle)
+            except Exception:
+                pass
+
+    # 3. Kullanıcı adı içeren BotanikEOS penceresi (BotanikEczane bu yola düşer)
+    for handle, title, visible, proc in aday_pencereler:
+        if "BotanikEOS" in title and "(T)" in title and visible:
+            parcalar = title.replace("(T)", "").strip().split()
+            if len(parcalar) >= 3:
+                try:
+                    return desktop.window(handle=handle)
+                except Exception:
+                    pass
+
+    if diag:
+        log("  [TANI] medula_bul() eşleşme bulamadı. Görünen pencereler:", "warn")
+        for handle, title, visible, proc in aday_pencereler:
+            if not visible:
+                continue
+            t = title if "Botanik" in title or "MEDULA" in title else None
+            if t or proc.startswith("botanik"):
+                log(f"    - hwnd={handle} proc={proc or '?'} visible={visible} title={title!r}", "info")
     return None
 
 
 def popup_kapat():
     """BotanikEOS popup'larını kontrol et ve Tamam/OK butonuyla kapat.
     Örn: 'Etken madde çakışması bulamadım...' penceresi.
-    Sistem takılıyorsa çağrılır. Bulup kapattıysa True döner."""
-    # Bilinen popup imzaları (text içeriği + kapatma butonu caption'ları)
+    Sistem takılıyorsa çağrılır. Bulup kapattıysa True döner.
+
+    GÜVENLİK:
+    - BotanikMedula ana penceresi ASLA kapatılmaz (process adıyla filtre).
+    - Sadece küçük (≤700×500 px) modal/dialog tipi pencereler hedeflenir;
+      tam ekran tarayıcı içeriği popup sayılmaz.
+    - "Uyarı" / "Dikkat" gibi kısa kelimeler artık tek başına eşleşme tetiklemez —
+      gerçek popup'larda imzalar daha bağlamlı ifadelerle yer alır.
+    - Kapatma butonu sadece ControlType "Button" ve caption tam eşleşme; pencerenin
+      köşesindeki sistem "Kapat" butonu (genellikle isimli ama farklı parent'ta) skip.
+    """
+    # Bağlamlı popup imzaları — kısa kelimeler artık alone match etmez
     popup_imzalari = [
         "Etken madde çakışması",
         "HASTA İLAÇ BİLGİSİ",
-        "Dikkat",
-        "Uyarı",
+        "Lütfen ilaç seçiniz",
+        "ilaç seçiniz",
+        "ilac seciniz",
+        "Lütfen bekleyin",
     ]
-    kapatma_captions = ("Tamam", "OK", "Evet", "Kapat", "Close")
+    kapatma_captions = ("Tamam", "OK", "Evet")  # "Kapat"/"Close" çıkarıldı — pencere kromu butonu olabilir
+    POPUP_MAX_W = 700
+    POPUP_MAX_H = 500
     try:
         desktop = Desktop(backend="uia")
         for w in desktop.windows():
             try:
+                handle = w.handle
+                # 1) Ana BotanikMedula penceresine asla dokunma
+                proc = _process_adi(handle)
+                if proc == "botanikmedula":
+                    continue
                 if not w.is_visible():
                     continue
                 title = (w.window_text() or "").strip()
-                # Kısa başlıklı küçük dialog — veya title boş modal olabilir
                 if len(title) > 80:
                     continue
-                # Pencere içindeki text'leri topla
+                # 2) Pencere boyutu — tam ekran tarayıcı popup değildir
+                try:
+                    rect = w.rectangle()
+                    genislik = rect.right - rect.left
+                    yukseklik = rect.bottom - rect.top
+                    if genislik > POPUP_MAX_W or yukseklik > POPUP_MAX_H:
+                        continue
+                    if genislik <= 0 or yukseklik <= 0:
+                        continue
+                except Exception:
+                    continue
+                # 3) Pencere içindeki text'leri topla
                 text_parcalari = []
                 tamam_btn = None
                 try:
@@ -169,12 +269,12 @@ def popup_kapat():
                     continue
                 if not tamam_btn:
                     continue
-                # Pencerenin içeriği bilinen imzalardan birini içeriyor mu?
+                # 4) Pencerenin içeriği bilinen imzalardan birini içeriyor mu?
                 tum_metin = " ".join(text_parcalari) + " " + title
                 if any(imza in tum_metin for imza in popup_imzalari):
                     try:
                         tamam_btn.invoke()
-                        log(f"    [POPUP] Kapatıldı: '{title or tum_metin[:50]}'", "warn")
+                        log(f"    [POPUP] Kapatıldı: '{title or tum_metin[:50]}' ({genislik}x{yukseklik})", "warn")
                         time.sleep(0.5)
                         return True
                     except Exception as e:
@@ -473,13 +573,109 @@ def renkli_recete_kontrol(recete_no, recete_turu):
 
 
 # ========== İLAÇ OKUMA ==========
-ILAC_ANAHTAR = ["MG", "ML", "TABLET", "KAPSUL", "KAPSÜL", "TB", "FTB",
-                "DOZ", "INH", "GARGARA", "ŞURUP", "DAMLA", "AMPUL",
-                "FLAKON", "KREM", "JEL", "POMAD", "ENJEKT", "ŞASE",
-                "SURUP", "SPRAY", "FITIL", "SOLÜSYON", "SÜSPANSIYON",
-                "KALEM", "PATCH", "TOZU", "SACHET", "GRANÜL", "MERHEM",
-                "NEBUL", "EFF.", "ENTERIK", "FILM", "FORTE", "FORT",
-                "KP.", "KAP.", "MIKROPELLET", "SUPRA", "MCG"]
+ILAC_ANAHTAR = [
+    # === KONSANTRASYON BİRİMLERİ ===
+    "MG", "ML", "MCG", "μG", "IU", "MIU", "KIU",
+    "MG/", "ML/", "MG.", "ML.",
+    "G.", "G/", "G(",          # "100 G(...)" gibi formatlar
+    "GR", "GR.", "GR(",        # "5GRX20SASE" gibi
+    "KCAL", "KAL", "KALORI",   # Beslenme ürünleri için kalori birimi
+
+    # === KATI ORAL FORMLAR (tablet/kapsül) ===
+    "TABLET", "TB", "TB.", "TBL", "TBL.",
+    "FILM", "FTB", "FTB.", "FT.",
+    "FILM TABLET", "ÇİĞNEME", "CIGNEME", "ÇÖZÜNÜR", "COZUNUR",
+    "EFERVESAN", "EFFERVESAN", "EFF.", "EFF",
+    "SUBLINGUAL", "SUBL", "SUBL.",
+    "OROD", "OROD.",           # orodispersible
+    "ENTERIK", "ENTERİK", "ENTERIC",
+    "KAPSUL", "KAPSÜL", "KAP", "KAP.", "KP", "KP.",
+    "MIKROPELLET", "MİKROPELLET", "PELLET",
+    "PASTİL", "PASTIL", "LOZANJ", "LOZENGE",
+    "GRANÜL", "GRANUL", "GRAN", "GRAN.",
+    "TOZ", "TOZU", "POWDER",
+    "ŞASE", "SASE", "SACHET", "SACH", "SACHE",  # SASE = ŞASE'nin ASCII'si
+
+    # === SIVI ORAL FORMLAR ===
+    "ŞURUP", "SURUP", "SİROP", "SIROP", "SIRUP", "SYRUP",
+    "SÜSPANSİYON", "SÜSPANSIYON", "SUSPANSIYON", "SUSP", "SUSP.",
+    "SOLÜSYON", "SOLUSYON", "SOLÜTİON", "SOLUTION", "SOL", "SOL.",
+    "ÇÖZELTİ", "COZELTI", "ÇÖZELTI",
+    "DAMLA", "DML", "DROPS",
+    "ELİKSİR", "ELIKSIR", "ELIXIR",
+    "EMÜLSİYON", "EMULSIYON", "EMÜLSİON", "EMULSION", "EMUL",
+    "KONSANTRE", "CONCENTRATE", "KONS.",
+    "AROMA", "AROMALI",        # bazı şuruplar için
+
+    # === TOPİKAL FORMLAR ===
+    "KREM", "KRM", "CREAM",
+    "POMAD", "POM", "POM.",
+    "MERHEM", "MRH",
+    "JEL", "GEL",
+    "LOSYON", "LOTION",
+    "KÖPÜK", "KOPUK", "FOAM",
+    "ŞAMPUAN", "SAMPUAN", "SHAMPOO",
+    "SABUN", "SOAP",
+
+    # === İNHALER / NEBULIZER ===
+    "INH", "INH.", "INHALER",
+    "NEBUL", "NEBÜL", "NEBÜLİZE", "NEB", "NEB.",
+    "AEROSOL", "AEROZOL",
+    "DİSKUS", "DISKUS",
+    "TURBUHALER", "EASYHALER", "AEROLIZER", "SPINHALER",
+
+    # === BURUN / GÖZ / KULAK ===
+    "SPRAY", "SPREY",
+    "NAZAL", "NASAL", "BURUN",
+    "OFTALMİK", "OFTALMIK", "OPHTH", "GÖZ", "GOZ",
+    "OTİK", "OTIK", "KULAK", "EAR",
+    "GARGARA", "GARGLE",       # ağız çalkalama
+
+    # === ENJEKTABL ===
+    "AMPUL", "AMP", "AMP.", "AMPULE",
+    "FLAKON", "FLK", "FLK.", "VIAL",
+    "ENJEKT", "ENJ", "ENJ.", "INJ", "INJEKT",
+    "ŞIRINGA", "SIRINGA", "SYRINGE", "ŞIRNG",
+    "KALEM", "PEN",
+    "İNFÜZYON", "INFUZYON", "INFUSION",
+    "İNTRAVENÖZ", "INTRAVENOZ",
+    "İNTRAMÜSKÜLER",
+    "SUBKUTAN",
+
+    # === REKTAL / VAJİNAL ===
+    "FİTİL", "FITIL", "SUPP", "SUPP.", "SUPPOZITUVAR", "SUPPOZİTUVAR", "SUPPOSITORY",
+    "OVÜL", "OVUL", "OVULE",
+    "VAJİNAL", "VAJINAL", "VAGINAL",
+    "REKTAL", "RECTAL",
+    "LAVMAN", "ENEMA",
+
+    # === TRANSDERMAL / YAMA ===
+    "PATCH", "YAMA", "BANT", "BAND",
+    "TRANSDERMAL", "DERMAL",
+    "PLASTER",
+
+    # === MODIFIYE SALIM / ETKİ MODÜLATÖRLERİ ===
+    "FORTE", "FORT",
+    "RAPID", "FAST", "QUICK",
+    "RETARD", "DEPO", "DEPOT",
+    "SR", "ER", "XR", "MR", "LA",       # slow/extended/modified/long-acting release
+    "KONTROLLÜ", "KONTROLLU",
+    "MODIFIYE", "MODİFİYE",
+    "UZATILMIŞ", "UZATILMIS",
+    "SUPRA",
+
+    # === BESLENME ÜRÜNLERİ (mama, enteral) ===
+    "ENTERAL", "PARENTERAL",
+    "BESLENME", "MAMA", "FORMULA",
+    "NUTRİSYON", "NUTRISYON", "NUTRITION",
+
+    # === DİĞER ===
+    "DOZ", "DOSE",
+    "STİK", "STIK", "STICK",
+    "KİT", "KIT", "SET",
+    "ÜRÜN",
+    "TIBBI",
+]
 ATLA = ["Maksimum", "Topl=", "KALEM", "Toplam Tutar", "Sayfaya",
         "İncelemeye", "Botrastan", "Reçete Tutar", "YAZMIŞ",
         "YAZMAMIŞ", "VERİLEMEZ", "KONTROL", "UZMAN",
@@ -552,75 +748,53 @@ def recete_tum_bilgi_topla(medula):
         return sonuc
     t_desc = time.time() - t0
 
-    # ── 2. Element'leri sınıflandır (OPT B: tek geçişte her şeyi topla) ──
-    aid_cache = {}
-    data_items = []       # DataItem'lar
-    combo_items = []      # ComboBox'lar
-    text_items = []       # Text/Custom — tanı/açıklama/doktor fallback'leri için
-    tables = []           # Table elementleri — tanı/açıklama tablo pozisyonu
+    # ── 2. SINIFLANDIRMA: tek geçişte tip ayrımı + aid_cache + metadata cache ──
+    # OPT: Her element için aid/ctrl_type/name TEK SEFERDE okunur, dict'te cache'lenir.
+    # Sonraki phase'ler element_info'ya tekrar dokunmaz — yüzlerce COM çağrısı tasarrufu.
+    # Ek olarak alakasız ctrl_type'lar (ScrollBar, Image, Separator, vb.) erkenden elenir.
+    SKIP_CTRL = ("ScrollBar", "Image", "Separator", "ToolBar", "TitleBar",
+                 "MenuBar", "StatusBar", "Slider", "Thumb", "ProgressBar")
 
-    # f:tbl1 tablosunun pozisyonunu bul
-    tbl_top = 0
-    tbl_bottom = 9999
+    aid_cache = {}
+    elem_meta = {}        # id(elem) → (aid, ctrl_type, name)
+    data_item_refs = []   # [elem]
+    text_custom_refs = [] # [elem]
+    combo_items = []      # [elem]
+    table_refs = []       # [elem]
 
     for elem in tum_elementler:
         try:
             info = elem.element_info
-            aid = info.automation_id or ""
             ctrl_type = info.control_type or ""
+            # ERKEN ELEME: ihtiyaç duymadığımız tipleri hızla at
+            if any(s in ctrl_type for s in SKIP_CTRL):
+                continue
+            aid = info.automation_id or ""
+            # name sadece Text/Custom için lazım (aciklama_keywords match için);
+            # diğer tiplerde COM çağrısını yapmadan boş bırak
+            name = ""
+            if "Text" in ctrl_type or "Custom" in ctrl_type:
+                name = (info.name or "").strip()
 
-            # automation_id varsa cache'le
+            elem_meta[id(elem)] = (aid, ctrl_type, name)
+
             if aid:
                 aid_cache[aid] = elem
 
             if "DataItem" in ctrl_type:
-                try:
-                    txt = elem.window_text()
-                    if txt and txt.strip():
-                        r = elem.rectangle()
-                        txt_s = txt.strip()[:200]
-                        data_items.append((txt_s, r.top, r.left, aid, elem))
-                        if "=>" in txt_s:
-                            _uyari_kodu_ekle(sonuc, txt_s, re)
-                except:
-                    pass
+                data_item_refs.append(elem)
+            elif "Text" in ctrl_type or "Custom" in ctrl_type:
+                text_custom_refs.append(elem)
+                # Hızlı pattern tarama (rectangle/window_text çağırmadan)
+                if name:
+                    if "=>" in name:
+                        _uyari_kodu_ekle(sonuc, name[:200], re)
+                    if "Girilebilcek" in name or "Girilebilecek" in name:
+                        sonuc["_uyari_alani_metni"] = name[:200]
             elif "ComboBox" in ctrl_type:
                 combo_items.append(elem)
-            elif "Text" in ctrl_type or "Custom" in ctrl_type:
-                # OPT: Sadece automation_id VARSA veya window_text'i dolu olan elementler toplanır.
-                # Yüzlerce boş Text elementine window_text + rectangle çağırma.
-                # element_info.name öncelikli (çoğu durumda window_text ile aynı, daha hızlı)
-                try:
-                    name_hint = (info.name or "").strip()
-                    # Hızlı filtre: hem name hem aid yoksa atla (istisna: "=>" içerebilir ama name varsa zaten yakalanır)
-                    if not name_hint and not aid:
-                        continue
-                    txt_s = name_hint
-                    if not txt_s:
-                        txt_s = (elem.window_text() or "").strip()
-                    if not txt_s:
-                        continue
-                    # Toplama kriteri: sadece anlamlı/potansiyel olarak kullanılacak metinler
-                    if (len(txt_s) >= 3 or "=>" in txt_s):
-                        try:
-                            r = elem.rectangle()
-                            text_items.append((txt_s, r.top, r.left, ctrl_type, elem))
-                        except:
-                            pass
-                    if "=>" in txt_s:
-                        _uyari_kodu_ekle(sonuc, txt_s, re)
-                    if "Girilebilcek" in txt_s or "Girilebilecek" in txt_s:
-                        sonuc["_uyari_alani_metni"] = txt_s
-                except:
-                    pass
             elif "Table" in ctrl_type:
-                try:
-                    name = (info.name or "").strip()
-                    if name in ("Tanı Listesi", "Açıklama Listesi"):
-                        r = elem.rectangle()
-                        tables.append((name, r.top, r.bottom))
-                except:
-                    pass
+                table_refs.append(elem)
         except:
             pass
 
@@ -630,6 +804,8 @@ def recete_tum_bilgi_topla(medula):
     _aid_cache_global = aid_cache
 
     # f:tbl1 tablo pozisyonu (cache'den)
+    tbl_top = 0
+    tbl_bottom = 9999
     tbl_elem = aid_cache.get("f:tbl1")
     if tbl_elem:
         try:
@@ -638,6 +814,27 @@ def recete_tum_bilgi_topla(medula):
             tbl_bottom = r.bottom + 50
         except:
             pass
+
+    # ── 2b. DATAITEM İŞLEME: window_text + rectangle (ilaç tablosu + uyarı kodları için lazım) ──
+    # OPT: aid Phase 2'de cache'lendi → elem_meta'dan alıyoruz, COM tekrar çağrılmıyor.
+    data_items = []  # (txt_s, top, left, aid, elem)
+    for elem in data_item_refs:
+        try:
+            txt = elem.window_text()
+            if not txt or not txt.strip():
+                continue
+            r = elem.rectangle()
+            txt_s = txt.strip()[:200]
+            meta = elem_meta.get(id(elem))
+            aid = meta[0] if meta else ""
+            data_items.append((txt_s, r.top, r.left, aid, elem))
+            if "=>" in txt_s:
+                _uyari_kodu_ekle(sonuc, txt_s, re)
+        except:
+            pass
+
+    # NOT: Text/Custom için name + "=>" / "Girilebilcek" tarama Phase 2'de yapıldı —
+    # ek tek bir loop'a gerek yok. text_custom_refs deferred phase 2d için saklı.
 
     # ── 3. Reçete No ──
     for txt, y, x, aid, elem in data_items:
@@ -707,6 +904,49 @@ def recete_tum_bilgi_topla(medula):
     _fast_path = not (_has_rapor or _has_msj or _has_uyari)
     if _fast_path:
         log(f"  [OPT] Fast path: raporsuz/mesajsız/uyarısız reçete — detay toplamadan geçiliyor", "info")
+
+    # ── 2d. DEFERRED: Text/Custom + Tables tam işleme (sadece fast_path DEĞİLSE) ──
+    # Bu liste pozisyonel fallback'ler (tanı listesi, açıklama listesi, doktor branş) için.
+    # Fast path reçetelerinde HİÇBİRİ kullanılmaz.
+    # OPT: Phase 2'de cache'lenen elem_meta'yı kullanır — element_info'ya tekrar dokunmaz.
+    text_items = []   # (txt_s, top, left, ctrl_type, elem)
+    tables = []       # (name, top, bottom)
+    if not _fast_path:
+        for elem in text_custom_refs:
+            meta = elem_meta.get(id(elem))
+            if not meta:
+                continue
+            aid, ctrl_type, name_hint = meta
+            # Hızlı filtre: hem name hem aid yoksa atla
+            if not name_hint and not aid:
+                continue
+            txt_s = name_hint
+            if not txt_s:
+                try:
+                    txt_s = (elem.window_text() or "").strip()
+                except Exception:
+                    continue
+                if not txt_s:
+                    continue
+            # Toplama kriteri: anlamlı/kullanılacak metinler
+            if len(txt_s) >= 3 or "=>" in txt_s:
+                try:
+                    r = elem.rectangle()
+                    text_items.append((txt_s, r.top, r.left, ctrl_type, elem))
+                except Exception:
+                    pass
+        # Table elementleri içinde Tanı Listesi / Açıklama Listesi
+        # Table'ın name'i Phase 2'de henüz okunmadı — şimdi gerekirse oku
+        for elem in table_refs:
+            try:
+                # Table için name Phase 2'de okunmamıştı (sadece Text/Custom için okuyoruz);
+                # burada ihtiyaç anında oku
+                tbl_name = (elem.element_info.name or "").strip()
+                if tbl_name in ("Tanı Listesi", "Açıklama Listesi"):
+                    r = elem.rectangle()
+                    tables.append((tbl_name, r.top, r.bottom))
+            except Exception:
+                pass
 
     # ── 4. Reçete Türü (f:m4 cache'den) ──
     m4 = aid_cache.get("f:m4")
@@ -1310,7 +1550,10 @@ def recete_tum_bilgi_topla(medula):
 
     t_toplam = time.time() - t0
     t_isleme = t_toplam - t_desc
-    log(f"  [SÜRE] Toplu: {t_toplam:.1f}s (descendants: {t_desc:.1f}s + işleme: {t_isleme:.1f}s) | {len(tum_elementler)} element, {len(ilaclar)} ilaç", "info")
+    _ilgili = len(elem_meta)  # SKIP_CTRL ile filtrelenmemiş kalan element sayısı
+    log(f"  [SÜRE] Toplu: {t_toplam:.1f}s (descendants: {t_desc:.1f}s + işleme: {t_isleme:.1f}s) "
+        f"| {_ilgili}/{len(tum_elementler)} ilgili element ({len(data_item_refs)} DataItem, "
+        f"{len(text_custom_refs)} Text/Custom, {len(table_refs)} Table), {len(ilaclar)} ilaç", "info")
     return sonuc
 
 
@@ -1778,34 +2021,40 @@ def sonuc_logla(cur, conn, grup, recete_no, recete_turu, ilac, kontrol_tipi,
 
 # ========== CHECKBOX + İLAÇ BİLGİ PENCERESİ ==========
 def checkbox_sec(medula, satir_idx):
-    """İlaç satırının checkbox'ını seç (birden fazla yöntem dener)"""
+    """İlaç satırının checkbox'ını seç (birden fazla yöntem dener).
+
+    CLAUDE.md kuralı: Checkbox için click_input öncelikli — IE-embed Medula'da
+    toggle/invoke sessiz başarısız olabilir (exception yok ama checkbox işaretlenmiyor),
+    bu da "Lütfen ilaç seçiniz" popup'ına yol açar. click_input gerçek mouse click
+    simüle eder, IE'nin DOM event handler'ları tetiklenir.
+    """
     auto_id = f"f:tbl1:{satir_idx}:checkbox7"
     elem = element_bul(medula, auto_id)
     if not elem:
         return False
-    # Yöntem 1: toggle
-    try:
-        elem.toggle()
-        aktivite_bildir()
-        time.sleep(0.3)
-        return True
-    except:
-        pass
-    # Yöntem 2: invoke
-    try:
-        elem.invoke()
-        aktivite_bildir()
-        time.sleep(0.3)
-        return True
-    except:
-        pass
-    # Yöntem 3: click_input
+    # Yöntem 1 (öncelikli): click_input — IE-embed için en güvenilir
     try:
         elem.click_input()
         aktivite_bildir()
         time.sleep(0.3)
         return True
-    except:
+    except Exception:
+        pass
+    # Yöntem 2: toggle (UIA TogglePattern)
+    try:
+        elem.toggle()
+        aktivite_bildir()
+        time.sleep(0.3)
+        return True
+    except Exception:
+        pass
+    # Yöntem 3: invoke (last resort)
+    try:
+        elem.invoke()
+        aktivite_bildir()
+        time.sleep(0.3)
+        return True
+    except Exception:
         pass
     return False
 
@@ -2088,10 +2337,15 @@ def _gunluk_doz_hesapla(doz, carpan, periyot_sayi, periyot_birim):
 
 
 # ========== RAPOR SAYFASI ==========
-def rapor_ac(medula):
+def rapor_ac(medula, satir_idx=None):
     """Rapor butonuna tıkla ve rapor sayfası açılana kadar bekle.
     2 deneme hakkı: ilk denemede Rapor butonuna tıkla → 4s bekle;
-    açılmazsa Escape + tekrar Rapor butonu + 6s bekle."""
+    açılmazsa popup kapat + checkbox tekrar seç + Rapor butonu + 6s bekle.
+
+    satir_idx verilirse, ilk deneme başarısız olduğunda checkbox tekrar
+    işaretlenir — IE-embed'de checkbox'ın sessiz başarısız olduğu durumlarda
+    Medula 'Lütfen ilaç seçiniz' popup'ı gösterir, bu retry onu çözer.
+    """
     global _aid_cache_global
     _aid_cache_global = {}  # Sayfa değişiyor, cache geçersiz
 
@@ -2116,11 +2370,21 @@ def rapor_ac(medula):
         if element_bul(medula, "form1:tableEx1"):
             return True
 
-        # Açılmadı — ikinci denemeye git
+        # Açılmadı — popup ("Lütfen ilaç seçiniz") kapat + checkbox tekrar dene
         if deneme == 0:
-            log("    Rapor sayfası açılmadı (1. deneme) — tekrar deneniyor", "warn")
-            pyautogui.press("escape")
-            time.sleep(0.8)
+            log("    Rapor sayfası açılmadı (1. deneme) — popup kontrolü + checkbox tekrar deneniyor", "warn")
+            # 1. Popup'ı kapat (Lütfen ilaç seçiniz vb.)
+            popup_kapatildi = popup_kapat()
+            if not popup_kapatildi:
+                pyautogui.press("escape")
+                time.sleep(0.5)
+            # 2. Checkbox tekrar işaretle (silent fail durumu için)
+            if satir_idx is not None:
+                if checkbox_sec(medula, satir_idx):
+                    log(f"    Checkbox tekrar işaretlendi (satır {satir_idx})", "info")
+                else:
+                    log(f"    Checkbox tekrar işaretlenemedi (satır {satir_idx})", "warn")
+            time.sleep(0.5)
 
     log("    Rapor sayfası açılmadı (2 deneme başarısız)", "warn")
     return False
@@ -2840,7 +3104,7 @@ def rapor_ac_oku_geri_don(medula, satir_idx):
         log(f"    Checkbox seçilemedi (satır {satir_idx})", "warn")
         return None
 
-    if not rapor_ac(medula):
+    if not rapor_ac(medula, satir_idx=satir_idx):
         return None
 
     # 1. Medula rapor sayfasından metinleri oku
@@ -3013,7 +3277,7 @@ def rapor_ac_doz_oku_geri_don(medula, satir_idx, etkin_madde):
         log(f"    Checkbox seçilemedi (satır {satir_idx})", "warn")
         return None, None
 
-    if not rapor_ac(medula):
+    if not rapor_ac(medula, satir_idx=satir_idx):
         return None, None
 
     doz_metni, gunluk_doz = rapor_tedavi_semasi_doz_oku(medula, etkin_madde)
@@ -3080,6 +3344,19 @@ def sut_mesaj_kontrol(ilac, mesaj_basliklar, mesaj_metni, recete_teshisleri=None
             "doktor_uzmanligi": doktor_uzmanligi,
             "recete_alt_turu": recete_alt_turu,
             "recete_teshisleri": recete_teshisleri or [],
+            # Reçete açıklamaları — ESA Hb/Ferritin/TSAT vb. lab değerleri burada olabilir
+            "recete_aciklamalari": ilac.get("_recete_aciklamalari", []) or [],
+            # Rapor verisi — _esa_detayli_kontrol bu metinde de tarar
+            "rapor_aciklamalari": ilac.get("_rapor_aciklamalari", []) or [],
+            "rapor_tani_bilgileri": ilac.get("_rapor_tani_bilgileri", []) or [],
+            # Reçete uyarı kodları (ESA için 217 kodu burada aranır)
+            "_uyari_kodlari": ilac.get("_uyari_kodlari", []) or [],
+            # Reçete dozu (enteral beslenme kalori/gün hesabı için gerekli)
+            "recete_doz": ilac.get("recete_doz"),
+            # E-Reçete Görüntüle ekranından okunan açıklama metni (217 kodu varsa
+            # eagerly toplanır — TSAT/Ferritin/kuru kilo/doz bilgileri burada olur)
+            "_erecete_aciklama_metni": ilac.get("_erecete_aciklama_metni", "") or "",
+            "_erecete_aciklama_listesi": ilac.get("_erecete_aciklama_listesi", []) or [],
         }
 
         sonuc = sut_kontrol_yap(ilac_sonuc)
@@ -3534,7 +3811,46 @@ def medula_navigasyon(medula, grup, donem_offset):
             if element_tikla(medula, "form1:menuHtmlCommandExButton31"):
                 log("Reçete Listesi açıldı (giriş butonu sonrası)", "ok")
             else:
-                log("Reçete Listesi menüsü bulunamadı!", "error")
+                # SAFETY NET 1: Menü bulunamadı ama Reçete Listesi sayfası zaten
+                # ekrandaysa (Sorgula butonu var), navigasyonu başarılı say.
+                # Kullanıcı listeyi manuel açtıysa veya bir önceki grup
+                # transition'ı sonrası ekran hala liste sayfasındaysa olur.
+                if element_bul(medula, "form1:buttonSonlandirilmamisReceteler"):
+                    log("Menü tıklanamadı ama Reçete Listesi sayfası zaten açık — devam ediliyor", "warn")
+                    break  # while döngüsünden çık, dönem/fatura/sorgula adımlarına geç
+                # SAFETY NET 2: Reçete DETAY sayfasındaysak (f:tbl1 var + Sonraki
+                # butonu var), kullanıcı bir reçeteyi açmış demektir; navigasyon
+                # gereksiz — bunu acik_receteden moduna eşdeğer görüp başarılı say.
+                if (element_bul(medula, "f:tbl1")
+                        and element_bul(medula, "f:buttonSonraki")):
+                    log("Menü tıklanamadı ama bir reçete detay sayfasında — bu reçeteden devam edilecek", "warn")
+                    return True  # Direkt başarılı dön; tara() açık reçeteyi işleyecek
+
+                # TANI: Hangi state'deyiz? Görünür buton ve linkleri logla ki
+                # kullanıcı/geliştirici Medula'nın gerçekten hangi sayfada olduğunu görsün.
+                log("Reçete Listesi menüsü bulunamadı! Ekrandaki state'i tanılıyorum...", "error")
+                try:
+                    sayac_diag = 0
+                    for d in medula.descendants():
+                        try:
+                            ctrl = str(d.element_info.control_type or "")
+                            if "Button" not in ctrl and "Hyperlink" not in ctrl:
+                                continue
+                            cap = (d.window_text() or "").strip()
+                            aid = d.element_info.automation_id or ""
+                            if cap or aid:
+                                log(f"    [TANI] {ctrl.replace('ControlType.','')}: '{cap[:40]}' aid='{aid}'", "info")
+                                sayac_diag += 1
+                                if sayac_diag >= 25:
+                                    log("    [TANI] (ilk 25 buton/link gösterildi)", "info")
+                                    break
+                        except Exception:
+                            continue
+                    if sayac_diag == 0:
+                        log("    [TANI] Hiç buton/link yok — Medula muhtemelen oturum kapalı, login ekranında veya boş.", "error")
+                        log("    [TANI] Çözüm: Medula tarayıcısını manuel olarak açın, kullanıcı girişi yapın, sonra TÜMÜNÜ KONTROL ET'e basın.", "info")
+                except Exception as diag_err:
+                    log(f"    [TANI] Element listeleme hatası: {diag_err}", "warn")
                 return False
 
         # Sayfa yüklenene kadar bekle
@@ -4466,7 +4782,9 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
     # Medula bul
     medula = medula_bul()
     if not medula:
-        log("MEDULA penceresi bulunamadı!", "error")
+        log("MEDULA penceresi bulunamadı! Tanı bilgisi toplanıyor...", "error")
+        medula_bul(diag=True)
+        log("Çözüm: BotanikEOS açık mı? Medula sekmesi yüklü mü? Pencere minimize/gizli olabilir.", "warn")
         return
 
     # Oturum kontrol
@@ -4695,13 +5013,58 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
         if recete_aciklamalari:
             log(f"  Açıklamalar: {', '.join(recete_aciklamalari[:2])}", "info")
 
+        # === ADIM 2C: 217 KODU İÇİN E-REÇETE AÇIKLAMASINI PROAKTİF OKU ===
+        # 217 hekimin TSAT/Ferritin değerlerini E-Reçete açıklamasına yazdığını
+        # belirtir. Reçete sayfasındaki Açıklama Listesi (form1:tableEx1) bu
+        # değerleri her zaman içermez; gerçek metin E-Reçete Görüntüle ekranındadır.
+        # Eagerly çekiyoruz çünkü ESA SUT kontrolünden ÖNCE lazım. Sonuç cache'lenir,
+        # uyari_kodu_kontrol fallback'i (line ~4994) tekrar çekmeyecek.
+        erecete_metni = ""
+        erecete_aciklama_listesi = []
+        erecete_tani_listesi = []
+        erecete_okundu = False
+        has_217_in_uyari = any(
+            str(uk.get("kod", "")).strip() == "217"
+            for uk in uyari_kodlari if isinstance(uk, dict)
+        )
+        if has_217_in_uyari:
+            log(f"  [217] Uyarı kodu 217 var — E-Reçete Görüntüle açılıyor (TSAT/Ferritin için)", "info")
+            try:
+                erecete = erecete_aciklama_oku(medula)
+                if erecete:
+                    erecete_metni = erecete.get("tum_metin", "") or ""
+                    erecete_aciklama_listesi = erecete.get("aciklamalar", []) or []
+                    erecete_tani_listesi = erecete.get("tanilar", []) or []
+                    erecete_okundu = True
+                    if erecete_metni:
+                        # Lab değerleri (Hgb/Ferritin/TSAT) bu metinden okunacak — kullanıcının
+                        # doktorun gerçekte ne yazdığını görmesi için snippet'i daha uzun ver.
+                        ozet = erecete_metni[:300].replace("\n", " ")
+                        log(f"  [217] E-Reçete açıklama okundu ({len(erecete_metni)} kr): {ozet}...", "info")
+                        # Lab anahtar kelimeleri var mı? Hızlı sağlık tespiti
+                        _ml = erecete_metni.lower()
+                        _bulunan = [k for k in ('ferritin', 'tsat', 'transferrin', 'satürasyon',
+                                                  'saturasyon', 'doygunluk', 'hgb', 'hemoglobin')
+                                    if k in _ml]
+                        if _bulunan:
+                            log(f"  [217] Tespit edilen lab anahtarları: {', '.join(_bulunan)}", "info")
+                        else:
+                            log(f"  [217] DİKKAT: Metinde lab anahtar kelimesi bulunamadı (Ferritin/TSAT/Hb yok)", "warn")
+                    else:
+                        log(f"  [217] E-Reçete açıldı ama metin toplanamadı", "warn")
+            except Exception as e:
+                log(f"  [217] E-Reçete okuma hatası: {e}", "warn")
+
         # === ADIM 3: İLAÇ TABLOSU KONTROLÜ (zaten toplandı, doz karşılaştırma dahil) ===
         ilaclar = toplu["ilaclar"]
-        # Reçete açıklamaları + cache'i her ilaca ekle
+        # Reçete açıklamaları + cache'i + uyarı kodlarını + e-Reçete metnini her ilaca ekle
         _cache = toplu.get("_aid_cache", {})
         for _ilac in ilaclar:
             _ilac["_recete_aciklamalari"] = recete_aciklamalari
             _ilac["_aid_cache"] = _cache
+            _ilac["_uyari_kodlari"] = uyari_kodlari
+            _ilac["_erecete_aciklama_metni"] = erecete_metni
+            _ilac["_erecete_aciklama_listesi"] = erecete_aciklama_listesi
 
         # İlaç listesi boşsa sayfa tam yüklenmemiş olabilir — 2 saniye bekleyip yeniden dene
         if not ilaclar:
@@ -4716,6 +5079,9 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                     for _ilac in ilaclar:
                         _ilac["_recete_aciklamalari"] = recete_aciklamalari
                         _ilac["_aid_cache"] = _cache
+                        _ilac["_uyari_kodlari"] = uyari_kodlari
+                        _ilac["_erecete_aciklama_metni"] = erecete_metni
+                        _ilac["_erecete_aciklama_listesi"] = erecete_aciklama_listesi
                     log(f"  [OKU ] Retry başarılı: {len(ilaclar)} ilaç bulundu", "info")
             except Exception as retry_err:
                 log(f"  [UYARI] Retry hatası: {retry_err}", "warn")
@@ -4885,8 +5251,17 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
 
             # ── KAYNAK 3: E-Reçete sayfası açıklamaları (hala eşleşmeyen varsa) ──
             if eslesmeyen:
-                log(f"    [3] {len(eslesmeyen)} uyarı kodu eşleşmedi — E-Reçete sayfasından okunuyor...", "warn")
-                erecete = erecete_aciklama_oku(medula)
+                # 217 için zaten eagerly okuduysak tekrar açma — yoksa şimdi aç
+                if erecete_okundu:
+                    log(f"    [3] {len(eslesmeyen)} uyarı kodu eşleşmedi — E-Reçete metni cache'den kullanılıyor", "info")
+                    erecete = {
+                        "tum_metin": erecete_metni,
+                        "aciklamalar": erecete_aciklama_listesi,
+                        "tanilar": erecete_tani_listesi,
+                    }
+                else:
+                    log(f"    [3] {len(eslesmeyen)} uyarı kodu eşleşmedi — E-Reçete sayfasından okunuyor...", "warn")
+                    erecete = erecete_aciklama_oku(medula)
                 if erecete:
                     tum_teshisler_ek = kaynak_teshis + rapor_tanilari_toplam
                     tum_aciklamalar_ek = recete_aciklamalari + rapor_aciklamalari_toplam
@@ -4991,7 +5366,20 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                         continue
             except Exception as diag_err:
                 log(f"    [TANI] Buton listeleme hatası: {diag_err}", "warn")
-            log("Sonraki butonu bulunamadı - tarama bitti", "info")
+            # Son çare: Reçete Listesi'ne dönüp navigasyonu yeniden çalıştır,
+            # ardından son işlenen reçeteden sonrakine sorgu ile zıpla.
+            log(f"  [KURTARMA] Sonraki bulunamadı — liste yeniden yükleniyor (son: {recete_no})", "warn")
+            try:
+                if medula_navigasyon(medula, grup, donem_offset):
+                    if recete_no:
+                        # Son işlenen reçeteden sonra başlayacak şekilde — şimdilik
+                        # listeden devam ediyoruz; aynı reçete tekrar görülürse döngü
+                        # tespiti (gorulen_receteler) zaten break atacak.
+                        log(f"  [KURTARMA] Liste yeniden yüklendi, taramaya devam", "ok")
+                        continue
+            except Exception as recover_err:
+                log(f"  [KURTARMA] Yeniden navigasyon hatası: {recover_err}", "warn")
+            log(f"Sonraki butonu bulunamadı + kurtarma başarısız — taranan: {sayac} reçete (son: {recete_no})", "warn")
             break
 
         # Sayfa yüklenene kadar bekle (optimize: tek exists çağrısı)

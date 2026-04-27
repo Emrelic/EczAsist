@@ -41,11 +41,65 @@ import time
 import threading
 from datetime import datetime
 
+# pywinauto/UIA backend'in arka plan thread'lerinden çağrılması COM apartment
+# initialize edilmediğinde access violation/0x80040155 veriyor. Her arka plan
+# thread'inde bu helper kullan: with _com_thread(): ... şeklinde.
+try:
+    import pythoncom
+    _PYTHONCOM_VAR = True
+except ImportError:
+    _PYTHONCOM_VAR = False
+
+try:
+    import win32process as _w32proc
+    import win32api as _w32api
+except ImportError:
+    _w32proc = None
+    _w32api = None
+
+
+def _hwnd_process_adi(hwnd):
+    """HWND → process exe adı (lowercase, .exe siz). Hata olursa boş string."""
+    if _w32proc is None or _w32api is None:
+        return ""
+    try:
+        _tid, pid = _w32proc.GetWindowThreadProcessId(int(hwnd))
+        if not pid:
+            return ""
+        h = _w32api.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        try:
+            exe = _w32proc.GetModuleFileNameEx(h, 0)
+        finally:
+            _w32api.CloseHandle(h)
+        return os.path.splitext(os.path.basename(exe or ""))[0].lower()
+    except Exception:
+        return ""
+
+
+class _com_thread:
+    """COM apartment'ı thread için initialize/uninitialize eden context manager."""
+    def __enter__(self):
+        if _PYTHONCOM_VAR:
+            try:
+                pythoncom.CoInitialize()
+            except Exception:
+                pass
+        return self
+    def __exit__(self, *exc):
+        if _PYTHONCOM_VAR:
+            try:
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
+        return False
+
 logger = logging.getLogger(__name__)
 
 # Proje dizini
 PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))
 DURUM_DOSYASI = os.path.join(PROJE_DIZINI, "recete_kontrol_durumlari.json")
+RENKLI_CACHE_DOSYASI = os.path.join(PROJE_DIZINI, "renkli_recete_cache.json")
+MESAJ_YOKSAY_DOSYASI = os.path.join(PROJE_DIZINI, "mesaj_yoksay_listesi.json")
 
 # Medula exe yolu
 MEDULA_EXE = r"C:\BotanikEczane\BotanikMedula.exe"
@@ -107,6 +161,9 @@ class MedulaBaglanti:
         self._keepalive_thread = None
         self._keepalive_aktif = False
         self._son_aktivite = time.time()
+        # Bağlantı/giriş işlemlerini serileştirmek için lock
+        # (otomatik_baglan + tumu_thread vb. aynı anda çalışırsa COM çakışır)
+        self._baglan_lock = threading.Lock()
 
     # === PENCERE TARAMA ===
 
@@ -115,21 +172,30 @@ class MedulaBaglanti:
         Tüm pencereleri tara ve Medula ile ilgili olanları döndür.
         Returns:
             dict: {"medula": [(hwnd, title), ...], "giris": [(hwnd, title), ...]}
+
+        Tespit önceliği: process adı BotanikMedula.exe → MEDULA başlık → 3+ kelime fallback.
         """
         import win32gui
         medula = []
         giris = []
 
         def callback(hwnd, _):
-            if win32gui.IsWindowVisible(hwnd):
-                t = win32gui.GetWindowText(hwnd)
-                if "MEDULA" in t and "(T)" in t:
+            if not win32gui.IsWindowVisible(hwnd):
+                return
+            t = win32gui.GetWindowText(hwnd)
+            if not t:
+                return
+            proc = _hwnd_process_adi(hwnd)
+            if proc == "botanikmedula":
+                medula.append((hwnd, t))
+                return
+            if "MEDULA" in t and "(T)" in t:
+                medula.append((hwnd, t))
+                return
+            if "BotanikEOS" in t and "(T)" in t:
+                parcalar = t.replace("(T)", "").strip().split()
+                if len(parcalar) >= 3:
                     medula.append((hwnd, t))
-                elif "BotanikEOS" in t and "(T)" in t:
-                    # Ana pencere: kullanıcı adı var (3+ kelime)
-                    parcalar = t.replace("(T)", "").strip().split()
-                    if len(parcalar) >= 3:
-                        medula.append((hwnd, t))
 
         win32gui.EnumWindows(callback, None)
         return {"medula": medula, "giris": giris}
@@ -157,39 +223,64 @@ class MedulaBaglanti:
 
     def _eos_penceresi_bul(self):
         """Medula çalışan ana pencereyi bul.
-        Öncelik: 1) Title'da "MEDULA" olan pencere (oturum açık, aktif)
-                 2) BotanikEOS ana penceresi (kullanıcı adı olan, oturum düşmüş olabilir)
-        Küçük şifre penceresi ("BotanikEOS 2.1.223.0 (T)" — kullanıcı adı yok) atlanır.
-        Görünmez (hayalet) pencereler atlanır.
+        Öncelik:
+          1) Process adı BotanikMedula olan görünür pencere (en güvenilir;
+             oturum düşse, MEDULA prefix gitse bile process aynı kalır)
+          2) Title'da "MEDULA" olan pencere (oturum aktifken)
+          3) BotanikEOS ana penceresi (kullanıcı adı olan — eski heuristic)
+        Küçük şifre penceresi ("BotanikEOS 2.1.223.0 (T)" — kullanıcı adı yok) ve
+        görünmez (hayalet) pencereler atlanır.
         Returns: (desktop, window, hwnd) veya (None, None, None)
         """
         from pywinauto import Desktop
         desktop = Desktop(backend="uia")
 
-        # 1. Önce MEDULA title'lı pencere ara (oturum açık, en güvenilir)
+        # Pencereleri tek seferde topla — birden fazla yerde lazım
+        adaylar = []
         for w in desktop.windows():
             try:
-                title = w.window_text()
-                if "MEDULA" in title and "(T)" in title:
-                    win = desktop.window(handle=w.handle)
-                    if win.is_visible():
-                        return desktop, win, w.handle
-            except:
-                pass
-
-        # 2. BotanikEOS ana penceresi (kullanıcı adı olan)
-        for w in desktop.windows():
-            try:
-                title = w.window_text()
-                if "BotanikEOS" not in title or "(T)" not in title:
+                title = w.window_text() or ""
+                if not title:
                     continue
-                parcalar = title.replace("(T)", "").strip().split()
-                if len(parcalar) >= 3:
-                    win = desktop.window(handle=w.handle)
-                    if win.is_visible():
-                        return desktop, win, w.handle
-            except:
-                pass
+                handle = w.handle
+                visible = False
+                try:
+                    visible = desktop.window(handle=handle).is_visible()
+                except Exception:
+                    visible = False
+                if not visible:
+                    continue
+                proc = _hwnd_process_adi(handle)
+                adaylar.append((handle, title, proc))
+            except Exception:
+                continue
+
+        # 1. Process adı BotanikMedula
+        for handle, title, proc in adaylar:
+            if proc == "botanikmedula":
+                try:
+                    return desktop, desktop.window(handle=handle), handle
+                except Exception:
+                    continue
+
+        # 2. MEDULA başlığı
+        for handle, title, proc in adaylar:
+            if "MEDULA" in title and "(T)" in title:
+                try:
+                    return desktop, desktop.window(handle=handle), handle
+                except Exception:
+                    continue
+
+        # 3. Eski heuristic (3+ kelime) — fallback
+        for handle, title, proc in adaylar:
+            if "BotanikEOS" not in title or "(T)" not in title:
+                continue
+            parcalar = title.replace("(T)", "").strip().split()
+            if len(parcalar) >= 3:
+                try:
+                    return desktop, desktop.window(handle=handle), handle
+                except Exception:
+                    continue
 
         return None, None, None
 
@@ -210,22 +301,24 @@ class MedulaBaglanti:
         """Medula oturumu aktif mi kontrol et (tıklama yapmadan).
         Web elementleri (menü, reçete sayfası) veya giriş butonu varsa pencere canlı.
         İkisi de yoksa embedded browser boş = oturum düşmüş.
+
+        OPT/STABILITY: descendants() yerine hedefli child_window araması kullanılıyor.
+        IE-embed pencerelerde tüm UIA ağacını yürümek E_INTERFACE_NOT_REGISTERED
+        hatası tetikleyip pywinauto'yu çökertebiliyor (gözlenmiş crash).
         """
         if not self.main_window:
             return False
-        try:
-            for elem in self.main_window.descendants():
-                try:
-                    aid = elem.element_info.automation_id
-                    # Web elementleri varsa oturum aktif
-                    if aid in ("f:tbl1", "f:buttonSonraki", "f:buttonGeriDon",
-                               MEDULA_IDS["menu_recete_listesi"],
-                               "btnMedulayaGirisYap"):
-                        return True
-                except:
-                    pass
-        except:
-            pass
+        aids = (
+            "f:tbl1", "f:buttonSonraki", "f:buttonGeriDon",
+            MEDULA_IDS["menu_recete_listesi"], "btnMedulayaGirisYap",
+        )
+        for aid in aids:
+            try:
+                cw = self.main_window.child_window(auto_id=aid)
+                if cw.exists(timeout=0.2):
+                    return True
+            except Exception:
+                continue
         return False
 
     def _oturumu_yenile(self):
@@ -236,19 +329,17 @@ class MedulaBaglanti:
         # Menü görünmüyor olabilir — Geri Dön + Giriş dene
         if not self.oturum_aktif_mi():
             # Geri Dön butonu (web sayfası içi) — f:buttonGeriDon
-            try:
-                for elem in self.main_window.descendants():
-                    try:
-                        aid = elem.element_info.automation_id
-                        if aid in ("f:buttonGeriDon", "form1:buttonGeriDon"):
-                            elem.invoke()
-                            self.log("Geri Dön basıldı", "info")
-                            time.sleep(1)
-                            break
-                    except:
-                        pass
-            except:
-                pass
+            # STABILITY: descendants() yerine hedefli child_window araması
+            for aid in ("f:buttonGeriDon", "form1:buttonGeriDon"):
+                try:
+                    cw = self.main_window.child_window(auto_id=aid)
+                    if cw.exists(timeout=0.3):
+                        cw.invoke()
+                        self.log("Geri Dön basıldı", "info")
+                        time.sleep(1)
+                        break
+                except Exception:
+                    continue
 
         # Giriş butonuna 3 kez bas (1sn arayla)
         for i in range(3):
@@ -263,50 +354,75 @@ class MedulaBaglanti:
         return False
 
     def medula_baglan(self):
-        """Medula bağlantı akışı:
-        1) Aktif pencere var + web elementleri var → mevcut pencereyi kullan
-        2) Şifre penceresi açık → giriş yap
-        3) Ana pencere var ama oturum düşmüş → taskkill + exe + giriş
-        4) Hiçbir pencere yok → exe + giriş
+        """Tek noktadan Medula bağlantı akışı.
+
+        Adımlar:
+          1. Zaten bağlı + oturum aktif → True dön
+          2. Medula penceresi var mı?
+             a) VAR + oturum aktif → True dön
+             b) VAR + oturum düşmüş → Giriş butonuna 3 kez bas (1 sn arayla)
+                - Oturum kalktıysa → True dön
+                - Hâlâ aktif değilse → taskkill + exe yeniden başlat + kullanıcı/şifre ile giriş
+             c) YOK + sadece şifre penceresi açık → şifre ile giriş
+             d) YOK + hiçbir pencere yok → exe başlat + kullanıcı/şifre ile giriş
+
+        Lock: aynı anda iki thread çağırırsa ikincisi birincinin bitmesini bekler.
+
+        Returns: True bağlanıldı / False bağlanılamadı
         """
-        try:
-            from pywinauto import Desktop
-            desktop = Desktop(backend="uia")
-
-            # ── ADIM 1: Ana pencere var mı? ──
-            _desktop, win, hwnd = self._eos_penceresi_bul()
-
-            if win:
-                self.main_window = win
-                self.medula_hwnd = hwnd
-                self.bagli = True
-
-                if self._oturum_canli_mi():
-                    self.log("Medula penceresi bulundu, mevcut pencere kullanılıyor", "success")
-                    return True
-
-                # Oturum düşmüş → taskkill + yeniden başlat
-                self.log("Medula penceresi var ama oturum düşmüş, yeniden başlatılıyor...", "warning")
-                self._medula_kapat()
-                time.sleep(3)
-                return self._exe_baslat_ve_giris_yap()
-
-            # ── ADIM 2: Şifre penceresi açık mı? ──
-            for w in desktop.windows():
+        with self._baglan_lock:
+            # 1) Zaten bağlı ve oturum sağlam mı?
+            if self.bagli and self.main_window is not None:
                 try:
-                    if w.element_info.automation_id == "SifreSorForm":
-                        self.log("Şifre penceresi zaten açık, giriş yapılıyor...", "info")
-                        return self._sifre_ile_giris_yap(w)
-                except:
+                    if self._oturum_canli_mi():
+                        return True
+                except Exception:
                     pass
 
-            # ── ADIM 3: Hiçbir pencere yok → exe'den başlat ──
-            self.log("Medula penceresi bulunamadı, açılıyor...", "info")
-            return self._exe_baslat_ve_giris_yap()
+            try:
+                from pywinauto import Desktop
+                desktop = Desktop(backend="uia")
 
-        except Exception as e:
-            self.log(f"Bağlantı hatası: {e}", "error")
-            return False
+                # 2) Medula ana penceresi var mı?
+                _desktop, win, hwnd = self._eos_penceresi_bul()
+
+                if win:
+                    self.main_window = win
+                    self.medula_hwnd = hwnd
+                    self.bagli = True
+
+                    # 2a) Oturum aktif mi?
+                    if self._oturum_canli_mi():
+                        self.log("Medula penceresi bulundu, mevcut pencere kullanılıyor", "success")
+                        return True
+
+                    # 2b) Oturum düşmüş — Giriş butonuna 3 kez basarak yenilemeyi dene
+                    self.log("Medula penceresi var ama oturum düşmüş, Giriş butonuna basılıyor...", "warning")
+                    if self._oturumu_yenile():
+                        return True
+
+                    # 3 deneme yetmedi → taskkill + exe yeniden başlat + giriş
+                    self.log("Giriş butonu 3 denemede başarılı olmadı, taskkill yapılıyor...", "warning")
+                    self._medula_kapat()
+                    time.sleep(3)
+                    return self._exe_baslat_ve_giris_yap()
+
+                # 2c) Sadece şifre penceresi açık mı?
+                for w in desktop.windows():
+                    try:
+                        if w.element_info.automation_id == "SifreSorForm":
+                            self.log("Şifre penceresi zaten açık, giriş yapılıyor...", "info")
+                            return self._sifre_ile_giris_yap(w)
+                    except:
+                        pass
+
+                # 2d) Hiçbir pencere yok → exe başlat + giriş
+                self.log("Medula penceresi bulunamadı, açılıyor...", "info")
+                return self._exe_baslat_ve_giris_yap()
+
+            except Exception as e:
+                self.log(f"Bağlantı hatası: {e}", "error")
+                return False
 
     def medula_ac_ve_baglan(self):
         """Medula'yı aç ve bağlan — tek giriş noktası."""
@@ -748,37 +864,37 @@ class MedulaBaglanti:
     # === OTURUM KONTROLÜ ===
 
     def oturum_aktif_mi(self):
-        """Sol menü görünüyor mu? (oturum düşmüşse menü kaybolur)"""
-        if not self.bagli:
+        """Sol menü görünüyor mu? (oturum düşmüşse menü kaybolur)
+
+        STABILITY: descendants() çağrısı IE-embed Medula penceresinde
+        E_INTERFACE_NOT_REGISTERED COM hatası fırlatıp pywinauto'yu
+        çökertebiliyor (access violation + stack overflow gözlemlendi).
+        Hedefli child_window kullanarak tüm tree yürümeyi atlıyoruz.
+        """
+        if not self.bagli or not self.main_window:
             return False
         try:
-            for elem in self.main_window.descendants():
-                try:
-                    if elem.element_info.automation_id == MEDULA_IDS["menu_recete_listesi"]:
-                        return True
-                except:
-                    pass
-            return False
-        except:
+            cw = self.main_window.child_window(auto_id=MEDULA_IDS["menu_recete_listesi"])
+            return bool(cw.exists(timeout=0.3))
+        except Exception:
             return False
 
     def oturumu_yenile(self):
         """
         Oturum düşmüşse BotanikEOS toolbar'daki Giriş butonuna
         birkaç kez basarak yenile.
+
+        STABILITY: descendants() yerine hedefli child_window — IE-embed
+        Medula penceresinde tree walk crash riski azaltıldı.
         """
         self.log("Oturum düşmüş, yenileniyor...", "warning")
         for deneme in range(3):
             try:
-                for elem in self.main_window.descendants():
-                    try:
-                        if elem.element_info.automation_id == "btnMedulayaGirisYap":
-                            elem.click_input()
-                            self.log(f"Giriş butonu tıklandı ({deneme+1}/3)", "info")
-                            break
-                    except:
-                        pass
-            except:
+                cw = self.main_window.child_window(auto_id="btnMedulayaGirisYap")
+                if cw.exists(timeout=0.3):
+                    cw.click_input()
+                    self.log(f"Giriş butonu tıklandı ({deneme+1}/3)", "info")
+            except Exception:
                 pass
 
             time.sleep(4)
@@ -1620,18 +1736,53 @@ class ReceteRaporKontrolGUI:
         )
         geri_btn.pack(side="right", padx=15, pady=10)
 
+        # Sayfa Yerleşimi butonları (sağ üst, Ana Menü solu)
+        yer_uygula_btn = tk.Button(
+            baslik_frame, text="📐 Yerleşimi Uygula",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#1565C0", activebackground="#0D47A1",
+            bd=0, padx=10, pady=5, cursor="hand2",
+            command=self._yerlesim_uygula_tikla
+        )
+        yer_uygula_btn.pack(side="right", padx=(0, 5), pady=10)
+
+        yer_kaydet_btn = tk.Button(
+            baslik_frame, text="💾 Yerleşimi Kaydet",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#2E7D32", activebackground="#1B5E20",
+            bd=0, padx=10, pady=5, cursor="hand2",
+            command=self._yerlesim_kaydet_tikla
+        )
+        yer_kaydet_btn.pack(side="right", padx=(0, 5), pady=10)
+
         # === MEDULA BAĞLANTI BÖLÜMÜ ===
         medula_frame = tk.Frame(self.root, bg="#263238")
         medula_frame.pack(fill="x", padx=15, pady=(10, 5))
 
+        # Sol: MEDULA Bağlan butonu + üzerinde "Bağlantıyı Açık Tut" checkbox'ı
+        medula_btn_frame = tk.Frame(medula_frame, bg="#263238")
+        medula_btn_frame.pack(side="left", padx=5, pady=5)
+
+        # Checkbox - butonun üzerinde
+        self.canli_tut_var = tk.BooleanVar(value=self._canli_tut_tercihi_yukle())
+        self.canli_tut_cb = tk.Checkbutton(
+            medula_btn_frame, text="Bağlantıyı Açık Tut",
+            variable=self.canli_tut_var,
+            font=("Segoe UI", 8), fg="#90CAF9", bg="#263238",
+            selectcolor="#0D2137", activebackground="#263238",
+            activeforeground="#90CAF9",
+            command=self._canli_tut_toggle,
+        )
+        self.canli_tut_cb.pack(anchor="w", pady=(0, 2))
+
         medula_btn = tk.Button(
-            medula_frame, text="MEDULA Bağlan",
+            medula_btn_frame, text="MEDULA Bağlan",
             font=("Segoe UI", 10, "bold"),
             fg="white", bg="#0277BD", activebackground="#01579B",
             bd=0, padx=12, pady=6, cursor="hand2",
             command=self._medula_baglan_tikla
         )
-        medula_btn.pack(side="left", padx=5, pady=5)
+        medula_btn.pack(side="left")
         self.medula_btn = medula_btn
 
         self.medula_durum_label = tk.Label(
@@ -1651,6 +1802,10 @@ class ReceteRaporKontrolGUI:
         # Ay seçimi (önce pack - sağda sabit kalması için)
         self.renkli_recete_dosya = None
         self.renkli_recete_listesi = []
+
+        # İlaç mesajı yoksay listesi (substring patternleri)
+        self.mesaj_yoksay_patternleri = []
+        self._mesaj_yoksay_yukle()
 
         ay_frame = tk.Frame(ust_ayar_frame, bg="#37474F", bd=1, relief="groove")
         ay_frame.pack(side="right", padx=(5, 0))
@@ -1674,15 +1829,23 @@ class ReceteRaporKontrolGUI:
         )
         self.renkli_durum_label.pack(side="left", padx=3)
 
+        # En son tarih label'ı (Excel'de ne tarihe kadarki reçeteler var)
+        self.renkli_tarih_label = tk.Label(
+            renkli_frame, text="", font=("Segoe UI", 8, "bold"),
+            fg="#FFD54F", bg="#37474F"
+        )
+        self.renkli_tarih_label.pack(side="left", padx=8)
+
         # "Hatırla" checkbox
         self.renkli_hatirla_var = tk.BooleanVar(value=True)
         self.renkli_hatirla_cb = tk.Checkbutton(
-            renkli_frame, text="✓",
+            renkli_frame, text="Hatırla",
             variable=self.renkli_hatirla_var,
-            font=("Segoe UI", 7), fg="#90CAF9", bg="#37474F",
+            font=("Segoe UI", 9), fg="#90CAF9", bg="#37474F",
             selectcolor="#263238", activebackground="#37474F",
+            activeforeground="#90CAF9",
         )
-        self.renkli_hatirla_cb.pack(side="left", padx=0)
+        self.renkli_hatirla_cb.pack(side="left", padx=4)
 
         # Otomatik yükleme: kaydedilmiş excel dosyası varsa aç
         self._renkli_excel_hatirla()
@@ -1805,39 +1968,57 @@ class ReceteRaporKontrolGUI:
         )
         acik_btn.pack(side="right", padx=(0, 5))
 
-        # === LOG ALANI ===
+        # === LOG ALANI (Notebook: Sistem Logu + Kontrol Sonuçları) ===
         log_frame = tk.Frame(icerik_frame, bg="#0D2137", bd=1, relief="sunken")
         log_frame.pack(fill="both", expand=True, pady=(8, 0))
 
-        tk.Label(
-            log_frame, text="Kontrol Günlüğü",
-            font=("Segoe UI", 9, "bold"), fg="#87CEEB", bg="#0D2137"
-        ).pack(anchor="w", padx=5, pady=2)
+        notebook = ttk.Notebook(log_frame)
+        notebook.pack(fill="both", expand=True, padx=2, pady=2)
 
-        self.log_text = tk.Text(
-            log_frame, font=("Consolas", 9), fg="#E0E0E0", bg="#0D2137",
+        # --- Sekme 1: Kontrol Sonuçları (kullanıcının asıl baktığı) ---
+        kontrol_tab = tk.Frame(notebook, bg="#0D2137")
+        notebook.add(kontrol_tab, text="Kontrol Sonuçları")
+
+        self.kontrol_text = tk.Text(
+            kontrol_tab, font=("Consolas", 10), fg="#E0E0E0", bg="#0D2137",
             insertbackground="white", wrap="word", height=10,
             state="disabled", bd=0
         )
-        scrollbar = tk.Scrollbar(log_frame, command=self.log_text.yview)
+        kontrol_sb = tk.Scrollbar(kontrol_tab, command=self.kontrol_text.yview)
+        self.kontrol_text.configure(yscrollcommand=kontrol_sb.set)
+        kontrol_sb.pack(side="right", fill="y")
+        self.kontrol_text.pack(fill="both", expand=True, padx=5, pady=2)
+        self.kontrol_text.bind("<Control-c>", self._kontrol_kopyala)
+        self.kontrol_text.bind("<Control-a>",
+                                lambda e: (self.kontrol_text.tag_add("sel", "1.0", "end"), "break")[1])
+
+        # --- Sekme 2: Sistem Logu (akış / debug) ---
+        log_tab = tk.Frame(notebook, bg="#0D2137")
+        notebook.add(log_tab, text="Sistem Logu")
+
+        self.log_text = tk.Text(
+            log_tab, font=("Consolas", 9), fg="#E0E0E0", bg="#0D2137",
+            insertbackground="white", wrap="word", height=10,
+            state="disabled", bd=0
+        )
+        scrollbar = tk.Scrollbar(log_tab, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         self.log_text.pack(fill="both", expand=True, padx=5, pady=2)
-
-        # Kopyalama desteği (disabled state'te Ctrl+C çalışması için)
         self.log_text.bind("<Control-c>", self._log_kopyala)
-        self.log_text.bind("<Control-a>", lambda e: (self.log_text.tag_add("sel", "1.0", "end"), "break")[1])
+        self.log_text.bind("<Control-a>",
+                            lambda e: (self.log_text.tag_add("sel", "1.0", "end"), "break")[1])
 
-        # Tag'ler - kontrol sonuçlarına göre renkler
-        self.log_text.tag_configure("info", foreground="#87CEEB")           # Nötr - açık mavi
-        self.log_text.tag_configure("success", foreground="#0D2137", background="#A5D6A7")  # Uygun - yeşil arka plan
-        self.log_text.tag_configure("warning", foreground="#0D2137", background="#FFE082")  # Şüpheli/bilinemeyen - sarı
-        self.log_text.tag_configure("error", foreground="#FFFFFF", background="#E53935")    # Uygunsuz - kırmızı
-        self.log_text.tag_configure("sorun", foreground="#FFFFFF", background="#D84315")    # Sorun - koyu turuncu
-        self.log_text.tag_configure("header", foreground="#FFFFFF", font=("Consolas", 10, "bold"))
-        self.log_text.tag_configure("neutral", foreground="#B0BEC5")        # Nötr - gri (GEÇ satırları)
-        self.log_text.tag_configure("ilac", foreground="#FFFFFF",
-                                     font=("Consolas", 9, "bold"))          # İlaç adı - beyaz kalın
+        # Tag'ler - her iki widget'a aynı tag'leri ekle
+        for w in (self.log_text, self.kontrol_text):
+            w.tag_configure("info", foreground="#87CEEB")           # Nötr - açık mavi
+            w.tag_configure("success", foreground="#0D2137", background="#A5D6A7")  # Uygun - yeşil
+            w.tag_configure("warning", foreground="#0D2137", background="#FFE082")  # Sarı
+            w.tag_configure("error", foreground="#FFFFFF", background="#E53935")    # Kırmızı
+            w.tag_configure("sorun", foreground="#FFFFFF", background="#D84315")    # Koyu turuncu
+            w.tag_configure("header", foreground="#FFFFFF", font=("Consolas", 10, "bold"))
+            w.tag_configure("neutral", foreground="#B0BEC5")        # Gri
+            w.tag_configure("ilac", foreground="#FFFFFF", font=("Consolas", 9, "bold"))
 
     def _grup_satiri_olustur(self, parent, grup):
         """Tek bir grup için buton + durum label satırı"""
@@ -2006,8 +2187,23 @@ class ReceteRaporKontrolGUI:
         self.root.update()
 
         def otomatik_baglan():
-            basarili = self.medula.medula_ac_ve_baglan()
-            self.root.after(0, lambda: self._medula_baglanti_sonuc(basarili))
+            with _com_thread():
+                # CRASH KORUMA: medula_baglan COM tree walk yapan fonksiyonları
+                # tetikleyebilir; IE-embed pencerede Windows fatal exception
+                # (E_INTERFACE_NOT_REGISTERED) çökertme riski var. Tüm akışı
+                # try/except ile sar — Python COMError'ı yakalar, fatal native
+                # crash'leri yakalayamaz ama child_window'a geçtikten sonra
+                # bu risk minimize.
+                basarili = False
+                try:
+                    basarili = self.medula.medula_ac_ve_baglan()
+                except Exception as e:
+                    try:
+                        self.root.after(0, lambda em=str(e): self.log_yaz(
+                            f"Otomatik bağlanma hatası: {em[:120]}", "error"))
+                    except Exception:
+                        pass
+                self.root.after(0, lambda b=basarili: self._medula_baglanti_sonuc(b))
 
         threading.Thread(target=otomatik_baglan, daemon=True).start()
 
@@ -2022,40 +2218,101 @@ class ReceteRaporKontrolGUI:
 
         def islem():
             import subprocess
+            with _com_thread():
+                # 1. Doğrudan bağlanmayı dene
+                if self.medula.medula_baglan():
+                    self.root.after(0, lambda: self._medula_baglanti_sonuc(True))
+                    return
 
-            # 1. Doğrudan bağlanmayı dene
-            if self.medula.medula_baglan():
-                self.root.after(0, lambda: self._medula_baglanti_sonuc(True))
-                return
+                # 2. Başarısız - taskkill + yeniden başlat
+                self.root.after(0, lambda: self.log_yaz("Bağlantı başarısız, yeniden başlatılıyor...", "warning"))
+                self.medula.keepalive_durdur()
+                try:
+                    subprocess.run(["taskkill", "/F", "/IM", "BotanikMedula.exe"],
+                                   capture_output=True, text=True, timeout=10)
+                except:
+                    pass
+                self.medula.bagli = False
+                self.medula.main_window = None
+                self.medula.medula_hwnd = None
+                time.sleep(3)
 
-            # 2. Başarısız - taskkill + yeniden başlat
-            self.root.after(0, lambda: self.log_yaz("Bağlantı başarısız, yeniden başlatılıyor...", "warning"))
-            self.medula.keepalive_durdur()
-            try:
-                subprocess.run(["taskkill", "/F", "/IM", "BotanikMedula.exe"],
-                               capture_output=True, text=True, timeout=10)
-            except:
-                pass
-            self.medula.bagli = False
-            self.medula.main_window = None
-            self.medula.medula_hwnd = None
-            time.sleep(3)
-
-            basarili = self.medula._exe_baslat_ve_giris_yap()
-            self.root.after(0, lambda: self._medula_baglanti_sonuc(basarili))
+                basarili = self.medula._exe_baslat_ve_giris_yap()
+                self.root.after(0, lambda: self._medula_baglanti_sonuc(basarili))
 
         threading.Thread(target=islem, daemon=True).start()
 
     def _medula_baglanti_sonuc(self, basarili):
-        """Medula bağlantı sonucunu GUI'ye yansıt"""
+        """Medula bağlantı sonucunu GUI'ye yansıt + bağlanınca yerleşim uygula
+        + 'Bağlantıyı Açık Tut' işaretliyse keepalive servisini başlat."""
         if basarili:
             self.medula_durum_label.config(text="Durum: Bağlı", fg="#4CAF50")
             self.medula_btn.config(text="MEDULA Bağlı", bg="#2E7D32")
             self.log_yaz("Medula'ya bağlantı kuruldu!", "success")
+            # Bağlanır bağlanmaz yerleşim planını uygula (Medula sol, Hasta Takip sağ)
+            try:
+                self._pencereleri_konumlandir()
+            except Exception as e:
+                logger.debug(f"Bağlantı sonrası yerleşim hatası: {e}")
+            # Bağlantıyı Açık Tut işaretliyse servisi başlat
+            try:
+                if getattr(self, "canli_tut_var", None) and self.canli_tut_var.get():
+                    self._canli_tut_uygula(True)
+            except Exception:
+                pass
         else:
             self.medula_durum_label.config(text="Durum: Bağlantı başarısız", fg="#F44336")
             self.medula_btn.config(text="MEDULA Bağlan", bg="#D32F2F")
             self.log_yaz("Medula bağlantısı kurulamadı! Butona basarak tekrar deneyin.", "error")
+
+    # === BAĞLANTIYI AÇIK TUT (keepalive servisi) ===
+
+    def _canli_tut_tercihi_yukle(self):
+        """DURUM_DOSYASI'ndan 'canli_tut' tercihini yükle (varsayılan False)."""
+        try:
+            if os.path.exists(DURUM_DOSYASI):
+                with open(DURUM_DOSYASI, "r", encoding="utf-8") as f:
+                    return bool(json.load(f).get("_canli_tut", False))
+        except Exception:
+            pass
+        return False
+
+    def _canli_tut_tercihi_kaydet(self, deger: bool):
+        """'canli_tut' tercihini DURUM_DOSYASI'na yaz."""
+        try:
+            durum = {}
+            if os.path.exists(DURUM_DOSYASI):
+                with open(DURUM_DOSYASI, "r", encoding="utf-8") as f:
+                    durum = json.load(f)
+            durum["_canli_tut"] = bool(deger)
+            with open(DURUM_DOSYASI, "w", encoding="utf-8") as f:
+                json.dump(durum, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+
+    def _canli_tut_uygula(self, basla: bool):
+        """Keepalive servisini başlat veya durdur."""
+        try:
+            from medula_oturum_canli import get_servis
+            servis = get_servis()
+            if basla:
+                if not servis.aktif_mi():
+                    if servis.basla():
+                        self.log_yaz("✓ Bağlantıyı açık tutma başladı (110s idle eşiği, F5+popup)", "success")
+                    else:
+                        self.log_yaz("Bağlantıyı açık tutma başlatılamadı (pynput?)", "error")
+            else:
+                if servis.aktif_mi():
+                    servis.dur()
+                    self.log_yaz("Bağlantıyı açık tutma durduruldu", "info")
+        except Exception as e:
+            self.log_yaz(f"Bağlantıyı açık tutma hatası: {e}", "error")
+
+    def _canli_tut_toggle(self):
+        """Checkbox tıklandı: tercihi kaydet + servisi başlat/durdur."""
+        deger = bool(self.canli_tut_var.get())
+        self._canli_tut_tercihi_kaydet(deger)
+        self._canli_tut_uygula(deger)
 
     # === RENKLİ REÇETE EXCEL YÜKLEME ===
 
@@ -2071,25 +2328,69 @@ class ReceteRaporKontrolGUI:
             self._renkli_excel_isle(dosya)
 
     def _renkli_excel_isle(self, dosya_yolu):
-        """Excel dosyasını oku ve renkli reçete listesini oluştur"""
+        """Excel dosyasını oku ve renkli reçete listesini oluştur.
+
+        Beklenen format (esnek):
+          - 1. sütun (A): reçete no(ları), "ABC/DEF" gibi /'li olabilir
+          - 2. sütun (B): hasta (opsiyonel)
+          - 3. sütun (C): hekim (opsiyonel)
+          - 5. sütun (E): tarih (opsiyonel)
+        İlk satır başlık olarak atlanır. Eksik sütunlar boş kabul edilir.
+        """
+        if not os.path.exists(dosya_yolu):
+            self.log_yaz(f"Dosya bulunamadı: {dosya_yolu}", "error")
+            self.renkli_durum_label.config(text="Dosya yok!", fg="#F44336")
+            return
+
         try:
             import openpyxl
-            wb = openpyxl.load_workbook(dosya_yolu, read_only=True)
+        except ImportError:
+            self.log_yaz("openpyxl yüklü değil! 'pip install openpyxl' çalıştırın.", "error")
+            self.renkli_durum_label.config(text="openpyxl yok!", fg="#F44336")
+            return
+
+        try:
+            wb = openpyxl.load_workbook(dosya_yolu, read_only=True, data_only=True)
+        except Exception as e:
+            import traceback
+            self.log_yaz(f"Excel açılamadı ({type(e).__name__}): {e}", "error")
+            logger.error(f"openpyxl load_workbook hatası:\n{traceback.format_exc()}")
+            self.renkli_durum_label.config(text="Excel açılamadı!", fg="#F44336")
+            return
+
+        try:
             ws = wb.active
+            if ws is None:
+                ws = wb.worksheets[0] if wb.worksheets else None
+            if ws is None:
+                self.log_yaz("Excel'de aktif sayfa yok!", "error")
+                self.renkli_durum_label.config(text="Sayfa yok!", fg="#F44336")
+                wb.close()
+                return
 
             self.renkli_recete_listesi = []
-            baslik_satiri = True
-            for row in ws.iter_rows(values_only=True):
-                if baslik_satiri:
-                    baslik_satiri = False
+            atlanan = 0
+            for satir_no, row in enumerate(ws.iter_rows(values_only=True), start=1):
+                # İlk satır başlık - atla
+                if satir_no == 1:
                     continue
-                if row[0]:
+                # Boş satır
+                if not row or row[0] in (None, ""):
+                    continue
+                try:
                     recete_no_raw = str(row[0]).strip()
+                    if not recete_no_raw:
+                        continue
                     # "ZTHPW2PU / 2MBOFVQ" formatı - her iki no'yu da kaydet
-                    recete_nolar = [n.strip() for n in recete_no_raw.split("/")]
-                    hasta = str(row[1] or "").strip()
-                    hekim = str(row[2] or "").strip()
-                    tarih = str(row[4] or "").strip()
+                    recete_nolar = [n.strip() for n in recete_no_raw.split("/") if n.strip()]
+                    hasta = str(row[1] or "").strip() if len(row) > 1 else ""
+                    hekim = str(row[2] or "").strip() if len(row) > 2 else ""
+                    tarih_raw = row[4] if len(row) > 4 else ""
+                    # tarih datetime objesi olabilir; isoformat'a normalize et
+                    if hasattr(tarih_raw, "isoformat"):
+                        tarih = tarih_raw.isoformat()
+                    else:
+                        tarih = str(tarih_raw or "").strip()
 
                     self.renkli_recete_listesi.append({
                         "recete_nolar": recete_nolar,
@@ -2098,27 +2399,52 @@ class ReceteRaporKontrolGUI:
                         "hekim": hekim,
                         "tarih": tarih,
                     })
+                except Exception as satir_e:
+                    atlanan += 1
+                    logger.debug(f"Satır {satir_no} atlandı: {satir_e}")
+                    continue
             wb.close()
 
             self.renkli_recete_dosya = dosya_yolu
             sayi = len(self.renkli_recete_listesi)
             dosya_adi = os.path.basename(dosya_yolu)
+
+            if sayi == 0:
+                self.log_yaz(
+                    f"Excel okundu ama hiç reçete bulunamadı! "
+                    f"İlk sütunda reçete no var mı kontrol edin. ({dosya_adi})",
+                    "warning")
+                self.renkli_durum_label.config(text="Boş liste!", fg="#FF9800")
+                return
+
+            # En son tarihi hesapla ve label'a yaz
+            max_tarih_str = self._renkli_max_tarih_hesapla()
             self.renkli_durum_label.config(
                 text=f"✓ {dosya_adi} ({sayi} reçete)", fg="#4CAF50"
             )
+            if max_tarih_str:
+                self.renkli_tarih_label.config(text=f"📅 {max_tarih_str} tarihine kadar")
+            else:
+                self.renkli_tarih_label.config(text="")
             self.renkli_btn.config(bg="#4A148C")
-            self.log_yaz(f"Renkli reçete listesi yüklendi: {sayi} reçete ({dosya_adi})", "success")
+            ek = f", {atlanan} satır atlandı" if atlanan else ""
+            self.log_yaz(f"Renkli reçete listesi yüklendi: {sayi} reçete ({dosya_adi}){ek}", "success")
 
             # Reçete numaralarını JSON'a kaydet (subprocess okuyabilsin)
             self._renkli_json_guncelle()
+
+            # Tüm veriyi cache JSON'a yaz (yeniden başlatınca Excel okumadan yüklenebilsin)
+            self._renkli_cache_kaydet(dosya_yolu, max_tarih_str)
 
             # Dosya yolunu hatırla (checkbox işaretliyse JSON'a kaydet)
             if self.renkli_hatirla_var.get():
                 self._renkli_excel_kaydet(dosya_yolu)
 
         except Exception as e:
-            self.log_yaz(f"Renkli reçete yükleme hatası: {e}", "error")
-            self.renkli_durum_label.config(text="Yükleme hatası!", fg="#F44336")
+            import traceback
+            self.log_yaz(f"Renkli reçete işleme hatası ({type(e).__name__}): {e}", "error")
+            logger.error(f"Excel parse hatası:\n{traceback.format_exc()}")
+            self.renkli_durum_label.config(text="İşleme hatası!", fg="#F44336")
 
     def _renkli_json_guncelle(self):
         """Renkli reçete numaralarını renkli_recete_listesi.json'a kaydet.
@@ -2155,16 +2481,160 @@ class ReceteRaporKontrolGUI:
             pass
 
     def _renkli_excel_hatirla(self):
-        """Kaydedilmiş renkli reçete excel dosyasını otomatik yükle"""
+        """Önce cache JSON'dan yükle. Cache yoksa veya güncel değilse Excel'i oku.
+
+        Cache geçerlilik kuralı: cache'teki excel dosyası mevcut ve mtime aynı ise
+        cache kullanılır (Excel hiç açılmaz). Aksi halde Excel yeniden okunur.
+        """
         try:
-            if os.path.exists(DURUM_DOSYASI):
-                with open(DURUM_DOSYASI, "r", encoding="utf-8") as f:
-                    durum = json.load(f)
-                dosya = durum.get("_renkli_excel_dosya", "")
-                if dosya and os.path.exists(dosya):
-                    self._renkli_excel_isle(dosya)
-        except:
-            pass
+            # 1) Cache'i dene
+            if self._renkli_cache_yukle():
+                return
+
+            # 2) Cache yok / geçersiz - hatırlanan Excel yolunu dene
+            if not os.path.exists(DURUM_DOSYASI):
+                return
+            with open(DURUM_DOSYASI, "r", encoding="utf-8") as f:
+                durum = json.load(f)
+            dosya = durum.get("_renkli_excel_dosya", "")
+            if not dosya:
+                return
+            if os.path.exists(dosya):
+                self._renkli_excel_isle(dosya)
+            else:
+                # Kayıtlı yol artık geçersiz - temizle
+                logger.info(f"Hatırlanan renkli excel yolu geçersiz, temizleniyor: {dosya}")
+                durum.pop("_renkli_excel_dosya", None)
+                try:
+                    with open(DURUM_DOSYASI, "w", encoding="utf-8") as f:
+                        json.dump(durum, f, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"Renkli excel hatırlama hatası: {e}")
+
+    def _renkli_max_tarih_hesapla(self):
+        """renkli_recete_listesi içindeki en geç tarihi 'dd.mm.yyyy' formatında döndür."""
+        from datetime import datetime as _dt
+        if not self.renkli_recete_listesi:
+            return ""
+        en_son = None
+        formatlar = (
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+            "%d/%m/%Y",
+            "%d.%m.%Y",
+            "%d-%m-%Y",
+            "%m/%d/%Y",
+        )
+        for kayit in self.renkli_recete_listesi:
+            t = (kayit.get("tarih") or "").strip()
+            if not t:
+                continue
+            parsed = None
+            for fmt in formatlar:
+                try:
+                    parsed = _dt.strptime(t[:len(fmt) + 4], fmt)
+                    break
+                except ValueError:
+                    pass
+            if parsed and (en_son is None or parsed > en_son):
+                en_son = parsed
+        if not en_son:
+            return ""
+        return en_son.strftime("%d.%m.%Y")
+
+    def _renkli_cache_kaydet(self, dosya_yolu, max_tarih_str):
+        """Tüm renkli reçete listesini cache JSON'a yaz.
+
+        Bir sonraki açılışta Excel okunmadan bu dosyadan yüklenecek.
+        """
+        try:
+            try:
+                mtime = os.path.getmtime(dosya_yolu) if dosya_yolu and os.path.exists(dosya_yolu) else 0
+            except Exception:
+                mtime = 0
+            cache_data = {
+                "kaynak_dosya": dosya_yolu or "",
+                "kaynak_mtime": mtime,
+                "yukleme_tarihi": datetime.now().isoformat(),
+                "max_tarih": max_tarih_str or "",
+                "kayitlar": self.renkli_recete_listesi,
+            }
+            with open(RENKLI_CACHE_DOSYASI, "w", encoding="utf-8") as f:
+                json.dump(cache_data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.debug(f"Renkli cache kaydetme hatası: {e}")
+
+    def _renkli_cache_yukle(self):
+        """Cache JSON'dan renkli reçete listesini yükle. Başarılı ise True döner."""
+        try:
+            if not os.path.exists(RENKLI_CACHE_DOSYASI):
+                return False
+            with open(RENKLI_CACHE_DOSYASI, "r", encoding="utf-8") as f:
+                cache = json.load(f)
+            kayitlar = cache.get("kayitlar", [])
+            if not kayitlar:
+                return False
+
+            # Cache'teki excel dosyası varsa ve mtime değişmişse cache geçersiz
+            kaynak = cache.get("kaynak_dosya", "")
+            kaynak_mtime = cache.get("kaynak_mtime", 0)
+            if kaynak and os.path.exists(kaynak):
+                try:
+                    if abs(os.path.getmtime(kaynak) - kaynak_mtime) > 1:
+                        # Excel değişmiş - cache kullanma, yeniden okut
+                        return False
+                except Exception:
+                    pass
+
+            self.renkli_recete_listesi = kayitlar
+            self.renkli_recete_dosya = kaynak
+            sayi = len(kayitlar)
+            max_tarih_str = cache.get("max_tarih", "") or self._renkli_max_tarih_hesapla()
+            dosya_adi = os.path.basename(kaynak) if kaynak else "cache"
+            self.renkli_durum_label.config(
+                text=f"✓ {dosya_adi} ({sayi} reçete)", fg="#4CAF50"
+            )
+            if max_tarih_str:
+                self.renkli_tarih_label.config(text=f"📅 {max_tarih_str} tarihine kadar")
+            else:
+                self.renkli_tarih_label.config(text="")
+            self.renkli_btn.config(bg="#4A148C")
+            self.log_yaz(
+                f"Renkli reçete listesi cache'ten yüklendi: {sayi} reçete (Excel okunmadı)",
+                "info",
+            )
+            # JSON özet de güncel olsun
+            self._renkli_json_guncelle()
+            return True
+        except Exception as e:
+            logger.debug(f"Renkli cache yükleme hatası: {e}")
+            return False
+
+    def _mesaj_yoksay_yukle(self):
+        """İlaç mesajı yoksay listesini JSON'dan yükle."""
+        try:
+            if not os.path.exists(MESAJ_YOKSAY_DOSYASI):
+                self.mesaj_yoksay_patternleri = []
+                return
+            with open(MESAJ_YOKSAY_DOSYASI, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            patternler = data.get("ilac_adi_patternleri", [])
+            self.mesaj_yoksay_patternleri = [
+                p.strip().upper() for p in patternler if p and p.strip()
+            ]
+        except Exception as e:
+            logger.debug(f"Mesaj yoksay listesi yüklenemedi: {e}")
+            self.mesaj_yoksay_patternleri = []
+
+    def mesaj_yoksay_eslesti(self, ilac_adi):
+        """İlaç adı yoksay listesindeki bir patternle eşleşiyor mu?"""
+        if not ilac_adi or not self.mesaj_yoksay_patternleri:
+            return False
+        ilac_upper = ilac_adi.upper()
+        return any(p in ilac_upper for p in self.mesaj_yoksay_patternleri)
 
     def renkli_recete_kontrol(self, recete_no):
         """
@@ -2193,7 +2663,7 @@ class ReceteRaporKontrolGUI:
         return "break"
 
     def log_yaz(self, mesaj, tag="info"):
-        """Log alanına mesaj yaz"""
+        """Sistem Logu sekmesine mesaj yaz (akış / debug)"""
         if not self.log_text:
             return
         self.log_text.config(state="normal")
@@ -2201,6 +2671,29 @@ class ReceteRaporKontrolGUI:
         self.log_text.insert("end", f"[{zaman}] {mesaj}\n", tag)
         self.log_text.see("end")
         self.log_text.config(state="disabled")
+
+    def _kontrol_kopyala(self, event=None):
+        """Kontrol Sonuçları widget'ından seçili metni kopyala"""
+        try:
+            secili = self.kontrol_text.get("sel.first", "sel.last")
+            self.root.clipboard_clear()
+            self.root.clipboard_append(secili)
+        except tk.TclError:
+            pass
+        return "break"
+
+    def kontrol_yaz(self, mesaj, tag="info", zaman=False):
+        """Kontrol Sonuçları sekmesine kullanıcıya yönelik satır yaz"""
+        if not getattr(self, "kontrol_text", None):
+            return
+        self.kontrol_text.config(state="normal")
+        if zaman:
+            t = datetime.now().strftime("%H:%M:%S")
+            self.kontrol_text.insert("end", f"[{t}] {mesaj}\n", tag)
+        else:
+            self.kontrol_text.insert("end", f"{mesaj}\n", tag)
+        self.kontrol_text.see("end")
+        self.kontrol_text.config(state="disabled")
 
     # === KONTROL FONKSİYONLARI ===
 
@@ -2218,7 +2711,11 @@ class ReceteRaporKontrolGUI:
         return basarili
 
     def _tumunu_kontrol_et(self):
-        """Tüm grupları sırayla kontrol et: C -> A -> B -> CK -> GK"""
+        """Tüm grupları sırayla kontrol et: C -> A -> B -> CK -> GK.
+
+        Her grup için tek tek grup butonunun yaptığı subprocess akışını çağırır
+        (recete_tarama.py — uyarı kodu, SUT, teşhis kontrolleri dahil).
+        """
         if self.kontrol_aktif:
             self.log_yaz("Zaten bir kontrol devam ediyor!", "warning")
             return
@@ -2228,29 +2725,72 @@ class ReceteRaporKontrolGUI:
         self.log_yaz("Sıra: C -> A -> B -> C Kan Ürünü -> Geçici Koruma", "info")
         self.log_yaz("=" * 40, "header")
 
+        # TÜMÜNÜ modu flag'ı: subprocess thread'leri buton resetlemesini atlasın
+        self._tumu_aktif = True
+        self._tumu_iptal = False
         self.aktif_grup = "TUMU"
         self.tumunu_btn.config(text="DURDUR (Esc)", bg="#B71C1C", activebackground="#7F0000")
         for btn in self.grup_butonlari.values():
             btn.config(state="disabled")
 
-        def kontrol_thread():
-            self.kontrol_aktif = True
-            self._recete_sureleri = []
-            self._recete_baslangic = None
+        def tumu_thread():
             try:
-                for grup in GRUP_TANIMLARI:
-                    if not self.kontrol_aktif:
+                for index, grup in enumerate(GRUP_TANIMLARI):
+                    if self._tumu_iptal:
                         break
-                    self._recete_sureleri = []
-                    self._recete_baslangic = None
-                    self._grup_kontrol_islemi(grup["kod"])
+                    # _tumu_grup_index: ilk grup (0) için --devam, sonrakiler için --bastan
+                    self._tumu_grup_index = index
+                    grup_kodu = grup["kod"]
+                    grup_adi = grup.get("ad", grup_kodu)
+
+                    # Grup başında kritik hata flag'ini ve reçete sayacını sıfırla.
+                    # Subprocess çıktısı bu değerleri set eder; biz grup sonrası kontrol ederiz.
+                    self._tumu_son_grup_hata = None
+                    self._tumu_son_grup_recete_sayisi = 0
+
+                    bitti_evt = threading.Event()
+                    # Grup subprocess'ini ana thread'de başlat (GUI dokunuyor)
+                    self.root.after(
+                        0,
+                        lambda gk=grup_kodu, evt=bitti_evt:
+                            self._grup_kontrol_baslat(gk, bittiginde=evt.set),
+                    )
+
+                    # Subprocess'in başlama + bitişini bekle (5 dk timeout, sonsuz değil)
+                    # Her 0.5 sn'de bir iptal kontrolü
+                    while not bitti_evt.is_set() and not self._tumu_iptal:
+                        time.sleep(0.5)
+
+                    if self._tumu_iptal:
+                        self.root.after(0, lambda: self.log_yaz(
+                            f"TÜMÜNÜ iptal edildi ({grup_adi} sonrası)", "warning"))
+                        break
+
+                    # GRUP SONU SAĞLIK KONTROLÜ:
+                    # Subprocess'te kritik hata yakalandıysa veya hiç reçete işlenmediyse
+                    # bir sonraki gruba geçmek anlamsız (aynı sebepten o da fail olur).
+                    # TÜMÜNÜ'yü durdur, kullanıcıya net bilgi ver.
+                    hata_mesaji = getattr(self, "_tumu_son_grup_hata", None)
+                    recete_sayisi = getattr(self, "_tumu_son_grup_recete_sayisi", 0)
+                    if hata_mesaji:
+                        self.root.after(0, lambda h=hata_mesaji, ga=grup_adi: self.log_yaz(
+                            f"⚠ {ga} grubunda kritik hata: {h}", "error"))
+                        self.root.after(0, lambda ga=grup_adi: self.log_yaz(
+                            f"⚠ TÜMÜNÜ durduruldu — Medula durumunu düzeltip tekrar başlatın "
+                            f"({ga} sonrasındaki gruplar atlandı)", "error"))
+                        break
+                    if recete_sayisi == 0:
+                        self.root.after(0, lambda ga=grup_adi: self.log_yaz(
+                            f"⚠ {ga} grubunda hiç reçete işlenemedi (0 reçete) — TÜMÜNÜ durduruldu", "warning"))
+                        break
             finally:
-                self.kontrol_aktif = False
+                self._tumu_aktif = False
                 self.aktif_grup = None
                 self.root.after(0, self._butonlari_normal_yap)
-                self.root.after(0, lambda: self.log_yaz("Tüm kontroller tamamlandı", "header"))
+                self.root.after(0, lambda: self.log_yaz(
+                    "TÜMÜNÜ KONTROL ET tamamlandı", "header"))
 
-        threading.Thread(target=kontrol_thread, daemon=True).start()
+        threading.Thread(target=tumu_thread, daemon=True).start()
 
     def _medula_hazirla(self):
         """Medula bağlantısını kontrol et.
@@ -2400,8 +2940,24 @@ class ReceteRaporKontrolGUI:
                  font=("Segoe UI", 10, "bold")).pack(side="left", padx=5)
 
     def _pencereleri_konumlandir(self):
-        """Tarama başladığında pencereleri konumlandır:
-        Medula sol %60, Botanik Takip sağ %40 - yan yana, tam yükseklik"""
+        """Tarama başladığında pencereleri konumlandır.
+
+        Öncelik: pencere_yerlesim.json'da kayıtlı yerleşim varsa onu uygula.
+        Yoksa fallback: Medula sol %60, Botanik Takip sağ %40."""
+        # Önce kayıtlı yerleşimi dene
+        try:
+            import pencere_yerlesim as py_yerlesim
+            kayitli = py_yerlesim.yerlesim_yukle()
+            if kayitli.get("medula") or kayitli.get("hasta_takip"):
+                if kayitli.get("medula"):
+                    py_yerlesim.medulaya_uygula()
+                if kayitli.get("hasta_takip"):
+                    self.root.after(0, lambda: py_yerlesim.hasta_takibe_uygula(self.root))
+                return
+        except Exception as e:
+            logger.debug(f"Kayıtlı yerleşim uygulanamadı, varsayılana dönülüyor: {e}")
+
+        # Fallback: hard-coded yerleşim
         try:
             import win32gui, win32con
 
@@ -2436,8 +2992,69 @@ class ReceteRaporKontrolGUI:
         except Exception as e:
             logger.debug(f"Pencere konumlandırma hatası: {e}")
 
+    def _yerlesim_kaydet_tikla(self):
+        """'Sayfa Yerleşimini Kaydet' butonu — şu anki MEDULA + Hasta Takip
+        konum/boyutunu pencere_yerlesim.json'a yazar."""
+        try:
+            import pencere_yerlesim as py_yerlesim
+            from tkinter import messagebox
+            ok = py_yerlesim.yerlesimi_kaydet_simdi(tk_root=self.root)
+            if ok:
+                data = py_yerlesim.yerlesim_yukle()
+                msg_parts = []
+                if "medula" in data:
+                    m = data["medula"]
+                    msg_parts.append(f"Medula: {m['x']},{m['y']}  {m['width']}x{m['height']}")
+                if "hasta_takip" in data:
+                    h = data["hasta_takip"]
+                    msg_parts.append(f"Hasta Takip: {h['x']},{h['y']}  {h['width']}x{h['height']}")
+                detay = "\n".join(msg_parts) if msg_parts else "(boş)"
+                self.log_yaz(f"✓ Sayfa yerleşimi kaydedildi", "success")
+                messagebox.showinfo("Yerleşim Kaydedildi",
+                                    f"Mevcut pencere yerleşimi kaydedildi:\n\n{detay}")
+            else:
+                self.log_yaz("Yerleşim kaydedilemedi (MEDULA bulunamadı?)", "error")
+                messagebox.showwarning("Kaydedilemedi",
+                                       "Yerleşim kaydedilemedi.\nMEDULA penceresi açık mı?")
+        except Exception as e:
+            logger.error(f"Yerleşim kaydetme hatası: {e}")
+            self.log_yaz(f"Yerleşim kaydetme hatası: {e}", "error")
+
+    def _yerlesim_uygula_tikla(self):
+        """'Sayfa Yerleşimini Uygula' butonu — kayıtlı yerleşimi MEDULA ve
+        Hasta Takip pencerelerine uygular."""
+        try:
+            import pencere_yerlesim as py_yerlesim
+            from tkinter import messagebox
+            data = py_yerlesim.yerlesim_yukle()
+            if not data:
+                messagebox.showwarning("Yerleşim Yok",
+                                       "Kayıtlı yerleşim bulunamadı.\n"
+                                       "Önce 'Yerleşimi Kaydet' butonunu kullanın.")
+                return
+            uygulanan = []
+            if data.get("medula"):
+                if py_yerlesim.medulaya_uygula():
+                    uygulanan.append("Medula")
+            if data.get("hasta_takip"):
+                if py_yerlesim.hasta_takibe_uygula(self.root):
+                    uygulanan.append("Hasta Takip")
+            if uygulanan:
+                self.log_yaz(f"✓ Yerleşim uygulandı: {', '.join(uygulanan)}", "success")
+            else:
+                self.log_yaz("Yerleşim uygulanamadı (MEDULA açık mı?)", "warning")
+                messagebox.showwarning("Uygulanamadı",
+                                       "Yerleşim uygulanamadı.\nMEDULA penceresi açık mı?")
+        except Exception as e:
+            logger.error(f"Yerleşim uygulama hatası: {e}")
+            self.log_yaz(f"Yerleşim uygulama hatası: {e}", "error")
+
     def _taramayi_durdur(self):
         """Taramayı durdur - STOP dosyası oluştur ve subprocess'i terminate et"""
+        # TÜMÜNÜ modundaysa: iptal flag'ı set et (loop görsün)
+        if getattr(self, "_tumu_aktif", False):
+            self._tumu_iptal = True
+
         if not self.kontrol_aktif:
             return
 
@@ -2538,8 +3155,14 @@ class ReceteRaporKontrolGUI:
         else:
             self._tumunu_kontrol_et()
 
-    def _grup_kontrol_baslat(self, grup_kodu, acik_receteden=False):
-        """Belirli bir grubun kontrolünü subprocess ile başlat"""
+    def _grup_kontrol_baslat(self, grup_kodu, acik_receteden=False, bittiginde=None):
+        """Belirli bir grubun kontrolünü subprocess ile başlat.
+
+        Args:
+            grup_kodu: Grup kodu (C/A/B/CK/GK)
+            acik_receteden: Açık reçeteden başla
+            bittiginde: Subprocess bitince çağrılacak callback (TÜMÜNÜ akışı için)
+        """
         if self.kontrol_aktif:
             self.log_yaz("Zaten bir kontrol devam ediyor!", "warning")
             return
@@ -2569,12 +3192,23 @@ class ReceteRaporKontrolGUI:
             self._recete_combolar_temizle(grup_kodu)
 
         self.aktif_grup = grup_kodu
-        self._butonlari_durdur_yap(grup_kodu)
+        # TÜMÜNÜ modunda bireysel buton kırmızılaştırmaz - tek tek tetiklenmiş gibi görünmesin
+        if getattr(self, "_tumu_aktif", False):
+            # TÜMÜNÜ butonunda aktif grubu göster
+            try:
+                self.tumunu_btn.config(text=f"DURDUR ({grup_adi})")
+            except Exception:
+                pass
+        else:
+            self._butonlari_durdur_yap(grup_kodu)
 
         def kontrol_thread():
             self.kontrol_aktif = True
             self._recete_sureleri = []
             self._recete_baslangic = None
+            if _PYTHONCOM_VAR:
+                try: pythoncom.CoInitialize()
+                except Exception: pass
             try:
                 # Önce Medula hazır mı kontrol et, değilse aç ve bağlan
                 self.root.after(0, lambda: self.log_yaz("Medula bağlantısı kontrol ediliyor...", "info"))
@@ -2593,11 +3227,19 @@ class ReceteRaporKontrolGUI:
                 import subprocess as sp
                 tarama_script = os.path.join(PROJE_DIZINI, "recete_tarama.py")
                 cmd_args = ["python", "-u", tarama_script, grup_kodu, str(donem_offset)]
+                # TÜMÜNÜ KONTROL ET: gruplar arası ekran durumu önceki gruba ait
+                # olabileceğinden sonraki gruplar için --bastan ile zorla navigasyon.
+                # İlk grup (index=0) için --devam: kullanıcı listeyi önceden hazırladıysa
+                # tekrar yükleme yapmasın (regression önleme).
+                tumu_modu = getattr(self, "_tumu_aktif", False)
+                tumu_first = (getattr(self, "_tumu_grup_index", 0) == 0)
                 if acik_receteden:
                     cmd_args.append("--acik")
                 elif secili_recete:
                     cmd_args.extend(["--goto", secili_recete])
                 elif self.bastan_var.get():
+                    cmd_args.append("--bastan")
+                elif tumu_modu and not tumu_first:
                     cmd_args.append("--bastan")
                 else:
                     cmd_args.append("--devam")
@@ -2612,6 +3254,17 @@ class ReceteRaporKontrolGUI:
                 )
                 self._subprocess_proc = proc
 
+                # TÜMÜNÜ sağlık tespiti için bilinen kritik hata pattern'ları.
+                # Bu satırlardan biri çıkarsa subprocess fail oldu sayılır;
+                # tumu_thread bu flag'i kontrol edip bir sonraki gruba geçmez.
+                kritik_hata_patterns = (
+                    ("Reçete Listesi menüsü bulunamadı", "Navigasyon: Reçete Listesi menüsü bulunamadı (Medula login/sayfa hazır değil)"),
+                    ("MEDULA penceresi bulunamadı", "Medula penceresi bulunamadı"),
+                    ("Medula penceresi bulunamadı", "Medula penceresi bulunamadı"),
+                    ("Navigasyon başarısız", "Navigasyon başarısız oldu"),
+                    ("Medula yeniden başlatılamadı", "Medula yeniden başlatılamadı"),
+                )
+
                 # stdout'u satır satır oku ve GUI log'a + terminale yaz
                 # iter(readline, '') — default for-loop'un block-buffer davranışını önler
                 for line in iter(proc.stdout.readline, ''):
@@ -2620,10 +3273,20 @@ class ReceteRaporKontrolGUI:
                         continue
                     # Terminale yaz
                     print(line, flush=True)
+                    # Kritik hata tespiti — TÜMÜNÜ flag'i set
+                    if getattr(self, "_tumu_aktif", False):
+                        for patt, aciklama in kritik_hata_patterns:
+                            if patt in line:
+                                self._tumu_son_grup_hata = aciklama
+                                break
                     # Reçete başlangıç zamanı (süre ölçümü)
                     if "[RECETE_BASLADI]" in line:
                         import time as _time
                         simdi = _time.time()
+                        # TÜMÜNÜ: bu grup için reçete sayısı tut
+                        if getattr(self, "_tumu_aktif", False):
+                            self._tumu_son_grup_recete_sayisi = getattr(
+                                self, "_tumu_son_grup_recete_sayisi", 0) + 1
                         if self._recete_baslangic is not None:
                             sure = simdi - self._recete_baslangic
                             self._recete_sureleri.append(sure)
@@ -2668,6 +3331,13 @@ class ReceteRaporKontrolGUI:
                         tag = "ilac"
                     self.root.after(0, lambda l=line, t=tag: self.log_yaz(l, t))
 
+                    # Kullanıcıya yönelik satırlar Kontrol Sonuçları sekmesine de yansısın
+                    # (sistem akışı / debug satırları log'da kalır)
+                    if tag in ("success", "error", "sorun", "warning", "ilac", "header"):
+                        self.root.after(0, lambda l=line, t=tag: self.kontrol_yaz(l, t))
+                    elif "Reçete:" in line or "Reçete #" in line or "Hasta:" in line:
+                        self.root.after(0, lambda l=line: self.kontrol_yaz(l, "header"))
+
                 proc.wait()
                 # Son reçetenin süresini de hesapla
                 import time as _time
@@ -2686,8 +3356,19 @@ class ReceteRaporKontrolGUI:
             finally:
                 self.kontrol_aktif = False
                 self._subprocess_proc = None
-                self.aktif_grup = None
-                self.root.after(0, self._butonlari_normal_yap)
+                # TÜMÜNÜ modunda: butonları normalleştirme (bir sonraki grup gelecek)
+                if not getattr(self, "_tumu_aktif", False):
+                    self.aktif_grup = None
+                    self.root.after(0, self._butonlari_normal_yap)
+                if _PYTHONCOM_VAR:
+                    try: pythoncom.CoUninitialize()
+                    except Exception: pass
+                # Bittiğinde callback'i çağır (TÜMÜNÜ akışını uyandırmak için)
+                if bittiginde is not None:
+                    try:
+                        bittiginde()
+                    except Exception:
+                        pass
 
         threading.Thread(target=kontrol_thread, daemon=True).start()
 
@@ -2737,9 +3418,16 @@ class ReceteRaporKontrolGUI:
         def log(msg, tag="info"):
             self.root.after(0, lambda m=msg, t=tag: self.log_yaz(m, t))
 
+        def kontrol(msg, tag="info"):
+            """Kontrol Sonuçları sekmesine kullanıcıya yönelik satır yaz"""
+            self.root.after(0, lambda m=msg, t=tag: self.kontrol_yaz(m, t))
+
         log(f"{'━' * 40}", "header")
         log(f"{grup_adi} kontrolü başlatılıyor - {secilen_donem}", "header")
         log(f"{'━' * 40}", "header")
+        kontrol(f"{'═' * 60}", "header")
+        kontrol(f"{grup_adi} kontrolü - {secilen_donem}", "header")
+        kontrol(f"{'═' * 60}", "header")
 
         # === 1. MEDULA BAĞLANTI ===
         # Bağlı değilse bağlan
@@ -3045,12 +3733,69 @@ class ReceteRaporKontrolGUI:
                     pass
             log(f"  Reçete türü: {recete_turu}", "info")
 
+            # === 4a-2. HASTA ADI OKU (best-effort, üst alandan) ===
+            hasta_adi = ""
+            HASTA_KARA_LISTE = (
+                "müstehaklık", "mua.", "reç.kat", "il.kat", "toplam",
+                "ödenecek", "sayfaya", "incelemeye", "botrastan",
+                "kontrol", "uzman", "sorgu", "verilemez", "uyumlu",
+                "öncelik", "raporsuz", "raporda", "girilebilcek",
+                "endikasyon", "günde", "haftada", "ayda", "saatte",
+                "katılım", "kapsam", "fatura", "tarih", "kalem",
+                "sigortalı", "kurum", "doktor", "hekim", "branş",
+                "tesis", "tahsil",
+            )
+            try:
+                ad_adaylari = []
+                for elem in self.medula.main_window.descendants(control_type="DataItem"):
+                    try:
+                        txt = elem.window_text()
+                        r = elem.rectangle()
+                        if not txt:
+                            continue
+                        txt = txt.strip()
+                        if not txt or r.top >= 310:
+                            continue
+                        # Ad-soyad heuristiği:
+                        if " " not in txt or len(txt) < 5 or len(txt) > 60:
+                            continue
+                        if any(ch.isdigit() for ch in txt):
+                            continue
+                        if any(ch in txt for ch in (":", "(", ")", "/", "=", "%", ",")):
+                            continue
+                        txt_lower = txt.lower()
+                        if any(k in txt_lower for k in HASTA_KARA_LISTE):
+                            continue
+                        if txt in ["Normal", "Kırmızı", "Yeşil", "Turuncu", "Mor"]:
+                            continue
+                        # Adın çoğunlukla büyük harfli olduğunu varsay
+                        harf_sayisi = sum(1 for c in txt if c.isalpha())
+                        buyuk_sayi = sum(1 for c in txt if c.isalpha() and c.isupper())
+                        if harf_sayisi == 0 or buyuk_sayi / harf_sayisi < 0.6:
+                            continue
+                        ad_adaylari.append((r.top, r.left, txt))
+                    except:
+                        pass
+                if ad_adaylari:
+                    ad_adaylari.sort(key=lambda a: (a[0], a[1]))
+                    hasta_adi = ad_adaylari[0][2]
+            except Exception:
+                pass
+
+            # === KONTROL SEKMESİ HEADER ===
+            kontrol(f"", "info")
+            kontrol(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "header")
+            _hasta_str = hasta_adi if hasta_adi else "—"
+            kontrol(f"Reçete #{sayac}: {recete_no}  |  Hasta: {_hasta_str}  |  Türü: {recete_turu}", "header")
+            kontrol(f"────────────────────────────────────────────────────────", "info")
+
             # === 4b. RENKLİ REÇETE KONTROL ===
             renkli_durum = ""
             if recete_turu in ["Kırmızı", "Yeşil", "Mor"]:
                 if not self.renkli_recete_listesi:
                     renkli_durum = "UYARI: Renkli reçete listesi yüklenmemiş!"
                     log(f"  ⚠ {renkli_durum}", "error")
+                    kontrol(f"  ⚠ Renkli reçete listesi: YÜKLENMEMİŞ", "error")
                 else:
                     # e-Reçete no ile ara
                     bulundu, kayit = self.renkli_recete_kontrol(recete_no)
@@ -3074,11 +3819,15 @@ class ReceteRaporKontrolGUI:
                     if bulundu:
                         renkli_durum = "Renkli reçete sistemine işlenmiş ✓"
                         log(f"  ✓ {renkli_durum}", "success")
+                        kontrol(f"  ✓ Renkli reçete listesi: KAYITLI ({recete_turu})", "success")
                     else:
                         renkli_durum = "SORUN: Renkli reçete sistemine İŞLENMEMİŞ!"
                         log(f"  ✗ {renkli_durum}", "error")
+                        kontrol(f"  ✗ Renkli reçete listesi: KAYITSIZ ({recete_turu}) — eksik!", "error")
+            else:
+                kontrol(f"  — Renkli reçete kontrolü gerekmiyor (Normal reçete)", "neutral")
 
-            # === 4c. İLAÇ SATIRLARINI OKU ===
+            # === 4c. İLAÇ SATIRLARINI OKU (satır bazlı) ===
             ilaclar = []
             items = []
             for elem in self.medula.main_window.descendants(control_type="DataItem"):
@@ -3091,42 +3840,99 @@ class ReceteRaporKontrolGUI:
                     pass
             items.sort(key=lambda x: (x[1], x[2]))
 
-            # İlaç adı anahtar kelimeleri (koordinat bağımsız algılama)
-            ILAC_ANAHTAR = ["MG", "ML", "TABLET", "KAPSUL", "KAPSÜL", "TB", "FTB",
-                            "DOZ", "INH", "GARGARA", "ŞURUP", "DAMLA", "AMPUL",
-                            "FLAKON", "KREM", "JEL", "POMAD", "ENJEKT", "ŞASE",
-                            "SURUP", "SPRAY", "FITIL", "SOLÜSYON", "SÜSPANSIYON",
-                            "KALEM", "PATCH", "TOZU", "SACHET", "GRANÜL", "MERHEM",
-                            "NEBUL", "EFF.", "ENTERIK", "FILM", "FORTE", "FORT"]
-            ATLA = ["Maksimum", "Topl=", "KALEM", "Toplam Tutar", "Sayfaya",
+            ATLA = ["Maksimum", "Topl=", "Toplam Tutar", "Sayfaya",
                     "İncelemeye", "Botrastan", "Reçete Tutar", "YAZMIŞ",
-                    "YAZMAMIŞ", "VERİLEMEZ", "KONTROL", "UZMAN",
+                    "YAZMAMIŞ", "VERİLEMEZ", "KONTROL EDİNİZ", "UZMAN",
                     "Uyumlu ICD", "Raporsuz", "Raporda DOZ", "Öncelik",
-                    "Girilebilcek", "endikasyon",
-                    "Günde", "Haftada", "Ayda", "Saatte", " x "]
+                    "Girilebilcek", "endikasyon", "Maksimum Süre",
+                    "Reç.Kat", "İl.Kat", "Mua.Kat", "Ödenecek",
+                    "Günde", "Haftada", "Ayda", "Saatte", " x ",
+                    "GETİRİN"]
 
+            import re as _re
+            TARIH_RE = _re.compile(r"^\d{2}/\d{2}/\d{4}$")
+            FIYAT_RE = _re.compile(r"^\d+(?:[.,]\d+)?$")
+            RAPOR_KODU_RE = _re.compile(r"^\d{1,2}\.\d{1,2}$")
+
+            # Items'ları y'ye göre satırlara grupla (12px tolerans)
+            satirlar = []
+            mevcut_satir = []
+            mevcut_y = None
             for txt, y, x in items:
-                txt_upper = txt.upper()
-                # İlaç adı: uzun text + ilaç formu anahtar kelimesi içerir
-                if (len(txt) > 12 and any(k in txt_upper for k in ILAC_ANAHTAR)
-                        and not txt.startswith("SGK") and not any(a in txt for a in ATLA)):
-                    ilaclar.append({"ilac_adi": txt, "etkin_madde": "", "sgk_kodu": "", "rapor_kodu": "", "msj": ""})
-                # Etkin madde: SGK ile başlar
-                elif txt.startswith("SGK") and "-" in txt and ilaclar:
+                if mevcut_y is None or abs(y - mevcut_y) <= 12:
+                    mevcut_satir.append((txt, y, x))
+                    if mevcut_y is None:
+                        mevcut_y = y
+                else:
+                    if mevcut_satir:
+                        satirlar.append((mevcut_y, mevcut_satir))
+                    mevcut_satir = [(txt, y, x)]
+                    mevcut_y = y
+            if mevcut_satir:
+                satirlar.append((mevcut_y, mevcut_satir))
+
+            # Her satırı analiz et
+            for satir_y, satir in satirlar:
+                texts = [t for t, _, _ in satir]
+                has_var_yok = any(t.lower() in ("var", "yok") for t in texts)
+                has_tarih = any(TARIH_RE.match(t) for t in texts)
+                if not (has_var_yok and has_tarih):
+                    continue
+                # İlaç adı: en uzun, sayı/tarih/var-yok değil, ATLA listesinde yok
+                ad_aday = ""
+                for t in texts:
+                    if (len(t) > 10
+                            and not TARIH_RE.match(t)
+                            and not FIYAT_RE.match(t)
+                            and not RAPOR_KODU_RE.match(t)
+                            and t.lower() not in ("var", "yok")
+                            and not t.startswith("SGK")
+                            and not any(a in t for a in ATLA)):
+                        if len(t) > len(ad_aday):
+                            ad_aday = t
+                if not ad_aday:
+                    continue
+
+                rapor_kodu = ""
+                msj = ""
+                for t in texts:
+                    if RAPOR_KODU_RE.match(t):
+                        rapor_kodu = t
+                    if t.lower() in ("var", "yok"):
+                        msj = t.lower()
+
+                ilaclar.append({
+                    "ilac_adi": ad_aday,
+                    "etkin_madde": "", "sgk_kodu": "",
+                    "rapor_kodu": rapor_kodu, "msj": msj,
+                    "_y": satir_y,
+                })
+
+            # Etkin madde / SGK kodu: ilaç satırının altındaki "SGKXXX-..." satırını eşle
+            for txt, y, x in items:
+                if not (txt.startswith("SGK") and "-" in txt):
+                    continue
+                # Bu y'den küçük en yakın ilaç satırını bul
+                aday_ilac = None
+                aday_fark = 99999
+                for il in ilaclar:
+                    iy = il.get("_y", 0)
+                    fark = y - iy
+                    if 0 < fark < 80 and fark < aday_fark:
+                        aday_fark = fark
+                        aday_ilac = il
+                if aday_ilac is not None:
                     parts = txt.split("-", 1)
-                    ilaclar[-1]["sgk_kodu"] = parts[0].strip()
-                    ilaclar[-1]["etkin_madde"] = parts[1].strip() if len(parts) > 1 else ""
-                # Rapor kodu: XX.XX formatı
-                elif "." in txt and len(txt) <= 8 and txt[0].isdigit() and ilaclar:
-                    # Tarih değil (dd/mm/yyyy)
-                    if "/" not in txt:
-                        ilaclar[-1]["rapor_kodu"] = txt
-                # Mesaj: var/yok
-                elif txt.lower() in ["var", "yok"] and ilaclar:
-                    ilaclar[-1]["msj"] = txt.lower()
+                    aday_ilac["sgk_kodu"] = parts[0].strip()
+                    aday_ilac["etkin_madde"] = parts[1].strip() if len(parts) > 1 else ""
+
+            # Geçici _y alanını temizle
+            for il in ilaclar:
+                il.pop("_y", None)
 
             if not ilaclar:
                 log(f"  İlaç okunamadı, sonrakine geçiliyor", "warning")
+                kontrol(f"  ⚠ İlaç tablosu okunamadı — manuel kontrol gerekli", "warning")
                 rapor_satirlari.append({
                     "recete_no": recete_no, "recete_turu": recete_turu,
                     "renkli_durum": renkli_durum, "ilac_adi": "-",
@@ -3136,11 +3942,54 @@ class ReceteRaporKontrolGUI:
             else:
                 log(f"  {len(ilaclar)} ilaç bulundu:", "info")
 
+                # === KONTROL ÇEKLİSTİ (Kontrol Sonuçları sekmesi) ===
+                # Yoksay listesindeki ilaçların msj'sini etkisiz hale getir
+                for _il in ilaclar:
+                    if _il.get("msj") == "var" and self.mesaj_yoksay_eslesti(_il.get("ilac_adi", "")):
+                        _il["msj_yoksayildi"] = True
+
+                raporlu_ilaclar = [i for i in ilaclar if i.get("rapor_kodu")]
+                mesajli_ilaclar = [
+                    i for i in ilaclar
+                    if i.get("msj") == "var" and not i.get("msj_yoksayildi")
+                ]
+                # Aynı ilaç hem raporlu hem mesajlı olabilir; tekrar saymayalım
+                kontrolsuz_sayi = sum(
+                    1 for i in ilaclar
+                    if not i.get("rapor_kodu")
+                    and (i.get("msj") != "var" or i.get("msj_yoksayildi"))
+                )
+                kontrol(f"  Toplam {len(ilaclar)} ilaç: "
+                        f"{len(raporlu_ilaclar)} raporlu, "
+                        f"{len(mesajli_ilaclar)} mesajlı, "
+                        f"{kontrolsuz_sayi} kontrolsüz", "info")
+
+                if not raporlu_ilaclar:
+                    kontrol(f"  — Raporlu ilaç doz kontrolü gerekmiyor", "neutral")
+                if not mesajli_ilaclar:
+                    kontrol(f"  — İlaç mesajı kontrolü gerekmiyor", "neutral")
+
+                # TODO: Uyarı kodu ve endikasyon dışı rapor tespitleri eklenecek
+                kontrol(f"  — Uyarı kodu kontrolü: tespit henüz aktif değil", "neutral")
+                kontrol(f"  — Endikasyon dışı rapor kontrolü: tespit henüz aktif değil", "neutral")
+
                 # === 4d. HER İLAÇ İÇİN ALGORİTMİK KONTROL ===
                 for ilac in ilaclar:
                     etkin = ilac.get("etkin_madde", "")
                     rapor_kodu = ilac.get("rapor_kodu", "")
                     msj = ilac.get("msj", "")
+
+                    # Yoksay listesindeki ilaçlar için mesaj VAR olsa bile yok say
+                    if ilac.get("msj_yoksayildi"):
+                        log(f"    [YOKSAY] {ilac['ilac_adi'][:35]} → Mesaj yoksay listesinde", "info")
+                        if not rapor_kodu:
+                            continue
+                        msj = ""  # raporlu kontrole devam ama mesajı görmezden gel
+
+                    # Raporsuz + mesajsız → kontrole gerek yok, atla
+                    if not rapor_kodu and msj != "var":
+                        log(f"    [SKIP] {ilac['ilac_adi'][:35]} → Raporsuz, mesajsız", "info")
+                        continue
 
                     # DB'de kural var mı?
                     kural = None
@@ -3166,31 +4015,52 @@ class ReceteRaporKontrolGUI:
                     # Kontrol sonucu belirle
                     sonuc = "Uygun"
                     aciklama_str = ""
+                    kontrol_tag = "info"
 
                     if kural:
                         if kural["rapor_gerekli"] and not rapor_kodu:
                             sonuc = "Uygun Değil"
                             aciklama_str = f"RAPOR GEREKLİ! SUT {kural.get('sut_maddesi', '?')}"
+                            kontrol_tag = "error"
                             log(f"    [SORUN] {ilac['ilac_adi'][:35]} → {aciklama_str}", "error")
                         elif kural["rapor_gerekli"] and rapor_kodu:
                             sonuc = "Uygun"
                             aciklama_str = f"Raporlu ({rapor_kodu})"
+                            kontrol_tag = "success"
                             log(f"    [  OK ] {ilac['ilac_adi'][:35]} → {aciklama_str}", "info")
                         else:
                             sonuc = "Uygun"
                             aciklama_str = "Raporsuz verilebilir"
+                            kontrol_tag = "success"
                             log(f"    [  OK ] {ilac['ilac_adi'][:35]} → {aciklama_str}", "info")
                     elif etkin:
                         sonuc = "Şüpheli"
                         aciklama_str = "Yeni öğrenildi, SUT kontrolü yapılmadı"
+                        kontrol_tag = "warning"
                         log(f"    [  ?  ] {ilac['ilac_adi'][:35]} → {aciklama_str}", "warning")
                     else:
                         sonuc = "Bakılamadı"
                         aciklama_str = "Etkin madde okunamadı"
+                        kontrol_tag = "warning"
                         log(f"    [ --- ] {ilac['ilac_adi'][:35]} → {aciklama_str}", "warning")
 
                     if msj == "var":
                         aciklama_str += " | Mesaj VAR"
+
+                    # Kontrol Sonuçları sekmesine yaz
+                    isaret = "✓" if sonuc == "Uygun" else ("✗" if sonuc == "Uygun Değil" else "?")
+                    etiketler = []
+                    if rapor_kodu:
+                        etiketler.append(f"rapor: {rapor_kodu}")
+                    if msj == "var":
+                        etiketler.append("mesaj: VAR")
+                    etiket_str = " | ".join(etiketler) if etiketler else ""
+                    kontrol(
+                        f"  {isaret} {ilac['ilac_adi'][:50]}"
+                        + (f"  ({etiket_str})" if etiket_str else "")
+                        + f"  → {aciklama_str}",
+                        kontrol_tag,
+                    )
 
                     # === 4e. RAPOR TABLOSUNA YAZ ===
                     rapor_satirlari.append({

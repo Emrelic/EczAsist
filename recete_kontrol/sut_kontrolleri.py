@@ -453,6 +453,38 @@ ETKIN_MADDE_KATEGORI = {
 }
 
 
+# Aroma/lezzet kelimeleri — ticari ad eşleşmesinde yok sayılır.
+# Örn. "RESOURCE GLUTAMIN VANILYA" reçetesi "RESOURCE GLUTAMIN" girdisiyle eşleşmeli;
+# VANILYA aroma olduğu için anahtar kelime sayılmaz.
+AROMA_KELIMELER = {
+    'VANILYA', 'VANILLA', 'CILEK', 'ÇILEK', 'ÇİLEK', 'STRAWBERRY',
+    'CIKOLATA', 'ÇIKOLATA', 'ÇİKOLATA', 'CHOCOLATE',
+    'KAHVE', 'COFFEE', 'KARAMEL', 'CARAMEL', 'KARAMELLI',
+    'MUZ', 'BANANA', 'PORTAKAL', 'ORANGE', 'LIMON', 'LEMON',
+    'TROPIKAL', 'TROPICAL', 'ORMAN', 'MEYVE', 'MEYVELI', 'MEYVELİ',
+    'NOTRAL', 'NOTR', 'NEUTRAL', 'YOGURT', 'YOĞURT', 'YOGHURT',
+    'KAYISI', 'KAKAO', 'COCOA', 'BAL', 'HONEY',
+    'AROMASIZ', 'AROMALI', 'AROMA', 'TATSIZ', 'TATLI',
+}
+
+
+def _ticari_ad_kelime_eslesir(arama_ifadesi: str, ilac_adi: str) -> bool:
+    """Aramada geçen tüm kelimeler ilaç adında bulunmalı (aroma kelimeleri hariç).
+
+    Tek kelimeli aramalar (ör. 'NEURONTIN') eski davranışla uyumlu çalışır:
+    tek kelimenin geçmesi yeterlidir. Çok kelimeli aramalarda (ör.
+    'RESOURCE GLUTAMIN') tüm aroma-dışı kelimelerin geçmesi gerekir.
+    """
+    if not arama_ifadesi or not ilac_adi:
+        return False
+    ilac_upper = ilac_adi.upper()
+    arama_kelimeleri = [k for k in arama_ifadesi.upper().split()
+                        if k not in AROMA_KELIMELER]
+    if not arama_kelimeleri:
+        return False
+    return all(k in ilac_upper for k in arama_kelimeleri)
+
+
 # İlaç ticari adı → kategori (etkin madde boş geldiğinde kullanılır)
 ILAC_ADI_KATEGORI = {
     'PRIMOLUT': 'KADIN_HORMON',
@@ -567,21 +599,62 @@ ILAC_ADI_KATEGORI = {
     'TIVICAY': 'ANTIVIRAL',          # Dolutegravir
     'TRIUMEQ': 'ANTIVIRAL',
 
-    # Enteral beslenme
-    'EVOLVIA': 'ENTERAL_BESLENME',
-    'NUTRIDRINK': 'ENTERAL_BESLENME',
-    'NUTREN': 'ENTERAL_BESLENME',
-    'FRESUBIN': 'ENTERAL_BESLENME',
-    'RESOURCE': 'ENTERAL_BESLENME',
-    'ENSURE': 'ENTERAL_BESLENME',
-    'PEPTAMEN': 'ENTERAL_BESLENME',
+    # Enteral beslenme — ticari ad çok kelimeli; tüm anahtar kelimeler (aroma hariç)
+    # reçete adında geçmeli. Tek kelime ('RESOURCE') yetmez, ürün varyantı belirtilmeli.
+    # RESOURCE ailesi
+    'RESOURCE GLUTAMIN': 'ENTERAL_BESLENME',
+    'RESOURCE 2.0': 'ENTERAL_BESLENME',
+    'RESOURCE PROTEIN': 'ENTERAL_BESLENME',
+    'RESOURCE JUNIOR': 'ENTERAL_BESLENME',
+    'RESOURCE DIABET': 'ENTERAL_BESLENME',
+    'RESOURCE ARGIN': 'ENTERAL_BESLENME',
+    'RESOURCE FIBER': 'ENTERAL_BESLENME',
+    # NUTRIDRINK ailesi
+    'NUTRIDRINK COMPACT': 'ENTERAL_BESLENME',
+    'NUTRIDRINK PROTEIN': 'ENTERAL_BESLENME',
+    'NUTRIDRINK MULTI FIBRE': 'ENTERAL_BESLENME',
+    'NUTRIDRINK YOGURT STYLE': 'ENTERAL_BESLENME',
+    'NUTRIDRINK JUNIOR': 'ENTERAL_BESLENME',
+    # NUTREN ailesi
+    'NUTREN ACTIV': 'ENTERAL_BESLENME',
+    'NUTREN OPTIMUM': 'ENTERAL_BESLENME',
+    'NUTREN BALANCE': 'ENTERAL_BESLENME',
+    'NUTREN 1.5': 'ENTERAL_BESLENME',
+    'NUTREN JUNIOR': 'ENTERAL_BESLENME',
+    'NUTREN FIBRE': 'ENTERAL_BESLENME',
+    # FRESUBIN ailesi
+    'FRESUBIN ENERGY': 'ENTERAL_BESLENME',
+    'FRESUBIN PROTEIN': 'ENTERAL_BESLENME',
+    'FRESUBIN HP ENERGY': 'ENTERAL_BESLENME',
+    'FRESUBIN ORIGINAL': 'ENTERAL_BESLENME',
+    'FRESUBIN 2KCAL': 'ENTERAL_BESLENME',
+    'FRESUBIN INTENSIVE': 'ENTERAL_BESLENME',
+    'FRESUBIN DB': 'ENTERAL_BESLENME',  # Diyabetik
+    # EVOLVIA ailesi
+    'EVOLVIA 1.0': 'ENTERAL_BESLENME',
+    'EVOLVIA 1.5': 'ENTERAL_BESLENME',
+    'EVOLVIA FIBRE': 'ENTERAL_BESLENME',
+    'EVOLVIA JUNIOR': 'ENTERAL_BESLENME',
+    'EVOLVIA HP': 'ENTERAL_BESLENME',
+    # ENSURE ailesi
+    'ENSURE PLUS': 'ENTERAL_BESLENME',
+    'ENSURE MAX': 'ENTERAL_BESLENME',
+    # PEPTAMEN ailesi
+    'PEPTAMEN HN': 'ENTERAL_BESLENME',
+    'PEPTAMEN AF': 'ENTERAL_BESLENME',
+    'PEPTAMEN JUNIOR': 'ENTERAL_BESLENME',
+    # NEPRO ailesi (böbrek hastalarına özel)
+    'NEPRO HP': 'ENTERAL_BESLENME',
+    'NEPRO LP': 'ENTERAL_BESLENME',
+    # IMPACT ailesi
+    'IMPACT ORAL': 'ENTERAL_BESLENME',
+    'IMPACT ENTERAL': 'ENTERAL_BESLENME',
+    # Tek varyantlı / brand-unique olanlar (zaten farklı ürün ailesi yok)
     'PROSURE': 'ENTERAL_BESLENME',
-    'MODULEN': 'ENTERAL_BESLENME',
-    'NEPRO': 'ENTERAL_BESLENME',
+    'MODULEN IBD': 'ENTERAL_BESLENME',
     'GLUCERNA': 'ENTERAL_BESLENME',
     'DIASIP': 'ENTERAL_BESLENME',
     'CUBITAN': 'ENTERAL_BESLENME',
-    'IMPACT': 'ENTERAL_BESLENME',
 
     # ESA / Eritropoietin (ticari adlar → GENEL_RAPORLU → ESA subroutine)
     'EPOBEL': 'GENEL_RAPORLU',
@@ -748,11 +821,15 @@ def sut_kategorisi_tespit_et(ilac_sonuc: Dict) -> Optional[str]:
                 return kategori
 
     # 2b. İlaç adından kategori tahmin et (etkin madde eşleşmediyse veya boşsa)
+    # Çok kelimeli arama ifadelerinde tüm kelimelerin (aroma hariç) ilaç adında
+    # geçmesi şartı aranır — RESOURCE GLUTAMIN ile RESOURCE 2.0'ı ayırt etmek için.
     ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
     if ilac_adi:
-        ilac_kisa = ilac_adi.split()[0] if ilac_adi else ""
-        for em, kategori in ILAC_ADI_KATEGORI.items():
-            if em in ilac_adi or em == ilac_kisa:
+        # Çok kelimeli girdileri önce dene (daha spesifik) — uzunluğa göre azalan sırada.
+        siralanmis = sorted(ILAC_ADI_KATEGORI.items(),
+                             key=lambda kv: len(kv[0].split()), reverse=True)
+        for em, kategori in siralanmis:
+            if _ticari_ad_kelime_eslesir(em, ilac_adi):
                 return kategori
 
     # 3. Rapor kodu ile eşleştir
@@ -897,7 +974,10 @@ def _turkce_ara(metin: str, aranan: str) -> bool:
 def _tum_metinleri_birlesir(ilac_sonuc: Dict) -> str:
     """
     SUT kontrolü için tüm metin kaynaklarını birleştir.
-    Mesaj metni + rapor açıklamaları + tanı bilgileri.
+    Mesaj metni + rapor açıklamaları + tanı bilgileri + REÇETE AÇIKLAMALARI.
+
+    Lab değerleri (Hb/Ferritin/TSAT, INR, eGFR vb.) bazen reçete açıklamasında
+    yazılır — bu yüzden recete_aciklamalari da arama metnine dahil edilir.
     """
     parcalar = []
 
@@ -910,6 +990,15 @@ def _tum_metinleri_birlesir(ilac_sonuc: Dict) -> str:
     aciklamalar = ilac_sonuc.get('rapor_aciklamalari', [])
     if aciklamalar:
         parcalar.extend(aciklamalar)
+
+    # Reçete açıklamaları (Açıklama Listesi tablosu) — lab değerleri burada olabilir
+    recete_aciklama = ilac_sonuc.get('recete_aciklamalari', [])
+    if recete_aciklama:
+        parcalar.extend(recete_aciklama)
+    # _recete_aciklamalari (alt çizgili varyant) — bazı çağrı noktalarında bu key kullanılıyor
+    recete_aciklama_alt = ilac_sonuc.get('_recete_aciklamalari', [])
+    if recete_aciklama_alt:
+        parcalar.extend(recete_aciklama_alt)
 
     # Tanı bilgileri
     tani_bilgileri = ilac_sonuc.get('rapor_tani_bilgileri', [])
@@ -938,30 +1027,105 @@ def _lab_degeri_cek(metin, anahtarlar, birim_patterns=None):
     anahtarlar: aranan anahtar kelimeler listesi (Hb, Hemoglobin vb.)
     birim_patterns: sonrasında beklenen birim (opsiyonel, ör: 'g/dl', 'ng/ml', '%')
     Returns: (float_deger, eslesen_ibaresi) veya (None, "")
+
+    Davranış:
+    - "Ferritin:796" (boşluksuz), "Ferritin: 796", "Ferritin = 796,5",
+      "TSAT %25", "TSAT:25%", "Hgb:9.5 g/dL" gibi formatları yakalar.
+    - Sayı tarihten ayırt edilir: pattern dd/mm/yyyy gibi tarih içeren
+      eşleşmeleri reddeder.
     """
     if not metin:
         return None, ""
-    metin_lower = metin.replace('İ', 'i').replace('I', 'ı').lower()
+    # Türkçe 'İ' (U+0130) Python'un lower()'ında 'i̇' (i + combining dot) verir;
+    # önce 'i'ye normalize et. 'I' → 'ı' YAPMA: İngilizce büyük 'I' (örn.
+    # "HEMOGLOBIN", "FERRITIN") str.lower() ile zaten 'i'ye dönüşmeli, aksi
+    # halde 'hemoglobın' / 'ferritın' olur ve aranan kelimeyle eşleşmez.
+    metin_lower = metin.replace('İ', 'i').lower()
     for anahtar in anahtarlar:
         ak = anahtar.lower()
-        # "anahtar: 11.5", "anahtar = 11,5", "anahtar 11.5", "anahtar: %23"
+        # "anahtar: 11.5", "anahtar = 11,5", "anahtar 11.5", "anahtar: %23",
+        # "anahtar:11.5", "anahtar%25"
         patterns = [
             rf'{re.escape(ak)}\s*[:=]?\s*%?\s*(\d+(?:[.,]\d+)?)',
             rf'{re.escape(ak)}[^0-9]{{0,40}}(\d+(?:[.,]\d+)?)',
         ]
         for pattern in patterns:
-            m = re.search(pattern, metin_lower)
-            if m:
+            for m in re.finditer(pattern, metin_lower):
                 try:
-                    deger = float(m.group(1).replace(",", "."))
-                    # Eşlemenin etrafından ibare
+                    raw = m.group(1)
+                    deger = float(raw.replace(",", "."))
+                    # Tarih eşleşmesini reddet: bulunan rakamın hemen ardından
+                    # /dd/yyyy gibi devam ediyorsa bu lab değeri değil tarihtir.
+                    after = metin_lower[m.end():m.end() + 6]
+                    if re.match(r'/\d', after):
+                        continue
                     pos = m.start()
                     bas = max(0, pos - 5)
                     son = min(len(metin), m.end() + 10)
                     return deger, metin[bas:son].strip()
                 except (ValueError, IndexError):
-                    pass
+                    continue
     return None, ""
+
+
+# ── ESA için gelişmiş lab parserı ──
+# SUT 4.2.30 için Ferritin/TSAT/Hb değerleri reçete açıklamasında çok farklı
+# formatlarda yazılır. Geniş alias seti:
+
+ESA_HB_ANAHTARLARI = [
+    'hemoglobin', 'hgb', 'hb',
+]
+
+ESA_FERRITIN_ANAHTARLARI = [
+    'serum ferritin', 'ferritin',
+]
+
+# TSAT — gözlenen ve plausible varyasyonlar
+ESA_TSAT_ANAHTARLARI = [
+    'tsat',
+    't.sat', 't-sat', 't sat',
+    'transferrin satürasyonu', 'transferrin saturasyonu',
+    'transferrin sat.', 'transferrin sat',
+    'transferrin doygunluğu', 'transferrin doygunlugu',
+    'transferin satürasyonu', 'transferin saturasyonu',  # tek r yazımı
+    'transferin sat',
+    'demir saturasyonu', 'demir satürasyonu',
+    'demir doygunluğu', 'demir doygunlugu',
+    'demir doyma oranı', 'demir doyma orani',
+    'satürasyon', 'saturasyon',  # son çare — "Saturasyon: %25"
+]
+
+
+def _tetkik_tarihi_son_n_gun_mu(metin: str, max_gun: int = 30) -> tuple:
+    """Metindeki tetkik tarihlerini bul, en yenisi son max_gun içinde mi?
+
+    SUT 4.2.30 — ESA için tetkik tarihi genellikle son 1 ay içinde olmalı.
+    dd/mm/yyyy ve dd.mm.yyyy formatlarını destekler.
+
+    Returns: (uygun: bool|None, en_yeni_tarih: date|None, bulunan_tarihler: list)
+    None döndürdüğünde tarih bulunamadı; karar verici "bilinmiyor" sayar.
+    """
+    from datetime import date, datetime, timedelta
+    if not metin:
+        return None, None, []
+    bugun = date.today()
+    sinir = bugun - timedelta(days=max_gun)
+    bulunan = []
+    # dd/mm/yyyy veya dd.mm.yyyy
+    for m in re.finditer(r'\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b', metin):
+        try:
+            g, a, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            t = date(y, a, g)
+            # Geleceğe ait ya da çok eski (10+ yıl) tarihleri at
+            if t > bugun + timedelta(days=1) or (bugun - t).days > 365 * 10:
+                continue
+            bulunan.append(t)
+        except (ValueError, IndexError):
+            continue
+    if not bulunan:
+        return None, None, []
+    en_yeni = max(bulunan)
+    return (en_yeni >= sinir), en_yeni, bulunan
 
 
 def _buyume_hormonu_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=""):
@@ -1494,10 +1658,9 @@ def _demir_iv_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_m
     birlesik = (metin or '') + ' ' + (teshis_metin or '')
     metin_lower = birlesik.replace('İ', 'i').replace('I', 'ı').lower()
 
-    hb, _ = _lab_degeri_cek(birlesik, ['hemoglobin', 'hgb', 'hb'])
-    ferritin, _ = _lab_degeri_cek(birlesik, ['ferritin'])
-    tsat, _ = _lab_degeri_cek(birlesik, ['tsat', 'transferrin satürasyonu',
-                                           'transferrin saturasyonu'])
+    hb, _ = _lab_degeri_cek(birlesik, ESA_HB_ANAHTARLARI)
+    ferritin, _ = _lab_degeri_cek(birlesik, ESA_FERRITIN_ANAHTARLARI)
+    tsat, _ = _lab_degeri_cek(birlesik, ESA_TSAT_ANAHTARLARI)
 
     oral_basarisiz = any(k in metin_lower for k in [
         'oral demir', 'oral tedavi', 'yanıtsız', 'yanitsiz', 'intolerans',
@@ -1816,7 +1979,40 @@ def _noropatik_agri_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, te
     )
 
 
-def _enteral_beslenme_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=""):
+def _enteral_kcal_dozaj_parse(ilac_adi: str) -> dict:
+    """Reçete adından kalori ve birim sayısını çıkar.
+
+    Örnek: 'RESOURCE GLUTAMIN 100 G(5GRX20SASE)(400 KCAL)'
+    → {'toplam_kcal': 400, 'birim_sayisi': 20, 'birim': 'saşe', 'kcal_birim': 20.0}
+
+    Sıvı: 'NUTRIDRINK COMPACT 125 ML 240 KCAL'
+    → {'toplam_kcal': 240, 'hacim_ml': 125, 'birim': 'şişe', 'kcal_birim': 240.0}
+    """
+    if not ilac_adi:
+        return {}
+    name_upper = ilac_adi.upper()
+    sonuc = {}
+    kcal_match = re.search(r'(\d+(?:[.,]\d+)?)\s*KCAL', name_upper)
+    if kcal_match:
+        sonuc['toplam_kcal'] = float(kcal_match.group(1).replace(',', '.'))
+    sase_match = (re.search(r'X\s*(\d+)\s*SASE', name_upper)
+                  or re.search(r'(\d+)\s*SASE', name_upper))
+    if sase_match:
+        sonuc['birim_sayisi'] = int(sase_match.group(1))
+        sonuc['birim'] = 'saşe'
+    if 'birim' not in sonuc:
+        ml_match = re.search(r'(\d+)\s*ML(?!\w)', name_upper)
+        if ml_match:
+            sonuc['birim_sayisi'] = 1
+            sonuc['birim'] = 'şişe'
+            sonuc['hacim_ml'] = int(ml_match.group(1))
+    if ('toplam_kcal' in sonuc and sonuc.get('birim_sayisi', 0) > 0):
+        sonuc['kcal_birim'] = round(sonuc['toplam_kcal'] / sonuc['birim_sayisi'], 1)
+    return sonuc
+
+
+def _enteral_beslenme_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin,
+                                       teshis_metin="", ilac_sonuc=None):
     """SUT 4.2.8 (benzeri) - Enteral beslenme solüsyonları.
     Ticari: EVOLVIA, NUTRIDRINK, NUTREN, FRESUBIN, RESOURCE, ENSURE, BEBELAC,
              PEPTAMEN, PROSURE, NUTREN JUNIOR, MODULEN
@@ -1824,7 +2020,8 @@ def _enteral_beslenme_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, 
     - Endikasyon: Malnütrisyon / kronik hastalık / yutma bozukluğu / kanser /
       GİS hastalığı / kistik fibroz / inek sütü alerjisi (çocuk)
     - Uzman: İç Hast. / Gastroenteroloji / Onkoloji / Geriatri / Pediatri
-    - Kalori hesabı (günlük ihtiyaç)
+    - Kalori hesabı: ilaç adından kcal/birim parse edilir, günlük doz ile çarpılır.
+      Hasta kilosu yoksa karşılama oranı hesaplanmaz, gerekçesi rapora yazılır.
     - Oral / enteral tüp yolu
     """
     sut_kurali = 'SUT — Enteral beslenme: endikasyon + uzman raporu + kalori planı'
@@ -1878,10 +2075,74 @@ def _enteral_beslenme_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, 
     detaylar.update({'endikasyonlar': endikasyonlar, 'uzman': uzman,
                       'enteral_yol': enteral_yol})
 
+    # ── Kalori hesabı ──
+    kcal_bilgi = _enteral_kcal_dozaj_parse(ilac_adi)
+    detaylar['kcal_bilgi'] = kcal_bilgi
+    gunluk_doz = None
+    recete_doz = (ilac_sonuc or {}).get('recete_doz') if ilac_sonuc else None
+    if isinstance(recete_doz, dict):
+        gunluk_doz = recete_doz.get('gunluk_doz')
+
+    # Hasta kilosu reçete/raporda — şu an metinden parse etmiyoruz, açıklama
+    # ve teşhislerde kg ifadesi nadir geçer. Olası bir parse:
+    kilo_match = re.search(r'(\d{2,3})\s*KG', (metin or '').upper())
+    hasta_kilosu = float(kilo_match.group(1)) if kilo_match else None
+    detaylar['hasta_kilosu'] = hasta_kilosu
+
+    kalori_bilgileri = []
+    if 'kcal_birim' in kcal_bilgi:
+        birim = kcal_bilgi['birim']
+        kalori_bilgileri.append(
+            f"{kcal_bilgi['kcal_birim']} kcal/{birim} (toplam {kcal_bilgi['toplam_kcal']:.0f} kcal × {kcal_bilgi['birim_sayisi']} {birim})"
+        )
+        if gunluk_doz:
+            gunluk_kcal = round(gunluk_doz * kcal_bilgi['kcal_birim'], 1)
+            detaylar['gunluk_kcal'] = gunluk_kcal
+            kalori_bilgileri.append(
+                f"Günlük: {gunluk_doz} {birim} × {kcal_bilgi['kcal_birim']} = {gunluk_kcal:.0f} kcal/gün"
+            )
+            if hasta_kilosu:
+                kcal_per_kg = round(gunluk_kcal / hasta_kilosu, 1)
+                detaylar['kcal_per_kg'] = kcal_per_kg
+                # SUT yetişkin ihtiyaç: 25-35 kcal/kg/gün
+                if kcal_per_kg < 5:
+                    kalori_bilgileri.append(
+                        f"{kcal_per_kg} kcal/kg/gün — primer beslenme değil, takviye düzeyinde"
+                    )
+                elif kcal_per_kg < 25:
+                    kalori_bilgileri.append(
+                        f"{kcal_per_kg} kcal/kg/gün — günlük ihtiyacın altında (hedef 25-35)"
+                    )
+                elif kcal_per_kg <= 35:
+                    kalori_bilgileri.append(
+                        f"{kcal_per_kg} kcal/kg/gün — hedef aralıkta (25-35)"
+                    )
+                else:
+                    kalori_bilgileri.append(
+                        f"{kcal_per_kg} kcal/kg/gün — hedef üstü (>35)"
+                    )
+            else:
+                kalori_bilgileri.append(
+                    "Karşılama oranı (kcal/kg) hesaplanamadı: hasta kilosu reçete/rapor metninde bulunamadı"
+                )
+        else:
+            kalori_bilgileri.append(
+                "Günlük kcal hesaplanamadı: reçete günlük dozu okunamadı"
+            )
+    elif 'toplam_kcal' in kcal_bilgi:
+        kalori_bilgileri.append(
+            f"Toplam {kcal_bilgi['toplam_kcal']:.0f} kcal — birim sayısı parse edilemedi, kcal/birim hesaplanamadı"
+        )
+    else:
+        kalori_bilgileri.append(
+            "Kalori hesaplanamadı: ilaç adında KCAL ifadesi bulunamadı"
+        )
+
     bilgiler = []
     if endikasyonlar: bilgiler.append(f"Endikasyon: {', '.join(endikasyonlar)}")
     if uzman: bilgiler.append("Uzman branş var")
     if enteral_yol: bilgiler.append("Enteral yol (PEG/sonda) belirtilmiş")
+    if kalori_bilgileri: bilgiler.append("Kalori: " + " | ".join(kalori_bilgileri))
 
     if endikasyonlar and uzman:
         return KontrolRaporu(
@@ -1993,19 +2254,51 @@ def _koagulasyon_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshi
     )
 
 
-def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=""):
-    """SUT 4.2.30 - ESA (Eritropoietin/Darbepoetin) detaylı kontrol.
+def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin="",
+                          ilac_sonuc=None):
+    """SUT 4.2.30 — ESA (Eritropoietin/Darbepoetin) detaylı kontrol.
 
-    Kontrol edilen kriterler:
-    - Ferritin > 100 ng/mL (demir deposu)
-    - TSAT > %20 (transferrin satürasyonu)
-    - Hb < 10 g/dL → başlama; 10-12 idame; > 12 kesilmeli
-    - Uzman branş: Nefroloji / Hematoloji / Onkoloji
-    - Endikasyon: KBY / hemodiyaliz / kronik böbrek / kemoterapi anemi
+    Kapsanan ilaçlar (etken madde bazında):
+      • Epoetin alfa: EPREX, EPOBEL, ABSEAMED, BINOCRIT, HEMAX, RETACRIT
+      • Epoetin beta: NEORECORMON, RECOSET
+      • Darbepoetin alfa: ARANESP, DYNEPO
+      • Metoxi-PEG-epoetin beta: MIRCERA
+      • Biyobenzerler: BIOPOIN, SILAPO
+
+    Endikasyonlar (SUT 4.2.30):
+      1. Kronik böbrek yetmezliği anemisi (diyalize giren/girmeyen)
+      2. Kemoterapiye bağlı anemi (solid tümör)
+      3. Miyelodisplastik sendrom (düşük/orta-1 risk)
+      4. Otolog kan transfüzyonu hazırlığı (sınırlı)
+
+    Reçeteleme şartları:
+      • Uzman raporu ZORUNLU: Nefroloji / Hematoloji / Onkoloji / İç Hastalıkları
+        (Rapor süresi: 6 ay)
+      • Lab değerleri raporda VEYA reçete/E-Reçete açıklamasında 217 kodu ile beyan:
+          – Hb 10–11 g/dL altı → ESA başlama
+          – Hb 12 üstü → doz azalt; ≥13 → kesinlikle kesilmeli
+          – Ferritin > 100 ng/mL (demir deposu yeterli)
+          – TSAT > %20 (transferrin saturasyonu yeterli)
+      • Ferritin/TSAT düşükse → önce IV demir tedavisi gerekir
+      • Tetkik tarihi son 1 ay içinde olmalı (SUT genel ilkesi)
+
+    217 Uyarı Kodu:
+      Hekim "Bu hastada Hb/Ferritin/TSAT uygun değerlerde, açıklamaya yazdım"
+      beyanıdır. Reçete sistemine 217 girilirse, lab değerleri reçete veya
+      E-Reçete açıklamasında bulunmalı. Bu fonksiyon kaynak öncelik sırasıyla
+      bunları arar (reçete açıklaması → E-Reçete açıklaması → rapor metni).
+
+    Karar ağacı:
+      RAPOR YOK                              → UYGUNSUZ (raporsuz ESA yasak)
+      217 var, lab değerleri parse edildi, kriter ihlali → UYGUNSUZ (hekim yanlış beyan)
+      217 var, Ferritin & TSAT bulunamadı   → UYGUNSUZ (beyan eksik) + manuel kontrol
+      217 var, Ferritin & TSAT uygun        → UYGUN
+      217 yok, lab değerleri raporda        → kriterlere göre değerlendir
+      217 yok, lab değerleri eksik          → UYGUNSUZ
 
     Returns: KontrolRaporu
     """
-    sut_kurali = 'SUT 4.2.30 — ESA (Eritropoietin) kullanım kuralları'
+    sut_kurali = 'SUT 4.2.30 — ESA: 217 kodu (reçete açıklamasında) veya Hb+Ferritin+TSAT'
     detaylar = {'alt_kategori': 'ESA_ERITROPOIETIN', 'rapor_kodu': rapor_kodu}
 
     if not rapor_kodu:
@@ -2021,13 +2314,96 @@ def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=
     birlesik = (metin or '') + ' ' + (teshis_metin or '')
     metin_lower = birlesik.replace('İ', 'i').replace('I', 'ı').lower()
 
+    # ── 217 uyarı kodu kontrolü ──
+    # Medula reçetelerinde uyarı kodları ayrı bir UI alanında tutulur (uyari_kodlari
+    # listesi: [{kod: "217", aciklama: "...", ilac_adi: "..."}, ...]).
+    # 217 kodu hekimin "TSAT/Ferritin değerlerini açıklamaya yazdım" beyanıdır.
+    # Sistem 217 görünce: önce reçete açıklamasından (form1:tableEx1), sonra
+    # E-Reçete Görüntüle ekranındaki metinden (recete_tarama.py eagerly çeker)
+    # değerleri parse edip SUT kriterlerine göre validate eder.
+    aciklamalar_listesi = []
+    uyari_kodlari = []
+    erecete_metni = ''
+    if isinstance(ilac_sonuc, dict):
+        aciklamalar_listesi = (ilac_sonuc.get('recete_aciklamalari') or []) + \
+                               (ilac_sonuc.get('_recete_aciklamalari') or [])
+        uyari_kodlari = ilac_sonuc.get('_uyari_kodlari') or ilac_sonuc.get('uyari_kodlari') or []
+        erecete_metni = (ilac_sonuc.get('_erecete_aciklama_metni') or '').strip()
+        erecete_listesi = ilac_sonuc.get('_erecete_aciklama_listesi') or []
+        if erecete_listesi:
+            erecete_metni = (erecete_metni + ' ' + ' '.join(erecete_listesi)).strip()
+    aciklama_metni = ' '.join(aciklamalar_listesi)
+
+    # 217'yi öncelikle uyarı kodları listesinde ara (Medula'nın asıl tuttuğu yer);
+    # ek olarak metinde de tara (geçmiş entegrasyonlar açıklamaya yazmış olabilir).
+    has_217 = False
+    kod_217_kaynak = None
+    ilac_eslesti = False
+    for uk in uyari_kodlari:
+        if str(uk.get('kod', '')).strip() == '217':
+            has_217 = True
+            uk_ilac = (uk.get('ilac_adi') or '').upper()
+            if uk_ilac and (uk_ilac in ilac_adi or ilac_adi in uk_ilac):
+                ilac_eslesti = True
+                kod_217_kaynak = 'uyarı kodları (bu ilaca özel)'
+                break
+    if has_217 and not kod_217_kaynak:
+        kod_217_kaynak = 'uyarı kodları (reçete genelinde)'
+    if not has_217:
+        if re.search(r'\b217\b', aciklama_metni):
+            has_217 = True
+            kod_217_kaynak = 'reçete açıklaması (metin)'
+        elif re.search(r'\b217\b', birlesik):
+            has_217 = True
+            kod_217_kaynak = 'genel metin'
+    detaylar['kod_217'] = has_217
+    detaylar['kod_217_kaynak'] = kod_217_kaynak
+    detaylar['kod_217_ilac_eslesti'] = ilac_eslesti
+
     # ── Sayısal değerler ──
-    hb, hb_ibare = _lab_degeri_cek(birlesik, ['hemoglobin', 'hgb', 'hb'])
-    ferritin, ferritin_ibare = _lab_degeri_cek(birlesik, ['ferritin'])
-    tsat, tsat_ibare = _lab_degeri_cek(birlesik, ['tsat', 'transferrin satürasyonu',
-                                                    'transferrin saturasyonu',
-                                                    'transferrin sat'])
-    detaylar.update({'hb': hb, 'ferritin': ferritin, 'tsat': tsat})
+    # 217 varsa kaynak öncelik sırası: reçete açıklaması → E-Reçete açıklama →
+    # birleşik metin (rapor + teşhis). 217 yoksa doğrudan birleşik metni tarar.
+    hb_kaynak = ferritin_kaynak = tsat_kaynak = None
+    hb = ferritin = tsat = None
+    hb_ibare = ferritin_ibare = tsat_ibare = ''
+
+    def _lab_kaynaklarda_ara(kaynaklar):
+        nonlocal hb, ferritin, tsat, hb_ibare, ferritin_ibare, tsat_ibare
+        nonlocal hb_kaynak, ferritin_kaynak, tsat_kaynak
+        for kaynak_adi, src in kaynaklar:
+            if not src:
+                continue
+            if hb is None:
+                _hb, _ib = _lab_degeri_cek(src, ESA_HB_ANAHTARLARI)
+                if _hb is not None:
+                    hb, hb_ibare, hb_kaynak = _hb, _ib, kaynak_adi
+            if ferritin is None:
+                _f, _ib = _lab_degeri_cek(src, ESA_FERRITIN_ANAHTARLARI)
+                if _f is not None:
+                    ferritin, ferritin_ibare, ferritin_kaynak = _f, _ib, kaynak_adi
+            if tsat is None:
+                _t, _ib = _lab_degeri_cek(src, ESA_TSAT_ANAHTARLARI)
+                if _t is not None:
+                    tsat, tsat_ibare, tsat_kaynak = _t, _ib, kaynak_adi
+
+    if has_217:
+        _lab_kaynaklarda_ara([
+            ('reçete açıklaması', aciklama_metni),
+            ('E-Reçete açıklama', erecete_metni),
+            ('rapor/teşhis metni', birlesik),
+        ])
+    else:
+        _lab_kaynaklarda_ara([('rapor/teşhis metni', birlesik)])
+
+    # ── Tetkik tarihi (SUT son 1 ay içinde tetkik ister) ──
+    tarih_kaynak = aciklama_metni or erecete_metni or birlesik
+    tetkik_taze, tetkik_en_yeni, _tetkik_hepsi = _tetkik_tarihi_son_n_gun_mu(tarih_kaynak, max_gun=30)
+
+    detaylar.update({'hb': hb, 'ferritin': ferritin, 'tsat': tsat,
+                      'hb_kaynak': hb_kaynak, 'ferritin_kaynak': ferritin_kaynak,
+                      'tsat_kaynak': tsat_kaynak,
+                      'tetkik_taze': tetkik_taze,
+                      'tetkik_en_yeni': str(tetkik_en_yeni) if tetkik_en_yeni else None})
 
     # ── Uzman branş ──
     uzman_var = any(k in metin_lower for k in ['nefroloji', 'hematoloji', 'onkoloji',
@@ -2076,19 +2452,95 @@ def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=
         bilgiler.append("Uzman branş (Nefroloji/Hematoloji/Onkoloji) raporda açıkça belirtilmemiş")
 
     # ── Sonuç ──
+    if has_217:
+        bilgiler.insert(0, f"217 kodu mevcut ({detaylar['kod_217_kaynak']}) — TSAT/Ferritin değerleri reçete açıklamasında aranıyor")
     ozet = " | ".join(bilgiler)
+    kaynak_metin = (hb_ibare or ferritin_ibare or tsat_ibare or '')
+
+    # Lab değerleri kriterle çelişiyorsa → UYGUN_DEGIL (217 olsun ya da olmasın)
     if sorunlar:
+        baslik = "ESA UYGUN DEĞİL: kriter ihlali"
+        if has_217:
+            baslik = "ESA UYGUN DEĞİL: 217 kodu beyan edilmiş ama açıklamadaki değerler kriteri ihlal ediyor"
         return KontrolRaporu(
             KontrolSonucu.UYGUN_DEGIL,
-            f"ESA uygunsuz: {'; '.join(sorunlar)}",
+            f"{baslik} — {'; '.join(sorunlar)}",
             detaylar=detaylar,
             uyari=f"Lab bilgileri: {ozet}",
             sut_kurali=sut_kurali,
             aranan_ibare='Ferritin>100, TSAT>%20, Hb<12',
-            bulunan_metin=hb_ibare or ferritin_ibare or tsat_ibare
+            bulunan_metin=kaynak_metin
         )
 
-    # SUT 4.2.30 → 3 değer de ZORUNLU. En az biri eksikse UYGUN DEĞİL.
+    # 217 var → reçete açıklaması VEYA E-Reçete açıklamasında TSAT/Ferritin
+    # değerleri parse edilebilmeli (kaynak önceliği yukarıda kontrol ediliyor).
+    if has_217:
+        eksikler_217 = []
+        if ferritin is None: eksikler_217.append('Ferritin')
+        if tsat is None: eksikler_217.append('TSAT')
+        if eksikler_217:
+            # Bulunan kısmi değerleri özetle (eksik olanı saptamada kritik)
+            bulundu = []
+            if hb is not None: bulundu.append(f"Hb={hb} ({hb_kaynak})")
+            if ferritin is not None: bulundu.append(f"Ferritin={ferritin} ({ferritin_kaynak})")
+            if tsat is not None: bulundu.append(f"TSAT=%{tsat} ({tsat_kaynak})")
+            bulundu_str = "; ".join(bulundu) if bulundu else "(hiçbir değer parse edilemedi)"
+
+            # Tarana metnin gerçek snippet'i — kullanıcı doktorun ne yazdığını görsün
+            kaynak_ozet = []
+            if aciklama_metni:
+                kaynak_ozet.append(f"reçete açıklaması ({len(aciklama_metni)} kr): «{aciklama_metni[:200]}»")
+            if erecete_metni:
+                kaynak_ozet.append(f"E-Reçete açıklama ({len(erecete_metni)} kr): «{erecete_metni[:300]}»")
+            if not kaynak_ozet:
+                kaynak_ozet.append("açıklama metni boş — E-Reçete Görüntüle açılamadı veya metin toplanamadı")
+
+            tetkik_str = ""
+            if tetkik_en_yeni:
+                tetkik_str = f" | en yeni tetkik tarihi: {tetkik_en_yeni}"
+                if tetkik_taze is False:
+                    tetkik_str += " (>30 gün — eski!)"
+
+            return KontrolRaporu(
+                KontrolSonucu.UYGUN_DEGIL,
+                f"ESA UYGUN DEĞİL: 217 kodu var fakat {', '.join(eksikler_217)} değeri açıklamalarda parse edilemedi",
+                detaylar=detaylar,
+                uyari=(f"217 kodu hekimin TSAT/Ferritin'i açıklamaya yazdığını belirtir. "
+                       f"Bulunan: {bulundu_str}.{tetkik_str} "
+                       f"Kaynaklar: " + " | ".join(kaynak_ozet) +
+                       ". Manuel kontrol önerilir."),
+                sut_kurali=sut_kurali,
+                aranan_ibare="Reçete veya E-Reçete açıklamasında ör. 'Ferritin: 250 ng/mL, TSAT: %25'",
+                bulunan_metin=(hb_ibare or ferritin_ibare or '')
+            )
+        # 217 var + Ferritin & TSAT açıklamadan okundu + kriter ihlali yok → UYGUN
+        uyarilar = [f"Ferritin {ferritin} ng/mL ({ferritin_kaynak})",
+                    f"TSAT %{tsat} ({tsat_kaynak})"]
+        if hb is not None:
+            uyarilar.append(f"Hb {hb} g/dL ({hb_kaynak})")
+            if hb < 10:
+                uyarilar.append("Hb < 10 → ESA başlama uygun")
+            elif 10 <= hb <= 12:
+                uyarilar.append("Hb 10-12 → idame dozu")
+        else:
+            uyarilar.append("Hb değeri parse edilemedi (zorunlu değil — 217 yeterli)")
+        if tetkik_taze is False:
+            uyarilar.append(f"Tetkik tarihi {tetkik_en_yeni} > 30 gün — SUT son 1 ay ister, manuel kontrol")
+        elif tetkik_en_yeni:
+            uyarilar.append(f"Tetkik tarihi: {tetkik_en_yeni} (son 30 gün içinde)")
+        if not uzman_var:
+            uyarilar.append("Uzman branş ibaresi raporda açık değil (SUT: Nefro/Hema/Onko)")
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            f"ESA uygun (rapor {rapor_kodu}, 217 kodu) — Ferritin: {ferritin}, TSAT: %{tsat}",
+            detaylar=detaylar,
+            uyari=' | '.join(uyarilar),
+            sut_kurali=sut_kurali,
+            aranan_ibare='217 kodu + Ferritin>100 + TSAT>%20 (açıklamadan okundu)',
+            bulunan_metin=kaynak_metin
+        )
+
+    # 217 yok → SUT 4.2.30 → Hb+Ferritin+TSAT raporda ZORUNLU
     eksikler = []
     if hb is None: eksikler.append("Hb")
     if ferritin is None: eksikler.append("Ferritin")
@@ -2096,14 +2548,14 @@ def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=
     if eksikler:
         return KontrolRaporu(
             KontrolSonucu.UYGUN_DEGIL,
-            f"ESA UYGUN DEĞİL: ZORUNLU değerler eksik ({', '.join(eksikler)} bulunamadı)",
+            f"ESA UYGUN DEĞİL: ZORUNLU değerler eksik ({', '.join(eksikler)} bulunamadı) ve reçete açıklamasında 217 kodu yok",
             detaylar=detaylar,
-            uyari=f"Mevcut: {ozet}. Eksik: {', '.join(eksikler)} — SUT 4.2.30 raporda bulunmalı.",
+            uyari=f"Mevcut: {ozet}. Eksik: {', '.join(eksikler)}. Hekim 217 kodunu reçete açıklamasına girmeli VEYA Hb/Ferritin/TSAT raporda bulunmalı.",
             sut_kurali=sut_kurali,
-            aranan_ibare='Hb + Ferritin + TSAT (hepsi zorunlu)'
+            aranan_ibare='Hb + Ferritin + TSAT (hepsi zorunlu) veya 217 kodu + açıklamada lab değerleri'
         )
 
-    # Tüm 3 değer var ve kriterlere uygun → UYGUN
+    # 217 yok ama tüm 3 değer var ve kriterlere uygun → UYGUN
     uyarilar = []
     if hb < 10:
         uyarilar.append("Hb < 10 → ESA başlama uygun")
@@ -2118,18 +2570,7 @@ def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=
         uyari=' | '.join(uyarilar) if uyarilar else None,
         sut_kurali=sut_kurali,
         aranan_ibare='Ferritin>100 + TSAT>%20 + Hb<12',
-        bulunan_metin=hb_ibare or ferritin_ibare or tsat_ibare
-    )
-
-    # Hiçbir sayısal değer bulunmadı — UYGUN DEĞİL
-    # SUT 4.2.30 zorunlu kılıyor: Hb/Ferritin/TSAT raporda olmak ZORUNDA
-    return KontrolRaporu(
-        KontrolSonucu.UYGUN_DEGIL,
-        'ESA UYGUN DEĞİL: Hb/Ferritin/TSAT değerleri raporda/reçetede bulunamadı',
-        detaylar=detaylar,
-        uyari='SUT 4.2.30: Raporda Hemoglobin, Ferritin ve TSAT değerleri ZORUNLU. Bulunamadı.',
-        sut_kurali=sut_kurali,
-        aranan_ibare='Hb + Ferritin + TSAT (hepsi ZORUNLU)'
+        bulunan_metin=kaynak_metin
     )
 
 
@@ -4860,9 +5301,10 @@ def kontrol_genel_raporlu(ilac_sonuc: Dict) -> KontrolRaporu:
              any(i in ilac_adi for i in esa_ilac)
 
     if esa_mi:
-        # Detaylı ESA kontrolü — Hb/Ferritin/TSAT sayısal kontrol + uzman branş + endikasyon
+        # Detaylı ESA kontrolü — 217 kodu (reçete açıklaması) + Hb/Ferritin/TSAT + uzman branş
         teshis_metin_local = ' '.join(ilac_sonuc.get('recete_teshisleri', []) or [])
-        return _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin_local)
+        return _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin,
+                                     teshis_metin_local, ilac_sonuc=ilac_sonuc)
 
     # ── 4. İmmünosüpresifler (SUT 4.2.32) ──
     immunsup_etkin = ['MIKOFENOLAT', 'MIKOFENOLAT MOFETIL', 'MIKOFENOLIK ASIT',
@@ -7050,7 +7492,11 @@ def kontrol_potasyum_sitrat(ilac_sonuc: Dict) -> KontrolRaporu:
             uyari="Üroloji/Nefroloji uzman raporu kontrol edilmeli"
         )
 
-    metin_lower = metin.replace('İ', 'i').replace('I', 'ı').lower()
+    # Türkçe 'İ' (U+0130) Python'un lower()'ında 'i̇' (i + combining dot) verir;
+    # önce 'i'ye normalize et. 'I' → 'ı' YAPMA: İngilizce büyük 'I' (örn.
+    # "HEMOGLOBIN", "FERRITIN") str.lower() ile zaten 'i'ye dönüşmeli, aksi
+    # halde 'hemoglobın' / 'ferritın' olur ve aranan kelimeyle eşleşmez.
+    metin_lower = metin.replace('İ', 'i').lower()
 
     # Uzman branş kontrolü
     uroloji = bool(re.search(r'üroloji|uroloji', metin_lower))
@@ -7176,7 +7622,8 @@ KATEGORI_KONTROL_FONKSIYONU = {
     'ENTERAL_BESLENME': lambda s: _enteral_beslenme_detayli_kontrol(
         (s.get('ilac_adi') or '').upper(), (s.get('etkin_madde') or '').upper(),
         s.get('rapor_kodu', ''), _tum_metinleri_birlesir(s),
-        ' '.join(s.get('recete_teshisleri', []) or [])),
+        ' '.join(s.get('recete_teshisleri', []) or []),
+        ilac_sonuc=s),
 }
 
 KATEGORI_ISIMLERI = {
