@@ -60,6 +60,7 @@ RAPOR_KODU_KATEGORI = {
     '04.01': 'IVABRADIN',              # İvabradin/Eplerenon
     '04.03': 'YOAK',                   # Antikoagülan (YOAK)
     '04.04': 'KLOPIDOGREL',            # Antitrombotik
+    '04.12': 'DMAH',                   # DMAH (Enoksaparin/Bemiparin/Dalteparin/Nadroparin)
     '11.04': 'PSIKIYATRI',             # Psikiyatri
     '11.04.5': 'PSIKIYATRI',
     '11.04.8': 'PSIKIYATRI',
@@ -68,6 +69,8 @@ RAPOR_KODU_KATEGORI = {
     '05.02': 'SOLUNUM',               # Solunum LABA+LAMA+ICS
     '15.04': 'SOLUNUM',               # Solunum raporlu (nebülizasyon vb.)
     '15.05': 'SOLUNUM',               # Solunum raporlu
+    '15.15': 'GENEL_RAPORLU',         # Enteral beslenme / nutrisyonel desteğin yardımcı ürünleri
+    '06.07': 'GIS',                   # Hepatik kolestaz / Ursodeoksikolik asit grubu
     '12.01': 'GOZ',                    # Göz ilaçları
     '12.04': 'GOZ',
     '02.00': 'ONKOLOJI',              # Onkoloji
@@ -82,6 +85,10 @@ RAPOR_KODU_KATEGORI = {
     '20.02': 'GENEL_RAPORLU',
     '06.06': 'GIS',                    # GİS
     '03.00': 'POTASYUM_SITRAT',        # Üroloji/Nefroloji raporlu
+    '03.01': 'IMMUNSUPRESIF',          # Organ nakli / immünosüpresif (Takrolimus vb.)
+    '07.03': 'GENEL_RAPORLU',          # Endokrin metabolik (Hiperparatiroidi, Sinakalset vb.)
+    '07.03.1': 'GENEL_RAPORLU',
+    '07.03.2': 'GENEL_RAPORLU',
     '15.08': 'GENEL_RAPORLU',          # Nörojenik Mesane (Üroloji)
     '15.01': 'GIS',                     # Gastroenteroloji
     '15.02': 'GIS',                     # GIS raporlu
@@ -410,6 +417,19 @@ ETKIN_MADDE_KATEGORI = {
     'TRIMETAZIDIN DIHIDROKLORUR': 'TRIMETAZIDIN',
     'ENOKSAPARIN': 'DMAH',
     'ENOKSAPARIN SODYUM': 'DMAH',
+    'BEMIPARIN': 'DMAH',
+    'BEMIPARIN SODYUM': 'DMAH',
+    'DALTEPARIN': 'DMAH',
+    'DALTEPARIN SODYUM': 'DMAH',
+    'NADROPARIN': 'DMAH',
+    'NADROPARIN KALSIYUM': 'DMAH',
+    'TINZAPARIN': 'DMAH',
+    'TINZAPARIN SODYUM': 'DMAH',
+    'PARNAPARIN': 'DMAH',
+    'REVIPARIN': 'DMAH',
+    'CERTOPARIN': 'DMAH',
+    'FONDAPARINUKS': 'DMAH',                 # Fondaparinux (sentetik pentasakkarit)
+    'FONDAPARINUX': 'DMAH',
 
     # Kadın hormonları
     'NORETISTERON': 'KADIN_HORMON',
@@ -450,6 +470,71 @@ ETKIN_MADDE_KATEGORI = {
     'MONTELUKAST': 'SOLUNUM',
     'MONTELUKAST SODYUM': 'SOLUNUM',
     'DESLORATADIN': 'RAPORSUZ_BILGILENDIRME',
+
+    # Test çubukları / Diyabet sarf — Medula otomatik kontrol ediyor
+    'SEKER OLCUM CUBUKLARI': 'MEDULA_OTOMATIK',
+    'KAN SEKERI OLCUM': 'MEDULA_OTOMATIK',
+    'GLUKOZ TEST': 'MEDULA_OTOMATIK',
+
+    # Topikal antifungal (raporsuz)
+    'NAFTIFIN': 'RAPORSUZ_BILGILENDIRME',
+    'NAFTIFIN HCL': 'RAPORSUZ_BILGILENDIRME',
+    'NAFTIFIN HIDROKLORUR': 'RAPORSUZ_BILGILENDIRME',
+
+    # İnsülinler (etkin madde "INSULIN ..." varyantları)
+    'INSULIN': 'DIYABET_DPP4_SGLT2',
+    'INSULIN NPH': 'DIYABET_DPP4_SGLT2',
+    'INSULIN NPH(HUMAN)': 'DIYABET_DPP4_SGLT2',
+    'INSULIN HUMAN': 'DIYABET_DPP4_SGLT2',
+    'INSULIN GLARGIN': 'DIYABET_DPP4_SGLT2',
+    'INSULIN DETEMIR': 'DIYABET_DPP4_SGLT2',
+    'INSULIN DEGLUDEC': 'DIYABET_DPP4_SGLT2',
+    'INSULIN ASPART': 'DIYABET_DPP4_SGLT2',
+    'INSULIN LISPRO': 'DIYABET_DPP4_SGLT2',
+    'INSULIN GLULIZIN': 'DIYABET_DPP4_SGLT2',
+
+    # Hepatik kolestaz (UDCA grubu) — kolestatik karaciğer hastalıkları
+    'URSODEOKSIKOLIK ASIT': 'GIS',
+    'URSODEOKSIKOLIK ASID': 'GIS',
+    'URSODEOKSIKOLIK': 'GIS',
+    'URSODEOXYCHOLIC ACID': 'GIS',
+
+    # Hiperparatiroidi (sekonder, kalsimimetik) — endokrin
+    'SINAKALSET': 'GENEL_RAPORLU',
+    'SINAKALSET HCL': 'GENEL_RAPORLU',
+    'CINACALCET': 'GENEL_RAPORLU',
+    'ETELKALSETIDE': 'GENEL_RAPORLU',
+    'ETELCALCETIDE': 'GENEL_RAPORLU',
+    'EVOKALSET': 'GENEL_RAPORLU',
+
+    # Multipl Skleroz (DMT) etkin maddeleri — GENEL_RAPORLU içinde MS bloğu çalışır
+    'DIMETIL FUMARAT': 'GENEL_RAPORLU',
+    'INTERFERON BETA': 'GENEL_RAPORLU',
+    'INTERFERON BETA-1A': 'GENEL_RAPORLU',
+    'INTERFERON BETA-1B': 'GENEL_RAPORLU',
+    'GLATIRAMER': 'GENEL_RAPORLU',
+    'GLATIRAMER ASETAT': 'GENEL_RAPORLU',
+    'FINGOLIMOD': 'GENEL_RAPORLU',
+    'TERIFLUNOMID': 'GENEL_RAPORLU',
+    'NATALIZUMAB': 'GENEL_RAPORLU',
+    'ALEMTUZUMAB': 'GENEL_RAPORLU',
+    'OKRELIZUMAB': 'GENEL_RAPORLU',
+    'OCRELIZUMAB': 'GENEL_RAPORLU',
+    'SIPONIMOD': 'GENEL_RAPORLU',
+    'OZANIMOD': 'GENEL_RAPORLU',
+    'KLADRIBIN': 'GENEL_RAPORLU',
+    'OFATUMUMAB': 'GENEL_RAPORLU',
+
+    # İmmünosüpresif ilaçlar (Organ nakli / otoimmün)
+    'TAKROLIMUS': 'IMMUNSUPRESIF',
+    'MIKOFENOLAT SODYUM': 'IMMUNSUPRESIF',
+    'MIKOFENOLAT MOFETIL': 'IMMUNSUPRESIF',
+    'MIKOFENOLIK ASIT': 'IMMUNSUPRESIF',
+    'SIROLIMUS': 'IMMUNSUPRESIF',
+    'EVEROLIMUS': 'IMMUNSUPRESIF',
+    'SIKLOSPORIN': 'IMMUNSUPRESIF',
+    'AZATIYOPRIN': 'IMMUNSUPRESIF',
+    'AZATHIOPRINE': 'IMMUNSUPRESIF',
 }
 
 
@@ -499,6 +584,166 @@ ILAC_ADI_KATEGORI = {
     'GLIFOR': 'DIYABET_DPP4_SGLT2',
     'CIPRO': 'ANTIBIYOTIK_FLOROKINOLON',
     'TRAVAZOL': 'RAPORSUZ_BILGILENDIRME',
+    'EXODERIL': 'RAPORSUZ_BILGILENDIRME',  # Naftifin (topikal antifungal)
+    # Test çubukları / Glukometre stripleri — Medula otomatik kontrol
+    'VIVACHEK': 'MEDULA_OTOMATIK',
+    'ACCU-CHEK': 'MEDULA_OTOMATIK',
+    'ACCUCHEK': 'MEDULA_OTOMATIK',
+    'CONTOUR': 'MEDULA_OTOMATIK',
+    'ONETOUCH': 'MEDULA_OTOMATIK',
+    'FREESTYLE': 'MEDULA_OTOMATIK',
+    'GLUCOMETER': 'MEDULA_OTOMATIK',
+    'GLUKOMETER': 'MEDULA_OTOMATIK',
+    'GLUKOZ TEST': 'MEDULA_OTOMATIK',
+    'PRODIGY': 'MEDULA_OTOMATIK',
+    'OPTIUM': 'MEDULA_OTOMATIK',
+    'GLUKOSURE': 'MEDULA_OTOMATIK',
+    'BIONIME': 'MEDULA_OTOMATIK',
+    'GLUCOFIX': 'MEDULA_OTOMATIK',
+
+    # İmmünosüpresif (Organ nakli)
+    'ADVAGRAF': 'IMMUNSUPRESIF',     # Takrolimus uzatılmış salımlı
+    'ADOPORT': 'IMMUNSUPRESIF',      # Takrolimus
+    'PROGRAF': 'IMMUNSUPRESIF',      # Takrolimus
+    'TACNI': 'IMMUNSUPRESIF',
+    'TACROBELL': 'IMMUNSUPRESIF',
+    'MODIGRAF': 'IMMUNSUPRESIF',
+    'MYFORTIC': 'IMMUNSUPRESIF',     # Mikofenolat sodyum
+    'CELLCEPT': 'IMMUNSUPRESIF',     # Mikofenolat mofetil
+    'MYREL': 'IMMUNSUPRESIF',
+    'RAPAMUNE': 'IMMUNSUPRESIF',     # Sirolimus
+    'CERTICAN': 'IMMUNSUPRESIF',     # Everolimus
+    'AFINITOR': 'IMMUNSUPRESIF',
+    'SANDIMMUN': 'IMMUNSUPRESIF',    # Siklosporin
+    'IMURAN': 'IMMUNSUPRESIF',       # Azatiyoprin
+
+    # Ursodeoksikolik asit (Hepatik kolestaz)
+    'URSOVEF': 'GIS',
+    'URSOFALK': 'GIS',
+    'URSACTIVE': 'GIS',
+    'URSO 100': 'GIS',
+    'URSOLIV': 'GIS',
+    'DESORE': 'GIS',
+
+    # Enteral nutrisyon ek (ABOUND vb.)
+    'ABOUND': 'ENTERAL_BESLENME',
+    'JUVEN': 'ENTERAL_BESLENME',
+
+    # Klasik OAD (sülfonilüre) — etkin madde boş geldiğinde ticari adla tanı
+    'DIAMICRON': 'DIYABET_DPP4_SGLT2',
+    'AMARYL': 'DIYABET_DPP4_SGLT2',
+    'GLIBEDAL': 'DIYABET_DPP4_SGLT2',
+
+    # İnsülin — etkin madde boş geldiğinde ticari adla tanı
+    'HUMULIN': 'DIYABET_DPP4_SGLT2',  # is_insulin tespiti içeride yapılır
+    'NOVORAPID': 'DIYABET_DPP4_SGLT2',
+    'HUMALOG': 'DIYABET_DPP4_SGLT2',
+    'LANTUS': 'DIYABET_DPP4_SGLT2',
+    'TOUJEO': 'DIYABET_DPP4_SGLT2',
+    'TRESIBA': 'DIYABET_DPP4_SGLT2',
+    'LEVEMIR': 'DIYABET_DPP4_SGLT2',
+    'BASAGLAR': 'DIYABET_DPP4_SGLT2',
+    'NOVOMIX': 'DIYABET_DPP4_SGLT2',
+    'ACTRAPID': 'DIYABET_DPP4_SGLT2',
+    'APIDRA': 'DIYABET_DPP4_SGLT2',
+
+    # Soğuk algınlığı / OTC kombinasyonlar
+    'COLDAWAY': 'RAPORSUZ_BILGILENDIRME',
+    'GRIPIN': 'RAPORSUZ_BILGILENDIRME',
+    'PARASETAMOL': 'RAPORSUZ_BILGILENDIRME',
+    'PAROL': 'RAPORSUZ_BILGILENDIRME',
+    'GERALGINE': 'RAPORSUZ_BILGILENDIRME',
+
+    # Tüberküloz / antibakteriyel raporsuz
+    'RIF': 'RAPORSUZ_BILGILENDIRME',          # Rifampisin enjeksiyon
+    'RIFCAP': 'RAPORSUZ_BILGILENDIRME',
+    'RIFAMPIN': 'RAPORSUZ_BILGILENDIRME',
+
+    # Topikal antifungal (raporsuz) — ek ticari isimler
+    'DERMIFIN': 'RAPORSUZ_BILGILENDIRME',     # Terbinafin sprey/krem
+    'TERBIN': 'RAPORSUZ_BILGILENDIRME',
+    'LAMISIL DERMGEL': 'RAPORSUZ_BILGILENDIRME',
+    'FUNGOSTOP': 'RAPORSUZ_BILGILENDIRME',
+    'TERBISIL': 'RAPORSUZ_BILGILENDIRME',
+
+    # Antiseptik gargara / oral antiseptik (raporsuz)
+    'KLOROBEN': 'RAPORSUZ_BILGILENDIRME',     # Benzidamin + klorheksidin
+    'TANTUM VERDE': 'RAPORSUZ_BILGILENDIRME',
+    'HEXORAL': 'RAPORSUZ_BILGILENDIRME',
+    'ORALMEDIC': 'RAPORSUZ_BILGILENDIRME',
+    'KLORHEX': 'RAPORSUZ_BILGILENDIRME',
+    'DROSID': 'RAPORSUZ_BILGILENDIRME',
+
+    # Soğuk algınlığı şurubu / çocuk öksürük (raporsuz)
+    'KATARIN': 'RAPORSUZ_BILGILENDIRME',
+    'PEDIFEN': 'RAPORSUZ_BILGILENDIRME',
+    'BENICAL': 'RAPORSUZ_BILGILENDIRME',
+    'CALPOL': 'RAPORSUZ_BILGILENDIRME',
+
+    # Makrolid antibiyotik (raporsuz)
+    'KLACID': 'RAPORSUZ_BILGILENDIRME',       # Klaritromisin
+    'KLAMOKS': 'RAPORSUZ_BILGILENDIRME',
+    'AZRO': 'RAPORSUZ_BILGILENDIRME',
+    'AZITRO': 'RAPORSUZ_BILGILENDIRME',
+    'KLAROMIN': 'RAPORSUZ_BILGILENDIRME',
+    'ZITROMAX': 'RAPORSUZ_BILGILENDIRME',
+
+    # Suni gözyaşı / göz lubrikan (raporsuz)
+    'NOVAQUA': 'GOZ_LUBRIKAN',
+    'REFRESH': 'GOZ_LUBRIKAN',
+    'TEARS NATURALE': 'GOZ_LUBRIKAN',
+    'OPTIVE': 'GOZ_LUBRIKAN',
+    'SYSTANE': 'GOZ_LUBRIKAN',
+    'HYLO': 'GOZ_LUBRIKAN',
+    'ARTELAC': 'GOZ_LUBRIKAN',
+    'LACRIMA': 'GOZ_LUBRIKAN',
+
+    # Solunum (LABA+ICS / LTRA / kombi) — yeni ticari adlar
+    'BREQUAL': 'SOLUNUM',                     # Salmeterol+Flutikazon
+    'LEVOKAST': 'SOLUNUM',                    # Levosetirizin+Montelukast
+    'MONKAST': 'SOLUNUM',                     # Montelukast
+    'AIRPLUS': 'SOLUNUM',                     # Salmeterol+Flutikazon
+    'INUVAIR': 'SOLUNUM',                     # Beklometazon+Formoterol
+
+    # Gut / hiperürisemi tedavisi (raporsuz — alopurinol/febuksostat)
+    'TEGLIX': 'RAPORSUZ_BILGILENDIRME',       # Febuksostat
+    'ADENURIC': 'RAPORSUZ_BILGILENDIRME',
+    'URICONT': 'RAPORSUZ_BILGILENDIRME',
+    'ZYLORIC': 'RAPORSUZ_BILGILENDIRME',
+    'URIKOLIZ': 'RAPORSUZ_BILGILENDIRME',
+    'ALLOPURINOL': 'RAPORSUZ_BILGILENDIRME',
+    'FEBUXOSTAT': 'RAPORSUZ_BILGILENDIRME',
+
+    # Göz damlası — siklosporin formu (immünsüpresif değil, kuru göz için)
+    'DEPORES': 'GOZ_LUBRIKAN',                # Siklosporin %0.05/0.1 göz damlası
+    'IKERVIS': 'GOZ_LUBRIKAN',                # Siklosporin göz damlası
+    'RESTASIS': 'GOZ_LUBRIKAN',               # Siklosporin göz damlası
+    'OPTIMMUNE': 'GOZ_LUBRIKAN',
+
+    # Hiperparatiroidi kalsimimetikleri (Sinakalset, Etelkalsetid)
+    'CINESET': 'GENEL_RAPORLU',               # Sinakalset
+    'MIMPARA': 'GENEL_RAPORLU',
+    'PARSABIV': 'GENEL_RAPORLU',              # Etelkalsetid (IV)
+    'SENSIPAR': 'GENEL_RAPORLU',
+    'KALSIMIMETIK': 'GENEL_RAPORLU',
+
+    # Multipl Skleroz (MS) DMT — ticari adlar → GENEL_RAPORLU MS bloğu
+    'TENIPRA': 'GENEL_RAPORLU',               # Dimetil fumarat
+    'TECFIDERA': 'GENEL_RAPORLU',             # Dimetil fumarat
+    'AVONEX': 'GENEL_RAPORLU',                # Interferon beta-1a
+    'REBIF': 'GENEL_RAPORLU',                 # Interferon beta-1a
+    'BETAFERON': 'GENEL_RAPORLU',             # Interferon beta-1b
+    'EXTAVIA': 'GENEL_RAPORLU',
+    'COPAXONE': 'GENEL_RAPORLU',              # Glatiramer
+    'GILENYA': 'GENEL_RAPORLU',               # Fingolimod
+    'AUBAGIO': 'GENEL_RAPORLU',               # Teriflunomid
+    'TYSABRI': 'GENEL_RAPORLU',               # Natalizumab
+    'LEMTRADA': 'GENEL_RAPORLU',              # Alemtuzumab
+    'OCREVUS': 'GENEL_RAPORLU',               # Okrelizumab
+    'MAYZENT': 'GENEL_RAPORLU',               # Siponimod
+    'ZEPOSIA': 'GENEL_RAPORLU',               # Ozanimod
+    'MAVENCLAD': 'GENEL_RAPORLU',             # Kladribin
+    'KESIMPTA': 'GENEL_RAPORLU',              # Ofatumumab
     'CONTRAMAL': 'RECETE_TURU_KIRMIZI',
     'OKSAPAR': 'DMAH',
     'LUSTRAL': 'PSIKIYATRI',
@@ -536,6 +781,14 @@ ILAC_ADI_KATEGORI = {
     'MACROL': 'RAPORSUZ_BILGILENDIRME',
     'AKINETON': 'RECETE_TURU_YESIL',
     'ENOX': 'DMAH',
+    'CLEXANE': 'DMAH',                       # Enoksaparin orijinal
+    'HIBOR': 'DMAH',                         # Bemiparin
+    'IVOR': 'DMAH',                          # Bemiparin
+    'FRAGMIN': 'DMAH',                       # Dalteparin
+    'FRAXIPARINE': 'DMAH',                   # Nadroparin
+    'FRAXODI': 'DMAH',                       # Nadroparin yüksek doz
+    'INNOHEP': 'DMAH',                       # Tinzaparin
+    'ARIXTRA': 'DMAH',                       # Fondaparinux
 
     # BPH / Prostat
     'XATRAL': 'BPH_PROSTAT',         # Alfuzosin
@@ -801,6 +1054,19 @@ def sut_kategorisi_tespit_et(ilac_sonuc: Dict) -> Optional[str]:
     Returns:
         str: Kategori kodu veya None
     """
+    # 0. ÖZEL DURUM — Form bazlı override:
+    # Aynı etkin madde farklı formlarda farklı SUT kategorisinde olabilir.
+    # Örn: SIKLOSPORIN sistemik (SANDIMMUN) → IMMUNSUPRESIF (organ nakli),
+    #      SIKLOSPORIN göz damlası (DEPORES/IKERVIS/RESTASIS) → GOZ_LUBRIKAN (kuru göz).
+    # ETKIN_MADDE_KATEGORI eşleşmesinden önce form kontrolü yapılır.
+    ilac_adi_upper = (ilac_sonuc.get('ilac_adi') or '').upper()
+    etkin_madde_raw = (ilac_sonuc.get('etkin_madde') or '').upper()
+    if 'SIKLOSPORIN' in etkin_madde_raw:
+        if any(form in ilac_adi_upper for form in
+                ('GOZ DAMLA', 'GÖZ DAMLA', 'GOZ EM', 'GÖZ EM',
+                 'GOZ COZ', 'GÖZ ÇÖZ', 'OPHTH', 'EYE DROP')):
+            return 'GOZ_LUBRIKAN'
+
     # 1. SUT maddesi ile eşleştir (en güvenilir)
     sut_maddesi = ilac_sonuc.get('sut_maddesi')
     if sut_maddesi:
@@ -1266,6 +1532,19 @@ def _immunsupresif_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, tes
             sut_kurali=sut_kurali
         )
 
+    # Pragmatik fallback: Rapor kodu 03.01 (organ nakli) veya transplant rapor
+    # kodları varsa Medula tarafından zaten kontrol edilmiştir. SGK bu kodla
+    # ödediyse endikasyon raporda mevcut demektir.
+    if rapor_kodu and (rapor_kodu.startswith('03.01') or rapor_kodu.startswith('03.02')):
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            f'İmmünosüpresif raporlu (rapor {rapor_kodu}) — Medula transplant/otoimmün şart kontrolünü yapar',
+            detaylar={**detaylar, 'medula_otomatik': True},
+            uyari='Endikasyon (transplant/otoimmün) raporda yer aldığı varsayılır',
+            sut_kurali=sut_kurali,
+            aranan_ibare=f'Rapor kodu ({rapor_kodu}) örtük endikasyon'
+        )
+
     return KontrolRaporu(
         KontrolSonucu.UYGUN_DEGIL,
         'İmmünosüpresif UYGUN DEĞİL: Endikasyon (transplant/otoimmün) raporda bulunamadı',
@@ -1549,6 +1828,20 @@ def _inkontinans_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshi
             detaylar=detaylar,
             uyari='Rapor 1 yıl. Endikasyon açık belirtilmeli.',
             sut_kurali=sut_kurali
+        )
+
+    # Pragmatik fallback: Genel raporlu (20.x), N32-N39, R32 vb. raporlu reçete →
+    # Medula tarafından zaten endikasyon onaylanmış demektir.
+    if rapor_kodu and (rapor_kodu.startswith('20.')
+                         or rapor_kodu.startswith('N32') or rapor_kodu.startswith('N33')
+                         or rapor_kodu.startswith('N39') or rapor_kodu.startswith('R32')):
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            f'İnkontinans raporlu (rapor {rapor_kodu}) — Medula endikasyon/uzman şart kontrolünü yapar',
+            detaylar={**detaylar, 'medula_otomatik': True},
+            uyari='Endikasyon (overaktif mesane/urge/nörojenik) raporda yer aldığı varsayılır',
+            sut_kurali=sut_kurali,
+            aranan_ibare=f'Rapor kodu ({rapor_kodu}) örtük endikasyon'
         )
 
     return KontrolRaporu(
@@ -1847,6 +2140,22 @@ def _antiviral_hepatit_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin,
     if hbv and hbv_dna is None: eksikler.append("HBV DNA yok")
     if hcv and hcv_rna is None: eksikler.append("HCV RNA yok")
     if hiv and cd4 is None: eksikler.append("CD4 yok")
+
+    # Pragmatik fallback: SGK rapor kodu 06.01/14.01/B16-B20 ile reçeteyi
+    # kabul ettiyse, viral yük & tanı raporun kendisinde mevcut demektir.
+    # Mesaj metnine düşmeyebilir; eczacı tarafında ek alarm gerekmez.
+    rapor_pragmatik = (rapor_kodu and (rapor_kodu.startswith('06.01')
+                                         or rapor_kodu.startswith('14.')
+                                         or rapor_kodu.startswith('B')))
+    if rapor_pragmatik:
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            f'Antiviral raporlu (rapor {rapor_kodu}) — Medula viral yük/endikasyon şart kontrolünü yapar',
+            detaylar={**detaylar, 'medula_otomatik': True},
+            uyari='Viral yük (HBV DNA / HCV RNA / CD4) raporda yer aldığı varsayılır',
+            sut_kurali=sut_kurali,
+            aranan_ibare=f'Antiviral rapor kodu ({rapor_kodu}) örtük endikasyon'
+        )
 
     if endikasyon_var:
         return KontrolRaporu(
@@ -2162,6 +2471,19 @@ def _enteral_beslenme_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin,
             sut_kurali=sut_kurali
         )
 
+    # Pragmatik fallback: Enteral beslenmeye özgü rapor kodları (15.04, 15.05,
+    # 15.15, 02.00, 04.05) varsa Medula tarafından zaten endikasyon onaylanmıştır.
+    # Endikasyon raporun kendisinde yer alır; mesaj metnine düşmeyebilir.
+    if rapor_kodu and (rapor_kodu.startswith('15.') or rapor_kodu.startswith('02.')):
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            f'Enteral beslenme raporlu (rapor {rapor_kodu}) — Medula endikasyon şart kontrolünü yapar',
+            detaylar={**detaylar, 'medula_otomatik': True},
+            uyari='Kalori/uzman bilgisinin raporda yer aldığı varsayılır',
+            sut_kurali=sut_kurali,
+            aranan_ibare=f'Rapor kodu ({rapor_kodu}) örtük endikasyon'
+        )
+
     return KontrolRaporu(
         KontrolSonucu.UYGUN_DEGIL,
         'Enteral beslenme UYGUN DEĞİL: Endikasyon raporda bulunamadı',
@@ -2256,7 +2578,7 @@ def _koagulasyon_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshi
 
 def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin="",
                           ilac_sonuc=None):
-    """SUT 4.2.30 — ESA (Eritropoietin/Darbepoetin) detaylı kontrol.
+    """SUT 4.2.9.A — ESA (Eritropoietin/Darbepoetin/Roksadustat) detaylı kontrol.
 
     Kapsanan ilaçlar (etken madde bazında):
       • Epoetin alfa: EPREX, EPOBEL, ABSEAMED, BINOCRIT, HEMAX, RETACRIT
@@ -2264,41 +2586,42 @@ def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=
       • Darbepoetin alfa: ARANESP, DYNEPO
       • Metoxi-PEG-epoetin beta: MIRCERA
       • Biyobenzerler: BIOPOIN, SILAPO
+      • Roksadustat (sadece KBY)
 
-    Endikasyonlar (SUT 4.2.30):
-      1. Kronik böbrek yetmezliği anemisi (diyalize giren/girmeyen)
-      2. Kemoterapiye bağlı anemi (solid tümör)
-      3. Miyelodisplastik sendrom (düşük/orta-1 risk)
-      4. Otolog kan transfüzyonu hazırlığı (sınırlı)
+    Endikasyonlar (SUT 4.2.9.A):
+      1. Kronik böbrek yetmezliği ile ilişkili anemi (4.2.9.A-1)
+      2. Myelodisplastik sendrom (4.2.9.A-2) — sadece eritropoietin alfa-beta
 
-    Reçeteleme şartları:
-      • Uzman raporu ZORUNLU: Nefroloji / Hematoloji / Onkoloji / İç Hastalıkları
-        (Rapor süresi: 6 ay)
-      • Lab değerleri raporda VEYA reçete/E-Reçete açıklamasında 217 kodu ile beyan:
-          – Hb 10–11 g/dL altı → ESA başlama
-          – Hb 12 üstü → doz azalt; ≥13 → kesinlikle kesilmeli
-          – Ferritin > 100 ng/mL (demir deposu yeterli)
-          – TSAT > %20 (transferrin saturasyonu yeterli)
-      • Ferritin/TSAT düşükse → önce IV demir tedavisi gerekir
-      • Tetkik tarihi son 1 ay içinde olmalı (SUT genel ilkesi)
+    Reçeteleme şartları (KBY — 4.2.9.A-1):
+      • Uzman raporu ZORUNLU (6 ay):
+          – Nefroloji / İç Hastalıkları / Çocuk Sağlığı / Diyaliz sertifikalı
+      • Lab değerleri (raporda VEYA 217 kodu ile reçete açıklamasında):
+          – Hb < 10 g/dL → ESA başlama
+          – Hb hedef: 11-12 g/dL (idame)
+          – Hb > 12 → tedavi kesilir
+          – TSAT ≥ %20 ve/veya Ferritin ≥ 100 µg/L → ESA başlanabilir
+            (en az BİRİ eşik üstünde olmalı — "ve/veya" kuralı)
+          – Hem TSAT < %20 hem Ferritin < 100 → önce demir tedavisi
+      • Tetkik takibi: hemodiyaliz 3 ayda bir, periton 4 ayda bir
+      • Tetkik tarihi reçete veya raporda belirtilir
 
     217 Uyarı Kodu:
-      Hekim "Bu hastada Hb/Ferritin/TSAT uygun değerlerde, açıklamaya yazdım"
-      beyanıdır. Reçete sistemine 217 girilirse, lab değerleri reçete veya
-      E-Reçete açıklamasında bulunmalı. Bu fonksiyon kaynak öncelik sırasıyla
-      bunları arar (reçete açıklaması → E-Reçete açıklaması → rapor metni).
+      Hekim "Bu hastada lab değerlerini reçete açıklamasına yazdım" beyanıdır.
+      Reçete sistemine 217 girilirse, lab değerleri reçete veya E-Reçete
+      açıklamasında bulunmalı. Bu fonksiyon kaynak öncelik sırasıyla bunları
+      arar (reçete açıklaması → E-Reçete açıklaması → rapor metni).
 
-    Karar ağacı:
+    Karar ağacı (SUT 4.2.9.A-1 ve/veya kuralı):
       RAPOR YOK                              → UYGUNSUZ (raporsuz ESA yasak)
-      217 var, lab değerleri parse edildi, kriter ihlali → UYGUNSUZ (hekim yanlış beyan)
-      217 var, Ferritin & TSAT bulunamadı   → UYGUNSUZ (beyan eksik) + manuel kontrol
-      217 var, Ferritin & TSAT uygun        → UYGUN
-      217 yok, lab değerleri raporda        → kriterlere göre değerlendir
+      Kriter ihlali (Hb>12 veya hem TSAT<20 hem Ferritin<100) → UYGUNSUZ
+      217 var, Hb yazılmış, (Ferritin VEYA TSAT) yazılmış uygun → UYGUN
+      217 var, Ferritin VE TSAT ikisi de yok → UYGUNSUZ (en az biri gerekli)
+      217 yok, Hb ve (Ferritin VEYA TSAT) raporda var → UYGUN (kriterlere göre)
       217 yok, lab değerleri eksik          → UYGUNSUZ
 
     Returns: KontrolRaporu
     """
-    sut_kurali = 'SUT 4.2.30 — ESA: 217 kodu (reçete açıklamasında) veya Hb+Ferritin+TSAT'
+    sut_kurali = 'SUT 4.2.9.A-1 — ESA: Hb + (TSAT≥%20 ve/veya Ferritin≥100) | 217 kodu reçete açıklamasında değerlendirme'
     detaylar = {'alt_kategori': 'ESA_ERITROPOIETIN', 'rapor_kodu': rapor_kodu}
 
     if not rapor_kodu:
@@ -2405,9 +2728,13 @@ def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=
                       'tetkik_taze': tetkik_taze,
                       'tetkik_en_yeni': str(tetkik_en_yeni) if tetkik_en_yeni else None})
 
-    # ── Uzman branş ──
+    # ── Uzman branş — SUT 4.2.9.A-1 (KBY): nefroloji, iç hastalıkları,
+    # çocuk sağlığı ve hastalıkları, diyaliz sertifikalı uzman hekimler
+    # SUT 4.2.9.A-2 (MDS): hematoloji
     uzman_var = any(k in metin_lower for k in ['nefroloji', 'hematoloji', 'onkoloji',
-                                                 'iç hastalıkları', 'ic hastaliklari'])
+                                                 'iç hastalıkları', 'ic hastaliklari',
+                                                 'çocuk sağlığı', 'cocuk sagligi',
+                                                 'pediatri', 'diyaliz sertifika'])
     detaylar['uzman_var'] = uzman_var
 
     # ── Endikasyon ──
@@ -2431,21 +2758,35 @@ def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=
     else:
         bilgiler.append("Hb değeri raporda bulunamadı")
 
-    # Ferritin kontrolü
-    if ferritin is not None:
-        bilgiler.append(f"Ferritin: {ferritin} ng/mL")
-        if ferritin <= 100:
-            sorunlar.append(f"Ferritin {ferritin} ≤ 100 ng/mL — demir deposu yetersiz (SUT: >100)")
-    else:
-        bilgiler.append("Ferritin değeri raporda bulunamadı")
+    # Ferritin / TSAT kontrolü — SUT 4.2.9.A-1: "TSAT ≥ %20 VE/VEYA Ferritin ≥ 100"
+    # İkisinden biri eşik üstündeyse demir yeterli sayılır → ESA uygun.
+    # Sorun yalnızca: ikisi de eşik altındaysa veya ikisi de yoksa.
+    ferritin_ok = ferritin is not None and ferritin >= 100
+    tsat_ok = tsat is not None and tsat >= 20
+    ferritin_dusuk = ferritin is not None and ferritin < 100
+    tsat_dusuk = tsat is not None and tsat < 20
 
-    # TSAT kontrolü
-    if tsat is not None:
-        bilgiler.append(f"TSAT: %{tsat}")
-        if tsat <= 20:
-            sorunlar.append(f"TSAT %{tsat} ≤ %20 — transferrin satürasyonu yetersiz (SUT: >%20)")
+    if ferritin is not None:
+        bilgiler.append(f"Ferritin: {ferritin} ng/mL{' ✓' if ferritin_ok else ' (düşük)'}")
     else:
-        bilgiler.append("TSAT değeri raporda bulunamadı")
+        bilgiler.append("Ferritin: yazılmamış")
+    if tsat is not None:
+        bilgiler.append(f"TSAT: %{tsat}{' ✓' if tsat_ok else ' (düşük)'}")
+    else:
+        bilgiler.append("TSAT: yazılmamış")
+
+    # SUT "ve/veya" kuralı: en az birinin eşikte olması yeterli
+    if ferritin is not None and tsat is not None:
+        if not ferritin_ok and not tsat_ok:
+            sorunlar.append(f"Hem Ferritin {ferritin} <100 hem TSAT %{tsat} <%20 — önce demir tedavisi (SUT 4.2.9.A-1)")
+    # Tek değer var: o yeterli mi kontrolü
+    elif ferritin is not None and not tsat_ok:
+        # Sadece ferritin yazılmış, ferritin düşükse → demir tedavisi
+        if ferritin_dusuk:
+            sorunlar.append(f"Ferritin {ferritin} <100 (TSAT yok) — önce demir tedavisi gerekli olabilir")
+    elif tsat is not None and not ferritin_ok:
+        if tsat_dusuk:
+            sorunlar.append(f"TSAT %{tsat} <%20 (Ferritin yok) — önce demir tedavisi gerekli olabilir")
 
     # Uzman branş kontrolü
     if not uzman_var:
@@ -2472,50 +2813,49 @@ def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=
             bulunan_metin=kaynak_metin
         )
 
-    # 217 var → reçete açıklaması VEYA E-Reçete açıklamasında TSAT/Ferritin
-    # değerleri parse edilebilmeli (kaynak önceliği yukarıda kontrol ediliyor).
+    # SUT 4.2.9.A-1 "ve/veya" kuralı: TSAT VEYA Ferritin'den en az biri yeterli.
+    # Hb hâlâ zorunlu (endikasyon ve doz kararı için).
+    demir_var = (ferritin is not None) or (tsat is not None)
+
+    # 217 var → değerler reçete/E-Reçete açıklamasında parse edilmeli
     if has_217:
-        eksikler_217 = []
-        if ferritin is None: eksikler_217.append('Ferritin')
-        if tsat is None: eksikler_217.append('TSAT')
-        if eksikler_217:
-            # Bulunan kısmi değerleri özetle (eksik olanı saptamada kritik)
+        # En az biri (Ferritin VEYA TSAT) ve Hb gerekli
+        if not demir_var:
             bulundu = []
             if hb is not None: bulundu.append(f"Hb={hb} ({hb_kaynak})")
-            if ferritin is not None: bulundu.append(f"Ferritin={ferritin} ({ferritin_kaynak})")
-            if tsat is not None: bulundu.append(f"TSAT=%{tsat} ({tsat_kaynak})")
-            bulundu_str = "; ".join(bulundu) if bulundu else "(hiçbir değer parse edilemedi)"
+            bulundu_str = "; ".join(bulundu) if bulundu else "(hiçbir lab değeri parse edilemedi)"
 
-            # Tarana metnin gerçek snippet'i — kullanıcı doktorun ne yazdığını görsün
             kaynak_ozet = []
             if aciklama_metni:
                 kaynak_ozet.append(f"reçete açıklaması ({len(aciklama_metni)} kr): «{aciklama_metni[:200]}»")
             if erecete_metni:
                 kaynak_ozet.append(f"E-Reçete açıklama ({len(erecete_metni)} kr): «{erecete_metni[:300]}»")
             if not kaynak_ozet:
-                kaynak_ozet.append("açıklama metni boş — E-Reçete Görüntüle açılamadı veya metin toplanamadı")
+                kaynak_ozet.append("açıklama metni boş — E-Reçete Görüntüle açılamadı")
 
             tetkik_str = ""
             if tetkik_en_yeni:
                 tetkik_str = f" | en yeni tetkik tarihi: {tetkik_en_yeni}"
-                if tetkik_taze is False:
-                    tetkik_str += " (>30 gün — eski!)"
 
             return KontrolRaporu(
                 KontrolSonucu.UYGUN_DEGIL,
-                f"ESA UYGUN DEĞİL: 217 kodu var fakat {', '.join(eksikler_217)} değeri açıklamalarda parse edilemedi",
+                f"ESA UYGUN DEĞİL: 217 kodu var fakat Ferritin VE TSAT ikisi de açıklamalarda yok (SUT: en az biri gerekli)",
                 detaylar=detaylar,
-                uyari=(f"217 kodu hekimin TSAT/Ferritin'i açıklamaya yazdığını belirtir. "
+                uyari=(f"SUT 4.2.9.A-1: TSAT ≥ %20 ve/veya Ferritin ≥ 100 → en az biri yazılmalı. "
                        f"Bulunan: {bulundu_str}.{tetkik_str} "
                        f"Kaynaklar: " + " | ".join(kaynak_ozet) +
                        ". Manuel kontrol önerilir."),
                 sut_kurali=sut_kurali,
-                aranan_ibare="Reçete veya E-Reçete açıklamasında ör. 'Ferritin: 250 ng/mL, TSAT: %25'",
-                bulunan_metin=(hb_ibare or ferritin_ibare or '')
+                aranan_ibare="Reçete/E-Reçete açıklamasında ör. 'Ferritin: 250' veya 'TSAT: %25'",
+                bulunan_metin=(hb_ibare or '')
             )
-        # 217 var + Ferritin & TSAT açıklamadan okundu + kriter ihlali yok → UYGUN
-        uyarilar = [f"Ferritin {ferritin} ng/mL ({ferritin_kaynak})",
-                    f"TSAT %{tsat} ({tsat_kaynak})"]
+        # 217 var + en az bir demir göstergesi (Ferritin VEYA TSAT) açıklamadan okundu
+        # + kriter ihlali yok → UYGUN
+        uyarilar = []
+        if ferritin is not None:
+            uyarilar.append(f"Ferritin {ferritin} ng/mL ({ferritin_kaynak})")
+        if tsat is not None:
+            uyarilar.append(f"TSAT %{tsat} ({tsat_kaynak})")
         if hb is not None:
             uyarilar.append(f"Hb {hb} g/dL ({hb_kaynak})")
             if hb < 10:
@@ -2523,53 +2863,59 @@ def _esa_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=
             elif 10 <= hb <= 12:
                 uyarilar.append("Hb 10-12 → idame dozu")
         else:
-            uyarilar.append("Hb değeri parse edilemedi (zorunlu değil — 217 yeterli)")
+            uyarilar.append("Hb değeri açıklamada bulunamadı")
         if tetkik_taze is False:
             uyarilar.append(f"Tetkik tarihi {tetkik_en_yeni} > 30 gün — SUT son 1 ay ister, manuel kontrol")
         elif tetkik_en_yeni:
-            uyarilar.append(f"Tetkik tarihi: {tetkik_en_yeni} (son 30 gün içinde)")
+            uyarilar.append(f"Tetkik tarihi: {tetkik_en_yeni}")
         if not uzman_var:
-            uyarilar.append("Uzman branş ibaresi raporda açık değil (SUT: Nefro/Hema/Onko)")
+            uyarilar.append("Uzman branş raporda açık değil (Nefro/Hema/Onko/İç Hast/Çocuk)")
+        # Hangi göstergenin sağlandığını sonuç mesajında net belirt
+        sag_mesaj = []
+        if ferritin is not None:
+            sag_mesaj.append(f"Ferritin: {ferritin}")
+        if tsat is not None:
+            sag_mesaj.append(f"TSAT: %{tsat}")
         return KontrolRaporu(
             KontrolSonucu.UYGUN,
-            f"ESA uygun (rapor {rapor_kodu}, 217 kodu) — Ferritin: {ferritin}, TSAT: %{tsat}",
+            f"ESA uygun (rapor {rapor_kodu}, 217 kodu) — {', '.join(sag_mesaj)} (SUT 4.2.9.A-1: ve/veya kuralı)",
             detaylar=detaylar,
             uyari=' | '.join(uyarilar),
             sut_kurali=sut_kurali,
-            aranan_ibare='217 kodu + Ferritin>100 + TSAT>%20 (açıklamadan okundu)',
+            aranan_ibare='217 kodu + (Ferritin≥100 VEYA TSAT≥%20) (açıklamadan okundu)',
             bulunan_metin=kaynak_metin
         )
 
-    # 217 yok → SUT 4.2.30 → Hb+Ferritin+TSAT raporda ZORUNLU
+    # 217 yok → SUT 4.2.9.A-1 → Hb + (Ferritin VEYA TSAT) raporda olmalı
     eksikler = []
     if hb is None: eksikler.append("Hb")
-    if ferritin is None: eksikler.append("Ferritin")
-    if tsat is None: eksikler.append("TSAT")
+    if not demir_var: eksikler.append("Ferritin VEYA TSAT (en az biri)")
     if eksikler:
         return KontrolRaporu(
             KontrolSonucu.UYGUN_DEGIL,
-            f"ESA UYGUN DEĞİL: ZORUNLU değerler eksik ({', '.join(eksikler)} bulunamadı) ve reçete açıklamasında 217 kodu yok",
+            f"ESA UYGUN DEĞİL: ZORUNLU değerler eksik ({', '.join(eksikler)} bulunamadı) ve 217 kodu yok",
             detaylar=detaylar,
-            uyari=f"Mevcut: {ozet}. Eksik: {', '.join(eksikler)}. Hekim 217 kodunu reçete açıklamasına girmeli VEYA Hb/Ferritin/TSAT raporda bulunmalı.",
+            uyari=f"Mevcut: {ozet}. Eksik: {', '.join(eksikler)}. Hekim 217 kodunu reçete açıklamasına girmeli VEYA değerler raporda bulunmalı.",
             sut_kurali=sut_kurali,
-            aranan_ibare='Hb + Ferritin + TSAT (hepsi zorunlu) veya 217 kodu + açıklamada lab değerleri'
+            aranan_ibare='Hb + (Ferritin VEYA TSAT) veya 217 kodu + açıklamada değerler'
         )
 
-    # 217 yok ama tüm 3 değer var ve kriterlere uygun → UYGUN
+    # 217 yok ama Hb + (Ferritin VEYA TSAT) raporda var, kriter ihlali yok → UYGUN
     uyarilar = []
-    if hb < 10:
-        uyarilar.append("Hb < 10 → ESA başlama uygun")
-    elif 10 <= hb <= 12:
-        uyarilar.append("Hb 10-12 → idame dozu")
+    if hb is not None:
+        if hb < 10:
+            uyarilar.append("Hb < 10 → ESA başlama uygun")
+        elif 10 <= hb <= 12:
+            uyarilar.append("Hb 10-12 → idame dozu")
     if not uzman_var:
-        uyarilar.append("Uzman branş ibaresi raporda açık değil (SUT: Nefro/Hema/Onko)")
+        uyarilar.append("Uzman branş ibaresi raporda açık değil (Nefro/Hema/Onko/İç Hast/Çocuk)")
     return KontrolRaporu(
         KontrolSonucu.UYGUN,
         f"ESA uygun (rapor {rapor_kodu}) — {ozet}",
         detaylar=detaylar,
         uyari=' | '.join(uyarilar) if uyarilar else None,
         sut_kurali=sut_kurali,
-        aranan_ibare='Ferritin>100 + TSAT>%20 + Hb<12',
+        aranan_ibare='Hb + (Ferritin≥100 VEYA TSAT≥%20)',
         bulunan_metin=kaynak_metin
     )
 
@@ -2597,13 +2943,41 @@ def kontrol_kombine_antihipertansif(ilac_sonuc: Dict) -> KontrolRaporu:
     """
     SUT 4.2.12.B - Kombine Antihipertansif Kontrol
 
-    Raporda "monoterapi ile hasta kan basıncının yeteri kadar
-    kontrol altına alınamadığı" ibaresi olmalı.
-    Pratikte raporda kelime yazmaz — rapor kodu 04.05 + kombine etken madde yeterli sayılır.
+    Pragmatik yaklaşım:
+    - Kombine etken madde zaten "tek ilaçla yetinilemediği"nin somut göstergesidir
+      (hekim mono → kombi geçişi yapmış). Mesaj metninde "monoterapi" geçmesini
+      şart koşmak yanlış pozitif üretiyordu (3MDYQQ5 CO-IRDA gibi raporsuz
+      kombine reçeteler).
+    - rapor_kodu yoksa: Medula raporsuz kabul etmiş → şart kontrolü Medula'da.
+    - rapor_kodu 04.05 ise: Antihipertansiyon raporu var, kombi yazılabilir.
+    - Diğer rapor kodları: sadece monoterapi ibaresi aranır (eski mantık).
     """
     tum_metin = _tum_metinleri_birlesir(ilac_sonuc)
-    rapor_kodu = ilac_sonuc.get('rapor_kodu', '')
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
 
+    # 1) RAPORSUZ KOMBİNE — kombine etken madde Medula tarafından kabul edilmiş
+    if not rapor_kodu:
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj='Kombine antihipertansif raporsuz — kombine etken madde monoterapi yetersizliğinin göstergesidir',
+            detaylar={'aranan': 'monoterapi', 'bulundu': True,
+                      'gerekce': 'kombine_etken_madde'},
+            sut_kurali='SUT 4.2.12.B — Kombine reçete = monoterapi yetersiz (örtük)',
+            aranan_ibare='Kombine etken madde varlığı (yeterli)'
+        )
+
+    # 2) RAPOR KODU 04.05 — Antihipertansiyon raporu mevcut
+    if rapor_kodu.startswith('04.05'):
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj=f'Kombine antihipertansif raporlu — rapor kodu {rapor_kodu}',
+            detaylar={'aranan': 'monoterapi', 'bulundu': True,
+                      'rapor_kodu': rapor_kodu},
+            sut_kurali='SUT 4.2.12.B — Antihipertansiyon raporu (04.05) + kombine ilaç',
+            aranan_ibare=f'Rapor kodu {rapor_kodu} + kombine etken madde'
+        )
+
+    # 3) Farklı rapor kodu — monoterapi ibaresi aranır
     bulundu = False
     eslesen_kelime = ""
     if tum_metin:
@@ -2614,196 +2988,787 @@ def kontrol_kombine_antihipertansif(ilac_sonuc: Dict) -> KontrolRaporu:
         elif 'tek ilaç' in metin_lower and 'yeter' in metin_lower:
             bulundu = True
             eslesen_kelime = "tek ilaç"
-        elif 'kan basıncı' in metin_lower and 'kontrol' in metin_lower:
-            bulundu = True
-            eslesen_kelime = "kan basıncı"
-        elif 'hipertansiyon' in metin_lower or 'antihipertansif' in metin_lower:
-            bulundu = True
-            eslesen_kelime = "hipertansiyon"
-
-    # Pragmatik: rapor kodu 04.05 (Arteriyel Hipertansiyon) varsa raporlu kombine ilaç
-    # SUT gereği monoterapi yazılı kanıt aranır, ama Medula raporunda bu ibare bulunmaz.
-    if not bulundu and rapor_kodu.startswith('04.05'):
-        bulundu = True
-        eslesen_kelime = f"rapor kodu {rapor_kodu}"
 
     if bulundu:
         return KontrolRaporu(
             sonuc=KontrolSonucu.UYGUN,
             mesaj='Monoterapi ibaresi bulundu',
             detaylar={'aranan': 'monoterapi', 'bulundu': True},
-            uyari='Raporda "monoterapi ile yeterli kontrol sağlanamadığı" ibaresi kontrol edilmeli',
             sut_kurali='SUT 4.2.12.B — Monoterapi ile kan basıncı kontrol altına alınamamış olmalı',
-            aranan_ibare='monoterapi / tek ilaç tedavisi / kan basıncı kontrol',
+            aranan_ibare='monoterapi / tek ilaç tedavisi',
             bulunan_metin=_eslesen_parcayi_bul(tum_metin, eslesen_kelime)
         )
-    else:
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-            mesaj='Monoterapi ibaresi mesaj metninde bulunamadı',
-            detaylar={'aranan': 'monoterapi', 'bulundu': False},
-            uyari='RAPOR KONTROLÜ GEREKLİ: Monoterapi ibaresi raporda olmalı',
-            sut_kurali='SUT 4.2.12.B — Monoterapi ile kan basıncı kontrol altına alınamamış olmalı',
-            aranan_ibare='monoterapi / tek ilaç tedavisi / kan basıncı kontrol'
-        )
+    return KontrolRaporu(
+        sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+        mesaj=f'Monoterapi ibaresi bulunamadı — rapor kodu {rapor_kodu} antihipertansiyon değil',
+        detaylar={'aranan': 'monoterapi', 'bulundu': False, 'rapor_kodu': rapor_kodu},
+        uyari='RAPOR KONTROLÜ GEREKLİ: Monoterapi ibaresi raporda olmalı',
+        sut_kurali='SUT 4.2.12.B — Monoterapi ile kan basıncı kontrol altına alınamamış olmalı',
+        aranan_ibare='monoterapi / tek ilaç tedavisi'
+    )
 
 
 def kontrol_diyabet_dpp4_sglt2(ilac_sonuc: Dict) -> KontrolRaporu:
     """
-    SUT 4.2.38 - DPP-4 / SGLT-2 / GLP-1 Kontrol
+    SUT 4.2.38 - Diyabet Tedavisinde Kullanılan İlaçlar (Tüm Sınıflar)
 
-    Fıkra 6: SGLT2 inhibitörleri (dapagliflozin, empagliflozin) ve kombinasyonları:
-    - Metformin ve/veya sülfonilürelerin maksimum tolere edilebilir dozlarında
-      yeterli glisemik kontrol sağlanamamış hastalarda
-    - Endokrinoloji veya iç hastalıkları uzmanınca veya raporu ile
-    - Kalp yetmezliği/KBH endikasyonunda raporsuz yazılabilir (diyabet dışı)
+    Kapsanan ilaç sınıfları:
+      • Biguanidler (metformin)
+      • Sülfonilüreler (gliklazid/DIAMICRON, glimepirid/AMARYL, glibenklamid/DIAFORMIN,
+        glipizid)
+      • Glinidler (repaglinid/NOVONORM, nateglinid/STARLIX)
+      • Tiazolidinedionlar (pioglitazon/ACTOS)
+      • Alfa-glukozidaz inhibitörleri (akarboz/GLUCOBAY)
+      • DPP-4 inhibitörleri (sitagliptin/JANUVIA, vildagliptin/GALVUS,
+        saksagliptin/ONGLYZA, linagliptin/TRAJENTA, alogliptin/NESINA)
+      • SGLT-2 inhibitörleri (empagliflozin/JARDIANCE, dapagliflozin/FORZIGA,
+        kanagliflozin/INVOKANA, ertugliflozin/STEGLATRO)
+      • GLP-1 reseptör agonistleri (liraglutid/VICTOZA, semaglutid/OZEMPIC,
+        dulaglutid/TRULICITY, eksenatid/BYETTA)
+      • İnsülinler (kısa/orta/uzun etkili, kombi)
+      • Sabit kombinasyonlar (DPP4+metformin: JANUMET/GALVUSMET; SGLT2+metformin:
+        SYNJARDY/XIGDUO; SGLT2+DPP4: GLYXAMBI/QTERN)
+
+    SUT 4.2.38 kuralları (özet):
+      (1) Tip 2 DM tanısı zorunlu (insülin için Tip 1/Gestasyonel da uygun).
+      (4) DPP-4: Metformin ve/veya sülfonilürelerin maks tolere edilebilir dozlarında
+          yeterli glisemik kontrol sağlanamamış hastalarda; endokrinoloji/iç hast.
+          uzmanı veya raporu (rapor süresi 2 yıl).
+      (6) SGLT-2: aynı glisemik kontrol şartı; endokrinoloji/iç hast. uzmanı VEYA
+          raporu (uzman raporsuz da yazabilir). Kalp yetmezliği veya KBH
+          endikasyonunda farklı uzmanlar (kardiyoloji/nefroloji/iç hast./aile hek.)
+          raporsuz yazabilir. eGFR drug-specific (dapa: 25, empa: 20, cana: 30,
+          ertu: 45) altında kontrendike.
+      (7) GLP-1 RA: BMI ≥ 30 kg/m² + HbA1c ≥ %7; metformin maks doz şartı;
+          endokrinoloji uzmanı raporu (genelde).
+      (8) Kombinasyon yasağı: DPP-4 + GLP-1 birlikte ödenmez (aynı inkretin yolağı).
+          GLP-1 + SGLT-2 ve DPP-4 + SGLT-2 ayrı ayrı ödenir; sabit kombi haplarında
+          (GLYXAMBI/QTERN/STEGLUJAN) istisna.
+      Klasik OAD'ler (metformin, sülfonilüre, glinid, akarboz, TZD) ve insülinler
+      diyabet tanısı/raporuyla raporsuz da yazılabilir.
+
+    Ek klinik kontroller:
+      • Metformin eGFR < 30 ml/dk kontrendike (30-45 doz azalt)
+      • Pioglitazon (TZD) kalp yetmezliği (NYHA I-IV) kontrendike
+      • SGLT-2 ilaç-spesifik eGFR sınırları (yukarıda)
+      • SAXENDA/WEGOVY obezite endikasyonu SGK kapsamı dışı
+      • DPP-4/SGLT-2/GLP-1 raporu süresi 2 yıl (ilk reçete + devam reçete)
     """
-    tum_metin = _tum_metinleri_birlesir(ilac_sonuc)
+    tum_metin = _tum_metinleri_birlesir(ilac_sonuc) or ''
     ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
-    rapor_kodu = ilac_sonuc.get('rapor_kodu', '')
+    etkin_madde = (ilac_sonuc.get('etkin_madde') or '').upper()
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
     doktor = (ilac_sonuc.get('doktor_uzmanligi') or '').lower()
+    teshisler = ilac_sonuc.get('recete_teshisleri') or []
+    teshis_metin = ' '.join(teshisler).upper() if teshisler else ''
+    diger_ilaclar = ilac_sonuc.get('recete_ilaclari') or []  # diğer reçete ilaçları (kombinasyon kontrolü)
+    diger_ilac_adlari = ' '.join([str(i.get('ad', '') if isinstance(i, dict) else i)
+                                   for i in diger_ilaclar]).upper()
 
-    # Doktor branş kontrolü
-    doktor_endokrin = any(k in doktor for k in ['endokrin', 'endokrinoloji'])
-    doktor_dahiliye = any(k in doktor for k in ['iç hastalık', 'ic hastalik', 'dahiliye', 'internal'])
-    doktor_uygun_sglt2 = doktor_endokrin or doktor_dahiliye
+    arama_metni = (ilac_adi + ' ' + etkin_madde).upper()
 
-    # SGLT2 mi?
-    sglt2_ilaclar = ['JARDIANCE', 'FORZIGA', 'INVOKANA', 'STEGLATRO',
-        'EMPAGLIFLOZIN', 'DAPAGLIFLOZIN', 'KANAGLIFLOZIN', 'ERTUGLIFLOZIN']
-    sglt2_kombi = ['GLYXAMBI', 'SYNJARDY', 'QTERN']  # SGLT2+DPP4/metformin kombi
-    sglt2_mi = any(k in ilac_adi for k in sglt2_ilaclar + sglt2_kombi)
-
-    sut_kurali = 'SUT 4.2.38(6) — SGLT2: endokrinoloji/iç hastalıkları + metformin/sülfonilüre maks dozda glisemik kontrol sağlanamamış'
-
-    bulundu = False
-    if tum_metin:
-        metformin_var = _turkce_ara(tum_metin, 'metformin')
-        sulfonilure_var = _turkce_ara(tum_metin, 'sülfonilüre')
-        glisemik_var = _turkce_ara(tum_metin, 'glisemik') or _turkce_ara(tum_metin, 'kan şekeri') or 'hba1c' in tum_metin.lower()
-        kontrol_var = _turkce_ara(tum_metin, 'kontrol') or _turkce_ara(tum_metin, 'yeterli') or _turkce_ara(tum_metin, 'sağlana')
-        maksimum_var = _turkce_ara(tum_metin, 'maksimum') or _turkce_ara(tum_metin, 'maks') or _turkce_ara(tum_metin, 'tolere')
-
-        if metformin_var and (sulfonilure_var or glisemik_var):
-            bulundu = True
-        elif glisemik_var and kontrol_var:
-            bulundu = True
-        elif metformin_var and kontrol_var:
-            bulundu = True
-
-    if bulundu:
-        eslesen = ""
-        for kelime in ['metformin', 'sülfonilüre', 'glisemik', 'hba1c', 'kan şekeri', 'maksimum']:
-            p = _eslesen_parcayi_bul(tum_metin, kelime)
-            if p:
-                eslesen = p
-                break
-
-        # SGLT2 için doktor branşı kontrolü
-        uyari_brans = ""
-        if sglt2_mi and not doktor_uygun_sglt2 and not rapor_kodu:
-            uyari_brans = f"SGLT2 — doktor ({doktor or 'bilinmiyor'}) endokrinoloji/iç hastalıkları değil, rapor gerekli"
-
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN,
-            mesaj='Metformin/sülfonilüre glisemik kontrol ibaresi bulundu',
-            detaylar={'aranan': 'metformin + sülfonilüre + glisemik', 'bulundu': True,
-                      'doktor_uygun': doktor_uygun_sglt2 if sglt2_mi else None},
-            uyari=uyari_brans if uyari_brans else None,
-            sut_kurali=sut_kurali if sglt2_mi else 'SUT 4.2.38 — Metformin/sülfonilüre maks dozda glisemik kontrol sağlanamamış olmalı',
-            aranan_ibare='metformin + sülfonilüre + glisemik kontrol / HbA1c',
-            bulunan_metin=eslesen
-        )
-    else:
-        # Raporsuz SGLT2/DPP4/GLP1 ilaçları → teşhise bağlı kontrol
-        ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
-        rapor_kodu = ilac_sonuc.get('rapor_kodu', '')
-
-        # SGLT2 ilaçları (empagliflozin, dapagliflozin) — kalp yetmezliği veya KBH
-        # endikasyonunda raporsuz yazılabilir
-        sglt2_ilaclar = ['JARDIANCE', 'FORZIGA', 'INVOKANA', 'STEGLATRO',
-            'EMPAGLIFLOZIN', 'DAPAGLIFLOZIN', 'KANAGLIFLOZIN', 'ERTUGLIFLOZIN']
-        sglt2_mi = any(k in ilac_adi for k in sglt2_ilaclar)
-
-        # DPP-4 ve GLP-1 ilaçları (bunlar her durumda rapor gerektirir)
-        dpp4_glp1 = any(k in ilac_adi for k in ['DPP4', 'DPP-4', 'GLP-1', 'GLP1',
+    # ── İLAÇ SINIFI TESPİTİ ────────────────────────────────────────────────
+    BIGUANID = ['METFORMIN', 'GLUKOFEN', 'GLIFOR', 'DIAFORMIN', 'GLUCOPHAGE',
+                'METFORM', 'MATOFIN']
+    SULFONILURE = ['GLIKLAZID', 'GLICLAZID', 'DIAMICRON', 'BETANORM', 'DIAMERID',
+                   'GLIMEPIRID', 'AMARYL', 'GLIMAX', 'MERIDIA', 'GLIBEDAL',
+                   'GLIBENKLAMID', 'DAONIL', 'GLUKOMID',
+                   'GLIPIZID', 'MINIDIAB', 'GLUCOTROL']
+    GLINID = ['REPAGLINID', 'NOVONORM', 'NATEGLINID', 'STARLIX']
+    TZD = ['PIOGLITAZON', 'ACTOS', 'GLUSTIN', 'PIONORM']
+    AKARBOZ = ['AKARBOZ', 'ACARBOSE', 'GLUCOBAY']
+    DPP4 = ['SITAGLIPTIN', 'VILDAGLIPTIN', 'SAKSAGLIPTIN', 'LINAGLIPTIN', 'ALOGLIPTIN',
             'JANUVIA', 'GALVUS', 'ONGLYZA', 'TRAJENTA', 'NESINA',
-            'OZEMPIC', 'TRULICITY', 'VICTOZA', 'BYETTA',
-            'SITAGLIPTIN', 'VILDAGLIPTIN', 'SAKSAGLIPTIN', 'LINAGLIPTIN', 'ALOGLIPTIN',
-            'LIRAGLUTID', 'SEMAGLUTID', 'DULAGLUTID', 'EKSENATID'])
-        metformin = 'METFORMIN' in ilac_adi or 'GLUKOFEN' in ilac_adi or 'DIAFORMIN' in ilac_adi or 'GLIFOR' in ilac_adi
+            'JANUMET', 'GALVUSMET', 'KOMBOGLYZE', 'JENTADUETO', 'VIPDOMET']
+    SGLT2 = ['EMPAGLIFLOZIN', 'DAPAGLIFLOZIN', 'KANAGLIFLOZIN', 'CANAGLIFLOZIN',
+             'ERTUGLIFLOZIN',
+             'JARDIANCE', 'FORZIGA', 'FORXIGA', 'INVOKANA', 'STEGLATRO']
+    SGLT2_KOMBI = ['SYNJARDY', 'XIGDUO', 'VOKANAMET', 'SEGLUROMET',  # SGLT2+metformin
+                   'GLYXAMBI', 'QTERN', 'STEGLUJAN']                  # SGLT2+DPP4
+    GLP1 = ['LIRAGLUTID', 'SEMAGLUTID', 'DULAGLUTID', 'EKSENATID', 'EXENATID',
+            'LIKSISENATID', 'LIXISENATID',
+            'VICTOZA', 'OZEMPIC', 'RYBELSUS', 'TRULICITY', 'BYETTA', 'BYDUREON',
+            'SAXENDA', 'LYXUMIA', 'WEGOVY']
+    INSULIN = ['INSULIN', 'INSÜLIN', 'INSULAT', 'GLARGIN', 'DETEMIR', 'DEGLUDEC',
+               'ASPART', 'LISPRO', 'GLULIZIN',
+               'LANTUS', 'TOUJEO', 'TRESIBA', 'LEVEMIR', 'BASAGLAR', 'ABASAGLAR',
+               'NOVORAPID', 'HUMALOG', 'APIDRA', 'ACTRAPID', 'HUMULIN',
+               'NOVOMIX', 'RYZODEG', 'XULTOPHY', 'SOLIQUA']
 
-        if sglt2_mi and not rapor_kodu:
-            # SGLT2 raporsuz — 2 durum:
-            # A) Diyabet endikasyonunda: endokrinoloji/iç hastalıkları uzmanı raporsuz yazabilir
-            # B) Kalp yetmezliği/KBH endikasyonunda: raporsuz yazılabilir (farklı endikasyon)
-            teshisler = (ilac_sonuc.get('recete_teshisleri') or [])
-            teshis_metin_sglt2 = ' '.join(teshisler).upper()
-            tum = tum_metin.upper() if tum_metin else ''
+    is_biguanid = any(k in arama_metni for k in BIGUANID)
+    is_sulfonilure = any(k in arama_metni for k in SULFONILURE)
+    is_glinid = any(k in arama_metni for k in GLINID)
+    is_tzd = any(k in arama_metni for k in TZD)
+    is_akarboz = any(k in arama_metni for k in AKARBOZ)
+    is_dpp4 = any(k in arama_metni for k in DPP4)
+    is_sglt2 = any(k in arama_metni for k in SGLT2)
+    is_sglt2_kombi = any(k in arama_metni for k in SGLT2_KOMBI)
+    is_glp1 = any(k in arama_metni for k in GLP1)
+    is_insulin = any(k in arama_metni for k in INSULIN)
 
-            kalp_yetmezligi = any(k in teshis_metin_sglt2 or k in tum for k in [
-                'I50', 'KALP YETMEZLİĞİ', 'KALP YETMEZLIGI', 'HEART FAILURE',
-                'KARDİYOMİYOPATİ', 'KARDIYOMIYOPATI', 'HFrEF', 'HFpEF',
-                'KALP YETERSİZLİĞİ', 'KALP YETERSIZLIGI',
-            ])
-            kbh = any(k in teshis_metin_sglt2 or k in tum for k in [
-                'N18', 'KRONİK BÖBREK', 'KRONIK BOBREK', 'CKD',
-                'BÖBREK YETMEZLİĞİ', 'BOBREK YETMEZLIGI', 'BÖBREK YETERSİZLİĞİ',
-                'RENAL YETMEZLİK', 'RENAL YETMEZLIK',
-            ])
+    # Kombi ilaç tespiti — doğru sınıfı işaretle
+    if is_sglt2_kombi:
+        is_sglt2 = True  # SGLT2 kombi de SGLT2 kuralına tabi
+        if any(k in arama_metni for k in ['GLYXAMBI', 'QTERN', 'STEGLUJAN']):
+            is_dpp4 = True  # SGLT2+DPP4 kombi
+        else:
+            is_biguanid = True  # SGLT2+metformin kombi
+    DPP4_METFORMIN_KOMBI = ['JANUMET', 'GALVUSMET', 'GALVUS MET', 'KOMBOGLYZE',
+                             'JENTADUETO', 'VIPDOMET', 'LINATIN MET',
+                             'TRAJENTA DUO', 'LINATIN-MET', 'VILDEGA PLUS',
+                             'VILDEGA MET']
+    if any(k in arama_metni for k in DPP4_METFORMIN_KOMBI):
+        is_dpp4 = True
+        is_biguanid = True
 
-            if kalp_yetmezligi:
-                return KontrolRaporu(
-                    sonuc=KontrolSonucu.UYGUN,
-                    mesaj='SGLT2 — kalp yetmezliği endikasyonu (raporsuz yazılabilir)',
-                    detaylar={'endikasyon': 'kalp_yetmezligi', 'teshisler': teshisler},
-                    sut_kurali='SGLT2 kalp yetmezliği endikasyonunda rapor gerekmez',
-                    aranan_ibare='I50 / kalp yetmezliği teşhisi')
-            elif kbh:
-                return KontrolRaporu(
-                    sonuc=KontrolSonucu.UYGUN,
-                    mesaj='SGLT2 — kronik böbrek hastalığı endikasyonu (raporsuz yazılabilir)',
-                    detaylar={'endikasyon': 'kbh', 'teshisler': teshisler},
-                    sut_kurali='SGLT2 KBH endikasyonunda rapor gerekmez',
-                    aranan_ibare='N18 / kronik böbrek hastalığı teşhisi')
-            elif doktor_uygun_sglt2:
-                # Diyabet endikasyonu — endokrinoloji/iç hastalıkları uzmanı raporsuz yazabilir
-                brans = 'endokrinoloji' if doktor_endokrin else 'iç hastalıkları'
-                return KontrolRaporu(
-                    sonuc=KontrolSonucu.UYGUN,
-                    mesaj=f'SGLT2 — {brans} uzmanı tarafından yazılmış (raporsuz yazılabilir)',
-                    detaylar={'endikasyon': 'diyabet', 'doktor': doktor, 'teshisler': teshisler},
-                    sut_kurali=sut_kurali,
-                    aranan_ibare=f'Doktor: endokrinoloji/iç hastalıkları uzmanı',
-                    bulunan_metin=f'Doktor: {doktor}')
-            else:
-                # Diyabet endikasyonu + doktor uygun değil → rapor gerekli
-                return KontrolRaporu(
-                    sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                    mesaj=f'SGLT2 raporsuz — doktor ({doktor or "bilinmiyor"}) endokrinoloji/iç hastalıkları değil',
-                    uyari='SUT 4.2.38(6): SGLT2 diyabet endikasyonunda endokrinoloji veya iç hastalıkları uzmanı yazabilir veya raporu gerekli',
-                    detaylar={'teshisler': teshisler, 'doktor': doktor},
-                    sut_kurali=sut_kurali,
-                    aranan_ibare='Endokrinoloji/iç hastalıkları uzmanı veya raporu')
+    # Etkin madde tabanlı sabit kombi tespiti (ticari adı listede olmasa bile)
+    # Örn. "LINAGLIPTIN+METFORMIN", "VILDAGLIPTIN+METFORMİN"
+    if 'METFORMIN' in arama_metni and any(k in arama_metni for k in
+            ['SITAGLIPTIN', 'VILDAGLIPTIN', 'SAKSAGLIPTIN', 'LINAGLIPTIN', 'ALOGLIPTIN']):
+        is_dpp4 = True
+        is_biguanid = True
+    if 'METFORMIN' in arama_metni and any(k in arama_metni for k in
+            ['DAPAGLIFLOZIN', 'EMPAGLIFLOZIN', 'KANAGLIFLOZIN', 'ERTUGLIFLOZIN']):
+        is_sglt2 = True
+        is_biguanid = True
 
-        if dpp4_glp1 and not rapor_kodu:
+    # ── DOKTOR BRANŞ KONTROLÜ ──────────────────────────────────────────────
+    doktor_endokrin = any(k in doktor for k in ['endokrin', 'endokrinoloji'])
+    doktor_dahiliye = any(k in doktor for k in ['iç hastalık', 'ic hastalik',
+                                                  'dahiliye', 'internal'])
+    doktor_kardiyolog = 'kardiyolo' in doktor or 'kalp damar' in doktor
+    doktor_nefrolog = 'nefrolo' in doktor
+    doktor_pediatri = any(k in doktor for k in ['çocuk', 'cocuk', 'pediatri'])
+    doktor_aile = 'aile hek' in doktor or 'pratisyen' in doktor or 'genel pratis' in doktor
+    # Diyabet endikasyonu için DPP-4/SGLT-2 yazabilen branşlar
+    doktor_uygun_dpp4_sglt2 = doktor_endokrin or doktor_dahiliye
+    # KY endikasyonunda SGLT-2 yazabilen branşlar (raporsuz)
+    doktor_ky_uygun = (doktor_kardiyolog or doktor_dahiliye or
+                       doktor_endokrin or doktor_aile)
+    # KBH endikasyonunda SGLT-2 yazabilen branşlar (raporsuz)
+    doktor_kbh_uygun = (doktor_nefrolog or doktor_dahiliye or
+                        doktor_endokrin or doktor_aile)
+
+    # ── ENDİKASYON TESPİTİ (Teşhis + tüm metin) ────────────────────────────
+    teshis_tum = (teshis_metin + ' ' + tum_metin).upper()
+    diyabet_var = any(k in teshis_tum for k in [
+        'E10', 'E11', 'E12', 'E13', 'E14',
+        'DIYABET', 'DİYABET', 'DIABETES MELLITUS', 'DM',
+        'TIP 2', 'TYPE 2', 'TIP 1', 'TYPE 1', 'GESTASYONEL'])
+    kalp_yetmezligi = any(k in teshis_tum for k in [
+        'I50', 'KALP YETMEZLİĞİ', 'KALP YETMEZLIGI', 'HEART FAILURE',
+        'KARDİYOMİYOPATİ', 'KARDIYOMIYOPATI', 'HFrEF', 'HFpEF',
+        'KALP YETERSİZLİĞİ', 'KALP YETERSIZLIGI'])
+    kbh = any(k in teshis_tum for k in [
+        'N18', 'KRONİK BÖBREK', 'KRONIK BOBREK', 'CKD',
+        'BÖBREK YETMEZLİĞİ', 'BOBREK YETMEZLIGI', 'BÖBREK YETERSİZLİĞİ',
+        'RENAL YETMEZLİK', 'RENAL YETMEZLIK'])
+    obezite = any(k in teshis_tum for k in ['E66', 'OBEZITE', 'OBEZİTE', 'OBESITY'])
+
+    # ── İBARE ARAMA (Glisemik kontrol, HbA1c, BMI) ─────────────────────────
+    metformin_ib = _turkce_ara(tum_metin, 'metformin')
+    sulfonilure_ib = (_turkce_ara(tum_metin, 'sülfonilüre') or
+                      _turkce_ara(tum_metin, 'sulfonilure'))
+    glisemik_ib = (_turkce_ara(tum_metin, 'glisemik') or
+                   _turkce_ara(tum_metin, 'kan şekeri') or
+                   'hba1c' in tum_metin.lower() or
+                   _turkce_ara(tum_metin, 'a1c'))
+    yetersiz_ib = (_turkce_ara(tum_metin, 'sağlanama') or
+                   _turkce_ara(tum_metin, 'saglanama') or
+                   _turkce_ara(tum_metin, 'yetersiz') or
+                   _turkce_ara(tum_metin, 'kontrol altına alınama') or
+                   _turkce_ara(tum_metin, 'kontrol altina alinama') or
+                   _turkce_ara(tum_metin, 'regüle edileme') or
+                   _turkce_ara(tum_metin, 'regule edileme') or
+                   _turkce_ara(tum_metin, 'kontrolsüz') or
+                   _turkce_ara(tum_metin, 'kontrolsuz') or
+                   _turkce_ara(tum_metin, 'tedaviye rağmen') or
+                   _turkce_ara(tum_metin, 'tedaviye ragmen') or
+                   _turkce_ara(tum_metin, 'optimal kontrol') or
+                   _turkce_ara(tum_metin, 'kombinasyon'))
+    maks_doz_ib = (_turkce_ara(tum_metin, 'maksimum') or
+                   _turkce_ara(tum_metin, 'maks tolere') or
+                   _turkce_ara(tum_metin, 'tolere edilebil'))
+
+    # HbA1c değeri (örn. "HbA1c: 8.2", "HbA1c %9")
+    hba1c_deger = None
+    m_hba1c = re.search(r'hba1c[^0-9]{0,10}(\d+[.,]?\d*)', tum_metin, re.IGNORECASE)
+    if m_hba1c:
+        try:
+            hba1c_deger = float(m_hba1c.group(1).replace(',', '.'))
+        except (ValueError, IndexError):
+            pass
+
+    # BMI / VKİ değeri
+    bmi_deger = None
+    m_bmi = re.search(r'(?:bmi|vki|vk[ıi])[^0-9]{0,10}(\d+[.,]?\d*)',
+                      tum_metin, re.IGNORECASE)
+    if m_bmi:
+        try:
+            bmi_deger = float(m_bmi.group(1).replace(',', '.'))
+        except (ValueError, IndexError):
+            pass
+
+    # eGFR değeri
+    egfr_deger = None
+    m_egfr = re.search(r'(?:egfr|gfr)[^0-9]{0,10}(\d+[.,]?\d*)',
+                       tum_metin, re.IGNORECASE)
+    if m_egfr:
+        try:
+            egfr_deger = float(m_egfr.group(1).replace(',', '.'))
+        except (ValueError, IndexError):
+            pass
+
+    # Hasta yaşı (ilac_sonuc'tan ya da metinden)
+    hasta_yasi = None
+    hy_raw = ilac_sonuc.get('hasta_yasi') or ilac_sonuc.get('yas')
+    if hy_raw:
+        try:
+            hasta_yasi = int(re.sub(r'[^0-9]', '', str(hy_raw)) or 0) or None
+        except (ValueError, TypeError):
+            pass
+    if hasta_yasi is None:
+        m_yas = re.search(r'(?:yaş|yasi|yas)[^0-9]{0,8}(\d{1,3})',
+                          tum_metin, re.IGNORECASE)
+        if m_yas:
+            try:
+                yas_kandi = int(m_yas.group(1))
+                if 0 < yas_kandi < 120:
+                    hasta_yasi = yas_kandi
+            except (ValueError, IndexError):
+                pass
+
+    pediatri_hasta = (hasta_yasi is not None and hasta_yasi < 18)
+    yasli_hasta = (hasta_yasi is not None and hasta_yasi >= 75)
+
+    # Reçete dozu (mg/gün) — sülfonilüre/DPP-4 doz limit kontrolü için
+    recete_dozu = None
+    rd_raw = ilac_sonuc.get('recete_dozu') or ilac_sonuc.get('doz')
+    if rd_raw:
+        try:
+            m_rd = re.search(r'(\d+(?:[.,]\d+)?)', str(rd_raw))
+            if m_rd:
+                recete_dozu = float(m_rd.group(1).replace(',', '.'))
+        except (ValueError, TypeError):
+            pass
+
+    # SGLT-2 ilaç-spesifik eGFR sınırları (diyabet endikasyonu için)
+    sglt2_egfr_min_diyabet = None
+    sglt2_etken = None
+    if any(k in arama_metni for k in ['DAPAGLIFLOZIN', 'FORZIGA', 'FORXIGA',
+                                       'XIGDUO', 'QTERN']):
+        sglt2_egfr_min_diyabet = 25  # dapagliflozin diyabet ≥ 25
+        sglt2_etken = 'dapagliflozin'
+    elif any(k in arama_metni for k in ['EMPAGLIFLOZIN', 'JARDIANCE', 'SYNJARDY',
+                                         'GLYXAMBI']):
+        sglt2_egfr_min_diyabet = 30  # empagliflozin diyabet ≥ 30 (KY/KBH ≥ 20)
+        sglt2_etken = 'empagliflozin'
+    elif any(k in arama_metni for k in ['KANAGLIFLOZIN', 'CANAGLIFLOZIN',
+                                         'INVOKANA', 'VOKANAMET']):
+        sglt2_egfr_min_diyabet = 30  # canagliflozin ≥ 30
+        sglt2_etken = 'canagliflozin'
+    elif any(k in arama_metni for k in ['ERTUGLIFLOZIN', 'STEGLATRO', 'STEGLUJAN',
+                                         'SEGLUROMET']):
+        sglt2_egfr_min_diyabet = 45  # ertugliflozin ≥ 45 (renal sınırlama daha sıkı)
+        sglt2_etken = 'ertugliflozin'
+
+    # Glisemik şart bulunduğu durum (DPP4/SGLT2/GLP1 için ortak)
+    glisemik_sart_var = (
+        (metformin_ib and (sulfonilure_ib or glisemik_ib or yetersiz_ib)) or
+        (glisemik_ib and (yetersiz_ib or maks_doz_ib)) or
+        (metformin_ib and yetersiz_ib)
+    )
+
+    # Sabit kombi DPP-4/SGLT-2 + Metformin: kombi etken madde varlığı zaten
+    # "metformin yetersizliği" kanıtıdır (hekim mono → kombiye geçiş yapmış).
+    # Bu durumda glisemik şart örtük olarak sağlanmıştır.
+    is_kombi_metformin = is_biguanid and (is_dpp4 or is_sglt2)
+    if is_kombi_metformin:
+        glisemik_sart_var = True
+
+    # ── KOMBİNASYON KONTROLÜ ───────────────────────────────────────────────
+    diger_dpp4 = any(k in diger_ilac_adlari for k in DPP4) and not is_dpp4
+    diger_glp1 = any(k in diger_ilac_adlari for k in GLP1) and not is_glp1
+    diger_sglt2 = any(k in diger_ilac_adlari for k in SGLT2 + SGLT2_KOMBI) and not is_sglt2
+
+    # SUT 4.2.38(8): DPP-4 + GLP-1 birlikte ödenmez
+    if (is_dpp4 and diger_glp1) or (is_glp1 and diger_dpp4):
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN_DEGIL,
+            mesaj='DPP-4 + GLP-1 RA aynı reçetede — SUT YASAK',
+            uyari='SUT 4.2.38(8): DPP-4 ve GLP-1 RA birlikte ödenmez (aynı inkretin yolağı)',
+            sut_kurali='SUT 4.2.38(8) — DPP-4 + GLP-1 RA kombinasyonu yasak',
+            detaylar={'sinif': 'DPP4+GLP1', 'diger_ilaclar': diger_ilac_adlari[:200]}
+        )
+
+    sut_madde = '4.2.38'
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 1) KLASİK OAD'ler (METFORMIN, SÜLFONİLÜRE, GLİNİD, AKARBOZ, TZD)
+    #    — Diyabet raporu/tanısı ile raporsuz da yazılabilir
+    # ═══════════════════════════════════════════════════════════════════════
+    if (is_biguanid or is_sulfonilure or is_glinid or is_akarboz or is_tzd) \
+       and not (is_dpp4 or is_sglt2 or is_glp1):
+
+        # Sınıf adı
+        sinif_adi = []
+        if is_biguanid: sinif_adi.append('biguanid')
+        if is_sulfonilure: sinif_adi.append('sülfonilüre')
+        if is_glinid: sinif_adi.append('glinid')
+        if is_akarboz: sinif_adi.append('alfa-glukozidaz inh.')
+        if is_tzd: sinif_adi.append('tiazolidinedion')
+        sinif_str = '/'.join(sinif_adi)
+
+        # ── KONTRENDİKASYON KONTROLLERİ (klinik güvenlik) ─────────────────
+        # Metformin: eGFR < 30 ml/dk kontrendike
+        if is_biguanid and egfr_deger is not None and egfr_deger < 30:
             return KontrolRaporu(
                 sonuc=KontrolSonucu.UYGUN_DEGIL,
-                mesaj='DPP-4/GLP-1 ilacı RAPORSUZ yazılmış! Rapor ZORUNLU',
-                uyari='SUT 4.2.38 - Bu ilaç raporsuz verilemez'
+                mesaj=f'Metformin — eGFR {egfr_deger} ml/dk (< 30 kontrendike)',
+                uyari='Metformin eGFR < 30 ml/dk altında kontrendikedir '
+                      '(laktik asidoz riski). 30-45 arası doz azaltma gerekir.',
+                sut_kurali=f'SUT {sut_madde} — Metformin renal kontrendikasyon',
+                detaylar={'sinif': 'biguanid', 'egfr': egfr_deger}
             )
-        if metformin and not rapor_kodu:
-            # Metformin raporsuz verilebilir
+
+        # TZD/Pioglitazon: kalp yetmezliği (NYHA I-IV) kontrendike
+        if is_tzd and kalp_yetmezligi:
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN_DEGIL,
+                mesaj='Pioglitazon (TZD) — kalp yetmezliği mevcut, KONTRENDİKE',
+                uyari='Pioglitazon NYHA I-IV kalp yetmezliğinde kontrendikedir '
+                      '(sıvı retansiyonu, ödem, KY alevlenmesi).',
+                sut_kurali=f'SUT {sut_madde} — TZD kalp yetmezliği kontrendikasyonu',
+                detaylar={'sinif': 'TZD', 'teshisler': teshisler,
+                          'kalp_yetmezligi': True}
+            )
+
+        # Sülfonilüre + glinid birlikte = aynı yolak, hipoglisemi riski
+        diger_sulfonilure = (any(k in diger_ilac_adlari for k in SULFONILURE)
+                             and not is_sulfonilure)
+        diger_glinid = (any(k in diger_ilac_adlari for k in GLINID)
+                        and not is_glinid)
+        if (is_sulfonilure and diger_glinid) or (is_glinid and diger_sulfonilure):
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN_DEGIL,
+                mesaj='Sülfonilüre + glinid birlikte — aynı yolak (insülin sekresyonu), '
+                      'birlikte ödenmez',
+                uyari='Sülfonilüre ve glinidler aynı reseptör yolağını uyarır; '
+                      'hipoglisemi riski + SGK ödemez.',
+                sut_kurali=f'SUT {sut_madde} — Sülfonilüre+glinid kombinasyon yasağı',
+                detaylar={'sinif': sinif_str, 'diger_ilaclar': diger_ilac_adlari[:200]}
+            )
+
+        # Yaşlı sülfonilüre uyarısı (klinik bilgi notu, RED değil)
+        yasli_sulfonilure_uyarisi = None
+        if is_sulfonilure and yasli_hasta:
+            yasli_sulfonilure_uyarisi = (f'Hasta yaşı {hasta_yasi} ≥ 75 — sülfonilüre '
+                                          'hipoglisemi riski yüksek (özellikle '
+                                          'glibenklamid). Kısa etkili tercih edilmeli.')
+
+        # Raporlu — diyabet tanısı kontrol et
+        if rapor_kodu:
             return KontrolRaporu(
                 sonuc=KontrolSonucu.UYGUN,
-                mesaj='Metformin raporsuz verilebilir',
+                mesaj=f'{sinif_str.capitalize()} raporlu — diyabet rapor kodu ({rapor_kodu})',
+                detaylar={'sinif': sinif_str, 'rapor_kodu': rapor_kodu,
+                          'diyabet_tanisi': diyabet_var,
+                          'hasta_yasi': hasta_yasi,
+                          'egfr': egfr_deger},
+                uyari=yasli_sulfonilure_uyarisi,
+                sut_kurali=f'SUT {sut_madde} — Klasik OAD raporlu kullanım uygun',
+                aranan_ibare='Diyabet rapor kodu (07.02.x) veya tanısı'
+            )
+
+        # Raporsuz — klasik OAD'ler diyabet tanısı ile raporsuz yazılabilir
+        if diyabet_var:
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj=f'{sinif_str.capitalize()} raporsuz — diyabet tanısı mevcut, raporsuz yazılabilir',
+                detaylar={'sinif': sinif_str, 'rapor_kodu': None,
+                          'diyabet_tanisi': True, 'teshisler': teshisler,
+                          'hasta_yasi': hasta_yasi, 'egfr': egfr_deger},
+                uyari=yasli_sulfonilure_uyarisi,
+                sut_kurali=f'SUT {sut_madde} — Klasik OAD diyabet tanısıyla raporsuz yazılabilir',
+                aranan_ibare='Tip 2 DM tanısı (E11/E10)'
+            )
+
+        # Diyabet tanısı yok — Medula tanı kontrolünü yapar (E10/E11 ICD-10 zorunlu)
+        # Klasik OAD'ler raporsuz yazılabilir; SGK ödemesi için diyabet tanısı şarttır
+        # ama bu kontrol Medula tarafından zorunlu kılınır (eczacı tarafında ek
+        # kontrol gerekmez — reçete kayıtlıysa Medula tanıyı zaten görmüştür).
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj=f'{sinif_str.capitalize()} raporsuz — Medula diyabet tanısı şart kontrolünü yapar',
+            detaylar={'sinif': sinif_str, 'teshisler': teshisler,
+                      'medula_otomatik_tani_kontrolu': True,
+                      'hasta_yasi': hasta_yasi, 'egfr': egfr_deger},
+            uyari=yasli_sulfonilure_uyarisi,
+            sut_kurali=f'SUT {sut_madde} — Klasik OAD raporsuz, diyabet tanısı Medula kontrolünde',
+            aranan_ibare='(eczacı kontrolüne gerek yok — Medula diyabet tanısı zorunlu kılar)'
+        )
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 2) İNSÜLİNLER — Diyabet tanısı/raporuyla raporsuz da yazılabilir
+    #    Tip 1, Tip 2, Gestasyonel DM, MODY tanılarında tüm hekimler yazabilir
+    # ═══════════════════════════════════════════════════════════════════════
+    if is_insulin and not (is_dpp4 or is_sglt2 or is_glp1):
+        # İnsülin türü tespiti (bilgi amaçlı)
+        insulin_turu = []
+        if any(k in arama_metni for k in ['LANTUS', 'TOUJEO', 'TRESIBA', 'LEVEMIR',
+                                            'BASAGLAR', 'ABASAGLAR', 'GLARGIN',
+                                            'DETEMIR', 'DEGLUDEC']):
+            insulin_turu.append('bazal')
+        if any(k in arama_metni for k in ['NOVORAPID', 'HUMALOG', 'APIDRA',
+                                            'ASPART', 'LISPRO', 'GLULIZIN']):
+            insulin_turu.append('hızlı/kısa etkili')
+        if any(k in arama_metni for k in ['HUMULIN', 'ACTRAPID']):
+            insulin_turu.append('regüler/orta etkili')
+        if any(k in arama_metni for k in ['NOVOMIX', 'RYZODEG', 'XULTOPHY',
+                                            'SOLIQUA']):
+            insulin_turu.append('kombinasyon')
+        insulin_turu_str = ', '.join(insulin_turu) if insulin_turu else 'belirsiz'
+
+        # XULTOPHY (insülin+liraglutid) ve SOLIQUA (insülin+liksisenatid) GLP-1 RA
+        # içerir → ek olarak GLP-1 kuralları geçerli olabilir; kombi insülin
+        # endikasyon sıkı (raporlu öneri)
+        kombi_glp1 = any(k in arama_metni for k in ['XULTOPHY', 'SOLIQUA'])
+
+        # Gestasyonel diyabet tanısı (tek başına insülin için yeterli)
+        gestasyonel_var = any(k in teshis_tum for k in
+                               ['O24', 'GESTASYONEL', 'GEBELIK DIYABET',
+                                'GEBELİK DİYABET'])
+
+        if rapor_kodu or diyabet_var or gestasyonel_var:
+            mesaj = f'İnsülin ({insulin_turu_str}) — diyabet tanısı/raporu ile uygun'
+            uyari = None
+            if kombi_glp1 and not rapor_kodu:
+                uyari = ('XULTOPHY/SOLIQUA insülin+GLP-1 kombi — endokrinoloji '
+                         'raporu önerilir (saf insülin gibi raporsuz yazılabilse '
+                         'de SGK denetiminde itiraz olabilir).')
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj=mesaj,
+                uyari=uyari,
+                detaylar={'sinif': 'insulin', 'tur': insulin_turu_str,
+                          'rapor_kodu': rapor_kodu or None,
+                          'diyabet_tanisi': diyabet_var,
+                          'gestasyonel': gestasyonel_var,
+                          'kombi_glp1': kombi_glp1,
+                          'pediatri': pediatri_hasta},
+                sut_kurali=f'SUT {sut_madde} — İnsülin diyabet endikasyonu',
+                aranan_ibare='Diyabet tanısı (Tip 1/2/Gestasyonel/MODY)'
             )
         return KontrolRaporu(
             sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-            mesaj='Glisemik kontrol ibaresi mesaj metninde bulunamadı',
-            detaylar={'aranan': 'metformin + sülfonilüre', 'bulundu': False},
-            uyari='RAPOR KONTROLÜ GEREKLİ: Metformin ve sülfonilüre yetersiz glisemik yanıt ibaresi raporda olmalı'
+            mesaj=f'İnsülin ({insulin_turu_str}) — diyabet tanısı/rapor kodu bulunamadı',
+            uyari='Reçetede diyabet tanısı (E10/E11/O24) veya rapor kodu olmalı',
+            detaylar={'sinif': 'insulin', 'tur': insulin_turu_str,
+                      'teshisler': teshisler},
+            sut_kurali=f'SUT {sut_madde} — İnsülin için tanı zorunlu'
         )
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 3) GLP-1 RESEPTÖR AGONİSTLERİ — En sıkı kurallar (BMI ≥30, HbA1c ≥%7)
+    # ═══════════════════════════════════════════════════════════════════════
+    if is_glp1:
+        sut_kurali_glp1 = (f'SUT {sut_madde}(7) — GLP-1 RA: endokrinoloji uzmanı raporu, '
+                           'BMI ≥ 30 + HbA1c ≥ %7, metformin maks doz şartı')
+
+        # Rapor zorunlu
+        if not rapor_kodu:
+            # SAXENDA / WEGOVY obezite için ayrıca SGK kapsam dışıdır (genellikle)
+            if any(k in arama_metni for k in ['SAXENDA', 'WEGOVY']):
+                return KontrolRaporu(
+                    sonuc=KontrolSonucu.UYGUN_DEGIL,
+                    mesaj='SAXENDA/WEGOVY (liraglutid/semaglutid obezite endikasyonu) — SGK ödemez',
+                    uyari='Obezite endikasyonunda GLP-1 RA SGK kapsamı dışındadır',
+                    sut_kurali=sut_kurali_glp1,
+                    detaylar={'sinif': 'GLP1', 'endikasyon': 'obezite'}
+                )
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN_DEGIL,
+                mesaj='GLP-1 RA RAPORSUZ yazılmış — Rapor ZORUNLU',
+                uyari=f'SUT {sut_madde}(7): GLP-1 RA için endokrinoloji raporu zorunlu',
+                sut_kurali=sut_kurali_glp1,
+                detaylar={'sinif': 'GLP1'}
+            )
+
+        # Rapor var — şartları kontrol et
+        eksik_sartlar = []
+        if not glisemik_sart_var:
+            eksik_sartlar.append('metformin maks doz + yetersiz glisemik kontrol ibaresi')
+        if hba1c_deger is not None and hba1c_deger < 7.0:
+            eksik_sartlar.append(f'HbA1c < %7 ({hba1c_deger}) — şart: ≥ %7')
+        if bmi_deger is not None and bmi_deger < 30.0:
+            eksik_sartlar.append(f'BMI < 30 ({bmi_deger}) — şart: ≥ 30')
+
+        if eksik_sartlar:
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN_DEGIL if (hba1c_deger or bmi_deger)
+                    else KontrolSonucu.KONTROL_EDILEMEDI,
+                mesaj=f'GLP-1 RA — eksik şartlar: {", ".join(eksik_sartlar)}',
+                uyari=f'SUT {sut_madde}(7): BMI ≥ 30 + HbA1c ≥ %7 + metformin maks doz şartı',
+                sut_kurali=sut_kurali_glp1,
+                detaylar={'sinif': 'GLP1', 'rapor_kodu': rapor_kodu,
+                          'hba1c': hba1c_deger, 'bmi': bmi_deger,
+                          'glisemik_sart': glisemik_sart_var,
+                          'eksik': eksik_sartlar},
+                aranan_ibare='BMI ≥ 30, HbA1c ≥ %7, metformin maks doz'
+            )
+
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj='GLP-1 RA — rapor + glisemik kontrol/BMI/HbA1c şartları uygun',
+            detaylar={'sinif': 'GLP1', 'rapor_kodu': rapor_kodu,
+                      'hba1c': hba1c_deger, 'bmi': bmi_deger,
+                      'glisemik_sart': glisemik_sart_var},
+            sut_kurali=sut_kurali_glp1,
+            aranan_ibare='Endokrinoloji raporu + BMI ≥ 30 + HbA1c ≥ %7 + metformin maks doz',
+            bulunan_metin=_eslesen_parcayi_bul(tum_metin, 'glisemik') or
+                           _eslesen_parcayi_bul(tum_metin, 'metformin') or
+                           _eslesen_parcayi_bul(tum_metin, 'hba1c')
+        )
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 4) SGLT-2 İNHİBİTÖRLERİ — Diyabet/Kalp yetmezliği/KBH endikasyonları
+    # ═══════════════════════════════════════════════════════════════════════
+    if is_sglt2 and not is_dpp4:
+        sut_kurali_sglt2 = (f'SUT {sut_madde}(6) — SGLT-2: endokrinoloji/iç hast. uzmanı '
+                            'veya raporu + metformin/sülfonilüre maks doz yetersiz '
+                            'glisemik kontrol; KY/KBH endikasyonunda kardiyoloji/'
+                            'nefroloji/iç hast./aile hek. raporsuz yazabilir')
+
+        # ── İLAÇ-SPESİFİK eGFR KONTRENDİKASYONU ───────────────────────────
+        # KY/KBH endikasyonunda alt sınırlar daha düşük (dapa/empa: 20-25)
+        sglt2_egfr_min_kykbh = 20 if sglt2_etken == 'empagliflozin' else \
+                                25 if sglt2_etken == 'dapagliflozin' else \
+                                30 if sglt2_etken == 'canagliflozin' else 30
+
+        if egfr_deger is not None:
+            min_egfr = sglt2_egfr_min_kykbh if (kalp_yetmezligi or kbh) \
+                       else (sglt2_egfr_min_diyabet or 25)
+            if egfr_deger < min_egfr:
+                etken_str = sglt2_etken or 'SGLT-2'
+                return KontrolRaporu(
+                    sonuc=KontrolSonucu.UYGUN_DEGIL,
+                    mesaj=f'{etken_str.capitalize()} — eGFR {egfr_deger} ml/dk '
+                          f'(< {min_egfr} kontrendike)',
+                    uyari=f'{etken_str.capitalize()} için minimum eGFR sınırı '
+                          f'{min_egfr} ml/dk (endikasyon: '
+                          f'{"KY/KBH" if (kalp_yetmezligi or kbh) else "diyabet"}). '
+                          'Renal fonksiyon altında kontrendike.',
+                    sut_kurali=sut_kurali_sglt2,
+                    detaylar={'sinif': 'SGLT2', 'etken': sglt2_etken,
+                              'egfr': egfr_deger, 'egfr_sinir': min_egfr,
+                              'endikasyon': 'KY/KBH' if (kalp_yetmezligi or kbh)
+                                              else 'diyabet'}
+                )
+
+        # A) Kalp yetmezliği endikasyonu — raporsuz/kardiyoloji-iç hast.-aile hek.
+        if kalp_yetmezligi:
+            # Doktor branş uygunluk kontrolü
+            ky_uyari = None
+            if doktor and not doktor_ky_uygun and not rapor_kodu:
+                ky_uyari = (f'Doktor branşı ({doktor}) KY için ideal değil — '
+                            'kardiyoloji/iç hast./aile hekimi tercih edilir. '
+                            'Raporlu ise sorun olmaz.')
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj='SGLT-2 — kalp yetmezliği endikasyonu (raporsuz yazılabilir)',
+                uyari=ky_uyari,
+                detaylar={'sinif': 'SGLT2', 'etken': sglt2_etken,
+                          'endikasyon': 'kalp_yetmezligi',
+                          'teshisler': teshisler, 'doktor': doktor,
+                          'egfr': egfr_deger},
+                sut_kurali=f'SUT {sut_madde} — SGLT-2 KY endikasyonunda rapor gerekmez',
+                aranan_ibare='I50 / kalp yetmezliği teşhisi',
+                bulunan_metin=_eslesen_parcayi_bul(teshis_metin + ' ' + tum_metin,
+                                                    'kalp yetmezli') or
+                               _eslesen_parcayi_bul(teshis_metin + ' ' + tum_metin, 'I50')
+            )
+
+        # B) KBH endikasyonu — raporsuz/nefroloji-iç hast.-aile hek.
+        if kbh:
+            kbh_uyari = None
+            if doktor and not doktor_kbh_uygun and not rapor_kodu:
+                kbh_uyari = (f'Doktor branşı ({doktor}) KBH için ideal değil — '
+                             'nefroloji/iç hast./aile hekimi tercih edilir. '
+                             'Raporlu ise sorun olmaz.')
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj='SGLT-2 — kronik böbrek hastalığı endikasyonu (raporsuz yazılabilir)',
+                uyari=kbh_uyari,
+                detaylar={'sinif': 'SGLT2', 'etken': sglt2_etken,
+                          'endikasyon': 'kbh',
+                          'teshisler': teshisler, 'doktor': doktor,
+                          'egfr': egfr_deger},
+                sut_kurali=f'SUT {sut_madde} — SGLT-2 KBH endikasyonunda rapor gerekmez',
+                aranan_ibare='N18 / kronik böbrek hastalığı teşhisi',
+                bulunan_metin=_eslesen_parcayi_bul(teshis_metin + ' ' + tum_metin,
+                                                    'böbrek') or
+                               _eslesen_parcayi_bul(teshis_metin + ' ' + tum_metin, 'N18')
+            )
+
+        # C) Diyabet endikasyonu
+        if rapor_kodu:
+            # Raporlu — glisemik şart kontrol
+            if glisemik_sart_var:
+                return KontrolRaporu(
+                    sonuc=KontrolSonucu.UYGUN,
+                    mesaj='SGLT-2 raporlu — metformin/sülfonilüre yetersiz glisemik kontrol şartı bulundu',
+                    detaylar={'sinif': 'SGLT2', 'endikasyon': 'diyabet',
+                              'rapor_kodu': rapor_kodu, 'glisemik_sart': True},
+                    sut_kurali=sut_kurali_sglt2,
+                    aranan_ibare='metformin/sülfonilüre maks doz + yetersiz glisemik kontrol',
+                    bulunan_metin=_eslesen_parcayi_bul(tum_metin, 'metformin') or
+                                   _eslesen_parcayi_bul(tum_metin, 'glisemik')
+                )
+            # Pragmatik fallback: Rapor 07.02.x ile SGK reçeteyi onayladıysa
+            # glisemik şart raporda yer alır; mesaj metnine düşmeyebilir.
+            # Eczacı tarafında ek alarm gerekmez.
+            if rapor_kodu.startswith('07.02'):
+                return KontrolRaporu(
+                    sonuc=KontrolSonucu.UYGUN,
+                    mesaj=f'SGLT-2 raporlu (rapor {rapor_kodu}) — Medula glisemik şart kontrolünü yapar',
+                    detaylar={'sinif': 'SGLT2', 'rapor_kodu': rapor_kodu,
+                              'medula_otomatik': True},
+                    sut_kurali=sut_kurali_sglt2,
+                    uyari='Glisemik kontrol şartı (metformin/sülfonilüre maks doz yetersiz) raporda yer aldığı varsayılır',
+                    aranan_ibare=f'Diyabet rapor kodu ({rapor_kodu}) örtük glisemik şart'
+                )
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+                mesaj='SGLT-2 raporlu — metformin/sülfonilüre yetersiz glisemik kontrol ibaresi bulunamadı',
+                uyari=f'SUT {sut_madde}(6): Raporda "metformin/sülfonilüre maks dozda yetersiz glisemik kontrol" ibaresi olmalı',
+                detaylar={'sinif': 'SGLT2', 'rapor_kodu': rapor_kodu,
+                          'glisemik_sart': False},
+                sut_kurali=sut_kurali_sglt2,
+                aranan_ibare='metformin + sülfonilüre + glisemik kontrol / HbA1c'
+            )
+
+        # Raporsuz — diyabet endikasyonu
+        if doktor_uygun_dpp4_sglt2:
+            brans = 'endokrinoloji' if doktor_endokrin else 'iç hastalıkları'
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj=f'SGLT-2 raporsuz — {brans} uzmanı (yazabilir)',
+                detaylar={'sinif': 'SGLT2', 'endikasyon': 'diyabet',
+                          'doktor': doktor, 'teshisler': teshisler},
+                sut_kurali=sut_kurali_sglt2,
+                aranan_ibare='Endokrinoloji/iç hastalıkları uzmanı',
+                bulunan_metin=f'Doktor: {doktor}'
+            )
+
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN_DEGIL if diyabet_var else KontrolSonucu.KONTROL_EDILEMEDI,
+            mesaj=f'SGLT-2 raporsuz — doktor ({doktor or "bilinmiyor"}) endokrinoloji/iç hastalıkları değil',
+            uyari=f'SUT {sut_madde}(6): SGLT-2 diyabet endikasyonunda endokrinoloji/iç hast. uzmanı yazabilir veya raporu gerekli',
+            detaylar={'sinif': 'SGLT2', 'doktor': doktor, 'teshisler': teshisler},
+            sut_kurali=sut_kurali_sglt2,
+            aranan_ibare='Endokrinoloji/iç hastalıkları uzmanı veya raporu'
+        )
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 5) DPP-4 İNHİBİTÖRLERİ (saf veya kombi)
+    # ═══════════════════════════════════════════════════════════════════════
+    if is_dpp4:
+        sut_kurali_dpp4 = (f'SUT {sut_madde}(4) — DPP-4: endokrinoloji/iç hast. uzmanı '
+                           'raporu + metformin/sülfonilüre maks doz yetersiz glisemik kontrol; '
+                           'rapor süresi 2 yıl, devam reçetelerinde tüm hekimler yazabilir')
+
+        # DPP-4 her zaman rapor gerektirir
+        if not rapor_kodu:
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN_DEGIL,
+                mesaj='DPP-4 inhibitörü RAPORSUZ yazılmış — Rapor ZORUNLU',
+                uyari=f'SUT {sut_madde}(4): DPP-4 için endokrinoloji/iç hast. uzmanı '
+                      'raporu zorunlu (2 yıl geçerli). Raporsuz reçete SGK ödemez.',
+                sut_kurali=sut_kurali_dpp4,
+                detaylar={'sinif': 'DPP4', 'doktor': doktor,
+                          'kombi_metformin': is_biguanid}
+            )
+
+        # Pediatri yaş uyarısı (DPP-4 pediatride onaylı değil — linagliptin/sitagliptin
+        # bazıları 10 yaş üstünde sınırlı veride)
+        pediatri_uyari = None
+        if pediatri_hasta:
+            pediatri_uyari = (f'Hasta yaşı {hasta_yasi} (< 18). DPP-4 inhibitörleri '
+                              'pediatrik popülasyonda sınırlı veriyle onaylıdır '
+                              '(sitagliptin ≥10 yaş). Endokrinolog değerlendirmesi '
+                              'önerilir.')
+
+        # Raporlu — glisemik kontrol şartı
+        if glisemik_sart_var:
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj='DPP-4 raporlu — metformin/sülfonilüre yetersiz glisemik kontrol şartı bulundu',
+                uyari=pediatri_uyari,
+                detaylar={'sinif': 'DPP4', 'rapor_kodu': rapor_kodu,
+                          'glisemik_sart': True, 'hba1c': hba1c_deger,
+                          'kombi_metformin': is_biguanid,
+                          'hasta_yasi': hasta_yasi,
+                          'rapor_suresi_not': '2 yıl'},
+                sut_kurali=sut_kurali_dpp4,
+                aranan_ibare='metformin/sülfonilüre maks doz + yetersiz glisemik kontrol',
+                bulunan_metin=_eslesen_parcayi_bul(tum_metin, 'metformin') or
+                               _eslesen_parcayi_bul(tum_metin, 'glisemik') or
+                               _eslesen_parcayi_bul(tum_metin, 'sülfonilüre')
+            )
+
+        # Pragmatik fallback: Rapor 07.02.x SGK onayı varsa şart raporda yer alır
+        if rapor_kodu.startswith('07.02'):
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj=f'DPP-4 raporlu (rapor {rapor_kodu}) — Medula glisemik şart kontrolünü yapar',
+                detaylar={'sinif': 'DPP4', 'rapor_kodu': rapor_kodu,
+                          'medula_otomatik': True, 'kombi_metformin': is_biguanid},
+                sut_kurali=sut_kurali_dpp4,
+                uyari='Glisemik kontrol şartı (metformin/sülfonilüre maks doz yetersiz) raporda yer aldığı varsayılır',
+                aranan_ibare=f'Diyabet rapor kodu ({rapor_kodu}) örtük glisemik şart'
+            )
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+            mesaj='DPP-4 raporlu — metformin/sülfonilüre yetersiz glisemik kontrol ibaresi bulunamadı',
+            uyari=f'SUT {sut_madde}(4): Raporda "metformin/sülfonilüre maks dozda '
+                  'yetersiz glisemik kontrol" ibaresi olmalı. İbare yoksa SGK '
+                  'denetiminde itiraz olabilir.',
+            detaylar={'sinif': 'DPP4', 'rapor_kodu': rapor_kodu,
+                      'glisemik_sart': False, 'kombi_metformin': is_biguanid},
+            sut_kurali=sut_kurali_dpp4,
+            aranan_ibare='metformin + sülfonilüre + glisemik kontrol / HbA1c'
+        )
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # FALLBACK — Sınıfı tespit edilemeyen diyabet ilacı
+    # ═══════════════════════════════════════════════════════════════════════
+    if rapor_kodu and rapor_kodu.startswith('07.02'):
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj=f'Diyabet rapor kodu ({rapor_kodu}) mevcut',
+            detaylar={'sinif': 'belirlenmedi', 'rapor_kodu': rapor_kodu},
+            sut_kurali=f'SUT {sut_madde} — Diyabet rapor kodu',
+            aranan_ibare='07.02.x rapor kodu'
+        )
+
+    if diyabet_var:
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj='Diyabet tanısı mevcut — ilaç sınıfı belirlenemedi, ek kontrol önerilir',
+            uyari='İlaç sınıfı net tespit edilemedi; raporlu ise rapor metni kontrol edilmeli',
+            detaylar={'sinif': 'belirlenmedi', 'teshisler': teshisler},
+            sut_kurali=f'SUT {sut_madde}',
+            aranan_ibare='Diyabet tanısı (E10/E11)'
+        )
+
+    return KontrolRaporu(
+        sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+        mesaj='Diyabet ilacı sınıfı tespit edilemedi, tanı/rapor bulunamadı',
+        uyari='Manuel kontrol önerilir: ilaç adı/etkin madde + tanı + rapor kodu',
+        detaylar={'ilac_adi': ilac_adi, 'etkin_madde': etkin_madde,
+                  'rapor_kodu': rapor_kodu, 'doktor': doktor},
+        sut_kurali=f'SUT {sut_madde}'
+    )
 
 
 def kontrol_klopidogrel(ilac_sonuc: Dict) -> KontrolRaporu:
@@ -2961,16 +3926,33 @@ def kontrol_klopidogrel(ilac_sonuc: Dict) -> KontrolRaporu:
                 aranan_ibare='endikasyon + ASA intoleransı',
                 bulunan_metin=eslesen_birlesik
             )
-        else:
+        # Pragmatik fallback: Klopidogrel rapor kodu (04.02.1, 04.04.1) varsa
+        # Medula tarafından SUT 4.2.15 şartları zaten kontrol edilmiştir.
+        # ASA intoleransı raporun kendisinde yer almış olabilir; mesaj metnine
+        # düşmeyebilir. SGK rapor kodunu onayladığı için eczacı tarafında
+        # ek alarm gerekmez.
+        rapor_kodu_klop = (ilac_sonuc.get('rapor_kodu') or '').strip()
+        if rapor_kodu_klop and (rapor_kodu_klop.startswith('04.02.1')
+                                  or rapor_kodu_klop.startswith('04.04.1')):
             return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=f"Endikasyon: {', '.join(endikasyonlar)} ama ASA intoleransı ibaresi bulunamadı",
-                detaylar=detaylar,
-                uyari='SUT 4.2.15: KAH/inme/PAH endikasyonunda raporda ASA intoleransı belirtilmeli',
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj=(f"Endikasyon: {', '.join(endikasyonlar)} + rapor kodu "
+                       f"{rapor_kodu_klop} — Medula ASA intoleransı şart kontrolünü yapar"),
+                detaylar={**detaylar, 'medula_otomatik': True},
+                uyari='ASA intoleransı raporda yer aldığı varsayılır',
                 sut_kurali=sut_kurali,
-                aranan_ibare='ASA/aspirin intoleransı / gastrointestinal intolerans',
+                aranan_ibare=f'Klopidogrel rapor kodu ({rapor_kodu_klop}) örtük ASA intoleransı',
                 bulunan_metin=eslesen_birlesik
             )
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+            mesaj=f"Endikasyon: {', '.join(endikasyonlar)} ama ASA intoleransı ibaresi bulunamadı",
+            detaylar=detaylar,
+            uyari='SUT 4.2.15: KAH/inme/PAH endikasyonunda raporda ASA intoleransı belirtilmeli',
+            sut_kurali=sut_kurali,
+            aranan_ibare='ASA/aspirin intoleransı / gastrointestinal intolerans',
+            bulunan_metin=eslesen_birlesik
+        )
 
     # Genel endikasyon bulundu
     return KontrolRaporu(
@@ -3081,6 +4063,13 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
     if karotid_var:
         risk_faktorleri.append('Karotid')
 
+    # Rapor kodu KV/KAH ise risk faktörü olarak ekle
+    # 04.02 = Kardiyovasküler (KAH/iskemik kalp hastalığı raporu)
+    # 04.02.1 = Antiplatelet (klopidogrel) — KAH benzeri
+    if rapor_kodu and (rapor_kodu.startswith('04.02') or rapor_kodu.startswith('04.04')):
+        if 'KAH' not in risk_faktorleri:
+            risk_faktorleri.append(f'KAH (rapor {rapor_kodu})')
+
     cok_yuksek_risk = len(risk_faktorleri) > 0  # DM/AKS/MI/inme/KAH/PAH/AAA/karotid
     detaylar['risk_kategorisi'] = ', '.join(risk_faktorleri) if risk_faktorleri else 'Genel'
     detaylar['risk_faktorleri'] = risk_faktorleri
@@ -3168,6 +4157,18 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
             uyari='Raporda LDL değeri olmalı — manuel kontrol gerekli',
             sut_kurali=sut_kurali,
             aranan_ibare='LDL değeri / kolesterol / lipid / dislipidemi'
+        )
+
+    # KV ana rapor kodları (04.02/04.04) — KAH riski örtük olarak var,
+    # statin tedavisi mantıklı; Medula şart kontrolünü yapmıştır.
+    if rapor_kodu and (rapor_kodu.startswith('04.02') or rapor_kodu.startswith('04.04')):
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj=f'Statin — KV rapor kodu {rapor_kodu} (KAH/AKS riski örtük), Medula şart kontrolünü yapar',
+            detaylar=detaylar,
+            uyari='LDL değerinin raporda yer aldığı varsayılır (Medula reddetmemiş ise uygun)',
+            sut_kurali=sut_kurali,
+            aranan_ibare=f'KV rapor kodu ({rapor_kodu}) — KAH endikasyonu örtük',
         )
 
     return KontrolRaporu(
@@ -3334,15 +4335,39 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
     # Varfarin varyasyonları: varfarin, warfarin, coumadin (ticari ad), kumadin, comadin (yanlış yazım)
     varfarin = bool(re.search(r'varfarin|warfarin|co?umadin|comadin|kumadin', metin_lower))
     inr = bool(re.search(r'[iı]nr', metin_lower))
-    af = any(k in metin_lower for k in ['atriyal fibrilasyon', 'atrial fibrilasyon', 'atriyal fib',
-                                         'a.fibrilasyon', 'a.fib']) or 'I48' in teshis_metin
-    dvt = any(k in metin_lower for k in ['derin ven', 'dvt', 'derin venöz'])
-    pe = any(k in metin_lower for k in ['pulmoner emboli', 'pulmoner tromboz', 'pe ']) or 'I26' in teshis_metin
-    kanser = any(k in metin_lower for k in ['kanser', 'malign', 'tümör', 'onkoloji', 'metastaz'])
-    ortopedik = any(k in metin_lower for k in ['protez', 'artroplasti', 'ortopedik'])
+    # AF varyantları (atriyal/atrium fibrilasyonu farklı yazım, kısaltma, ICD)
+    af = any(k in metin_lower for k in ['atriyal fibrilasyon', 'atrial fibrilasyon',
+                                         'atrium fibrilasyon', 'atrium fibrilasyonu',
+                                         'atriyal fib', 'atrial fib', 'atrium fib',
+                                         'a.fibrilasyon', 'a.fib', 'a fib',
+                                         'fibrilasyon', 'paroksismal af', 'kalıcı af',
+                                         'persistant af', 'kronik af',
+                                         'non-valvüler af', 'non-valvuler af',
+                                         'valvüler olmayan']) or 'I48' in teshis_metin
+    dvt = any(k in metin_lower for k in ['derin ven', 'dvt', 'derin venöz', 'derin venoz',
+                                          'venöz tromboz', 'venoz tromboz',
+                                          'venöz tromboembol', 'venoz tromboembol',
+                                          'vte ', 'vte,'])
+    pe = any(k in metin_lower for k in ['pulmoner emboli', 'pulmoner tromboz',
+                                         'pulmoner emboliz', 'akciğer emboli',
+                                         'akciger emboli', 'pe ', 'pe,',
+                                         'tromboemboli']) or 'I26' in teshis_metin
+    kanser = any(k in metin_lower for k in ['kanser', 'malign', 'tümör', 'tumor',
+                                             'onkoloji', 'metastaz', 'neoplazm',
+                                             'neoplazi', 'karsinom', 'lenfoma',
+                                             'lösemi', 'losemi'])
+    ortopedik = any(k in metin_lower for k in ['protez', 'artroplasti', 'ortopedik',
+                                                 'kalça replasman', 'diz replasman',
+                                                 'kalca replasman', 'cerrahi profilaksi'])
     icd_af = 'I48' in teshis_metin
-    icd_dvt = any(k in teshis_metin for k in ['I80', 'I82'])
+    icd_dvt = any(k in teshis_metin for k in ['I80', 'I82', 'I81'])
     icd_pe = 'I26' in teshis_metin
+    icd_kanser = any(k in teshis_metin for k in ['C00', 'C01', 'C02', 'C03', 'C04',
+                                                    'C0', 'C1', 'C2', 'C3', 'C4',
+                                                    'C5', 'C6', 'C7', 'C8', 'C9',
+                                                    'D00', 'D01', 'D02', 'D03',
+                                                    'D04', 'D05', 'D06', 'D07',
+                                                    'D08', 'D09'])
 
     # INR kontrolü
     inr_degeri = None
@@ -3381,7 +4406,7 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
         )
 
     # Kanser ilişkili tromboz
-    if kanser:
+    if kanser or icd_kanser:
         eslesen = _eslesen_parcayi_bul(birlesik, 'kanser') or _eslesen_parcayi_bul(birlesik, 'malign')
         return KontrolRaporu(
             sonuc=KontrolSonucu.UYGUN,
@@ -3438,6 +4463,18 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
             sut_kurali=sut_kurali,
             aranan_ibare='ortopedik cerrahi / protez / artroplasti',
             bulunan_metin=eslesen
+        )
+
+    # Endikasyon tespit edilemedi — rapor varsa Medula onaylamış demek
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
+    if rapor_kodu and rapor_kodu.startswith('04.03'):
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj=f'YOAK raporlu (rapor kodu {rapor_kodu}) — endikasyon Medula onayında',
+            detaylar={**detaylar, 'rapor_kodu': rapor_kodu, 'medula_otomatik': True},
+            sut_kurali=sut_kurali,
+            uyari='Endikasyon (AF/DVT/PE) raporda yer aldığı varsayılır',
+            aranan_ibare=f'YOAK rapor kodu ({rapor_kodu}) örtük endikasyon'
         )
 
     return KontrolRaporu(
@@ -4355,6 +5392,72 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     has_laba = any(m in etkin_madde for m in laba_maddeler)
     has_lama = any(m in etkin_madde for m in lama_maddeler)
 
+    # ══════════════════════════════════════════════════════════════════
+    # REÇETEDEKİ DİĞER İLAÇLARI TARAMA — SUT 4.2.24.B ÜÇLÜ KULLANIM TESPİTİ
+    # ══════════════════════════════════════════════════════════════════
+    # Hasta LABA+LAMA+ICS üçünü AYNI ANDA kullanıyor mu? (3 ayrı ilaç olarak
+    # ya da tek üçlü inhaler) Bu kullanımda SUT'ta özel hüküm var:
+    # 3 ay ICS+LABA tedavisine rağmen yetersiz yanıt + ≥2 atak/yıl + mMRC≥2.
+    # Kullanıcı isteği: "üçlü kullanılıyorsa SUT özel hükmü raporda var mı bak"
+    diger_ilaclar = ilac_sonuc.get('recete_ilaclari') or []
+    # Reçetedeki TÜM ilaçlardan LABA/LAMA/ICS varlığını topla (mevcut + diğerleri)
+    laba_ics_kombi_ticari = ['SERETIDE', 'SYMBICORT', 'FOSTER', 'RELVAR', 'DUORESP',
+                              'BREQUAL', 'BREQAL', 'BUFOMIX', 'FOKUSAL', 'AIRFLUSAL',
+                              'AIRDUO', 'BREO', 'FLUTIFORM', 'VANNAIR', 'WIXELA',
+                              'INUVAIR', 'BUFEX', 'AIRPLUS']
+    laba_lama_kombi_ticari = ['ANORO', 'ULTIBRO', 'SPIOLTO', 'DUAKLIR', 'BEVESPI', 'STIOLTO']
+    laba_tek_ticari = ['FORADIL', 'OXIS', 'SEREVENT', 'ONBREZ', 'STRIVERDI']
+    lama_tek_ticari = ['SPIRIVA', 'INCRUSE', 'SEEBRI', 'BRETARIS', 'EKLIRA', 'TUDORZA']
+    ics_tek_ticari = ['PULMICORT', 'FLIXOTIDE', 'BECLOFORTE', 'ALVESCO', 'MIFLONIDE',
+                       'CORTAIR', 'BUDICORT', 'NEUMOCORT', 'BUDECORT', 'BECLATE',
+                       'CLENIL', 'ASMANEX', 'BECLOJET']
+    uclu_kombi_ticari = ['TRELEGY', 'TRIMBOW', 'ENERZAIR', 'BREZTRI', 'TRIXEO',
+                          'AIRSUPRA']
+
+    recete_has_laba = has_laba
+    recete_has_ics = has_ics
+    recete_has_lama = has_lama
+
+    for di in diger_ilaclar:
+        if isinstance(di, dict):
+            di_ad = (di.get('ad', '') or di.get('ilac_adi', '') or '').upper()
+            di_etkin = (di.get('etkin_madde', '') or '').upper()
+        else:
+            di_ad = str(di).upper()
+            di_etkin = ''
+        if not di_ad and not di_etkin:
+            continue
+        # Kendi ilacımız listede varsa atla (case-insensitive substring)
+        if ilac_adi and ilac_adi.upper() in di_ad:
+            continue
+        di_combo = di_ad + ' ' + di_etkin
+        # Üçlü inhaler tek başına 3'ünü kapsar
+        if any(t in di_ad for t in uclu_kombi_ticari):
+            recete_has_laba = recete_has_ics = recete_has_lama = True
+            continue
+        # LABA+ICS kombi
+        if any(t in di_ad for t in laba_ics_kombi_ticari):
+            recete_has_laba = True
+            recete_has_ics = True
+        # LABA+LAMA kombi
+        if any(t in di_ad for t in laba_lama_kombi_ticari):
+            recete_has_laba = True
+            recete_has_lama = True
+        # Tek bileşen — etkin madde + ticari ad
+        if any(m in di_combo for m in laba_maddeler) or any(t in di_ad for t in laba_tek_ticari):
+            recete_has_laba = True
+        if any(m in di_combo for m in ics_maddeler) or any(t in di_ad for t in ics_tek_ticari):
+            recete_has_ics = True
+        if any(m in di_combo for m in lama_maddeler) or any(t in di_ad for t in lama_tek_ticari):
+            recete_has_lama = True
+
+    # Reçete genelinde üçlü kullanım var mı?
+    recete_uclu_kullanim = recete_has_laba and recete_has_ics and recete_has_lama
+    detaylar['recete_uclu_kullanim'] = recete_uclu_kullanim
+    detaylar['recete_has_laba'] = recete_has_laba
+    detaylar['recete_has_ics'] = recete_has_ics
+    detaylar['recete_has_lama'] = recete_has_lama
+
     # ── Farmasötik form tespiti (nebülizasyon / inhaler / oral / enjeksiyon) ──
     ilac_adi_lower = ilac_adi.lower().replace('İ', 'i').replace('I', 'ı')
     is_nebulizasyon = any(k in ilac_adi_lower for k in [
@@ -4393,7 +5496,9 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     # ── LABA+ICS kombinasyon ──
     laba_ics_ticari = ['SERETIDE', 'SYMBICORT', 'FOSTER', 'RELVAR', 'DUORESP',
                        'MIFLONIDE COMBI', 'AIRFLUSAL', 'BUFOMIX', 'FOKUSAL',
-                       'VANNAIR', 'WIXELA', 'AIRDUO', 'BREO', 'FLUTIFORM']
+                       'VANNAIR', 'WIXELA', 'AIRDUO', 'BREO', 'FLUTIFORM',
+                       'BREQUAL', 'BREQAL',  # Salmeterol+Flutikazon (LABA+ICS ikili)
+                       'INUVAIR', 'BUFEX', 'BUFOM', 'AIRPLUS']
     is_laba_ics = any(t in ilac_adi for t in laba_ics_ticari) or (has_laba and has_ics and not has_lama)
 
     # ── LAMA tek başına ──
@@ -4405,13 +5510,34 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     is_laba_lama = any(t in ilac_adi for t in laba_lama_ticari) or (has_laba and has_lama and not has_ics)
 
     # ── Üçlü kombinasyon (LABA+ICS+LAMA) ──
-    uclu_ticari = ['TRELEGY', 'TRIMBOW', 'ENERZAIR', 'BREQUAL', 'BREQAL', 'BREZTRI']
-    is_uclu = any(t in ilac_adi for t in uclu_ticari) or (has_laba and has_ics and has_lama)
+    # Türkiye'de mevcut üçlü inhalerlar:
+    # TRELEGY ELLIPTA = Vilanterol + Umeklidinyum + Flutikazon
+    # TRIMBOW = Formoterol + Glikopironyum + Beklometazon
+    # ENERZAIR BREEZHALER = İndakaterol + Glikopironyum + Mometazon
+    # BREZTRI AEROSPHERE = Formoterol + Glikopironyum + Budezonid
+    # TRIXEO AEROSPHERE = Formoterol + Glikopironyum + Budezonid (BREZTRI yeni adı)
+    # NOT: BREQUAL/BREQAL listede DEĞİL — onlar Salmeterol+Flutikazon (LABA+ICS ikili)
+    uclu_ticari = ['TRELEGY', 'TRIMBOW', 'ENERZAIR', 'BREZTRI', 'TRIXEO',
+                   'AIRSUPRA', 'TRIMUS', 'TRELE']
+    # Etkin madde tabanlı 3'lü tespit (ticari ad listede olmasa bile)
+    # Üçlü = LABA + LAMA + ICS hepsi birden (tek ilaçta veya reçetede dağılmış)
+    uclu_etkin_eslesti = (has_laba and has_ics and has_lama)
+    # Reçetede 3 ayrı ilaç olarak LABA+LAMA+ICS yazılmış olabilir — bu da üçlü.
+    # Bu durumda mevcut ilaç tek başına ikili (LABA+ICS) olsa bile reçete genelinde
+    # üçlü kullanım olduğu için SUT 4.2.24.B özel hükmü aranacak.
+    is_uclu = (any(t in ilac_adi for t in uclu_ticari)
+               or uclu_etkin_eslesti
+               or recete_uclu_kullanim)
 
     # ── LTRA (Lökotrien reseptör antagonisti) ──
+    # Tek başına: SINGULAIR, ONCEAIR, NOTTA, AIRLUKAST, ACCOLATE
+    # Setirizin+Montelukast kombileri: LEVMONT, LEVOKAST, MONKAST
     is_ltra = 'MONTELUKAST' in etkin_madde or 'ZAFIRLUKAST' in etkin_madde or \
               any(t in ilac_adi for t in ['SINGULAIR', 'ONCEAIR', 'LUKASM', 'NOTTA',
-                                           'DESMONT', 'AIRLUKAST', 'ACCOLATE'])
+                                           'DESMONT', 'AIRLUKAST', 'ACCOLATE',
+                                           'LEVMONT', 'LEVOKAST', 'MONKAST',
+                                           'MONTELAIR', 'MONLAS', 'NOLEMON',
+                                           'AIRPLUS', 'MUSTAIR'])
 
     # ── Omalizumab (Anti-IgE) ──
     is_omalizumab = 'OMALIZUMAB' in etkin_madde or 'XOLAIR' in ilac_adi
@@ -4478,11 +5604,27 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     # 2. TANI TESPİTİ (ICD + metin tarama)
     # ════════════════════════════════════════════════════════════════
 
-    astim = bool(re.search(r'ast[ıi]m|asthma', metin_lower))
-    koah = bool(re.search(r'koah|copd|kronik\s*obstr[uü]ktif', metin_lower))
-    alerjik_rinit = bool(re.search(r'alerjik\s*rinit|allergic\s*rhinitis', metin_lower))
+    astim = bool(re.search(r'ast[ıi]m|asthma|astma|bron[sş][iı]?yal\s*ast', metin_lower))
+    koah = bool(re.search(r'koah|copd|kronik\s*obstr[uü]ktif|kronik\s*ob\.?\s*akci[gğ]er|akch', metin_lower))
+    # Alerjik rinit varyantları:
+    # - "alerjik rinit" (standart)
+    # - "mevsimsel alerjik rinit" (substring match, ek mevsimsel/perenniyal yakalama)
+    # - "alerjit rinit" (yazım hatası tolerans)
+    # - "allergic rhinitis", "allerjik rinit"
+    # - "rinitis allergica" (Latince), "rhinitis"
+    alerjik_rinit = bool(re.search(
+        r'aler[jc]i[kt]\s*rinit'        # alerjik/alerjit/alercik rinit (k/t/c)
+        r'|allergic\s*rh?initis?'        # allergic rhinitis
+        r'|allerjik\s*rinit'             # çift L yazım
+        r'|rhinitis\s*aller[gj]ica'      # Latince
+        r'|mevsim(sel|li)?\s*rinit'      # mevsimsel rinit / mevsimli
+        r'|perenniyal\s*rinit'           # perenniyal rinit
+        r'|seasonal\s*rh?initis?'        # seasonal rhinitis
+        r'|saman\s*nezles[ıi]',          # saman nezlesi (alerjik rinit halk dili)
+        metin_lower
+    ))
     bronsiektazi = bool(re.search(r'bron[sş]iektazi|bronchiectasis', metin_lower))
-    kistik_fibroz = bool(re.search(r'kistik\s*fibr[oö]z|cystic\s*fibrosis', metin_lower))
+    kistik_fibroz = bool(re.search(r'kistik\s*fibr[oö]z|cystic\s*fibrosis|mukovissidoz', metin_lower))
 
     icd_astim = any(k in teshis_metin for k in ['J45', 'J46'])
     icd_koah = any(k in teshis_metin for k in ['J43', 'J44'])
@@ -4782,6 +5924,24 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
                 aranan_ibare='astım + ICS+LABA yetersiz + basamak tedavisi',
                 bulunan_metin=eslesen
             )
+        # Pragmatik fallback: Rapor kodu 05.02 (LABA+LAMA+ICS üçlü) veya 05.x
+        # zaten Medula tarafından onaylanmış demek. SUT şartları (3 ay ICS+LABA
+        # başarısızlığı, ≥2 atak, mMRC≥2/CAT≥10) raporun kendisinde yer alır;
+        # mesaj metnine düşmeyebilir. Eczacı tarafında ek alarm gerekmez.
+        if rapor_kodu and (rapor_kodu.startswith('05.') or rapor_kodu.startswith('15.04')
+                             or rapor_kodu.startswith('15.05')):
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj=f'Üçlü kombinasyon raporlu (rapor {rapor_kodu}) — '
+                      f'Medula 3 ay ICS+LABA başarısızlığı + atak + mMRC/CAT şart kontrolünü yapar',
+                detaylar={**detaylar, 'medula_otomatik': True},
+                sut_kurali='SUT 4.2.24.B — Solunum rapor kodu + Medula şart kontrolü',
+                uyari='3 ay ICS+LABA başarısızlığı, ≥2 atak/yıl, mMRC≥2 veya CAT≥10 '
+                      'şartları raporda yer aldığı varsayılır',
+                aranan_ibare=f'Solunum rapor kodu ({rapor_kodu}) örtük üçlü endikasyon',
+                bulunan_metin=eslesen
+            )
+
         eksik = []
         if not koah and not astim:
             eksik.append('KOAH/astım tanısı')
@@ -5023,6 +6183,15 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
             )
 
         if rapor_kodu:
+            # Rapor kodu 05.0x (Solunum) veya 15.04/15.05 — Medula tanı zorunluluğunu kontrol eder
+            if rapor_kodu.startswith('05.') or rapor_kodu.startswith('15.04') or rapor_kodu.startswith('15.05'):
+                return KontrolRaporu(
+                    sonuc=KontrolSonucu.UYGUN,
+                    mesaj=f'LABA+ICS — solunum rapor kodu ({rapor_kodu}), Medula astım/KOAH tanısı zorunluluğunu kontrol eder',
+                    detaylar={**detaylar, 'medula_otomatik': True},
+                    sut_kurali='SUT 4.2.24 — Solunum rapor kodu + Medula tanı kontrolü',
+                    aranan_ibare=f'Solunum rapor kodu ({rapor_kodu}) örtük endikasyon'
+                )
             return KontrolRaporu(
                 sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
                 mesaj=f'LABA+ICS — rapor kodu {rapor_kodu} var ama astım/KOAH tanısı bulunamadı',
@@ -5033,6 +6202,19 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
                 aranan_ibare='astım (J45/J46) / KOAH (J43/J44)'
             )
 
+        # Pragmatik fallback: rapor_kodu okunamamış (None) ama msj=var
+        # (ilaç bilgi mesajı geldi). Medula reçeteyi onayladığı için şart
+        # kontrolünü zaten yapmış demektir. Eczacı tarafında ek alarm gerekmez.
+        msj_durumu = (ilac_sonuc.get('msj_durumu') or ilac_sonuc.get('msj') or '').lower()
+        if msj_durumu == 'var':
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj='LABA+ICS — rapor kodu okunamadı ama mesaj mevcut, Medula şart kontrolünü yapar',
+                detaylar={**detaylar, 'medula_otomatik': True, 'rapor_okunamadi': True},
+                sut_kurali='SUT 4.2.24 — LABA+ICS: rapor okuma fail, Medula otomatik kontrol',
+                uyari='Rapor kodu DOM\'dan okunamadı; reçete Medula tarafından onaylı',
+                aranan_ibare='msj=var (Medula bilgi mesajı geldi)'
+            )
         return KontrolRaporu(
             sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
             mesaj='LABA+ICS — astım/KOAH tanısı veya uzman raporu tespit edilemedi',
@@ -5087,6 +6269,16 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
             )
 
         if rapor_kodu:
+            # Solunum/genel raporlu kodlar — Medula tanı kontrolünü yapar
+            if (rapor_kodu.startswith('05.') or rapor_kodu.startswith('20.')
+                or rapor_kodu.startswith('15.04') or rapor_kodu.startswith('15.05')):
+                return KontrolRaporu(
+                    sonuc=KontrolSonucu.UYGUN,
+                    mesaj=f'LTRA — rapor kodu {rapor_kodu}, Medula astım/alerjik rinit tanı kontrolünü yapar',
+                    detaylar={**detaylar, 'medula_otomatik': True},
+                    sut_kurali='SUT 4.2.24 — Solunum/genel rapor + Medula tanı kontrolü',
+                    aranan_ibare=f'Rapor kodu ({rapor_kodu}) örtük endikasyon'
+                )
             return KontrolRaporu(
                 sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
                 mesaj=f'LTRA — rapor kodu {rapor_kodu} var ama astım/alerjik rinit tanısı bulunamadı',
@@ -5096,6 +6288,17 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
                 aranan_ibare='astım (J45/J46) / alerjik rinit (J30)'
             )
 
+        # Pragmatik fallback: rapor_kodu okunamamış (None) ama msj=var
+        msj_durumu = (ilac_sonuc.get('msj_durumu') or ilac_sonuc.get('msj') or '').lower()
+        if msj_durumu == 'var':
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj='LTRA — rapor kodu okunamadı ama mesaj mevcut, Medula şart kontrolünü yapar',
+                detaylar={**detaylar, 'medula_otomatik': True, 'rapor_okunamadi': True},
+                sut_kurali='SUT 4.2.24 — LTRA: rapor okuma fail, Medula otomatik kontrol',
+                uyari='Rapor kodu DOM\'dan okunamadı; reçete Medula tarafından onaylı',
+                aranan_ibare='msj=var (Medula bilgi mesajı geldi)'
+            )
         return KontrolRaporu(
             sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
             mesaj='LTRA — astım/alerjik rinit tanısı tespit edilemedi',
@@ -6420,9 +7623,13 @@ def kontrol_raporsuz_bilgilendirme(ilac_sonuc: Dict) -> KontrolRaporu:
     # Topikal antifungal/antiseptik
     topikal_maddeler = ['OKSIKONAZOL', 'BENZIDAMIN', 'MIKONAZOL', 'KLOTRIMAZOL',
                         'TERBINAFIN', 'KETOKONAZOL', 'NISTATIN', 'EKONAZOL',
-                        'SERTAKONAZOL', 'SIKLOPIROKS']
+                        'SERTAKONAZOL', 'SIKLOPIROKS', 'NAFTIFIN', 'TIOKONAZOL',
+                        'BUTENAFIN', 'AMOROLFIN']
     topikal_ticari = ['TRAVAZOL', 'OCERAL', 'ANDOREX', 'TANTUM', 'LAMISIL',
-                      'FUNGICIDE', 'CANESTEN', 'CANDIO', 'MYCOSTATIN']
+                      'FUNGICIDE', 'CANESTEN', 'CANDIO', 'MYCOSTATIN',
+                      'EXODERIL', 'LOCERYL', 'TROSYD', 'DERMOTROSYD',
+                      'DERMIFIN', 'TERBIN', 'TERBISIL', 'FUNGOSTOP',
+                      'KLOROBEN']
     is_topikal = (any(m in etkin_madde for m in topikal_maddeler) or
                   any(t in ilac_adi for t in topikal_ticari))
 
@@ -7463,6 +8670,24 @@ def kontrol_mono_antihipertansif(ilac_sonuc: Dict) -> KontrolRaporu:
     )
 
 
+def kontrol_medula_otomatik(ilac_sonuc: Dict) -> KontrolRaporu:
+    """
+    Medula'nın kendisi tarafından otomatik kontrol edilen ilaç/ürün grupları.
+
+    Kullanım: Diyabet test çubukları, lansetler, glukometre stripleri vb.
+    Bu ürünler ödeme/şart kontrolü Medula tarafından SUT kuralları gereği
+    otomatik yapılır (ör: kullanım sıklığı, insülin kullanımı). Eczacının
+    ek bir SUT kontrolü yapmasına gerek yoktur.
+    """
+    ilac_adi = (ilac_sonuc.get('ilac_adi') or '?')[:60]
+    return KontrolRaporu(
+        KontrolSonucu.UYGUN,
+        f"Medula otomatik kontrol — eczacı kontrolüne gerek yok ({ilac_adi})",
+        sut_kurali='Medula otomatik şart kontrolü (test çubukları/sarf)',
+        detaylar={'alt_kategori': 'MEDULA_OTOMATIK'}
+    )
+
+
 def kontrol_potasyum_sitrat(ilac_sonuc: Dict) -> KontrolRaporu:
     """
     Potasyum Sitrat (EK-4/F) - Üroloji/Nefroloji uzman raporu kontrolü
@@ -7593,6 +8818,7 @@ KATEGORI_KONTROL_FONKSIYONU = {
     'RAPORSUZ_BILGILENDIRME': kontrol_raporsuz_bilgilendirme,
     'MONO_ANTIHIPERTANSIF': kontrol_mono_antihipertansif,
     'POTASYUM_SITRAT': kontrol_potasyum_sitrat,
+    'MEDULA_OTOMATIK': kontrol_medula_otomatik,
     'BIFOSFONAT': kontrol_bifosfonat,
     # Minimal handlers — rapor varsa uygun, yoksa kontroledilemedi
     'BENZODIAZEPIN': kontrol_raporsuz_bilgilendirme,  # Raporsuz, uzman değerlendirmesi
@@ -7616,6 +8842,10 @@ KATEGORI_KONTROL_FONKSIYONU = {
         s.get('rapor_kodu', ''), _tum_metinleri_birlesir(s),
         ' '.join(s.get('recete_teshisleri', []) or [])),
     'NOROPATIK_AGRI': lambda s: _noropatik_agri_detayli_kontrol(
+        (s.get('ilac_adi') or '').upper(), (s.get('etkin_madde') or '').upper(),
+        s.get('rapor_kodu', ''), _tum_metinleri_birlesir(s),
+        ' '.join(s.get('recete_teshisleri', []) or [])),
+    'IMMUNSUPRESIF': lambda s: _immunsupresif_detayli_kontrol(
         (s.get('ilac_adi') or '').upper(), (s.get('etkin_madde') or '').upper(),
         s.get('rapor_kodu', ''), _tum_metinleri_birlesir(s),
         ' '.join(s.get('recete_teshisleri', []) or [])),
@@ -7654,6 +8884,7 @@ KATEGORI_ISIMLERI = {
     'RAPORSUZ_BILGILENDIRME': 'Raporsuz Verilebilir',
     'MONO_ANTIHIPERTANSIF': 'Mono Antihipertansif',
     'POTASYUM_SITRAT': 'Potasyum Sitrat (EK-4/F)',
+    'MEDULA_OTOMATIK': 'Medula Otomatik Kontrol (Test çubuğu/sarf)',
     'BENZODIAZEPIN': 'Benzodiazepin/Anksiyolitik',
     'GOZ_LUBRIKAN': 'Göz Lubrikan / Suni Gözyaşı',
     'ADHD': 'ADHD (4.2.34.B)',
@@ -7663,6 +8894,7 @@ KATEGORI_ISIMLERI = {
     'DESMOPRESIN': 'Desmopresin (Enürezis/DI)',
     'NOROPATIK_AGRI': 'Nöropatik Ağrı (Gabapentin/Pregabalin/Duloksetin)',
     'ENTERAL_BESLENME': 'Enteral Beslenme Solüsyonları',
+    'IMMUNSUPRESIF': 'İmmünosüpresif (Organ Nakli / 4.2.32)',
 }
 
 

@@ -110,12 +110,13 @@ MEDULA_SIFRE = "152634"
 
 # Grup tanımları - sıralı
 # kod: bizim kodumuzu, medula_tab: Medula'daki sekme adı
+# TÜMÜNÜ KONTROL ET sıralaması: C → A → B → GK → CK (Geçici Koruma kan üründen önce)
 GRUP_TANIMLARI = [
     {"kod": "C", "ad": "C Grubu", "medula_tab": "C Sıralı", "renk": "#4CAF50", "hover": "#388E3C"},
     {"kod": "A", "ad": "A Grubu", "medula_tab": "A", "renk": "#2196F3", "hover": "#1976D2"},
     {"kod": "B", "ad": "B Grubu", "medula_tab": "B", "renk": "#FF9800", "hover": "#F57C00"},
-    {"kod": "CK", "ad": "C Grubu Kan Ürünü", "medula_tab": "C Kan", "renk": "#F44336", "hover": "#D32F2F"},
     {"kod": "GK", "ad": "Geçici Koruma", "medula_tab": "GKKKOY", "renk": "#9C27B0", "hover": "#7B1FA2"},
+    {"kod": "CK", "ad": "C Grubu Kan Ürünü", "medula_tab": "C Kan", "renk": "#F44336", "hover": "#D32F2F"},
 ]
 
 # Medula AutomationID sabitleri
@@ -2711,10 +2712,12 @@ class ReceteRaporKontrolGUI:
         return basarili
 
     def _tumunu_kontrol_et(self):
-        """Tüm grupları sırayla kontrol et: C -> A -> B -> CK -> GK.
+        """Tüm grupları sırayla kontrol et: C -> A -> B -> GK -> CK.
 
         Her grup için tek tek grup butonunun yaptığı subprocess akışını çağırır
         (recete_tarama.py — uyarı kodu, SUT, teşhis kontrolleri dahil).
+        Kritik hata olursa Medula otomatik kapatılıp yeniden açılır ve aynı
+        gruba kaldığı yerden (--devam) tekrar başlatılır (max 3 deneme).
         """
         if self.kontrol_aktif:
             self.log_yaz("Zaten bir kontrol devam ediyor!", "warning")
@@ -2722,7 +2725,8 @@ class ReceteRaporKontrolGUI:
 
         self.log_yaz("=" * 40, "header")
         self.log_yaz("TÜMÜNÜ KONTROL ET başlatılıyor...", "header")
-        self.log_yaz("Sıra: C -> A -> B -> C Kan Ürünü -> Geçici Koruma", "info")
+        self.log_yaz("Sıra: C -> A -> B -> Geçici Koruma -> C Kan Ürünü", "info")
+        self.log_yaz("Kritik hata: Medula otomatik yeniden açılır, kaldığı yerden devam", "info")
         self.log_yaz("=" * 40, "header")
 
         # TÜMÜNÜ modu flag'ı: subprocess thread'leri buton resetlemesini atlasın
@@ -2733,7 +2737,15 @@ class ReceteRaporKontrolGUI:
         for btn in self.grup_butonlari.values():
             btn.config(state="disabled")
 
+        # Otomatik kurtarma için maksimum deneme sayısı (her grup için ayrı)
+        MAX_RECOVERY = 3
+
         def tumu_thread():
+            # Recovery sırasında medula.medula_oturum_kurtarma() pywinauto/COM kullanır.
+            # Worker thread'de COM bağlamı başlatılmalı.
+            if _PYTHONCOM_VAR:
+                try: pythoncom.CoInitialize()
+                except Exception: pass
             try:
                 for index, grup in enumerate(GRUP_TANIMLARI):
                     if self._tumu_iptal:
@@ -2743,52 +2755,113 @@ class ReceteRaporKontrolGUI:
                     grup_kodu = grup["kod"]
                     grup_adi = grup.get("ad", grup_kodu)
 
-                    # Grup başında kritik hata flag'ini ve reçete sayacını sıfırla.
-                    # Subprocess çıktısı bu değerleri set eder; biz grup sonrası kontrol ederiz.
-                    self._tumu_son_grup_hata = None
-                    self._tumu_son_grup_recete_sayisi = 0
+                    # Bu grup için recovery döngüsü.
+                    # Kritik hata gelirse: Medula taskkill + yeniden aç + login,
+                    # ardından kaldığı reçeteden (--devam) tekrar başla.
+                    self._tumu_recovery_devam = False  # ilk denemede normal akış
+                    recovery_sayaci = 0
+                    grup_basarili = False
 
-                    bitti_evt = threading.Event()
-                    # Grup subprocess'ini ana thread'de başlat (GUI dokunuyor)
-                    self.root.after(
-                        0,
-                        lambda gk=grup_kodu, evt=bitti_evt:
-                            self._grup_kontrol_baslat(gk, bittiginde=evt.set),
-                    )
+                    while not self._tumu_iptal and recovery_sayaci <= MAX_RECOVERY:
+                        # Grup başında kritik hata flag'ini ve reçete sayacını sıfırla.
+                        # Subprocess çıktısı bu değerleri set eder; deneme sonrası kontrol ederiz.
+                        self._tumu_son_grup_hata = None
+                        self._tumu_son_grup_recete_sayisi = 0
+                        self._tumu_son_grup_bos_normal = False
 
-                    # Subprocess'in başlama + bitişini bekle (5 dk timeout, sonsuz değil)
-                    # Her 0.5 sn'de bir iptal kontrolü
-                    while not bitti_evt.is_set() and not self._tumu_iptal:
-                        time.sleep(0.5)
+                        bitti_evt = threading.Event()
+                        self.root.after(
+                            0,
+                            lambda gk=grup_kodu, evt=bitti_evt:
+                                self._grup_kontrol_baslat(gk, bittiginde=evt.set),
+                        )
 
-                    if self._tumu_iptal:
-                        self.root.after(0, lambda: self.log_yaz(
-                            f"TÜMÜNÜ iptal edildi ({grup_adi} sonrası)", "warning"))
+                        # Subprocess'in başlama + bitişini bekle.
+                        # Her 0.5 sn'de bir iptal kontrolü.
+                        while not bitti_evt.is_set() and not self._tumu_iptal:
+                            time.sleep(0.5)
+
+                        if self._tumu_iptal:
+                            self.root.after(0, lambda ga=grup_adi: self.log_yaz(
+                                f"TÜMÜNÜ iptal edildi ({ga} sırasında)", "warning"))
+                            break
+
+                        hata_mesaji = getattr(self, "_tumu_son_grup_hata", None)
+                        recete_sayisi = getattr(self, "_tumu_son_grup_recete_sayisi", 0)
+                        bos_normal = getattr(self, "_tumu_son_grup_bos_normal", False)
+
+                        # 1) Kritik hata varsa: Medula recovery + aynı gruba --devam ile retry
+                        if hata_mesaji:
+                            recovery_sayaci += 1
+                            if recovery_sayaci > MAX_RECOVERY:
+                                self.root.after(0, lambda h=hata_mesaji, ga=grup_adi: self.log_yaz(
+                                    f"⚠ {ga}: {MAX_RECOVERY} kurtarma denemesi başarısız ({h}) — TÜMÜNÜ durduruldu",
+                                    "error"))
+                                break
+                            self.root.after(0, lambda h=hata_mesaji, ga=grup_adi, n=recovery_sayaci:
+                                self.log_yaz(
+                                    f"⚠ {ga} kritik hata ({h}) — Medula yeniden açılıyor "
+                                    f"(deneme {n}/{MAX_RECOVERY})", "warning"))
+                            # taskkill + exe yeniden başlat + login
+                            try:
+                                kurtuldu = self.medula.medula_oturum_kurtarma()
+                            except Exception as ex:
+                                self.root.after(0, lambda e=ex: self.log_yaz(
+                                    f"Medula kurtarma istisna: {e}", "error"))
+                                kurtuldu = False
+                            if not kurtuldu:
+                                self.root.after(0, lambda: self.log_yaz(
+                                    "Medula kurtarma başarısız — bekleniyor 5 sn ve tekrar denenecek",
+                                    "warning"))
+                                time.sleep(5)
+                            # Recovery sonrası mutlaka --devam: kaldığı reçeteden başla
+                            self._tumu_recovery_devam = True
+                            continue  # while döngüsünde tekrar dene
+
+                        # 2) Boş grup (Medula "Reçete kaydı bulunamadı") → sıradaki gruba geç
+                        if bos_normal and recete_sayisi == 0:
+                            self.root.after(0, lambda ga=grup_adi: self.log_yaz(
+                                f"  {ga} grubu boş ('Reçete kaydı bulunamadı.') — sonraki gruba geçiliyor",
+                                "info"))
+                            grup_basarili = True
+                            break
+
+                        # 3) 0 reçete + kritik hata yok + boş normal değil:
+                        #    Medula açıkta ama bir şey okunmamış. Recovery dene.
+                        if recete_sayisi == 0:
+                            recovery_sayaci += 1
+                            if recovery_sayaci > MAX_RECOVERY:
+                                self.root.after(0, lambda ga=grup_adi: self.log_yaz(
+                                    f"⚠ {ga}: {MAX_RECOVERY} denemede 0 reçete işlendi — TÜMÜNÜ durduruldu",
+                                    "warning"))
+                                break
+                            self.root.after(0, lambda ga=grup_adi, n=recovery_sayaci: self.log_yaz(
+                                f"⚠ {ga}: 0 reçete işlendi — Medula yeniden açılıyor "
+                                f"(deneme {n}/{MAX_RECOVERY})", "warning"))
+                            try:
+                                self.medula.medula_oturum_kurtarma()
+                            except Exception:
+                                pass
+                            self._tumu_recovery_devam = True
+                            continue
+
+                        # 4) Başarılı: bir sonraki gruba geç
+                        grup_basarili = True
                         break
 
-                    # GRUP SONU SAĞLIK KONTROLÜ:
-                    # Subprocess'te kritik hata yakalandıysa veya hiç reçete işlenmediyse
-                    # bir sonraki gruba geçmek anlamsız (aynı sebepten o da fail olur).
-                    # TÜMÜNÜ'yü durdur, kullanıcıya net bilgi ver.
-                    hata_mesaji = getattr(self, "_tumu_son_grup_hata", None)
-                    recete_sayisi = getattr(self, "_tumu_son_grup_recete_sayisi", 0)
-                    if hata_mesaji:
-                        self.root.after(0, lambda h=hata_mesaji, ga=grup_adi: self.log_yaz(
-                            f"⚠ {ga} grubunda kritik hata: {h}", "error"))
-                        self.root.after(0, lambda ga=grup_adi: self.log_yaz(
-                            f"⚠ TÜMÜNÜ durduruldu — Medula durumunu düzeltip tekrar başlatın "
-                            f"({ga} sonrasındaki gruplar atlandı)", "error"))
-                        break
-                    if recete_sayisi == 0:
-                        self.root.after(0, lambda ga=grup_adi: self.log_yaz(
-                            f"⚠ {ga} grubunda hiç reçete işlenemedi (0 reçete) — TÜMÜNÜ durduruldu", "warning"))
+                    if not grup_basarili and not self._tumu_iptal:
+                        # MAX_RECOVERY aşıldı — TÜMÜNÜ'yü durdur
                         break
             finally:
                 self._tumu_aktif = False
+                self._tumu_recovery_devam = False
                 self.aktif_grup = None
                 self.root.after(0, self._butonlari_normal_yap)
                 self.root.after(0, lambda: self.log_yaz(
                     "TÜMÜNÜ KONTROL ET tamamlandı", "header"))
+                if _PYTHONCOM_VAR:
+                    try: pythoncom.CoUninitialize()
+                    except Exception: pass
 
         threading.Thread(target=tumu_thread, daemon=True).start()
 
@@ -3173,8 +3246,21 @@ class ReceteRaporKontrolGUI:
 
         # Combobox'ta seçili reçete var mı? (geri dönme)
         # "Baştan başla" işaretliyse combobox seçimini yoksay
+        # TÜMÜNÜ akışında ikinci+ gruplar (tumu_first değil) için combobox seçimi
+        # ASLA kullanılmaz — önceki taramadan kalma yanlış kayıtlar (ör: C son
+        # reçetesinin A/B/GK/CK comboboxlarına yanlışlıkla yazılması) yüzünden
+        # her grupta o eski reçete aranıp bulunamayıp atlanıyor olabilir.
+        tumu_modu_aktif = getattr(self, "_tumu_aktif", False)
+        tumu_first_grup = (getattr(self, "_tumu_grup_index", 0) == 0)
+        tumu_recovery_aktif = getattr(self, "_tumu_recovery_devam", False)
+        # TÜMÜNÜ ikinci+ grup VE recovery değilse: combobox seçimini bypass et + temizle
+        tumu_skip_combobox = (tumu_modu_aktif and not tumu_first_grup
+                                and not tumu_recovery_aktif)
+
         secili_recete = None
-        if not acik_receteden and not self.bastan_var.get() and grup_kodu in self.recete_combolar:
+        if (not acik_receteden and not self.bastan_var.get()
+                and not tumu_skip_combobox
+                and grup_kodu in self.recete_combolar):
             secim = self.recete_combolar[grup_kodu].get()
             if secim and "#" in secim:
                 try:
@@ -3185,6 +3271,12 @@ class ReceteRaporKontrolGUI:
         self.log_yaz(f"{'━' * 40}", "header")
         if acik_receteden:
             self.log_yaz(f"{grup_adi} - Açık reçeteden başlanıyor - {secilen_donem}", "header")
+        elif tumu_skip_combobox:
+            # TÜMÜNÜ ikinci+ grup: combobox eski kayıtları yoksayılıyor, baştan başla
+            self.log_yaz(
+                f"{grup_adi} - TÜMÜNÜ akışı: ilk reçeteden baştan başlatılıyor "
+                f"(combobox yoksayıldı) - {secilen_donem}", "header")
+            self._recete_combolar_temizle(grup_kodu)
         elif secili_recete:
             self.log_yaz(f"{grup_adi} - {secili_recete}'den devam - {secilen_donem}", "header")
         else:
@@ -3233,12 +3325,17 @@ class ReceteRaporKontrolGUI:
                 # tekrar yükleme yapmasın (regression önleme).
                 tumu_modu = getattr(self, "_tumu_aktif", False)
                 tumu_first = (getattr(self, "_tumu_grup_index", 0) == 0)
+                # Recovery sonrası: kaldığı reçeteden devam etmesi için --devam zorla
+                tumu_recovery = getattr(self, "_tumu_recovery_devam", False)
                 if acik_receteden:
                     cmd_args.append("--acik")
                 elif secili_recete:
                     cmd_args.extend(["--goto", secili_recete])
                 elif self.bastan_var.get():
                     cmd_args.append("--bastan")
+                elif tumu_modu and tumu_recovery:
+                    # Medula yeniden açıldıktan sonra: kaldığı reçeteden başla
+                    cmd_args.append("--devam")
                 elif tumu_modu and not tumu_first:
                     cmd_args.append("--bastan")
                 else:
@@ -3279,6 +3376,13 @@ class ReceteRaporKontrolGUI:
                             if patt in line:
                                 self._tumu_son_grup_hata = aciklama
                                 break
+                    # Boş grup veya tamamlanmış grup sinyali — "TÜMÜNÜ" modunda
+                    # bu grup atlansın, durdurma yapılmasın (Reçete kaydı bulunamadı)
+                    if "[GRUP_BOS]" in line or "[GRUP_TAMAMLANDI]" in line:
+                        # 0 reçete olsa bile "kritik hata" sayma → tümünü devam etsin
+                        self._tumu_son_grup_bos_normal = True
+                        continue
+
                     # Reçete başlangıç zamanı (süre ölçümü)
                     if "[RECETE_BASLADI]" in line:
                         import time as _time
@@ -3351,8 +3455,22 @@ class ReceteRaporKontrolGUI:
                 self.root.after(0, lambda: self.log_yaz(
                     f"Subprocess tamamlandı (exit: {proc.returncode})",
                     "success" if proc.returncode == 0 else "error"))
+                # TÜMÜNÜ modunda: subprocess crash (returncode != 0) → kritik hata olarak işaretle
+                # Kullanıcı durdurma ile subprocess.terminate() çağrılırsa _tumu_iptal True olur,
+                # bu durumda recovery tetiklenmez (zaten manuel iptal).
+                if (getattr(self, "_tumu_aktif", False)
+                        and proc.returncode not in (0, None)
+                        and not getattr(self, "_tumu_iptal", False)
+                        and not self._tumu_son_grup_hata):
+                    self._tumu_son_grup_hata = (
+                        f"Subprocess çıkış kodu {proc.returncode} "
+                        f"(beklenmeyen hata / pencere kapanması)"
+                    )
             except Exception as e:
                 self.root.after(0, lambda e=e: self.log_yaz(f"Subprocess hatası: {e}", "error"))
+                # TÜMÜNÜ modunda: GUI tarafında istisna → kritik hata
+                if getattr(self, "_tumu_aktif", False) and not self._tumu_son_grup_hata:
+                    self._tumu_son_grup_hata = f"GUI subprocess istisna: {e}"
             finally:
                 self.kontrol_aktif = False
                 self._subprocess_proc = None

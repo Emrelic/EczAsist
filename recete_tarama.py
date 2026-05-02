@@ -203,15 +203,239 @@ def popup_kapat():
     Örn: 'Etken madde çakışması bulamadım...' penceresi.
     Sistem takılıyorsa çağrılır. Bulup kapattıysa True döner.
 
+    FAST-PATH (UI Inspector verisinden — Etken madde çakışması popup'ı):
+    - Pencere ClassName: #32770 (Windows standart dialog)
+    - Tamam butonu: AutomationId="2", ClassName="Button"
+    - Bu kombinasyon doğrudan child_window ile aranır (descendants ağacı
+      taramaya gerek yok — saniyeler kazanılır).
+
     GÜVENLİK:
-    - BotanikMedula ana penceresi ASLA kapatılmaz (process adıyla filtre).
-    - Sadece küçük (≤700×500 px) modal/dialog tipi pencereler hedeflenir;
-      tam ekran tarayıcı içeriği popup sayılmaz.
+    - SADECE küçük (≤700×500 px) modal/dialog tipi pencereler hedeflenir;
+      tam ekran BotanikMedula tarayıcısı boyut filtresiyle elenir.
+    - BotanikMedula process'inden gelen küçük modal dialoglar (örn. JS alert
+      "Lütfen ilaç seçiniz") YINE kapatılır — process adıyla blanket skip
+      yapma, bu modal'leri de tutar ve sayfa kilitlenir.
     - "Uyarı" / "Dikkat" gibi kısa kelimeler artık tek başına eşleşme tetiklemez —
       gerçek popup'larda imzalar daha bağlamlı ifadelerle yer alır.
-    - Kapatma butonu sadece ControlType "Button" ve caption tam eşleşme; pencerenin
-      köşesindeki sistem "Kapat" butonu (genellikle isimli ama farklı parent'ta) skip.
+    - Kapatma butonu sadece "Tamam"/"OK"/"Evet" — pencerenin köşesindeki
+      sistem "Kapat" / "Close" butonu hedef alınmaz.
     """
+    # ── FAST-PATH: #32770 dialog + Tamam (AutomationId=2) ──
+    try:
+        import win32gui
+        kapatildi = [False]
+
+        def _enum_cb(hwnd, _):
+            if kapatildi[0]:
+                return False  # bul-bitir
+            try:
+                if not win32gui.IsWindowVisible(hwnd):
+                    return True
+                cn = win32gui.GetClassName(hwnd) or ""
+                if cn != "#32770":
+                    return True
+                # Process adı BotanikMedula mı? (BotanikEOS popup'ları bu process'ten)
+                proc = _process_adi(hwnd)
+                if proc and proc != "botanikmedula":
+                    return True
+                # Boyut kontrolü
+                try:
+                    l, t, r, b = win32gui.GetWindowRect(hwnd)
+                    if (r - l) > 700 or (b - t) > 500:
+                        return True
+                except Exception:
+                    return True
+                # Pencerenin Tamam butonunu (AutomationId=2) UIA ile bul
+                try:
+                    desktop = Desktop(backend="uia")
+                    win = desktop.window(handle=hwnd)
+                    # Önce metni kontrol et — bizim bildiğimiz popup mı?
+                    metin_eslesti = False
+                    try:
+                        for d in win.descendants(control_type="Text"):
+                            try:
+                                cap = (d.window_text() or "").strip()
+                                if not cap:
+                                    continue
+                                if ("Etken madde çakışması" in cap or
+                                        "HASTA İLAÇ BİLGİSİ" in cap or
+                                        "ilaç seçiniz" in cap.lower() or
+                                        "ilac seciniz" in cap.lower() or
+                                        "Lütfen bekleyin" in cap):
+                                    metin_eslesti = True
+                                    break
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+                    if not metin_eslesti:
+                        return True  # bilinen popup değil — atla
+                    # Tamam butonunu auto_id="2" ile dene
+                    try:
+                        btn = win.child_window(auto_id="2", control_type="Button")
+                        if btn.exists(timeout=0.3):
+                            btn.invoke()
+                            log(f"    [POPUP] Etken madde çakışması (#{hwnd:x}) — Tamam invoke", "warn")
+                            time.sleep(0.5)
+                            kapatildi[0] = True
+                            return False
+                    except Exception:
+                        pass
+                    # Caption fallback
+                    try:
+                        for d in win.descendants(control_type="Button"):
+                            try:
+                                if (d.window_text() or "").strip() in ("Tamam", "OK", "Evet"):
+                                    d.invoke()
+                                    log(f"    [POPUP] {win32gui.GetWindowText(hwnd) or '#32770'} — Tamam (caption)", "warn")
+                                    time.sleep(0.5)
+                                    kapatildi[0] = True
+                                    return False
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+                    # ENTER fallback — popup'a focus verip Enter gönder
+                    # (invoke ve caption başarısız olursa popup hâlâ aktifse Enter
+                    # default butonuna basar; #32770 dialog'larda default button
+                    # genelde Tamam/OK)
+                    try:
+                        try:
+                            win.set_focus()
+                            time.sleep(0.2)
+                        except Exception:
+                            pass
+                        pyautogui.press("enter")
+                        log(f"    [POPUP] {win32gui.GetWindowText(hwnd) or '#32770'} — Enter gönderildi", "warn")
+                        time.sleep(0.5)
+                        kapatildi[0] = True
+                        return False
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            return True
+
+        win32gui.EnumWindows(_enum_cb, None)
+        if kapatildi[0]:
+            return True
+    except Exception as e:
+        log(f"    [POPUP] Fast-path hatası: {e}", "warn")
+
+    # ── FAST-PATH 2: WinForms uyarı popup'ı (Genel muayene uyarısı vb.) ──
+    # ClassName: WindowsForms10.Window.* (ör: ...8.app.0.134c08f_r8_ad1)
+    # Title: "UYARIDIR..." / "DİKKAT..." / "UYARI..."
+    # İçerikte: "GENEL MUAYENE TANISI", "ICD EKLEME", "UYGUN BİR ICD"
+    # Kapat butonu: TitleBar Close (AutomationId="Close")
+    # Yedek: WM_CLOSE mesajı
+    try:
+        import win32gui
+        kapatildi = [False]
+        WINFORMS_POPUP_TITLES = ("UYARIDIR", "DİKKAT", "UYARI", "DIKKAT")
+        WINFORMS_POPUP_ICERIKLER = (
+            "GENEL MUAYENE TANISI",
+            "ICD EKLEME",
+            "UYGUN BİR ICD",
+            "UYGUN BIR ICD",
+        )
+
+        def _enum_winforms(hwnd, _):
+            if kapatildi[0]:
+                return False
+            try:
+                if not win32gui.IsWindowVisible(hwnd):
+                    return True
+                cn = win32gui.GetClassName(hwnd) or ""
+                if not cn.startswith("WindowsForms10.Window"):
+                    return True
+                # Process kontrolü — sadece BotanikMedula popup'ları
+                proc = _process_adi(hwnd)
+                if proc and proc != "botanikmedula":
+                    return True
+                # Title imzası
+                title = (win32gui.GetWindowText(hwnd) or "").upper()
+                if not any(t in title for t in WINFORMS_POPUP_TITLES):
+                    return True
+                # Boyut kontrolü — küçük modal pencere olmalı (ana pencere değil)
+                try:
+                    l, t, r, b = win32gui.GetWindowRect(hwnd)
+                    if (r - l) > 800 or (b - t) > 600:
+                        return True
+                    if (r - l) <= 0 or (b - t) <= 0:
+                        return True
+                except Exception:
+                    return True
+                # Pencere içeriğinde bilinen imza var mı?
+                try:
+                    desktop = Desktop(backend="uia")
+                    win = desktop.window(handle=hwnd)
+                    metin_eslesti = False
+                    try:
+                        for d in win.descendants(control_type="Text"):
+                            try:
+                                cap = (d.window_text() or "").upper()
+                                if any(imza in cap for imza in WINFORMS_POPUP_ICERIKLER):
+                                    metin_eslesti = True
+                                    break
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+                    if not metin_eslesti:
+                        # İmzasız WinForms uyarı penceresi — yine de title eşleştiyse
+                        # bu BotanikMedula'nın bir uyarı popup'ı; küçük pencere ve
+                        # kapatılması gerekiyor. Yine de güvenlik: en az "UYARIDIR" başlığı
+                        # title'da var olmalı (yukarıda kontrol edildi).
+                        pass
+                    # 1) TitleBar Close butonu (AutomationId="Close")
+                    try:
+                        close_btn = win.child_window(auto_id="Close", control_type="Button")
+                        if close_btn.exists(timeout=0.3):
+                            close_btn.invoke()
+                            log(f"    [POPUP] WinForms uyarı (#{hwnd:x}) "
+                                f"'{title[:40]}' — Close invoke", "warn")
+                            time.sleep(0.5)
+                            kapatildi[0] = True
+                            return False
+                    except Exception:
+                        pass
+                    # 2) WM_CLOSE mesajı (fallback)
+                    try:
+                        win32gui.PostMessage(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+                        log(f"    [POPUP] WinForms uyarı (#{hwnd:x}) "
+                            f"'{title[:40]}' — WM_CLOSE", "warn")
+                        time.sleep(0.5)
+                        kapatildi[0] = True
+                        return False
+                    except Exception:
+                        pass
+                    # 3) Alt+F4 (son çare — pencereye focus verip)
+                    try:
+                        win.set_focus()
+                        time.sleep(0.2)
+                        pyautogui.hotkey("alt", "f4")
+                        log(f"    [POPUP] WinForms uyarı (#{hwnd:x}) "
+                            f"'{title[:40]}' — Alt+F4", "warn")
+                        time.sleep(0.5)
+                        kapatildi[0] = True
+                        return False
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            return True
+
+        win32gui.EnumWindows(_enum_winforms, None)
+        if kapatildi[0]:
+            return True
+    except Exception as e:
+        log(f"    [POPUP] WinForms fast-path hatası: {e}", "warn")
+
+    # ── FAST-PATH bitti, eski yavaş yola düş ──
     # Bağlamlı popup imzaları — kısa kelimeler artık alone match etmez
     popup_imzalari = [
         "Etken madde çakışması",
@@ -220,6 +444,10 @@ def popup_kapat():
         "ilaç seçiniz",
         "ilac seciniz",
         "Lütfen bekleyin",
+        "GENEL MUAYENE TANISI",
+        "UYGUN BİR ICD",
+        "UYGUN BIR ICD",
+        "ICD EKLEME GEREKLİ",
     ]
     kapatma_captions = ("Tamam", "OK", "Evet")  # "Kapat"/"Close" çıkarıldı — pencere kromu butonu olabilir
     POPUP_MAX_W = 700
@@ -229,16 +457,16 @@ def popup_kapat():
         for w in desktop.windows():
             try:
                 handle = w.handle
-                # 1) Ana BotanikMedula penceresine asla dokunma
-                proc = _process_adi(handle)
-                if proc == "botanikmedula":
-                    continue
                 if not w.is_visible():
                     continue
                 title = (w.window_text() or "").strip()
                 if len(title) > 80:
                     continue
-                # 2) Pencere boyutu — tam ekran tarayıcı popup değildir
+                # Pencere boyutu — tam ekran tarayıcı popup değildir.
+                # Bu filtre, BotanikMedula ana tarayıcısını otomatik olarak eler
+                # çünkü o pencere her zaman ≥700×500'dür. Process-name skip yapma —
+                # BotanikMedula içindeki küçük modal dialoglar (JS alert vb.)
+                # geçişe bırak, yoksa "Lütfen ilaç seçiniz" gibi bloklayıcılar kalır.
                 try:
                     rect = w.rectangle()
                     genislik = rect.right - rect.left
@@ -305,88 +533,465 @@ def sistem_dusmus_mu(medula):
     return False
 
 
+def _sayfa_metninde_var_mi(medula, ifadeler: list) -> bool:
+    """Medula sayfasında verilen ifadelerden herhangi biri var mı kontrol et.
+
+    IE_Server içinde Outputtext / span metinler bazen ControlType.Text,
+    bazen Pane, bazen jenerik element olarak okunabilir. Bu fonksiyon
+    farklı control_type'ları sırayla tarar ve fallback olarak tüm
+    descendants'ı window_text() ile kontrol eder.
+    """
+    # Hızlı yol: Text + Pane filtreleri
+    for ctype in ("Text", "Pane"):
+        try:
+            for d in medula.descendants(control_type=ctype):
+                try:
+                    txt = (d.window_text() or "").strip()
+                    if not txt:
+                        continue
+                    for ifade in ifadeler:
+                        if ifade in txt:
+                            return True
+                except Exception:
+                    continue
+        except Exception:
+            continue
+    # Fallback: tüm descendants (yavaş ama güvenilir)
+    try:
+        for d in medula.descendants():
+            try:
+                txt = (d.window_text() or "").strip()
+                if not txt:
+                    continue
+                for ifade in ifadeler:
+                    if ifade in txt:
+                        return True
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return False
+
+
+def recete_kaydi_bulunamadi_mi(medula):
+    """Medula sayfasında 'Reçete kaydı bulunamadı.' mesajı var mı kontrol et.
+    Bu mesaj Sorgula sonrası listede hiç reçete olmadığını gösterir → grup bitti.
+
+    UI Inspector verisi:
+    - Text: 'Reçete kaydı bulunamadı.'
+    - ControlType: ControlType.Text (HTML <SPAN class="outputText">)
+
+    Returns: True bulunduysa / False yoksa
+    """
+    return _sayfa_metninde_var_mi(medula, [
+        "Reçete kaydı bulunamadı",
+        "Recete kaydi bulunamadi",
+        "Reçete kaydı bulunamadı.",
+    ])
+
+
+def donem_bos_mu(medula):
+    """Sorgula sonrası 'Bu döneme ait sonlandırılmamış reçete bulunamadı' mesajı var mı?
+    Bu mesaj seçili dönemde reçete olmadığını gösterir — bir alt döneme geçilmeli.
+
+    UI Inspector verisi:
+    - Text: 'Bu döneme ait sonlandırılmamış reçete bulunamadı'
+    - ControlType: ControlType.Text (HTML SPAN class='outputText')
+    - Page: ReceteListe.jsp
+
+    Returns: True bulunduysa (dönem boş) / False yoksa
+    """
+    return _sayfa_metninde_var_mi(medula, [
+        "Bu döneme ait sonlandırılmamış reçete bulunamadı",
+        "Bu doneme ait sonlandirilmamis recete bulunamadi",
+        "döneme ait sonlandırılmamış",
+        "doneme ait sonlandirilmamis",
+    ])
+
+
 MEDULA_EXE = r"C:\BotanikEczane\BotanikMedula.exe"
 MEDULA_KULLANICI = "16-botan"
 MEDULA_SIFRE = "152634"
 
 
-def medula_yeniden_baslat():
-    """Medula sistem hatası sonrası hızlı kurtarma."""
-    import subprocess
+# ════════════════════════════════════════════════════════════════════
+#  MODÜLER MEDULA BAĞLANTI FONKSİYONLARI (6 ayrı fonksiyon)
+# ════════════════════════════════════════════════════════════════════
+#  1) medula_pencere_aktif_et  — pencereyi bul ve foreground'a getir
+#  2) medula_oturum_aktif_mi   — oturum aktif mi (yan etkisiz kontrol)
+#  3) medula_oturum_yenile     — pasif oturumu Giriş/Geri butonu ile aç
+#  4) medula_taskkill          — process'i zorla kapat
+#  5) medula_exe_ac            — BotanikMedula.exe başlat, şifre formu döndür
+#  6) medula_giris_yap         — şifre formundan kullanıcı/şifre ile giriş
+#
+#  Orkestratör: medula_baglan() — yukarıdakileri doğru sırada çağırır.
+# ════════════════════════════════════════════════════════════════════
 
-    medula = medula_bul()
 
-    # 1. Giriş butonu dene (en hızlı - 3sn)
-    if medula:
-        log("Sistem hatası - Giriş butonu deneniyor...", "error")
-        element_tikla(medula, "btnMedulayaGirisYap", "click")
-        time.sleep(3)
-        medula = medula_bul()
-        if medula and not sistem_dusmus_mu(medula):
-            if element_bul(medula, "form1:menuHtmlCommandExButton31") or element_bul(medula, "f:tbl1"):
-                log("Giriş butonu ile düzeldi", "ok")
-                return medula
-
-    # 2. Taskkill + exe + giriş (10-15sn)
-    log("Taskkill + yeniden başlat...", "error")
+def medula_pencere_aktif_et(diag=False):
+    """(1) Mevcut Medula penceresini bul ve foreground'a getir.
+    Bulunamazsa None döner. Pencereyi KAPATMAZ.
+    """
+    medula = medula_bul(diag=diag)
+    if not medula:
+        return None
     try:
-        subprocess.run(["taskkill", "/F", "/IM", "BotanikMedula.exe"], capture_output=True, timeout=5)
-    except:
+        medula.set_focus()
+        time.sleep(0.2)
+    except Exception:
         pass
-    time.sleep(1)
+    return medula
 
+
+def medula_oturum_aktif_mi(medula):
+    """(2) Pencere üzerinde oturum aktif mi? (sadece kontrol, yan etki yok)
+    True: reçete sayfası, liste menüsü veya navigasyon elementlerinden biri var
+          ve sistem hatası yok.
+    False: hiçbiri yok ya da 'Sistem hatası' sayfası gösteriliyor.
+
+    CACHE KULLANMAZ — direct child_window query yapar. Stale ref'lerin yanlış
+    pozitif vermesini önler (eski Medula session'ından kalan referanslar
+    yeni session'da geçersiz olur ama element_bul cache'den döndürür).
+    """
+    if not medula:
+        return False
+    try:
+        if sistem_dusmus_mu(medula):
+            return False
+    except Exception:
+        pass
+    aids = (
+        "f:tbl1", "f:buttonSonraki", "f:buttonGeriDon",
+        "form1:menuHtmlCommandExButton31",
+        "form1:menuHtmlCommandExButton51",
+        "form1:buttonSonlandirilmamisReceteler",
+    )
+    for aid in aids:
+        try:
+            cw = medula.child_window(auto_id=aid)
+            if cw.exists(timeout=0.2):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def medula_oturum_yenile(medula, max_deneme=3):
+    """(3) Pasif oturumu Giriş + Geri Dön butonlarıyla aktif hale getir.
+    Önce Geri Dön ile ana sayfaya dön (alt sayfada olabiliriz),
+    sonra Giriş butonu ile oturum aç. max_deneme kez tekrarlar.
+    Returns: True başarılı / False başarısız
+    """
+    if not medula:
+        return False
+    # Cache'i temizle — pencere durumu değişti, stale ref'ler geçersiz
+    _aid_cache_global.clear()
+
+    # 1. Önce Geri Dön (alt sayfadaysak ana sayfaya çık)
+    for aid in ("f:buttonGeriDon", "form1:buttonGeriDon"):
+        try:
+            if element_bul(medula, aid):
+                element_tikla(medula, aid, "click")
+                log(f"  [MEDULA] Geri Dön basıldı ({aid})", "info")
+                time.sleep(1)
+                _aid_cache_global.clear()
+                break
+        except Exception:
+            continue
+
+    # 2. Giriş butonu — max_deneme kez
+    for i in range(max_deneme):
+        try:
+            if element_bul(medula, "btnMedulayaGirisYap"):
+                element_tikla(medula, "btnMedulayaGirisYap", "click")
+                log(f"  [MEDULA] Giriş butonu basıldı ({i+1}/{max_deneme})", "info")
+                time.sleep(3)
+                _aid_cache_global.clear()
+        except Exception:
+            pass
+        if medula_oturum_aktif_mi(medula):
+            log(f"  [MEDULA] Oturum yenilendi ({i+1}. denemede)", "ok")
+            return True
+
+    log(f"  [MEDULA] Oturum {max_deneme} denemede yenilenemedi", "warn")
+    return False
+
+
+def medula_taskkill():
+    """(4) BotanikMedula.exe process'ini zorla kapat (BotanikEczane.exe KAPANMAZ).
+    Returns: True kapatıldı / False bulunamadı veya hata
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["taskkill", "/F", "/IM", "BotanikMedula.exe"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            log("  [MEDULA] BotanikMedula.exe kapatıldı (taskkill)", "info")
+            time.sleep(2)
+            return True
+        log("  [MEDULA] Taskkill: process bulunamadı", "warn")
+        return False
+    except Exception as e:
+        log(f"  [MEDULA] Taskkill hatası: {e}", "error")
+        return False
+
+
+def medula_exe_ac():
+    """(5) BotanikMedula.exe'yi başlat ve SifreSorForm penceresini döndür.
+    Returns: SifreSorForm WindowSpecification / None hata
+
+    Window.child_window kullanılabilen WindowSpecification döner — raw
+    UIAWrapper değil. Aksi halde medula_giris_yap çağrısı
+    'UIAWrapper has no attribute child_window' hatası verir.
+    """
+    import subprocess
+    if not os.path.exists(MEDULA_EXE):
+        log(f"  [MEDULA] Exe bulunamadı: {MEDULA_EXE}", "error")
+        return None
     try:
         subprocess.Popen([MEDULA_EXE], cwd=os.path.dirname(MEDULA_EXE))
-    except:
-        log("BotanikMedula.exe başlatılamadı!", "error")
+        log("  [MEDULA] BotanikMedula.exe başlatıldı", "info")
+    except Exception as e:
+        log(f"  [MEDULA] Exe başlatma hatası: {e}", "error")
         return None
 
-    # SifreSorForm bekle + hızlı giriş
+    # SifreSorForm bekle (max 20s) → handle bul → WindowSpecification döndür
     desktop = Desktop(backend="uia")
-    for i in range(15):
-        time.sleep(0.5)
+    for i in range(20):
+        time.sleep(1)
         try:
             for w in desktop.windows():
                 try:
                     if w.element_info.automation_id == "SifreSorForm":
-                        w.set_focus()
-                        time.sleep(0.2)
-                        combo = w.child_window(auto_id="cmbKullanicilar")
-                        combo.click_input()
-                        time.sleep(0.2)
-                        for item in combo.children():
-                            try:
-                                if "botan" in item.window_text().lower():
-                                    item.click_input()
-                                    break
-                            except:
-                                pass
-                        time.sleep(0.2)
-                        sifre = w.child_window(auto_id="txtSifre")
-                        sifre.click_input()
-                        time.sleep(0.1)
-                        sifre.type_keys(MEDULA_SIFRE, with_spaces=True)
-                        w.child_window(auto_id="btnGirisYap").click_input()
-                        log("Giriş yapıldı", "info")
-                        break
-                except:
-                    pass
-            else:
+                        log(f"  [MEDULA] Şifre ekranı açıldı ({i+1}s)", "info")
+                        try:
+                            return desktop.window(handle=w.handle)
+                        except Exception:
+                            return w  # son çare — hiç değilse raw döndür
+                except Exception:
+                    continue
+        except Exception:
+            continue
+    log("  [MEDULA] Şifre ekranı 20s içinde açılmadı", "error")
+    return None
+
+
+def _giris_win_element_bul(giris_win, auto_id):
+    """SifreSorForm içinde element ara — önce child_window, başarısızsa
+    descendants. UIAWrapper/WindowSpecification farkı yüzünden olan
+    'has no attribute child_window' hatasını da bypass eder.
+    """
+    # 1. child_window (WindowSpecification ise)
+    try:
+        cw = giris_win.child_window(auto_id=auto_id)
+        if cw.exists(timeout=0.5):
+            return cw.wrapper_object()
+    except Exception:
+        pass
+    # 2. descendants taraması (UIAWrapper veya stale durumda)
+    try:
+        for d in giris_win.descendants():
+            try:
+                if d.element_info.automation_id == auto_id:
+                    return d
+            except Exception:
                 continue
-            break
-        except:
+    except Exception:
+        pass
+    return None
+
+
+def medula_giris_yap(giris_win):
+    """(6) Şifre formuna kullanıcı + şifre yaz, Giriş Yap'a bas, Medula web
+    penceresi aktif olana kadar bekle.
+    giris_win: medula_exe_ac()'den dönen SifreSorForm window
+    Returns: aktif medula penceresi / None hata
+    """
+    if not giris_win:
+        return None
+    try:
+        try:
+            giris_win.set_focus()
+            time.sleep(0.3)
+        except Exception:
             pass
 
-    # MEDULA penceresi bekle
-    for i in range(15):
-        time.sleep(1)
-        medula = medula_bul()
-        if medula and (element_bul(medula, "form1:menuHtmlCommandExButton31") or element_bul(medula, "f:tbl1")):
-            log(f"Medula hazır ({i+1}s)", "ok")
-            return medula
+        # Kullanıcı combo
+        try:
+            combo = _giris_win_element_bul(giris_win, "cmbKullanicilar")
+            if combo:
+                combo.click_input()
+                time.sleep(0.3)
+                # Listeyi aç + uygun kullanıcıyı seç
+                kullanici_secildi = False
+                try:
+                    for item in combo.children():
+                        try:
+                            if "botan" in (item.window_text() or "").lower():
+                                item.click_input()
+                                kullanici_secildi = True
+                                break
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+                if not kullanici_secildi:
+                    # Combo açıkken descendants'ta ListItem ara (UIA bazen children() vermiyor)
+                    try:
+                        for item in giris_win.descendants(control_type="ListItem"):
+                            try:
+                                if "botan" in (item.window_text() or "").lower():
+                                    item.click_input()
+                                    kullanici_secildi = True
+                                    break
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+                if kullanici_secildi:
+                    log(f"  [MEDULA] Kullanıcı seçildi", "info")
+                else:
+                    log(f"  [MEDULA] Kullanıcı listede bulunamadı", "warn")
+                time.sleep(0.2)
+            else:
+                log(f"  [MEDULA] cmbKullanicilar bulunamadı", "warn")
+        except Exception as e:
+            log(f"  [MEDULA] Kullanıcı seçim hatası: {e}", "warn")
 
-    log("Medula açılamadı!", "error")
+        # Şifre
+        try:
+            sifre = _giris_win_element_bul(giris_win, "txtSifre")
+            if sifre:
+                sifre.click_input()
+                time.sleep(0.1)
+                # Önce alanı temizle (önceki şifre kalmış olabilir)
+                try:
+                    pyautogui.hotkey("ctrl", "a")
+                    time.sleep(0.05)
+                    pyautogui.press("delete")
+                    time.sleep(0.05)
+                except Exception:
+                    pass
+                try:
+                    sifre.type_keys(MEDULA_SIFRE, with_spaces=True)
+                except Exception:
+                    # type_keys başarısızsa pyautogui ile dene
+                    pyautogui.typewrite(MEDULA_SIFRE, interval=0.03)
+                time.sleep(0.2)
+                log(f"  [MEDULA] Şifre yazıldı", "info")
+            else:
+                log(f"  [MEDULA] txtSifre bulunamadı", "error")
+                return None
+        except Exception as e:
+            log(f"  [MEDULA] Şifre yazma hatası: {e}", "warn")
+
+        # Giriş Yap
+        try:
+            btn = _giris_win_element_bul(giris_win, "btnGirisYap")
+            if btn:
+                btn.click_input()
+                log("  [MEDULA] Giriş Yap basıldı", "info")
+            else:
+                # Fallback: Enter tuşu (default button)
+                log("  [MEDULA] btnGirisYap bulunamadı, Enter gönderiliyor", "warn")
+                pyautogui.press("enter")
+        except Exception as e:
+            log(f"  [MEDULA] Giriş butonu hatası: {e}", "error")
+            # Son çare: Enter
+            try:
+                pyautogui.press("enter")
+            except Exception:
+                return None
+    except Exception as e:
+        log(f"  [MEDULA] Giriş hatası: {e}", "error")
+        return None
+
+    # Medula web penceresi açılana ve oturum aktif olana kadar bekle (max 30s)
+    for i in range(30):
+        time.sleep(1)
+        m = medula_bul()
+        if m and medula_oturum_aktif_mi(m):
+            log(f"  [MEDULA] Oturum aktif ({i+1}s)", "ok")
+            return m
+    log("  [MEDULA] Oturum 30s içinde aktif olmadı", "error")
     return None
+
+
+def _temiz_acilis_dene():
+    """Yardımcı: taskkill + exe + giris akışını çalıştır. Cache'i temizler."""
+    _aid_cache_global.clear()
+    medula_taskkill()
+    giris_win = medula_exe_ac()
+    if not giris_win:
+        return None
+    return medula_giris_yap(giris_win)
+
+
+def medula_baglan():
+    """Orkestratör: 6 fonksiyonu doğru sırada çağırarak Medula bağlantısını kurar.
+
+    Akış:
+      1. medula_pencere_aktif_et — pencere ara
+      2a. Bulamazsa: medula_exe_ac (5) + medula_giris_yap (6)
+          ├─ Hata → taskkill (4) + exe (5) + giris (6) tekrar (1 deneme)
+      2b. Bulursa: medula_oturum_aktif_mi (2)
+          ├─ Aktif → kullan
+          └─ Pasif → medula_oturum_yenile (3)
+              ├─ Başarılı → kullan
+              └─ Hata → medula_taskkill (4) + medula_exe_ac (5) + medula_giris_yap (6)
+
+    Açık Medula penceresini KAPATMAZ — sadece son çare olarak taskkill yapar.
+    Bağlantı kurulduğunda cache'i temizler (eski oturumdan stale ref kalmasın).
+    """
+    # Önce cache'i temizle — eski tarama oturumundan stale ref olabilir
+    _aid_cache_global.clear()
+
+    medula = medula_pencere_aktif_et()
+
+    # 1) Pencere yok → exe aç + giriş yap
+    if not medula:
+        log("  [MEDULA] Pencere bulunamadı, exe açılıyor...", "warn")
+        giris_win = medula_exe_ac()
+        if giris_win:
+            m = medula_giris_yap(giris_win)
+            if m:
+                _aid_cache_global.clear()
+                return m
+        # Giriş başarısız → taskkill + 1 kez daha dene (kullanıcı isteği)
+        log("  [MEDULA] İlk giriş başarısız — taskkill + tekrar denenecek", "warn")
+        m = _temiz_acilis_dene()
+        if m:
+            _aid_cache_global.clear()
+        return m
+
+    # 2) Pencere var, oturum aktif mi?
+    if medula_oturum_aktif_mi(medula):
+        log("  [MEDULA] Pencere bulundu, oturum aktif", "ok")
+        _aid_cache_global.clear()  # yeni tarama → eski cache'i bırakma
+        return medula
+
+    # 3) Pasif oturum → Giriş butonu ile yenile
+    log("  [MEDULA] Pencere bulundu, oturum pasif — yenileniyor...", "warn")
+    if medula_oturum_yenile(medula):
+        _aid_cache_global.clear()
+        return medula
+
+    # 4) Yenileme başarısız → taskkill + exe + giriş (son çare)
+    log("  [MEDULA] Oturum yenilenemedi — taskkill ile yeniden başlatılıyor", "warn")
+    m = _temiz_acilis_dene()
+    if m:
+        return m
+    # Bir daha dene (kullanıcı isteği — hata olunca taskkill + tekrar aç + giriş)
+    log("  [MEDULA] İlk taskkill+giriş başarısız — bir kez daha denenecek", "warn")
+    return _temiz_acilis_dene()
+
+
+# Eski isim — geri uyumluluk wrapper'ı
+def medula_yeniden_baslat():
+    """Sistem hatası sonrası kurtarma. medula_baglan() kullan."""
+    return medula_baglan()
 
 
 _aid_cache_global = {}  # recete_tum_bilgi_topla'dan doldurulan cache
@@ -422,7 +1027,12 @@ def element_bul(medula, auto_id):
 
 
 def element_tikla(medula, auto_id, yontem="invoke"):
-    """Element bul + tıkla + aktivite bildir. Tüm Medula etkileşimleri bu fonksiyonla yapılmalı."""
+    """Element bul + tıkla + aktivite bildir. Tüm Medula etkileşimleri bu fonksiyonla yapılmalı.
+
+    Stale-cache koruması: invoke/click hata fırlatırsa cache'ten o anahtarı
+    çıkarır. Böylece bir sonraki çağrı element_bul'u temiz başlatır ve
+    DOM'dan taze referans alır (eski tarafından sayfa değişmiş olabilir).
+    """
     elem = element_bul(medula, auto_id)
     if not elem:
         return False
@@ -433,7 +1043,13 @@ def element_tikla(medula, auto_id, yontem="invoke"):
             elem.click_input()
         aktivite_bildir()
         return True
-    except:
+    except Exception:
+        # Stale ref / sayfa değişmiş — cache'ten temizle ki bir sonraki
+        # arama child_window/descendants ile taze referans bulsun
+        try:
+            _aid_cache_global.pop(auto_id, None)
+        except Exception:
+            pass
         return False
 
 
@@ -1427,14 +2043,33 @@ def recete_tum_bilgi_topla(medula):
             ilac["doz_aciklama"] = f"Raporlu ({ilac['rapor_kodu']}), doz şeridi yok"
             continue
 
+        # Çoklu şerit: tüm şeritleri parse et, en yüksek günlük dozu kullan.
+        # Çoklu şerit aynı ilacın farklı kullanım şemalarını gösterir;
+        # reçete dozu en yüksek dozun altındaysa uygundur.
+        cogul_serit_metni = ""
         if len(doz_listesi) > 1:
-            ilac["doz_kontrol"] = "uyari"
-            ilac["doz_aciklama"] = f"Birden fazla rapor dozu ({len(doz_listesi)} şerit) — manuel kontrol"
-            ilac["eos_rapor_doz_listesi"] = doz_listesi
-            continue
-
-        rapor_doz_metin = doz_listesi[0]
-        rapor_doz_parsed = _doz_metin_parse(rapor_doz_metin)
+            parsed_listesi = [p for p in (_doz_metin_parse(s) for s in doz_listesi) if p]
+            if parsed_listesi:
+                en_yuksek = max(parsed_listesi, key=lambda x: x.get("gunluk_doz", 0))
+                rapor_doz_metin = en_yuksek.get("metin") or doz_listesi[0]
+                rapor_doz_parsed = en_yuksek
+                serit_listesi_str = " | ".join(s.strip() for s in doz_listesi)
+                cogul_serit_metni = f" (çoklu şerit, en yüksek doz seçildi: {serit_listesi_str})"
+                ilac["eos_rapor_doz_listesi"] = doz_listesi
+            else:
+                # Hiçbiri parse edilemedi — Medula reçeteyi onaylamışsa uygun say
+                serit_listesi_str = " | ".join(s.strip() for s in doz_listesi)
+                ilac["doz_kontrol"] = "uygun"
+                ilac["doz_aciklama"] = (
+                    f"Çoklu rapor doz şeridi ({len(doz_listesi)}) — "
+                    f"Medula şart kontrolü yapmış, eczacı ek kontrol gerekmez "
+                    f"[{serit_listesi_str}]"
+                )
+                ilac["eos_rapor_doz_listesi"] = doz_listesi
+                continue
+        else:
+            rapor_doz_metin = doz_listesi[0]
+            rapor_doz_parsed = _doz_metin_parse(rapor_doz_metin)
         if not rapor_doz_parsed:
             ilac["doz_kontrol"] = "okunamadi"
             ilac["doz_aciklama"] = f"Rapor dozu parse edilemedi: {rapor_doz_metin}"
@@ -1477,7 +2112,17 @@ def recete_tum_bilgi_topla(medula):
             recete_doz["metin"] += f" (×{tablet_dozaj}mg={round(recete_mg, 2)}mg)"
 
         uygun, aciklama_doz = doz_karsilastir(recete_gunluk, rapor_gunluk, recete_doz, rapor_doz_parsed)
-        if uygun:
+        if cogul_serit_metni:
+            aciklama_doz = aciklama_doz + cogul_serit_metni
+        # Mesajsız rapor: doz şartı bağlayıcı değil, aşım uyarısı yutkun
+        msj = (ilac.get("msj", "") or "").lower()
+        if msj != "var":
+            ilac["doz_kontrol"] = "uygun"
+            aciklama_doz = (
+                f"Doz uygun (mesajsız rapor — doz şartı bağlayıcı değil) "
+                f"[{recete_doz.get('metin','')} vs {rapor_doz_parsed.get('metin','')}]"
+            )
+        elif uygun:
             ilac["doz_kontrol"] = "uygun"
         else:
             ilac["doz_kontrol"] = "uygunsuz"
@@ -1748,11 +2393,27 @@ def _toplu_doz_karsilastir(medula, ilaclar):
       - ilac["recete_doz"]: Parse edilmiş reçete dozu dict
       - ilac["rapor_doz_parsed"]: Parse edilmiş rapor dozu dict
     """
+    # Enteral nutrisyon ürünleri için doz/birim hesabı standart formüllerle
+    # yapılamaz (kalori/kg-bazlı). SUT detaylı kontrol fonksiyonu (4.2.x enteral)
+    # bu hesabı zaten yapar — burada reçete-rapor doz karşılaştırmasını atlayalım.
+    ENTERAL_KEYWORDS = (
+        'EVOLVIA', 'FRESUBIN', 'NUTRIDRINK', 'NUTREN', 'RESOURCE', 'PEPTAMEN',
+        'NEPRO', 'IMPACT', 'PROSURE', 'MODULEN', 'GLUCERNA', 'DIASIP', 'CUBITAN',
+        'ENSURE', 'CLINUTREN', 'PEDIASURE', 'OSMOLITE', 'JEVITY', 'ISOSOURCE',
+    )
+
     for i, ilac in enumerate(ilaclar):
         # Raporsuz ilaçlar: doz kontrolü yok
         if not ilac.get("rapor_kodu"):
             ilac["doz_kontrol"] = "raporsuz"
             ilac["doz_aciklama"] = ""
+            continue
+
+        # Enteral nutrisyon — doz hesabı SUT detaylı kontrolde yapılır
+        ad_upper = (ilac.get("ilac_adi") or "").upper()
+        if any(k in ad_upper for k in ENTERAL_KEYWORDS):
+            ilac["doz_kontrol"] = "bypass"
+            ilac["doz_aciklama"] = "Enteral nutrisyon — kalori/kg hesabı SUT detaylı kontrolünde yapılır"
             continue
 
         # Rapor dozu şeritleri
@@ -1766,16 +2427,43 @@ def _toplu_doz_karsilastir(medula, ilaclar):
             ilac["doz_aciklama"] = f"Raporlu ({ilac['rapor_kodu']}), doz şeridi yok"
             continue
 
-        # Birden fazla şerit varsa: manuel kontrol gerekir
+        # Birden fazla şerit varsa: tümünü parse et, en yüksek günlük dozu kullan.
+        # Çoklu şerit genellikle aynı ilacın farklı kullanım şemalarını gösterir
+        # (ör: ENOX 4000 — 1x1 vs 2x1). En yüksek dozun altındaki reçete uygundur.
+        cogul_serit_metni = ""
         if len(doz_listesi) > 1:
-            ilac["doz_kontrol"] = "uyari"
-            ilac["doz_aciklama"] = f"Birden fazla rapor dozu ({len(doz_listesi)} şerit) — manuel kontrol"
-            ilac["eos_rapor_doz_listesi"] = doz_listesi
-            continue
-
-        # Tek şerit — rapor dozunu parse et
-        rapor_doz_metin = doz_listesi[0]
-        rapor_doz_parsed = _doz_metin_parse(rapor_doz_metin)
+            parsed_listesi = []
+            for serit in doz_listesi:
+                p = _doz_metin_parse(serit)
+                if p:
+                    parsed_listesi.append(p)
+            if parsed_listesi:
+                # En yüksek günlük dozu bul
+                en_yuksek = max(parsed_listesi, key=lambda x: x.get("gunluk_doz", 0))
+                rapor_doz_metin = en_yuksek.get("metin") or doz_listesi[
+                    [x.get("gunluk_doz", 0) for x in parsed_listesi].index(en_yuksek["gunluk_doz"])
+                ]
+                rapor_doz_parsed = en_yuksek
+                serit_listesi_str = " | ".join(s.strip() for s in doz_listesi)
+                cogul_serit_metni = f" (çoklu şerit, en yüksek doz seçildi: {serit_listesi_str})"
+                ilac["eos_rapor_doz_listesi"] = doz_listesi
+            else:
+                # Hiçbiri parse edilemedi — Medula reçeteyi onaylamışsa SGK
+                # ödüyor demek, doz şartı zaten Medula tarafında kontrol edilmiş.
+                # Şeritleri açıklamada göster ama UYGUN olarak işaretle.
+                serit_listesi_str = " | ".join(s.strip() for s in doz_listesi)
+                ilac["doz_kontrol"] = "uygun"
+                ilac["doz_aciklama"] = (
+                    f"Çoklu rapor doz şeridi ({len(doz_listesi)}) — "
+                    f"Medula şart kontrolü yapmış, eczacı ek kontrol gerekmez "
+                    f"[{serit_listesi_str}]"
+                )
+                ilac["eos_rapor_doz_listesi"] = doz_listesi
+                continue
+        else:
+            # Tek şerit — rapor dozunu parse et
+            rapor_doz_metin = doz_listesi[0]
+            rapor_doz_parsed = _doz_metin_parse(rapor_doz_metin)
         if not rapor_doz_parsed:
             ilac["doz_kontrol"] = "okunamadi"
             ilac["doz_aciklama"] = f"Rapor dozu parse edilemedi: {rapor_doz_metin}"
@@ -1795,24 +2483,22 @@ def _toplu_doz_karsilastir(medula, ilaclar):
         rapor_gunluk = rapor_doz_parsed["gunluk_doz"]
         recete_gunluk = recete_doz["gunluk_doz"]
 
-        # ═══ BİRİM DÖNÜŞÜM: Reçete ADET, Rapor MG olabilir (veya tersi) ═══
+        # ═══ BİRİM DÖNÜŞÜM: Reçete ADET, Rapor MG olabilir ═══
+        # Reçete tarafı Medula girişinde her zaman Adet bazlı (t4 = doz alanı = adet).
+        # Dönüşüm SADECE rapor mg/mcg bazlı + reçete adet bazlıyken yapılır.
+        # Heuristic karşılaştırma (rapor_doz_val >= tablet_dozaj*0.5) yanlış pozitif
+        # üretiyordu (ör: NORVASC 5MG rapor "1 adet/gün" iken reçete tarafına ×5mg
+        # uygulanıp 5x doz aşımı false alarmı çıkıyordu).
         tablet_dozaj = _ilac_adından_dozaj_cikar(ilac.get("ilac_adi", ""))
-        rapor_doz_val = rapor_doz_parsed["doz"]
-        recete_doz_val = recete_doz["doz"]
+        rapor_birim = rapor_doz_parsed.get("doz_birim", "Adet")
 
-        if tablet_dozaj and tablet_dozaj > 1:
-            if rapor_doz_val >= tablet_dozaj * 0.5 and recete_doz_val <= 10:
-                # Reçete adet bazlı, rapor mg bazlı → reçeteyi mg'ye çevir
-                recete_mg = recete_gunluk * tablet_dozaj
-                log(f"    [DOZ ] Birim dönüşümü: reçete {recete_gunluk} adet × {tablet_dozaj}mg = {recete_mg}mg/gün | rapor {rapor_gunluk}mg/gün", "info")
-                recete_gunluk = recete_mg
-                recete_doz["gunluk_doz"] = round(recete_mg, 2)
-                recete_doz["metin"] += f" (×{tablet_dozaj}mg={round(recete_mg, 2)}mg)"
-            elif recete_doz_val >= tablet_dozaj * 0.5 and rapor_doz_val <= 10:
-                # Tam tersi: reçete mg bazlı, rapor adet bazlı
-                rapor_mg = rapor_gunluk * tablet_dozaj
-                log(f"    [DOZ ] Birim dönüşümü (ters): rapor {rapor_gunluk} adet × {tablet_dozaj}mg = {rapor_mg}mg/gün | reçete {recete_gunluk}mg/gün", "info")
-                rapor_gunluk = rapor_mg
+        if tablet_dozaj and tablet_dozaj > 1 and rapor_birim in ("Miligram", "Mikrogram"):
+            # Reçete adet → mg/mcg çevir (rapor mg cinsinden ölçülmüş)
+            recete_mg = recete_gunluk * tablet_dozaj
+            log(f"    [DOZ ] Birim dönüşümü: reçete {recete_gunluk} adet × {tablet_dozaj}mg = {recete_mg}mg/gün | rapor {rapor_gunluk} {rapor_birim.lower()}/gün", "info")
+            recete_gunluk = recete_mg
+            recete_doz["gunluk_doz"] = round(recete_mg, 2)
+            recete_doz["metin"] += f" (×{tablet_dozaj}mg={round(recete_mg, 2)}mg)"
 
         # Periyot birim düzeltmesi (reçete birimi yanlış okunmuş olabilir)
         r_birim = recete_doz.get("periyot_birim", "Günde")
@@ -1824,10 +2510,24 @@ def _toplu_doz_karsilastir(medula, ilaclar):
 
         # Karşılaştır
         uygun, doz_aciklama = doz_karsilastir(recete_gunluk, rapor_gunluk, recete_doz, rapor_doz_parsed)
-        if not uygun:
+        if cogul_serit_metni:
+            doz_aciklama = doz_aciklama + cogul_serit_metni
+
+        # Rapor mesajı yoksa rapor SUT şartı içermez (sadece bilgilendirme/tanı).
+        # Bu durumda rapor dozu katı bir üst sınır değil — 2× altı/üstü farkı
+        # gözetmeden tüm doz aşımı uyarılarını yutkun. Medula reçeteyi kabul
+        # ettiyse SGK ödüyor demek; eczacı tarafında ek alarm gerekmez.
+        msj = (ilac.get("msj", "") or "").lower()
+        if msj != "var":
+            ilac["doz_kontrol"] = "uygun"
+            doz_aciklama = (
+                f"Doz uygun (mesajsız rapor — doz şartı bağlayıcı değil) "
+                f"[{recete_doz.get('metin','')} vs {rapor_doz_parsed.get('metin','')}]"
+            )
+        elif not uygun:
             ilac["doz_kontrol"] = "uygunsuz"
         elif "⚠" in doz_aciklama or "manuel kontrol" in doz_aciklama:
-            ilac["doz_kontrol"] = "uyari"  # rapor üstü ama 2× altında
+            ilac["doz_kontrol"] = "uyari"  # rapor üstü ama 2× altında, mesaj var
         else:
             ilac["doz_kontrol"] = "uygun"
         ilac["doz_aciklama"] = doz_aciklama
@@ -2310,7 +3010,10 @@ def _doz_metin_parse(doz_metin):
         "periyot_sayi": periyot_sayi, "periyot_birim": periyot_birim,
         "doz_birim": doz_birim,
         "gunluk_doz": round(gunluk_doz, 2),
-        "metin": f"{periyot_birim} {periyot_sayi} x {doz}"
+        # SUT formatı: <Periyot> <Carpan> x <Doz>  (ör: "Günde 2 x 1.0")
+        # Daha önce burada periyot_sayi yazılıyordu — yanıltıcıydı (2x1 reçete
+        # log'da "1 x 1.0" gibi görünüyordu). Düzeltildi.
+        "metin": f"{periyot_birim} {int(carpan) if carpan == int(carpan) else carpan} x {doz}"
     }
 
 
@@ -2502,8 +3205,9 @@ def botanik_eos_doz_penceresi_oku():
     return satirlar
 
 
-def erecete_aciklama_oku(medula):
+def erecete_aciklama_oku(medula, recete_no=None):
     """E-Reçete Görüntüle sayfasını aç, açıklama ve tanı metinlerini oku, geri dön.
+    recete_no: Geri dönüş başarısızsa Reçete Sorgu ile bu reçeteye dönmek için.
     Returns: dict {aciklamalar, tanilar, tum_metin} veya None
     """
     import pyautogui
@@ -2511,10 +3215,38 @@ def erecete_aciklama_oku(medula):
 
     btn = element_bul(medula, "f:buttonEreceteGoruntule")
     if not btn:
+        log(f"    [E-REÇETE] f:buttonEreceteGoruntule butonu bulunamadı", "warn")
         return None
 
     btn.invoke()
-    time.sleep(1.5)
+    log(f"    [E-REÇETE] Görüntüle butonu tıklandı, sayfa açılıyor...", "info")
+    # Cache invalidation: E-Reçete sayfası açılıyor — reçete sayfasındaki tüm
+    # element referansları (f:tbl1, f:buttonSonraki vb.) artık defunct DOM
+    # node'lara işaret ediyor. Geri döndüğümüzde bu stale ref'ler sessiz invoke
+    # başarısızlığına yol açıyor (özellikle ARANESP gibi ESA reçetelerinde
+    # Sonraki ilerletmiyor görünüyor).
+    global _aid_cache_global
+    _aid_cache_global = {}
+    time.sleep(2.0)
+
+    # webBrowser1'e focus ver — pyautogui.scroll mouse pozisyonuna göre çalışıyor,
+    # focus IE-embed'de değilse scroll boşa gidiyor.
+    try:
+        for c in medula.children():
+            try:
+                if c.element_info.automation_id == "webBrowser1":
+                    c.set_focus()
+                    # IE-embed sayfasının ortasına mouse'u götür ki scroll buraya gitsin
+                    rect = c.rectangle()
+                    cx = (rect.left + rect.right) // 2
+                    cy = (rect.top + rect.bottom) // 2
+                    pyautogui.moveTo(cx, cy)
+                    time.sleep(0.2)
+                    break
+            except Exception:
+                continue
+    except Exception:
+        pass
 
     # Optimize: TEK descendants() çağrısı + scroll sonrası sadece yeni elementleri oku
     sonuc = {"aciklamalar": [], "tanilar": [], "tum_metin": ""}
@@ -2541,11 +3273,16 @@ def erecete_aciklama_oku(medula):
             try:
                 txt = d.window_text() or ''
                 ts = txt.strip()
-                if len(ts) < 5 or ts in parcalar_set:
+                if len(ts) < 3 or ts in parcalar_set:
                     continue
-                r = d.rectangle()
-                if r.top < 200:
-                    continue
+                # r.top < 100: çok üstteki menü/header öğelerini at ama
+                # E-Reçete'nin tüm içerik bölgesini koru (Tetkik Sonucu vs.)
+                try:
+                    r = d.rectangle()
+                    if r.top < 100:
+                        continue
+                except Exception:
+                    pass
 
                 parcalar_set.add(ts)
 
@@ -2559,19 +3296,36 @@ def erecete_aciklama_oku(medula):
             except:
                 pass
 
+    # Önce sayfayı en başa al (Home tuşu IE-embed'de en başa götürür)
+    try:
+        pyautogui.press("home")
+        time.sleep(0.3)
+    except Exception:
+        pass
+
     # İlk okuma
     _elementleri_tara()
+    log(f"    [E-REÇETE] İlk tarama: {len(parcalar_set)} metin parçası", "info")
 
-    # Scroll ile ek içerik (sadece yeni element varsa descendants çağır)
-    for _ in range(2):
+    # Scroll ile aşağı doğru tüm sayfayı tara (en fazla 6 kez, yeni içerik yoksa kes)
+    for scroll_iter in range(6):
         eski_boyut = len(parcalar_set)
-        pyautogui.scroll(-5)
-        time.sleep(0.3)
+        try:
+            # Hem scroll hem PageDown — IE-embed bazen birinin tepkimez veriyor
+            pyautogui.scroll(-10)
+            time.sleep(0.2)
+            pyautogui.press("pagedown")
+            time.sleep(0.4)
+        except Exception:
+            pass
         _elementleri_tara()
-        if len(parcalar_set) == eski_boyut:
+        yeni_eklendi = len(parcalar_set) - eski_boyut
+        if yeni_eklendi == 0:
             break  # Yeni element yok, scroll gereksiz
+        log(f"    [E-REÇETE] Scroll {scroll_iter+1}: +{yeni_eklendi} metin parçası", "info")
 
     sonuc["tum_metin"] = " ".join(parcalar_set)
+    log(f"    [E-REÇETE] Toplam {len(parcalar_set)} parça, {len(sonuc['tum_metin'])} karakter okundu", "info")
 
     # Geri dön - E-Reçete sayfasında "Geri" caption'lı element
     # (buton, hyperlink, ya da başka ctrl type olabilir - hepsini tara)
@@ -2597,16 +3351,20 @@ def erecete_aciklama_oku(medula):
         pass
 
     if not geri_tiklandi:
-        # Fallback: automation_id ile dene
-        try:
-            geri = element_bul(medula, "form1:buttonGeriDon")
-            if geri:
-                geri.invoke()
-                time.sleep(0.5)
-                geri_tiklandi = True
-                log(f"    [OKU ] E-Reçete → form1:buttonGeriDon fallback", "info")
-        except Exception:
-            pass
+        # Fallback: automation_id ile dene. E-Reçete Görüntüle sayfasındaki Geri Dön
+        # butonu inspect.exe'de "f:buttonGeriDon" olarak görünüyor. Rapor sayfasındaki
+        # Geri Dön ise "form1:buttonGeriDon". İkisini de sırayla dene.
+        for aid in ("f:buttonGeriDon", "form1:buttonGeriDon"):
+            try:
+                geri = element_bul(medula, aid)
+                if geri:
+                    geri.invoke()
+                    time.sleep(0.5)
+                    geri_tiklandi = True
+                    log(f"    [OKU ] E-Reçete → {aid} fallback", "info")
+                    break
+            except Exception:
+                continue
 
     if not geri_tiklandi:
         # Tanı: ekrandaki butonları logla
@@ -2633,6 +3391,27 @@ def erecete_aciklama_oku(medula):
             pyautogui.press("escape")
         except:
             pass
+
+    # Cache invalidation: E-Reçete'den döndük, sayfa yeniden render edildi.
+    # Stale ref'ler temizlenmezse Sonraki, Geri Dön gibi kritik butonlarda
+    # invoke sessiz başarısız oluyor.
+    _aid_cache_global = {}
+
+    # GÜVENLİK AĞI: Reçete sayfasına dönüldü mü? Geri Dön başarısızsa Sonraki yine
+    # kayıpız. Sayfa yüklenmesi için biraz daha bekle, Reçete Sorgu fallback'ini
+    # kullanma (tek-reçete moduna sokuyor, Sonraki ilerletmiyor).
+    recete_sayfasinda = False
+    for bekle in range(6):
+        try:
+            if (element_bul(medula, "f:tbl1") and
+                    element_bul(medula, "f:buttonSonraki")):
+                recete_sayfasinda = True
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+    if not recete_sayfasinda:
+        log(f"    [E-REÇETE] Reçete sayfasına dönülemedi — listeye dönüş kurtarmaya bırakılıyor", "warn")
 
     return sonuc
 
@@ -2774,7 +3553,8 @@ def recete_teshisleri_oku(medula):
     return teshisler
 
 
-def uyari_kodu_kontrol(uyari_kodlari, recete_teshisleri, rapor_aciklamalari, rapor_tanilari):
+def uyari_kodu_kontrol(uyari_kodlari, recete_teshisleri, rapor_aciklamalari, rapor_tanilari,
+                         doktor_uzmanligi=""):
     """Uyarı kodlarının reçete/rapor teşhis ve açıklamalarıyla eşleşip eşleşmediğini kontrol et.
 
     Her uyarı kodu için sırayla şu kaynakları arar:
@@ -2786,10 +3566,16 @@ def uyari_kodu_kontrol(uyari_kodlari, recete_teshisleri, rapor_aciklamalari, rap
     Özel kurallar:
       - Gabapentin/Pregabalin ilaçlarında "nöropatik ağrı" uyarı kodu →
         reçete/rapor açıklamalarında "nöropatik ağrı" ifadesi aranır
+      - Uyarı kodu 272 (TİTCK EK-4/A endikasyon dışı) → endikasyon_disi_liste
+        ile ilaç+tanı+branş kombinasyonu kontrolü
+
+    Args:
+        doktor_uzmanligi: 272 kodu kontrolü için doktor branşı (opsiyonel)
 
     Returns: list of dict [{kod, aciklama, ilac_adi, durum, eslesen_oran, eslesen_kaynak, eslesen_metin}, ...]
     """
     from recete_kontrol.sut_kontrolleri import _turkce_normalize
+    from recete_kontrol.endikasyon_disi_liste import endikasyon_disi_kontrol
 
     # Gabapentin/Pregabalin ilaç isimleri (nöropatik ağrı özel kuralı)
     GABAPENTIN_PREGABALIN = [
@@ -2809,6 +3595,43 @@ def uyari_kodu_kontrol(uyari_kodlari, recete_teshisleri, rapor_aciklamalari, rap
     for uk in uyari_kodlari:
         aciklama_norm = _turkce_normalize(uk["aciklama"])
         ilac_adi_upper = (uk.get("ilac_adi", "") or "").upper()
+        kod_str = str(uk.get("kod", "")).strip()
+
+        # ══════════════════════════════════════════════════════════════
+        # ÖZEL KURAL 0: KOD 272 — TİTCK EK-4/A endikasyon dışı liste
+        # ══════════════════════════════════════════════════════════════
+        # "Sağlık Bakanlığı Ek Onayı Alınmadan Kullanılabilecek Endikasyon
+        # Dışı İlaçlar" — Medula uyarı kodu 272.
+        # İlaç + tanı + branş kombinasyonu listede aranır.
+        is_272 = (kod_str == "272" or "272" in kod_str
+                    or "ek onayi alinmadan" in aciklama_norm
+                    or "endikasyon disi" in aciklama_norm)
+        if is_272:
+            ilac_adi_full = uk.get("ilac_adi", "") or ""
+            etkin_madde = uk.get("etkin_madde", "") or ""
+            ed_sonuc = endikasyon_disi_kontrol(
+                ilac_adi=ilac_adi_full,
+                etkin_madde=etkin_madde,
+                doktor_uzmanligi=doktor_uzmanligi,
+                recete_teshisleri=recete_teshisleri,
+                rapor_tanilari=rapor_tanilari,
+                rapor_aciklamalari=rapor_aciklamalari,
+            )
+            durum_map = {
+                "UYGUN": "UYGUN",
+                "UYGUN_DEGIL": "UYGUNSUZ",
+                "KONTROL_EDILEMEDI": "EDILEMEDI",
+            }
+            sonuclar.append({
+                **uk,
+                "durum": durum_map.get(ed_sonuc["durum"], "EDILEMEDI"),
+                "eslesen_oran": 1.0 if ed_sonuc["durum"] == "UYGUN" else 0.0,
+                "eslesen_kaynak": "TİTCK EK-4/A liste kontrolü",
+                "eslesen_metin": ed_sonuc.get("eslesen_tani", "")[:80],
+                "_ozel_kural": ed_sonuc["mesaj"],
+                "_sut_kurali": ed_sonuc.get("sut_kurali", ""),
+            })
+            continue
 
         # ── ÖZEL KURAL 1: Gabapentin/Pregabalin + "nöropatik ağrı" uyarı kodu ──
         noropatik_agri_kural = False
@@ -3102,9 +3925,22 @@ def rapor_ac_oku_geri_don(medula, satir_idx):
     """
     if not checkbox_sec(medula, satir_idx):
         log(f"    Checkbox seçilemedi (satır {satir_idx})", "warn")
+        # Açık kalmış olabilecek modal varsa Escape ile düşür — sonraki adım
+        # (Sonraki butonu vb.) bloklanmasın.
+        try:
+            pyautogui.press("escape")
+        except Exception:
+            pass
         return None
 
     if not rapor_ac(medula, satir_idx=satir_idx):
+        # rapor_ac fail durumunda popup_kapat içinde modal kapatılamamış olabilir
+        # (özellikle JS alert tipi). Escape + kısa bekleme ile state'i temizle.
+        try:
+            pyautogui.press("escape")
+            time.sleep(0.3)
+        except Exception:
+            pass
         return None
 
     # 1. Medula rapor sayfasından metinleri oku
@@ -3134,29 +3970,75 @@ def rapor_ac_oku_geri_don(medula, satir_idx):
             # Çoklu ilaçlı raporda [0] yanıltıcı — hepsini listele
             log(f"    [OKU ] Rapor dozları ({len(sonuc['dozlar'])}): {' | '.join(sonuc['dozlar'])}", "info")
 
-    rapor_geri_don(medula)
+    # Reçete sayfasına dönüşü zorla doğrula — Sonraki butonu için kritik
+    if not rapor_geri_don(medula):
+        # Rapor → reçete dönüşü başarısız: Reçete Sorgu ile geri dönmeyi dene
+        log(f"    [RAPOR] Geri dönüş başarısız — Reçete Sorgu ile geri dönülüyor", "warn")
+        try:
+            recete_no_kurtarma = recete_no_oku(medula)
+            if not recete_no_kurtarma:
+                # Sayfa kayıp — son işlenen reçeteden değil, başlatıcı reçete bilinmediği
+                # için sadece Escape + tekrar dene
+                pyautogui.press("escape")
+                time.sleep(0.5)
+        except Exception:
+            pass
     return sonuc
 
 
 def rapor_geri_don(medula):
-    """Rapor sayfasından reçete sayfasına geri dön"""
+    """Rapor sayfasından reçete sayfasına geri dön.
+    Reçete sayfasına dönüldüğü doğrulanır (f:tbl1 + f:buttonSonraki); olmazsa
+    retry yapılır. Returns True/False — çağıran taraf doğrulamalı.
+    """
     global _aid_cache_global
     # Sadece rapor sayfası elementlerini temizle (form1: prefix), reçete elementlerini koru
     _aid_cache_global = {k: v for k, v in _aid_cache_global.items() if not k.startswith("form1:")}
-    if element_bul(medula, "form1:buttonGeriDon"):
-        element_tikla(medula, "form1:buttonGeriDon")
-    elif element_bul(medula, "f:buttonGeriDon"):
-        return True
-    # Optimize: exists() ile aktif bekleme (eski: sleep(1) + 8×sleep(0.5) = 5sn)
-    try:
-        cw = medula.child_window(auto_id="f:tbl1", found_index=0)
-        if cw.exists(timeout=3):
-            return True
-    except:
-        pass
-    # Fallback
-    if element_bul(medula, "f:buttonSonraki"):
-        return True
+
+    def _on_recete_sayfasi():
+        try:
+            return (element_bul(medula, "f:tbl1") and
+                    element_bul(medula, "f:buttonSonraki"))
+        except Exception:
+            return False
+
+    for deneme in range(2):
+        # Geri Dön butonuna bas (rapor sayfası: form1:buttonGeriDon)
+        tiklandi = False
+        if element_bul(medula, "form1:buttonGeriDon"):
+            element_tikla(medula, "form1:buttonGeriDon")
+            tiklandi = True
+        elif element_bul(medula, "f:buttonGeriDon"):
+            element_tikla(medula, "f:buttonGeriDon")
+            tiklandi = True
+
+        if not tiklandi:
+            # Rapor sayfasında değiliz olabilir — zaten reçete sayfasındaysak başarılı
+            if _on_recete_sayfasi():
+                return True
+            # Hiçbir Geri Dön butonu yok ve reçete sayfası da değil — Escape ile dene
+            try:
+                pyautogui.press("escape")
+                time.sleep(0.5)
+            except Exception:
+                pass
+
+        # Reçete sayfasına döndüğümüzü doğrula (6sn bekle)
+        try:
+            cw = medula.child_window(auto_id="f:tbl1", found_index=0)
+            if cw.exists(timeout=6):
+                # Sonraki butonu da hazır olmalı
+                if _on_recete_sayfasi():
+                    return True
+        except Exception:
+            pass
+
+        # 1. denemede başarısız → kısa bekleme + retry
+        if deneme == 0:
+            log("    Rapor → reçete dönüşü doğrulanamadı, tekrar deneniyor...", "warn")
+            time.sleep(1)
+
+    log("    Rapor sayfasından dönüş başarısız (2 deneme)", "warn")
     return False
 
 
@@ -3378,15 +4260,61 @@ def sut_mesaj_kontrol(ilac, mesaj_basliklar, mesaj_metni, recete_teshisleri=None
             log(f"    │ Buluna: {rapor.bulunan_metin[:80]}", "info")
         elif rapor.sonuc.value != "uygun":
             log(f"    │ Buluna: (metinde eşleşme bulunamadı)", "warn")
+        # ESA gibi lab-tabanlı kontrollerde parse edilen değerleri ve kaynaklarını göster
+        if rapor.uyari:
+            for satir in str(rapor.uyari).split(" | "):
+                if satir.strip():
+                    log(f"    │ Detay : {satir.strip()[:120]}", "info")
+        # Detaylar dict'inde Hb/Ferritin/TSAT/217 kodu/uzman branş varsa özet ver
+        if rapor.detaylar and isinstance(rapor.detaylar, dict):
+            d = rapor.detaylar
+            esa_ozet = []
+            if d.get('hb') is not None:
+                esa_ozet.append(f"Hb={d['hb']} ({d.get('hb_kaynak') or '-'})")
+            if d.get('ferritin') is not None:
+                esa_ozet.append(f"Ferritin={d['ferritin']} ({d.get('ferritin_kaynak') or '-'})")
+            if d.get('tsat') is not None:
+                esa_ozet.append(f"TSAT=%{d['tsat']} ({d.get('tsat_kaynak') or '-'})")
+            if d.get('kod_217'):
+                esa_ozet.append(f"217 kodu: {d.get('kod_217_kaynak') or 'evet'}")
+            if d.get('uzman_var') is not None:
+                esa_ozet.append(f"uzman branş: {'var' if d['uzman_var'] else 'yok'}")
+            if esa_ozet:
+                log(f"    │ Lab   : {' | '.join(esa_ozet)}", "info")
         log(f"    │ Sonuç : {sonuc_simge} {rapor.mesaj}", "ok" if rapor.sonuc.value == "uygun" else ("sorun" if rapor.sonuc.value == "uygun_degil" else "warn"))
         log(f"    └───────────────────────────────────", "info")
 
+        # Detayları açıklamaya ekle — eczacı raporda hangi değerlerin bulunduğunu/
+        # eksik olduğunu net görsün (ARANESP gibi UYGUNSUZ ESA reçetelerinde kritik).
+        ek_detay = ""
+        if rapor.detaylar and isinstance(rapor.detaylar, dict):
+            d = rapor.detaylar
+            parts = []
+            if d.get('hb') is not None:
+                parts.append(f"Hb={d['hb']}")
+            elif d.get('alt_kategori') == 'ESA_ERITROPOIETIN':
+                parts.append("Hb=eksik")
+            if d.get('ferritin') is not None:
+                parts.append(f"Ferritin={d['ferritin']}")
+            elif d.get('alt_kategori') == 'ESA_ERITROPOIETIN':
+                parts.append("Ferritin=eksik")
+            if d.get('tsat') is not None:
+                parts.append(f"TSAT=%{d['tsat']}")
+            elif d.get('alt_kategori') == 'ESA_ERITROPOIETIN':
+                parts.append("TSAT=eksik")
+            if d.get('kod_217'):
+                parts.append("217 kodu var")
+            if d.get('uzman_var') is False and d.get('alt_kategori') == 'ESA_ERITROPOIETIN':
+                parts.append("uzman branş raporda yok")
+            if parts:
+                ek_detay = f" [Lab: {', '.join(parts)}]"
+
         if rapor.sonuc.value == "uygun":
-            return "Uygun", f"SUT {kategori_adi}: {rapor.mesaj}"
+            return "Uygun", f"SUT {kategori_adi}: {rapor.mesaj}{ek_detay}"
         elif rapor.sonuc.value == "uygun_degil":
-            return "UygunDegil", f"SUT {kategori_adi}: {rapor.mesaj}"
+            return "UygunDegil", f"SUT {kategori_adi}: {rapor.mesaj}{ek_detay}"
         else:
-            return "KontrolEdilemedi", f"SUT {kategori_adi}: {rapor.mesaj}"
+            return "KontrolEdilemedi", f"SUT {kategori_adi}: {rapor.mesaj}{ek_detay}"
 
     except Exception as e:
         return "KontrolEdilemedi", f"SUT kontrol hatası: {e}"
@@ -3656,25 +4584,87 @@ def ilac_detayli_kontrol(medula, cur, conn, grup, recete_no, recete_turu,
                 if rapor_kodu_cache:
                     rapor_cache[rapor_kodu_cache] = rapor_verisi
 
+            # ── ESA EAGER E-REÇETE OKUMA ──
+            # ARANESP/MIRCERA/EPREX gibi ESA ilaçları için Ferritin/TSAT
+            # değerleri rapor metninde değil E-Reçete açıklamalarında bulunur.
+            # Bu yüzden SUT kontrolünden ÖNCE E-Reçete'yi oku, birleşik metinle
+            # tek seferde kontrol et — yanıltıcı "UYGUN DEĞİL" log'u oluşmasın.
+            if _ilac_esa_mi(ilac):
+                cached_metin = ilac.get("_erecete_aciklama_metni", "") or ""
+                if cached_metin:
+                    log(f"    [ESA] E-Reçete metni cache'den okunuyor ({len(cached_metin)} kr)", "info")
+                    erecete_metin_esa = cached_metin
+                else:
+                    log(f"    [ESA] {ilac_adi} → E-Reçete açıklamaları öncelikle okunuyor (Ferritin/TSAT için)", "info")
+                    try:
+                        ev = erecete_aciklama_oku(medula, recete_no=recete_no)
+                        erecete_metin_esa = (ev.get("tum_metin") if ev else "") or ""
+                        if ev:
+                            ilac["_erecete_aciklama_metni"] = erecete_metin_esa
+                            ilac["_erecete_aciklama_listesi"] = ev.get("aciklamalar", []) or []
+                    except Exception as _e:
+                        log(f"    [ESA] E-Reçete okuma hatası: {_e}", "warn")
+                        erecete_metin_esa = ""
+                if erecete_metin_esa:
+                    rapor_metin = (rapor_metin or "") + " " + erecete_metin_esa
+
             sut_sonuc, sut_aciklama = sut_mesaj_kontrol(ilac, [], rapor_metin,
                                                          recete_teshisleri=recete_teshisleri,
                                                          doktor_uzmanligi=doktor_uzmanligi,
                                                          recete_alt_turu=recete_alt_turu)
 
             # ESA / lab-tabanlı ilaçlar: Hb/Ferritin/TSAT rapor sayfasında değil,
-            # e-reçete açıklamalarında olabilir. KONTROL_EDILEMEDI ise e-reçete aç ve tekrar dene.
+            # e-reçete açıklamalarında olabilir. Üç durumda E-Reçete açılır:
+            #  1) KontrolEdilemedi + ESA → kategori belirsiz, ek bilgi gerek
+            #  2) UygunDegil + "parse edilemedi" → 217 var ama lab değerleri rapor
+            #     metninde bulunamadı, E-Reçete açıklamasında olabilir
+            #  3) UygunDegil + "ZORUNLU değerler eksik" → 217 yok ama hekim
+            #     E-Reçete açıklamasına yazmış olabilir (son şans)
             _esa_anahtar = ('ESA' in sut_aciklama or 'eritropoietin' in sut_aciklama.lower() or
                              'ferritin' in sut_aciklama.lower() or 'tsat' in sut_aciklama.lower() or
                              'hemoglobin' in sut_aciklama.lower() or 'hb/' in sut_aciklama.lower())
-            if sut_sonuc == "KontrolEdilemedi" and _esa_anahtar:
-                log(f"    [OKU ] Lab değerleri eksik — E-Reçete açıklamaları okunuyor...", "warn")
+            _esa_eksik = ('parse edilemedi' in sut_aciklama or
+                            'ZORUNLU değerler eksik' in sut_aciklama or
+                            'açıklamalarda' in sut_aciklama)
+            _erecete_acmali = ((sut_sonuc == "KontrolEdilemedi" and _esa_anahtar) or
+                                  (sut_sonuc == "UygunDegil" and _esa_anahtar and _esa_eksik))
+            if _erecete_acmali:
+                # CACHE: 217 kodu için eagerly okunmuşsa tekrar açma (ARANESP fix:
+                # ikinci açılışta E-Reçete'den geri dönüş başarısız olup Sonraki'yi
+                # bozuyordu — recete_tarama.py:5048'deki eager fetch'i kullan).
+                cached_metin = ilac.get("_erecete_aciklama_metni", "") or ""
+                if cached_metin:
+                    log(f"    [CACHE] E-Reçete metni cache'den okunuyor ({len(cached_metin)} kr)", "info")
+                    erecete_verisi = {"tum_metin": cached_metin,
+                                       "aciklamalar": ilac.get("_erecete_aciklama_listesi", []) or [],
+                                       "tanilar": []}
+                else:
+                    log(f"    [OKU ] Lab değerleri eksik — E-Reçete açıklamaları okunuyor...", "warn")
                 try:
-                    erecete_verisi = erecete_aciklama_oku(medula)
+                    if not cached_metin:
+                        erecete_verisi = erecete_aciklama_oku(medula, recete_no=recete_no)
+                        # Sonucu ilac dict'e yaz — uyarı kodu kontrolü step 3 tekrar açmasın
+                        if erecete_verisi:
+                            ilac["_erecete_aciklama_metni"] = erecete_verisi.get("tum_metin", "") or ""
+                            ilac["_erecete_aciklama_listesi"] = erecete_verisi.get("aciklamalar", []) or []
                     if erecete_verisi and erecete_verisi.get("tum_metin"):
                         ek_metin = erecete_verisi.get("tum_metin", "")
                         # Açıklamaları + tüm metni rapor metnine ekle ve tekrar kontrol
                         birlesik_metin = rapor_metin + " " + ek_metin
                         log(f"    [OKU ] E-Reçete metni eklendi ({len(ek_metin)} kr) — tekrar kontrol", "info")
+                        # Doktorun yazdığını kullanıcı görsün — ilk 400 karakter snippet
+                        snippet = ek_metin[:400].replace("\n", " ").strip()
+                        log(f"    [E-REÇETE] Açıklama: «{snippet}»", "info")
+                        # Lab anahtarları metinde geçiyor mu? Hızlı görünürlük
+                        _ml = ek_metin.lower()
+                        _lab_bulundu = [k for k in ('hb', 'hemoglobin', 'ferritin', 'tsat',
+                                                      'transferrin', 'transferin', 'satürasyon',
+                                                      'saturasyon', 'doygunluk')
+                                         if k in _ml]
+                        if _lab_bulundu:
+                            log(f"    [E-REÇETE] Tespit edilen lab anahtarları: {', '.join(_lab_bulundu)}", "info")
+                        else:
+                            log(f"    [E-REÇETE] DİKKAT: Hb/Ferritin/TSAT anahtar kelimeleri metinde bulunamadı", "warn")
                         sut_sonuc2, sut_aciklama2 = sut_mesaj_kontrol(
                             ilac, [], birlesik_metin,
                             recete_teshisleri=recete_teshisleri,
@@ -3779,9 +4769,56 @@ def ilac_detayli_kontrol(medula, cur, conn, grup, recete_no, recete_turu,
     }
 
 
+def _ilac_esa_mi(ilac):
+    """ESA (Eritropoietin Stimüle Edici Ajan) ilacı mı?
+    Bu tür ilaçların Ferritin/TSAT değerleri rapor metninde değil, E-Reçete
+    açıklamalarında bulunur — SUT kontrolünden önce E-Reçete eagerly okunmalı.
+    """
+    ilac_adi = (ilac.get("ilac_adi") or "").upper()
+    etkin = (ilac.get("etkin_madde") or "").upper()
+    esa_isimleri = (
+        # Ticari isimler
+        "ARANESP", "MIRCERA", "EPREX", "EPOPEN", "RECORMON", "NEORECORMON",
+        "BINOCRIT", "RETACRIT", "EPOSAFE", "EPORON", "EPREX",
+        # Etkin madde anahtarları
+        "EPOETIN", "EPOIETIN", "DARBEPOETIN", "ERITROPOET", "ERITROPOIET",
+        "METHOXY POLYETHYLENE",
+    )
+    return any(k in ilac_adi or k in etkin for k in esa_isimleri)
+
+
+def _navigasyon_tani_logla(medula):
+    """Navigasyon başarısız olduğunda ekrandaki butonları logla — debug için."""
+    try:
+        sayac_diag = 0
+        for d in medula.descendants():
+            try:
+                ctrl = str(d.element_info.control_type or "")
+                if "Button" not in ctrl and "Hyperlink" not in ctrl:
+                    continue
+                cap = (d.window_text() or "").strip()
+                aid = d.element_info.automation_id or ""
+                if cap or aid:
+                    log(f"    [TANI] {ctrl.replace('ControlType.','')}: '{cap[:40]}' aid='{aid}'", "info")
+                    sayac_diag += 1
+                    if sayac_diag >= 25:
+                        log("    [TANI] (ilk 25 buton/link gösterildi)", "info")
+                        break
+            except Exception:
+                continue
+        if sayac_diag == 0:
+            log("    [TANI] Hiç buton/link yok — Medula login ekranında veya boş.", "error")
+    except Exception as diag_err:
+        log(f"    [TANI] Element listeleme hatası: {diag_err}", "warn")
+
+
 # ========== MEDULA NAVİGASYON ==========
 def medula_navigasyon(medula, grup, donem_offset):
     """Reçete Listesi → Dönem → Fatura Türü → Sorgula → İlk reçeteye tıkla"""
+
+    # Cache'i temizle — sayfa state'i değişiyor, eski tarama oturumundan
+    # stale ref'ler menü/buton aramada false positive verebilir.
+    _aid_cache_global.clear()
 
     # 0. webBrowser1'e focus ver (IE embedded browser)
     try:
@@ -3796,62 +4833,71 @@ def medula_navigasyon(medula, grup, donem_offset):
     except:
         pass
 
-    # 1. Reçete Listesi menüsü (invoke)
+    # 1. Reçete Listesi menüsü (invoke) — kademeli kurtarma:
+    #    a) Direkt Reçete Listesi tıkla
+    #    b) Bulunamazsa Geri Dön + tekrar dene
+    #    c) Hâlâ bulunamazsa Giriş butonu 3 kez (1sn arayla)
+    #    d) Hâlâ bulunamazsa taskkill + exe + giriş + tekrar dene
     log("Reçete Listesi sayfasına gidiliyor...", "info")
     for deneme in range(3):
+        # ── (a) Direkt deneme ──
         if element_tikla(medula, "form1:menuHtmlCommandExButton31"):
             log("Reçete Listesi açıldı", "ok")
         else:
-            # Menü görünmüyor — reçete sayfasında olabiliriz
-            # BotanikEOS Giriş butonu ile ana sayfaya dön
-            log("Menü görünmüyor, ana sayfaya dönülüyor...", "warn")
-            element_tikla(medula, "btnMedulayaGirisYap", "click")
-            time.sleep(5)
-            # Tekrar dene
-            if element_tikla(medula, "form1:menuHtmlCommandExButton31"):
-                log("Reçete Listesi açıldı (giriş butonu sonrası)", "ok")
-            else:
-                # SAFETY NET 1: Menü bulunamadı ama Reçete Listesi sayfası zaten
-                # ekrandaysa (Sorgula butonu var), navigasyonu başarılı say.
-                # Kullanıcı listeyi manuel açtıysa veya bir önceki grup
-                # transition'ı sonrası ekran hala liste sayfasındaysa olur.
-                if element_bul(medula, "form1:buttonSonlandirilmamisReceteler"):
-                    log("Menü tıklanamadı ama Reçete Listesi sayfası zaten açık — devam ediliyor", "warn")
-                    break  # while döngüsünden çık, dönem/fatura/sorgula adımlarına geç
-                # SAFETY NET 2: Reçete DETAY sayfasındaysak (f:tbl1 var + Sonraki
-                # butonu var), kullanıcı bir reçeteyi açmış demektir; navigasyon
-                # gereksiz — bunu acik_receteden moduna eşdeğer görüp başarılı say.
-                if (element_bul(medula, "f:tbl1")
-                        and element_bul(medula, "f:buttonSonraki")):
-                    log("Menü tıklanamadı ama bir reçete detay sayfasında — bu reçeteden devam edilecek", "warn")
-                    return True  # Direkt başarılı dön; tara() açık reçeteyi işleyecek
+            # SAFETY NET 1: Reçete Listesi sayfası zaten açıksa direkt geç
+            if element_bul(medula, "form1:buttonSonlandirilmamisReceteler"):
+                log("Reçete Listesi sayfası zaten açık — dönem/fatura adımına geçiliyor", "warn")
+                break
+            # SAFETY NET 2: Reçete detay sayfasındaysak (f:tbl1 + Sonraki) — başarılı say
+            if (element_bul(medula, "f:tbl1")
+                    and element_bul(medula, "f:buttonSonraki")):
+                log("Reçete detay sayfasında — bu reçeteden devam edilecek", "warn")
+                return True
 
-                # TANI: Hangi state'deyiz? Görünür buton ve linkleri logla ki
-                # kullanıcı/geliştirici Medula'nın gerçekten hangi sayfada olduğunu görsün.
-                log("Reçete Listesi menüsü bulunamadı! Ekrandaki state'i tanılıyorum...", "error")
-                try:
-                    sayac_diag = 0
-                    for d in medula.descendants():
-                        try:
-                            ctrl = str(d.element_info.control_type or "")
-                            if "Button" not in ctrl and "Hyperlink" not in ctrl:
-                                continue
-                            cap = (d.window_text() or "").strip()
-                            aid = d.element_info.automation_id or ""
-                            if cap or aid:
-                                log(f"    [TANI] {ctrl.replace('ControlType.','')}: '{cap[:40]}' aid='{aid}'", "info")
-                                sayac_diag += 1
-                                if sayac_diag >= 25:
-                                    log("    [TANI] (ilk 25 buton/link gösterildi)", "info")
-                                    break
-                        except Exception:
-                            continue
-                    if sayac_diag == 0:
-                        log("    [TANI] Hiç buton/link yok — Medula muhtemelen oturum kapalı, login ekranında veya boş.", "error")
-                        log("    [TANI] Çözüm: Medula tarayıcısını manuel olarak açın, kullanıcı girişi yapın, sonra TÜMÜNÜ KONTROL ET'e basın.", "info")
-                except Exception as diag_err:
-                    log(f"    [TANI] Element listeleme hatası: {diag_err}", "warn")
-                return False
+            # ── (b) Geri Dön + tekrar dene ──
+            log("Reçete Listesi menüsü yok — Geri Dön deneniyor...", "warn")
+            for aid in ("f:buttonGeriDon", "form1:buttonGeriDon"):
+                if element_tikla(medula, aid):
+                    log(f"  Geri Dön basıldı ({aid})", "info")
+                    time.sleep(1.5)
+                    _aid_cache_global.clear()
+                    break
+            if element_tikla(medula, "form1:menuHtmlCommandExButton31"):
+                log("Reçete Listesi açıldı (Geri Dön sonrası)", "ok")
+            else:
+                # ── (c) Giriş butonu 3 kez (1sn arayla) ──
+                log("Geri Dön de işe yaramadı — Giriş butonu 3 kez denenecek", "warn")
+                giris_basarili = False
+                for i in range(3):
+                    if element_tikla(medula, "btnMedulayaGirisYap", "click"):
+                        log(f"  Giriş butonu basıldı ({i+1}/3)", "info")
+                    time.sleep(3)
+                    _aid_cache_global.clear()
+                    if element_bul(medula, "form1:menuHtmlCommandExButton31"):
+                        giris_basarili = True
+                        log(f"  Menü göründü ({i+1}. denemede)", "ok")
+                        break
+                    time.sleep(1)  # 1sn ek bekleme
+
+                if giris_basarili and element_tikla(medula, "form1:menuHtmlCommandExButton31"):
+                    log("Reçete Listesi açıldı (Giriş butonu sonrası)", "ok")
+                else:
+                    # ── (d) Son çare: taskkill + exe + giriş + tekrar dene ──
+                    log("Giriş butonu 3 denemede başarısız — taskkill + yeniden açma", "warn")
+                    yeni_medula = _temiz_acilis_dene()
+                    if yeni_medula:
+                        medula = yeni_medula
+                        _aid_cache_global.clear()
+                        if element_tikla(medula, "form1:menuHtmlCommandExButton31"):
+                            log("Reçete Listesi açıldı (taskkill + giriş sonrası)", "ok")
+                        else:
+                            log("Taskkill sonrası bile menü bulunamadı — durum tanılanıyor", "error")
+                            _navigasyon_tani_logla(medula)
+                            return False
+                    else:
+                        log("Taskkill sonrası Medula açılamadı — durduruldu", "error")
+                        _navigasyon_tani_logla(medula)
+                        return False
 
         # Sayfa yüklenene kadar bekle
         for bekle in range(15):
@@ -3871,54 +4917,102 @@ def medula_navigasyon(medula, grup, donem_offset):
             return False
         break  # Başarılı
 
-    # 2. Dönem seçimi
-    if donem_offset > 0:
-        log(f"Dönem seçiliyor (offset: {donem_offset})...", "info")
-        if element_tikla(medula, "form1:menu2", "click"):
-            time.sleep(0.5)
-            for _ in range(donem_offset):
-                pyautogui.press("down")
-                time.sleep(0.15)
-            pyautogui.press("enter")
-            log("Dönem seçildi", "ok")
-        time.sleep(1)
-
-    # 3. Fatura Türü
+    # 2-3-4. Dönem + Fatura Türü + Sorgula — DÖNEM FALLBACK ile birlikte:
+    # Eğer "Bu döneme ait sonlandırılmamış reçete bulunamadı" görünürse,
+    # bir alt döneme inip tekrar Sorgula. Maksimum 6 ay geriye git.
     grup_combo_index = {"A": 1, "B": 4, "C": 7, "CK": 10, "GK": 16}
     combo_idx = grup_combo_index.get(grup, 1)
+    aktif_donem_offset = donem_offset  # değişebilir (bos dönemde +1)
+    MAX_DONEM_GERI = 6  # max kaç ay geriye gidilebilir
+    grup_bos = False
 
-    log(f"Fatura Türü: {grup} seçiliyor...", "info")
-    if element_tikla(medula, "form1:menu1", "click"):
-        time.sleep(0.5)
-        for _ in range(20):
-            pyautogui.press("up")
-            time.sleep(0.03)
-        time.sleep(0.2)
-        for _ in range(combo_idx):
-            pyautogui.press("down")
-            time.sleep(0.1)
-        pyautogui.press("enter")
-        log(f"Fatura Türü seçildi: {grup}", "ok")
-    time.sleep(1)
+    while aktif_donem_offset <= MAX_DONEM_GERI:
+        # Dönem seçimi
+        if aktif_donem_offset > 0:
+            log(f"Dönem seçiliyor (offset: {aktif_donem_offset})...", "info")
+            if element_tikla(medula, "form1:menu2", "click"):
+                time.sleep(0.5)
+                # Komboyu en üste sıfırla (önceki seçim kalmış olabilir)
+                for _ in range(20):
+                    pyautogui.press("up")
+                    time.sleep(0.03)
+                time.sleep(0.2)
+                for _ in range(aktif_donem_offset):
+                    pyautogui.press("down")
+                    time.sleep(0.15)
+                pyautogui.press("enter")
+                log(f"Dönem seçildi (offset: {aktif_donem_offset})", "ok")
+            time.sleep(1)
 
-    # 4. Sorgula
-    log("Sorgula butonuna basılıyor...", "info")
-    if element_tikla(medula, "form1:buttonSonlandirilmamisReceteler"):
-        log("Sorgula tıklandı", "ok")
+        # Fatura Türü
+        log(f"Fatura Türü: {grup} seçiliyor...", "info")
+        if element_tikla(medula, "form1:menu1", "click"):
+            time.sleep(0.5)
+            for _ in range(20):
+                pyautogui.press("up")
+                time.sleep(0.03)
+            time.sleep(0.2)
+            for _ in range(combo_idx):
+                pyautogui.press("down")
+                time.sleep(0.1)
+            pyautogui.press("enter")
+            log(f"Fatura Türü seçildi: {grup}", "ok")
+        time.sleep(1)
 
-    # Reçete listesi yüklenene kadar bekle (max 8 sn)
-    for _ in range(16):
-        time.sleep(0.5)
-        try:
-            for elem in medula.descendants(control_type="DataItem"):
-                txt = (elem.window_text() or "").strip()
-                if len(txt) == 7 and txt[0].isdigit() and txt.isalnum():
+        # Sorgula
+        log("Sorgula butonuna basılıyor...", "info")
+        if element_tikla(medula, "form1:buttonSonlandirilmamisReceteler"):
+            log("Sorgula tıklandı", "ok")
+
+        # Reçete listesi yüklenene kadar bekle (max 12 sn) — 3 sonuçtan biri çıksın:
+        #   a) Reçete bulundu (DataItem) → continue scan
+        #   b) "Bu döneme ait..." → dönem boş, bir alt döneme geç
+        #   c) "Reçete kaydı bulunamadı." → grup boş, sonraki gruba geç
+        # Önce reçete varsa hızlı çıkar; yoksa boş mesajı bekle.
+        donem_sonucu = None  # 'recete' | 'donem_bos' | 'grup_bos'
+        for _ in range(24):
+            time.sleep(0.5)
+            if donem_bos_mu(medula):
+                donem_sonucu = "donem_bos"
+                break
+            if recete_kaydi_bulunamadi_mi(medula):
+                donem_sonucu = "grup_bos"
+                break
+            try:
+                for elem in medula.descendants(control_type="DataItem"):
+                    txt = (elem.window_text() or "").strip()
+                    if len(txt) == 7 and txt[0].isdigit() and txt.isalnum():
+                        donem_sonucu = "recete"
+                        break
+                if donem_sonucu == "recete":
                     break
-            else:
+            except Exception:
                 continue
+
+        if donem_sonucu == "recete":
+            break  # while'dan çık → ilk reçeteye tıkla adımına geç
+
+        if donem_sonucu == "donem_bos":
+            log(f"  '{grup}' grubunda mevcut dönem boş ('Bu döneme ait sonlandırılmamış reçete bulunamadı') — bir alt döneme geçiliyor", "warn")
+            aktif_donem_offset += 1
+            continue  # bir alt döneme geç ve tekrar Sorgula
+
+        if donem_sonucu == "grup_bos":
+            grup_bos = True
             break
-        except:
-            pass
+
+        # Hiçbir sinyal yok (timeout) — yine de devam, eski davranış
+        log(f"Sorgula sonucu belirsiz (timeout) — devam ediliyor", "warn")
+        break
+
+    if grup_bos or aktif_donem_offset > MAX_DONEM_GERI:
+        if grup_bos:
+            log(f"'{grup}' grubunda 'Reçete kaydı bulunamadı.' — bu grup boş, sonraki gruba geçilebilir", "warn")
+        else:
+            log(f"'{grup}' grubunda son {MAX_DONEM_GERI} dönemde de reçete bulunamadı — sonraki gruba geçilebilir", "warn")
+        # GUI marker: "Tümünü Kontrol Et" modunda bu grup atlansın, durdurma yapılmasın
+        print(f"[GRUP_BOS] {grup}", flush=True)
+        return False  # tara() bunu görünce çıkar, üst katman sonraki gruba geçer
 
     # 5. İlk reçeteye tıkla
     ilk_recete_bulundu = False
@@ -3939,6 +5033,10 @@ def medula_navigasyon(medula, grup, donem_offset):
     except:
         pass
     if not ilk_recete_bulundu:
+        # Son kontrol: "Reçete kaydı bulunamadı" var mı?
+        if recete_kaydi_bulunamadi_mi(medula):
+            log(f"'{grup}' grubunda reçete yok ('Reçete kaydı bulunamadı.')", "warn")
+            return False
         log("Reçete bulunamadı!", "error")
         return False
 
@@ -3951,57 +5049,41 @@ def medula_navigasyon(medula, grup, donem_offset):
     return True
 
 
-# ========== MEDULA OTURUM ==========
+# ========== MEDULA OTURUM (geri uyumluluk wrapper) ==========
 def oturum_kontrol_ve_baglan(medula):
-    """Oturum aktif mi kontrol et. Düşmüşse yeniden başlat.
-    Kontrol sırası:
-    1. Sistem hatası sayfası → yeniden başlat
-    2. Web elementleri varsa (reçete sayfası veya menü) → oturum aktif
-    3. Giriş butonu varsa → tıkla, bekle
-    4. Hiçbiri yoksa (embedded browser boş) → taskkill + yeniden başlat
+    """Geri uyumluluk wrapper'ı. medula_baglan() kullan.
+
+    Pencere zaten bulunmuş haldeyse:
+    - Aktifse direkt döner
+    - Pasifse Giriş/Geri butonu ile yenilemeyi dener (sayfa yüklenmesi için
+      kısa bir grace period verilir, taskkill anında çağrılmaz)
+    - Yenilenemezse medula_baglan() ile tüm flow'u yeniden çalıştırır
     """
-    # Sistem hatası kontrolü
-    if sistem_dusmus_mu(medula):
-        log("Sistem hatası tespit edildi - yeniden başlatılıyor...", "error")
-        return medula_yeniden_baslat()
+    if not medula:
+        return medula_baglan()
 
-    # Reçete sayfası elementleri varsa oturum aktiftir
-    if element_bul(medula, "f:tbl1") or element_bul(medula, "f:buttonSonraki"):
+    # Aktif mi?
+    if medula_oturum_aktif_mi(medula):
         return medula
 
-    # Menü görünüyor mu?
-    if element_bul(medula, "form1:menuHtmlCommandExButton31"):
-        return medula
-
-    # Giriş butonu varsa tıkla
-    if element_bul(medula, "btnMedulayaGirisYap"):
-        log("Giriş butonu bulundu, tıklanıyor...", "warn")
-        element_tikla(medula, "btnMedulayaGirisYap", "click")
-        time.sleep(5)
-        if element_bul(medula, "form1:menuHtmlCommandExButton31") or element_bul(medula, "f:tbl1"):
-            log("Oturum yenilendi", "ok")
-            return medula
-
-    # Hiçbir web elementi yok — embedded browser yüklenmiyor olabilir
-    # Kapatmadan bekle — sayfa yüklenebilir
-    log("Web elementleri bulunamadı — sayfa yüklenmesi bekleniyor...", "warn")
+    # Sayfa yükleniyor olabilir — kısa grace period
     for bekle in range(10):
         time.sleep(2)
-        if element_bul(medula, "form1:menuHtmlCommandExButton31") or element_bul(medula, "f:tbl1"):
+        if medula_oturum_aktif_mi(medula):
             log(f"Sayfa yüklendi ({(bekle+1)*2}s)", "ok")
             return medula
-        if element_bul(medula, "btnMedulayaGirisYap"):
-            log("Giriş butonu göründü, tıklanıyor...", "warn")
-            element_tikla(medula, "btnMedulayaGirisYap", "click")
-            time.sleep(5)
-            medula = medula_bul()
-            if medula and (element_bul(medula, "form1:menuHtmlCommandExButton31") or element_bul(medula, "f:tbl1")):
-                log("Oturum yenilendi", "ok")
-                return medula
+        # Giriş butonu çıktıysa hemen yenile
+        try:
+            if element_bul(medula, "btnMedulayaGirisYap"):
+                if medula_oturum_yenile(medula, max_deneme=3):
+                    return medula
+                break
+        except Exception:
+            pass
 
-    # 20 saniye bekledik, hâlâ yüklenmediyse — sadece o zaman yeniden başlat
-    log("20s beklendi, sayfa yüklenemedi — yeniden başlatılıyor...", "error")
-    return medula_yeniden_baslat()
+    # Hâlâ pasifse → tam orchestrator (taskkill dahil)
+    log("Oturum yenilenemedi — tam yeniden bağlanma akışı çalıştırılıyor", "warn")
+    return medula_baglan()
 
 
 # ========== RAPOR ==========
@@ -4059,25 +5141,63 @@ def _kuyruk_guncelle(ilac_adi, etkin_madde, rapor_kodu, durum, **ekstra):
             json.dump(kuyruk, f, indent=2, ensure_ascii=False)
 
 _CLAUDE_CLI_YOK = False  # Bir kez bulunmazsa tekrar denememek için
+_CLAUDE_EXE_PATH = None  # shutil.which() sonucu cache'lenir
+
+def _claude_exe_bul():
+    """Claude CLI yolunu bul (shutil.which → fallback yollar)."""
+    global _CLAUDE_EXE_PATH
+    if _CLAUDE_EXE_PATH:
+        return _CLAUDE_EXE_PATH
+    import shutil
+    # 1. PATH üzerinden ara
+    p = shutil.which("claude")
+    if p:
+        _CLAUDE_EXE_PATH = p
+        return p
+    # 2. Bilinen kullanıcı yolları
+    home = os.path.expanduser("~")
+    for cand in (
+        os.path.join(home, ".local", "bin", "claude.exe"),
+        os.path.join(home, ".local", "bin", "claude.cmd"),
+        os.path.join(home, "AppData", "Roaming", "npm", "claude.cmd"),
+        os.path.join(home, "AppData", "Local", "Programs", "claude", "claude.exe"),
+    ):
+        if os.path.exists(cand):
+            _CLAUDE_EXE_PATH = cand
+            return cand
+    return None
+
 
 def _ai_claude_calistir(prompt, timeout=180, dosya_yazabilir=False, web_arama=False):
     """Claude CLI çalıştır ve sonucu döndür. Bloklar.
-    Claude CLI yoksa sessizce boş döner (her çağrıda tekrar hata basmaz)."""
+    Claude CLI yoksa sessizce boş döner (her çağrıda tekrar hata basmaz).
+
+    KRİTİK: shell=False kullanılır! Windows'ta shell=True + multiline prompt
+    cmd parser tarafından bozuluyor — Claude prompt'un sadece ilk satırını
+    alıyor ve "hangi ilaç için?" diye geri soruyor (parse hatası).
+    """
     global _CLAUDE_CLI_YOK
     if _CLAUDE_CLI_YOK:
         return ""
     import subprocess as sp
-    # Windows'ta claude.cmd veya claude.exe olabilir — shell=True gerekebilir
+
+    claude_exe = _claude_exe_bul()
+    if not claude_exe:
+        _CLAUDE_CLI_YOK = True
+        log("  [AI] Claude CLI bulunamadı (PATH'te yok) — AI SUT analizi devre dışı", "warn")
+        return ""
+
     try:
-        cmd = ["claude", "-p", prompt, "--output-format", "text"]
+        cmd = [claude_exe, "-p", prompt, "--output-format", "text"]
         if dosya_yazabilir:
             cmd.insert(1, "--dangerously-skip-permissions")
         if web_arama:
-            cmd.extend(["--allowedTools", "WebFetch", "WebSearch"])
+            # --allowedTools tek argümanlı: tüm tool'lar tek string'de boşlukla
+            cmd.extend(["--allowedTools", "WebFetch WebSearch"])
         result = sp.run(
             cmd, capture_output=True, text=True, timeout=timeout,
             cwd=PROJE_DIZINI, encoding="utf-8", errors="replace",
-            shell=True  # Windows'ta claude.cmd için
+            shell=False,  # KRITIK: shell=True multiline prompt'u bozar
         )
         return result.stdout.strip() if result.stdout else ""
     except sp.TimeoutExpired:
@@ -4779,17 +5899,13 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
     log(f"Durdurma: Escape tuşu veya Durdur butonu", "info")
     log(f"{'='*50}", "header")
 
-    # Medula bul
-    medula = medula_bul()
+    # Medula bağlantısı: 6 modüler fonksiyon orkestrasyonu
+    # (1) pencere ara → varsa (2) oturum kontrol → pasifse (3) yenile → hata ise (4)+(5)+(6)
+    medula = medula_baglan()
     if not medula:
-        log("MEDULA penceresi bulunamadı! Tanı bilgisi toplanıyor...", "error")
+        log("MEDULA bağlantısı kurulamadı! Tanı bilgisi toplanıyor...", "error")
         medula_bul(diag=True)
-        log("Çözüm: BotanikEOS açık mı? Medula sekmesi yüklü mü? Pencere minimize/gizli olabilir.", "warn")
-        return
-
-    # Oturum kontrol
-    medula = oturum_kontrol_ve_baglan(medula)
-    if not medula:
+        log("Çözüm: BotanikEOS exe yolunu kontrol edin, kullanıcı/şifre doğru mu?", "warn")
         return
 
     log("Medula bağlı ve oturum aktif", "ok")
@@ -4862,6 +5978,15 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
             log("TARAMA DURDURULDU (kullanıcı tarafından)", "warn")
             break
 
+        # === PROAKTİF POPUP KONTROL ===
+        # "Etken madde çakışması" / "Lütfen ilaç seçiniz" gibi popup'lar
+        # buton tıklamalarını engelliyor olabilir. Her döngünün başında
+        # hızlı bir kontrolden geçiriyoruz; varsa Tamam/Enter ile kapatılıyor.
+        try:
+            popup_kapat()
+        except Exception:
+            pass
+
         # === SİSTEM HATASI KONTROL ===
         if sistem_dusmus_mu(medula):
             log("SİSTEM HATASI TESPİT EDİLDİ - Medula yeniden başlatılıyor...", "error")
@@ -4894,11 +6019,39 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
         toplu = recete_tum_bilgi_topla(medula)
         recete_no = toplu["recete_no"]
 
+        # ── ÖNCE recete_no kesin geçerli olsun: None ise popup_kapat + retry ──
+        # (Eğer döngü tespiti önce yapılsa ve recete_no None ise, "if recete_no
+        # and ..." ile bypass edilir, gorulen_receteler.add da skip edilir.
+        # Sonuç: aynı reçete tekrar tekrar işlenir, sayaç artar ama
+        # gorulen_receteler boş kalır → cycle detection çalışmaz, sonsuz döngü.)
+        if not recete_no:
+            popup_kapat()
+            time.sleep(1)
+            toplu = recete_tum_bilgi_topla(medula)
+            recete_no = toplu["recete_no"]
+            if not recete_no:
+                log("Reçete no okunamadı - tarama bitti", "info")
+                break
+
         # Tekrar kontrolü (art arda aynı reçete)
+        # Sonraki tıklandı ama yine aynı reçete geliyor → liste sonu olabilir.
+        # "Reçete kaydı bulunamadı." label'ı görünüyorsa grup bitmiş demektir,
+        # tarama temiz biter ve üst katman (Tümünü Kontrol modu) sonraki gruba geçer.
         if recete_no == onceki_recete:
             tekrar_sayaci += 1
+            # 1. tekrarda hemen label kontrolü yap — boş grup hızlıca tespit edilsin
+            if recete_kaydi_bulunamadi_mi(medula):
+                log(f"  Sonraki aynı reçeteye dönüyor + 'Reçete kaydı bulunamadı.' var → '{grup}' grubu bitti", "ok")
+                # GUI'ye sinyal: bu grup tamamlandı, sonraki gruba geçilebilir
+                print(f"[GRUP_TAMAMLANDI] {grup}", flush=True)
+                break  # tara() çıkar, GUI bir sonraki grubun butonuna geçer
             if tekrar_sayaci >= 3:
-                log(f"Reçete değişmiyor ({recete_no}) - tarama bitti", "info")
+                # 3 kez aynı reçete geldi — son bir label kontrolü daha yap
+                if recete_kaydi_bulunamadi_mi(medula):
+                    log(f"  '{grup}' grubunda 'Reçete kaydı bulunamadı.' tespit edildi — grup tamamlandı", "ok")
+                    print(f"[GRUP_TAMAMLANDI] {grup}", flush=True)
+                else:
+                    log(f"Reçete değişmiyor ({recete_no}) - tarama bitti", "info")
                 break
             element_tikla(medula, "f:buttonSonraki")
             time.sleep(2)
@@ -4907,22 +6060,11 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
             tekrar_sayaci = 0
             onceki_recete = recete_no
 
-        # Döngü tespiti (A→B→A→B gibi) — aynı reçete ikinci kez görüldüyse liste başa döndü
-        if recete_no and recete_no in gorulen_receteler:
+        # Döngü tespiti — recete_no artık kesin geçerli (yukarıda retry yapıldı)
+        if recete_no in gorulen_receteler:
             log(f"Reçete {recete_no} 2. kez görüldü — liste başa döndü, tarama bitti", "info")
             break
-        if recete_no:
-            gorulen_receteler.add(recete_no)
-
-        if not recete_no:
-            # Popup engellemiş olabilir — kapat + tekrar dene
-            popup_kapat()
-            time.sleep(1)
-            toplu = recete_tum_bilgi_topla(medula)
-            recete_no = toplu["recete_no"]
-            if not recete_no:
-                log("Reçete no okunamadı - tarama bitti", "info")
-                break
+        gorulen_receteler.add(recete_no)
 
         # Daha önce kontrol edilmiş reçeteyi atla (kaldığı yerden devam)
         if recete_no in _kontrol_edilmis:
@@ -5013,47 +6155,16 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
         if recete_aciklamalari:
             log(f"  Açıklamalar: {', '.join(recete_aciklamalari[:2])}", "info")
 
-        # === ADIM 2C: 217 KODU İÇİN E-REÇETE AÇIKLAMASINI PROAKTİF OKU ===
-        # 217 hekimin TSAT/Ferritin değerlerini E-Reçete açıklamasına yazdığını
-        # belirtir. Reçete sayfasındaki Açıklama Listesi (form1:tableEx1) bu
-        # değerleri her zaman içermez; gerçek metin E-Reçete Görüntüle ekranındadır.
-        # Eagerly çekiyoruz çünkü ESA SUT kontrolünden ÖNCE lazım. Sonuç cache'lenir,
-        # uyari_kodu_kontrol fallback'i (line ~4994) tekrar çekmeyecek.
+        # === ADIM 2C: E-REÇETE EAGER FETCH KALDIRILDI ===
+        # 217 kodu için E-Reçete önceden açılıyordu, ancak bu çekirdek sayfa
+        # transition'larını bozuyordu (ARANESP'te checkbox state kayboluyor →
+        # "Seçilen ilaç yok" popup'ı + sonrasında Sonraki butonu çalışmıyor).
+        # E-Reçete artık ihtiyaç anında ilac_detayli_kontrol içinde (rapor okuma
+        # SONRASI, KontrolEdilemedi + ESA durumunda) açılıyor.
         erecete_metni = ""
         erecete_aciklama_listesi = []
         erecete_tani_listesi = []
         erecete_okundu = False
-        has_217_in_uyari = any(
-            str(uk.get("kod", "")).strip() == "217"
-            for uk in uyari_kodlari if isinstance(uk, dict)
-        )
-        if has_217_in_uyari:
-            log(f"  [217] Uyarı kodu 217 var — E-Reçete Görüntüle açılıyor (TSAT/Ferritin için)", "info")
-            try:
-                erecete = erecete_aciklama_oku(medula)
-                if erecete:
-                    erecete_metni = erecete.get("tum_metin", "") or ""
-                    erecete_aciklama_listesi = erecete.get("aciklamalar", []) or []
-                    erecete_tani_listesi = erecete.get("tanilar", []) or []
-                    erecete_okundu = True
-                    if erecete_metni:
-                        # Lab değerleri (Hgb/Ferritin/TSAT) bu metinden okunacak — kullanıcının
-                        # doktorun gerçekte ne yazdığını görmesi için snippet'i daha uzun ver.
-                        ozet = erecete_metni[:300].replace("\n", " ")
-                        log(f"  [217] E-Reçete açıklama okundu ({len(erecete_metni)} kr): {ozet}...", "info")
-                        # Lab anahtar kelimeleri var mı? Hızlı sağlık tespiti
-                        _ml = erecete_metni.lower()
-                        _bulunan = [k for k in ('ferritin', 'tsat', 'transferrin', 'satürasyon',
-                                                  'saturasyon', 'doygunluk', 'hgb', 'hemoglobin')
-                                    if k in _ml]
-                        if _bulunan:
-                            log(f"  [217] Tespit edilen lab anahtarları: {', '.join(_bulunan)}", "info")
-                        else:
-                            log(f"  [217] DİKKAT: Metinde lab anahtar kelimesi bulunamadı (Ferritin/TSAT/Hb yok)", "warn")
-                    else:
-                        log(f"  [217] E-Reçete açıldı ama metin toplanamadı", "warn")
-            except Exception as e:
-                log(f"  [217] E-Reçete okuma hatası: {e}", "warn")
 
         # === ADIM 3: İLAÇ TABLOSU KONTROLÜ (zaten toplandı, doz karşılaştırma dahil) ===
         ilaclar = toplu["ilaclar"]
@@ -5199,8 +6310,12 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
             if kaynak_teshis:
                 log(f"    [1] Reçete teşhis: {', '.join(kaynak_teshis[:3])}", "info")
 
+            # 272 kontrolü için doktor branşı (TİTCK EK-4/A liste eşleştirmesi)
+            _doktor_uz = toplu.get("doktor_uzmanligi", "") or ""
+
             # İlk kontrol: reçete teşhisi + reçete açıklamaları
-            uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, kaynak_teshis, recete_aciklamalari, [])
+            uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, kaynak_teshis, recete_aciklamalari, [],
+                                               doktor_uzmanligi=_doktor_uz)
             eslesmeyen = [uks for uks in uk_sonuclar if uks["durum"] == "UYGUNSUZ"]
 
             # ── KAYNAK 2: Rapor teşhisi + rapor açıklamaları ──
@@ -5246,22 +6361,31 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                 # Tekrar kontrol: reçete teşhis + rapor verileriyle
                 tum_teshisler = kaynak_teshis + rapor_tanilari_toplam
                 tum_aciklamalar = recete_aciklamalari + rapor_aciklamalari_toplam
-                uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, tum_teshisler, tum_aciklamalar, [])
+                uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, tum_teshisler, tum_aciklamalar, [],
+                                                   doktor_uzmanligi=_doktor_uz)
                 eslesmeyen = [uks for uks in uk_sonuclar if uks["durum"] == "UYGUNSUZ"]
 
             # ── KAYNAK 3: E-Reçete sayfası açıklamaları (hala eşleşmeyen varsa) ──
             if eslesmeyen:
-                # 217 için zaten eagerly okuduysak tekrar açma — yoksa şimdi aç
-                if erecete_okundu:
+                # Drug control E-Reçete açtıysa cache'lenmiş olabilir — ilaç dict'lerinde ara
+                cached_metin = ""
+                cached_listesi = []
+                for il in ilaclar:
+                    m = il.get("_erecete_aciklama_metni", "") or ""
+                    if m:
+                        cached_metin = m
+                        cached_listesi = il.get("_erecete_aciklama_listesi", []) or []
+                        break
+                if cached_metin:
                     log(f"    [3] {len(eslesmeyen)} uyarı kodu eşleşmedi — E-Reçete metni cache'den kullanılıyor", "info")
                     erecete = {
-                        "tum_metin": erecete_metni,
-                        "aciklamalar": erecete_aciklama_listesi,
-                        "tanilar": erecete_tani_listesi,
+                        "tum_metin": cached_metin,
+                        "aciklamalar": cached_listesi,
+                        "tanilar": [],
                     }
                 else:
                     log(f"    [3] {len(eslesmeyen)} uyarı kodu eşleşmedi — E-Reçete sayfasından okunuyor...", "warn")
-                    erecete = erecete_aciklama_oku(medula)
+                    erecete = erecete_aciklama_oku(medula, recete_no=recete_no)
                 if erecete:
                     tum_teshisler_ek = kaynak_teshis + rapor_tanilari_toplam
                     tum_aciklamalar_ek = recete_aciklamalari + rapor_aciklamalari_toplam
@@ -5273,7 +6397,8 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                     if erecete.get("tum_metin"):
                         tum_aciklamalar_ek.append(erecete["tum_metin"])
                     # Son kontrol
-                    uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, tum_teshisler_ek, tum_aciklamalar_ek, [])
+                    uk_sonuclar = uyari_kodu_kontrol(uyari_kodlari, tum_teshisler_ek, tum_aciklamalar_ek, [],
+                                                       doktor_uzmanligi=_doktor_uz)
 
             # Sonuçları logla (çerçeveli)
             for uks in uk_sonuclar:
@@ -5323,8 +6448,27 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
         # 1. Direkt Sonraki
         if element_tikla(medula, "f:buttonSonraki"):
             sonraki_ok = True
+        # ── İlk Sonraki başarısız: STALE CACHE temizliği ──
+        # Önceki reçeteden gelen f:buttonSonraki referansı eski DOM'u
+        # gösteriyor olabilir (sayfa değişmiş ama cache eski ref tutuyor).
+        # Tüm cache'i temizleyip retry'ları taze element_bul ile yapalım,
+        # yoksa 4 retry de aynı stale ref ile boşa gider.
+        if not sonraki_ok:
+            _aid_cache_global.clear()
+        # 1a. UCUZ KURTARMA: Escape (modal/dialog blokluyor olabilir) + tekrar Sonraki.
+        # Bu adım popup_kapat'tan ~5sn daha hızlı; bir önceki ilaç işleme sırasında
+        # rapor_ac fail edip JS alert açık kaldıysa anında düşürür.
+        if not sonraki_ok:
+            try:
+                pyautogui.press("escape")
+                time.sleep(0.3)
+            except Exception:
+                pass
+            if element_tikla(medula, "f:buttonSonraki"):
+                sonraki_ok = True
         # 1b. Popup'ı kapat (etken madde çakışması vs.) + tekrar Sonraki
         if not sonraki_ok and popup_kapat():
+            _aid_cache_global.clear()  # popup kapatınca DOM değişmiş olabilir
             if element_tikla(medula, "f:buttonSonraki"):
                 sonraki_ok = True
         # 2. Medula referansını yeniden bul + tekrar Sonraki
@@ -5332,6 +6476,7 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
             yeni_medula = medula_bul()
             if yeni_medula:
                 medula = yeni_medula
+                _aid_cache_global.clear()  # yeni medula ref → eski cache geçersiz
                 try:
                     medula.set_focus()
                     time.sleep(0.3)
@@ -5344,16 +6489,24 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
         if not sonraki_ok:
             element_tikla(medula, "form1:buttonGeriDon")
             time.sleep(0.8)
+            _aid_cache_global.clear()  # sayfa değişti
             if element_tikla(medula, "f:buttonSonraki"):
                 sonraki_ok = True
         # 4. Son çare: Escape + Sonraki
         if not sonraki_ok:
             pyautogui.press("escape")
             time.sleep(0.5)
+            _aid_cache_global.clear()
             if element_tikla(medula, "f:buttonSonraki"):
                 sonraki_ok = True
-        # 5. Hiçbiri işe yaramadı — tanı + dur
+        # 5. Hiçbiri işe yaramadı — önce "Reçete kaydı bulunamadı" kontrolü
         if not sonraki_ok:
+            # Sonraki butonu çalışmıyor + bu label görünüyorsa → grup bitti.
+            # (Listenin sonuna gelindi, başka reçete yok.)
+            if recete_kaydi_bulunamadi_mi(medula):
+                log(f"  '{grup}' grubunda 'Reçete kaydı bulunamadı.' tespit edildi — grup tamamlandı", "ok")
+                print(f"[GRUP_TAMAMLANDI] {grup}", flush=True)
+                break  # ana while'dan çık → tarama temiz biter, üst katman sonraki gruba geçer
             try:
                 log("    [TANI] Ekrandaki butonlar:", "warn")
                 for d in medula.descendants(control_type="Button"):
@@ -5366,19 +6519,54 @@ def tara(grup="A", donem_offset=0, bastan_basla=False, kontrol_edilmisleri_atla=
                         continue
             except Exception as diag_err:
                 log(f"    [TANI] Buton listeleme hatası: {diag_err}", "warn")
-            # Son çare: Reçete Listesi'ne dönüp navigasyonu yeniden çalıştır,
-            # ardından son işlenen reçeteden sonrakine sorgu ile zıpla.
-            log(f"  [KURTARMA] Sonraki bulunamadı — liste yeniden yükleniyor (son: {recete_no})", "warn")
+            # Son çare: listeyi yeniden yükleyip görülen reçeteleri Sonraki ile atla.
+            # NOT: Reçete Sorgu kullanmıyoruz — tek-reçete modunda Sonraki ilerletmiyor.
+            # Sadece Sonraki butonuyla doğal navigasyon.
+            log(f"  [KURTARMA] Sonraki bulunamadı — liste yenilenip kaldığı yerden devam (son: {recete_no})", "warn")
+            kurtarildi = False
+            liste_sonu = False  # Tüm reçeteler taranmış mı? (gerçek "tarama bitti" durumu)
+            # Cache'i temizle — kurtarma öncesi stale ref'ler ayıklanır.
+            _aid_cache_global.clear()
             try:
+                # Liste yeniden yükle + görülen reçeteleri Sonraki ile atla
                 if medula_navigasyon(medula, grup, donem_offset):
-                    if recete_no:
-                        # Son işlenen reçeteden sonra başlayacak şekilde — şimdilik
-                        # listeden devam ediyoruz; aynı reçete tekrar görülürse döngü
-                        # tespiti (gorulen_receteler) zaten break atacak.
-                        log(f"  [KURTARMA] Liste yeniden yüklendi, taramaya devam", "ok")
-                        continue
+                    if recete_no and gorulen_receteler:
+                        atlanan = 0
+                        atlama_seen = set()  # Atlama sırasında görülen — döngü tespiti
+                        while atlanan < 200:
+                            aktif = recete_no_oku(medula)
+                            if aktif and aktif not in gorulen_receteler:
+                                log(f"  [KURTARMA] {atlanan} reçete atlandı, {aktif}'tan devam", "ok")
+                                kurtarildi = True
+                                break
+                            # Cycle detection: atlama sırasında aynı reçeteyi 2. kez
+                            # görüyorsak liste başa döndü → yeni reçete kalmamış demek.
+                            if aktif and aktif in atlama_seen:
+                                log(f"  Liste tamamen tarandı ({atlanan} atlama, döngü) — yeni reçete yok", "ok")
+                                liste_sonu = True
+                                break
+                            if aktif:
+                                atlama_seen.add(aktif)
+                            if not element_tikla(medula, "f:buttonSonraki"):
+                                # Sonraki yok = listenin sonundayız ve hepsi tarandı
+                                log(f"  Atlama sırasında Sonraki yok ({atlanan} atlandı) — liste sonu", "ok")
+                                liste_sonu = True
+                                break
+                            time.sleep(0.8)
+                            atlanan += 1
+                        if not kurtarildi and not liste_sonu and atlanan >= 200:
+                            log(f"  [KURTARMA] 200 atlama yapıldı, yeni reçete bulunamadı", "warn")
+                    else:
+                        # Hiç reçete işlenmemiş — listenin başından devam
+                        kurtarildi = True
+                if kurtarildi:
+                    log(f"  [KURTARMA] Tarama devam ediyor", "ok")
+                    continue
+                if liste_sonu:
+                    log(f"Tüm reçeteler kontrol edildi — tarama tamamlandı (son: {recete_no})", "ok")
+                    break
             except Exception as recover_err:
-                log(f"  [KURTARMA] Yeniden navigasyon hatası: {recover_err}", "warn")
+                log(f"  [KURTARMA] Hata: {recover_err}", "warn")
             log(f"Sonraki butonu bulunamadı + kurtarma başarısız — taranan: {sayac} reçete (son: {recete_no})", "warn")
             break
 
