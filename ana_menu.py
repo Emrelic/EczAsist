@@ -698,7 +698,7 @@ class AnaMenu:
         try:
             self.root.withdraw()
 
-            from nf_analiz_gui import NFAnalizGUI
+            from nf_analiz_gui import MFAnalizGUI
 
             # Yeni pencere oluştur
             mf_root = tk.Toplevel()
@@ -712,8 +712,8 @@ class AnaMenu:
             # Pencere kapatma
             mf_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(mf_root))
 
-            # NFAnalizGUI'yi başlat
-            app = NFAnalizGUI(mf_root)
+            # MFAnalizGUI'yi başlat
+            app = MFAnalizGUI(mf_root)
 
         except ImportError as e:
             logger.error(f"MF Analiz import hatası: {e}")
