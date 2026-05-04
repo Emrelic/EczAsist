@@ -38,8 +38,31 @@ Thumbs.db
 
 # Project specific
 *.log
+*_log.txt
+crash_log.txt
+tarama_log.txt
 *.json.bak
+*.flag
 grup_durumlari.json
+
+# Runtime state JSON (per-machine, auto-regenerated)
+ai_impl_kuyruk.json
+recete_combobox_hafiza.json
+recete_kontrol_durumlari.json
+renkli_recete_listesi.json
+renkli_recete_cache.json
+tarama_rapor.json
+pencere_yerlesim.json
+mf_analiz_ayarlar.json
+arti_eksi_sebepler.json
+
+# Generated reports / Excel outputs (per-period, regenerable)
+Kontrol_Raporu_*.xlsx
+SonRaporlar.csv
+
+# Discovery / debug helper scripts (transient, not part of product)
+_*.py
+_*.txt
 
 # Database files (contain sensitive data)
 *.db
