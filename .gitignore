@@ -48,6 +48,8 @@ grup_durumlari.json
 # Runtime state JSON (per-machine, auto-regenerated)
 ai_impl_kuyruk.json
 recete_combobox_hafiza.json
+aylik_inceleme_state.json
+aylik_inceleme_sutun_ayarlari.json
 recete_kontrol_durumlari.json
 renkli_recete_listesi.json
 renkli_recete_cache.json

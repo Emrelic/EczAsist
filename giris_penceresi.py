@@ -48,8 +48,11 @@ class GirisPenceresi:
             pass
 
         # Pencere boyutları
-        pencere_genislik = 400
-        pencere_yukseklik = 350
+        # NOT: Yukseklik form icerigine gore (baslik + subtitle + form_frame
+        # icindeki kullanici/sifre alanlari + checkbox + hata + buton + version)
+        # ~480 px gerekiyor; 350 idi ve sifre alani+buton kirpiliyordu.
+        pencere_genislik = 420
+        pencere_yukseklik = 500
 
         # Ekranın ortasına yerleştir
         ekran_genislik = self.root.winfo_screenwidth()
