@@ -20,6 +20,8 @@ pyodbc>=4.0.0
 openpyxl>=3.0.0
 matplotlib>=3.5.0
 tksheet>=6.0.0
+python-dateutil>=2.8.0
+tkcalendar>=1.6.0
 
 # Depo sorgulama (web scraping)
 selenium>=4.15.0
