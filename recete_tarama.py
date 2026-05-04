@@ -4221,6 +4221,10 @@ def sut_mesaj_kontrol(ilac, mesaj_basliklar, mesaj_metni, recete_teshisleri=None
             "sgk_kodu": ilac.get("sgk_kodu", ""),
             "rapor_kodu": ilac.get("rapor_kodu", ""),
             "sut_maddesi": ilac.get("sut_maddesi", ""),
+            # msj alanı: pragmatik fallback'ler için (rapor_kodu None + msj=var
+            # durumunda Medula şart kontrolü yapmış varsayımı)
+            "msj": ilac.get("msj", ""),
+            "msj_durumu": ilac.get("msj", ""),
             "mesaj_metni": mesaj_metni,
             "mesaj_basliklar": mesaj_basliklar,
             "doktor_uzmanligi": doktor_uzmanligi,

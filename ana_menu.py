@@ -69,6 +69,13 @@ class AnaMenu:
             "renk": "#9C27B0",  # Mor
             "hover": "#7B1FA2"
         },
+        "aylik_recete_sorgu": {
+            "baslik": "Aylık Reçete Sorgu",
+            "icon": "🗂️",
+            "aciklama": "Botanik EOS DB'den aylık reçete & rapor görüntüleme (salt-okunur)",
+            "renk": "#3F51B5",  # Indigo
+            "hover": "#303F9F"
+        },
         "t_cetvel": {
             "baslik": "T Cetvel / Bilanço",
             "icon": "📑",
@@ -367,17 +374,22 @@ class AnaMenu:
         grid_frame = tk.Frame(content_frame, bg=self.bg_color)
         grid_frame.pack(fill="both", expand=True)
 
-        # Grid ayarları için weight
-        for i in range(4):
-            grid_frame.columnconfigure(i, weight=1)
-
         # Modül butonlarını oluştur
         modul_listesi = [
             "ilac_takip", "depo_ekstre", "kasa_takip", "rapor_kontrol",
-            "t_cetvel", "ek_raporlar", "mf_analiz", "mf_hizli",
-            "siparis_verme", "min_stok_analiz", "stok_maliyet_analiz", "prim_raporlama",
-            "hasta_takip", "kullanici_yonetimi"
+            "aylik_recete_sorgu", "t_cetvel", "ek_raporlar", "mf_analiz",
+            "mf_hizli", "siparis_verme", "min_stok_analiz", "stok_maliyet_analiz",
+            "prim_raporlama", "hasta_takip", "kullanici_yonetimi"
         ]
+
+        # Grid ayarları: uniform parametresi ile tum hucreler ayni boyut.
+        # Sutun ve satir sayisini modul sayisina gore hesapla.
+        sutun_sayisi = 4
+        satir_sayisi = (len(modul_listesi) + sutun_sayisi - 1) // sutun_sayisi
+        for i in range(sutun_sayisi):
+            grid_frame.columnconfigure(i, weight=1, uniform='modul_col')
+        for i in range(satir_sayisi):
+            grid_frame.rowconfigure(i, weight=1, uniform='modul_row')
 
         row = 0
         col = 0
@@ -524,6 +536,8 @@ class AnaMenu:
             self.kasa_takip_ac()
         elif modul_key == "rapor_kontrol":
             self.rapor_kontrol_ac()
+        elif modul_key == "aylik_recete_sorgu":
+            self.aylik_recete_sorgu_ac()
         elif modul_key == "t_cetvel":
             self.t_cetvel_ac()
         elif modul_key == "ek_raporlar":
@@ -657,6 +671,33 @@ class AnaMenu:
         except Exception as e:
             logger.error(f"Rapor Kontrol açma hatası: {e}")
             messagebox.showerror("Hata", f"Rapor Kontrol modülü açılamadı:\n{e}")
+            self.root.deiconify()
+
+    def aylik_recete_sorgu_ac(self):
+        """Aylık Reçete Sorgu modülünü aç (Botanik EOS salt-okunur)"""
+        try:
+            self.root.withdraw()
+
+            from aylik_recete_sorgu_gui import AylikReceteSorguGUI
+
+            sorgu_root = tk.Toplevel()
+
+            def ana_menuye_don():
+                self.root.deiconify()
+
+            sorgu_root.protocol(
+                "WM_DELETE_WINDOW",
+                lambda: self._modul_kapat_ve_don(sorgu_root),
+            )
+            AylikReceteSorguGUI(sorgu_root, ana_menu_callback=ana_menuye_don)
+
+        except ImportError as e:
+            logger.error(f"Aylık Reçete Sorgu import hatası: {e}")
+            messagebox.showerror("Hata", f"Aylık Reçete Sorgu modülü yüklenemedi:\n{e}")
+            self.root.deiconify()
+        except Exception as e:
+            logger.error(f"Aylık Reçete Sorgu açma hatası: {e}")
+            messagebox.showerror("Hata", f"Aylık Reçete Sorgu modülü açılamadı:\n{e}")
             self.root.deiconify()
 
     def t_cetvel_ac(self):
@@ -926,10 +967,9 @@ class AnaMenu:
             self.root.deiconify()
 
     def cikis_yap(self):
-        """Sistemden çıkış yap"""
-        if messagebox.askyesno("Çıkış", "Sistemden çıkmak istediğinize emin misiniz?"):
-            logger.info(f"Kullanıcı çıkış yaptı: {self.kullanici['kullanici_adi']}")
-            self.root.destroy()
+        """Sistemden çıkış yap (onay sorulmadan)"""
+        logger.info(f"Kullanıcı çıkış yaptı: {self.kullanici['kullanici_adi']}")
+        self.root.destroy()
 
     def calistir(self):
         """Pencereyi çalıştır"""

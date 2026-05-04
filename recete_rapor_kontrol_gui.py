@@ -1756,6 +1756,16 @@ class ReceteRaporKontrolGUI:
         )
         yer_kaydet_btn.pack(side="right", padx=(0, 5), pady=10)
 
+        # SUT Matrisi (DB tabanlı, ayrı pencere)
+        sut_matrisi_btn = tk.Button(
+            baslik_frame, text="🎯 SUT Matrisi",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#3F51B5", activebackground="#303F9F",
+            bd=0, padx=10, pady=5, cursor="hand2",
+            command=self._sut_matrisi_ac
+        )
+        sut_matrisi_btn.pack(side="right", padx=(0, 5), pady=10)
+
         # === MEDULA BAĞLANTI BÖLÜMÜ ===
         medula_frame = tk.Frame(self.root, bg="#263238")
         medula_frame.pack(fill="x", padx=15, pady=(10, 5))
@@ -3064,6 +3074,20 @@ class ReceteRaporKontrolGUI:
 
         except Exception as e:
             logger.debug(f"Pencere konumlandırma hatası: {e}")
+
+    def _sut_matrisi_ac(self):
+        """🎯 SUT Matrisi penceresini aç (Botanik EOS DB tabanlı, ayrı Toplevel)."""
+        try:
+            from sut_matrisi_gui import SUTMatrisiGUI
+            pencere = tk.Toplevel(self.root)
+            SUTMatrisiGUI(pencere, kullanici_id=None)
+        except Exception as e:
+            logger.exception("SUT Matrisi açma hatası: %s", e)
+            from tkinter import messagebox
+            messagebox.showerror(
+                "Hata",
+                f"SUT Matrisi açılamadı:\n{e}",
+            )
 
     def _yerlesim_kaydet_tikla(self):
         """'Sayfa Yerleşimini Kaydet' butonu — şu anki MEDULA + Hasta Takip

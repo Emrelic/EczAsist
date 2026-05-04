@@ -1,0 +1,7 @@
+{
+  "_aciklama": "İlaç adı (kısmi/substring) eşleşmesi yapılır. Eşleşen ilaçların 'Mesaj VAR' uyarısı görmezden gelinir (raporsuz/mesajsız gibi davranılır). Büyük-küçük harf duyarsız.",
+  "ilac_adi_patternleri": [
+    "IBUCOLD",
+    "THERAFLU"
+  ]
+}

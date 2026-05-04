@@ -31,6 +31,7 @@ class KullaniciYonetimi:
         "depo_ekstre": "Depo Ekstre Karşılaştırma",
         "kasa_takip": "Kasa Takibi",
         "rapor_kontrol": "Rapor Kontrol",
+        "aylik_recete_sorgu": "Aylık Reçete Sorgu (DB)",
         "t_cetvel": "T Cetvel / Bilanço",
         "ek_raporlar": "Botanik Ek Raporlar",
         "mf_analiz": "MF Analiz Simülatörü",
