@@ -92,3 +92,6 @@ ilac_listesi_temp.xlsx
 
 # Inspect.exe documentation
 inspect.exe bilgileri/
+
+# Local pull backups (created when reconciling local changes vs origin)
+.local_backup_pull/
