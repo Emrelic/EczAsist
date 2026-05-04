@@ -525,6 +525,13 @@ class SiparisVermeGUI:
             bg='#7B1FA2', fg='white', font=('Arial', 9, 'bold'), relief='raised', bd=2, padx=10, pady=3
         ).pack(side=tk.LEFT, padx=(0, 8))
 
+        tk.Button(
+            row2, text="👤 Hastası Olan İlaçlar",
+            command=self._hastasi_olan_ilaclar_pencereyi_ac,
+            bg='#6A1B9A', fg='white', font=('Arial', 9, 'bold'),
+            relief='raised', bd=2, padx=10, pady=3
+        ).pack(side=tk.LEFT, padx=(0, 8))
+
         self.excel_btn = tk.Button(
             row2, text="Excel'e Aktar", command=self.excel_aktar,
             bg=self.R_WARNING, fg='white', font=('Arial', 9, 'bold'),
@@ -2725,14 +2732,23 @@ class SiparisVermeGUI:
         grup_aylik = sum(u.get('AylikOrt', 0) for u in urunler)
         grup_tutar = sum(u.get('Oneri', 0) * u.get('DepocuFiyat', 0) for u in urunler)
 
-        # Karşılama oranı: Grup stoğu, toplam ihtiyacın ne kadarını karşılıyor?
-        # Toplam ihtiyaç = Grup Stok + Grup Sipariş Önerisi (olması gereken toplam miktar)
-        # Bu oran, diğer grup üyelerinin stok fazlasının bir üyenin eksiğini kapatıp kapatmadığını gösterir
-        grup_toplam_ihtiyac = grup_stok + grup_oneri
+        # Karşılama oranı: Grup stoğu, hedef sürenin gerçek ihtiyacının yüzde kaçını karşılıyor?
+        # Toplam ihtiyaç = Σ(her muadilin günlük ortalaması × hedef gün)
+        # NOT: Burada KASTEN stok düşülmemiş ham ihtiyaç kullanılır; böylece
+        #   * stok = ihtiyaç → %100
+        #   * stok = ihtiyaç × 2 → %200 (fazla stok)
+        #   * stok = ihtiyaç ÷ 10 → %10 (yetersiz)
+        # Eski formül (stok + öneri) öneri-bazlı olduğu için grup ikamesini doğru yansıtmıyordu.
+        grup_toplam_ihtiyac = sum(
+            (u.get('GunlukOrt', 0) or 0) * (u.get('HedefGun', 0) or 0)
+            for u in urunler
+        )
         if grup_toplam_ihtiyac > 0:
             karsilama_orani = grup_stok / grup_toplam_ihtiyac
+        elif grup_stok > 0:
+            karsilama_orani = 3.0  # Hedef sürede tüketim yok ama stok var → "bol"
         else:
-            karsilama_orani = 1.0  # İhtiyaç yok
+            karsilama_orani = 0.0  # Ne stok ne tüketim
 
         # 14 kademeli renk skalası
         if karsilama_orani >= 3.00:
@@ -4434,6 +4450,114 @@ class SiparisVermeGUI:
         if atlanan_mukerrer > 0:
             durum += f" | ⚠ {atlanan_mukerrer} ürün zaten listede (atlandı)"
         self.status_label.config(text=durum)
+
+    def _hastasi_olan_ilaclar_pencereyi_ac(self):
+        """Hastası Olan İlaçlar penceresini aç (ayrı analiz penceresi)."""
+        try:
+            from hastasi_olan_ilac_gui import HastasiOlanIlacGUI
+        except ImportError as e:
+            messagebox.showerror(
+                "Modul Yok",
+                f"Hastasi olan ilac modulu yuklenemedi:\n{e}"
+            )
+            return
+
+        if not self.db:
+            self._baglanti_kur()
+        if not self.db or not self.db.conn:
+            messagebox.showerror(
+                "Veritabani Hatasi",
+                "Botanik EOS veritabanina baglanilamadi."
+            )
+            return
+
+        HastasiOlanIlacGUI(
+            parent=self.parent,
+            on_ekle=self._hastasi_olan_ilaclari_ana_listeye_ekle,
+            db=self.db,
+        )
+
+    def _hastasi_olan_ilaclari_ana_listeye_ekle(self, urunler):
+        """Hastası olan ilaç penceresinden gelen seçimi kesin sipariş listesine ekle.
+
+        Mukerrer kontrolu yapilir (UrunId bazli). Eger urun zaten listedeyse,
+        mevcut miktar uzerine eklenir.
+        """
+        if not urunler:
+            return 0
+
+        eklenen = 0
+        guncellenen = 0
+        mevcut_indeks = {
+            s.get('UrunId'): i
+            for i, s in enumerate(self.kesin_siparis_listesi)
+            if s.get('UrunId') is not None
+        }
+
+        for urun in urunler:
+            urun_id = urun.get('UrunId')
+            if urun_id is None:
+                continue
+
+            miktar = int(urun.get('Miktar') or 0)
+            if miktar <= 0:
+                continue
+
+            if urun_id in mevcut_indeks:
+                # Mukerrer: miktari ekle
+                idx = mevcut_indeks[urun_id]
+                mevcut = self.kesin_siparis_listesi[idx]
+                yeni_miktar = int(mevcut.get('Miktar') or 0) + miktar
+                mevcut['Miktar'] = yeni_miktar
+                mevcut['Toplam'] = yeni_miktar
+                if (hasattr(self, 'siparis_db') and self.siparis_db
+                        and self.aktif_calisma and mevcut.get('db_id')):
+                    try:
+                        self.siparis_db.siparis_guncelle(
+                            mevcut['db_id'], miktar=yeni_miktar,
+                            mf=mevcut.get('MF', ''), toplam=yeni_miktar
+                        )
+                    except Exception as e:
+                        logger.warning("Siparis guncelleme hatasi: %s", e)
+                guncellenen += 1
+            else:
+                siparis_data = {
+                    'UrunId': urun_id,
+                    'UrunAdi': urun.get('UrunAdi', ''),
+                    'Barkod': urun.get('Barkod', '') or '',
+                    'Miktar': miktar,
+                    'MF': urun.get('MF', '') or '',
+                    'Toplam': urun.get('Toplam', miktar) or miktar,
+                    'Stok': urun.get('Stok', 0) or 0,
+                    'AylikOrt': urun.get('AylikOrt', 0) or 0,
+                    'Selcuk': '', 'Alliance': '', 'Sancak': '',
+                    'Iskoop': '', 'Farmazon': '',
+                }
+                if (hasattr(self, 'siparis_db') and self.siparis_db
+                        and self.aktif_calisma):
+                    try:
+                        db_id = self.siparis_db.siparis_ekle(
+                            self.aktif_calisma, siparis_data
+                        )
+                        if db_id:
+                            siparis_data['db_id'] = db_id
+                    except Exception as e:
+                        logger.warning("Siparis ekleme hatasi: %s", e)
+                self.kesin_siparis_listesi.append(siparis_data)
+                mevcut_indeks[urun_id] = len(self.kesin_siparis_listesi) - 1
+                eklenen += 1
+
+        if eklenen > 0 or guncellenen > 0:
+            self._kesin_liste_guncelle()
+            if hasattr(self, '_calisma_bilgisini_guncelle'):
+                self._calisma_bilgisini_guncelle()
+            self._kesin_baslik_yanip_son()
+
+        durum = f"Hasta onerisi: {eklenen} yeni urun eklendi"
+        if guncellenen > 0:
+            durum += f", {guncellenen} mevcut urunun miktari arttirildi"
+        self.status_label.config(text=durum)
+        return eklenen + guncellenen
 
     def _kesin_liste_guncelle(self):
         """Kesin sipariş listesini güncelle"""
