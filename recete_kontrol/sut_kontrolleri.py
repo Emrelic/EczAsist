@@ -3036,6 +3036,7 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
     etkin_madde = (ilac_sonuc.get('etkin_madde') or '').upper()
     rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
     doktor_brans = (ilac_sonuc.get('doktor_uzmanligi') or '').upper()
+    kurum_adi = (ilac_sonuc.get('kurum_adi') or '').upper()
 
     # Kutu sayısı parse — string/float/int gelebilir, virgül/nokta normalize
     kutu_raw = ilac_sonuc.get('kutu_sayisi')
@@ -3124,57 +3125,115 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
         )
 
     # ── RAPORSUZ SENARYO ──
-    aile_hekimi = (
-        'AILE HEKIM' in doktor_brans or 'AİLE HEKİM' in doktor_brans
-        or 'AILE HEK.' in doktor_brans or 'AİLE HEK.' in doktor_brans
+    # Aile hekimi tespiti — 2 yol (her ikisi de geçerli):
+    #   1. Doktorun branş listesinde "AİLE HEK..." geçiyor
+    #      (DoktorBrans tablosu doktorun TÜM branşlarını döndürür; Pratisyen
+    #       hekim Aile Hekimliği Sertifikası almışsa bu listede ek branş
+    #       olarak görülür)
+    #   2. Reçetenin yazıldığı kurum bir Aile Sağlığı Merkezi (ASM/AHM)
+    #      → kurum bazlı yetki, branşı pratisyen olsa bile yeterli
+    brans_aile_hek = (
+        'AILE HEK' in doktor_brans
+        or 'AİLE HEK' in doktor_brans
+        or 'AİLE HEKİMLİĞİ' in doktor_brans
+        or 'AILE HEKIMLIGI' in doktor_brans
     )
+    kurum_asm = bool(kurum_adi) and (
+        'AILE SAGLIGI' in kurum_adi
+        or 'AİLE SAĞLIĞI' in kurum_adi
+        or 'AILE SAĞLIĞI' in kurum_adi  # karışık encoding
+        or 'AİLE SAGLIGI' in kurum_adi
+        or 'AILE HEKIMLIGI' in kurum_adi  # AHM
+        or 'AİLE HEKİMLİĞİ' in kurum_adi
+        # Tek başına kelime olarak ASM/AHM (yan kelime ile karışmasın)
+        or any(tok in kurum_adi.split() for tok in ('ASM', 'AHM'))
+    )
+    aile_hekimi = brans_aile_hek or kurum_asm
+
+    brans_pratisyen = ('PRATISYEN' in doktor_brans or 'PRATİSYEN' in doktor_brans)
+
     kutu_asildi = kutu > 1
 
+    detaylar.update({
+        'kurum_adi': kurum_adi,
+        'brans_aile_hek': brans_aile_hek,
+        'kurum_asm': kurum_asm,
+        'aile_hekimi': aile_hekimi,
+    })
+
+    # Yetkilendirmenin nedenini insan-okur formda topla (mesaj/aranan_ibare için)
+    nedenler = []
+    if brans_aile_hek:
+        nedenler.append('branşta aile hekimliği sertifikası')
+    if kurum_asm:
+        nedenler.append(f'kurum: {kurum_adi[:50]}')
+    yetki_kaynagi = ' + '.join(nedenler) if nedenler else ''
+
+    # ── Karar ──
     if aile_hekimi and not kutu_asildi:
         kutu_str = f'{kutu:g}' if kutu else '≤1'
         return KontrolRaporu(
             sonuc=KontrolSonucu.UYGUN,
-            mesaj=(f'Raporsuz ARB — aile hekimi reçetesi + '
-                   f'{kutu_str} kutu '
-                   '(SUT: aile hekimi raporsuz ayda 1 kutu)'),
+            mesaj=(f'Raporsuz ARB — aile hekimi yetkisi ({yetki_kaynagi}) '
+                   f'+ {kutu_str} kutu (SUT: aile hekimi raporsuz ayda 1 kutu)'),
             detaylar=detaylar,
             sut_kurali=sut_kurali,
-            aranan_ibare='Aile hekimi + ayda ≤1 kutu',
+            aranan_ibare=('Aile hekimliği sertifikası VEYA ASM kurumu '
+                          '+ ayda ≤1 kutu'),
+            bulunan_metin=yetki_kaynagi,
         )
 
-    if kutu_asildi and aile_hekimi:
+    if aile_hekimi and kutu_asildi:
         return KontrolRaporu(
             sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=(f'Raporsuz ARB — aile hekimi ama {kutu:g} kutu '
-                   '(SUT sınırı: ayda 1 kutu)'),
+            mesaj=(f'Raporsuz ARB — aile hekimi yetkisi var ({yetki_kaynagi}) '
+                   f'ama {kutu:g} kutu (SUT sınırı: ayda 1 kutu)'),
             detaylar=detaylar,
             uyari='Raporsuz ARB ayda en fazla 1 kutu — fazlası için rapor şart',
             sut_kurali=sut_kurali,
             aranan_ibare='Raporsuz ayda 1 kutu sınırı',
+            bulunan_metin=yetki_kaynagi,
         )
 
-    if kutu_asildi and not aile_hekimi:
+    if kutu_asildi:
+        # Aile hekimi değil + kutu > 1 → kesin uygunsuz
         return KontrolRaporu(
             sonuc=KontrolSonucu.UYGUN_DEGIL,
             mesaj=(f'Raporsuz ARB — yazan branş "{doktor_brans or "bilinmiyor"}", '
-                   f'{kutu:g} kutu '
+                   f'kurum "{kurum_adi or "bilinmiyor"}", {kutu:g} kutu '
                    '(SUT: raporsuz sadece aile hekimi + ayda 1 kutu)'),
             detaylar=detaylar,
             uyari='Raporsuz ARB sadece aile hekimi tarafından ve ayda 1 kutu',
             sut_kurali=sut_kurali,
-            aranan_ibare='Aile hekimi + 1 kutu (raporsuz şartı)',
+            aranan_ibare='Aile hekimi yetkisi + 1 kutu sınırı',
         )
 
     # Raporsuz + aile hekimi değil + kutu ≤ 1
+    # Pratisyen hekim, sertifikası/ASM kaydı görünmüyor → manuel doğrulama
+    if brans_pratisyen:
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+            mesaj=(f'Raporsuz ARB — pratisyen hekim '
+                   f'(kurum: {kurum_adi or "bilinmiyor"}) — '
+                   'aile hekimi sertifikası/ASM kaydı tespit edilemedi'),
+            detaylar=detaylar,
+            uyari=('Pratisyen hekim aile hekimliği sertifikalı veya ASM\'de '
+                   'çalışıyor olabilir — manuel kontrol gerekli'),
+            sut_kurali=sut_kurali,
+            aranan_ibare='Aile hekimi sertifikası VEYA ASM kurumu',
+        )
+
+    # Bilinmeyen branş + raporsuz + 1 kutu — şüpheli
     return KontrolRaporu(
         sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-        mesaj=(f'Raporsuz ARB — yazan branş "{doktor_brans or "bilinmiyor"}" '
+        mesaj=(f'Raporsuz ARB — yazan branş "{doktor_brans or "bilinmiyor"}", '
+               f'kurum "{kurum_adi or "bilinmiyor"}" '
                '(SUT: raporsuz reçete sadece aile hekimlerince)'),
         detaylar=detaylar,
-        uyari=('SUT EK-4/F M.51: Raporsuz ARB sadece aile hekimlerince '
-               'yazılabilir — branş kontrol edilmeli'),
+        uyari=('SUT EK-4/F M.51: Raporsuz ARB için aile hekimi yetkisi '
+               '(branşta sertifika veya ASM kurumu) gerekli'),
         sut_kurali=sut_kurali,
-        aranan_ibare='Aile hekimi (raporsuz reçete için)',
+        aranan_ibare='Aile hekimi (sertifika veya ASM kurumu)',
     )
 
 
@@ -5231,6 +5290,131 @@ def kontrol_bifosfonat(ilac_sonuc: Dict) -> KontrolRaporu:
         detaylar=detaylar, sut_kurali=sut_kurali,
         uyari='RAPOR KONTROLÜ GEREKLİ: DEXA T-skoru raporda olmalı',
         aranan_ibare='osteoporoz / T-skoru / DEXA / kırık'
+    )
+
+
+def kontrol_osteoporoz_biyolojik(ilac_sonuc: Dict) -> KontrolRaporu:
+    """
+    SUT 4.2.28.C - Osteoporoz biyolojik ilaçları
+        Denosumab (Prolia/Xgeva)
+        Teriparatid (Forteo/Forsteo/Movymia)
+        Romosozumab (Evenity)
+        Stronsiyum ranelat (Osseor/Protelos — büyük ölçüde piyasadan çekildi)
+
+    Kurallar:
+    - Uzman raporu (Endokrinoloji/Romatoloji/FTR/Geriatri) ZORUNLU
+    - Bifosfonat eşik kuralı + uzman raporu / yan etki / yetersiz yanıt
+    - Denosumab XGEVA: kemik metastazı (onkoloji) endikasyonu — ayrı ele alınır
+    - 'PROLIA' (60 mg s.c. 6 ayda bir) → osteoporoz endikasyonu
+    """
+    ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
+    etkin_madde = (ilac_sonuc.get('etkin_madde') or '').upper()
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
+    arama = ilac_adi + ' ' + etkin_madde
+
+    sut_kurali = ('SUT 4.2.28.C — Osteoporoz biyolojik ilaçları '
+                  '(Endokrinoloji/Romatoloji/FTR uzman raporu zorunlu)')
+
+    # Hangi alt grup?
+    is_denosumab = ('DENOSUMAB' in arama or 'PROLIA' in arama or
+                    'XGEVA' in arama)
+    is_xgeva = 'XGEVA' in arama
+    is_teriparatid = ('TERIPARATID' in arama or 'TERIPARATIDE' in arama or
+                      'FORTEO' in arama or 'FORSTEO' in arama or
+                      'MOVYMIA' in arama)
+    is_romosozumab = 'ROMOSOZUMAB' in arama or 'EVENITY' in arama
+    is_stronsiyum = ('STRONSIYUM' in arama or 'STRONTIUM' in arama or
+                     'OSSEOR' in arama or 'PROTELOS' in arama)
+
+    detaylar = {
+        'alt_kategori': 'OSTEOPOROZ_BIYOLOJIK',
+        'sut_maddesi': '4.2.28.C',
+        'rapor_kodu': rapor_kodu,
+        'denosumab': is_denosumab, 'xgeva': is_xgeva,
+        'teriparatid': is_teriparatid, 'romosozumab': is_romosozumab,
+        'stronsiyum': is_stronsiyum,
+    }
+
+    # XGEVA = onkoloji (kemik metastazı / dev hücreli tümör) — ayrı SUT
+    if is_xgeva:
+        if not rapor_kodu:
+            return KontrolRaporu(
+                KontrolSonucu.UYGUN_DEGIL,
+                'XGEVA (denosumab 120 mg) RAPORSUZ — onkoloji uzman raporu ZORUNLU',
+                detaylar=detaylar,
+                uyari='XGEVA: kemik metastazı / dev hücreli kemik tümörü — onkoloji raporu',
+                sut_kurali='SUT 12.7.X — Onkoloji destek tedavisi (denosumab 120 mg)'
+            )
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            f'XGEVA — onkoloji rapor kodu {rapor_kodu} (kemik metastazı endikasyonu)',
+            detaylar=detaylar,
+            uyari='Onkoloji rapor süresi ve dozaj kontrol edilmeli (4 haftada bir 120 mg)',
+            sut_kurali='SUT 12.7.X — Onkoloji destek tedavisi (denosumab 120 mg)'
+        )
+
+    # Stronsiyum ranelat — Türkiye'de büyük ölçüde piyasada yok, uyarı verelim
+    if is_stronsiyum:
+        if not rapor_kodu:
+            return KontrolRaporu(
+                KontrolSonucu.UYGUN_DEGIL,
+                'Stronsiyum ranelat RAPORSUZ — uzman raporu ZORUNLU',
+                detaylar=detaylar,
+                uyari='Stronsiyum ranelat: KV risk nedeniyle kullanımı kısıtlı',
+                sut_kurali=sut_kurali
+            )
+        # Rapor varsa bifosfonat eşik kontrolünü uygula
+        rapor = kontrol_bifosfonat(ilac_sonuc)
+        ek_uyari = 'Stronsiyum ranelat: KV risk — kardiyak öykü kontrol edilmeli'
+        return KontrolRaporu(
+            sonuc=rapor.sonuc,
+            mesaj=f'Stronsiyum ranelat — {rapor.mesaj}',
+            detaylar={**detaylar, **(rapor.detaylar or {})},
+            uyari=(rapor.uyari + ' | ' if rapor.uyari else '') + ek_uyari,
+            sut_kurali=sut_kurali,
+            aranan_ibare=rapor.aranan_ibare,
+            bulunan_metin=rapor.bulunan_metin,
+        )
+
+    # Genel biyolojik osteoporoz dalı (Prolia, Forteo, Evenity)
+    # 1) Rapor kodu yoksa kesin UYGUN_DEGIL — uzman raporu zorunlu
+    if not rapor_kodu:
+        ad_etiket = 'Osteoporoz biyolojik ilacı'
+        if is_denosumab:
+            ad_etiket = 'Denosumab (Prolia)'
+        elif is_teriparatid:
+            ad_etiket = 'Teriparatid (Forteo/Forsteo)'
+        elif is_romosozumab:
+            ad_etiket = 'Romosozumab (Evenity)'
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN_DEGIL,
+            f'{ad_etiket} RAPORSUZ yazılmış! Uzman raporu ZORUNLU '
+            '(Endokrinoloji/Romatoloji/FTR/Geriatri)',
+            detaylar=detaylar,
+            uyari='SUT 4.2.28.C: Uzman raporu olmadan ödenmez',
+            sut_kurali=sut_kurali
+        )
+
+    # 2) Rapor varsa bifosfonat eşik kuralını uygula (T-skoru, kırık,
+    #    kortikosteroid). Biyolojik ilaçlar genellikle bifosfonata
+    #    intolerans/yetersiz yanıt sonrası başlanır → ek uyarı.
+    rapor_bif = kontrol_bifosfonat(ilac_sonuc)
+    ek_uyari = ('Biyolojik ilaç: bifosfonata intolerans/yan etki/yetersiz '
+                'yanıt veya ciddi osteoporoz endikasyonu raporda olmalı')
+    if is_teriparatid:
+        ek_uyari += (' | Teriparatid: maks 24 ay kullanım, '
+                     'osteoporotik kırık + T ≤ -2.5 + ileri yaş')
+    if is_romosozumab:
+        ek_uyari += (' | Romosozumab: 12 ay; KV olay (MI/inme) öyküsünde KONTRENDİKE')
+
+    return KontrolRaporu(
+        sonuc=rapor_bif.sonuc,
+        mesaj=f'Osteoporoz biyolojik (rapor {rapor_kodu}) — {rapor_bif.mesaj}',
+        detaylar={**detaylar, **(rapor_bif.detaylar or {})},
+        uyari=(rapor_bif.uyari + ' | ' if rapor_bif.uyari else '') + ek_uyari,
+        sut_kurali=sut_kurali,
+        aranan_ibare=rapor_bif.aranan_ibare,
+        bulunan_metin=rapor_bif.bulunan_metin,
     )
 
 

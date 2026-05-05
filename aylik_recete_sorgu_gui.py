@@ -912,7 +912,20 @@ class AylikReceteSorguGUI:
         self._durum_frame = tk.Frame(self.root, bg="#ECEFF1")
         self._durum_frame.pack(fill="x", side="bottom")
 
-        # ── EN SOLDA: STATİN / LİPİD KONTROL butonu ──
+        # ── EN SOLDA: KEMİK ERİMESİ / OSTEOPOROZ KONTROL butonu ──
+        # ATC M05BA/BB/BX (bifosfonat + biyolojik) + H05AA (teriparatid) +
+        # G03XC (raloksifen) — SUT 4.2.17 (T-skor/kırık eşiği) ve SUT 4.2.28.C
+        # (biyolojik için uzman raporu) kurallarına göre denetlenir.
+        self.btn_osteo = tk.Button(
+            self._durum_frame, text="🦴 KEMİK ERİMESİ",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#5D4037", activebackground="#3E2723",  # kahve — kemik
+            bd=0, padx=12, pady=3, cursor="hand2",
+            command=self._osteo_kontrol_baslat
+        )
+        self.btn_osteo.pack(side="left", padx=(4, 4), pady=2)
+
+        # ── STATİN / LİPİD KONTROL butonu ──
         # Buton tıklanınca yüklenen satırlardan ATC C10* (statin + non-statin
         # lipid) olanlar SUT 4.2.28.A/B kuralına göre denetlenir; sonuç en sağdaki
         # SONUÇ sütununa UYGUN / UYGUN DEĞİL / ŞÜPHELİ olarak yazılır.
@@ -923,7 +936,7 @@ class AylikReceteSorguGUI:
             bd=0, padx=12, pady=3, cursor="hand2",
             command=self._statin_kontrol_baslat
         )
-        self.btn_statin.pack(side="left", padx=(4, 4), pady=2)
+        self.btn_statin.pack(side="left", padx=(0, 4), pady=2)
 
         # ── DİYABET KONTROL butonu (SUT 4.2.38) ──
         # ATC A10* (insülin + oral antidiyabetikler) — DPP-4/SGLT-2/GLP-1 RA
@@ -1861,6 +1874,7 @@ class AylikReceteSorguGUI:
             "hasta_tip": hasta_tip,
             "doktor": r.get("DoktorAdiSoyadi") or "",
             "brans": doktor_brans.get(r.get("RxDoktorId"), ""),
+            "kurum_adi": self._lookup_kurum.get(r.get("RxKurumId"), ""),
             "ilac": r.get("UrunAdi") or "",
             "etkin": em_ad,
             "atc": atc_kodu,
@@ -3474,7 +3488,8 @@ class AylikReceteSorguGUI:
         dict'ini üret.
 
         Statin'den farklı olarak ek alanlar:
-          - doktor_uzmanligi → aile hekimi tespiti (raporsuz şartı)
+          - doktor_uzmanligi → branş listesi (sertifika dahil — "Aile Hek." aranır)
+          - kurum_adi        → ASM tespiti (raporsuz reçete kurum bazlı yetki)
           - kutu_sayisi      → ayda 1 kutu sınırı kontrolü
           - etkin_madde      → mono/kombi ayrımı
           - atc_kodu         → fallback için
@@ -3502,6 +3517,7 @@ class AylikReceteSorguGUI:
             "recete_aciklamalari": _bol(s.get("rec_ack")),
             "mesaj_metni": "",
             "doktor_uzmanligi": s.get("brans") or "",
+            "kurum_adi": s.get("kurum_adi") or "",
             "kutu_sayisi": s.get("kutu") or "",
         }
 
@@ -3585,6 +3601,171 @@ class AylikReceteSorguGUI:
             "hasta_yasi": s.get("yas") or "",
             "recete_dozu": s.get("rec_doz") or "",
             "recete_ilaclari": [{"ad": x} for x in (diger_ilac_adlari or []) if x],
+        }
+
+    # ───────────────────────────────────────────────────────────────────
+    # OSTEOPOROZ / KEMİK ERİMESİ (SUT 4.2.17 + 4.2.28.C) KATEGORİ + ilac_sonuc
+    # ───────────────────────────────────────────────────────────────────
+    # Bifosfonat (oral/IV) + biyolojik (denosumab/teriparatid/romosozumab/
+    # stronsiyum) + SERM (raloksifen) — hepsi tek butonda denetlenir.
+    _OSTEO_BIFOSFONAT_ETKEN = (
+        "ALENDRONAT", "ALENDRONIK", "ALENDRONATE",
+        "RISEDRONAT", "RISEDRONIK", "RISEDRONATE",
+        "IBANDRONAT", "İBANDRONAT", "IBANDRONIK", "IBANDRONATE",
+        "ZOLEDRONIK ASIT", "ZOLEDRONAT", "ZOLEDRONATE", "ZOLEDRONIC",
+        "PAMIDRONAT", "PAMIDRONATE",
+        # Bifosfonat + D vit kombileri (Fosavance vb.)
+        "KOLEKALSIFEROL",
+    )
+    _OSTEO_BIFOSFONAT_TICARI = (
+        "FOSAMAX", "FOSAVANCE", "FOSALAN", "ALENDRO",
+        "ACTONEL", "OPTINATE", "OSTEONAT", "OSTEOFOS", "RISTABEN",
+        "BONVIVA", "BONDRONAT", "IBADRON", "IBANDRO",
+        "ZOMETA", "ACLASTA", "AKLASTA", "ZOLENAT", "ZOLEDRON",
+        "AREDIA",
+    )
+    _OSTEO_BIYOLOJIK_ETKEN = (
+        "DENOSUMAB",
+        "TERIPARATID", "TERIPARATIDE",
+        "ROMOSOZUMAB",
+        "STRONSIYUM RANELAT", "STRONTIUM RANELATE",
+    )
+    _OSTEO_BIYOLOJIK_TICARI = (
+        "PROLIA", "XGEVA",                     # denosumab
+        "FORTEO", "FORSTEO", "MOVYMIA", "TERROSA",  # teriparatid
+        "EVENITY",                             # romosozumab
+        "OSSEOR", "PROTELOS",                  # stronsiyum ranelat
+    )
+    _OSTEO_SERM_ETKEN = (
+        "RALOKSIFEN", "RALOXIFENE", "BAZEDOKSIFEN", "BAZEDOXIFENE",
+    )
+    _OSTEO_SERM_TICARI = (
+        "EVISTA", "OPTRUMA", "CONBRIZA", "DUAVIVE",
+    )
+
+    @staticmethod
+    def _osteo_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Satırın osteoporoz ilacı olup olmadığını sınıflandırır.
+
+        ATC önceliği (WHO ATC):
+          - M05BA / M05BB → BIFOSFONAT (oral/IV bifosfonat + D vit kombi)
+          - M05BX         → BIYOLOJIK  (denosumab, romosozumab, stronsiyum)
+          - H05AA02       → BIYOLOJIK  (teriparatid — paratiroid hormonu)
+          - G03XC01/02    → SERM       (raloksifen, bazedoksifen)
+
+        ATC yoksa: etken madde + ticari isim fallback.
+
+        Dönüş: "BIFOSFONAT" / "BIYOLOJIK" / "SERM" / "NONE"
+        """
+        a = (atc or "").upper().strip()
+        if a.startswith("M05BA") or a.startswith("M05BB"):
+            return "BIFOSFONAT"
+        if a.startswith("M05BX"):
+            return "BIYOLOJIK"
+        if a.startswith("H05AA"):
+            # H05AA02 = teriparatid; H05AA01 = paratiroid hormonu
+            return "BIYOLOJIK"
+        if a.startswith("G03XC"):
+            return "SERM"
+
+        ad = (ilac_adi or "").upper()
+        et = (etkin or "").upper()
+        arama = ad + " " + et
+
+        # Etken madde / ticari isim fallback
+        if any(k in arama for k in AylikReceteSorguGUI._OSTEO_BIYOLOJIK_ETKEN) or \
+                any(k in ad for k in AylikReceteSorguGUI._OSTEO_BIYOLOJIK_TICARI):
+            return "BIYOLOJIK"
+        if any(k in arama for k in AylikReceteSorguGUI._OSTEO_SERM_ETKEN) or \
+                any(k in ad for k in AylikReceteSorguGUI._OSTEO_SERM_TICARI):
+            return "SERM"
+        # Bifosfonat fallback (KOLEKALSIFEROL tek başına D vitamini = osteoporoz
+        # değil; sadece alendronat ile birlikte ise dahil edilmeli — ama burada
+        # ATC ile zaten yakalandığı için fallback'te KOLEKALSIFEROL'ü dahil
+        # ETMİYORUZ ki D vit ilaçları yanlışlıkla bifosfonat sayılmasın)
+        bifos_etken_safe = tuple(
+            x for x in AylikReceteSorguGUI._OSTEO_BIFOSFONAT_ETKEN
+            if x != "KOLEKALSIFEROL"
+        )
+        if any(k in arama for k in bifos_etken_safe) or \
+                any(k in ad for k in AylikReceteSorguGUI._OSTEO_BIFOSFONAT_TICARI):
+            return "BIFOSFONAT"
+        return "NONE"
+
+    @staticmethod
+    def _osteo_alt_sinif(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Osteoporoz alt-sınıfı (raporlama için).
+
+        BIFOSFONAT_ORAL / BIFOSFONAT_IV / DENOSUMAB / TERIPARATID /
+        ROMOSOZUMAB / STRONSIYUM / RALOKSIFEN / DIGER
+        """
+        a = (atc or "").upper().strip()
+        ad = (ilac_adi or "").upper()
+        et = (etkin or "").upper()
+        arama = ad + " " + et
+        if "DENOSUMAB" in arama or "PROLIA" in arama or "XGEVA" in arama:
+            return "DENOSUMAB"
+        if any(k in arama for k in ("TERIPARATID", "TERIPARATIDE",
+                                     "FORTEO", "FORSTEO", "MOVYMIA")):
+            return "TERIPARATID"
+        if "ROMOSOZUMAB" in arama or "EVENITY" in arama:
+            return "ROMOSOZUMAB"
+        if "STRONSIYUM" in arama or "STRONTIUM" in arama or \
+                "OSSEOR" in arama or "PROTELOS" in arama:
+            return "STRONSIYUM"
+        if "RALOKSIFEN" in arama or "RALOXIFENE" in arama or \
+                "EVISTA" in arama or "OPTRUMA" in arama:
+            return "RALOKSIFEN"
+        # Bifosfonat oral vs IV
+        # IV: zoledronik (Zometa/Aclasta), pamidronat (Aredia), ibandronat
+        # IV form (Bondronat) — oral/iv ayrımı için ad/dozaj ipucu kullan
+        if any(k in arama for k in ("ZOLEDRONIK", "ZOLEDRONAT", "ZOLEDRONIC",
+                                     "ZOMETA", "ACLASTA", "AKLASTA",
+                                     "PAMIDRONAT", "AREDIA")):
+            return "BIFOSFONAT_IV"
+        if "BONDRONAT" in arama:
+            return "BIFOSFONAT_IV"
+        if any(k in arama for k in ("ALENDRONAT", "RISEDRONAT", "IBANDRONAT",
+                                     "İBANDRONAT", "FOSAMAX", "FOSAVANCE",
+                                     "FOSALAN", "ACTONEL", "OPTINATE",
+                                     "OSTEONAT", "BONVIVA")):
+            return "BIFOSFONAT_ORAL"
+        return "DIGER"
+
+    @staticmethod
+    def _ilac_sonuc_olustur_osteo(s: dict) -> dict:
+        """Satır dict'inden kontrol_bifosfonat / kontrol_osteoporoz_biyolojik
+        fonksiyonlarının beklediği ilac_sonuc dict'ini üret.
+
+        Statin'den farklı olarak ek alanlar:
+          - etkin_madde / atc_kodu  → biyolojik alt grup tespiti
+          - doktor_uzmanligi        → uzman branş kontrolü (Endokrin/Romatoloji/FTR)
+          - hasta_yasi              → 65 yaş eşik kontrolü (T-skor kuralı)
+        """
+        def _bol(metin):
+            if not metin:
+                return []
+            return [p.strip() for p in str(metin).split(" | ") if p.strip()]
+
+        rapor_aciklamalari = []
+        rap_ack = s.get("rap_ack")
+        if rap_ack:
+            rapor_aciklamalari.append(str(rap_ack).strip())
+        for t in _bol(s.get("rap_tesh")):
+            rapor_aciklamalari.append(t)
+
+        return {
+            "ilac_adi": s.get("ilac") or "",
+            "etkin_madde": s.get("etkin") or "",
+            "atc_kodu": s.get("atc") or "",
+            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            "rapor_kodu_aciklama": "",
+            "recete_teshisleri": _bol(s.get("rec_tesh")),
+            "rapor_aciklamalari": rapor_aciklamalari,
+            "recete_aciklamalari": _bol(s.get("rec_ack")),
+            "mesaj_metni": "",
+            "doktor_uzmanligi": s.get("brans") or "",
+            "hasta_yasi": s.get("yas") or "",
         }
 
     def _hasta_tum_icd_kodlarini_topla(self, musteri_idler: List[int]) -> Dict[int, List[str]]:
@@ -4143,7 +4324,8 @@ class AylikReceteSorguGUI:
             ("yas",              "Yaş",             6),
             ("cins",             "Cin.",            6),
             ("doktor",           "Doktor",          22),
-            ("brans",            "Branş",           18),
+            ("brans",            "Branş",           20),
+            ("kurum_adi",        "Kurum",           28),
             ("ilac",             "İlaç",            28),
             ("etkin",            "Etken Madde",     22),
             ("atc",              "ATC",             10),
@@ -5449,6 +5631,480 @@ class AylikReceteSorguGUI:
         ri = 4
         for s in self.tum_satirlar:
             kategori = self._klopidogrel_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori != "NONE":
+                continue
+            for ci, (kod, _b, _g) in enumerate(atlanan_kolonlar, 1):
+                ws3.cell(row=ri, column=ci, value=str(s.get(kod, "")))
+            ri += 1
+        for ci, (_k, _b, gen) in enumerate(atlanan_kolonlar, 1):
+            ws3.column_dimensions[get_column_letter(ci)].width = gen
+        ws3.freeze_panes = "A4"
+
+        wb.save(path)
+        return path
+
+    # ───────────────────────────────────────────────────────────────────
+    # OSTEOPOROZ / KEMİK ERİMESİ (SUT 4.2.17 + 4.2.28.C) SUT KONTROLÜ
+    # ───────────────────────────────────────────────────────────────────
+    def _osteo_kontrol_baslat(self):
+        """KEMİK ERİMESİ KONTROL butonu — yüklenen satırlardan osteoporoz
+        ilaçları (bifosfonat / biyolojik / SERM) SUT 4.2.17 ve SUT 4.2.28.C'ye
+        göre denetlenir; sonuç en sağdaki SONUÇ sütununa UYGUN / UYGUN DEĞİL /
+        ŞÜPHELİ olarak yazılır.
+
+        Kapsanan ilaç sınıfları:
+          • Oral bifosfonatlar (alendronat, risedronat, ibandronat oral)
+          • IV bifosfonatlar (zoledronik asit, pamidronat, ibandronat IV)
+          • Biyolojik osteoporoz (denosumab Prolia, teriparatid, romosozumab)
+          • Stronsiyum ranelat (Osseor/Protelos — kullanımı kısıtlı)
+          • SERM (raloksifen — Evista)
+          • Onkolojik denosumab (Xgeva — ayrı SUT 12.7.X kuralı)
+
+        Kurallar:
+          • SUT 4.2.17: T-skoru eşikleri (kalça kırığı→KMY gerekmez,
+            kırık+T≤-1, kortikosteroid+T≤-1, ≥65 yaş T≤-2.5, <65 yaş T≤-3)
+          • SUT 4.2.28.C: Biyolojikler için Endokrin/Romatoloji/FTR uzman
+            raporu zorunlu
+        """
+        if not self.tum_satirlar:
+            messagebox.showinfo(
+                "Kemik Erimesi Kontrol",
+                "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_bifosfonat, kontrol_osteoporoz_biyolojik,
+            )
+            from recete_kontrol.base_kontrol import KontrolSonucu
+        except Exception as e:
+            self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
+            messagebox.showerror(
+                "Modül Hatası",
+                f"recete_kontrol modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        # Hastaların TÜM aktif raporlarındaki ICD kodlarını topla
+        # (Sekonder osteoporoz / kortikosteroid kullanımı / kırık öyküsü
+        # ayrı raporda yazılı olabilir)
+        musteri_idler = list({
+            s.get("musteri_id") for s in self.tum_satirlar
+            if s.get("musteri_id")
+        })
+        self._durum_yaz(
+            f"Kemik erimesi kontrol — {len(musteri_idler)} hastanın "
+            "diğer raporları taranıyor…")
+        self.root.update_idletasks()
+        hasta_tum_icd = self._hasta_tum_icd_kodlarini_topla(musteri_idler)
+
+        VERDICT_ETIKET = {
+            KontrolSonucu.UYGUN:             "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.ATLANDI:           "ATLANDI",
+        }
+        sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
+                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_osteo_disi": 0}
+        kategori_sayac = {
+            "BIFOSFONAT_ORAL": 0, "BIFOSFONAT_IV": 0,
+            "DENOSUMAB": 0, "TERIPARATID": 0, "ROMOSOZUMAB": 0,
+            "STRONSIYUM": 0, "RALOKSIFEN": 0, "DIGER": 0,
+        }
+        denetlenen_satirlar = []
+
+        # Önceki çalıştırmadan kalan kendi verdict'lerimizi temizle
+        for s in self.tum_satirlar:
+            kategori = self._osteo_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori == "NONE":
+                # Sadece kendi kategorimizin (OSTEOPOROZ) önceki artığını sil —
+                # statin/diyabet/klopidogrel/arb verdict'lerine dokunma.
+                if s.get("verdict_kategori") == "OSTEOPOROZ":
+                    s["verdict"] = ""
+                    s["verdict_detay"] = ""
+                    s["verdict_kategori"] = ""
+                    s["verdict_uyari"] = ""
+                    s["verdict_sut"] = ""
+                    s["verdict_aranan"] = ""
+                    s["verdict_bulunan"] = ""
+                    s["verdict_detaylar"] = ""
+                sayac["_osteo_disi"] += 1
+                continue
+
+            alt_sinif = self._osteo_alt_sinif(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            kategori_sayac[alt_sinif] = kategori_sayac.get(alt_sinif, 0) + 1
+
+            ilac_sonuc = self._ilac_sonuc_olustur_osteo(s)
+
+            # Hastanın diğer raporlarındaki ICD'leri ekle
+            # (M80/M81/M82 osteoporoz; S22/S32/S72 kırık ICD'leri ayrı
+            # raporda olabilir)
+            mid = s.get("musteri_id")
+            ek_icd = hasta_tum_icd.get(mid, []) if mid else []
+            if ek_icd:
+                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
+                for code in ek_icd:
+                    if code not in mevcut:
+                        ilac_sonuc.setdefault(
+                            "recete_teshisleri", []).append(code)
+
+            try:
+                if kategori == "BIYOLOJIK":
+                    rapor = kontrol_osteoporoz_biyolojik(ilac_sonuc)
+                else:
+                    # BIFOSFONAT ve SERM için ortak T-skoru/kırık algoritması
+                    rapor = kontrol_bifosfonat(ilac_sonuc)
+            except Exception as e:
+                logger.warning("Kemik erimesi kontrol hata (rx %s): %s",
+                                s.get("rec_no"), e)
+                s["verdict"] = "ŞÜPHELİ"
+                s["verdict_detay"] = f"Hata: {e}"
+                s["verdict_kategori"] = "OSTEOPOROZ"
+                s["verdict_alt_sinif"] = alt_sinif
+                s["verdict_uyari"] = ""
+                s["verdict_sut"] = ""
+                s["verdict_aranan"] = ""
+                s["verdict_bulunan"] = ""
+                s["verdict_detaylar"] = ""
+                sayac["ŞÜPHELİ"] += 1
+                denetlenen_satirlar.append(s)
+                continue
+
+            etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+            s["verdict"] = etiket
+            s["verdict_detay"] = rapor.mesaj or ""
+            s["verdict_kategori"] = "OSTEOPOROZ"
+            s["verdict_alt_sinif"] = alt_sinif
+            s["verdict_uyari"] = rapor.uyari or ""
+            s["verdict_sut"] = rapor.sut_kurali or ""
+            s["verdict_aranan"] = rapor.aranan_ibare or ""
+            s["verdict_bulunan"] = rapor.bulunan_metin or ""
+            try:
+                s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                                    ensure_ascii=False)
+            except Exception:
+                s["verdict_detaylar"] = str(rapor.detaylar or {})
+            sayac[etiket] = sayac.get(etiket, 0) + 1
+            denetlenen_satirlar.append(s)
+
+        # Tabloyu yenile
+        self._tabloyu_yenile()
+        self._durum_yaz(
+            f"Kemik erimesi SUT 4.2.17 + 4.2.28.C kontrolü: "
+            f"✓ UYGUN {sayac['UYGUN']}  "
+            f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
+            f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
+            f"− ATLANDI {sayac['ATLANDI']}  "
+            f"(kapsam dışı {sayac['_osteo_disi']} satır boş bırakıldı)"
+        )
+
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                  + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+        if toplam == 0:
+            messagebox.showinfo(
+                "Kemik Erimesi Kontrol",
+                "Bu dönemde osteoporoz/kemik erimesi ilacı (bifosfonat/biyolojik/SERM) "
+                "bulunamadı.",
+                parent=self.root)
+            return
+
+        cevap = messagebox.askyesno(
+            "Kontrol Raporu",
+            f"Kemik erimesi SUT kontrolü tamamlandı.\n\n"
+            f"Toplam osteoporoz satırı : {toplam}\n"
+            f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
+            f"  − ATLANDI        : {sayac['ATLANDI']}\n"
+            f"Kapsam dışı (atlanan): {sayac['_osteo_disi']}\n\n"
+            f"Kontrol raporu Excel olarak masaüstündeki "
+            f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
+            f"Rapor oluşturulup açılsın mı?",
+            parent=self.root)
+        if not cevap:
+            return
+
+        try:
+            rapor_yolu = self._osteo_rapor_excel_olustur(
+                sayac=sayac,
+                kategori_sayac=kategori_sayac,
+                denetlenen_satirlar=denetlenen_satirlar,
+            )
+        except Exception as e:
+            logger.exception("Kemik erimesi rapor üretim hatası")
+            messagebox.showerror(
+                "Rapor Hatası",
+                f"Kontrol raporu oluşturulamadı:\n{e}",
+                parent=self.root)
+            return
+
+        try:
+            os.startfile(rapor_yolu)
+            self._durum_yaz(f"Kontrol raporu: {rapor_yolu}")
+        except Exception as e:
+            messagebox.showinfo(
+                "Rapor Kaydedildi",
+                f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
+                parent=self.root)
+
+    # ── KEMİK ERİMESİ KONTROL RAPORU EXCEL ÜRETİCİ ──────────────────────
+    def _osteo_rapor_excel_olustur(self, *, sayac: dict, kategori_sayac: dict,
+                                     denetlenen_satirlar: list) -> str:
+        """Masaüstü/Reçete Kontrol/ klasörüne kapsamlı Excel raporu yazar.
+
+        3 sayfa:
+          - Özet : Toplam sayım, alt sınıf dağılımı, çalışma zamanı, dönem
+          - Osteoporoz Reçeteleri : Denetlenen her satır + SUT detayları + verdict
+          - Kapsam Dışı : Bifosfonat/biyolojik/SERM dışında kalanların özeti
+
+        Returns: oluşturulan dosyanın tam yolu.
+        """
+        try:
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font, Alignment
+            from openpyxl.utils import get_column_letter
+        except ImportError as e:
+            raise RuntimeError("openpyxl yüklü değil") from e
+
+        from datetime import datetime as _dt
+
+        masa = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop")
+        if not os.path.exists(masa):
+            masa = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.exists(masa):
+                masa = os.path.expanduser("~")
+        klasor = os.path.join(masa, "Reçete Kontrol")
+        os.makedirs(klasor, exist_ok=True)
+
+        donem = self.aktif_donem or "tum"
+        zaman = _dt.now().strftime("%Y%m%d_%H%M%S")
+        dosya_adi = f"Kemik_Erimesi_Kontrol_{donem}_{zaman}.xlsx"
+        path = os.path.join(klasor, dosya_adi)
+
+        wb = openpyxl.Workbook()
+
+        # ────────── SAYFA 1: ÖZET ──────────
+        ws1 = wb.active
+        ws1.title = "Özet"
+
+        VERDICT_RENK = {
+            "UYGUN":       "C8E6C9",  # yeşil
+            "UYGUN DEĞİL": "FFCDD2",  # kırmızı
+            "ŞÜPHELİ":     "FFE0B2",  # turuncu
+            "ATLANDI":     "ECEFF1",  # gri
+        }
+        baslik_font = Font(bold=True, color="FFFFFF", size=11)
+        baslik_fill = PatternFill("solid", fgColor="6A1B9A")  # mor — buton rengiyle uyumlu
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                  + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+
+        ws1.cell(row=1, column=1,
+                 value="KEMİK ERİMESİ / OSTEOPOROZ SUT KONTROL RAPORU")
+        ws1.cell(row=1, column=1).font = Font(bold=True, size=14, color="6A1B9A")
+        ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+
+        bilgi_satirlari = [
+            ("Dönem (Yıl-Ay)", donem),
+            ("Rapor Üretim Tarihi", _dt.now().strftime("%d.%m.%Y %H:%M:%S")),
+            ("Toplam Yüklenen Satır", str(len(self.tum_satirlar))),
+            ("Osteoporoz Olarak Tespit Edilen", str(toplam)),
+            ("Kapsam Dışı (Atlanan)", str(sayac["_osteo_disi"])),
+            ("", ""),
+            ("Uygulanan SUT Kuralları",
+             "SUT 4.2.17 (Bifosfonat) · SUT 4.2.28.C (Osteoporoz biyolojik)"),
+            ("Filtreleme",
+             "ATC M05BA/BB/BX + H05AA + G03XC + ticari isim fallback"),
+            ("Veri Kaynağı",
+             "Botanik EOS DB (SADECE SELECT) — hiçbir veri değiştirilmedi"),
+        ]
+        for i, (etk, deg) in enumerate(bilgi_satirlari, start=3):
+            c1 = ws1.cell(row=i, column=1, value=etk)
+            c2 = ws1.cell(row=i, column=2, value=deg)
+            if etk:
+                c1.font = Font(bold=True, color="37474F")
+            c2.font = Font(color="6A1B9A")
+            ws1.merge_cells(start_row=i, start_column=2, end_row=i, end_column=4)
+
+        # Sonuç dağılımı tablosu
+        bas = len(bilgi_satirlari) + 4
+        ws1.cell(row=bas, column=1, value="SONUÇ DAĞILIMI")
+        ws1.cell(row=bas, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas, start_column=1,
+                        end_row=bas, end_column=4)
+
+        bas += 1
+        for col, hd in enumerate(["Sonuç", "Adet", "Yüzde", ""], start=1):
+            c = ws1.cell(row=bas, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        for i, etiket in enumerate(["UYGUN", "UYGUN DEĞİL",
+                                     "ŞÜPHELİ", "ATLANDI"], start=bas + 1):
+            adet = sayac[etiket]
+            yuzde = (adet / toplam * 100) if toplam else 0
+            c1 = ws1.cell(row=i, column=1, value=etiket)
+            c2 = ws1.cell(row=i, column=2, value=adet)
+            c3 = ws1.cell(row=i, column=3, value=f"%{yuzde:.1f}")
+            fill = PatternFill("solid", fgColor=VERDICT_RENK[etiket])
+            for c in (c1, c2, c3):
+                c.fill = fill
+                c.font = Font(bold=True)
+            c2.alignment = Alignment(horizontal="center")
+            c3.alignment = Alignment(horizontal="center")
+
+        # Alt sınıf dağılımı
+        bas2 = bas + 6
+        ws1.cell(row=bas2, column=1,
+                 value="ALT SINIF DAĞILIMI (osteoporoz satırları)")
+        ws1.cell(row=bas2, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas2, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas2, start_column=1,
+                        end_row=bas2, end_column=4)
+        bas2 += 1
+        for col, hd in enumerate(["Alt Sınıf", "Adet", "Açıklama", ""],
+                                  start=1):
+            c = ws1.cell(row=bas2, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        kat_aciklama = {
+            "BIFOSFONAT_ORAL": "Alendronat, Risedronat, İbandronat oral (Fosamax/Fosavance/Actonel/Bonviva)",
+            "BIFOSFONAT_IV":   "Zoledronik asit (Zometa/Aclasta), Pamidronat (Aredia), İbandronat IV (Bondronat)",
+            "DENOSUMAB":       "Prolia (60 mg s.c. 6 ayda bir) — osteoporoz; Xgeva (120 mg) — onkoloji",
+            "TERIPARATID":     "Forteo / Forsteo / Movymia — paratiroid hormonu (max 24 ay)",
+            "ROMOSOZUMAB":     "Evenity — sklerostin inhibitörü (12 ay; KV olay öyküsü kontrendike)",
+            "STRONSIYUM":      "Osseor / Protelos — KV risk nedeniyle kullanımı kısıtlı",
+            "RALOKSIFEN":      "Evista / Optruma — SERM (postmenopozal osteoporoz)",
+            "DIGER":           "Sınıflandırılamayan",
+        }
+        sira = ["BIFOSFONAT_ORAL", "BIFOSFONAT_IV", "DENOSUMAB",
+                "TERIPARATID", "ROMOSOZUMAB", "STRONSIYUM",
+                "RALOKSIFEN", "DIGER"]
+        for i, k in enumerate(sira, start=bas2 + 1):
+            ws1.cell(row=i, column=1, value=k).font = Font(bold=True)
+            ws1.cell(row=i, column=2, value=kategori_sayac.get(k, 0)
+                     ).alignment = Alignment(horizontal="center")
+            ws1.cell(row=i, column=3, value=kat_aciklama[k])
+
+        # Notlar
+        bas3 = bas2 + len(sira) + 2
+        ws1.cell(row=bas3, column=1, value="NOTLAR")
+        ws1.cell(row=bas3, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas3, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas3, start_column=1,
+                        end_row=bas3, end_column=4)
+        notlar = [
+            "• UYGUN = SUT kuralı algoritmik olarak doğrulandı (T-skor + kırık + kortikosteroid + uzman raporu)",
+            "• UYGUN DEĞİL = Algoritmik kural net şekilde ihlal — manuel inceleme önerilir",
+            "  (Örn: T > -1; biyolojik ilaç raporsuz; XGEVA onkoloji raporsuz)",
+            "• ŞÜPHELİ = Karar verilemedi (eksik T-skoru sayısal değer, eksik kırık/kortikosteroid bilgisi)",
+            "• ATLANDI = SUT denetimi gerekmeyen satır",
+            "• Kapsam dışı = ATC M05*/H05AA/G03XC dışında olduğu için bu butonun kapsamına girmiyor",
+            "• 'Osteoporoz Reçeteleri' sayfasında her satırın hangi metni okuduğu, "
+            "neyi aradığı ve ne bulduğu yazılır.",
+            "• T-skoru eşikleri (SUT 4.2.17): Kalça kırığı→KMY gerekmez | "
+            "T≤-1 (kırık veya kortikosteroid) | T≤-2.5 (≥65 yaş) | T≤-3 (<65 yaş)",
+            "• Biyolojik (SUT 4.2.28.C): Endokrinoloji/Romatoloji/FTR uzman raporu zorunlu, "
+            "bifosfonata intolerans/yetersiz yanıt belirtilmeli",
+        ]
+        for i, n in enumerate(notlar, start=bas3 + 1):
+            ws1.cell(row=i, column=1, value=n)
+            ws1.merge_cells(start_row=i, start_column=1,
+                            end_row=i, end_column=8)
+
+        # Sütun genişlikleri
+        for col, w in enumerate([34, 22, 60, 12], start=1):
+            ws1.column_dimensions[get_column_letter(col)].width = w
+
+        # ────────── SAYFA 2: OSTEOPOROZ REÇETELERİ ──────────
+        ws2 = wb.create_sheet("Osteoporoz Reçeteleri")
+        kolonlar = [
+            ("rec_tar",          "Reç.Tarih",       12),
+            ("rec_no",           "Reçete No",       18),
+            ("hasta",            "Hasta",           24),
+            ("tc",               "TC",              13),
+            ("yas",              "Yaş",             6),
+            ("cins",             "Cin.",            6),
+            ("doktor",           "Doktor",          22),
+            ("brans",            "Branş",           18),
+            ("ilac",             "İlaç",            28),
+            ("etkin",            "Etken Madde",     22),
+            ("atc",              "ATC",             10),
+            ("verdict_alt_sinif","Alt Sınıf",       18),
+            ("rap_kod",          "Rapor Kod",       11),
+            ("rec_doz",          "Reçete Doz",      14),
+            ("rap_doz",          "Rapor Doz",       14),
+            ("kutu",             "Kutu",            6),
+            ("msj",              "Msj",             7),
+            ("uyari",            "Uyarı Kod",       18),
+            ("medula_msj",       "Medula Msj",      30),
+            ("rec_tesh",         "Reçete Teşhis",   30),
+            ("rap_tesh",         "Rapor Teşhis",    30),
+            ("rec_ack",          "Reçete Açıklama", 30),
+            ("rap_ack",          "Rapor Açıklama",  30),
+            ("verdict_sut",      "Uygulanan SUT",   30),
+            ("verdict_aranan",   "Aranan İbare",    28),
+            ("verdict_bulunan",  "Bulunan Metin",   28),
+            ("verdict_detaylar", "SUT Detaylar (T-skor/kırık/...)", 38),
+            ("verdict_uyari",    "Uyarı",           34),
+            ("verdict_detay",    "Açıklama",        50),
+            ("verdict",          "SONUÇ",           14),
+        ]
+        for c, (_kod, baslik, _g) in enumerate(kolonlar, 1):
+            cell = ws2.cell(row=1, column=c, value=baslik)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        ws2.row_dimensions[1].height = 28
+        ws2.freeze_panes = "A2"
+
+        for ri, s in enumerate(denetlenen_satirlar, start=2):
+            for ci, (kod, _baslik, _g) in enumerate(kolonlar, start=1):
+                deger = s.get(kod, "")
+                cell = ws2.cell(row=ri, column=ci, value=str(deger))
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            verdict = s.get("verdict") or ""
+            renk = VERDICT_RENK.get(verdict)
+            if renk:
+                son_col = len(kolonlar)
+                vcell = ws2.cell(row=ri, column=son_col)
+                vcell.fill = PatternFill("solid", fgColor=renk)
+                vcell.font = Font(bold=True)
+                vcell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for ci, (_kod, _baslik, gen) in enumerate(kolonlar, 1):
+            ws2.column_dimensions[get_column_letter(ci)].width = gen
+        ws2.auto_filter.ref = ws2.dimensions
+
+        # ────────── SAYFA 3: KAPSAM DIŞI (atlanmış) ──────────
+        ws3 = wb.create_sheet("Kapsam Dışı (Atlanan)")
+        ws3.cell(row=1, column=1,
+                 value="Aşağıdaki ilaçlar bifosfonat/biyolojik/SERM sınıfına "
+                       "girmediği için kemik erimesi butonu KAPSAMI DIŞINDA "
+                       "bırakıldı.").font = (
+            Font(italic=True, color="546E7A"))
+        ws3.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+
+        atlanan_kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12),
+            ("rec_no",  "Reçete No", 18),
+            ("hasta",   "Hasta",     24),
+            ("ilac",    "İlaç",      30),
+            ("etkin",   "Etken",     22),
+            ("atc",     "ATC",       10),
+        ]
+        for c, (_k, b, _g) in enumerate(atlanan_kolonlar, 1):
+            cell = ws3.cell(row=3, column=c, value=b)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center")
+        ri = 4
+        for s in self.tum_satirlar:
+            kategori = self._osteo_kategori(
                 s.get("ilac"), s.get("etkin"), s.get("atc"))
             if kategori != "NONE":
                 continue
