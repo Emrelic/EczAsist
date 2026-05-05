@@ -935,7 +935,20 @@ class AylikReceteSorguGUI:
             bd=0, padx=12, pady=3, cursor="hand2",
             command=self._diyabet_kontrol_baslat
         )
-        self.btn_diyabet.pack(side="left", padx=(0, 8), pady=2)
+        self.btn_diyabet.pack(side="left", padx=(0, 4), pady=2)
+
+        # ── KLOPİDOGREL KONTROL butonu (SUT 4.2.15) ──
+        # ATC B01AC04/22/24 — klopidogrel/prasugrel/tikagrelor (P2Y12).
+        # Endikasyon (stent/AKS/MI/KAH/inme/PAH) + ASA intoleransı + 12 ay
+        # stent kuralı + kombinasyon yasağı (P2Y12+YOAK).
+        self.btn_klopidogrel = tk.Button(
+            self._durum_frame, text="💊 KLOPİDOGREL",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#6A1B9A", activebackground="#4A148C",
+            bd=0, padx=12, pady=3, cursor="hand2",
+            command=self._klopidogrel_kontrol_baslat
+        )
+        self.btn_klopidogrel.pack(side="left", padx=(0, 8), pady=2)
 
         self.durum_bar = tk.Label(self._durum_frame, text="Hazır", anchor="w",
                                     bg="#ECEFF1", fg="#37474F", padx=10)
@@ -3349,6 +3362,88 @@ class AylikReceteSorguGUI:
             "recete_ilaclari": [{"ad": x} for x in (diger_ilac_adlari or []) if x],
         }
 
+    # ───────────────────────────────────────────────────────────────────
+    # KLOPİDOGREL / PRASUGREL / TIKAGRELOR (SUT 4.2.15) KATEGORİ + ilac_sonuc
+    # ───────────────────────────────────────────────────────────────────
+    _KLOP_AD_FALLBACK = (
+        "KLOPIDOGREL", "CLOPIDOGREL", "PRASUGREL", "TIKAGRELOR", "TICAGRELOR",
+        "PLAVIX", "PLANOR", "KARUM", "AYRINEX", "KLOPIRA", "OPIROL",
+        "EFFIENT", "EFIENT", "PRASIBLOCK",
+        "BRILINTA", "BRILIQUE",
+    )
+
+    @staticmethod
+    def _klopidogrel_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Satırın klopidogrel/prasugrel/tikagrelor (P2Y12 inhibitörü) olup
+        olmadığını ATC B01AC04/22/24 önceliği ve ad/etken fallback ile
+        sınıflandırır.
+
+        Dönüş: "KLOPIDOGREL" / "NONE"
+        """
+        a = (atc or "").upper().strip()
+        # B01AC04 = klopidogrel, B01AC22 = prasugrel, B01AC24 = tikagrelor
+        if a.startswith("B01AC04") or a.startswith("B01AC22") or a.startswith("B01AC24"):
+            return "KLOPIDOGREL"
+        ad = (ilac_adi or "").upper()
+        et = (etkin or "").upper()
+        arama = ad + " " + et
+        if any(k in arama for k in AylikReceteSorguGUI._KLOP_AD_FALLBACK):
+            return "KLOPIDOGREL"
+        return "NONE"
+
+    @staticmethod
+    def _klopidogrel_alt_sinif(ilac_adi: str, etkin: str, atc: str) -> str:
+        """P2Y12 alt-sınıfı (rapor için): KLOPIDOGREL / PRASUGREL / TIKAGRELOR."""
+        a = (atc or "").upper().strip()
+        if a.startswith("B01AC04"):
+            return "KLOPIDOGREL"
+        if a.startswith("B01AC22"):
+            return "PRASUGREL"
+        if a.startswith("B01AC24"):
+            return "TIKAGRELOR"
+        ad_et = (ilac_adi or "").upper() + " " + (etkin or "").upper()
+        if "PRASUGREL" in ad_et or "EFFIENT" in ad_et or "EFIENT" in ad_et \
+                or "PRASIBLOCK" in ad_et:
+            return "PRASUGREL"
+        if "TIKAGRELOR" in ad_et or "TICAGRELOR" in ad_et \
+                or "BRILINTA" in ad_et or "BRILIQUE" in ad_et:
+            return "TIKAGRELOR"
+        return "KLOPIDOGREL"
+
+    @staticmethod
+    def _ilac_sonuc_olustur_klopidogrel(s: dict, diger_ilac_adlari: list) -> dict:
+        """Satır dict'inden kontrol_klopidogrel'in beklediği ilac_sonuc dict'ini
+        üret. diger_ilac_adlari aynı reçetedeki diğer ilaçların adları
+        (kombinasyon yasağı tespiti için: klopidogrel+prasugrel+tikagrelor+YOAK
+        birlikte karşılanmaz)."""
+        def _bol(metin):
+            if not metin:
+                return []
+            return [p.strip() for p in str(metin).split(" | ") if p.strip()]
+
+        rapor_aciklamalari = []
+        rap_ack = s.get("rap_ack")
+        if rap_ack:
+            rapor_aciklamalari.append(str(rap_ack).strip())
+        for t in _bol(s.get("rap_tesh")):
+            rapor_aciklamalari.append(t)
+
+        return {
+            "ilac_adi": s.get("ilac") or "",
+            "etkin_madde": s.get("etkin") or "",
+            "atc_kodu": s.get("atc") or "",
+            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            "rapor_kodu_aciklama": "",
+            "recete_teshisleri": _bol(s.get("rec_tesh")),
+            "rapor_aciklamalari": rapor_aciklamalari,
+            "recete_aciklamalari": _bol(s.get("rec_ack")),
+            "mesaj_metni": "",
+            "doktor_uzmanligi": s.get("brans") or "",
+            "hasta_yasi": s.get("yas") or "",
+            "recete_dozu": s.get("rec_doz") or "",
+            "recete_ilaclari": [{"ad": x} for x in (diger_ilac_adlari or []) if x],
+        }
+
     def _hasta_tum_icd_kodlarini_topla(self, musteri_idler: List[int]) -> Dict[int, List[str]]:
         """Verilen hastaların TÜM aktif raporlarındaki ICD kodlarını + rapor
         kodlarını + ICD açıklamalarını toplu olarak çek.
@@ -4305,6 +4400,509 @@ class AylikReceteSorguGUI:
         ri = 4
         for s in self.tum_satirlar:
             kategori = self._diyabet_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori != "NONE":
+                continue
+            for ci, (kod, _b, _g) in enumerate(atlanan_kolonlar, 1):
+                ws3.cell(row=ri, column=ci, value=str(s.get(kod, "")))
+            ri += 1
+        for ci, (_k, _b, gen) in enumerate(atlanan_kolonlar, 1):
+            ws3.column_dimensions[get_column_letter(ci)].width = gen
+        ws3.freeze_panes = "A4"
+
+        wb.save(path)
+        return path
+
+    # ───────────────────────────────────────────────────────────────────
+    # KLOPİDOGREL / PRASUGREL / TIKAGRELOR (SUT 4.2.15) SUT KONTROLÜ
+    # ───────────────────────────────────────────────────────────────────
+    def _klopidogrel_kontrol_baslat(self):
+        """KLOPİDOGREL KONTROL butonu — yüklenen satırlardan klopidogrel/prasugrel/
+        tikagrelor (ATC B01AC04/22/24) olanları SUT 4.2.15'e göre denetler ve sonucu
+        en sağdaki SONUÇ sütununa UYGUN / UYGUN DEĞİL / ŞÜPHELİ olarak yazar.
+
+        Endikasyonlar:
+          A) Koroner stent (max 12 ay)
+          B) AKS (STEMI/NSTEMI/unstabil angina), MI
+          C) Anjiografik koroner arter hastalığı (ASA intoleransı şart)
+          D) Tıkayıcı periferik arter hastalığı
+          E) İskemik inme
+          F) Kalp kapak biyoprotezi
+
+        Kombinasyon yasağı: klopidogrel+prasugrel+tikagrelor+YOAK (rivaroksaban/
+        apiksaban/edoksaban/dabigatran) birlikte KARŞILANMAZ.
+
+        ÖNEMLİ: Hastanın TÜM aktif raporlarındaki ICD kodları da risk faktörü/
+        endikasyon tespiti için kullanılır (KAH/inme/PAH ayrı raporda olabilir).
+        """
+        if not self.tum_satirlar:
+            messagebox.showinfo(
+                "Klopidogrel Kontrol",
+                "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.sut_kontrolleri import kontrol_klopidogrel
+            from recete_kontrol.base_kontrol import KontrolSonucu, KontrolRaporu
+        except Exception as e:
+            self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
+            messagebox.showerror(
+                "Modül Hatası",
+                f"recete_kontrol modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        VERDICT_ETIKET = {
+            KontrolSonucu.UYGUN:             "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.ATLANDI:           "ATLANDI",
+        }
+        sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
+                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_klop_disi": 0}
+        # Alt sınıf dağılımı (raporlama için)
+        kategori_sayac = {"KLOPIDOGREL": 0, "PRASUGREL": 0, "TIKAGRELOR": 0}
+        denetlenen_satirlar = []
+
+        # ── Reçete bazlı ilaç gruplaması (kombinasyon yasağı kontrolü için) ──
+        # Aynı rec_no'ya sahip diğer ilaçların adları → P2Y12 + YOAK / çift P2Y12
+        recete_ilac_grup: Dict[str, List[str]] = {}
+        for s in self.tum_satirlar:
+            rno = s.get("rec_no")
+            if rno:
+                recete_ilac_grup.setdefault(str(rno), []).append(
+                    s.get("ilac") or "")
+
+        # YOAK ad ipuçları (kombinasyon yasağı için)
+        YOAK_IPUC = ("RIVAROKSABAN", "APIKSABAN", "EDOKSABAN", "DABIGATRAN",
+                     "XARELTO", "ELIQUIS", "LIXIANA", "PRADAXA")
+        # Çift P2Y12 yasağı (klop+prasugrel+tikagrelor)
+        P2Y12_IPUC = ("KLOPIDOGREL", "CLOPIDOGREL", "PRASUGREL", "TIKAGRELOR",
+                       "TICAGRELOR", "PLAVIX", "EFFIENT", "EFIENT", "BRILINTA",
+                       "BRILIQUE", "PLANOR", "KARUM", "AYRINEX", "KLOPIRA",
+                       "OPIROL", "PRASIBLOCK")
+
+        # ── Hastanın diğer raporlarındaki ICD/rapor kodlarını çek ──
+        # (Endikasyon ICD'si ayrı bir raporda olabilir → cross-rapor tespit)
+        musteri_idler = list({
+            s.get("musteri_id") for s in self.tum_satirlar
+            if s.get("musteri_id")
+        })
+        self._durum_yaz(
+            f"Klopidogrel kontrol — {len(musteri_idler)} hastanın "
+            "diğer raporları taranıyor…")
+        self.root.update_idletasks()
+        hasta_tum_icd = self._hasta_tum_icd_kodlarini_topla(musteri_idler)
+
+        # Önceki çalıştırmadan kalan kendi verdict'lerimizi temizle
+        for s in self.tum_satirlar:
+            kategori = self._klopidogrel_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori == "NONE":
+                if s.get("verdict_kategori") == "KLOPIDOGREL":
+                    s["verdict"] = ""
+                    s["verdict_detay"] = ""
+                    s["verdict_kategori"] = ""
+                    s["verdict_uyari"] = ""
+                    s["verdict_sut"] = ""
+                    s["verdict_aranan"] = ""
+                    s["verdict_bulunan"] = ""
+                    s["verdict_detaylar"] = ""
+                sayac["_klop_disi"] += 1
+                continue
+
+            alt_sinif = self._klopidogrel_alt_sinif(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            kategori_sayac[alt_sinif] = kategori_sayac.get(alt_sinif, 0) + 1
+
+            # Aynı reçetedeki diğer ilaçlar (kendisi hariç)
+            rno = str(s.get("rec_no") or "")
+            kendi_ad = (s.get("ilac") or "").upper()
+            diger_adlar = [x for x in recete_ilac_grup.get(rno, [])
+                            if x and x.upper() != kendi_ad]
+
+            # ── KOMBİNASYON YASAĞI ÖN-KONTROLÜ ──
+            # SUT 4.2.15: P2Y12 + YOAK veya çift P2Y12 → karşılanmaz
+            diger_upper = " ".join(diger_adlar).upper()
+            yoak_var = any(y in diger_upper for y in YOAK_IPUC)
+            cift_p2y12 = any(p in diger_upper for p in P2Y12_IPUC)
+
+            if yoak_var or cift_p2y12:
+                ihlal_aciklama = []
+                if yoak_var:
+                    ihlal_aciklama.append("YOAK (oral antikoagülan) ile birlikte")
+                if cift_p2y12:
+                    ihlal_aciklama.append("başka bir P2Y12 inhibitörü ile birlikte")
+                s["verdict"] = "UYGUN DEĞİL"
+                s["verdict_detay"] = (
+                    f"Kombinasyon yasağı: {', '.join(ihlal_aciklama)} reçete "
+                    f"edilmiş. SUT 4.2.15: P2Y12+YOAK veya çift P2Y12 "
+                    f"karşılanmaz."
+                )
+                s["verdict_kategori"] = "KLOPIDOGREL"
+                s["verdict_alt_sinif"] = alt_sinif
+                s["verdict_uyari"] = "Kombinasyon yasağı ihlali"
+                s["verdict_sut"] = "SUT 4.2.15 — Kombinasyon yasağı"
+                s["verdict_aranan"] = "P2Y12 + YOAK veya çift P2Y12"
+                s["verdict_bulunan"] = " | ".join(diger_adlar)[:200]
+                s["verdict_detaylar"] = json.dumps(
+                    {"diger_ilaclar": diger_adlar,
+                     "yoak_var": yoak_var,
+                     "cift_p2y12": cift_p2y12},
+                    ensure_ascii=False)
+                sayac["UYGUN DEĞİL"] += 1
+                denetlenen_satirlar.append(s)
+                continue
+
+            ilac_sonuc = self._ilac_sonuc_olustur_klopidogrel(s, diger_adlar)
+
+            # Hastanın diğer raporlarındaki ICD'leri ekle (KAH/inme/PAH cross-rapor)
+            mid = s.get("musteri_id")
+            ek_icd = hasta_tum_icd.get(mid, []) if mid else []
+            if ek_icd:
+                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
+                for code in ek_icd:
+                    if code not in mevcut:
+                        ilac_sonuc.setdefault(
+                            "recete_teshisleri", []).append(code)
+
+            try:
+                rapor = kontrol_klopidogrel(ilac_sonuc)
+            except Exception as e:
+                logger.warning("Klopidogrel kontrol hata (rx %s): %s",
+                                s.get("rec_no"), e)
+                s["verdict"] = "ŞÜPHELİ"
+                s["verdict_detay"] = f"Hata: {e}"
+                s["verdict_kategori"] = "KLOPIDOGREL"
+                s["verdict_alt_sinif"] = alt_sinif
+                s["verdict_uyari"] = ""
+                s["verdict_sut"] = ""
+                s["verdict_aranan"] = ""
+                s["verdict_bulunan"] = ""
+                s["verdict_detaylar"] = ""
+                sayac["ŞÜPHELİ"] += 1
+                denetlenen_satirlar.append(s)
+                continue
+
+            etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+            s["verdict"] = etiket
+            s["verdict_detay"] = rapor.mesaj or ""
+            s["verdict_kategori"] = "KLOPIDOGREL"
+            s["verdict_alt_sinif"] = alt_sinif
+            s["verdict_uyari"] = rapor.uyari or ""
+            s["verdict_sut"] = rapor.sut_kurali or ""
+            s["verdict_aranan"] = rapor.aranan_ibare or ""
+            s["verdict_bulunan"] = rapor.bulunan_metin or ""
+            try:
+                s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                                    ensure_ascii=False)
+            except Exception:
+                s["verdict_detaylar"] = str(rapor.detaylar or {})
+            sayac[etiket] = sayac.get(etiket, 0) + 1
+            denetlenen_satirlar.append(s)
+
+        # Tabloyu yenile
+        self._tabloyu_yenile()
+        self._durum_yaz(
+            f"Klopidogrel SUT 4.2.15 kontrolü: "
+            f"✓ UYGUN {sayac['UYGUN']}  "
+            f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
+            f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
+            f"− ATLANDI {sayac['ATLANDI']}  "
+            f"(klopidogrel dışı {sayac['_klop_disi']} satır boş bırakıldı)"
+        )
+
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                  + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+        if toplam == 0:
+            messagebox.showinfo(
+                "Klopidogrel Kontrol",
+                "Bu dönemde klopidogrel/prasugrel/tikagrelor (ATC B01AC04/22/24) "
+                "bulunamadı.",
+                parent=self.root)
+            return
+
+        cevap = messagebox.askyesno(
+            "Kontrol Raporu",
+            f"Klopidogrel SUT 4.2.15 kontrolü tamamlandı.\n\n"
+            f"Toplam P2Y12 satırı  : {toplam}\n"
+            f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
+            f"  − ATLANDI        : {sayac['ATLANDI']}\n"
+            f"Klopidogrel dışı (atlanan): {sayac['_klop_disi']}\n\n"
+            f"Kontrol raporu Excel olarak masaüstündeki "
+            f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
+            f"Rapor oluşturulup açılsın mı?",
+            parent=self.root)
+        if not cevap:
+            return
+
+        try:
+            rapor_yolu = self._klopidogrel_rapor_excel_olustur(
+                sayac=sayac,
+                kategori_sayac=kategori_sayac,
+                denetlenen_satirlar=denetlenen_satirlar,
+            )
+        except Exception as e:
+            logger.exception("Klopidogrel rapor üretim hatası")
+            messagebox.showerror(
+                "Rapor Hatası",
+                f"Kontrol raporu oluşturulamadı:\n{e}",
+                parent=self.root)
+            return
+
+        try:
+            os.startfile(rapor_yolu)
+            self._durum_yaz(f"Kontrol raporu: {rapor_yolu}")
+        except Exception as e:
+            messagebox.showinfo(
+                "Rapor Kaydedildi",
+                f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
+                parent=self.root)
+
+    # ── KLOPİDOGREL KONTROL RAPORU EXCEL ÜRETİCİ ────────────────────────
+    def _klopidogrel_rapor_excel_olustur(self, *, sayac: dict, kategori_sayac: dict,
+                                            denetlenen_satirlar: list) -> str:
+        """Masaüstü/Reçete Kontrol/ klasörüne kapsamlı Excel raporu yazar.
+
+        3 sayfa:
+          - Özet : Toplam sayım, alt sınıf dağılımı, çalışma zamanı, dönem
+          - Klopidogrel Reçeteleri : Denetlenen her satır + SUT detayları + verdict
+          - Kapsam Dışı : ATC B01AC04/22/24 dışında kalanların kısa özeti
+
+        Returns: oluşturulan dosyanın tam yolu.
+        """
+        try:
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font, Alignment
+            from openpyxl.utils import get_column_letter
+        except ImportError as e:
+            raise RuntimeError("openpyxl yüklü değil") from e
+
+        from datetime import datetime as _dt
+
+        masa = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop")
+        if not os.path.exists(masa):
+            masa = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.exists(masa):
+                masa = os.path.expanduser("~")
+        klasor = os.path.join(masa, "Reçete Kontrol")
+        os.makedirs(klasor, exist_ok=True)
+
+        donem = self.aktif_donem or "tum"
+        zaman = _dt.now().strftime("%Y%m%d_%H%M%S")
+        dosya_adi = f"Klopidogrel_Kontrol_{donem}_{zaman}.xlsx"
+        path = os.path.join(klasor, dosya_adi)
+
+        wb = openpyxl.Workbook()
+
+        # ────────── SAYFA 1: ÖZET ──────────
+        ws1 = wb.active
+        ws1.title = "Özet"
+
+        VERDICT_RENK = {
+            "UYGUN":       "C8E6C9",  # yeşil
+            "UYGUN DEĞİL": "FFCDD2",  # kırmızı
+            "ŞÜPHELİ":     "FFE0B2",  # turuncu
+            "ATLANDI":     "ECEFF1",  # gri
+        }
+        baslik_font = Font(bold=True, color="FFFFFF", size=11)
+        baslik_fill = PatternFill("solid", fgColor="4A148C")  # mor (klop teması)
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                  + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+
+        ws1.cell(row=1, column=1, value="KLOPİDOGREL / P2Y12 SUT KONTROL RAPORU")
+        ws1.cell(row=1, column=1).font = Font(bold=True, size=14, color="4A148C")
+        ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+
+        bilgi_satirlari = [
+            ("Dönem (Yıl-Ay)", donem),
+            ("Rapor Üretim Tarihi", _dt.now().strftime("%d.%m.%Y %H:%M:%S")),
+            ("Toplam Yüklenen Satır", str(len(self.tum_satirlar))),
+            ("P2Y12 Olarak Tespit Edilen", str(toplam)),
+            ("Kapsam Dışı (Atlanan)", str(sayac["_klop_disi"])),
+            ("", ""),
+            ("Uygulanan SUT Kuralı", "SUT 4.2.15 — Klopidogrel/Prasugrel/Tikagrelor"),
+            ("Filtreleme",
+             "ATC B01AC04 (klopidogrel) / B01AC22 (prasugrel) / B01AC24 (tikagrelor) "
+             "+ ticari isim fallback"),
+            ("Kombinasyon Yasağı",
+             "P2Y12 + YOAK (rivaroksaban/apiksaban/edoksaban/dabigatran) veya çift "
+             "P2Y12 birlikte karşılanmaz → otomatik UYGUN DEĞİL"),
+            ("Veri Kaynağı",
+             "Botanik EOS DB (SADECE SELECT) — hiçbir veri değiştirilmedi"),
+        ]
+        for i, (etk, deg) in enumerate(bilgi_satirlari, start=3):
+            c1 = ws1.cell(row=i, column=1, value=etk)
+            c2 = ws1.cell(row=i, column=2, value=deg)
+            if etk:
+                c1.font = Font(bold=True, color="37474F")
+            c2.font = Font(color="4A148C")
+            ws1.merge_cells(start_row=i, start_column=2, end_row=i, end_column=4)
+
+        # Sonuç dağılımı
+        bas = len(bilgi_satirlari) + 4
+        ws1.cell(row=bas, column=1, value="SONUÇ DAĞILIMI")
+        ws1.cell(row=bas, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas, start_column=1,
+                        end_row=bas, end_column=4)
+
+        bas += 1
+        for col, hd in enumerate(["Sonuç", "Adet", "Yüzde", ""], start=1):
+            c = ws1.cell(row=bas, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        for i, etiket in enumerate(["UYGUN", "UYGUN DEĞİL",
+                                     "ŞÜPHELİ", "ATLANDI"], start=bas + 1):
+            adet = sayac[etiket]
+            yuzde = (adet / toplam * 100) if toplam else 0
+            c1 = ws1.cell(row=i, column=1, value=etiket)
+            c2 = ws1.cell(row=i, column=2, value=adet)
+            c3 = ws1.cell(row=i, column=3, value=f"%{yuzde:.1f}")
+            fill = PatternFill("solid", fgColor=VERDICT_RENK[etiket])
+            for c in (c1, c2, c3):
+                c.fill = fill
+                c.font = Font(bold=True)
+            c2.alignment = Alignment(horizontal="center")
+            c3.alignment = Alignment(horizontal="center")
+
+        # Alt sınıf dağılımı
+        bas2 = bas + 6
+        ws1.cell(row=bas2, column=1, value="ALT SINIF DAĞILIMI (P2Y12)")
+        ws1.cell(row=bas2, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas2, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas2, start_column=1,
+                        end_row=bas2, end_column=4)
+        bas2 += 1
+        for col, hd in enumerate(["Alt Sınıf", "Adet", "Açıklama", ""], start=1):
+            c = ws1.cell(row=bas2, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        alt_aciklama = {
+            "KLOPIDOGREL": "ATC B01AC04 — Plavix, Planor, Karum, Ayrinex, Klopira, Opirol",
+            "PRASUGREL":   "ATC B01AC22 — Effient/Efient, Prasiblock",
+            "TIKAGRELOR":  "ATC B01AC24 — Brilinta, Brilique",
+        }
+        for i, k in enumerate(["KLOPIDOGREL", "PRASUGREL", "TIKAGRELOR"],
+                               start=bas2 + 1):
+            ws1.cell(row=i, column=1, value=k).font = Font(bold=True)
+            ws1.cell(row=i, column=2, value=kategori_sayac.get(k, 0)
+                     ).alignment = Alignment(horizontal="center")
+            ws1.cell(row=i, column=3, value=alt_aciklama[k])
+
+        # Notlar
+        bas3 = bas2 + 5
+        ws1.cell(row=bas3, column=1, value="NOTLAR")
+        ws1.cell(row=bas3, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas3, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas3, start_column=1,
+                        end_row=bas3, end_column=4)
+        notlar = [
+            "• UYGUN = SUT 4.2.15 endikasyonu raporda/teşhiste algoritmik olarak doğrulandı",
+            "• UYGUN DEĞİL = Kombinasyon yasağı (P2Y12+YOAK / çift P2Y12) veya kural ihlali",
+            "• ŞÜPHELİ = Endikasyon ibaresi bulunamadı veya ASA intoleransı eksik — manuel kontrol",
+            "• ATLANDI = SUT denetimi gerekmeyen satır",
+            "• Kapsam dışı = ATC B01AC04/22/24 dışında — bu butonun kapsamına girmiyor",
+            "• Cross-rapor ICD: Hastanın diğer aktif raporlarındaki tanılar da risk/endikasyon için kullanılır",
+            "• 'Klopidogrel Reçeteleri' sayfasında her satırın aranan ibare ve bulunan metni yazılır",
+        ]
+        for i, n in enumerate(notlar, start=bas3 + 1):
+            ws1.cell(row=i, column=1, value=n)
+            ws1.merge_cells(start_row=i, start_column=1,
+                            end_row=i, end_column=8)
+
+        for col, w in enumerate([34, 22, 60, 12], start=1):
+            ws1.column_dimensions[get_column_letter(col)].width = w
+
+        # ────────── SAYFA 2: KLOPİDOGREL REÇETELERİ ──────────
+        ws2 = wb.create_sheet("Klopidogrel Reçeteleri")
+        kolonlar = [
+            ("rec_tar",          "Reç.Tarih",       12),
+            ("rec_no",           "Reçete No",       18),
+            ("hasta",            "Hasta",           24),
+            ("tc",               "TC",              13),
+            ("yas",              "Yaş",             6),
+            ("cins",             "Cin.",            6),
+            ("doktor",           "Doktor",          22),
+            ("brans",            "Branş",           18),
+            ("ilac",             "İlaç",            28),
+            ("etkin",            "Etken Madde",     22),
+            ("atc",              "ATC",             10),
+            ("verdict_alt_sinif", "Alt Sınıf",      13),
+            ("rap_kod",          "Rapor Kod",       11),
+            ("rec_doz",          "Reçete Doz",      14),
+            ("rap_doz",          "Rapor Doz",       14),
+            ("kutu",             "Kutu",            6),
+            ("msj",              "Msj",             7),
+            ("uyari",            "Uyarı Kod",       18),
+            ("medula_msj",       "Medula Msj",      30),
+            ("rec_tesh",         "Reçete Teşhis",   30),
+            ("rap_tesh",         "Rapor Teşhis",    30),
+            ("rec_ack",          "Reçete Açıklama", 30),
+            ("rap_ack",          "Rapor Açıklama",  30),
+            ("verdict_sut",      "Uygulanan SUT",   30),
+            ("verdict_aranan",   "Aranan İbare",    32),
+            ("verdict_bulunan",  "Bulunan Metin",   32),
+            ("verdict_detaylar", "Detaylar (endikasyon/ASA/...)", 38),
+            ("verdict_uyari",    "Uyarı",           34),
+            ("verdict_detay",    "Açıklama",        50),
+            ("verdict",          "SONUÇ",           14),
+        ]
+        for c, (_kod, baslik, _g) in enumerate(kolonlar, 1):
+            cell = ws2.cell(row=1, column=c, value=baslik)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        ws2.row_dimensions[1].height = 28
+        ws2.freeze_panes = "A2"
+
+        for ri, s in enumerate(denetlenen_satirlar, start=2):
+            for ci, (kod, _baslik, _g) in enumerate(kolonlar, start=1):
+                deger = s.get(kod, "")
+                cell = ws2.cell(row=ri, column=ci, value=str(deger))
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            verdict = s.get("verdict") or ""
+            renk = VERDICT_RENK.get(verdict)
+            if renk:
+                son_col = len(kolonlar)
+                vcell = ws2.cell(row=ri, column=son_col)
+                vcell.fill = PatternFill("solid", fgColor=renk)
+                vcell.font = Font(bold=True)
+                vcell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for ci, (_kod, _baslik, gen) in enumerate(kolonlar, 1):
+            ws2.column_dimensions[get_column_letter(ci)].width = gen
+
+        ws2.auto_filter.ref = ws2.dimensions
+
+        # ────────── SAYFA 3: KAPSAM DIŞI ──────────
+        ws3 = wb.create_sheet("Kapsam Dışı (Atlanan)")
+        ws3.cell(row=1, column=1,
+                 value="Aşağıdaki ilaçlar ATC B01AC04/22/24 (P2Y12) sınıfına "
+                       "girmediği için klopidogrel butonu KAPSAMI DIŞINDA "
+                       "bırakıldı.").font = Font(italic=True, color="546E7A")
+        ws3.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+
+        atlanan_kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12),
+            ("rec_no",  "Reçete No", 18),
+            ("hasta",   "Hasta",     24),
+            ("ilac",    "İlaç",      30),
+            ("etkin",   "Etken",     22),
+            ("atc",     "ATC",       10),
+        ]
+        for c, (_k, b, _g) in enumerate(atlanan_kolonlar, 1):
+            cell = ws3.cell(row=3, column=c, value=b)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center")
+        ri = 4
+        for s in self.tum_satirlar:
+            kategori = self._klopidogrel_kategori(
                 s.get("ilac"), s.get("etkin"), s.get("atc"))
             if kategori != "NONE":
                 continue
