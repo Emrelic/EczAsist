@@ -26,6 +26,7 @@ import threading
 import tkinter as tk
 from datetime import date
 from tkinter import filedialog, messagebox, ttk
+from typing import Dict, List
 
 from botanik_db import BotanikDB
 
@@ -238,6 +239,9 @@ SUTUNLAR = [
     ("rap_tesh",   "Rap.Teşhis",   150, "Rapor teşhisleri"),
     ("rec_ack",    "Reç.Açk",      180, "Reçete açıklamaları"),
     ("rap_ack",    "Rap.Açk",      180, "Rapor açıklamaları"),
+    ("verdict",    "SONUÇ",        130,
+     "STATİN KONTROL butonu çalıştırıldığında doldurulur: "
+     "UYGUN / UYGUN DEĞİL / ŞÜPHELİ / ATLANDI"),
 ]
 SUTUN_KOD = [s[0] for s in SUTUNLAR]
 
@@ -907,6 +911,32 @@ class AylikReceteSorguGUI:
         # ───── DURUM ÇUBUĞU ─────
         self._durum_frame = tk.Frame(self.root, bg="#ECEFF1")
         self._durum_frame.pack(fill="x", side="bottom")
+
+        # ── EN SOLDA: STATİN / LİPİD KONTROL butonu ──
+        # Buton tıklanınca yüklenen satırlardan ATC C10* (statin + non-statin
+        # lipid) olanlar SUT 4.2.28.A/B kuralına göre denetlenir; sonuç en sağdaki
+        # SONUÇ sütununa UYGUN / UYGUN DEĞİL / ŞÜPHELİ olarak yazılır.
+        self.btn_statin = tk.Button(
+            self._durum_frame, text="🩺 STATİN KONTROL",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#C62828", activebackground="#8E0000",
+            bd=0, padx=12, pady=3, cursor="hand2",
+            command=self._statin_kontrol_baslat
+        )
+        self.btn_statin.pack(side="left", padx=(4, 4), pady=2)
+
+        # ── DİYABET KONTROL butonu (SUT 4.2.38) ──
+        # ATC A10* (insülin + oral antidiyabetikler) — DPP-4/SGLT-2/GLP-1 RA
+        # + klasik OAD + insülin SUT 4.2.38'e göre denetlenir.
+        self.btn_diyabet = tk.Button(
+            self._durum_frame, text="💉 DİYABET KONTROL",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#0D47A1", activebackground="#002171",
+            bd=0, padx=12, pady=3, cursor="hand2",
+            command=self._diyabet_kontrol_baslat
+        )
+        self.btn_diyabet.pack(side="left", padx=(0, 8), pady=2)
+
         self.durum_bar = tk.Label(self._durum_frame, text="Hazır", anchor="w",
                                     bg="#ECEFF1", fg="#37474F", padx=10)
         self.durum_bar.pack(fill="x", side="left", expand=True)
@@ -1790,6 +1820,7 @@ class AylikReceteSorguGUI:
         return {
             "ri_id": riid, "rx_id": rxid,
             "rapor_ana_id": rapor_ana_id,
+            "musteri_id": r.get("RxMusteriId"),
             "secim": "☐",  # tablo render sırasında secili_iidler'e göre güncellenir
             "grup": grup,
             "donem": donem_str,
@@ -3076,6 +3107,1216 @@ class AylikReceteSorguGUI:
                 os.startfile(path)
         except Exception as e:
             messagebox.showerror("Hata", f"Excel kaydedilemedi: {e}")
+
+    # ───────────────────────────────────────────────────────────────────
+    # STATİN / LİPİD SUT KONTROLÜ
+    # ───────────────────────────────────────────────────────────────────
+    # Lipid sınıfı tespiti için ATC C10* öncelikli; ATC dolu olmayan eski
+    # kayıtlar için ticari isim fallback'leri.
+    _LIPID_AD_FALLBACK = (
+        "STATIN", "ATORVAS", "ROSUVAS", "SIMVAS", "PRAVAS", "FLUVAS",
+        "PITAVAS", "EZETIMIB", "EZETROL", "INEGY",
+        "LIPITOR", "CRESTOR", "ROZACT", "ROSUVA", "ATOR", "LIPVAS",
+        "ULTROX", "ZOCOR", "ALVASTIN", "KOLESTER", "PRAVATOR",
+        "FENOFIB", "GEMFIB", "BEZAFIB", "SIPROFIB",
+        "LIPANTHYL", "LIPANTIL", "TRALIP", "LIPOFEN", "LOPID",
+        "OMACOR", "REPATHA", "PRALUENT", "EVOLOKUMAB", "ALIROKUMAB",
+    )
+
+    @staticmethod
+    def _lipid_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Satırın STATIN / FIBRAT / DIGER_LIPID / NONE olarak sınıflandırması.
+
+        ATC önceliklidir (WHO ATC C10):
+          - C10AA / C10BA / C10BX → STATIN (statin veya statin-kombin)
+          - C10AB                 → FIBRAT
+          - C10AC / C10AD / C10AX → DIGER_LIPID (ezetimib tek başına dahil)
+        ATC boşsa ticari isim/etken ipuçları kullanılır.
+        """
+        a = (atc or "").upper().strip()
+        if a.startswith("C10AA") or a.startswith("C10BA") or a.startswith("C10BX"):
+            return "STATIN"
+        if a.startswith("C10AB"):
+            return "FIBRAT"
+        if a.startswith("C10AC") or a.startswith("C10AD") or a.startswith("C10AX"):
+            return "DIGER_LIPID"
+        ad = (ilac_adi or "").upper()
+        et = (etkin or "").upper()
+        statin_ipuc = ("STATIN", "ATORVAS", "ROSUVAS", "SIMVAS", "PRAVAS",
+                       "FLUVAS", "PITAVAS", "LIPITOR", "CRESTOR", "ROZACT",
+                       "EZETIMIB", "EZETROL", "INEGY")
+        fibrat_ipuc = ("FENOFIB", "GEMFIB", "BEZAFIB", "SIPROFIB",
+                       "LIPANTHYL", "LIPANTIL", "TRALIP", "LIPOFEN", "LOPID")
+        if any(s in ad for s in statin_ipuc) or any(s in et for s in statin_ipuc):
+            return "STATIN"
+        if any(s in ad for s in fibrat_ipuc) or any(s in et for s in fibrat_ipuc):
+            return "FIBRAT"
+        return "NONE"
+
+    @staticmethod
+    def _ilac_sonuc_olustur(s: dict) -> dict:
+        """Satır dict'inden kontrol_statin/kontrol_fibrat'ın beklediği
+        ilac_sonuc dict'ini üret."""
+        def _bol(metin):
+            if not metin:
+                return []
+            # Bu modülün satır birleştiricisi " | " kullanıyor.
+            return [p.strip() for p in str(metin).split(" | ") if p.strip()]
+
+        rapor_aciklamalari = []
+        rap_ack = s.get("rap_ack")
+        if rap_ack:
+            rapor_aciklamalari.append(str(rap_ack).strip())
+        # Rapor teşhisleri de rapor metnine dahil — LDL/risk faktörü
+        # ICD'leri burada olabilir (RaporRaporKodlariICD)
+        for t in _bol(s.get("rap_tesh")):
+            rapor_aciklamalari.append(t)
+
+        return {
+            "ilac_adi": s.get("ilac") or "",
+            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            "rapor_kodu_aciklama": "",
+            "recete_teshisleri": _bol(s.get("rec_tesh")),
+            "rapor_aciklamalari": rapor_aciklamalari,
+            "recete_aciklamalari": _bol(s.get("rec_ack")),
+            "mesaj_metni": "",
+        }
+
+    # ───────────────────────────────────────────────────────────────────
+    # DİYABET (SUT 4.2.38) KATEGORİ TESPİTİ + ilac_sonuc üreticisi
+    # ───────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _diyabet_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Satırın diyabet ilacı olup olmadığını ATC A10* önceliği ve
+        ad/etken fallback'i ile sınıflandırır.
+
+        Dönüş: "DIYABET" / "NONE"
+        """
+        a = (atc or "").upper().strip()
+        if a.startswith("A10"):
+            return "DIYABET"
+        ad = (ilac_adi or "").upper()
+        et = (etkin or "").upper()
+        arama = ad + " " + et
+        diyabet_etken = (
+            "METFORMIN", "GLIKLAZID", "GLICLAZID", "GLIMEPIRID",
+            "GLIBENKLAMID", "GLIPIZID", "REPAGLINID", "NATEGLINID",
+            "PIOGLITAZON", "AKARBOZ", "ACARBOSE",
+            "SITAGLIPTIN", "VILDAGLIPTIN", "SAKSAGLIPTIN", "LINAGLIPTIN",
+            "ALOGLIPTIN",
+            "EMPAGLIFLOZIN", "DAPAGLIFLOZIN", "KANAGLIFLOZIN",
+            "CANAGLIFLOZIN", "ERTUGLIFLOZIN",
+            "LIRAGLUTID", "SEMAGLUTID", "DULAGLUTID", "EKSENATID",
+            "EXENATID", "LIKSISENATID", "LIXISENATID",
+            "INSULIN", "INSÜLIN", "GLARGIN", "DETEMIR", "DEGLUDEC",
+            "ASPART", "LISPRO", "GLULIZIN",
+        )
+        diyabet_ticari = (
+            "GLIFOR", "GLUKOFEN", "DIAFORMIN", "GLUCOPHAGE", "MATOFIN",
+            "DIAMICRON", "BETANORM", "DIAMERID", "AMARYL", "GLIMAX",
+            "MERIDIA", "GLIBEDAL", "DAONIL", "GLUKOMID",
+            "MINIDIAB", "GLUCOTROL", "NOVONORM", "STARLIX",
+            "ACTOS", "GLUSTIN", "PIONORM", "GLUCOBAY",
+            "JANUVIA", "GALVUS", "ONGLYZA", "TRAJENTA", "NESINA",
+            "JANUMET", "GALVUSMET", "KOMBOGLYZE", "JENTADUETO", "VIPDOMET",
+            "JARDIANCE", "FORZIGA", "FORXIGA", "INVOKANA", "STEGLATRO",
+            "SYNJARDY", "XIGDUO", "VOKANAMET", "SEGLUROMET",
+            "GLYXAMBI", "QTERN", "STEGLUJAN",
+            "VICTOZA", "OZEMPIC", "RYBELSUS", "TRULICITY", "BYETTA",
+            "BYDUREON", "SAXENDA", "LYXUMIA", "WEGOVY",
+            "LANTUS", "TOUJEO", "TRESIBA", "LEVEMIR", "BASAGLAR",
+            "ABASAGLAR", "NOVORAPID", "HUMALOG", "APIDRA", "ACTRAPID",
+            "HUMULIN", "NOVOMIX", "RYZODEG", "XULTOPHY", "SOLIQUA",
+        )
+        if any(k in arama for k in diyabet_etken):
+            return "DIYABET"
+        if any(k in arama for k in diyabet_ticari):
+            return "DIYABET"
+        return "NONE"
+
+    @staticmethod
+    def _diyabet_alt_sinif(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Diyabet ilacı için alt sınıf (rapor tablosu kategori sütunu).
+
+        ATC A10* alt-kodlarına göre:
+          A10A*  → INSULIN
+          A10BA  → BIGUANID (metformin)
+          A10BB  → SULFONILURE
+          A10BD  → KOMBI_OAD (sabit kombi: DPP4+met, SGLT2+met, vb.)
+          A10BG  → TZD (pioglitazon)
+          A10BH  → DPP4
+          A10BJ  → GLP1
+          A10BK  → SGLT2
+          A10BX  → DIGER (glinid, alfa-glukozidaz vb.)
+        ATC boşsa ad/etken bazlı fallback uygulanır.
+        """
+        a = (atc or "").upper().strip()
+        if a.startswith("A10A"):
+            return "INSULIN"
+        if a.startswith("A10BA"): return "BIGUANID"
+        if a.startswith("A10BB"): return "SULFONILURE"
+        if a.startswith("A10BD"): return "KOMBI_OAD"
+        if a.startswith("A10BG"): return "TZD"
+        if a.startswith("A10BH"): return "DPP4"
+        if a.startswith("A10BJ"): return "GLP1"
+        if a.startswith("A10BK"): return "SGLT2"
+        if a.startswith("A10BX"): return "DIGER"
+        ad = (ilac_adi or "").upper()
+        et = (etkin or "").upper()
+        arama = ad + " " + et
+        if any(k in arama for k in ("DAPAGLIFLOZIN", "EMPAGLIFLOZIN",
+                                     "KANAGLIFLOZIN", "CANAGLIFLOZIN",
+                                     "ERTUGLIFLOZIN", "JARDIANCE", "FORZIGA",
+                                     "FORXIGA", "INVOKANA", "STEGLATRO")):
+            # SGLT-2 sabit kombiler
+            if any(k in arama for k in ("SYNJARDY", "XIGDUO", "VOKANAMET",
+                                          "SEGLUROMET", "GLYXAMBI", "QTERN",
+                                          "STEGLUJAN")):
+                return "KOMBI_OAD"
+            return "SGLT2"
+        if any(k in arama for k in ("SITAGLIPTIN", "VILDAGLIPTIN",
+                                     "SAKSAGLIPTIN", "LINAGLIPTIN", "ALOGLIPTIN",
+                                     "JANUVIA", "GALVUS", "ONGLYZA", "TRAJENTA",
+                                     "NESINA")):
+            if any(k in arama for k in ("JANUMET", "GALVUSMET", "KOMBOGLYZE",
+                                          "JENTADUETO", "VIPDOMET")):
+                return "KOMBI_OAD"
+            return "DPP4"
+        if any(k in arama for k in ("LIRAGLUTID", "SEMAGLUTID", "DULAGLUTID",
+                                     "EKSENATID", "EXENATID", "LIKSISENATID",
+                                     "LIXISENATID", "VICTOZA", "OZEMPIC",
+                                     "RYBELSUS", "TRULICITY", "BYETTA",
+                                     "BYDUREON", "SAXENDA", "WEGOVY", "LYXUMIA")):
+            return "GLP1"
+        if any(k in arama for k in ("METFORMIN", "GLIFOR", "GLUKOFEN",
+                                     "DIAFORMIN", "GLUCOPHAGE", "MATOFIN")):
+            return "BIGUANID"
+        if any(k in arama for k in ("GLIKLAZID", "GLICLAZID", "GLIMEPIRID",
+                                     "GLIBENKLAMID", "GLIPIZID", "DIAMICRON",
+                                     "AMARYL", "GLIMAX", "DAONIL", "GLUKOMID",
+                                     "MINIDIAB", "GLUCOTROL", "BETANORM",
+                                     "DIAMERID", "GLIBEDAL")):
+            return "SULFONILURE"
+        if any(k in arama for k in ("REPAGLINID", "NATEGLINID", "NOVONORM",
+                                     "STARLIX")):
+            return "GLINID"
+        if any(k in arama for k in ("PIOGLITAZON", "ACTOS", "GLUSTIN", "PIONORM")):
+            return "TZD"
+        if any(k in arama for k in ("AKARBOZ", "ACARBOSE", "GLUCOBAY")):
+            return "AKARBOZ"
+        if any(k in arama for k in ("INSULIN", "INSÜLIN", "GLARGIN", "DETEMIR",
+                                     "DEGLUDEC", "ASPART", "LISPRO", "GLULIZIN",
+                                     "LANTUS", "TOUJEO", "TRESIBA", "LEVEMIR",
+                                     "BASAGLAR", "ABASAGLAR", "NOVORAPID",
+                                     "HUMALOG", "APIDRA", "ACTRAPID", "HUMULIN",
+                                     "NOVOMIX", "RYZODEG", "XULTOPHY", "SOLIQUA")):
+            return "INSULIN"
+        return "DIGER"
+
+    @staticmethod
+    def _ilac_sonuc_olustur_diyabet(s: dict, diger_ilac_adlari: list) -> dict:
+        """Satır dict'inden kontrol_diyabet_dpp4_sglt2'nin beklediği
+        ilac_sonuc dict'ini üret.
+
+        diger_ilac_adlari: aynı reçetedeki DİĞER ilaçların adları
+                            (kombinasyon yasağı kontrolü — DPP-4 + GLP-1 vb.)
+        """
+        def _bol(metin):
+            if not metin:
+                return []
+            return [p.strip() for p in str(metin).split(" | ") if p.strip()]
+
+        rapor_aciklamalari = []
+        rap_ack = s.get("rap_ack")
+        if rap_ack:
+            rapor_aciklamalari.append(str(rap_ack).strip())
+        for t in _bol(s.get("rap_tesh")):
+            rapor_aciklamalari.append(t)
+
+        return {
+            "ilac_adi": s.get("ilac") or "",
+            "etkin_madde": s.get("etkin") or "",
+            "atc_kodu": s.get("atc") or "",
+            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            "rapor_kodu_aciklama": "",
+            "recete_teshisleri": _bol(s.get("rec_tesh")),
+            "rapor_aciklamalari": rapor_aciklamalari,
+            "recete_aciklamalari": _bol(s.get("rec_ack")),
+            "mesaj_metni": "",
+            "doktor_uzmanligi": s.get("brans") or "",
+            "hasta_yasi": s.get("yas") or "",
+            "recete_dozu": s.get("rec_doz") or "",
+            "recete_ilaclari": [{"ad": x} for x in (diger_ilac_adlari or []) if x],
+        }
+
+    def _hasta_tum_icd_kodlarini_topla(self, musteri_idler: List[int]) -> Dict[int, List[str]]:
+        """Verilen hastaların TÜM aktif raporlarındaki ICD kodlarını + rapor
+        kodlarını + ICD açıklamalarını toplu olarak çek.
+
+        Returns: {musteri_id: ['E11.9 Tip 2 DM', 'I25 Koroner', ...]}
+
+        Bu sayede statin denetimi sırasında, ilgili hastanın bir BAŞKA
+        raporunda DM/KAH varsa o tanı statin satırına da yansıtılır → risk
+        faktörü algoritmik olarak doğru değerlendirilir.
+        """
+        if not musteri_idler or not self.db:
+            return {}
+        result: Dict[int, List[str]] = {}
+        try:
+            for i in range(0, len(musteri_idler), 500):
+                chunk = [m for m in musteri_idler[i:i + 500] if m]
+                if not chunk:
+                    continue
+                ph = ",".join("?" * len(chunk))
+                rows = self.db.sorgu_calistir(
+                    f"""SELECT
+                            ra.RaporAnaMusteriId AS musteri_id,
+                            i.ICDKodu             AS icd_kodu,
+                            i.ICDAciklamasi       AS icd_aciklamasi,
+                            rk.RaporKodu          AS rapor_kodu,
+                            rk.RaporKodAciklama   AS rapor_kod_aciklama
+                        FROM RaporRaporKodlariICD rrki
+                        INNER JOIN RaporAna ra
+                                ON ra.RaporAnaId = rrki.RRKIRaporAnaId
+                        LEFT JOIN ICD i
+                                ON i.ICDId = rrki.RRKIICDId
+                        LEFT JOIN RaporKodlari rk
+                                ON rk.RaporKodId = rrki.RRKIRaporKodId
+                        WHERE ra.RaporAnaMusteriId IN ({ph})
+                          AND (rrki.RRKISilme IS NULL OR rrki.RRKISilme = 0)
+                          AND (ra.RaporAnaSilme IS NULL OR ra.RaporAnaSilme = 0)""",
+                    tuple(chunk))
+                for r in rows:
+                    mid = r.get("musteri_id")
+                    if not mid:
+                        continue
+                    parcalar = []
+                    icd_k = (r.get("icd_kodu") or "").strip()
+                    icd_a = (r.get("icd_aciklamasi") or "").strip()
+                    if icd_k and icd_a:
+                        parcalar.append(f"{icd_k} {icd_a}")
+                    elif icd_k:
+                        parcalar.append(icd_k)
+                    rk_k = (r.get("rapor_kodu") or "").strip()
+                    rk_a = (r.get("rapor_kod_aciklama") or "").strip()
+                    if rk_k and rk_a:
+                        parcalar.append(f"[Rap {rk_k}] {rk_a}")
+                    for p in parcalar:
+                        if p:
+                            result.setdefault(mid, []).append(p)
+        except Exception as e:
+            logger.warning("Hasta ICD toplu sorgu fail: %s", e)
+        # Tekrarsız + temiz
+        return {k: list(dict.fromkeys(v)) for k, v in result.items()}
+
+    def _statin_kontrol_baslat(self):
+        """STATİN KONTROL butonu — yüklenen satırlardan statin/lipid (ATC C10*)
+        olanları SUT 4.2.28.A/B kuralına göre denetler ve sonucu en sağdaki
+        SONUÇ sütununa yazar.
+
+        ÖNEMLİ: Hasta'nın bu reçetede sadece statinin kendi raporu değil, TÜM
+        aktif raporlarındaki ICD kodları da risk faktörü tespiti için
+        kullanılır (DM/KAH/inme ayrı bir raporda olabilir)."""
+        if not self.tum_satirlar:
+            messagebox.showinfo(
+                "Statin Kontrol",
+                "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_statin, kontrol_fibrat,
+            )
+            from recete_kontrol.base_kontrol import KontrolSonucu
+        except Exception as e:
+            self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
+            messagebox.showerror(
+                "Modül Hatası",
+                f"recete_kontrol modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        # Hastaların TÜM raporlarındaki ICD kodlarını topla (cross-rapor risk)
+        musteri_idler = list({
+            s.get("musteri_id") for s in self.tum_satirlar
+            if s.get("musteri_id")
+        })
+        self._durum_yaz(
+            f"Statin kontrol — {len(musteri_idler)} hastanın "
+            "diğer raporları taranıyor…")
+        self.root.update_idletasks()
+        hasta_tum_icd = self._hasta_tum_icd_kodlarini_topla(musteri_idler)
+
+        VERDICT_ETIKET = {
+            KontrolSonucu.UYGUN:             "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.ATLANDI:           "ATLANDI",
+        }
+        sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
+                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_lipid_disi": 0}
+        # Rapor için kategoriye göre ayrım da tutulur
+        kategori_sayac = {"STATIN": 0, "FIBRAT": 0, "DIGER_LIPID": 0}
+        denetlenen_satirlar = []  # rapor için (lipid olanlar)
+
+        # Önceki çalıştırmadan kalan verdict'leri temizle (lipid olmayanlar
+        # her zaman boş kalsın, lipid olanlar yeniden hesaplansın)
+        for s in self.tum_satirlar:
+            kategori = self._lipid_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori == "NONE":
+                # Sadece kendi kategorimizin (lipid) önceki artığını sil —
+                # diyabet vb. başka kontrollerin verdict'lerine dokunma.
+                if s.get("verdict_kategori") in ("STATIN", "FIBRAT", "DIGER_LIPID"):
+                    s["verdict"] = ""
+                    s["verdict_detay"] = ""
+                    s["verdict_kategori"] = ""
+                    s["verdict_uyari"] = ""
+                    s["verdict_sut"] = ""
+                    s["verdict_aranan"] = ""
+                    s["verdict_bulunan"] = ""
+                    s["verdict_detaylar"] = ""
+                sayac["_lipid_disi"] += 1
+                continue
+            kategori_sayac[kategori] = kategori_sayac.get(kategori, 0) + 1
+            ilac_sonuc = self._ilac_sonuc_olustur(s)
+            # Hastanın diğer raporlarındaki ICD/rapor kodlarını da
+            # recete_teshisleri'ne ekle — DM/KAH ayrı raporda yazılıysa
+            # risk faktörü tespiti için statin algoritması bunları görsün.
+            mid = s.get("musteri_id")
+            ek_icd = hasta_tum_icd.get(mid, []) if mid else []
+            if ek_icd:
+                # Çift kayıt önlemek için tekilleştir
+                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
+                for code in ek_icd:
+                    if code not in mevcut:
+                        ilac_sonuc.setdefault(
+                            "recete_teshisleri", []).append(code)
+            try:
+                if kategori == "FIBRAT":
+                    rapor = kontrol_fibrat(ilac_sonuc)
+                else:
+                    # STATIN ve DIGER_LIPID için aynı kural (LDL/risk mantığı)
+                    rapor = kontrol_statin(ilac_sonuc)
+            except Exception as e:
+                logger.warning("Statin kontrol hata (rx %s): %s",
+                                s.get("rec_no"), e)
+                s["verdict"] = "ŞÜPHELİ"
+                s["verdict_detay"] = f"Hata: {e}"
+                s["verdict_kategori"] = kategori
+                s["verdict_uyari"] = ""
+                s["verdict_sut"] = ""
+                s["verdict_aranan"] = ""
+                s["verdict_bulunan"] = ""
+                s["verdict_detaylar"] = ""
+                sayac["ŞÜPHELİ"] += 1
+                denetlenen_satirlar.append(s)
+                continue
+            etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+            s["verdict"] = etiket
+            s["verdict_detay"] = rapor.mesaj or ""
+            s["verdict_kategori"] = kategori
+            s["verdict_uyari"] = rapor.uyari or ""
+            s["verdict_sut"] = rapor.sut_kurali or ""
+            s["verdict_aranan"] = rapor.aranan_ibare or ""
+            s["verdict_bulunan"] = rapor.bulunan_metin or ""
+            # detaylar dict — string'e çevir (Excel'e güvenle yazılsın)
+            try:
+                s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                                    ensure_ascii=False)
+            except Exception:
+                s["verdict_detaylar"] = str(rapor.detaylar or {})
+            sayac[etiket] = sayac.get(etiket, 0) + 1
+            denetlenen_satirlar.append(s)
+
+        # Tabloyu yenile (mevcut filtre/renk durumuna saygı duyarak)
+        self._tabloyu_yenile()
+        self._durum_yaz(
+            f"Statin/Lipid SUT kontrolü: "
+            f"✓ UYGUN {sayac['UYGUN']}  "
+            f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
+            f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
+            f"− ATLANDI {sayac['ATLANDI']}  "
+            f"(lipid dışı {sayac['_lipid_disi']} satır boş bırakıldı)"
+        )
+
+        # ── KONTROL RAPORU ÜRET ──
+        toplam_lipid = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                        + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+        if toplam_lipid == 0:
+            messagebox.showinfo(
+                "Statin Kontrol",
+                "Bu dönemde statin/lipid grubuna giren reçete bulunamadı.",
+                parent=self.root)
+            return
+
+        cevap = messagebox.askyesno(
+            "Kontrol Raporu",
+            f"Statin/Lipid SUT kontrolü tamamlandı.\n\n"
+            f"Toplam lipid satırı : {toplam_lipid}\n"
+            f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
+            f"  − ATLANDI        : {sayac['ATLANDI']}\n"
+            f"Lipid dışı (atlanan): {sayac['_lipid_disi']}\n\n"
+            f"Kontrol raporu Excel olarak masaüstündeki "
+            f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
+            f"Rapor oluşturulup açılsın mı?",
+            parent=self.root)
+        if not cevap:
+            return
+
+        try:
+            rapor_yolu = self._statin_rapor_excel_olustur(
+                sayac=sayac,
+                kategori_sayac=kategori_sayac,
+                denetlenen_satirlar=denetlenen_satirlar,
+            )
+        except Exception as e:
+            logger.exception("Statin rapor üretim hatası")
+            messagebox.showerror(
+                "Rapor Hatası",
+                f"Kontrol raporu oluşturulamadı:\n{e}",
+                parent=self.root)
+            return
+
+        # Aç
+        try:
+            os.startfile(rapor_yolu)
+            self._durum_yaz(f"Kontrol raporu: {rapor_yolu}")
+        except Exception as e:
+            messagebox.showinfo(
+                "Rapor Kaydedildi",
+                f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
+                parent=self.root)
+
+    # ── KONTROL RAPORU EXCEL ÜRETİCİ ────────────────────────────────────
+    def _statin_rapor_excel_olustur(self, *, sayac: dict, kategori_sayac: dict,
+                                      denetlenen_satirlar: list) -> str:
+        """Masaüstü/Reçete Kontrol/ klasörüne kapsamlı Excel raporu yazar.
+
+        3 sayfa:
+          - Özet : Toplam sayım, kategori dağılımı, çalışma zamanı, dönem
+          - Lipid Reçeteleri : Denetlenen her satır + SUT detayları + verdict
+          - Lipid Dışı : Atlanan satırların kısa özeti (sadece sayım/listeleme)
+
+        Returns: oluşturulan dosyanın tam yolu.
+        """
+        try:
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+        except ImportError as e:
+            raise RuntimeError("openpyxl yüklü değil") from e
+
+        from datetime import datetime as _dt
+
+        # Hedef klasör: ~/Desktop/Reçete Kontrol  (OneDrive\Desktop varsa o)
+        masa = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop")
+        if not os.path.exists(masa):
+            masa = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.exists(masa):
+                masa = os.path.expanduser("~")
+        klasor = os.path.join(masa, "Reçete Kontrol")
+        os.makedirs(klasor, exist_ok=True)
+
+        donem = self.aktif_donem or "tum"
+        zaman = _dt.now().strftime("%Y%m%d_%H%M%S")
+        dosya_adi = f"Statin_Kontrol_{donem}_{zaman}.xlsx"
+        path = os.path.join(klasor, dosya_adi)
+
+        wb = openpyxl.Workbook()
+
+        # ────────── SAYFA 1: ÖZET ──────────
+        ws1 = wb.active
+        ws1.title = "Özet"
+
+        VERDICT_RENK = {
+            "UYGUN":       "C8E6C9",  # yeşil
+            "UYGUN DEĞİL": "FFCDD2",  # kırmızı
+            "ŞÜPHELİ":     "FFE0B2",  # turuncu
+            "ATLANDI":     "ECEFF1",  # gri
+        }
+        baslik_font = Font(bold=True, color="FFFFFF", size=11)
+        baslik_fill = PatternFill("solid", fgColor="263238")
+        toplam_lipid = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                        + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+
+        ws1.cell(row=1, column=1, value="STATİN / LİPİD SUT KONTROL RAPORU")
+        ws1.cell(row=1, column=1).font = Font(bold=True, size=14, color="0D47A1")
+        ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+
+        bilgi_satirlari = [
+            ("Dönem (Yıl-Ay)", donem),
+            ("Rapor Üretim Tarihi", _dt.now().strftime("%d.%m.%Y %H:%M:%S")),
+            ("Toplam Yüklenen Satır", str(len(self.tum_satirlar))),
+            ("Lipid Olarak Tespit Edilen", str(toplam_lipid)),
+            ("Lipid Dışı (Atlanan)", str(sayac["_lipid_disi"])),
+            ("", ""),
+            ("Uygulanan SUT Kuralları",
+             "SUT 4.2.28.A (Statin) · SUT 4.2.28.B (Fibrat)"),
+            ("Filtreleme",
+             "ATC C10* (lipid modifying agents) + ticari isim fallback"),
+            ("Veri Kaynağı",
+             "Botanik EOS DB (SADECE SELECT) — hiçbir veri değiştirilmedi"),
+        ]
+        for i, (etk, deg) in enumerate(bilgi_satirlari, start=3):
+            c1 = ws1.cell(row=i, column=1, value=etk)
+            c2 = ws1.cell(row=i, column=2, value=deg)
+            if etk:
+                c1.font = Font(bold=True, color="37474F")
+            c2.font = Font(color="0D47A1")
+            ws1.merge_cells(start_row=i, start_column=2, end_row=i, end_column=4)
+
+        # Sonuç dağılımı tablosu
+        bas = len(bilgi_satirlari) + 4
+        ws1.cell(row=bas, column=1, value="SONUÇ DAĞILIMI")
+        ws1.cell(row=bas, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas, start_column=1,
+                        end_row=bas, end_column=4)
+
+        bas += 1
+        for col, hd in enumerate(["Sonuç", "Adet", "Yüzde", ""], start=1):
+            c = ws1.cell(row=bas, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        for i, etiket in enumerate(["UYGUN", "UYGUN DEĞİL",
+                                     "ŞÜPHELİ", "ATLANDI"], start=bas + 1):
+            adet = sayac[etiket]
+            yuzde = (adet / toplam_lipid * 100) if toplam_lipid else 0
+            c1 = ws1.cell(row=i, column=1, value=etiket)
+            c2 = ws1.cell(row=i, column=2, value=adet)
+            c3 = ws1.cell(row=i, column=3, value=f"%{yuzde:.1f}")
+            fill = PatternFill("solid", fgColor=VERDICT_RENK[etiket])
+            for c in (c1, c2, c3):
+                c.fill = fill
+                c.font = Font(bold=True)
+            c2.alignment = Alignment(horizontal="center")
+            c3.alignment = Alignment(horizontal="center")
+
+        # Kategori dağılımı
+        bas2 = bas + 6
+        ws1.cell(row=bas2, column=1, value="KATEGORİ DAĞILIMI (lipid satırları)")
+        ws1.cell(row=bas2, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas2, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas2, start_column=1,
+                        end_row=bas2, end_column=4)
+        bas2 += 1
+        for col, hd in enumerate(["Kategori", "Adet", "Açıklama", ""],
+                                  start=1):
+            c = ws1.cell(row=bas2, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        kat_aciklama = {
+            "STATIN":       "ATC C10AA/C10BA/C10BX — atorvastatin, rosuvastatin, simvastatin, pravastatin, fluvastatin, pitavastatin + statin kombinleri",
+            "FIBRAT":       "ATC C10AB — fenofibrat (Lipanthyl/Lipantil/Tralip/Lipofen), gemfibrozil, bezafibrat",
+            "DIGER_LIPID":  "ATC C10AC/AD/AX — ezetimib tek başına, kolestiramin, omega-3, PCSK9 (Repatha/Praluent)",
+        }
+        for i, k in enumerate(["STATIN", "FIBRAT", "DIGER_LIPID"],
+                               start=bas2 + 1):
+            ws1.cell(row=i, column=1, value=k).font = Font(bold=True)
+            ws1.cell(row=i, column=2, value=kategori_sayac.get(k, 0)
+                     ).alignment = Alignment(horizontal="center")
+            ws1.cell(row=i, column=3, value=kat_aciklama[k])
+
+        # Notlar
+        bas3 = bas2 + 5
+        ws1.cell(row=bas3, column=1, value="NOTLAR")
+        ws1.cell(row=bas3, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas3, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas3, start_column=1,
+                        end_row=bas3, end_column=4)
+        notlar = [
+            "• UYGUN = SUT kuralı algoritmik olarak doğrulandı (LDL eşik + risk faktörü vb.)",
+            "• UYGUN DEĞİL = Algoritmik kural net şekilde ihlal — manuel inceleme önerilir",
+            "• ŞÜPHELİ = Karar verilemedi (eksik LDL/TG değeri, eksik teşhis vb.) — manuel kontrol",
+            "• ATLANDI = SUT denetimi gerekmeyen satır",
+            "• Lipid dışı = ATC C10* dışında olduğu için bu butonun kapsamına girmiyor",
+            "• 'Lipid Reçeteleri' sayfasında her satırın hangi metni okuduğu, "
+            "neyi aradığı ve ne bulduğu yazılır.",
+        ]
+        for i, n in enumerate(notlar, start=bas3 + 1):
+            ws1.cell(row=i, column=1, value=n)
+            ws1.merge_cells(start_row=i, start_column=1,
+                            end_row=i, end_column=8)
+
+        # Sütun genişlikleri (özet)
+        for col, w in enumerate([34, 22, 60, 12], start=1):
+            ws1.column_dimensions[get_column_letter(col)].width = w
+
+        # ────────── SAYFA 2: LİPİD REÇETELERİ (denetlenen) ──────────
+        ws2 = wb.create_sheet("Lipid Reçeteleri")
+        # Sütunlar: tabloya yansıyanların hepsi + SUT denetim detayları
+        kolonlar = [
+            ("rec_tar",          "Reç.Tarih",       12),
+            ("rec_no",           "Reçete No",       18),
+            ("hasta",            "Hasta",           24),
+            ("tc",               "TC",              13),
+            ("yas",              "Yaş",             6),
+            ("cins",             "Cin.",            6),
+            ("doktor",           "Doktor",          22),
+            ("brans",            "Branş",           18),
+            ("ilac",             "İlaç",            28),
+            ("etkin",            "Etken Madde",     22),
+            ("atc",              "ATC",             10),
+            ("verdict_kategori", "Kategori",        12),
+            ("rap_kod",          "Rapor Kod",       11),
+            ("rec_doz",          "Reçete Doz",      14),
+            ("rap_doz",          "Rapor Doz",       14),
+            ("kutu",             "Kutu",            6),
+            ("msj",              "Msj",             7),
+            ("uyari",            "Uyarı Kod",       18),
+            ("medula_msj",       "Medula Msj",      30),
+            ("rec_tesh",         "Reçete Teşhis",   30),
+            ("rap_tesh",         "Rapor Teşhis",    30),
+            ("rec_ack",          "Reçete Açıklama", 30),
+            ("rap_ack",          "Rapor Açıklama",  30),
+            ("verdict_sut",      "Uygulanan SUT",   30),
+            ("verdict_aranan",   "Aranan İbare",    28),
+            ("verdict_bulunan",  "Bulunan Metin",   28),
+            ("verdict_detaylar", "SUT Detaylar (LDL/risk/...)", 38),
+            ("verdict_uyari",    "Uyarı",           34),
+            ("verdict_detay",    "Açıklama",        50),
+            ("verdict",          "SONUÇ",           14),
+        ]
+        for c, (_kod, baslik, _g) in enumerate(kolonlar, 1):
+            cell = ws2.cell(row=1, column=c, value=baslik)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        ws2.row_dimensions[1].height = 28
+        ws2.freeze_panes = "A2"
+
+        # Veri satırları
+        for ri, s in enumerate(denetlenen_satirlar, start=2):
+            for ci, (kod, _baslik, _g) in enumerate(kolonlar, start=1):
+                deger = s.get(kod, "")
+                cell = ws2.cell(row=ri, column=ci, value=str(deger))
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            # SONUÇ sütununu (en sondaki) renge boya
+            verdict = s.get("verdict") or ""
+            renk = VERDICT_RENK.get(verdict)
+            if renk:
+                son_col = len(kolonlar)
+                vcell = ws2.cell(row=ri, column=son_col)
+                vcell.fill = PatternFill("solid", fgColor=renk)
+                vcell.font = Font(bold=True)
+                vcell.alignment = Alignment(horizontal="center", vertical="center")
+
+        # Sütun genişlikleri
+        for ci, (_kod, _baslik, gen) in enumerate(kolonlar, 1):
+            ws2.column_dimensions[get_column_letter(ci)].width = gen
+
+        # Otomatik filtre
+        ws2.auto_filter.ref = ws2.dimensions
+
+        # ────────── SAYFA 3: LİPİD DIŞI (atlanmış) ──────────
+        ws3 = wb.create_sheet("Lipid Dışı (Atlanan)")
+        ws3.cell(row=1, column=1,
+                 value="Aşağıdaki ilaçlar ATC C10* (lipid) sınıfına girmediği "
+                       "için statin/lipid butonu KAPSAMI DIŞINDA bırakıldı.").font = (
+            Font(italic=True, color="546E7A"))
+        ws3.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+
+        atlanan_kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12),
+            ("rec_no",  "Reçete No", 18),
+            ("hasta",   "Hasta",     24),
+            ("ilac",    "İlaç",      30),
+            ("etkin",   "Etken",     22),
+            ("atc",     "ATC",       10),
+        ]
+        for c, (_k, b, _g) in enumerate(atlanan_kolonlar, 1):
+            cell = ws3.cell(row=3, column=c, value=b)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center")
+        # Atlananları topla
+        ri = 4
+        for s in self.tum_satirlar:
+            kategori = self._lipid_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori != "NONE":
+                continue
+            for ci, (kod, _b, _g) in enumerate(atlanan_kolonlar, 1):
+                ws3.cell(row=ri, column=ci, value=str(s.get(kod, "")))
+            ri += 1
+        for ci, (_k, _b, gen) in enumerate(atlanan_kolonlar, 1):
+            ws3.column_dimensions[get_column_letter(ci)].width = gen
+        ws3.freeze_panes = "A4"
+
+        wb.save(path)
+        return path
+
+    # ───────────────────────────────────────────────────────────────────
+    # DİYABET (SUT 4.2.38) SUT KONTROLÜ — DPP-4 / SGLT-2 / GLP-1 + klasik OAD + insülin
+    # ───────────────────────────────────────────────────────────────────
+    def _diyabet_kontrol_baslat(self):
+        """DİYABET KONTROL butonu — yüklenen satırlardan diyabet ilaçları
+        (ATC A10*) SUT 4.2.38'e göre denetlenir; sonuç en sağdaki SONUÇ
+        sütununa UYGUN / UYGUN DEĞİL / ŞÜPHELİ olarak yazılır.
+
+        Kapsanan ilaç sınıfları:
+          • Biguanid (metformin), Sülfonilüre, Glinid, Akarboz, TZD
+          • DPP-4 inhibitörleri (sitagliptin, vildagliptin, ...)
+          • SGLT-2 inhibitörleri (empa/dapa/kana/ertugliflozin)
+          • GLP-1 RA (liraglutid, semaglutid, dulaglutid, ...)
+          • İnsülinler (kısa/orta/uzun etkili, kombi)
+          • Sabit kombiler (DPP4+met, SGLT2+met, SGLT2+DPP4)
+
+        SUT 4.2.38(7): GLP-1 RA → BMI ≥ 30 + HbA1c ≥ %7 + metformin maks doz
+        SUT 4.2.38(8): DPP-4 + GLP-1 RA birlikte ödenmez (kombinasyon yasağı)
+        """
+        if not self.tum_satirlar:
+            messagebox.showinfo(
+                "Diyabet Kontrol",
+                "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.sut_kontrolleri import kontrol_diyabet_dpp4_sglt2
+            from recete_kontrol.base_kontrol import KontrolSonucu
+        except Exception as e:
+            self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
+            messagebox.showerror(
+                "Modül Hatası",
+                f"recete_kontrol modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        VERDICT_ETIKET = {
+            KontrolSonucu.UYGUN:             "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.ATLANDI:           "ATLANDI",
+        }
+        sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
+                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_diyabet_disi": 0}
+        # Alt sınıf bazlı sayım (raporlama için)
+        kategori_sayac = {"INSULIN": 0, "BIGUANID": 0, "SULFONILURE": 0,
+                          "GLINID": 0, "TZD": 0, "AKARBOZ": 0,
+                          "DPP4": 0, "SGLT2": 0, "GLP1": 0,
+                          "KOMBI_OAD": 0, "DIGER": 0}
+        denetlenen_satirlar = []
+
+        # ── Reçete bazlı ilaç gruplaması (kombinasyon yasağı kontrolü için) ──
+        # Aynı rec_no'ya sahip diğer ilaçların adları → DPP-4 + GLP-1 yasağı vb.
+        recete_ilac_grup: Dict[str, List[str]] = {}
+        for s in self.tum_satirlar:
+            rno = s.get("rec_no")
+            if rno:
+                recete_ilac_grup.setdefault(str(rno), []).append(
+                    s.get("ilac") or "")
+
+        # ── Hastanın diğer raporlarındaki ICD/rapor kodlarını çek ──
+        # (KY/KBH varsa SGLT-2 kuralı buna göre değişir)
+        musteri_idler = []
+        for s in self.tum_satirlar:
+            mid = s.get("musteri_id")
+            if mid and mid not in musteri_idler:
+                musteri_idler.append(mid)
+        hasta_tum_icd = self._hasta_tum_icd_kodlarini_topla(musteri_idler)
+
+        for s in self.tum_satirlar:
+            kategori = self._diyabet_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori == "NONE":
+                # Sadece kendi kategorimizin (DIYABET) önceki artığını sil —
+                # statin/lipid verdict'lerine dokunma.
+                if s.get("verdict_kategori") == "DIYABET":
+                    s["verdict"] = ""
+                    s["verdict_detay"] = ""
+                    s["verdict_kategori"] = ""
+                    s["verdict_uyari"] = ""
+                    s["verdict_sut"] = ""
+                    s["verdict_aranan"] = ""
+                    s["verdict_bulunan"] = ""
+                    s["verdict_detaylar"] = ""
+                sayac["_diyabet_disi"] += 1
+                continue
+
+            alt_sinif = self._diyabet_alt_sinif(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            kategori_sayac[alt_sinif] = kategori_sayac.get(alt_sinif, 0) + 1
+
+            # Aynı reçetedeki diğer ilaçların adları (kendisi hariç)
+            rno = str(s.get("rec_no") or "")
+            kendi_ad = (s.get("ilac") or "").upper()
+            diger_adlar = [x for x in recete_ilac_grup.get(rno, [])
+                            if x and x.upper() != kendi_ad]
+
+            ilac_sonuc = self._ilac_sonuc_olustur_diyabet(s, diger_adlar)
+
+            # Hastanın diğer raporlarındaki ICD'leri ekle (KY/KBH tespiti için)
+            mid = s.get("musteri_id")
+            ek_icd = hasta_tum_icd.get(mid, []) if mid else []
+            if ek_icd:
+                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
+                for code in ek_icd:
+                    if code not in mevcut:
+                        ilac_sonuc.setdefault(
+                            "recete_teshisleri", []).append(code)
+
+            try:
+                rapor = kontrol_diyabet_dpp4_sglt2(ilac_sonuc)
+            except Exception as e:
+                logger.warning("Diyabet kontrol hata (rx %s): %s",
+                                s.get("rec_no"), e)
+                s["verdict"] = "ŞÜPHELİ"
+                s["verdict_detay"] = f"Hata: {e}"
+                s["verdict_kategori"] = "DIYABET"
+                s["verdict_alt_sinif"] = alt_sinif
+                s["verdict_uyari"] = ""
+                s["verdict_sut"] = ""
+                s["verdict_aranan"] = ""
+                s["verdict_bulunan"] = ""
+                s["verdict_detaylar"] = ""
+                sayac["ŞÜPHELİ"] += 1
+                denetlenen_satirlar.append(s)
+                continue
+
+            etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+            s["verdict"] = etiket
+            s["verdict_detay"] = rapor.mesaj or ""
+            s["verdict_kategori"] = "DIYABET"
+            s["verdict_alt_sinif"] = alt_sinif
+            s["verdict_uyari"] = rapor.uyari or ""
+            s["verdict_sut"] = rapor.sut_kurali or ""
+            s["verdict_aranan"] = rapor.aranan_ibare or ""
+            s["verdict_bulunan"] = rapor.bulunan_metin or ""
+            try:
+                s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                                    ensure_ascii=False)
+            except Exception:
+                s["verdict_detaylar"] = str(rapor.detaylar or {})
+            sayac[etiket] = sayac.get(etiket, 0) + 1
+            denetlenen_satirlar.append(s)
+
+        # Tabloyu yenile (mevcut filtre/renk durumuna saygı duyarak)
+        self._tabloyu_yenile()
+        self._durum_yaz(
+            f"Diyabet SUT 4.2.38 kontrolü: "
+            f"✓ UYGUN {sayac['UYGUN']}  "
+            f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
+            f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
+            f"− ATLANDI {sayac['ATLANDI']}  "
+            f"(diyabet dışı {sayac['_diyabet_disi']} satır boş bırakıldı)"
+        )
+
+        toplam_diyabet = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                          + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+        if toplam_diyabet == 0:
+            messagebox.showinfo(
+                "Diyabet Kontrol",
+                "Bu dönemde diyabet ilacı (ATC A10*) bulunamadı.",
+                parent=self.root)
+            return
+
+        cevap = messagebox.askyesno(
+            "Kontrol Raporu",
+            f"Diyabet SUT 4.2.38 kontrolü tamamlandı.\n\n"
+            f"Toplam diyabet satırı : {toplam_diyabet}\n"
+            f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
+            f"  − ATLANDI        : {sayac['ATLANDI']}\n"
+            f"Diyabet dışı (atlanan): {sayac['_diyabet_disi']}\n\n"
+            f"Kontrol raporu Excel olarak masaüstündeki "
+            f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
+            f"Rapor oluşturulup açılsın mı?",
+            parent=self.root)
+        if not cevap:
+            return
+
+        try:
+            rapor_yolu = self._diyabet_rapor_excel_olustur(
+                sayac=sayac,
+                kategori_sayac=kategori_sayac,
+                denetlenen_satirlar=denetlenen_satirlar,
+            )
+        except Exception as e:
+            logger.exception("Diyabet rapor üretim hatası")
+            messagebox.showerror(
+                "Rapor Hatası",
+                f"Kontrol raporu oluşturulamadı:\n{e}",
+                parent=self.root)
+            return
+
+        try:
+            os.startfile(rapor_yolu)
+            self._durum_yaz(f"Kontrol raporu: {rapor_yolu}")
+        except Exception as e:
+            messagebox.showinfo(
+                "Rapor Kaydedildi",
+                f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
+                parent=self.root)
+
+    # ── DİYABET KONTROL RAPORU EXCEL ÜRETİCİ ────────────────────────────
+    def _diyabet_rapor_excel_olustur(self, *, sayac: dict, kategori_sayac: dict,
+                                       denetlenen_satirlar: list) -> str:
+        """Masaüstü/Reçete Kontrol/ klasörüne kapsamlı Excel raporu yazar.
+
+        3 sayfa:
+          - Özet : Toplam sayım, alt sınıf dağılımı, çalışma zamanı, dönem
+          - Diyabet Reçeteleri : Denetlenen her satır + SUT detayları + verdict
+          - Diyabet Dışı : Atlanan satırların kısa özeti
+
+        Returns: oluşturulan dosyanın tam yolu.
+        """
+        try:
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font, Alignment
+            from openpyxl.utils import get_column_letter
+        except ImportError as e:
+            raise RuntimeError("openpyxl yüklü değil") from e
+
+        from datetime import datetime as _dt
+
+        masa = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop")
+        if not os.path.exists(masa):
+            masa = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.exists(masa):
+                masa = os.path.expanduser("~")
+        klasor = os.path.join(masa, "Reçete Kontrol")
+        os.makedirs(klasor, exist_ok=True)
+
+        donem = self.aktif_donem or "tum"
+        zaman = _dt.now().strftime("%Y%m%d_%H%M%S")
+        dosya_adi = f"Diyabet_Kontrol_{donem}_{zaman}.xlsx"
+        path = os.path.join(klasor, dosya_adi)
+
+        wb = openpyxl.Workbook()
+
+        # ────────── SAYFA 1: ÖZET ──────────
+        ws1 = wb.active
+        ws1.title = "Özet"
+
+        VERDICT_RENK = {
+            "UYGUN":       "C8E6C9",
+            "UYGUN DEĞİL": "FFCDD2",
+            "ŞÜPHELİ":     "FFE0B2",
+            "ATLANDI":     "ECEFF1",
+        }
+        baslik_font = Font(bold=True, color="FFFFFF", size=11)
+        baslik_fill = PatternFill("solid", fgColor="0D47A1")
+        toplam_diyabet = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                          + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+
+        ws1.cell(row=1, column=1, value="DİYABET SUT 4.2.38 KONTROL RAPORU")
+        ws1.cell(row=1, column=1).font = Font(bold=True, size=14, color="0D47A1")
+        ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+
+        bilgi_satirlari = [
+            ("Dönem (Yıl-Ay)", donem),
+            ("Rapor Üretim Tarihi", _dt.now().strftime("%d.%m.%Y %H:%M:%S")),
+            ("Toplam Yüklenen Satır", str(len(self.tum_satirlar))),
+            ("Diyabet Olarak Tespit Edilen", str(toplam_diyabet)),
+            ("Diyabet Dışı (Atlanan)", str(sayac["_diyabet_disi"])),
+            ("", ""),
+            ("Uygulanan SUT Kuralı",
+             "SUT 4.2.38 — Diyabet (DPP-4 / SGLT-2 / GLP-1 RA + klasik OAD + insülin)"),
+            ("Kapsam",
+             "ATC A10* (insülin + oral antidiyabetikler) + ad/etken fallback"),
+            ("Aranan İbare (DPP-4/SGLT-2/GLP-1)",
+             "Metformin ve sülfonilürelerin maksimum tolere edilebilir "
+             "dozlarında yeterli glisemik kontrol sağlanamamıştır"),
+            ("Veri Kaynağı",
+             "Botanik EOS DB (SADECE SELECT) — hiçbir veri değiştirilmedi"),
+        ]
+        for i, (etk, deg) in enumerate(bilgi_satirlari, start=3):
+            c1 = ws1.cell(row=i, column=1, value=etk)
+            c2 = ws1.cell(row=i, column=2, value=deg)
+            if etk:
+                c1.font = Font(bold=True, color="37474F")
+            c2.font = Font(color="0D47A1")
+            c2.alignment = Alignment(wrap_text=True, vertical="top")
+            ws1.merge_cells(start_row=i, start_column=2, end_row=i, end_column=4)
+
+        # Sonuç dağılımı
+        bas = len(bilgi_satirlari) + 4
+        ws1.cell(row=bas, column=1, value="SONUÇ DAĞILIMI")
+        ws1.cell(row=bas, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas, start_column=1, end_row=bas, end_column=4)
+        bas += 1
+        for col, hd in enumerate(["Sonuç", "Adet", "Yüzde", ""], start=1):
+            c = ws1.cell(row=bas, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        for i, etiket in enumerate(["UYGUN", "UYGUN DEĞİL",
+                                     "ŞÜPHELİ", "ATLANDI"], start=bas + 1):
+            adet = sayac[etiket]
+            yuzde = (adet / toplam_diyabet * 100) if toplam_diyabet else 0
+            c1 = ws1.cell(row=i, column=1, value=etiket)
+            c2 = ws1.cell(row=i, column=2, value=adet)
+            c3 = ws1.cell(row=i, column=3, value=f"%{yuzde:.1f}")
+            fill = PatternFill("solid", fgColor=VERDICT_RENK[etiket])
+            for c in (c1, c2, c3):
+                c.fill = fill
+                c.font = Font(bold=True)
+            c2.alignment = Alignment(horizontal="center")
+            c3.alignment = Alignment(horizontal="center")
+
+        # Alt sınıf dağılımı
+        bas2 = bas + 6
+        ws1.cell(row=bas2, column=1, value="ALT SINIF DAĞILIMI (diyabet ilaçları)")
+        ws1.cell(row=bas2, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas2, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas2, start_column=1, end_row=bas2, end_column=4)
+        bas2 += 1
+        for col, hd in enumerate(["Alt Sınıf", "Adet", "Açıklama", ""], start=1):
+            c = ws1.cell(row=bas2, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        sinif_aciklama = {
+            "INSULIN":     "ATC A10A — bazal/hızlı/orta/uzun etkili insülinler + kombi",
+            "BIGUANID":    "ATC A10BA — METFORMIN (Glifor, Glukofen, Diaformin)",
+            "SULFONILURE": "ATC A10BB — gliklazid, glimepirid, glibenklamid, glipizid",
+            "GLINID":      "ATC A10BX — repaglinid (Novonorm), nateglinid (Starlix)",
+            "TZD":         "ATC A10BG — pioglitazon (Actos)",
+            "AKARBOZ":     "ATC A10BF — alfa-glukozidaz inhibitörü (Glucobay)",
+            "DPP4":        "ATC A10BH — sitagliptin/Januvia, vildagliptin/Galvus, linagliptin/Trajenta",
+            "SGLT2":       "ATC A10BK — empagliflozin/Jardiance, dapagliflozin/Forziga, kanagliflozin/Invokana",
+            "GLP1":        "ATC A10BJ — liraglutid/Victoza, semaglutid/Ozempic, dulaglutid/Trulicity",
+            "KOMBI_OAD":   "ATC A10BD — sabit kombiler (Janumet, Galvusmet, Synjardy, Xigduo, Glyxambi)",
+            "DIGER":       "Yukarıdaki sınıflara girmeyen diyabet ilaçları",
+        }
+        sinif_sira = ["INSULIN", "BIGUANID", "SULFONILURE", "GLINID", "TZD",
+                      "AKARBOZ", "DPP4", "SGLT2", "GLP1", "KOMBI_OAD", "DIGER"]
+        for i, k in enumerate(sinif_sira, start=bas2 + 1):
+            ws1.cell(row=i, column=1, value=k).font = Font(bold=True)
+            ws1.cell(row=i, column=2, value=kategori_sayac.get(k, 0)
+                     ).alignment = Alignment(horizontal="center")
+            ws1.cell(row=i, column=3, value=sinif_aciklama[k])
+
+        # Notlar
+        bas3 = bas2 + len(sinif_sira) + 3
+        ws1.cell(row=bas3, column=1, value="NOTLAR")
+        ws1.cell(row=bas3, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas3, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas3, start_column=1, end_row=bas3, end_column=4)
+        notlar = [
+            "• UYGUN = SUT 4.2.38 algoritmik olarak doğrulandı (rapor + glisemik şart + uzman/branş + lab)",
+            "• UYGUN DEĞİL = Algoritmik kural net ihlal — manuel inceleme önerilir",
+            "• ŞÜPHELİ = Karar verilemedi (eksik HbA1c/BMI/eGFR, eksik teşhis, vb.) — manuel kontrol",
+            "• ATLANDI = SUT denetimi gerekmeyen satır (klasik OAD + diyabet tanısı + raporsuz)",
+            "• Diyabet dışı = ATC A10* dışında olduğu için bu butonun kapsamına girmiyor",
+            "• DPP-4/SGLT-2/GLP-1 için aranan ibare: 'metformin ve sülfonilürelerin maksimum "
+            "tolere edilebilir dozlarında yeterli glisemik kontrol sağlanamamıştır'",
+            "• GLP-1 RA için ek şart: BMI ≥ 30 + HbA1c ≥ %7 (rapor metninden taranır)",
+            "• DPP-4 + GLP-1 RA aynı reçetede ÖDENMEZ (SUT 4.2.38(8) — kombinasyon yasağı)",
+            "• 'Diyabet Reçeteleri' sayfasında her satırın hangi metni okuduğu, "
+            "neyi aradığı ve ne bulduğu yazılır.",
+        ]
+        for i, n in enumerate(notlar, start=bas3 + 1):
+            ws1.cell(row=i, column=1, value=n)
+            ws1.merge_cells(start_row=i, start_column=1, end_row=i, end_column=8)
+
+        for col, w in enumerate([34, 22, 60, 12], start=1):
+            ws1.column_dimensions[get_column_letter(col)].width = w
+
+        # ────────── SAYFA 2: DİYABET REÇETELERİ (denetlenen) ──────────
+        ws2 = wb.create_sheet("Diyabet Reçeteleri")
+        kolonlar = [
+            ("rec_tar",          "Reç.Tarih",       12),
+            ("rec_no",           "Reçete No",       18),
+            ("hasta",            "Hasta",           24),
+            ("tc",               "TC",              13),
+            ("yas",              "Yaş",             6),
+            ("cins",             "Cin.",            6),
+            ("doktor",           "Doktor",          22),
+            ("brans",            "Branş",           18),
+            ("ilac",             "İlaç",            28),
+            ("etkin",            "Etken Madde",     22),
+            ("atc",              "ATC",             10),
+            ("verdict_alt_sinif", "Alt Sınıf",      12),
+            ("rap_kod",          "Rapor Kod",       11),
+            ("rec_doz",          "Reçete Doz",      14),
+            ("rap_doz",          "Rapor Doz",       14),
+            ("kutu",             "Kutu",            6),
+            ("msj",              "Msj",             7),
+            ("uyari",            "Uyarı Kod",       18),
+            ("medula_msj",       "Medula Msj",      30),
+            ("rec_tesh",         "Reçete Teşhis",   30),
+            ("rap_tesh",         "Rapor Teşhis",    30),
+            ("rec_ack",          "Reçete Açıklama", 30),
+            ("rap_ack",          "Rapor Açıklama",  30),
+            ("verdict_sut",      "Uygulanan SUT",   30),
+            ("verdict_aranan",   "Aranan İbare",    28),
+            ("verdict_bulunan",  "Bulunan Metin",   28),
+            ("verdict_detaylar", "SUT Detaylar (HbA1c/BMI/eGFR/...)", 38),
+            ("verdict_uyari",    "Uyarı",           34),
+            ("verdict_detay",    "Açıklama",        50),
+            ("verdict",          "SONUÇ",           14),
+        ]
+        for c, (_kod, baslik, _g) in enumerate(kolonlar, 1):
+            cell = ws2.cell(row=1, column=c, value=baslik)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        ws2.row_dimensions[1].height = 28
+        ws2.freeze_panes = "A2"
+
+        for ri, s in enumerate(denetlenen_satirlar, start=2):
+            for ci, (kod, _baslik, _g) in enumerate(kolonlar, start=1):
+                deger = s.get(kod, "")
+                cell = ws2.cell(row=ri, column=ci, value=str(deger))
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            verdict = s.get("verdict") or ""
+            renk = VERDICT_RENK.get(verdict)
+            if renk:
+                son_col = len(kolonlar)
+                vcell = ws2.cell(row=ri, column=son_col)
+                vcell.fill = PatternFill("solid", fgColor=renk)
+                vcell.font = Font(bold=True)
+                vcell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for ci, (_kod, _baslik, gen) in enumerate(kolonlar, 1):
+            ws2.column_dimensions[get_column_letter(ci)].width = gen
+
+        ws2.auto_filter.ref = ws2.dimensions
+
+        # ────────── SAYFA 3: DİYABET DIŞI (atlanmış) ──────────
+        ws3 = wb.create_sheet("Diyabet Dışı (Atlanan)")
+        ws3.cell(row=1, column=1,
+                 value="Aşağıdaki ilaçlar ATC A10* (diyabet) sınıfına girmediği "
+                       "için diyabet butonu KAPSAMI DIŞINDA bırakıldı.").font = (
+            Font(italic=True, color="546E7A"))
+        ws3.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+
+        atlanan_kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12),
+            ("rec_no",  "Reçete No", 18),
+            ("hasta",   "Hasta",     24),
+            ("ilac",    "İlaç",      30),
+            ("etkin",   "Etken",     22),
+            ("atc",     "ATC",       10),
+        ]
+        for c, (_k, b, _g) in enumerate(atlanan_kolonlar, 1):
+            cell = ws3.cell(row=3, column=c, value=b)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center")
+        ri = 4
+        for s in self.tum_satirlar:
+            kategori = self._diyabet_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori != "NONE":
+                continue
+            for ci, (kod, _b, _g) in enumerate(atlanan_kolonlar, 1):
+                ws3.cell(row=ri, column=ci, value=str(s.get(kod, "")))
+            ri += 1
+        for ci, (_k, _b, gen) in enumerate(atlanan_kolonlar, 1):
+            ws3.column_dimensions[get_column_letter(ci)].width = gen
+        ws3.freeze_panes = "A4"
+
+        wb.save(path)
+        return path
 
     # ----------------------------------------------------------- DURUM
     def _durum_yaz(self, msg: str):

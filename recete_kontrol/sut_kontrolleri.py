@@ -3965,6 +3965,315 @@ def kontrol_klopidogrel(ilac_sonuc: Dict) -> KontrolRaporu:
     )
 
 
+def _ldl_tarihlerini_eslestir(metin: str, olcumler: List[Dict],
+                                 min_yil: int = 2015) -> None:
+    """olcumler listesindeki her LDL için 'tarih' alanını metindeki en uygun
+    tarihle doldurur. Yön heuristikleri:
+      - Tarihten hemen sonra "TARIHLI" / "tarihinde" → sonraki LDL'ye ait
+        (Türkçe: "26.03.2026 TARIHLI LDL: 202")
+      - Tarihten hemen önce "(" → önceki LDL'ye ait
+        (Parens: "LDL: 195 (12.01.2026)")
+      - Diğer → mesafece en yakın LDL'ye ait
+    """
+    from datetime import date as _date
+    if not metin or not olcumler:
+        return
+    # Tüm tarihleri çıkar (start_pos, date, end_pos)
+    tarihler = []
+    patterns = [
+        (r'(\d{1,2})[./-](\d{1,2})[./-](\d{4})', 'dmy'),
+        (r'(\d{4})[./-](\d{1,2})[./-](\d{1,2})', 'ymd'),
+    ]
+    for pat, fmt in patterns:
+        for m in re.finditer(pat, metin):
+            try:
+                if fmt == 'dmy':
+                    g, a, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                else:
+                    y, a, g = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                if not (1 <= g <= 31 and 1 <= a <= 12):
+                    continue
+                if y < min_yil or y > 2100:
+                    continue
+                tarihler.append((m.start(), _date(y, a, g), m.end()))
+            except (ValueError, OverflowError):
+                continue
+    if not tarihler:
+        return
+    # Çift kayıtları temizle (aynı tarihe iki pattern eşleşebilir)
+    seen = set()
+    tarihler = [t for t in tarihler
+                if not (t[0] in seen or seen.add(t[0]))]
+
+    # Her tarih için yön tahmini
+    yon = {}
+    for dpos, _d, dend in tarihler:
+        sonraki = metin[dend:dend + 30].lower().lstrip()
+        onceki = metin[max(0, dpos - 5):dpos]
+        if sonraki.startswith('tarihli') or sonraki.startswith('tarihinde'):
+            yon[dpos] = 'next'   # tarih sonraki LDL'ye ait
+        elif '(' in onceki:
+            yon[dpos] = 'prev'   # tarih önceki LDL'ye (parens) ait
+        else:
+            yon[dpos] = 'auto'
+
+    # LDL pozisyonları sıralı
+    ldl_pos_sirali = sorted({o['pos'] for o in olcumler})
+
+    def _onceki_ldl(dpos):
+        prev = None
+        for p in ldl_pos_sirali:
+            if p < dpos:
+                prev = p
+            else:
+                break
+        return prev
+
+    def _sonraki_ldl(dpos):
+        for p in ldl_pos_sirali:
+            if p > dpos:
+                return p
+        return None
+
+    # Her LDL için en uygun tarihi seç
+    for o in olcumler:
+        ldl_pos = o['pos']
+        adaylar = []  # (öncelik, mesafe, date)
+        for dpos, d, _dend in tarihler:
+            y = yon[dpos]
+            delta = dpos - ldl_pos
+            if y == 'next' and _sonraki_ldl(dpos) == ldl_pos:
+                adaylar.append((0, abs(delta), d))
+            elif y == 'prev' and _onceki_ldl(dpos) == ldl_pos:
+                adaylar.append((0, abs(delta), d))
+            elif y == 'auto' and abs(delta) <= 80:
+                adaylar.append((1, abs(delta), d))
+        if adaylar:
+            adaylar.sort(key=lambda t: (t[0], t[1]))
+            o['tarih'] = adaylar[0][2]
+
+
+def _yakindaki_tarihi_bul(metin: str, hedef_pos: Optional[int] = None,
+                            min_yil: int = 2015):
+    """Metinde dd.mm.yyyy / dd/mm/yyyy / dd-mm-yyyy / yyyy-mm-dd ara.
+
+    Args:
+        metin: aranacak metin (genelde ±100 chars LDL etrafı)
+        hedef_pos: hedef pozisyon (LDL değerinin metin içindeki yeri).
+                   Verilirse bu pozisyona en yakın tarihi döndürür.
+                   None ise ilk tarihi döndürür.
+        min_yil: bu yıldan önceki tarihler reddedilir. SUT raporlarında
+                 LDL ölçüm tarihi son 2-3 yıl içindedir; "doğum tarihi:
+                 1965" gibi tarihler lab değildir → reddet (varsayılan 2015).
+
+    Returns: en uygun `datetime.date` veya None.
+    """
+    from datetime import date as _date
+    if not metin:
+        return None
+    patterns = [
+        (r'(\d{1,2})[./-](\d{1,2})[./-](\d{4})', 'dmy'),
+        (r'(\d{4})[./-](\d{1,2})[./-](\d{1,2})', 'ymd'),
+    ]
+    adaylar = []  # [(pos, date), ...] — ham pozisyon
+    for pat, fmt in patterns:
+        for m in re.finditer(pat, metin):
+            try:
+                if fmt == 'dmy':
+                    g, a, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                else:
+                    y, a, g = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                if not (1 <= g <= 31 and 1 <= a <= 12):
+                    continue
+                if y < min_yil or y > 2100:
+                    # Doğum tarihi / eski rapor tarihi vb. — yok say
+                    continue
+                d = _date(y, a, g)
+            except (ValueError, OverflowError):
+                continue
+            adaylar.append((m.start(), d))
+    if not adaylar:
+        return None
+    if hedef_pos is None:
+        adaylar.sort(key=lambda t: t[0])
+        return adaylar[0][1]
+
+    # Türkçe rapor düzeninde "DD.MM.YYYY TARIHLI LDL: NNN" yapısı yaygın —
+    # tarih ÖNCE, LDL SONRA. Bu yüzden:
+    #   1. öncelik: LDL'den 60 karakter ÖNCE gelen tarihler (en yakın olan)
+    #   2. öncelik: LDL'den 100 karakter SONRA gelen tarihler (parantez içi)
+    #   3. öncelik: uzakta kalan tarihler (mesafece sırala)
+    def oncelik(item):
+        pos, _d = item
+        delta = pos - hedef_pos
+        if -60 <= delta < 0:
+            return (0, abs(delta))
+        if 0 <= delta <= 100:
+            return (1, abs(delta))
+        return (2, abs(delta))
+    adaylar.sort(key=oncelik)
+    return adaylar[0][1]
+
+
+def _tum_ldl_olcumlerini_bul(metin: str) -> List[Dict]:
+    """Metindeki TÜM LDL sayısal değerlerini, pozisyon, çevre ve yakındaki
+    tarihiyle birlikte döndür.
+
+    Returns: [{'deger': int, 'pos': int, 'tarih': date|None, 'cevre': str}, ...]
+
+    Kullanılan patternler (öncelik sırasıyla):
+      1. SIKI    : 'ldl[- ]*c?\\s*[:=]?\\s*N'  →  'LDL: 195', 'LDL-C: 195', 'LDL=195'
+      2. GEVŞEK  : 'ldl[^0-9\\n]{0,60}?N'      →  'LDL Kolesterol: 195',
+                                                   'LDL Kol.: 195',
+                                                   'LDL kolesterol değeri 195',
+                                                   'LDL Kolesterol (İndirekt) 195'
+      3. ZİNCİR  : İlk LDL'den sonra yakın metinde virgül/ve/tire ile sıralanan
+                   ikinci sayı  →  'LDL: 195 ve 210', 'LDL: 195, 210'
+                   (ikinci ölçümün başında 'LDL' prefiksi olmasa bile yakalar)
+    """
+    if not metin:
+        return []
+    metin_lower = metin.replace('İ', 'i').replace('I', 'ı').lower()
+
+    olcumler: List[Dict] = []
+    seen_pos = set()
+
+    def _ekle(deger_str: str, pos: int):
+        try:
+            deger = int(float(deger_str.replace(',', '.')))
+        except ValueError:
+            return
+        # LDL fizyolojik aralık ~30-500. <30 olası değil (saat 14:20'den
+        # çıkan 14, 20 gibi false positive'leri eler). >600 ise patolojik
+        # ailesel hiperkolesterolemi dışı pek görülmez.
+        if not (30 <= deger <= 600):
+            return
+        # Aynı pozisyonda iki pattern eşleşirse çift sayma
+        if any(abs(pos - p) < 3 for p in seen_pos):
+            return
+        seen_pos.add(pos)
+        bas = max(0, pos - 100)
+        son = min(len(metin), pos + 100)
+        cevre = metin[bas:son]
+        # LDL pozisyonu çevre içindeki ofsete eşleniyor (pos - bas).
+        # Ayrıca min_yil filtresi "doğum tarihi" gibi eski tarihleri eler.
+        tarih = _yakindaki_tarihi_bul(cevre, hedef_pos=pos - bas,
+                                        min_yil=2015)
+        olcumler.append({
+            'deger': deger,
+            'pos': pos,
+            'tarih': tarih,
+            'cevre': cevre.strip(),
+        })
+
+    # 1) SIKI pattern — 'ldl: 195' / 'ldl-c: 195' / 'ldl=195'
+    # Lookahead: yakalanan sayıdan SONRA ya tarih başı (\d{1,2}[./-]\d), ya
+    # non-numeric karakter (boşluk, vs.), ya da metin sonu olmalı. Bu sayede
+    # sekreter yazımı bozuk metinlerde ('20203.04.2026') 202 + tarih ayrımı
+    # yapılır; LDL değeri 20203 sanılmaz.
+    sıkı = re.compile(
+        r'ldl[- ]*c?\s*[:=]?\s*(\d{1,3})(?:[.,]\d+)?'
+        r'(?=\d{1,2}[./-]\d|[^.,\d]|$)'
+    )
+    sıkı_eşleşmeler = [(m.start(1), m.group(1))
+                         for m in sıkı.finditer(metin_lower)]
+    for pos, deg in sıkı_eşleşmeler:
+        _ekle(deg, pos)
+
+    # 2) GEVŞEK pattern — LDL'den sonra 60 karaktere kadar non-digit text
+    # ('LDL Kolesterol: 195', 'LDL Kol.: 195', 'LDL kolesterol indirekt 195')
+    # Aynı lookahead — sekreter yazımı yamuk olsa bile değer + tarih ayrımı.
+    gevsek = re.compile(
+        r'ldl[^0-9\n]{0,60}?(\d{1,3})(?:[.,]\d+)?'
+        r'(?=\d{1,2}[./-]\d|[^.,\d]|$)'
+    )
+    for m in gevsek.finditer(metin_lower):
+        _ekle(m.group(1), m.start(1))
+
+    # 3) ZİNCİR — bir LDL bulunduktan SONRA yakın metinde (≤120 karakter)
+    # listelenen ikinci/üçüncü sayıları yakala. SUT raporlarında sık görülen:
+    # 'LDL: 195 ve 210', 'LDL Kolesterol: 195, 210', 'LDL: 195 mg/dL — 210 mg/dL'
+    # Sadece daha önce LDL bağlamında bulunmuş olan ilk eşleşmeden sonra
+    # gelen sayıları arar (rastgele sayıları yakalamamak için).
+    if sıkı_eşleşmeler or any('ldl' in metin_lower[m.start():m.end()]
+                                for m in gevsek.finditer(metin_lower)):
+        for ldl_match in re.finditer(r'ldl[^.\n]{0,200}', metin_lower):
+            blok = ldl_match.group(0)
+            blok_offset = ldl_match.start()
+            # Bu bloktaki tüm 2-3 haneli sayıları yakala (LDL plausible aralık)
+            # Lookahead/lookbehind ile tarih bileşenlerini ele:
+            # '12.01.2026' içindeki 12/01 → öncesi veya sonrası . / - olduğu
+            # için reddedilir; 4 haneli sayı (yıl) zaten \d{2,3} ile elenir.
+            for n in re.finditer(r'(?<![/.\-\d])(\d{2,3}(?:[.,]\d+)?)(?![/.\-\d])', blok):
+                _ekle(n.group(1), blok_offset + n.start(1))
+
+    # Pozisyona göre sırala (oluşum sırası — okunduğu sıra)
+    olcumler.sort(key=lambda o: o['pos'])
+
+    # Tarihleri akıllı eşleştir: "TARIHLI" Türkçe yapısı + parantez formatı.
+    # _ekle'deki çevre-bazlı yakalama ilk tahmin idi; bu daha kesin.
+    _ldl_tarihlerini_eslestir(metin, olcumler, min_yil=2015)
+    return olcumler
+
+
+def _iki_olcum_kuralini_dogrula(olcumler: List[Dict], esik: int = 190) -> Dict:
+    """SUT 4.2.28.A — iki ölçüm kuralı doğrulama.
+
+    Şart: en az 2 ölçüm > esik, aralarında ≥7 gün ve ≤180 gün (6 ay).
+
+    Returns: {'durum': ..., 'detay': str, 'olcum_sayisi': int,
+              'gun_farki': int|None, 'degerler': [int...]}
+    'durum' değerleri:
+      - 'uygun'         : 2+ ölçüm, tarih farkı 7-180 gün → SUT şartı sağlandı
+      - 'tarih_yok'     : 2+ ölçüm var ama tarih bilgisi eksik → varsayılan UYGUN ama uyarı
+      - 'tek_olcum'     : sadece 1 ölçüm > esik → ŞÜPHELİ
+      - 'kisa_aralik'   : 2+ ölçüm ama < 7 gün arayla → kural ihlali
+      - 'uzun_aralik'   : 2+ ölçüm ama > 180 gün arayla → 6 ay sınırı aşıldı
+      - 'esik_alti'     : > esik ölçüm yok
+    """
+    yuksek = [o for o in olcumler if o['deger'] > esik]
+    degerler = [o['deger'] for o in yuksek]
+    if not yuksek:
+        return {'durum': 'esik_alti',
+                'detay': f'> {esik} mg/dL LDL ölçümü bulunamadı',
+                'olcum_sayisi': 0, 'gun_farki': None, 'degerler': []}
+    if len(yuksek) == 1:
+        return {'durum': 'tek_olcum',
+                'detay': (f"TEK ölçüm > {esik} bulundu ({yuksek[0]['deger']} mg/dL); "
+                          "SUT 1 hafta arayla 6 ay içinde 2 ölçüm istiyor"),
+                'olcum_sayisi': 1, 'gun_farki': None, 'degerler': degerler}
+
+    tarihli = [o for o in yuksek if o['tarih']]
+    if len(tarihli) < 2:
+        return {'durum': 'tarih_yok',
+                'detay': (f"{len(yuksek)} ölçüm > {esik} mg/dL var "
+                          f"({', '.join(str(d) for d in degerler)}); "
+                          "tarih bilgisi eksik, ölçüm aralığı doğrulanamadı"),
+                'olcum_sayisi': len(yuksek), 'gun_farki': None,
+                'degerler': degerler}
+
+    tarihler = sorted({o['tarih'] for o in tarihli})
+    fark = (tarihler[-1] - tarihler[0]).days
+    if fark < 7:
+        return {'durum': 'kisa_aralik',
+                'detay': (f"{len(yuksek)} ölçüm > {esik} ama aralarında {fark} gün "
+                          "(en az 7 gün gerekli)"),
+                'olcum_sayisi': len(yuksek), 'gun_farki': fark,
+                'degerler': degerler}
+    if fark > 180:
+        return {'durum': 'uzun_aralik',
+                'detay': (f"{len(yuksek)} ölçüm > {esik} ama aralarında {fark} gün "
+                          "(6 ay/180 günü aşmış)"),
+                'olcum_sayisi': len(yuksek), 'gun_farki': fark,
+                'degerler': degerler}
+    return {'durum': 'uygun',
+            'detay': (f"{len(yuksek)} ölçüm > {esik} mg/dL "
+                      f"({', '.join(str(d) for d in degerler)}), "
+                      f"{fark} gün aralık (uygun)"),
+            'olcum_sayisi': len(yuksek), 'gun_farki': fark,
+            'degerler': degerler}
+
+
 def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
     """
     SUT 4.2.28.A - Statin Kontrol
@@ -3976,6 +4285,7 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
        - LDL > 130: 3 ek risk faktörü gerekli
        - LDL > 70 : DM, AKS, MI, inme, KAH, PAH, AAA, karotid arter hastalığı
     2. İlk başlangıçta 6 ay içinde en az 1 hafta arayla 2 lipid ölçümü
+       (yüksek KV riskli hastalarda tek ölçüm yeterli olabilir — ana akım uygulama)
     3. Yüksek doz statin: Kardiyoloji/KDC/Endokrinoloji/Geriatri raporu gerekli
     4. Rapor süresi: max 2 yıl
     """
@@ -3997,6 +4307,11 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
     }
 
     metin_lower = birlesik_metin.replace('İ', 'i').replace('I', 'ı').lower() if birlesik_metin else ''
+    # Türkçe "I" → "ı" normalizasyonu kelime aramada problem çıkarır
+    # ("TIP 2" → "tıp 2", aranan "tip 2" eşleşmez). DM/risk faktörü
+    # taraması için ek bir varyant tut: 'I' → 'i' (dotted i'ye çevir)
+    metin_alt = (birlesik_metin.replace('İ', 'i').replace('I', 'i').lower()
+                  if birlesik_metin else '')
 
     # ── 1. LDL değeri ara ──
     ldl_degeri = None
@@ -4029,17 +4344,48 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
     # ── 2. Risk faktörleri ara ──
     risk_faktorleri = []
 
-    # Yüksek risk grubu (LDL > 70 yeterli)
-    dm_var = any(k in metin_lower for k in ['diyabet', 'diabetes', 'dm ', 'tip 2', 'tip2'])
-    aks_var = any(k in metin_lower for k in ['akut koroner', 'aks ', 'aks,'])
-    mi_var = any(k in metin_lower for k in ['miyokard', 'infarktüs', 'infarktusu', 'mi ', 'stemi', 'nstemi'])
-    inme_var = any(k in metin_lower for k in ['inme', 'stroke', 'serebrovasküler', 'sva '])
-    kah_var = any(k in metin_lower for k in ['koroner arter', 'kah ', 'kah,', 'iskemik kalp'])
-    pah_var = any(k in metin_lower for k in ['periferik arter', 'pah ', 'pah,'])
-    aaa_var = any(k in metin_lower for k in ['aort anevrizma', 'aaa '])
-    karotid_var = any(k in metin_lower for k in ['karotid', 'karotis'])
-    stent_var = 'stent' in metin_lower
-    bypass_var = any(k in metin_lower for k in ['bypass', 'kabg'])
+    # Yüksek risk grubu (LDL > 70 yeterli) — kelime sınırı + Türkçe varyantlar
+    # Hem metin_lower (I→ı) hem metin_alt (I→i) varyantını tara: "TIP 2" yazımı
+    # Türkçe normalizasyondan dolayı kaçmasın.
+    def _eslesir_mi(patternler) -> bool:
+        for desen in patternler:
+            if re.search(desen, metin_lower) or re.search(desen, metin_alt):
+                return True
+        return False
+
+    dm_var = _eslesir_mi([
+        r'\bdiyabet', r'\bdiabet', r'\bdm\b', r'\bt[12]dm\b',
+        r'\bnıdde\b', r'\bniddm\b', r'\biddm\b',
+        r'tip\s*[12]\s*(?:dm|diyabet|diabet)',
+        r'şeker\s*hastal',     # şeker hastalığı / şeker hastası
+        r'\bdiabetik\b', r'\bdiyabetik\b',
+        r'\bhiperglisem',      # hiperglisemi
+    ])
+    aks_var = _eslesir_mi([
+        r'akut\s*koroner', r'\baks\b', r'\bakut\s*mi\b',
+    ])
+    mi_var = _eslesir_mi([
+        r'miyokard', r'infarkt', r'\bmi\b',
+        r'\bstemi\b', r'\bnstemi\b',
+    ])
+    inme_var = _eslesir_mi([
+        r'\binme\b', r'\bstroke\b', r'serebrovasküler', r'serebro\s*vask',
+        r'\bsva\b',
+    ])
+    # KAH (Koroner Arter Hastalığı) ≠ KOAH (Kronik Akciğer). \bkah\b kelime
+    # sınırı yeterli — "koah" içindeki "kah" sol sınırı başarısız (O harfi var).
+    kah_var = _eslesir_mi([
+        r'koroner\s*arter', r'\bkah\b', r'iskemik\s*kalp',
+    ])
+    pah_var = _eslesir_mi([
+        r'periferik\s*arter', r'\bpah\b', r'\bpaod\b',
+    ])
+    aaa_var = _eslesir_mi([
+        r'aort\s*anevrizma', r'\baaa\b', r'aort\s*disseks',
+    ])
+    karotid_var = _eslesir_mi([r'karotid', r'karotis'])
+    stent_var = _eslesir_mi([r'\bstent\b'])
+    bypass_var = _eslesir_mi([r'bypass', r'\bkabg\b', r'koroner\s*by[-\s]?pass'])
 
     # ICD kodları ile de kontrol et
     icd_dm = any(k in teshis_metin for k in ['E10', 'E11', 'E12', 'E13', 'E14'])
@@ -4095,19 +4441,86 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
 
     # LDL değeri bulundu
     if ldl_var and ldl_degeri:
+        # Tüm LDL ölçümlerini çıkar (iki ölçüm kuralı için)
+        # Yüksek KV riskli hastalarda bu kontrol sıkı uygulanmaz
+        # (DM/KAH/AKS varsa tek değer yeterli kabul edilir).
+        tum_olcumler = _tum_ldl_olcumlerini_bul(birlesik_metin)
+        detaylar['ldl_olcum_sayisi'] = len(tum_olcumler)
+        detaylar['ldl_olcumler'] = [
+            {'deger': o['deger'],
+             'tarih': o['tarih'].isoformat() if o['tarih'] else None}
+            for o in tum_olcumler
+        ]
+
         # Risk bazlı eşik kontrolü
         if cok_yuksek_risk and ldl_degeri > 70:
+            # Yüksek KV risk → tek ölçüm yeterli
             uygunluk = "UYGUN"
             aciklama = f"LDL {ldl_degeri} > 70 mg/dL (risk: {', '.join(risk_faktorleri)})"
         elif ldl_degeri > 190:
-            uygunluk = "UYGUN"
-            aciklama = f"LDL {ldl_degeri} > 190 mg/dL (ek risk faktörü gerekmez)"
+            # EK RİSK FAKTÖRÜ YOK — 2 ölçüm > 190 gerekli
+            kontrol2 = _iki_olcum_kuralini_dogrula(tum_olcumler, esik=190)
+            detaylar['iki_olcum_kontrolu'] = kontrol2
+            durum2 = kontrol2['durum']
+            if durum2 == 'uygun':
+                uygunluk = "UYGUN"
+                aciklama = (f"LDL {ldl_degeri} > 190 mg/dL — "
+                            f"{kontrol2['detay']} (ek risk faktörü gerekmez)")
+            elif durum2 == 'tarih_yok':
+                # 2+ ölçüm var, tarih doğrulanamadı → varsayılan UYGUN, uyarı ver
+                uygunluk = "UYGUN"
+                aciklama = (f"LDL {ldl_degeri} > 190 mg/dL — "
+                            f"{kontrol2['detay']}")
+            elif durum2 == 'tek_olcum':
+                uygunluk = "ŞÜPHELI"
+                aciklama = (f"LDL {ldl_degeri} > 190 mg/dL — TEK ÖLÇÜM "
+                            "(SUT: 1 hafta arayla 6 ay içinde 2 ölçüm gerekli)")
+            elif durum2 == 'kisa_aralik':
+                uygunluk = "UYGUN_DEGIL"
+                aciklama = (f"LDL {ldl_degeri} > 190 mg/dL ama "
+                            f"{kontrol2['detay']}")
+            elif durum2 == 'uzun_aralik':
+                uygunluk = "ŞÜPHELI"
+                aciklama = (f"LDL {ldl_degeri} > 190 mg/dL ama "
+                            f"{kontrol2['detay']}")
+            else:
+                uygunluk = "ŞÜPHELI"
+                aciklama = (f"LDL {ldl_degeri} > 190 mg/dL — "
+                            f"2 ölçüm doğrulanamadı: {kontrol2['detay']}")
         elif ldl_degeri > 160:
-            uygunluk = "UYGUN"
-            aciklama = f"LDL {ldl_degeri} > 160 mg/dL (2 risk faktörü gerekli)"
+            # 2 risk faktörü + 2 ölçüm > 160 gerekli
+            kontrol2 = _iki_olcum_kuralini_dogrula(tum_olcumler, esik=160)
+            detaylar['iki_olcum_kontrolu'] = kontrol2
+            if kontrol2['durum'] == 'tek_olcum':
+                uygunluk = "ŞÜPHELI"
+                aciklama = (f"LDL {ldl_degeri} > 160 mg/dL — TEK ÖLÇÜM "
+                            "(SUT: 2 ek risk + 2 ölçüm gerekli)")
+            elif kontrol2['durum'] == 'kisa_aralik':
+                uygunluk = "UYGUN_DEGIL"
+                aciklama = (f"LDL {ldl_degeri} > 160 mg/dL ama "
+                            f"{kontrol2['detay']}")
+            else:
+                uygunluk = "UYGUN"
+                aciklama = (f"LDL {ldl_degeri} > 160 mg/dL "
+                            "(2 ek risk faktörü + 2 ölçüm gerekli — "
+                            f"{kontrol2['detay']})")
         elif ldl_degeri > 130:
-            uygunluk = "UYGUN"
-            aciklama = f"LDL {ldl_degeri} > 130 mg/dL (3 risk faktörü gerekli)"
+            # 3 risk faktörü + 2 ölçüm > 130 gerekli
+            kontrol2 = _iki_olcum_kuralini_dogrula(tum_olcumler, esik=130)
+            detaylar['iki_olcum_kontrolu'] = kontrol2
+            if kontrol2['durum'] == 'tek_olcum':
+                uygunluk = "ŞÜPHELI"
+                aciklama = (f"LDL {ldl_degeri} > 130 mg/dL — TEK ÖLÇÜM "
+                            "(SUT: 3 ek risk + 2 ölçüm gerekli)")
+            elif kontrol2['durum'] == 'kisa_aralik':
+                uygunluk = "UYGUN_DEGIL"
+                aciklama = (f"LDL {ldl_degeri} > 130 mg/dL ama "
+                            f"{kontrol2['detay']}")
+            else:
+                uygunluk = "UYGUN"
+                aciklama = (f"LDL {ldl_degeri} > 130 mg/dL "
+                            "(3 ek risk faktörü + 2 ölçüm gerekli — "
+                            f"{kontrol2['detay']})")
         elif ldl_degeri > 70 and cok_yuksek_risk:
             uygunluk = "UYGUN"
             aciklama = f"LDL {ldl_degeri} > 70 mg/dL (yüksek risk: {', '.join(risk_faktorleri)})"
@@ -4123,13 +4536,23 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
         if detaylar['yuksek_doz']:
             uyari_mesaj = "YÜKSEK DOZ — Kardiyoloji/KDC/Endokrinoloji/Geriatri raporu gerekli"
 
+        # Sonuç kodlama
+        sonuc_map = {
+            "UYGUN":       KontrolSonucu.UYGUN,
+            "UYGUN_DEGIL": KontrolSonucu.UYGUN_DEGIL,
+            "ŞÜPHELI":     KontrolSonucu.KONTROL_EDILEMEDI,
+        }
         return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN if uygunluk == "UYGUN" else KontrolSonucu.KONTROL_EDILEMEDI,
+            sonuc=sonuc_map.get(uygunluk, KontrolSonucu.KONTROL_EDILEMEDI),
             mesaj=aciklama,
             detaylar=detaylar,
             uyari=uyari_mesaj if uyari_mesaj else None,
             sut_kurali=sut_kurali,
-            aranan_ibare=f"LDL değeri + risk faktörleri ({', '.join(risk_faktorleri) if risk_faktorleri else 'yok'})",
+            aranan_ibare=(
+                f"LDL değeri + risk faktörleri "
+                f"({', '.join(risk_faktorleri) if risk_faktorleri else 'yok'}) "
+                f"+ 2 ölçüm/tarih kontrolü"
+            ),
             bulunan_metin=ldl_eslesen
         )
 
