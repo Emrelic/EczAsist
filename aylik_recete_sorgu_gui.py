@@ -10,7 +10,7 @@ Hiçbir INSERT/UPDATE/DELETE yapılmaz.
 Akış:
 1. Yıl-Ay seç → Sorgula → tüm aylık reçete-ilaç satırları tabloya gelir (BEYAZ)
 2. Üstteki sütun arama kutuları ve sağdaki hızlı filtre butonları ile filtre uygula
-3. Filtre sonucu görünenleri "Görünenleri Yeşile Boya" ile ele
+3. Filtreden geçen satırları "Filtreliyi Yeşile Boya" ile toplu boya
 4. Renk filtre (Yeşil/Sarı/Kırmızı/Beyaz/Turuncu checkbox'ları) ile gösterimi daralt
 5. Çember daraldıkça → kalan satırlar gerçek manuel kontrol gerektirenler
 6. Excel export ile renkleri koruyarak çıktı al
@@ -40,6 +40,7 @@ RENK_YESIL = "yesil"
 RENK_SARI = "sari"
 RENK_TURUNCU = "turuncu"
 RENK_KIRMIZI = "kirmizi"
+RENK_GRI = "gri"          # Kontrol gerekmez — bu ilacı dışlama listesine ekler
 
 RENK_BG = {
     RENK_BEYAZ:   "#FFFFFF",
@@ -47,6 +48,7 @@ RENK_BG = {
     RENK_SARI:    "#FFF9C4",
     RENK_TURUNCU: "#FFE0B2",
     RENK_KIRMIZI: "#FFCDD2",
+    RENK_GRI:     "#E0E0E0",
 }
 RENK_FG = {
     RENK_BEYAZ:   "#212121",
@@ -54,6 +56,7 @@ RENK_FG = {
     RENK_SARI:    "#827717",
     RENK_TURUNCU: "#E65100",
     RENK_KIRMIZI: "#B71C1C",
+    RENK_GRI:     "#616161",
 }
 RENK_ETIKET = {
     RENK_BEYAZ:   "Beklemede",
@@ -61,6 +64,7 @@ RENK_ETIKET = {
     RENK_SARI:    "Manuel Kontrol",
     RENK_TURUNCU: "Şüpheli",
     RENK_KIRMIZI: "Uygunsuz",
+    RENK_GRI:     "Kontrol Gerekmez (dışla)",
 }
 
 
@@ -228,7 +232,8 @@ SUTUNLAR = [
     ("rec_doz",    "Reçete Doz",   90,  "Reçete dozu"),
     ("rap_doz",    "Rapor Doz",    80,  "Rapor dozu"),
     ("msj",        "Msj",          35,  "İlaç mesaj durumu"),
-    ("uyari",      "Uyarı Kod",    90,  "Reçete uyarı kodları"),
+    ("uyari",      "Uyarı Kod",    150, "Bu ilaç için reçeteye girilen uyarı kodları (ReceteTeshis)"),
+    ("medula_msj", "Medula Msj",   220, "Medula provizyon yanıt metni (RxUyarilari)"),
     ("rec_tesh",   "Reç.Teşhis",   150, "Reçete teşhisleri"),
     ("rap_tesh",   "Rap.Teşhis",   150, "Rapor teşhisleri"),
     ("rec_ack",    "Reç.Açk",      180, "Reçete açıklamaları"),
@@ -383,6 +388,71 @@ HIZLI_FILTRELER = [
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# TOOLTIP HELPER (1 sn gecikmeli hover ipucu)
+# ═══════════════════════════════════════════════════════════════════════
+class _Tooltip:
+    """Widget üzerinde 1 saniye bekleyince çıkan açıklama balonu."""
+
+    def __init__(self, widget, text: str, delay_ms: int = 1000):
+        self.widget = widget
+        self.text = text
+        self.delay = delay_ms
+        self._tip = None
+        self._after_id = None
+        widget.bind("<Enter>", self._enter, add="+")
+        widget.bind("<Leave>", self._leave, add="+")
+        widget.bind("<ButtonPress>", self._leave, add="+")
+
+    def _enter(self, _event=None):
+        self._cancel()
+        self._after_id = self.widget.after(self.delay, self._show)
+
+    def _leave(self, _event=None):
+        self._cancel()
+        if self._tip is not None:
+            try:
+                self._tip.destroy()
+            except Exception:
+                pass
+            self._tip = None
+
+    def _cancel(self):
+        if self._after_id:
+            try:
+                self.widget.after_cancel(self._after_id)
+            except Exception:
+                pass
+            self._after_id = None
+
+    def _show(self):
+        if self._tip is not None:
+            return
+        try:
+            x = self.widget.winfo_rootx() + 12
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        except Exception:
+            return
+        self._tip = tk.Toplevel(self.widget)
+        self._tip.wm_overrideredirect(True)
+        self._tip.wm_geometry(f"+{x}+{y}")
+        try:
+            self._tip.attributes("-topmost", True)
+        except Exception:
+            pass
+        tk.Label(self._tip, text=self.text,
+                  bg="#FFFDE7", fg="#37474F",
+                  relief="solid", bd=1, padx=8, pady=4,
+                  font=("Segoe UI", 9), wraplength=340, justify="left"
+                  ).pack()
+
+
+def _tt(widget, text: str):
+    """Kısa kısayol — widget'a tooltip ekler ve widget'ı geri döndürür."""
+    _Tooltip(widget, text)
+    return widget
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # ANA SINIF
 # ═══════════════════════════════════════════════════════════════════════
 class AylikReceteSorguGUI:
@@ -395,8 +465,25 @@ class AylikReceteSorguGUI:
         self.root = root
         self.ana_menu_callback = ana_menu_callback
 
-        self.root.title("Aylık İnceleme & Filtreleme (Botanik EOS — Salt Okunur)")
+        self.root.title("📋  AYLIK İNCELEME & FİLTRELEME  ·  BOTANİK EOS  ·  SALT OKUNUR")
+        # Geçici varsayılan boyut (zoomed çalışmazsa fallback)
         self.root.geometry("1700x920")
+        # Pencere açılır açılmaz tam ekrana (maximized) gelsin
+        try:
+            # Windows ve çoğu modern Tk için
+            self.root.state("zoomed")
+        except tk.TclError:
+            try:
+                # Linux varyantı
+                self.root.attributes("-zoomed", True)
+            except Exception:
+                # Son fallback: ekran boyutuna oturt
+                try:
+                    sw = self.root.winfo_screenwidth()
+                    sh = self.root.winfo_screenheight()
+                    self.root.geometry(f"{sw}x{sh}+0+0")
+                except Exception:
+                    pass
         try:
             from eczasist_ikon import ikon_uygula
             ikon_uygula(self.root)
@@ -427,7 +514,19 @@ class AylikReceteSorguGUI:
         self.aktif_deger_filtre = {}  # {sutun_kod: set(secili_degerler)}  Excel-benzeri
         self.aktif_metin_filtre = {}  # {sutun_kod: (op, deger)}  Başlar/Biter/İçerir vb.
         self.aktif_renk_filtre = {RENK_BEYAZ, RENK_YESIL, RENK_SARI,
-                                    RENK_TURUNCU, RENK_KIRMIZI}
+                                    RENK_TURUNCU, RENK_KIRMIZI, RENK_GRI}
+        # "Boş satırları gizle" — uyarı kodu / mesaj / rapor kodu olmayan
+        # satırları liste dışı tutar (kontrol gerektirmeyen temiz satırlar).
+        # Varsayılan AÇIK: kullanıcı kontrol gerektirebilecek satırlara
+        # odaklansın diye temiz satırlar baştan elenir.
+        self.gizle_bos_satirlar = tk.BooleanVar(value=True)
+
+        # Detaylı filtre ayarları (⚙ butonundan açılan pencere ile yönetilir)
+        try:
+            import aylik_filtre_ayarlari as fa
+            self._filtre_ayarlari_aktif = fa.ayarlari_yukle()
+        except Exception:
+            self._filtre_ayarlari_aktif = None
 
         # Aktif dönem (yıl-ay) — state için anahtar
         self.aktif_donem = ""
@@ -487,6 +586,13 @@ class AylikReceteSorguGUI:
                 "SELECT ReceteRenkId, ReceteRenkAdi FROM ReceteRenk "
                 "WHERE ReceteRenkSilme=0"):
                 self._lookup_renk[r["ReceteRenkId"]] = r["ReceteRenkAdi"]
+            # Kırmızı/Yeşil/Mor reçete tipi ID setleri (renkli reçete kontrolü
+            # için her zaman gelmeli — boş satır filtresinden muaf)
+            self._renkli_recete_idler = {
+                rid: ad for rid, ad in self._lookup_renk.items()
+                if ad and ad.strip().lower() in ("kırmızı", "kirmizi",
+                                                    "yeşil", "yesil", "mor")
+            }
             for r in self.db.sorgu_calistir(
                 "SELECT ProvizyonTipId, ProvizyonTipAdi FROM ProvizyonTipi "
                 "WHERE ProvizyonTipSilme=0"):
@@ -512,118 +618,286 @@ class AylikReceteSorguGUI:
 
     # --------------------------------------------------------------- LAYOUT
     def _arayuz_olustur(self):
-        # ───── ÜST BAŞLIK ─────
-        ust = tk.Frame(self.root, bg="#263238", height=42)
-        ust.pack(fill="x")
-        ust.pack_propagate(False)
-        tk.Label(ust, text="📋 Aylık İnceleme & Filtreleme (Botanik EOS — Salt Okunur)",
-                 font=("Arial", 12, "bold"), bg="#263238", fg="white"
-                ).pack(side="left", padx=15, pady=8)
-        tk.Button(ust, text="Ana Menüye Dön", command=self._kapat,
-                  bg="#455A64", fg="white", bd=0, padx=12
-                  ).pack(side="right", padx=15, pady=6)
+        # ═══════════════════════════════════════════════════════════════════
+        # 2 KATMAN — ÜST: Veri/Sayım/Araçlar | ALT: Renkli kontrol panelleri
+        # ═══════════════════════════════════════════════════════════════════
 
-        # ───── SATIR 1: Yıl/Ay/Sorgula + Sayım + Sağ butonlar ─────
-        ust2 = tk.Frame(self.root, bg="#ECEFF1", pady=4)
-        ust2.pack(fill="x", padx=6)
+        HEADER_BG = "#37474F"
+        HEADER_FG = "#FFFFFF"
+        HEADER_LBL_FG = "#B0BEC5"
+        FONT_PRIMARY = ("Segoe UI", 11, "bold")
+        FONT_GROUP = ("Segoe UI", 9, "bold")
+        FONT_BUTON = ("Segoe UI", 9, "bold")
+        FONT_LABEL_SM = ("Segoe UI", 8, "bold")
 
-        tk.Label(ust2, text="Yıl:", bg="#ECEFF1").pack(side="left", padx=(6, 2))
+        renk_kisa = {
+            RENK_YESIL:   "🟢", RENK_SARI:    "🟡",
+            RENK_TURUNCU: "🟠", RENK_KIRMIZI: "🔴",
+            RENK_BEYAZ:   "⚪", RENK_GRI:     "🩶",
+        }
+        renk_aciklama = {
+            RENK_YESIL:   "YEŞİL — Uygun (elendi)",
+            RENK_SARI:    "SARI — Manuel kontrol gerekli",
+            RENK_TURUNCU: "TURUNCU — Şüpheli",
+            RENK_KIRMIZI: "KIRMIZI — Uygunsuz",
+            RENK_BEYAZ:   "BEYAZ — Renksiz / sıfırla",
+            RENK_GRI:     "GRİ — Kontrol gerekmez "
+                            "(ilaç dışlama listesine eklenir)",
+        }
+        renk_etiket = {
+            RENK_BEYAZ:   "⚪ Beyaz",
+            RENK_YESIL:   "🟢 Yeşil",
+            RENK_SARI:    "🟡 Sarı",
+            RENK_TURUNCU: "🟠 Turuncu",
+            RENK_KIRMIZI: "🔴 Kırmızı",
+            RENK_GRI:     "🩶 Gri",
+        }
+
+        # ════════════════════════════════════════════════════════════════
+        # ÜST SATIR — DATA + STATUS + TOOLS (koyu zemin)
+        # ════════════════════════════════════════════════════════════════
+        row1 = tk.Frame(self.root, bg=HEADER_BG, height=44)
+        row1.pack(fill="x")
+        row1.pack_propagate(False)
+
+        # ── SOL: DÖNEM grubu (Yıl + Ay + SORGULA) ──
+        sol = tk.Frame(row1, bg=HEADER_BG)
+        sol.pack(side="left", padx=10, pady=5)
+
+        tk.Label(sol, text="📅 DÖNEM", bg=HEADER_BG, fg=HEADER_LBL_FG,
+                 font=FONT_LABEL_SM).pack(side="left", padx=(0, 8))
+
+        tk.Label(sol, text="Yıl", bg=HEADER_BG, fg=HEADER_FG,
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 3))
         self.var_yil = tk.StringVar()
-        self.cb_yil = ttk.Combobox(ust2, textvariable=self.var_yil,
+        self.cb_yil = ttk.Combobox(sol, textvariable=self.var_yil,
                                     width=6, state="readonly")
         self.cb_yil.pack(side="left", padx=2)
         self.cb_yil.bind("<<ComboboxSelected>>", self._yil_degisti)
+        _Tooltip(self.cb_yil,
+                  "Yıl seçimi.\n'Tümü' = tüm yıllar (büyük veri seti)")
 
-        tk.Label(ust2, text="Ay:", bg="#ECEFF1").pack(side="left", padx=(8, 2))
+        tk.Label(sol, text="Ay", bg=HEADER_BG, fg=HEADER_FG,
+                 font=("Segoe UI", 9)).pack(side="left", padx=(8, 3))
         self.var_ay = tk.StringVar()
-        self.cb_ay = ttk.Combobox(ust2, textvariable=self.var_ay,
+        self.cb_ay = ttk.Combobox(sol, textvariable=self.var_ay,
                                    width=12, state="readonly")
         self.cb_ay.pack(side="left", padx=2)
+        _Tooltip(self.cb_ay,
+                  "Ay seçimi.\n'Tümü' = seçili yıldaki tüm aylar")
 
-        tk.Button(ust2, text="🔍 Sorgula", bg="#1976D2", fg="white",
-                  command=self._receteleri_sorgula, padx=12, bd=0,
-                  font=("Arial", 9, "bold")).pack(side="left", padx=10)
+        btn = tk.Button(sol, text="🔍 SORGULA", bg="#1976D2", fg="white",
+                         activebackground="#1565C0", bd=0,
+                         command=self._receteleri_sorgula,
+                         padx=14, pady=4, font=FONT_PRIMARY)
+        btn.pack(side="left", padx=(10, 0))
+        _Tooltip(btn,
+                  "Seçili yıl/ay için Botanik EOS'tan reçete-ilaç satırlarını "
+                  "yükle (sadece okuma).")
 
-        self.lbl_sayim = tk.Label(ust2, text="", bg="#ECEFF1",
-                                    fg="#37474F", font=("Arial", 9, "bold"))
-        self.lbl_sayim.pack(side="left", padx=8)
+        # ── SAĞ: ARAÇLAR (Excel + Sütunlar) ──
+        sag = tk.Frame(row1, bg=HEADER_BG)
+        sag.pack(side="right", padx=10, pady=5)
 
-        # Sağ butonlar
-        tk.Button(ust2, text="📊 Excel", bg="#43A047", fg="white",
-                  command=self._excel_export, bd=0, padx=8
-                  ).pack(side="right", padx=4)
-        tk.Button(ust2, text="⚙ Sütunlar", bg="#607D8B", fg="white",
-                  command=self._sutun_ayar_penceresi, bd=0, padx=8
-                  ).pack(side="right", padx=4)
-        tk.Button(ust2, text="🔥 Hızlı Filtreler ▾", bg="#7B1FA2", fg="white",
-                  command=self._hizli_filtre_menu, bd=0, padx=8
-                  ).pack(side="right", padx=4)
+        btn = tk.Button(sag, text="📊 Excel", bg="#43A047", fg="white",
+                         activebackground="#388E3C", bd=0,
+                         command=self._excel_export, padx=12, pady=3,
+                         font=FONT_BUTON)
+        btn.pack(side="right", padx=2)
+        _Tooltip(btn, "Tabloyu (renk + sütunlarla) Excel dosyasına aktar")
 
-        # ───── SATIR 2: Seçim + Boyama + Renk Filtreleri ─────
-        ust3 = tk.Frame(self.root, bg="#FAFAFA", pady=4)
-        ust3.pack(fill="x", padx=6)
+        btn = tk.Button(sag, text="⚙ Sütunlar", bg="#546E7A", fg="white",
+                         activebackground="#455A64", bd=0,
+                         command=self._sutun_ayar_penceresi, padx=12, pady=3,
+                         font=FONT_BUTON)
+        btn.pack(side="right", padx=2)
+        _Tooltip(btn, "Görünür sütunları ayarla (göster/gizle)")
 
-        # SEÇIM grubu
-        tk.Label(ust3, text="🎯 Seçim:", bg="#FAFAFA",
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 2))
-        tk.Button(ust3, text="☑ Tümü", bg="#E1F5FE", bd=1,
-                  command=self._tumunu_sec, padx=4
-                  ).pack(side="left", padx=1)
-        tk.Button(ust3, text="☐ Hiçbiri", bg="#FFEBEE", bd=1,
-                  command=self._hicbirini_secme, padx=4
-                  ).pack(side="left", padx=1)
-        tk.Button(ust3, text="↻ Tersine", bg="#FFF3E0", bd=1,
-                  command=self._secimi_tersine_cevir, padx=4
-                  ).pack(side="left", padx=1)
+        # ── ORTA: SAYIM (lbl_sayim) ──
+        self.lbl_sayim = tk.Label(row1, text="", bg=HEADER_BG, fg=HEADER_FG,
+                                    font=("Segoe UI", 10, "bold"))
+        self.lbl_sayim.pack(side="left", padx=20, expand=True)
+        _Tooltip(self.lbl_sayim,
+                  "Toplam yüklenen / filtrelenmiş satır sayısı")
 
-        # Boyama grubu
-        tk.Label(ust3, text="  🎨 Seçili →", bg="#FAFAFA",
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(8, 2))
-        for renk in [RENK_YESIL, RENK_SARI, RENK_TURUNCU, RENK_KIRMIZI, RENK_BEYAZ]:
-            tk.Button(ust3, text=RENK_ETIKET[renk],
-                      bg=RENK_BG[renk], fg=RENK_FG[renk], bd=1,
-                      command=lambda r=renk: self._secilenleri_renge_boya(r),
-                      padx=4, font=("Segoe UI", 9)
-                      ).pack(side="left", padx=1)
+        # ════════════════════════════════════════════════════════════════
+        # ALT SATIR(LAR) — KONTROL PANELLERİ (sıkışmayı önlemek için 2 sıra)
+        # Sıra A: Seçim + Boyama (eylemler)
+        # Sıra B: Göster + Reçete Türü + Boş Sat + Sıfırla (filtreler)
+        # ════════════════════════════════════════════════════════════════
+        row2 = tk.Frame(self.root, bg="#FAFAFA")
+        row2.pack(fill="x", padx=4, pady=(2, 0))
 
-        # Görünen → Boya (5 renk tam)
-        tk.Label(ust3, text="  Görünen →", bg="#FAFAFA",
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(8, 2))
-        # Renk → ikisi etiketi (kullanıcı dostu sembol/kısaltma)
-        renk_kisa = {
-            RENK_YESIL:   "🟢",
-            RENK_SARI:    "🟡",
-            RENK_TURUNCU: "🟠",
-            RENK_KIRMIZI: "🔴",
-            RENK_BEYAZ:   "⚪",
-        }
-        for renk in [RENK_YESIL, RENK_SARI, RENK_TURUNCU, RENK_KIRMIZI, RENK_BEYAZ]:
-            tk.Button(ust3, text=renk_kisa[renk],
-                      bg=RENK_BG[renk], fg=RENK_FG[renk], bd=1,
-                      command=lambda r=renk: self._gorunenleri_boya(r),
-                      padx=4, width=2, font=("Segoe UI", 10)
-                      ).pack(side="left", padx=1)
+        row3 = tk.Frame(self.root, bg="#FAFAFA")
+        row3.pack(fill="x", padx=4, pady=(2, 2))
 
-        # Renk filtre
-        tk.Label(ust3, text="  👁 Göster:", bg="#FAFAFA",
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(10, 2))
+        def _panel_olustur(parent, baslik, baslik_fg, panel_bg):
+            """Renkli arka planlı, başlık etiketli kompakt panel."""
+            p = tk.Frame(parent, bg=panel_bg, bd=1, relief="solid")
+            p.pack(side="left", padx=2, pady=1, fill="y")
+            tk.Label(p, text=baslik, bg=panel_bg, fg=baslik_fg,
+                     font=FONT_GROUP).pack(side="left", padx=(6, 6),
+                                              pady=4)
+            return p
+
+        # ─── PANEL 1: SEÇİM (açık mavi) ───
+        P_SECIM_BG = "#E3F2FD"
+        p1 = _panel_olustur(row2, "🎯 Seçim", "#0D47A1", P_SECIM_BG)
+        for txt, cmd, tip in [
+            ("☑ Tümü", self._tumunu_sec,
+             "Filtreden geçen tüm satırları SEÇ"),
+            ("☐ Hiçbiri", self._hicbirini_secme,
+             "Filtreden geçen satırların seçimini KALDIR"),
+            ("↻ Tersine", self._secimi_tersine_cevir,
+             "Seçimi tersine çevir (filtreli satırlarda)"),
+        ]:
+            b = tk.Button(p1, text=txt, bg="white", bd=1,
+                          command=cmd, padx=8, pady=3, font=FONT_BUTON)
+            b.pack(side="left", padx=2, pady=4)
+            _Tooltip(b, tip)
+        tk.Frame(p1, bg=P_SECIM_BG, width=4).pack(side="left")
+
+        # ─── PANEL 2: BOYAMA (açık sarı) ───
+        P_BOYA_BG = "#FFF8E1"
+        p2 = _panel_olustur(row2, "🎨 Boyama", "#E65100", P_BOYA_BG)
+
+        # Seçiliyi boya
+        sub = tk.Frame(p2, bg=P_BOYA_BG)
+        sub.pack(side="left", padx=(0, 4), pady=4)
+        tk.Label(sub, text="Seçili →", bg=P_BOYA_BG, fg="#5D4037",
+                 font=("Segoe UI", 8, "bold")
+                 ).pack(side="left", padx=(2, 3))
+        for renk in [RENK_YESIL, RENK_SARI, RENK_TURUNCU,
+                       RENK_KIRMIZI, RENK_BEYAZ, RENK_GRI]:
+            b = tk.Button(sub, text=renk_kisa[renk],
+                          bg=RENK_BG[renk], fg=RENK_FG[renk], bd=1,
+                          command=lambda r=renk: self._secilenleri_renge_boya(r),
+                          padx=4, width=2, font=("Segoe UI", 11))
+            b.pack(side="left", padx=1)
+            _Tooltip(b,
+                      f"SEÇİLİ satırları boya:\n{renk_aciklama[renk]}\n"
+                      "(Boyamadan sonra seçim temizlenir)")
+
+        tk.Frame(p2, width=1, bg="#FFE082").pack(side="left", fill="y",
+                                                   padx=4, pady=4)
+
+        # Filtreliyi boya
+        sub = tk.Frame(p2, bg=P_BOYA_BG)
+        sub.pack(side="left", padx=(0, 6), pady=4)
+        tk.Label(sub, text="Filtreli →", bg=P_BOYA_BG, fg="#5D4037",
+                 font=("Segoe UI", 8, "bold")
+                 ).pack(side="left", padx=(2, 3))
+        for renk in [RENK_YESIL, RENK_SARI, RENK_TURUNCU,
+                       RENK_KIRMIZI, RENK_BEYAZ, RENK_GRI]:
+            b = tk.Button(sub, text=renk_kisa[renk],
+                          bg=RENK_BG[renk], fg=RENK_FG[renk], bd=1,
+                          command=lambda r=renk: self._gorunenleri_boya(r),
+                          padx=4, width=2, font=("Segoe UI", 11))
+            b.pack(side="left", padx=1)
+            _Tooltip(b,
+                      f"FİLTRELİ tüm satırları boya:\n{renk_aciklama[renk]}\n"
+                      "(Listede kalan tüm satırlar — scroll dışındakiler dahil)")
+
+        # ─── PANEL 3: FİLTRE (açık yeşil) — alt sıraya geçiyor ───
+        P_FLT_BG = "#E8F5E9"
+        p3 = _panel_olustur(row3, "👁 Göster", "#1B5E20", P_FLT_BG)
+
         self.var_renk = {}
-        for renk in [RENK_BEYAZ, RENK_YESIL, RENK_SARI, RENK_TURUNCU, RENK_KIRMIZI]:
+        for renk in [RENK_BEYAZ, RENK_YESIL, RENK_SARI,
+                       RENK_TURUNCU, RENK_KIRMIZI, RENK_GRI]:
             v = tk.BooleanVar(value=True)
-            cb = tk.Checkbutton(ust3, text=RENK_ETIKET[renk][:3],
-                                  variable=v, bg=RENK_BG[renk], fg=RENK_FG[renk],
+            cb = tk.Checkbutton(p3, text=renk_etiket[renk],
+                                  variable=v, bg=RENK_BG[renk],
+                                  fg=RENK_FG[renk],
                                   selectcolor=RENK_BG[renk],
-                                  font=("Segoe UI", 8), padx=2,
+                                  font=("Segoe UI", 9, "bold"),
+                                  padx=4, bd=1, relief="solid",
                                   command=self._renk_filtre_degisti)
-            cb.pack(side="left", padx=1)
+            cb.pack(side="left", padx=1, pady=4)
             self.var_renk[renk] = v
+            _Tooltip(cb,
+                      f"{renk_aciklama[renk]}\n"
+                      "renkli satırları tabloda GÖSTER / GİZLE")
 
-        # 🧹 Tüm filtreleri sıfırla
-        tk.Button(ust3, text="🧹 Filtreleri Sıfırla",
-                  bg="#FFE082", fg="#5D4037", bd=1,
-                  command=self._tum_filtreleri_temizle,
-                  font=("Segoe UI", 9, "bold"), padx=8
-                  ).pack(side="right", padx=(10, 4))
+        tk.Frame(p3, width=1, bg="#A5D6A7").pack(side="left", fill="y",
+                                                   padx=6, pady=4)
+
+        cb_bos = tk.Checkbutton(
+            p3, text="🚫 Boş Satırları Gizle",
+            variable=self.gizle_bos_satirlar,
+            bg=P_FLT_BG, fg="#1B5E20", selectcolor="#FFFFFF",
+            font=FONT_GROUP, padx=4, bd=0,
+            command=self._bos_satir_filtre_degisti)
+        cb_bos.pack(side="left", padx=(2, 2), pady=4)
+        _Tooltip(cb_bos,
+                  "Detaylı filtre kurallarının AÇIK/KAPALI anahtarı.\n\n"
+                  "✅ İŞARETLİ: yandaki ⚙ butonundan tanımlanan kurallar "
+                  "SQL'e uygulanır. (uyarı/mesaj/rapor/KYM içerik filtresi "
+                  "+ ilaç/etken/atc/farma/tesis liste filtreleri)\n\n"
+                  "☐ İŞARETSİZ: hiçbir filtre uygulanmaz, tüm kayıtlar "
+                  "tabloya gelir.")
+
+        btn_ayar = tk.Button(p3, text="⚙",
+                              bg="#1976D2", fg="white",
+                              activebackground="#1565C0",
+                              bd=0, padx=4, pady=0,
+                              font=("Segoe UI", 10, "bold"),
+                              command=self._filtre_ayar_penceresi_ac)
+        btn_ayar.pack(side="left", padx=(0, 6), pady=4)
+        _Tooltip(btn_ayar,
+                  "Detaylı filtre ayarları:\n"
+                  "• Hangi içerikler gelsin (renkli reçete / mesaj / "
+                  "uyarı / rapor)\n"
+                  "• İlaç / etken madde / ATC / farmasötik form / tesis "
+                  "için whitelist veya blacklist\n"
+                  "Kaydet & Uygula sonrası SQL yeniden çalışır.")
+
+        # ─── PANEL 3b: REÇETE TÜRÜ FİLTRESİ (Beyaz/Kırmızı/Yeşil/Mor) ───
+        P_RT_BG = "#F3E5F5"   # açık mor zemin
+        p3b = tk.Frame(row3, bg=P_RT_BG, bd=1, relief="solid")
+        p3b.pack(side="left", padx=2, pady=1, fill="y")
+        tk.Label(p3b, text="📋 Reçete", bg=P_RT_BG, fg="#4A148C",
+                 font=FONT_GROUP).pack(side="left", padx=(6, 6), pady=4)
+
+        recete_renk_renkler = {
+            "Beyaz":   ("#FFFFFF", "#37474F"),
+            "Kırmızı": ("#FFCDD2", "#B71C1C"),
+            "Yeşil":   ("#C8E6C9", "#1B5E20"),
+            "Mor":     ("#E1BEE7", "#4A148C"),
+        }
+        self.var_recete_turu = {}
+        for ad, (bg_c, fg_c) in recete_renk_renkler.items():
+            v = tk.BooleanVar(value=True)
+            cb = tk.Checkbutton(p3b, text=ad,
+                                  variable=v, bg=bg_c, fg=fg_c,
+                                  selectcolor=bg_c,
+                                  font=("Segoe UI", 9, "bold"),
+                                  padx=4, bd=1, relief="solid",
+                                  command=self._recete_turu_filtre_degisti)
+            cb.pack(side="left", padx=1, pady=4)
+            self.var_recete_turu[ad] = v
+            _Tooltip(cb,
+                      f"{ad} reçeteleri TABLODA GÖSTER / GİZLE.\n"
+                      "(SQL düzeyinde değil — yüklenen veri arasında filtreler)")
+        tk.Frame(p3b, bg=P_RT_BG, width=4).pack(side="left")
+
+        # ─── PANEL 4: SIFIRLA (açık kırmızı/sarı vurgu) ───
+        P_RST_BG = "#FFEBEE"
+        p4 = tk.Frame(row3, bg=P_RST_BG, bd=1, relief="solid")
+        p4.pack(side="left", padx=2, pady=1, fill="y")
+        btn = tk.Button(p4, text="🧹 Filtreleri Sıfırla",
+                         bg="#FFE082", fg="#5D4037",
+                         activebackground="#FFD54F", bd=1,
+                         command=self._tum_filtreleri_temizle,
+                         font=FONT_BUTON, padx=10, pady=4)
+        btn.pack(side="left", padx=6, pady=4)
+        _Tooltip(btn,
+                  "Tüm filtreleri SIFIRLA:\n"
+                  "• Sütun arama kutuları\n"
+                  "• Excel-benzeri değer/metin filtreleri\n"
+                  "• Renk filtresi (5 renk açık)\n"
+                  "• 🚫 Boş Satırları Gizle (varsayılana döner)\n"
+                  "• Sıralama")
 
         # ───── ANA TABLO (artık tüm genişlikte) ─────
         tablo_frame = tk.Frame(self.root, bg="white")
@@ -642,15 +916,50 @@ class AylikReceteSorguGUI:
                                             font=("Segoe UI", 9))
         self.lbl_durum_dagilim.pack(side="right")
 
+        # ───── HÜCRE İÇERİĞİ GÖSTERGE BARI ─────
+        # Bir hücreye tıklanınca tüm metni burada (kesilmeden, alta
+        # sarmalanarak) göster
+        self._hucre_frame = tk.Frame(self.root, bg="#FFF9C4",
+                                       bd=1, relief="solid")
+        self._hucre_frame.pack(fill="x", side="bottom", padx=0, pady=0)
+
+        # Üst sıra: ikon + sütun başlığı (sabit genişlikte)
+        ust_satir = tk.Frame(self._hucre_frame, bg="#FFF9C4")
+        ust_satir.pack(fill="x", side="top")
+        tk.Label(ust_satir, text="📋",
+                 bg="#FFF9C4", fg="#5D4037",
+                 font=("Segoe UI", 10, "bold"),
+                 padx=6).pack(side="left")
+        self.lbl_hucre_baslik = tk.Label(
+            ust_satir, text="—",
+            bg="#FFF9C4", fg="#1565C0",
+            font=("Segoe UI", 9, "bold"), padx=4, anchor="w")
+        self.lbl_hucre_baslik.pack(side="left", fill="x", expand=True)
+
+        # Alt: tam metni göster — sarmalama açık (wraplength dinamik)
+        self.lbl_hucre_icerik = tk.Label(
+            self._hucre_frame,
+            text="(Hücreye tıkla → içeriği burada görüntülenir, "
+                 "uzun metinler alt satırlara sarmalanır)",
+            bg="#FFF9C4", fg="#37474F",
+            font=("Segoe UI", 9), anchor="w", padx=10, pady=4,
+            justify="left", wraplength=1000)
+        self.lbl_hucre_icerik.pack(fill="x", side="top", padx=2, pady=(0, 2))
+
+        # Pencere/frame genişliği değiştikçe wraplength'i güncelle
+        def _hucre_wrap_guncelle(_event=None):
+            try:
+                w = self._hucre_frame.winfo_width() - 30
+                if w > 100:
+                    self.lbl_hucre_icerik.config(wraplength=w)
+            except Exception:
+                pass
+        self._hucre_frame.bind("<Configure>", _hucre_wrap_guncelle)
+
     def _tablo_kur(self, parent):
-        # Sütun başlıkları üstünde arama kutuları — frame yapısı:
-        # [arama bar] [tablo (başlık + satırlar)]
+        """Tablo + sütun-hizalı filtre satırı (tek yatay scroll ile birlikte)."""
         cont = tk.Frame(parent, bg="white")
         cont.pack(fill="both", expand=True, padx=4, pady=4)
-
-        # Tablo + scroll
-        tree_frame = tk.Frame(cont, bg="white")
-        tree_frame.pack(fill="both", expand=True)
 
         # Style: kompakt satırlar
         style = ttk.Style()
@@ -661,6 +970,84 @@ class AylikReceteSorguGUI:
         except Exception:
             pass
 
+        # Yatay ölçüler — filtre ve tablo görünür alanı eşitlemek için
+        FILTRE_H = 28           # filtre satırı yüksekliği (px)
+        SAG_PAD = 18            # ttk Scrollbar genişliği (yaklaşık ysb)
+
+        # ─────────── Yatay scrollbar (en altta) ───────────
+        # Önce alta sabitliyoruz ki filtre + tablo onun üstünde dizilsin.
+        xsb = ttk.Scrollbar(cont, orient="horizontal")
+        xsb.pack(fill="x", side="bottom", padx=(0, SAG_PAD))
+
+        # ─────────── Filtre satırı (sütunların ÜSTÜNDE — Excel benzeri) ───────────
+        # Tablonun ysb genişliği kadar sağdan boşluk bırakıyoruz ki filtre
+        # alanı tablo görünür alanıyla pixel-pixel aynı olsun.
+        filtre_satir = tk.Frame(cont, bg="#ECEFF1", height=FILTRE_H)
+        filtre_satir.pack(fill="x", side="top", pady=(0, 2))
+        filtre_satir.pack_propagate(False)
+
+        tk.Frame(filtre_satir, width=SAG_PAD, bg="#ECEFF1"
+                 ).pack(side="right", fill="y")
+
+        self._filtre_canvas = tk.Canvas(filtre_satir, bg="#ECEFF1",
+                                         highlightthickness=0,
+                                         height=FILTRE_H)
+        self._filtre_canvas.pack(side="left", fill="both", expand=True)
+
+        filtre_inner = tk.Frame(self._filtre_canvas, bg="#ECEFF1")
+        self._filtre_canvas.create_window((0, 0), window=filtre_inner,
+                                            anchor="nw")
+
+        self.arama_varlari = {}
+        # Placeholder durum izleyici — True iken filtreye etki etmez
+        self._placeholder_aktif = {}
+        self._placeholder_metni = {}
+        toplam_gen = 0
+        PH_FG = "#9E9E9E"      # silik gri
+        AKTIF_FG = "#000000"   # kullanıcı yazısı
+        for kod, baslik, gen, _tip in SUTUNLAR:
+            slot = tk.Frame(filtre_inner, bg="#ECEFF1",
+                            width=gen, height=FILTRE_H)
+            slot.pack(side="left")
+            slot.pack_propagate(False)
+            v = tk.StringVar()
+            ent = tk.Entry(slot, textvariable=v,
+                            font=("Segoe UI", 8, "italic"),
+                            relief="solid", bd=1, fg=PH_FG)
+            ent.place(x=1, y=4, width=gen - 2, height=20)
+
+            # Placeholder mantığı — başlık silik gri/italik olarak içeride
+            self._placeholder_metni[kod] = baslik
+
+            def _ph_goster(k=kod, e=ent, vv=v, ph=baslik):
+                if not vv.get():
+                    self._placeholder_aktif[k] = True
+                    vv.set(ph)
+                    e.config(fg=PH_FG, font=("Segoe UI", 8, "italic"))
+
+            def _ph_gizle(k=kod, e=ent, vv=v):
+                if self._placeholder_aktif.get(k):
+                    self._placeholder_aktif[k] = False
+                    vv.set("")
+                    e.config(fg=AKTIF_FG, font=("Segoe UI", 8))
+
+            ent.bind("<FocusIn>", lambda _e, fn=_ph_gizle: fn())
+            ent.bind("<FocusOut>", lambda _e, fn=_ph_goster: fn())
+
+            v.trace_add("write",
+                         lambda *a, k=kod: self._sutun_filtre_degisti(k))
+            self.arama_varlari[kod] = v
+            # Başlangıçta placeholder göster
+            _ph_goster()
+            toplam_gen += gen
+
+        filtre_inner.update_idletasks()
+        self._filtre_canvas.config(scrollregion=(0, 0, toplam_gen, FILTRE_H))
+
+        # ─────────── Tablo (filtrenin altında, kalan alanı doldurur) ───────────
+        tree_frame = tk.Frame(cont, bg="white")
+        tree_frame.pack(fill="both", expand=True, side="top")
+
         kolonlar = tuple(SUTUN_KOD)
         self.tv = ttk.Treeview(tree_frame, columns=kolonlar, show="headings",
                                 selectmode="extended", style="Inceleme.Treeview")
@@ -669,62 +1056,55 @@ class AylikReceteSorguGUI:
                             command=lambda k=kod: self._sutuna_gore_sirala(k))
             self.tv.column(kod, width=gen, minwidth=30, stretch=False)
 
-        ysb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tv.yview)
-        xsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tv.xview)
-        self.tv.configure(yscrollcommand=ysb.set, xscrollcommand=xsb.set)
+        ysb = ttk.Scrollbar(tree_frame, orient="vertical",
+                             command=self.tv.yview)
         ysb.pack(side="right", fill="y")
-        xsb.pack(side="bottom", fill="x")
         self.tv.pack(side="left", fill="both", expand=True)
+        self.tv.configure(yscrollcommand=ysb.set)
 
         # Renk tag'leri
         for renk, bg in RENK_BG.items():
             fg = RENK_FG[renk]
             self.tv.tag_configure(renk, background=bg, foreground=fg)
 
-        # Sağ tık dispatcher (başlık ↔ satır)
+        # Olay bind'leri
         self.tv.bind("<Button-3>", self._sag_tik_dispatch)
-
-        # Çift tık — detay
         self.tv.bind("<Double-1>", self._satir_detay)
-
-        # Sol tık — checkbox sütununa tıklamada toggle
         self.tv.bind("<Button-1>", self._sol_tik_dispatch, add="+")
+        # Sütun genişlikleri değiştiğinde filtre slotlarını yeniden hizala.
+        # Treeview'in column-resize özel event'i yok; mouse release sonrası
+        # küçük bir gecikme ile güncel genişlikleri okuruz.
+        def _siralama_sonrasi_hizala(_e=None):
+            self.root.after(60, self._filtre_slotlarini_hizala)
+        self.tv.bind("<ButtonRelease-1>", _siralama_sonrasi_hizala, add="+")
+        self.tv.bind("<Configure>",
+                       lambda _e: self.root.after(60,
+                                                    self._filtre_slotlarini_hizala),
+                       add="+")
 
-        # Sütun başlıkları altında ARAMA KUTULARI (her sütun için)
-        # Bu Treeview ile aynı x-scroll'a bağlı küçük bir frame
-        # Basit yaklaşım: arama kutuları büyük tek satır altta, sütun adı + entry
-        arama_cerceve = tk.LabelFrame(cont, text="Sütun Arama Kutuları",
-                                        bg="#FAFAFA", fg="#37474F",
-                                        font=("Segoe UI", 8, "bold"))
-        arama_cerceve.pack(fill="x", pady=(4, 0))
+        # ─────────── Yatay scroll senkronu (filtre + tablo birlikte) ───────────
 
-        # 6 sütun arama kutusu yatay, scrollable canvas
-        arama_canvas = tk.Canvas(arama_cerceve, height=48, bg="#FAFAFA",
-                                  highlightthickness=0)
-        arama_scrollbar = ttk.Scrollbar(arama_cerceve, orient="horizontal",
-                                          command=arama_canvas.xview)
-        arama_canvas.configure(xscrollcommand=arama_scrollbar.set)
-        arama_canvas.pack(fill="x", expand=False, padx=2)
-        arama_scrollbar.pack(fill="x")
+        def _xview_birlikte(*args):
+            self.tv.xview(*args)
+            try:
+                self._filtre_canvas.xview(*args)
+            except Exception:
+                pass
+        xsb.configure(command=_xview_birlikte)
 
-        arama_inner = tk.Frame(arama_canvas, bg="#FAFAFA")
-        arama_canvas.create_window((0, 0), window=arama_inner, anchor="nw")
+        def _on_tv_x_set(first, last):
+            xsb.set(first, last)
+            try:
+                self._filtre_canvas.xview_moveto(float(first))
+            except Exception:
+                pass
+        self.tv.configure(xscrollcommand=_on_tv_x_set)
 
-        self.arama_varlari = {}
-        for kod, baslik, gen, _tip in SUTUNLAR:
-            cer = tk.Frame(arama_inner, bg="#FAFAFA", padx=2)
-            cer.pack(side="left")
-            tk.Label(cer, text=baslik, font=("Segoe UI", 7), bg="#FAFAFA",
-                     fg="#546E7A").pack(anchor="w")
-            v = tk.StringVar()
-            ent = tk.Entry(cer, textvariable=v, width=max(8, gen // 8),
-                            font=("Segoe UI", 8))
-            ent.pack(anchor="w")
-            v.trace_add("write", lambda *a, k=kod: self._sutun_filtre_degisti(k))
-            self.arama_varlari[kod] = v
-
-        arama_inner.update_idletasks()
-        arama_canvas.config(scrollregion=arama_canvas.bbox("all"))
+        # Sütun yeniden boyutlandırma sonrası filtre slotlarını da güncellemek
+        # için gecikmeli yenileme — başlık tıklamaları sonrası tetiklenir
+        self._filtre_inner = filtre_inner
+        self._filtre_slotlar = filtre_inner.winfo_children()
+        self._filtre_h = FILTRE_H
 
     # ----------------------------------------------------------- AY/YIL
     def _ay_listesini_yukle(self):
@@ -735,7 +1115,7 @@ class AylikReceteSorguGUI:
                 "SELECT DISTINCT YEAR(RxKayitTarihi) AS Y FROM ReceteAna "
                 "WHERE RxSilme=0 ORDER BY Y DESC")
             yillar = [str(r["Y"]) for r in rows if r["Y"]]
-            self.cb_yil["values"] = yillar
+            self.cb_yil["values"] = ["Tümü"] + yillar
             if yillar:
                 bugun = date.today()
                 hedef = str(bugun.year)
@@ -745,7 +1125,8 @@ class AylikReceteSorguGUI:
             logger.exception("Yıl listesi: %s", e)
 
     def _yil_degisti(self, *args):
-        self.cb_ay["values"] = [self._ay_etiketi(i) for i in range(1, 13)]
+        self.cb_ay["values"] = ["Tümü"] + [self._ay_etiketi(i)
+                                              for i in range(1, 13)]
         bugun = date.today()
         self.var_ay.set(self._ay_etiketi(bugun.month))
 
@@ -767,11 +1148,34 @@ class AylikReceteSorguGUI:
         if not self.db:
             self._durum_yaz("DB bağlı değil")
             return
-        yil = self.var_yil.get()
-        ay = self._ay_no_cek(self.var_ay.get())
-        if not yil or not ay:
-            messagebox.showwarning("Uyarı", "Yıl ve ay seçiniz")
-            return
+        yil_str = (self.var_yil.get() or "").strip()
+        ay_str = (self.var_ay.get() or "").strip()
+
+        # "Tümü" → None (filtre yok)
+        if yil_str == "" or yil_str == "Tümü":
+            yil = None
+        else:
+            try:
+                yil = int(yil_str)
+            except ValueError:
+                messagebox.showwarning("Uyarı", "Geçersiz yıl")
+                return
+        if ay_str == "" or ay_str == "Tümü":
+            ay = None
+        else:
+            ay = self._ay_no_cek(ay_str)
+            if ay == 0:
+                ay = None
+
+        # Hem yıl hem ay 'Tümü' ise kullanıcıyı uyar (büyük veri seti)
+        if yil is None and ay is None:
+            if not messagebox.askyesno(
+                "Tüm Reçeteler",
+                "Yıl ve ay 'Tümü' — TÜM reçeteler yüklenecek.\n"
+                "Bu uzun sürebilir ve çok bellek kullanabilir.\n\n"
+                "Devam edilsin mi?"):
+                return
+
         # Önce mevcut state kaydet
         self._state_kaydet()
         # Tabloyu temizle
@@ -779,18 +1183,61 @@ class AylikReceteSorguGUI:
         self.satir_indeks = {}
         self.satir_renkleri = {}
         self.tv.delete(*self.tv.get_children())
-        self.aktif_donem = f"{yil}-{ay:02d}"
+        # Dönem etiketi (renk state'i bu anahtara kaydedilir)
+        if yil is not None and ay is not None:
+            self.aktif_donem = f"{yil}-{ay:02d}"
+        elif yil is not None:
+            self.aktif_donem = f"{yil}-TUM"
+        elif ay is not None:
+            self.aktif_donem = f"TUM-{ay:02d}"
+        else:
+            self.aktif_donem = "TUM"
         self.lbl_sayim.config(text="Sorgulanıyor…")
         self._durum_yaz(f"{self.aktif_donem} dönemi sorgulanıyor (ilaç bazlı)…")
-        threading.Thread(target=self._sorgu_threadi, args=(int(yil), ay),
+        threading.Thread(target=self._sorgu_threadi, args=(yil, ay),
                           daemon=True).start()
 
-    def _sorgu_threadi(self, yil: int, ay: int):
+    def _sorgu_threadi(self, yil, ay):
+        """yil/ay None ise o filtre uygulanmaz (Tümü).
+        gizle_bos_satirlar AÇIKsa: SQL düzeyinde uyarı kodu / mesaj / rapor
+        kodu hiçbiri olmayan satırlar baştan elenir → daha az veri, daha
+        hızlı yükleme."""
         try:
             # Ana SQL: ReceteAna × ReceteIlaclari × Musteri × Doktor × Urun × ATC × RaporAna
             # İlaç-rapor bağlantısı: RIRaporKodId + RRKIRaporKodId + Hasta + tarih aralığı
             # OUTER APPLY ile her ilaç için en uygun (en yeni) aktif raporu seç
-            sql = """
+            where_parts = ["ra.RxSilme = 0"]
+            params = []
+            if yil is not None:
+                where_parts.append("YEAR(ra.RxKayitTarihi) = ?")
+                params.append(int(yil))
+            if ay is not None:
+                where_parts.append("MONTH(ra.RxKayitTarihi) = ?")
+                params.append(int(ay))
+
+            # 🚫 Boş Satırları Gizle — detaylı filtre ayarlarını uygula
+            try:
+                bos_gizle = self.gizle_bos_satirlar.get()
+            except Exception:
+                bos_gizle = False
+            if bos_gizle:
+                try:
+                    import aylik_filtre_ayarlari as fa
+                    ay = self._filtre_ayarlari_aktif or fa.ayarlari_yukle()
+                    renkli_idler = sorted(
+                        (self._renkli_recete_idler or {}).keys())
+                    icerik_kos = fa.sql_icerik_kosullari(ay, renkli_idler)
+                    if icerik_kos:
+                        where_parts.append(icerik_kos)
+                    liste_kos = fa.sql_liste_kosullari(ay)
+                    if liste_kos:
+                        where_parts.append(liste_kos)
+                except Exception as e:
+                    logger.warning("Filtre ayarları SQL'e dönüştürülemedi: %s", e)
+
+            where_sql = " AND ".join(where_parts)
+
+            sql = f"""
                 SELECT
                     ra.RxId, ra.RxEReceteNo,
                     ra.RxIslemTarihi, ra.RxKayitTarihi,
@@ -827,13 +1274,11 @@ class AylikReceteSorguGUI:
                       AND rrki.RRKIBitisTarihi >= ra.RxKayitTarihi
                     ORDER BY rap.RaporAnaRaporTarihi DESC
                 ) rapinfo
-                WHERE ra.RxSilme = 0
-                  AND YEAR(ra.RxKayitTarihi) = ?
-                  AND MONTH(ra.RxKayitTarihi) = ?
+                WHERE {where_sql}
                 ORDER BY ra.RxKayitTarihi DESC, ri.RIId
             """
             try:
-                rows = self.db.sorgu_calistir(sql, (yil, ay))
+                rows = self.db.sorgu_calistir(sql, tuple(params))
                 logger.info(f"Sorgu OK: {len(rows)} ilaç satırı")
             except Exception as e_sql:
                 logger.error("Tam sorgu fail: %s", e_sql)
@@ -853,7 +1298,9 @@ class AylikReceteSorguGUI:
             rx_idler = list({r["RxId"] for r in rows})
             recete_teshis = self._toplu_recete_teshis_getir(rx_idler)
             recete_aciklama = self._toplu_recete_aciklama_getir(rx_idler)
-            uyari_kodlari = self._toplu_uyari_getir(rx_idler)
+            medula_yaniti = self._toplu_medula_yanit_getir(rx_idler)
+            uyari_per_ilac, uyari_recete_geneli = (
+                self._toplu_uyari_kodu_per_ilac_getir(rx_idler))
 
             # Rapor bazlı toplu sorgular (ana SQL'den gelen RaporAnaId'ler)
             rapor_ana_idler = list({r["RaporAnaId"] for r in rows
@@ -869,7 +1316,8 @@ class AylikReceteSorguGUI:
             for r in rows:
                 satir = self._satir_olustur(
                     r, doktor_brans, recete_teshis, recete_aciklama,
-                    uyari_kodlari, rapor_detay, urun_mesaj)
+                    medula_yaniti, uyari_per_ilac, uyari_recete_geneli,
+                    rapor_detay, urun_mesaj)
                 satirlar.append(satir)
 
             self.root.after(0, self._sorgu_bitti, satirlar)
@@ -1027,8 +1475,12 @@ class AylikReceteSorguGUI:
             logger.warning("UMTUrunMesaj sorgu fail: %s", e)
         return result
 
-    def _toplu_uyari_getir(self, rx_idler: list) -> dict:
-        """Uyarı kodlarını RxId bazında topla. Kolon: RUAciklama (RUMetni DEĞİL!)"""
+    def _toplu_medula_yanit_getir(self, rx_idler: list) -> dict:
+        """Medula provizyon yanıt mesajları (RxUyarilari.RUAciklama).
+        Bunlar Medula'nın reçeteye verdiği yanıt mesajlarıdır
+        (örn: "uyarı kodları uyumsuz (367)").
+        Returns: {rxid: "mesaj1 | mesaj2"}
+        """
         if not rx_idler:
             return {}
         result = {}
@@ -1046,8 +1498,53 @@ class AylikReceteSorguGUI:
                     if txt:
                         result.setdefault(rxid, []).append(txt)
         except Exception as e:
-            logger.warning("Uyarı sorgu fail: %s", e)
+            logger.warning("Medula yanıt sorgu fail: %s", e)
         return {k: " | ".join(v) for k, v in result.items()}
+
+    def _toplu_uyari_kodu_per_ilac_getir(self, rx_idler: list):
+        """Reçeteye GİRİLMİŞ uyarı kodları (ReceteTeshis tablosu).
+        TAMPROST → 256 gibi: kullanıcının reçete kaydı sırasında
+        ilaca atadığı uyarı kodları burada tutulur.
+        Returns:
+            per_ilac: {(rxid, urun_id): "256 - Benign prostat hiperplazisi"}
+            recete_geneli: {rxid: "..."}  # RTUrunId boş olanlar (reçete genel)
+        """
+        per_ilac: dict = {}
+        recete_geneli: dict = {}
+        if not rx_idler:
+            return per_ilac, recete_geneli
+        try:
+            for i in range(0, len(rx_idler), 1000):
+                chunk = rx_idler[i:i + 1000]
+                ph = ",".join("?" * len(chunk))
+                rows = self.db.sorgu_calistir(
+                    f"""SELECT rt.RTRxId, rt.RTUrunId, rt.RTTeshisKodu,
+                               t.TeshisAciklama
+                        FROM ReceteTeshis rt
+                        LEFT JOIN Teshis t ON t.TeshisId = rt.RTTeshisId
+                        WHERE rt.RTRxId IN ({ph})""",
+                    tuple(chunk))
+                for r in rows:
+                    rxid = r["RTRxId"]
+                    urun_id = r.get("RTUrunId")
+                    kod = (r.get("RTTeshisKodu") or "").strip()
+                    aciklama = (r.get("TeshisAciklama") or "").strip()
+                    if not kod:
+                        continue
+                    # Aciklama zaten "256 - Benign prostat..." formatında
+                    txt = aciklama if aciklama else kod
+                    if "Seçiniz" in txt:
+                        continue
+                    if urun_id:
+                        per_ilac.setdefault((rxid, urun_id), []).append(txt)
+                    else:
+                        recete_geneli.setdefault(rxid, []).append(txt)
+        except Exception as e:
+            logger.warning("ReceteTeshis uyarı kodu sorgu fail: %s", e)
+        per_ilac = {k: " | ".join(dict.fromkeys(v)) for k, v in per_ilac.items()}
+        recete_geneli = {k: " | ".join(dict.fromkeys(v))
+                          for k, v in recete_geneli.items()}
+        return per_ilac, recete_geneli
 
     def _toplu_rapor_detay_getir(self, rapor_ana_idler: list) -> dict:
         """RaporAnaId → {teshisler, etkin_madde_doz, ek_bilgiler}.
@@ -1159,8 +1656,12 @@ class AylikReceteSorguGUI:
         return result
 
     def _satir_olustur(self, r, doktor_brans, recete_teshis, recete_aciklama,
-                        uyari_kodlari, rapor_detay, urun_mesaj=None) -> dict:
+                        medula_yaniti, uyari_per_ilac, uyari_recete_geneli,
+                        rapor_detay, urun_mesaj=None) -> dict:
         urun_mesaj = urun_mesaj or {}
+        uyari_per_ilac = uyari_per_ilac or {}
+        uyari_recete_geneli = uyari_recete_geneli or {}
+        medula_yaniti = medula_yaniti or {}
         rxid = r.get("RxId")
         riid = r.get("RIId")
 
@@ -1210,13 +1711,18 @@ class AylikReceteSorguGUI:
                 rapor_aciklamalari.append(ana_ack)
             rapor_aciklamalari.extend(rd.get("ek_bilgi", []))
 
-        # Etken madde finali: rapor varsa rapor + ATC, yoksa sadece ATC
-        if em_ad_rapor and atc_turkce:
-            em_ad = f"{em_ad_rapor} ({atc_turkce})"
+        # Etken madde finali: ÖNCE bu ilacın kendi ATC'si (drug-specific).
+        # Raporun etken maddeleri (em_ad_rapor) raporun TÜM ilaçları için
+        # ortaktır — her bir ilaç satırına kopyalandığında karışıklık
+        # yapar (ör: BENIPIN satırında ŞEKER ÇUBUĞU görünmesi). Bu yüzden
+        # em_ad SADECE ATC.ATCTurkce'den alınır; ATC boşsa rapor etkenine
+        # düşer.
+        if atc_turkce:
+            em_ad = atc_turkce
         elif em_ad_rapor:
             em_ad = em_ad_rapor
         else:
-            em_ad = atc_turkce
+            em_ad = ""
 
         rap_ack = " | ".join(rapor_aciklamalari) if rapor_aciklamalari else ""
         rap_tesh = " | ".join(dict.fromkeys(rap_tesh_listesi)) if rap_tesh_listesi else ""
@@ -1263,28 +1769,23 @@ class AylikReceteSorguGUI:
         ilac_mesajlari = urun_mesaj.get(urun_id, []) if urun_id else []
         msj = "var" if ilac_mesajlari else "yok"
 
-        # Uyarı kodu: ürün mesajlarındaki kısa kodlar (272, EK-4/E vs.)
-        # UMTMMesaj formatı: "1014(1) - 4.2.14.A- ..." veya "215 - EK-4/E ..."
-        # Kısa form: "kod - sut" formatında ilk 2-3 mesaj
-        uyari_kodlari_kisa = []
-        for m in ilac_mesajlari[:5]:  # En fazla 5 mesaj
-            mesaj_text = m.get("mesaj", "")
-            sut = m.get("sut", "")
-            # Mesajın başındaki kodu çek (ör "1014(1)")
-            import re as _re
-            kod_match = _re.match(r'^(\d+(?:\(\d+\))?)', mesaj_text)
-            if kod_match:
-                kod = kod_match.group(1)
-                if sut:
-                    uyari_kodlari_kisa.append(f"{kod}/{sut}")
-                else:
-                    uyari_kodlari_kisa.append(kod)
-        # Reçete bazlı sistem uyarılarını da ekle (RxUyarilari)
-        sistem_uyarisi = uyari_kodlari.get(rxid, "")
-        uyari_text = " | ".join(uyari_kodlari_kisa)
-        if sistem_uyarisi:
-            uyari_text = (uyari_text + " || SİS: " + sistem_uyarisi[:60]
-                            if uyari_text else sistem_uyarisi)
+        # Uyarı kodu: bu reçetede bu ilaç için ReceteTeshis'e girilmiş kodlar.
+        # Öncelik:
+        #  1) Reçete-ilaç bazlı kod (RTUrunId = bu ilaç)
+        #  2) Reçete geneline yazılmış kod (RTUrunId boş)
+        ilac_kodu = uyari_per_ilac.get((rxid, urun_id), "") if urun_id else ""
+        recete_kodu = uyari_recete_geneli.get(rxid, "")
+        if ilac_kodu and recete_kodu:
+            uyari_text = f"{ilac_kodu} | (Reç: {recete_kodu})"
+        elif ilac_kodu:
+            uyari_text = ilac_kodu
+        elif recete_kodu:
+            uyari_text = f"(Reç: {recete_kodu})"
+        else:
+            uyari_text = ""
+
+        # Medula provizyon yanıt metni (RxUyarilari) — ayrı sütun
+        medula_msj_text = medula_yaniti.get(rxid, "")
 
         return {
             "ri_id": riid, "rx_id": rxid,
@@ -1316,6 +1817,7 @@ class AylikReceteSorguGUI:
             "rap_doz_sayi": rap_doz_sayi,
             "msj": msj,
             "uyari": uyari_text,
+            "medula_msj": medula_msj_text,
             "rec_tesh": recete_teshis.get(rxid, ""),
             "rap_tesh": rap_tesh,
             "rec_ack": recete_aciklama.get(rxid, ""),
@@ -1380,13 +1882,21 @@ class AylikReceteSorguGUI:
         self._tabloyu_yenile()
         self._sayaclari_guncelle()
         self._durum_yaz(f"{len(satirlar)} satır geldi (ilaç bazlı)")
-        self.lbl_sayim.config(text=f"{len(satirlar)} satır")
 
     # ----------------------------------------------------------- TABLO RENDER
     def _tabloyu_yenile(self):
-        """tum_satirlar + filtreler + renk filtresi → tv'ye doldur."""
+        """tum_satirlar + filtreler + renk filtresi → tv'ye doldur.
+        Filtreyle gizlenen satırlar seçim setinden de düşer; bu sayede sonraki
+        boyama işlemlerinde sadece ekrandaki seçimler işleme alınır."""
         self.tv.delete(*self.tv.get_children())
         self.gosterilen_iids = set()
+
+        # Reçete türü filtresi — SADECE kapatılan tipler dışlanır.
+        # Default (hepsi açık) ya da bilinmeyen tip → satır geçer.
+        gizli_recete_turleri = {
+            ad for ad, v in (self.var_recete_turu or {}).items()
+            if not v.get()
+        } if hasattr(self, "var_recete_turu") and self.var_recete_turu else set()
 
         for s in self.tum_satirlar:
             iid = str(s["ri_id"])
@@ -1395,11 +1905,21 @@ class AylikReceteSorguGUI:
             renk = self.satir_renkleri.get(iid, RENK_BEYAZ)
             if renk not in self.aktif_renk_filtre:
                 continue
+            # Reçete türü filtresi: sadece kullanıcının kapattığı tipleri ele
+            if gizli_recete_turleri:
+                rec_tip = (s.get("rec_tip") or "").strip()
+                if rec_tip in gizli_recete_turleri:
+                    continue
             # Seçim göstergesi (☐/☑)
             s["secim"] = "☑" if iid in self.secili_iidler else "☐"
             values = tuple(str(s.get(k, "")) for k in SUTUN_KOD)
             self.tv.insert("", "end", iid=iid, values=values, tags=(renk,))
             self.gosterilen_iids.add(iid)
+
+        # Filtre ile gizlenen satırların seçimini de düşür — kullanıcının
+        # "sadece görünenleri boyuyorum" beklentisini garanti eder.
+        if self.secili_iidler:
+            self.secili_iidler &= self.gosterilen_iids
 
     def _satir_filtreden_geciyor_mu(self, s: dict, haric_kod: str = None) -> bool:
         """Sütun arama kutuları + Excel-benzeri değer filtreleri ile filtre.
@@ -1409,9 +1929,13 @@ class AylikReceteSorguGUI:
                    açıldığında o sütunun filtresi diğer sütunlardaki seçenekleri
                    kısıtlamamalı, ama diğer sütunların filtreleri uygulanmalı.)
         """
-        # 1) Alt sütun arama kutuları (içerir)
+        # 1) Alt sütun arama kutuları (içerir) — placeholder metni filtreye
+        # etki etmesin diye atla.
         for kod, var in self.arama_varlari.items():
             if kod == haric_kod:
+                continue
+            if (getattr(self, "_placeholder_aktif", {})
+                    .get(kod)):
                 continue
             ara = (var.get() or "").strip().lower()
             if not ara:
@@ -1468,6 +1992,10 @@ class AylikReceteSorguGUI:
         return True
 
     def _sutun_filtre_degisti(self, kod: str):
+        # Placeholder yazımları filtre tetiklemesin
+        if (getattr(self, "_placeholder_aktif", {})
+                .get(kod)):
+            return
         # Kısa debounce ile çağırılabilir; şimdilik direkt
         self._tabloyu_yenile()
         self._sayaclari_guncelle()
@@ -1478,6 +2006,45 @@ class AylikReceteSorguGUI:
         self._tabloyu_yenile()
         self._sayaclari_guncelle()
 
+    def _bos_satir_filtre_degisti(self):
+        """🚫 Boş Satırları Gizle değişti → SQL düzeyinde filtre değişti
+        demektir, sorguyu yeniden çalıştır. Henüz veri çekilmediyse hiç
+        bir şey yapma."""
+        if not self.tum_satirlar:
+            return
+        self._durum_yaz("🚫 Boş satır filtresi değişti — sorgu yenileniyor…")
+        self._receteleri_sorgula()
+
+    def _filtre_ayar_penceresi_ac(self):
+        """⚙ butonu — detaylı filtre ayar penceresini açar."""
+        try:
+            import aylik_filtre_ayarlari as fa
+        except Exception as e:
+            from tkinter import messagebox
+            messagebox.showerror("Hata",
+                                  f"Filtre ayar modülü yüklenemedi:\n{e}")
+            return
+
+        def _on_save(yeni_ayarlar):
+            # Yeni ayarları memory'e al ve sorguyu yenile
+            self._filtre_ayarlari_aktif = yeni_ayarlar
+            if self.tum_satirlar:
+                # Yalnızca bos_gizle açıkken yeniden sorgu mantıklı
+                self._durum_yaz(
+                    "⚙ Filtre ayarları güncellendi — sorgu yenileniyor…")
+                self._receteleri_sorgula()
+            else:
+                self._durum_yaz("⚙ Filtre ayarları kaydedildi "
+                                  "(sonraki Sorgula çalışmasında uygulanır)")
+
+        fa.ayar_penceresini_ac(self.root, db=self.db, on_save=_on_save)
+
+    def _recete_turu_filtre_degisti(self):
+        """📋 Reçete türü checkbox'ı (Beyaz/Kırmızı/Yeşil/Mor) değişti.
+        Yüklü veri arasında filtreleme — SQL'e gitmeden tablo yenilenir."""
+        self._tabloyu_yenile()
+        self._sayaclari_guncelle()
+
     def _tum_filtreleri_temizle(self):
         """Tüm aktif filtreleri sıfırla:
         - Sütun arama kutuları (alt satır)
@@ -1485,12 +2052,20 @@ class AylikReceteSorguGUI:
         - Renk filtreleri (5 renk de açık)
         - Sıralama
         """
-        # Sütun arama kutularını temizle
-        for var in self.arama_varlari.values():
+        # Sütun arama kutularını temizle (placeholder geri gelsin)
+        for kod, var in self.arama_varlari.items():
             try:
+                # Placeholder durumunu sıfırla — temiz başla
+                if hasattr(self, "_placeholder_aktif"):
+                    self._placeholder_aktif[kod] = False
                 var.set("")
             except Exception:
                 pass
+        # Entry'lere placeholder geri yerleştir (focus out gibi davran)
+        try:
+            self._filtre_inner.focus_set()
+        except Exception:
+            pass
         # Excel-benzeri değer filtrelerini sıfırla
         self.aktif_deger_filtre.clear()
         # Metin filtrelerini sıfırla (başlar/biter/içerir...)
@@ -1502,7 +2077,18 @@ class AylikReceteSorguGUI:
             except Exception:
                 pass
         self.aktif_renk_filtre = {RENK_BEYAZ, RENK_YESIL, RENK_SARI,
-                                    RENK_TURUNCU, RENK_KIRMIZI}
+                                    RENK_TURUNCU, RENK_KIRMIZI, RENK_GRI}
+        # "Boş Satırları Gizle" — varsayılana (AÇIK) döndür
+        try:
+            self.gizle_bos_satirlar.set(True)
+        except Exception:
+            pass
+        # Reçete türü filtresi → hepsi açık (varsayılan)
+        try:
+            for v in (self.var_recete_turu or {}).values():
+                v.set(True)
+        except Exception:
+            pass
         # Sıralamayı sıfırla
         self._siralama_kolonu = None
         self._siralama_yonu = None
@@ -1520,27 +2106,84 @@ class AylikReceteSorguGUI:
         toplam = len(self.tum_satirlar)
         gor = len(self.gosterilen_iids)
         sec = len(self.secili_iidler)
-        txt = (f"Toplam: {toplam}  |  Görünen: {gor}  |  Seçili: {sec}  ||  "
+        txt = (f"Toplam: {toplam}  |  Filtreli: {gor}  |  Seçili: {sec}  ||  "
                f"⚪ {say[RENK_BEYAZ]}  🟢 {say[RENK_YESIL]}  "
                f"🟡 {say[RENK_SARI]}  🟠 {say[RENK_TURUNCU]}  🔴 {say[RENK_KIRMIZI]}")
         try:
             self.lbl_durum_dagilim.config(text=txt)
         except Exception:
             pass
+        try:
+            if toplam:
+                self.lbl_sayim.config(text=f"{toplam} satır  |  Filtrelenmiş: {gor}")
+            else:
+                self.lbl_sayim.config(text="")
+        except Exception:
+            pass
 
     # ----------------------------------------------------------- BOYAMA
+    def _gri_iclac_disla(self, iidler):
+        """RENK_GRI ile boyanan satırların ilaç adlarını filtre ayar
+        dosyasındaki 'ilac' dışlama listesine ekler. Aynı SORGUDA
+        bir daha gelmez (ana sorgu yenilenince devre dışı kalır)."""
+        try:
+            import aylik_filtre_ayarlari as fa
+        except Exception as e:
+            logger.warning("Filtre ayar modülü yok: %s", e)
+            return 0
+        try:
+            ay = fa.ayarlari_yukle()
+        except Exception as e:
+            logger.warning("Filtre ayarları okunamadı: %s", e)
+            return 0
+        ilac_kurallari = ay.get("ilac") or []
+        mevcut = {(k.get("deger") or "").strip().upper()
+                   for k in ilac_kurallari
+                   if k.get("mod") == "icermez"}
+        eklendi = 0
+        for iid in iidler:
+            s = self.satir_indeks.get(iid)
+            if not s:
+                continue
+            ilac_adi = (s.get("ilac") or "").strip()
+            if not ilac_adi:
+                continue
+            if ilac_adi.upper() in mevcut:
+                continue
+            ilac_kurallari.append({"deger": ilac_adi, "mod": "icermez"})
+            mevcut.add(ilac_adi.upper())
+            eklendi += 1
+        if eklendi:
+            ay["ilac"] = ilac_kurallari
+            try:
+                fa.ayarlari_kaydet(ay)
+                self._filtre_ayarlari_aktif = ay
+            except Exception as e:
+                logger.warning("Filtre ayarları yazılamadı: %s", e)
+        return eklendi
+
     def _secilenleri_renge_boya(self, renk: str):
-        """secili_iidler set'indeki satırları renge boya."""
+        """secili_iidler set'indeki satırları renge boya.
+        İşlem sonrası seçim seti TEMİZLENİR. Renk RENK_GRI ise ilaç adı
+        otomatik olarak dışlama listesine eklenir."""
         if not self.secili_iidler:
             messagebox.showinfo("Bilgi", "Önce satırları seç (☐ kutucukları)")
             return
         n = len(self.secili_iidler)
+        # Gri ise dışlama listesine ekle (boyamadan önce — iidler üzerinden)
+        eklendi = 0
+        if renk == RENK_GRI:
+            eklendi = self._gri_iclac_disla(list(self.secili_iidler))
         for iid in self.secili_iidler:
             self.satir_renkleri[iid] = renk
+        self.secili_iidler.clear()
         self._state_kaydet()
         self._tabloyu_yenile()
         self._sayaclari_guncelle()
-        self._durum_yaz(f"{n} seçili satır → {RENK_ETIKET[renk]}")
+        ek = (f" — {eklendi} ilaç dışlama listesine eklendi"
+              if renk == RENK_GRI and eklendi else "")
+        self._durum_yaz(f"{n} satır → {RENK_ETIKET[renk]} "
+                          f"(seçim temizlendi){ek}")
 
     def _hizli_filtre_menu(self, event=None):
         """Hızlı filtre seçim menüsü (dropdown)."""
@@ -1560,20 +2203,35 @@ class AylikReceteSorguGUI:
             m.grab_release()
 
     def _gorunenleri_boya(self, renk: str):
+        """Filtreden geçip listede kalan tüm satırları boyar
+        (ekrana sığan değil — scroll dışındakiler de dahil).
+        Renk RENK_GRI ise ilaçlar dışlama listesine eklenir."""
         if not self.gosterilen_iids:
-            self._durum_yaz("Görünen satır yok")
+            self._durum_yaz("Filtreli satır yok")
             return
         n = len(self.gosterilen_iids)
+        ek_uyari = ""
+        if renk == RENK_GRI:
+            ek_uyari = ("\n\n⚠ Bu satırlardaki ilaçlar dışlama listesine "
+                         "(ilaç → İçermez) eklenecektir.")
         if not messagebox.askyesno(
-                "Görünenleri Boya",
-                f"{n} görünen satırı '{RENK_ETIKET[renk]}' rengine boyayacak. Emin misin?"):
+                "Filtreli Satırları Boya",
+                f"Filtreden geçen {n} satır '{RENK_ETIKET[renk]}' rengine "
+                f"boyanacak.\n(Listedeki tüm satırlar — scroll dışındakiler "
+                f"dahil){ek_uyari}\n\nEmin misin?"):
             return
+        eklendi = 0
+        if renk == RENK_GRI:
+            eklendi = self._gri_iclac_disla(list(self.gosterilen_iids))
         for iid in list(self.gosterilen_iids):
             self.satir_renkleri[iid] = renk
+            self.secili_iidler.discard(iid)
         self._state_kaydet()
         self._tabloyu_yenile()
         self._sayaclari_guncelle()
-        self._durum_yaz(f"{n} satır → {RENK_ETIKET[renk]}")
+        ek = (f" — {eklendi} ilaç dışlama listesine eklendi"
+              if renk == RENK_GRI and eklendi else "")
+        self._durum_yaz(f"{n} satır → {RENK_ETIKET[renk]}{ek}")
 
     def _secilenleri_boya(self):
         secimler = list(self.tv.selection())
@@ -1595,12 +2253,18 @@ class AylikReceteSorguGUI:
                       ).pack(fill="x", padx=20, pady=2)
 
     def _secilenleri_boya_uygula(self, iids, renk):
+        eklendi = 0
+        if renk == RENK_GRI:
+            eklendi = self._gri_iclac_disla(iids)
         for iid in iids:
             self.satir_renkleri[iid] = renk
+            self.secili_iidler.discard(iid)
         self._state_kaydet()
         self._tabloyu_yenile()
         self._sayaclari_guncelle()
-        self._durum_yaz(f"{len(iids)} seçili satır → {RENK_ETIKET[renk]}")
+        ek = (f" — {eklendi} ilaç dışlama listesine eklendi"
+              if renk == RENK_GRI and eklendi else "")
+        self._durum_yaz(f"{len(iids)} seçili satır → {RENK_ETIKET[renk]}{ek}")
 
     def _tum_renkleri_sifirla(self):
         if not messagebox.askyesno("Tüm Renkleri Sıfırla",
@@ -1653,7 +2317,8 @@ class AylikReceteSorguGUI:
 
     # ----------------------------------------------------------- SOL TIK (CHECKBOX TOGGLE)
     def _sol_tik_dispatch(self, event):
-        """Sol tık — secim sütununa tıklandıysa checkbox toggle, başka yere bırak."""
+        """Sol tık — secim sütununda checkbox toggle, başka sütunlarda
+        tıklanan hücrenin tam içeriğini alttaki gösterge satırında yansıt."""
         try:
             region = self.tv.identify_region(event.x, event.y)
         except Exception:
@@ -1662,24 +2327,40 @@ class AylikReceteSorguGUI:
             return
         col_id = self.tv.identify_column(event.x)
         kod = self._col_id_to_kod(col_id)
-        if kod != "secim":
-            return
-        # Hangi satıra tıklandı?
         iid = self.tv.identify_row(event.y)
         if not iid:
             return
-        # Toggle
-        if iid in self.secili_iidler:
-            self.secili_iidler.discard(iid)
-            self.tv.set(iid, "secim", "☐")
-        else:
-            self.secili_iidler.add(iid)
-            self.tv.set(iid, "secim", "☑")
-        # tum_satirlar içindeki secim'i de güncelle
-        s = self.satir_indeks.get(iid)
-        if s:
-            s["secim"] = "☑" if iid in self.secili_iidler else "☐"
-        self._sayaclari_guncelle()
+
+        # Secim sütunu → checkbox toggle (eski davranış)
+        if kod == "secim":
+            if iid in self.secili_iidler:
+                self.secili_iidler.discard(iid)
+                self.tv.set(iid, "secim", "☐")
+            else:
+                self.secili_iidler.add(iid)
+                self.tv.set(iid, "secim", "☑")
+            s = self.satir_indeks.get(iid)
+            if s:
+                s["secim"] = "☑" if iid in self.secili_iidler else "☐"
+            self._sayaclari_guncelle()
+            return
+
+        # Diğer sütunlar → hücre içeriğini alt label'a bas
+        try:
+            deger = ""
+            if kod:
+                deger = self.tv.set(iid, kod)
+            # Sütun başlığı
+            baslik = ""
+            for k, b, _g, _t in SUTUNLAR:
+                if k == kod:
+                    baslik = b
+                    break
+            self.lbl_hucre_baslik.config(text=f"[{baslik}]")
+            self.lbl_hucre_icerik.config(
+                text=deger if deger else "(boş)")
+        except Exception as e:
+            logger.debug("hücre içeriği gösterimi: %s", e)
 
     def _tumunu_sec(self):
         """Görünen tüm satırları işaretle."""
@@ -2236,12 +2917,67 @@ class AylikReceteSorguGUI:
                   ).pack(side="right", padx=4)
 
     def _sutun_gorunumunu_uygula(self):
-        """sutun_gosterim'e göre Treeview'da kolon görünürlüğünü ayarla."""
+        """sutun_gosterim'e göre Treeview'da kolon görünürlüğünü ve
+        filtre satırındaki slot'ları senkron ayarla."""
         try:
             gorunenler = [k for k in SUTUN_KOD if self.sutun_gosterim.get(k, True)]
             self.tv["displaycolumns"] = gorunenler
         except Exception:
             pass
+        # Filtre satırı slot'larını gizle/göster + güncel sütun genişliklerine
+        # göre boyutlandır (sütun yeniden boyutlandırma sonrası hizalı kalsın)
+        try:
+            slotlar = getattr(self, "_filtre_slotlar", []) or []
+            toplam_gen = 0
+            for (kod, _baslik, gen, _tip), slot in zip(SUTUNLAR, slotlar):
+                if self.sutun_gosterim.get(kod, True):
+                    # Tablodaki anlık genişliği oku
+                    try:
+                        w = int(self.tv.column(kod, "width"))
+                    except Exception:
+                        w = gen
+                    slot.config(width=w)
+                    # İçerideki Entry'yi de güncelle
+                    for child in slot.winfo_children():
+                        if isinstance(child, tk.Entry):
+                            child.place_configure(width=max(10, w - 2))
+                    slot.pack(side="left")
+                    toplam_gen += w
+                else:
+                    slot.pack_forget()
+            if hasattr(self, "_filtre_canvas"):
+                self._filtre_canvas.config(
+                    scrollregion=(0, 0, toplam_gen,
+                                   getattr(self, "_filtre_h", 28)))
+        except Exception as e:
+            logger.debug("filtre slot görünürlüğü: %s", e)
+
+    def _filtre_slotlarini_hizala(self):
+        """Tablonun anlık sütun genişliklerine göre filtre slotlarını
+        yeniden boyutlandır. Sütun manuel resize edildiğinde çağrılır."""
+        try:
+            slotlar = getattr(self, "_filtre_slotlar", []) or []
+            if not slotlar:
+                return
+            toplam = 0
+            for (kod, _baslik, gen, _tip), slot in zip(SUTUNLAR, slotlar):
+                if not self.sutun_gosterim.get(kod, True):
+                    continue
+                try:
+                    w = int(self.tv.column(kod, "width"))
+                except Exception:
+                    w = gen
+                slot.config(width=w)
+                for child in slot.winfo_children():
+                    if isinstance(child, tk.Entry):
+                        child.place_configure(width=max(10, w - 2))
+                toplam += w
+            if hasattr(self, "_filtre_canvas"):
+                self._filtre_canvas.config(
+                    scrollregion=(0, 0, toplam,
+                                   getattr(self, "_filtre_h", 28)))
+        except Exception as e:
+            logger.debug("filtre slot hizalama: %s", e)
 
     # ----------------------------------------------------------- STATE
     def _state_kaydet(self):
