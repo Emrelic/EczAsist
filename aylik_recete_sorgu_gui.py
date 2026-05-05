@@ -948,7 +948,20 @@ class AylikReceteSorguGUI:
             bd=0, padx=12, pady=3, cursor="hand2",
             command=self._klopidogrel_kontrol_baslat
         )
-        self.btn_klopidogrel.pack(side="left", padx=(0, 8), pady=2)
+        self.btn_klopidogrel.pack(side="left", padx=(0, 4), pady=2)
+
+        # ── ARB KONTROL butonu (SUT EK-4/F Madde 51 / 1300/51) ──
+        # ATC C09C* (mono ARB) / C09D* (ARB kombinasyonları) / C02AC*
+        # (Rilmeniden/Moksonidin) — mono raporlu / kombi monoterapi ibaresi /
+        # raporsuz aile hekimi + 1 kutu kuralları.
+        self.btn_arb = tk.Button(
+            self._durum_frame, text="🩸 ARB (M.51)",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#00695C", activebackground="#004D40",
+            bd=0, padx=12, pady=3, cursor="hand2",
+            command=self._arb_kontrol_baslat
+        )
+        self.btn_arb.pack(side="left", padx=(0, 8), pady=2)
 
         self.durum_bar = tk.Label(self._durum_frame, text="Hazır", anchor="w",
                                     bg="#ECEFF1", fg="#37474F", padx=10)
@@ -3363,6 +3376,136 @@ class AylikReceteSorguGUI:
         }
 
     # ───────────────────────────────────────────────────────────────────
+    # ARB / SUT EK-4/F MADDE 51 — KATEGORİ + ilac_sonuc üreticisi
+    # ───────────────────────────────────────────────────────────────────
+    _ARB_MONO_ETKEN = (
+        "IRBESARTAN", "İRBESARTAN",
+        "KANDESARTAN", "CANDESARTAN",
+        "LOSARTAN",
+        "TELMISARTAN",
+        "VALSARTAN",
+        "OLMESARTAN",
+        "EPROSARTAN",
+        "RILMENIDEN", "RILMENIDIN", "RİLMENİDİN",
+        "MOKSONIDIN", "MOXONIDIN", "MOKSONİDİN",
+    )
+    _ARB_TICARI_FALLBACK = (
+        # Valsartan
+        "DIOVAN", "VALEXA", "VALSACOR", "TARK", "VALSARTIL",
+        # Telmisartan
+        "MICARDIS", "PRITOR", "TELVAS", "TEVELOX", "TWENTACOR",
+        # Olmesartan
+        "OLMETEC", "BENICAR", "VOTUM",
+        # Kandesartan
+        "ATACAND", "BLOPRESS", "RATACAND",
+        # Irbesartan
+        "APROVEL", "KARVEA", "IRBES", "IRDA",
+        # Losartan
+        "COZAAR", "EKSEFOR", "LARITON", "LOSAR",
+        # Eprosartan
+        "TEVETEN",
+        # Rilmeniden
+        "HYPERIUM", "TENAXUM",
+        # Moksonidin
+        "CYNT", "PHYSIOTENS",
+        # Kombinasyonlar (ARB + diüretik / + CCB / + 3'lü)
+        "EXFORGE", "SEVIKAR", "TWYNSTA", "MICARDISPLUS", "MICARDIS PLUS",
+        "CO-DIOVAN", "CODIOVAN", "CO-APROVEL", "COAPROVEL",
+        "CO-OLMETEC", "HYZAAR", "KARVEZIDE", "FORZATEN",
+        "CO-IRDA", "TRIVERAM", "ATACAND PLUS",
+    )
+    _ARB_KOMBI_TICARI = (
+        "EXFORGE", "SEVIKAR", "TWYNSTA", "MICARDISPLUS", "MICARDIS PLUS",
+        "CO-DIOVAN", "CODIOVAN", "CO-APROVEL", "COAPROVEL",
+        "CO-OLMETEC", "HYZAAR", "KARVEZIDE", "FORZATEN",
+        "CO-IRDA", "TRIVERAM", "ATACAND PLUS",
+    )
+
+    @staticmethod
+    def _arb_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Satırın ARB veya ARB-kombinasyonu olup olmadığını sınıflandırır
+        (SUT EK-4/F Madde 51 kapsamı).
+
+        ATC önceliği:
+          - C09C  → ARB tek başına (mono)
+          - C09D  → ARB + diüretik / + CCB / + ACE / 3'lü kombinasyonları
+          - C02AC → Santral etkili (Rilmeniden/Moksonidin) — SUT EK-4/F M.51
+                    bu ilaçları ARB listesi ile birlikte sayar.
+
+        ATC yoksa: etken madde + ticari isim fallback.
+
+        Dönüş: "ARB_MONO" / "ARB_KOMBI" / "NONE"
+        """
+        a = (atc or "").upper().strip()
+        if a.startswith("C09DA") or a.startswith("C09DB") or \
+                a.startswith("C09DX"):
+            return "ARB_KOMBI"
+        if a.startswith("C09CA"):
+            return "ARB_MONO"
+        if a.startswith("C09D"):  # Diğer C09D alt grupları
+            return "ARB_KOMBI"
+        if a.startswith("C09C"):
+            return "ARB_MONO"
+        if a.startswith("C02AC"):
+            # Santral etkili antihipertansifler (Rilmeniden/Moksonidin) —
+            # SUT'ta mono kabul ediliyor, kombi formu nadirdir.
+            return "ARB_MONO"
+
+        ad = (ilac_adi or "").upper()
+        et = (etkin or "").upper()
+        arama = ad + " " + et
+
+        arb_var = (
+            any(e in et for e in AylikReceteSorguGUI._ARB_MONO_ETKEN)
+            or any(e in ad for e in AylikReceteSorguGUI._ARB_MONO_ETKEN)
+            or any(t in ad for t in AylikReceteSorguGUI._ARB_TICARI_FALLBACK)
+        )
+        if not arb_var:
+            return "NONE"
+
+        # Kombi tespiti: etkin madde içinde "/" varsa veya ticari isim kombi
+        is_kombi = ('/' in et) or any(
+            t in ad for t in AylikReceteSorguGUI._ARB_KOMBI_TICARI)
+        return "ARB_KOMBI" if is_kombi else "ARB_MONO"
+
+    @staticmethod
+    def _ilac_sonuc_olustur_arb(s: dict) -> dict:
+        """Satır dict'inden kontrol_arb_ek4f_m51'in beklediği ilac_sonuc
+        dict'ini üret.
+
+        Statin'den farklı olarak ek alanlar:
+          - doktor_uzmanligi → aile hekimi tespiti (raporsuz şartı)
+          - kutu_sayisi      → ayda 1 kutu sınırı kontrolü
+          - etkin_madde      → mono/kombi ayrımı
+          - atc_kodu         → fallback için
+        """
+        def _bol(metin):
+            if not metin:
+                return []
+            return [p.strip() for p in str(metin).split(" | ") if p.strip()]
+
+        rapor_aciklamalari = []
+        rap_ack = s.get("rap_ack")
+        if rap_ack:
+            rapor_aciklamalari.append(str(rap_ack).strip())
+        for t in _bol(s.get("rap_tesh")):
+            rapor_aciklamalari.append(t)
+
+        return {
+            "ilac_adi": s.get("ilac") or "",
+            "etkin_madde": s.get("etkin") or "",
+            "atc_kodu": s.get("atc") or "",
+            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            "rapor_kodu_aciklama": "",
+            "recete_teshisleri": _bol(s.get("rec_tesh")),
+            "rapor_aciklamalari": rapor_aciklamalari,
+            "recete_aciklamalari": _bol(s.get("rec_ack")),
+            "mesaj_metni": "",
+            "doktor_uzmanligi": s.get("brans") or "",
+            "kutu_sayisi": s.get("kutu") or "",
+        }
+
+    # ───────────────────────────────────────────────────────────────────
     # KLOPİDOGREL / PRASUGREL / TIKAGRELOR (SUT 4.2.15) KATEGORİ + ilac_sonuc
     # ───────────────────────────────────────────────────────────────────
     _KLOP_AD_FALLBACK = (
@@ -3503,6 +3646,157 @@ class AylikReceteSorguGUI:
             logger.warning("Hasta ICD toplu sorgu fail: %s", e)
         # Tekrarsız + temiz
         return {k: list(dict.fromkeys(v)) for k, v in result.items()}
+
+    def _arb_kontrol_baslat(self):
+        """ARB KONTROL butonu — yüklenen satırlardan ARB veya ARB-kombinasyonu
+        (ATC C09C* / C09D* / C02AC*) olanları SUT EK-4/F Madde 51 (1300/51)
+        kuralına göre denetler ve sonucu en sağdaki SONUÇ sütununa yazar.
+
+        Kapsam: İrbesartan, Kandesartan, Losartan, Telmisartan, Valsartan,
+                Olmesartan, Eprosartan, Rilmeniden, Moksonidin + bunların
+                diğer antihipertansiflerle kombinasyonları.
+
+        Kurallar:
+          - Mono ARB raporlu: doz/plan/süre belirtme zorunluluğu yok → UYGUN
+          - Kombi ARB raporlu: "monoterapi yetersizliği" ibaresi şart
+          - Raporsuz: aile hekimi + ayda 1 kutu sınırı
+        """
+        if not self.tum_satirlar:
+            messagebox.showinfo(
+                "ARB Kontrol",
+                "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.sut_kontrolleri import kontrol_arb_ek4f_m51
+            from recete_kontrol.base_kontrol import KontrolSonucu
+        except Exception as e:
+            self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
+            messagebox.showerror(
+                "Modül Hatası",
+                f"recete_kontrol modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        VERDICT_ETIKET = {
+            KontrolSonucu.UYGUN:             "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.ATLANDI:           "ATLANDI",
+        }
+        sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
+                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_arb_disi": 0}
+        kategori_sayac = {"ARB_MONO": 0, "ARB_KOMBI": 0}
+        denetlenen_satirlar = []
+
+        # Önceki çalıştırmadan kalan ARB verdict'lerini temizle
+        for s in self.tum_satirlar:
+            kategori = self._arb_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori == "NONE":
+                if s.get("verdict_kategori") in ("ARB_MONO", "ARB_KOMBI"):
+                    s["verdict"] = ""
+                    s["verdict_detay"] = ""
+                    s["verdict_kategori"] = ""
+                    s["verdict_uyari"] = ""
+                    s["verdict_sut"] = ""
+                    s["verdict_aranan"] = ""
+                    s["verdict_bulunan"] = ""
+                    s["verdict_detaylar"] = ""
+                sayac["_arb_disi"] += 1
+                continue
+            kategori_sayac[kategori] = kategori_sayac.get(kategori, 0) + 1
+            ilac_sonuc = self._ilac_sonuc_olustur_arb(s)
+            try:
+                rapor = kontrol_arb_ek4f_m51(ilac_sonuc)
+            except Exception as e:
+                logger.warning("ARB kontrol hata (rx %s): %s",
+                                s.get("rec_no"), e)
+                s["verdict"] = "ŞÜPHELİ"
+                s["verdict_detay"] = f"Hata: {e}"
+                s["verdict_kategori"] = kategori
+                s["verdict_uyari"] = ""
+                s["verdict_sut"] = ""
+                s["verdict_aranan"] = ""
+                s["verdict_bulunan"] = ""
+                s["verdict_detaylar"] = ""
+                sayac["ŞÜPHELİ"] += 1
+                denetlenen_satirlar.append(s)
+                continue
+            etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+            s["verdict"] = etiket
+            s["verdict_detay"] = rapor.mesaj or ""
+            s["verdict_kategori"] = kategori
+            s["verdict_uyari"] = rapor.uyari or ""
+            s["verdict_sut"] = rapor.sut_kurali or ""
+            s["verdict_aranan"] = rapor.aranan_ibare or ""
+            s["verdict_bulunan"] = rapor.bulunan_metin or ""
+            try:
+                s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                                    ensure_ascii=False)
+            except Exception:
+                s["verdict_detaylar"] = str(rapor.detaylar or {})
+            sayac[etiket] = sayac.get(etiket, 0) + 1
+            denetlenen_satirlar.append(s)
+
+        self._tabloyu_yenile()
+        self._durum_yaz(
+            f"ARB SUT (EK-4/F M.51) kontrolü: "
+            f"✓ UYGUN {sayac['UYGUN']}  "
+            f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
+            f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
+            f"− ATLANDI {sayac['ATLANDI']}  "
+            f"(ARB dışı {sayac['_arb_disi']} satır boş bırakıldı)"
+        )
+
+        # ── KONTROL RAPORU ÜRET ──
+        toplam_arb = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                       + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+        if toplam_arb == 0:
+            messagebox.showinfo(
+                "ARB Kontrol",
+                "Bu dönemde ARB grubuna giren reçete bulunamadı.",
+                parent=self.root)
+            return
+
+        cevap = messagebox.askyesno(
+            "Kontrol Raporu",
+            f"ARB SUT EK-4/F M.51 kontrolü tamamlandı.\n\n"
+            f"Toplam ARB satırı   : {toplam_arb}\n"
+            f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
+            f"  − ATLANDI        : {sayac['ATLANDI']}\n"
+            f"ARB dışı (atlanan)  : {sayac['_arb_disi']}\n\n"
+            f"Kontrol raporu Excel olarak masaüstündeki "
+            f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
+            f"Rapor oluşturulup açılsın mı?",
+            parent=self.root)
+        if not cevap:
+            return
+
+        try:
+            rapor_yolu = self._arb_rapor_excel_olustur(
+                sayac=sayac,
+                kategori_sayac=kategori_sayac,
+                denetlenen_satirlar=denetlenen_satirlar,
+            )
+        except Exception as e:
+            logger.exception("ARB rapor üretim hatası")
+            messagebox.showerror(
+                "Rapor Hatası",
+                f"Kontrol raporu oluşturulamadı:\n{e}",
+                parent=self.root)
+            return
+
+        try:
+            os.startfile(rapor_yolu)
+            self._durum_yaz(f"Kontrol raporu: {rapor_yolu}")
+        except Exception as e:
+            messagebox.showinfo(
+                "Rapor Kaydedildi",
+                f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
+                parent=self.root)
 
     def _statin_kontrol_baslat(self):
         """STATİN KONTROL butonu — yüklenen satırlardan statin/lipid (ATC C10*)
@@ -3684,6 +3978,258 @@ class AylikReceteSorguGUI:
                 "Rapor Kaydedildi",
                 f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
                 parent=self.root)
+
+    # ── ARB KONTROL RAPORU EXCEL ÜRETİCİ ────────────────────────────────
+    def _arb_rapor_excel_olustur(self, *, sayac: dict, kategori_sayac: dict,
+                                   denetlenen_satirlar: list) -> str:
+        """Masaüstü/Reçete Kontrol/ klasörüne ARB SUT denetim raporu yazar.
+
+        3 sayfa:
+          - Özet         : Toplam sayım, mono/kombi dağılımı, çalışma zamanı
+          - ARB Reçeteleri : Denetlenen satır + SUT detayları + verdict
+          - ARB Dışı     : Atlanan satırların kısa özeti
+        """
+        try:
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font, Alignment
+            from openpyxl.utils import get_column_letter
+        except ImportError as e:
+            raise RuntimeError("openpyxl yüklü değil") from e
+
+        from datetime import datetime as _dt
+
+        masa = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop")
+        if not os.path.exists(masa):
+            masa = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.exists(masa):
+                masa = os.path.expanduser("~")
+        klasor = os.path.join(masa, "Reçete Kontrol")
+        os.makedirs(klasor, exist_ok=True)
+
+        donem = self.aktif_donem or "tum"
+        zaman = _dt.now().strftime("%Y%m%d_%H%M%S")
+        dosya_adi = f"ARB_Kontrol_{donem}_{zaman}.xlsx"
+        path = os.path.join(klasor, dosya_adi)
+
+        wb = openpyxl.Workbook()
+
+        # ────────── SAYFA 1: ÖZET ──────────
+        ws1 = wb.active
+        ws1.title = "Özet"
+
+        VERDICT_RENK = {
+            "UYGUN":       "C8E6C9",
+            "UYGUN DEĞİL": "FFCDD2",
+            "ŞÜPHELİ":     "FFE0B2",
+            "ATLANDI":     "ECEFF1",
+        }
+        baslik_font = Font(bold=True, color="FFFFFF", size=11)
+        baslik_fill = PatternFill("solid", fgColor="263238")
+        toplam_arb = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                       + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+
+        ws1.cell(row=1, column=1,
+                 value="ARB SUT EK-4/F MADDE 51 (1300/51) KONTROL RAPORU")
+        ws1.cell(row=1, column=1).font = Font(bold=True, size=14, color="0D47A1")
+        ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+
+        bilgi_satirlari = [
+            ("Dönem (Yıl-Ay)", donem),
+            ("Rapor Üretim Tarihi", _dt.now().strftime("%d.%m.%Y %H:%M:%S")),
+            ("Toplam Yüklenen Satır", str(len(self.tum_satirlar))),
+            ("ARB Olarak Tespit Edilen", str(toplam_arb)),
+            ("ARB Dışı (Atlanan)", str(sayac["_arb_disi"])),
+            ("", ""),
+            ("Uygulanan SUT Kuralı",
+             "SUT EK-4/F Madde 51 (1300/51) — ARB ve kombinasyonları"),
+            ("Filtreleme",
+             "ATC C09C* (mono ARB) + C09D* (ARB kombi) + C02AC* (santral) "
+             "+ etken/ticari isim fallback"),
+            ("Kapsam",
+             "İrbesartan, Kandesartan, Losartan, Telmisartan, Valsartan, "
+             "Olmesartan, Eprosartan, Rilmeniden, Moksonidin + kombiler"),
+            ("Veri Kaynağı",
+             "Botanik EOS DB (SADECE SELECT) — hiçbir veri değiştirilmedi"),
+        ]
+        for i, (etk, deg) in enumerate(bilgi_satirlari, start=3):
+            c1 = ws1.cell(row=i, column=1, value=etk)
+            c2 = ws1.cell(row=i, column=2, value=deg)
+            if etk:
+                c1.font = Font(bold=True, color="37474F")
+            c2.font = Font(color="0D47A1")
+            ws1.merge_cells(start_row=i, start_column=2, end_row=i, end_column=4)
+
+        bas = len(bilgi_satirlari) + 4
+        ws1.cell(row=bas, column=1, value="SONUÇ DAĞILIMI")
+        ws1.cell(row=bas, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas, start_column=1,
+                        end_row=bas, end_column=4)
+        bas += 1
+        for col, hd in enumerate(["Sonuç", "Adet", "Yüzde", ""], start=1):
+            c = ws1.cell(row=bas, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        for i, etiket in enumerate(["UYGUN", "UYGUN DEĞİL",
+                                     "ŞÜPHELİ", "ATLANDI"], start=bas + 1):
+            adet = sayac[etiket]
+            yuzde = (adet / toplam_arb * 100) if toplam_arb else 0
+            c1 = ws1.cell(row=i, column=1, value=etiket)
+            c2 = ws1.cell(row=i, column=2, value=adet)
+            c3 = ws1.cell(row=i, column=3, value=f"%{yuzde:.1f}")
+            fill = PatternFill("solid", fgColor=VERDICT_RENK[etiket])
+            for c in (c1, c2, c3):
+                c.fill = fill
+                c.font = Font(bold=True)
+            c2.alignment = Alignment(horizontal="center")
+            c3.alignment = Alignment(horizontal="center")
+
+        # Mono / Kombi dağılımı
+        bas2 = bas + 6
+        ws1.cell(row=bas2, column=1, value="ARB TİPİ DAĞILIMI")
+        ws1.cell(row=bas2, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas2, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas2, start_column=1,
+                        end_row=bas2, end_column=4)
+        bas2 += 1
+        for col, hd in enumerate(["Tip", "Adet", "Açıklama", ""], start=1):
+            c = ws1.cell(row=bas2, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        kat_aciklama = {
+            "ARB_MONO": "ATC C09CA / C02AC — tek başına ARB veya santral antihipertansif "
+                        "(rapor varsa doz/plan/süre yazma zorunluluğu yok)",
+            "ARB_KOMBI": "ATC C09D* — ARB + diüretik / + CCB / + 3'lü "
+                         "(raporda monoterapi yetersizliği ibaresi gerekli)",
+        }
+        for i, k in enumerate(["ARB_MONO", "ARB_KOMBI"], start=bas2 + 1):
+            ws1.cell(row=i, column=1, value=k).font = Font(bold=True)
+            ws1.cell(row=i, column=2, value=kategori_sayac.get(k, 0)
+                     ).alignment = Alignment(horizontal="center")
+            ws1.cell(row=i, column=3, value=kat_aciklama[k])
+
+        # Notlar
+        bas3 = bas2 + 4
+        ws1.cell(row=bas3, column=1, value="NOTLAR / SUT KURALI ÖZETİ")
+        ws1.cell(row=bas3, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas3, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas3, start_column=1,
+                        end_row=bas3, end_column=4)
+        notlar = [
+            "• Mono ARB raporlu → UYGUN (doz/plan/süre yazma zorunluluğu yok)",
+            "• Kombi ARB raporlu → 'monoterapi yetersizliği' ibaresi raporda olmalı",
+            "• Raporsuz ARB → AYDA EN FAZLA 1 KUTU + AİLE HEKİMLERİNCE yazılabilir",
+            "• Raporsuz + uzman hekim ya da >1 kutu → UYGUN DEĞİL",
+            "• ŞÜPHELİ = monoterapi ibaresi parse edilemedi veya branş bilinmiyor — manuel kontrol",
+            "• ARB dışı = ATC C09C/C09D/C02AC dışında olduğu için bu butonun kapsamına girmiyor",
+        ]
+        for i, n in enumerate(notlar, start=bas3 + 1):
+            ws1.cell(row=i, column=1, value=n)
+            ws1.merge_cells(start_row=i, start_column=1,
+                            end_row=i, end_column=8)
+
+        for col, w in enumerate([34, 22, 70, 12], start=1):
+            ws1.column_dimensions[get_column_letter(col)].width = w
+
+        # ────────── SAYFA 2: ARB REÇETELERİ ──────────
+        ws2 = wb.create_sheet("ARB Reçeteleri")
+        kolonlar = [
+            ("rec_tar",          "Reç.Tarih",       12),
+            ("rec_no",           "Reçete No",       18),
+            ("hasta",            "Hasta",           24),
+            ("tc",               "TC",              13),
+            ("yas",              "Yaş",             6),
+            ("cins",             "Cin.",            6),
+            ("doktor",           "Doktor",          22),
+            ("brans",            "Branş",           18),
+            ("ilac",             "İlaç",            28),
+            ("etkin",            "Etken Madde",     22),
+            ("atc",              "ATC",             10),
+            ("verdict_kategori", "Tip",             10),
+            ("rap_kod",          "Rapor Kod",       11),
+            ("rec_doz",          "Reçete Doz",      14),
+            ("rap_doz",          "Rapor Doz",       14),
+            ("kutu",             "Kutu",            6),
+            ("msj",              "Msj",             7),
+            ("uyari",            "Uyarı Kod",       18),
+            ("medula_msj",       "Medula Msj",      30),
+            ("rec_tesh",         "Reçete Teşhis",   30),
+            ("rap_tesh",         "Rapor Teşhis",    30),
+            ("rec_ack",          "Reçete Açıklama", 30),
+            ("rap_ack",          "Rapor Açıklama",  30),
+            ("verdict_sut",      "Uygulanan SUT",   30),
+            ("verdict_aranan",   "Aranan İbare",    28),
+            ("verdict_bulunan",  "Bulunan Metin",   28),
+            ("verdict_detaylar", "SUT Detaylar",    38),
+            ("verdict_uyari",    "Uyarı",           34),
+            ("verdict_detay",    "Açıklama",        50),
+            ("verdict",          "SONUÇ",           14),
+        ]
+        for c, (_kod, baslik, _g) in enumerate(kolonlar, 1):
+            cell = ws2.cell(row=1, column=c, value=baslik)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        ws2.row_dimensions[1].height = 28
+        ws2.freeze_panes = "A2"
+
+        for ri, s in enumerate(denetlenen_satirlar, start=2):
+            for ci, (kod, _baslik, _g) in enumerate(kolonlar, start=1):
+                deger = s.get(kod, "")
+                cell = ws2.cell(row=ri, column=ci, value=str(deger))
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            verdict = s.get("verdict") or ""
+            renk = VERDICT_RENK.get(verdict)
+            if renk:
+                son_col = len(kolonlar)
+                vcell = ws2.cell(row=ri, column=son_col)
+                vcell.fill = PatternFill("solid", fgColor=renk)
+                vcell.font = Font(bold=True)
+                vcell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for ci, (_kod, _baslik, gen) in enumerate(kolonlar, 1):
+            ws2.column_dimensions[get_column_letter(ci)].width = gen
+
+        ws2.auto_filter.ref = ws2.dimensions
+
+        # ────────── SAYFA 3: ARB DIŞI ──────────
+        ws3 = wb.create_sheet("ARB Dışı (Atlanan)")
+        ws3.cell(row=1, column=1,
+                 value="Aşağıdaki ilaçlar ATC C09C/C09D/C02AC dışında olduğu "
+                       "için ARB butonu KAPSAMI DIŞINDA bırakıldı.").font = (
+            Font(italic=True, color="546E7A"))
+        ws3.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+
+        atlanan_kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12),
+            ("rec_no",  "Reçete No", 18),
+            ("hasta",   "Hasta",     24),
+            ("ilac",    "İlaç",      30),
+            ("etkin",   "Etken",     22),
+            ("atc",     "ATC",       10),
+        ]
+        for c, (_k, b, _g) in enumerate(atlanan_kolonlar, 1):
+            cell = ws3.cell(row=3, column=c, value=b)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center")
+        ri = 4
+        for s in self.tum_satirlar:
+            kategori = self._arb_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori != "NONE":
+                continue
+            for ci, (kod, _b, _g) in enumerate(atlanan_kolonlar, 1):
+                ws3.cell(row=ri, column=ci, value=str(s.get(kod, "")))
+            ri += 1
+        for ci, (_k, _b, gen) in enumerate(atlanan_kolonlar, 1):
+            ws3.column_dimensions[get_column_letter(ci)].width = gen
+        ws3.freeze_panes = "A4"
+
+        wb.save(path)
+        return path
 
     # ── KONTROL RAPORU EXCEL ÜRETİCİ ────────────────────────────────────
     def _statin_rapor_excel_olustur(self, *, sayac: dict, kategori_sayac: dict,

@@ -3008,6 +3008,176 @@ def kontrol_kombine_antihipertansif(ilac_sonuc: Dict) -> KontrolRaporu:
     )
 
 
+def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
+    """
+    SUT EK-4/F Madde 51 (1300/51) — Anjiotensin Reseptör Blokerleri ve Kombinasyonları
+
+    Kapsam:
+      İrbesartan, Kandesartan, Losartan, Telmisartan, Valsartan, Olmesartan,
+      Eprosartan Mesilat, Rilmeniden, Moksonidin + bunların diğer
+      antihipertansiflerle (CCB / ACE-i / diüretik) kombinasyonları dahil.
+
+    Kurallar (SUT metni):
+      1. Mono ARB raporlu: Raporda doz/uygulama planı/süre belirtme zorunluluğu
+         BULUNMAMAKTADIR. Rapor yeterlidir.
+      2. Kombi ARB raporlu: Hastanın "monoterapi ile kan basıncının yeterli
+         oranda kontrol altına alınamadığı" raporda belirtilmelidir.
+      3. Raporsuz: ARB ve kombinasyonları ayda EN FAZLA 1 KUTU olarak
+         AİLE HEKİMLERİNCE reçete edilebilir.
+
+    Karar tablosu:
+      RAPORLU + MONO                                  → UYGUN
+      RAPORLU + KOMBİ + monoterapi ibaresi VAR        → UYGUN
+      RAPORLU + KOMBİ + monoterapi ibaresi YOK        → ŞÜPHELİ
+      RAPORSUZ + aile hekimi + ≤1 kutu                → UYGUN
+      RAPORSUZ + (aile hekimi değil) ya da >1 kutu    → UYGUN_DEGIL
+    """
+    ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
+    etkin_madde = (ilac_sonuc.get('etkin_madde') or '').upper()
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
+    doktor_brans = (ilac_sonuc.get('doktor_uzmanligi') or '').upper()
+
+    # Kutu sayısı parse — string/float/int gelebilir, virgül/nokta normalize
+    kutu_raw = ilac_sonuc.get('kutu_sayisi')
+    if kutu_raw is None:
+        kutu_raw = ilac_sonuc.get('miktar', '')
+    try:
+        kutu = float(str(kutu_raw).replace(',', '.')) if str(kutu_raw).strip() else 0.0
+    except (ValueError, TypeError):
+        kutu = 0.0
+
+    tum_metin = _tum_metinleri_birlesir(ilac_sonuc) or ''
+
+    sut_kurali = 'SUT EK-4/F Madde 51 (1300/51) — ARB ve kombinasyonları'
+
+    # Mono mu kombi mi? Etkin maddede "/" varsa kombinasyon
+    is_kombi = ('/' in etkin_madde) or (' VE ' in f' {etkin_madde} ')
+    # İlaç adında bilinen kombi ticari isimler de kombi kabul edilir
+    KOMBI_TICARI = (
+        'EXFORGE', 'SEVIKAR', 'TWYNSTA', 'MICARDISPLUS', 'MICARDIS PLUS',
+        'CO-DIOVAN', 'CO-APROVEL', 'CO-OLMETEC', 'HYZAAR', 'KARVEZIDE',
+        'COSAAR PLUS', 'FORZATEN', 'TRIVERAM', 'AVALOX',
+    )
+    if not is_kombi and any(t in ilac_adi for t in KOMBI_TICARI):
+        is_kombi = True
+
+    detaylar = {
+        'ilac_adi': ilac_adi,
+        'etkin_madde': etkin_madde,
+        'rapor_kodu': rapor_kodu,
+        'doktor_brans': doktor_brans,
+        'kutu': kutu,
+        'tip': 'KOMBI' if is_kombi else 'MONO',
+    }
+
+    # ── RAPORLU SENARYO ──
+    if rapor_kodu:
+        if not is_kombi:
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj=(f'Mono ARB raporlu (rap.kod {rapor_kodu}) — '
+                       'doz/uygulama planı/süre belirtme zorunluluğu yok'),
+                detaylar=detaylar,
+                sut_kurali=sut_kurali,
+                aranan_ibare='Mono ARB + rapor varlığı',
+            )
+
+        # Kombi ARB raporlu — monoterapi yetersizliği ibaresi aranır
+        ml = tum_metin.replace('İ', 'i').replace('I', 'ı').lower()
+        mono_ibare_var = False
+        eslesen_kelime = ''
+        if 'monoterapi' in ml:
+            mono_ibare_var = True
+            eslesen_kelime = 'monoterapi'
+        elif ('tek ilaç' in ml or 'tek ilac' in ml) and \
+             ('yeter' in ml or 'kontrol' in ml):
+            mono_ibare_var = True
+            eslesen_kelime = 'tek ilaç'
+        elif 'kombinasyon' in ml and ('gerek' in ml or 'şart' in ml or 'sart' in ml):
+            mono_ibare_var = True
+            eslesen_kelime = 'kombinasyon'
+        elif 'yeterli' in ml and ('kontrol' in ml or 'yanit' in ml or 'yanıt' in ml):
+            mono_ibare_var = True
+            eslesen_kelime = 'yeterli kontrol'
+
+        if mono_ibare_var:
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN,
+                mesaj=(f'Kombi ARB raporlu (rap.kod {rapor_kodu}) — '
+                       'monoterapi yetersizliği ibaresi raporda mevcut'),
+                detaylar={**detaylar, 'eslesen_ibare': eslesen_kelime},
+                sut_kurali=sut_kurali,
+                aranan_ibare='Monoterapi yetersizliği ibaresi (raporda)',
+                bulunan_metin=_eslesen_parcayi_bul(tum_metin, eslesen_kelime),
+            )
+
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+            mesaj=(f'Kombi ARB raporlu (rap.kod {rapor_kodu}) — '
+                   'monoterapi yetersizliği ibaresi raporda bulunamadı'),
+            detaylar=detaylar,
+            uyari=('RAPOR KONTROLÜ: Kombinasyon için "monoterapi ile kan '
+                   'basıncı yeterli oranda kontrol altına alınamadığı" '
+                   'ibaresi raporda olmalı'),
+            sut_kurali=sut_kurali,
+            aranan_ibare='monoterapi / tek ilaç yetersiz / kombinasyon gerekli',
+        )
+
+    # ── RAPORSUZ SENARYO ──
+    aile_hekimi = (
+        'AILE HEKIM' in doktor_brans or 'AİLE HEKİM' in doktor_brans
+        or 'AILE HEK.' in doktor_brans or 'AİLE HEK.' in doktor_brans
+    )
+    kutu_asildi = kutu > 1
+
+    if aile_hekimi and not kutu_asildi:
+        kutu_str = f'{kutu:g}' if kutu else '≤1'
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj=(f'Raporsuz ARB — aile hekimi reçetesi + '
+                   f'{kutu_str} kutu '
+                   '(SUT: aile hekimi raporsuz ayda 1 kutu)'),
+            detaylar=detaylar,
+            sut_kurali=sut_kurali,
+            aranan_ibare='Aile hekimi + ayda ≤1 kutu',
+        )
+
+    if kutu_asildi and aile_hekimi:
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN_DEGIL,
+            mesaj=(f'Raporsuz ARB — aile hekimi ama {kutu:g} kutu '
+                   '(SUT sınırı: ayda 1 kutu)'),
+            detaylar=detaylar,
+            uyari='Raporsuz ARB ayda en fazla 1 kutu — fazlası için rapor şart',
+            sut_kurali=sut_kurali,
+            aranan_ibare='Raporsuz ayda 1 kutu sınırı',
+        )
+
+    if kutu_asildi and not aile_hekimi:
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN_DEGIL,
+            mesaj=(f'Raporsuz ARB — yazan branş "{doktor_brans or "bilinmiyor"}", '
+                   f'{kutu:g} kutu '
+                   '(SUT: raporsuz sadece aile hekimi + ayda 1 kutu)'),
+            detaylar=detaylar,
+            uyari='Raporsuz ARB sadece aile hekimi tarafından ve ayda 1 kutu',
+            sut_kurali=sut_kurali,
+            aranan_ibare='Aile hekimi + 1 kutu (raporsuz şartı)',
+        )
+
+    # Raporsuz + aile hekimi değil + kutu ≤ 1
+    return KontrolRaporu(
+        sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+        mesaj=(f'Raporsuz ARB — yazan branş "{doktor_brans or "bilinmiyor"}" '
+               '(SUT: raporsuz reçete sadece aile hekimlerince)'),
+        detaylar=detaylar,
+        uyari=('SUT EK-4/F M.51: Raporsuz ARB sadece aile hekimlerince '
+               'yazılabilir — branş kontrol edilmeli'),
+        sut_kurali=sut_kurali,
+        aranan_ibare='Aile hekimi (raporsuz reçete için)',
+    )
+
+
 def kontrol_diyabet_dpp4_sglt2(ilac_sonuc: Dict) -> KontrolRaporu:
     """
     SUT 4.2.38 - Diyabet Tedavisinde Kullanılan İlaçlar (Tüm Sınıflar)
