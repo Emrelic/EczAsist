@@ -3008,6 +3008,14 @@ def kontrol_kombine_antihipertansif(ilac_sonuc: Dict) -> KontrolRaporu:
     )
 
 
+# Bilinen Aile Hekimliği tesis kodları (Hastane.HastaneKodu / Medula tesis kodu).
+# Yeni kodlar tespit edildikçe buraya eklenir; raporsuz ARB için bu kodda
+# yazılmış reçete otomatik olarak aile hekimi yetkisi sayılır.
+AILE_HEKIMLIGI_TESIS_KODLARI = frozenset({
+    "11349904",  # (eczanenin kayıtlı aile hekimliği tesisi)
+})
+
+
 def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
     """
     SUT EK-4/F Madde 51 (1300/51) — Anjiotensin Reseptör Blokerleri ve Kombinasyonları
@@ -3037,6 +3045,7 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
     rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
     doktor_brans = (ilac_sonuc.get('doktor_uzmanligi') or '').upper()
     kurum_adi = (ilac_sonuc.get('kurum_adi') or '').upper()
+    tesis_kodu = str(ilac_sonuc.get('tesis_kodu') or '').strip()
 
     # Kutu sayısı parse — string/float/int gelebilir, virgül/nokta normalize
     kutu_raw = ilac_sonuc.get('kutu_sayisi')
@@ -3125,13 +3134,15 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
         )
 
     # ── RAPORSUZ SENARYO ──
-    # Aile hekimi tespiti — 2 yol (her ikisi de geçerli):
+    # Aile hekimi tespiti — 3 yol (herhangi biri yeterli):
     #   1. Doktorun branş listesinde "AİLE HEK..." geçiyor
     #      (DoktorBrans tablosu doktorun TÜM branşlarını döndürür; Pratisyen
     #       hekim Aile Hekimliği Sertifikası almışsa bu listede ek branş
     #       olarak görülür)
     #   2. Reçetenin yazıldığı kurum bir Aile Sağlığı Merkezi (ASM/AHM)
     #      → kurum bazlı yetki, branşı pratisyen olsa bile yeterli
+    #   3. Tesis kodu (Hastane.HastaneKodu) bilinen aile hekimliği
+    #      kodları listesinde — kurum adı / branş bilinmese bile kesin yetki
     brans_aile_hek = (
         'AILE HEK' in doktor_brans
         or 'AİLE HEK' in doktor_brans
@@ -3148,7 +3159,10 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
         # Tek başına kelime olarak ASM/AHM (yan kelime ile karışmasın)
         or any(tok in kurum_adi.split() for tok in ('ASM', 'AHM'))
     )
-    aile_hekimi = brans_aile_hek or kurum_asm
+    tesis_aile_hek = bool(tesis_kodu) and (
+        tesis_kodu in AILE_HEKIMLIGI_TESIS_KODLARI
+    )
+    aile_hekimi = brans_aile_hek or kurum_asm or tesis_aile_hek
 
     brans_pratisyen = ('PRATISYEN' in doktor_brans or 'PRATİSYEN' in doktor_brans)
 
@@ -3156,8 +3170,10 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
 
     detaylar.update({
         'kurum_adi': kurum_adi,
+        'tesis_kodu': tesis_kodu,
         'brans_aile_hek': brans_aile_hek,
         'kurum_asm': kurum_asm,
+        'tesis_aile_hek': tesis_aile_hek,
         'aile_hekimi': aile_hekimi,
     })
 
@@ -3167,6 +3183,8 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
         nedenler.append('branşta aile hekimliği sertifikası')
     if kurum_asm:
         nedenler.append(f'kurum: {kurum_adi[:50]}')
+    if tesis_aile_hek:
+        nedenler.append(f'tesis kodu: {tesis_kodu}')
     yetki_kaynagi = ' + '.join(nedenler) if nedenler else ''
 
     # ── Karar ──

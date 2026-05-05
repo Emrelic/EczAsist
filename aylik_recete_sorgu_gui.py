@@ -505,6 +505,7 @@ class AylikReceteSorguGUI:
         self._lookup_provizyon = {}
         self._lookup_rapor_kodu = {}
         self._lookup_kurum = {}
+        self._lookup_hastane_kodu = {}  # HastaneId → HastaneKodu (tesis kodu)
 
         # Veri
         self.tum_satirlar = []        # tüm sorgu sonucu (filtresiz)
@@ -609,6 +610,11 @@ class AylikReceteSorguGUI:
             for r in self.db.sorgu_calistir(
                 "SELECT KurumId, KurumAdi FROM Kurum WHERE KurumSilme=0"):
                 self._lookup_kurum[r["KurumId"]] = r["KurumAdi"]
+            for r in self.db.sorgu_calistir(
+                "SELECT HastaneId, HastaneKodu FROM Hastane "
+                "WHERE HastaneSilme=0 AND HastaneKodu IS NOT NULL"):
+                self._lookup_hastane_kodu[r["HastaneId"]] = (
+                    r["HastaneKodu"] or "")
         except Exception as e:
             logger.exception("Lookup hatası: %s", e)
 
@@ -1310,7 +1316,8 @@ class AylikReceteSorguGUI:
                 SELECT
                     ra.RxId, ra.RxEReceteNo,
                     ra.RxIslemTarihi, ra.RxKayitTarihi,
-                    ra.RxBransId, ra.RxKurumId, ra.RxMusteriId, ra.RxDoktorId,
+                    ra.RxBransId, ra.RxKurumId, ra.RxHastaneId,
+                    ra.RxMusteriId, ra.RxDoktorId,
                     ra.RxReceteRenkId, ra.RxReceteAltTuruId, ra.RxProvizyonTipId,
                     m.MusteriAdiSoyadi, m.MusteriTCKN, m.MusteriDogumTarihi,
                     m.MusteriCinsiyet, m.MusteriKapsamId, m.MusteriEmeklilik,
@@ -1875,6 +1882,8 @@ class AylikReceteSorguGUI:
             "doktor": r.get("DoktorAdiSoyadi") or "",
             "brans": doktor_brans.get(r.get("RxDoktorId"), ""),
             "kurum_adi": self._lookup_kurum.get(r.get("RxKurumId"), ""),
+            "tesis_kodu": self._lookup_hastane_kodu.get(
+                r.get("RxHastaneId"), ""),
             "ilac": r.get("UrunAdi") or "",
             "etkin": em_ad,
             "atc": atc_kodu,
@@ -3490,6 +3499,9 @@ class AylikReceteSorguGUI:
         Statin'den farklı olarak ek alanlar:
           - doktor_uzmanligi → branş listesi (sertifika dahil — "Aile Hek." aranır)
           - kurum_adi        → ASM tespiti (raporsuz reçete kurum bazlı yetki)
+          - tesis_kodu       → Hastane.HastaneKodu (Medula tesis kodu — bilinen
+                                aile hekimliği kodları AILE_HEKIMLIGI_TESIS_KODLARI
+                                listesinden eşleşirse aile hekimi yetkisi)
           - kutu_sayisi      → ayda 1 kutu sınırı kontrolü
           - etkin_madde      → mono/kombi ayrımı
           - atc_kodu         → fallback için
@@ -3518,6 +3530,7 @@ class AylikReceteSorguGUI:
             "mesaj_metni": "",
             "doktor_uzmanligi": s.get("brans") or "",
             "kurum_adi": s.get("kurum_adi") or "",
+            "tesis_kodu": s.get("tesis_kodu") or "",
             "kutu_sayisi": s.get("kutu") or "",
         }
 
@@ -4326,6 +4339,7 @@ class AylikReceteSorguGUI:
             ("doktor",           "Doktor",          22),
             ("brans",            "Branş",           20),
             ("kurum_adi",        "Kurum",           28),
+            ("tesis_kodu",       "Tesis Kodu",      11),
             ("ilac",             "İlaç",            28),
             ("etkin",            "Etken Madde",     22),
             ("atc",              "ATC",             10),
