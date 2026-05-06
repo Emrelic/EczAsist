@@ -187,6 +187,10 @@ class AnaMenu:
             self.aktif_tema = "koyu"
         self._tema_uygula()
 
+        # Medula Canlı Tut state (idle-tabanlı MedulaOturumCanli servisine bağlı)
+        self.var_medula_canli = tk.BooleanVar(value=False)
+        self.lbl_canli_durum = None
+
         # Pencere kapatılırsa
         self.root.protocol("WM_DELETE_WINDOW", self.cikis_yap)
 
@@ -347,6 +351,31 @@ class AnaMenu:
             fg=self.fg_color
         )
         baslik.pack(side="left")
+
+        # Medula Canlı Tut: checkbox + son tetikleme etiketi
+        canli_frame = tk.Frame(ust_satir, bg=self.bg_color)
+        canli_frame.pack(side="left", padx=(20, 0))
+        tk.Checkbutton(
+            canli_frame,
+            text="🔒 Medula'yı Canlı Tut",
+            variable=self.var_medula_canli,
+            command=self._medula_canli_toggle,
+            bg=self.bg_color,
+            fg=self.fg_color,
+            selectcolor=self.card_bg,
+            activebackground=self.bg_color,
+            activeforeground=self.fg_color,
+            font=("Arial", 10, "bold"),
+            cursor='hand2',
+        ).pack(side="left")
+        self.lbl_canli_durum = tk.Label(
+            canli_frame,
+            text="",
+            bg=self.bg_color,
+            fg=self.fg_secondary,
+            font=("Arial", 9),
+        )
+        self.lbl_canli_durum.pack(side="left", padx=(8, 0))
 
         # Tema değiştir butonu (sağda, büyük ve belirgin)
         tema = TEMALAR.get(self.aktif_tema, TEMALAR["koyu"])
@@ -966,9 +995,69 @@ class AnaMenu:
         if event.widget == pencere:
             self.root.deiconify()
 
+    # ---------------- Medula Canlı Tut ----------------
+    def _medula_canli_toggle(self):
+        """Checkbox değişince MedulaOturumCanli (idle-tabanlı) servisi başlat/durdur."""
+        try:
+            from medula_oturum_canli import get_servis, IDLE_ESIK_SN
+        except Exception as e:
+            messagebox.showerror("Hata", f"Oturum modülü yüklenemedi:\n{e}")
+            self.var_medula_canli.set(False)
+            return
+        servis = get_servis()
+        if self.var_medula_canli.get():
+            if servis.basla():
+                logger.info(f"Medula canlı tut açıldı (eşik {IDLE_ESIK_SN}s)")
+                self._canli_geri_sayim_tik()
+            else:
+                self.var_medula_canli.set(False)
+                messagebox.showerror(
+                    "Başlatılamadı",
+                    "Medula canlı tutma başlatılamadı.\n"
+                    "pynput kurulu mu? (pip install pynput)",
+                )
+        else:
+            servis.dur()
+            logger.info("Medula canlı tut kapatıldı")
+            if self.lbl_canli_durum is not None:
+                self.lbl_canli_durum.config(text="", fg=self.fg_secondary)
+
+    def _canli_geri_sayim_tik(self):
+        """Her 1 sn'de etiketi güncelle: Medula'da son tıklamadan beri kaç sn,
+        eşiğe (110 sn) ne kadar kaldı."""
+        try:
+            from medula_oturum_canli import get_servis, IDLE_ESIK_SN
+            servis = get_servis()
+            if not servis.aktif_mi() or not self.var_medula_canli.get():
+                if self.lbl_canli_durum is not None:
+                    self.lbl_canli_durum.config(text="")
+                return
+            kalan = int(IDLE_ESIK_SN - servis.idle_saniye())
+            if kalan < 0:
+                kalan = 0
+            if kalan <= 10:
+                renk = "#D84315"
+            elif kalan <= 30:
+                renk = "#EF6C00"
+            else:
+                renk = self.fg_secondary
+            if self.lbl_canli_durum is not None:
+                self.lbl_canli_durum.config(text=f"⏱ {kalan}s", fg=renk)
+        except Exception as e:
+            logger.debug(f"Geri sayım hatası: {e}")
+        try:
+            self.root.after(1000, self._canli_geri_sayim_tik)
+        except Exception:
+            pass
+
     def cikis_yap(self):
         """Sistemden çıkış yap (onay sorulmadan)"""
         logger.info(f"Kullanıcı çıkış yaptı: {self.kullanici['kullanici_adi']}")
+        try:
+            from medula_oturum_canli import get_servis
+            get_servis().dur()
+        except Exception:
+            pass
         self.root.destroy()
 
     def calistir(self):

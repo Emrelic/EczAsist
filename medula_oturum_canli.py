@@ -317,8 +317,20 @@ class MedulaOturumCanli:
 
         Enter işe yaramadığı için kaldırıldı. Popup 'Yeniden Dene' / 'Tamam'
         butonu native Win32 Button — BM_CLICK ile tıklanır.
+
+        İş bittiğinde odak, yenileme öncesindeki pencereye geri verilir
+        (kullanıcı başka modülde çalışıyorsa kesintiye uğramasın).
         """
         logger.info(f"[OTURUM] {IDLE_ESIK_SN}s idle — oturum yenileniyor")
+
+        # Yenileme öncesi foreground'u sakla
+        prev_hwnd = None
+        try:
+            import win32gui as _wg
+            prev_hwnd = _wg.GetForegroundWindow()
+        except Exception:
+            pass
+
         try:
             hwnd = self._medula_hwnd()
             if not hwnd:
@@ -350,6 +362,19 @@ class MedulaOturumCanli:
             self._son_yenileme_ts = time.monotonic()
         except Exception as e:
             logger.error(f"[OTURUM] Yenileme hatası: {e}", exc_info=True)
+        finally:
+            # Odağı kullanıcının çalıştığı pencereye geri ver
+            if prev_hwnd:
+                try:
+                    import ctypes as _c
+                    user32 = _c.windll.user32
+                    # Foreground lock'u aşmak için ALT trick
+                    user32.keybd_event(0x12, 0, 0, 0)        # ALT down
+                    user32.keybd_event(0x12, 0, 0x0002, 0)   # ALT up
+                    time.sleep(0.02)
+                    user32.SetForegroundWindow(prev_hwnd)
+                except Exception as e:
+                    logger.debug(f"[OTURUM] Önceki pencereye dönüş: {e}")
 
     # ---------------------------------------------------------------- loop
 
@@ -437,3 +462,154 @@ def get_servis() -> MedulaOturumCanli:
     if _servis is None:
         _servis = MedulaOturumCanli()
     return _servis
+
+
+# =====================================================================
+# Arka plan (foreground'a almadan) keepalive — ana_menu checkbox için
+# =====================================================================
+
+def _ie_server_hwnd_bul(parent_hwnd):
+    """Medula içindeki Internet Explorer_Server child HWND'sini döndürür."""
+    try:
+        import win32gui
+    except Exception:
+        return None
+    bulunan = [None]
+
+    def _enum(h, _):
+        try:
+            cls = win32gui.GetClassName(h) or ""
+            if "Internet Explorer_Server" in cls:
+                bulunan[0] = h
+                return False
+        except Exception:
+            pass
+        return True
+
+    try:
+        win32gui.EnumChildWindows(parent_hwnd, _enum, None)
+    except Exception:
+        pass
+    return bulunan[0]
+
+
+def _popup_arka_plandan_kapat() -> bool:
+    """F5 sonrası açılan #32770 popup'ı bul, WM_COMMAND IDOK/IDRETRY/IDYES
+    postalayarak arka plandan kapat. Foreground'a almaz, mouse oynatmaz."""
+    hedef_captions = ("Yeniden Dene", "Tamam", "OK", "Evet", "Yes")
+    try:
+        import win32con
+        import win32gui
+    except Exception:
+        return False
+
+    hedef = [None]
+
+    def _enum_top(top_hwnd, _):
+        try:
+            if not win32gui.IsWindowVisible(top_hwnd):
+                return True
+            try:
+                cls = win32gui.GetClassName(top_hwnd) or ""
+            except Exception:
+                cls = ""
+            if cls != "#32770":
+                return True
+            bulundu = [False]
+
+            def _enum_child(c_hwnd, __):
+                try:
+                    ccls = win32gui.GetClassName(c_hwnd) or ""
+                    if ccls != "Button":
+                        return True
+                    cap = (win32gui.GetWindowText(c_hwnd) or "").strip()
+                    cap_tmz = cap.replace("&", "")
+                    if cap_tmz in hedef_captions:
+                        bulundu[0] = True
+                        return False
+                except Exception:
+                    pass
+                return True
+
+            try:
+                win32gui.EnumChildWindows(top_hwnd, _enum_child, None)
+            except Exception:
+                pass
+            if bulundu[0]:
+                hedef[0] = top_hwnd
+                return False
+        except Exception:
+            pass
+        return True
+
+    try:
+        win32gui.EnumWindows(_enum_top, None)
+    except Exception:
+        pass
+
+    popup_hwnd = hedef[0]
+    if popup_hwnd is None:
+        return False
+
+    # IDRETRY=4, IDOK=1, IDYES=6
+    for idx in (4, 1, 6):
+        try:
+            win32gui.PostMessage(popup_hwnd, win32con.WM_COMMAND, idx, 0)
+            for _ in range(10):
+                time.sleep(0.1)
+                if not win32gui.IsWindow(popup_hwnd):
+                    return True
+                if not win32gui.IsWindowVisible(popup_hwnd):
+                    return True
+        except Exception:
+            continue
+    return False
+
+
+def arkaplan_yenile() -> bool:
+    """Medula'ya foreground'a almadan F5 + popup kapama gönder.
+
+    Akış:
+      1. Medula HWND bul
+      2. IE_Server child HWND bul (yoksa ana HWND'ye)
+      3. WM_KEYDOWN/UP VK_F5 PostMessage (sessiz)
+      4. Popup için ~3 sn poll, bulunca WM_COMMAND IDOK ile kapat
+
+    Returns:
+        True  : F5 gönderildi (popup olsa da olmasa da)
+        False : Medula penceresi yok
+    """
+    # 1) Medula HWND
+    try:
+        from pencere_yerlesim import _medula_hwnd_bul
+        medula_hwnd = _medula_hwnd_bul()
+    except Exception:
+        medula_hwnd = None
+    if not medula_hwnd:
+        logger.debug("[OTURUM-BG] Medula penceresi bulunamadı")
+        return False
+
+    # 2) IE_Server child (yoksa ana HWND'ye gönder)
+    hedef_hwnd = _ie_server_hwnd_bul(medula_hwnd) or medula_hwnd
+
+    # 3) F5 PostMessage (foreground değişmez)
+    try:
+        import win32api
+        import win32con
+        win32api.PostMessage(hedef_hwnd, win32con.WM_KEYDOWN, 0x74, 0)
+        time.sleep(0.03)
+        win32api.PostMessage(hedef_hwnd, win32con.WM_KEYUP, 0x74, 0)
+        logger.info(f"[OTURUM-BG] F5 → hwnd={hedef_hwnd:x}")
+    except Exception as e:
+        logger.error(f"[OTURUM-BG] F5 hatası: {e}")
+        return False
+
+    # 4) Popup poll → WM_COMMAND ile kapat (sessiz)
+    son = time.monotonic() + POPUP_BEKLEME_SN
+    while time.monotonic() < son:
+        time.sleep(0.15)
+        if _popup_arka_plandan_kapat():
+            logger.info("[OTURUM-BG] Popup arka plandan kapatıldı")
+            return True
+    logger.debug("[OTURUM-BG] Popup yok — sadece F5 yeterli")
+    return True

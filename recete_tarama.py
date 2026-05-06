@@ -29,7 +29,10 @@ except ImportError:
     win32api = None
     win32con = None
 
-sys.stdout.reconfigure(encoding='utf-8')
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except (AttributeError, OSError):
+    pass
 pyautogui.FAILSAFE = False
 
 PROJE_DIZINI = os.path.dirname(os.path.abspath(__file__))

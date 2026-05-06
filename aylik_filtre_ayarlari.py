@@ -38,7 +38,10 @@ AYAR_DOSYASI = os.path.join(
 
 
 # Liste tipleri
-LISTE_TIPLERI = ("ilac", "etken", "atc", "farma", "tesis", "esdeger")
+# NOT: "kurum" sekmesindeki içerir/içermez kuralları "Boş Satırları Gizle"
+# toggle'ından BAĞIMSIZ her zaman uygulanır (eski Dışlamalar fonksiyonunun
+# yerine geçer). Diğer tipler toggle'a tabidir.
+LISTE_TIPLERI = ("ilac", "etken", "atc", "farma", "tesis", "esdeger", "kurum")
 LISTE_ETIKETLERI = {
     "ilac":     "İlaç Adı",
     "etken":    "Etken Madde",
@@ -46,6 +49,7 @@ LISTE_ETIKETLERI = {
     "farma":    "Farmasötik Form",
     "tesis":    "Tesis (Hastane Kodu / Adı)",
     "esdeger":  "Eşdeğer Grubu",
+    "kurum":    "🚫 Kurum (Dışlamalar)",
 }
 
 
@@ -67,6 +71,7 @@ VARSAYILAN = {
     "farma":    [],
     "tesis":    [],
     "esdeger":  [],
+    "kurum":    [],
 }
 
 
@@ -129,6 +134,42 @@ def ayarlari_yukle() -> dict:
             sonuc[tip] = _eski_yeniye_donustur(v)
         else:
             sonuc[tip] = []
+
+    # Eski dislama_ayarlari.json → "kurum" sekmesine icermez olarak migrate
+    # et. Sadece JSON'da "kurum" anahtarı YOKSA (ilk kez) yapılır; sonraki
+    # çağrılarda kullanıcının kurum sekmesindeki kararına dokunmaz.
+    if "kurum" not in ay:
+        try:
+            _eski_dislama_dosyasi = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "dislama_ayarlari.json")
+            if os.path.exists(_eski_dislama_dosyasi):
+                with open(_eski_dislama_dosyasi, "r",
+                          encoding="utf-8") as _f:
+                    _eski = json.load(_f)
+                _kd = _eski.get("kurum_dislama") or []
+                _migrate = []
+                for _it in _kd:
+                    if not isinstance(_it, dict):
+                        continue
+                    _kid = _it.get("id")
+                    _ad = (_it.get("ad") or "").strip()
+                    if _kid is None:
+                        continue
+                    _deger = f"{int(_kid)} — {_ad}" if _ad else str(int(_kid))
+                    _migrate.append({"deger": _deger, "mod": "icermez"})
+                if _migrate:
+                    sonuc["kurum"] = _migrate
+                    # Kalıcı kaydet ki bir sonraki açılışta migrate
+                    # tekrar tetiklenmesin.
+                    ayarlari_kaydet(sonuc)
+                    logger.info(
+                        "Eski dislama_ayarlari.json → %d kurum kuralı "
+                        "Filtre Ayarları > Kurum sekmesine taşındı.",
+                        len(_migrate))
+        except Exception as _e:
+            logger.debug("Kurum dışlama migrasyonu skip edildi: %s", _e)
+
     return sonuc
 
 
@@ -187,8 +228,12 @@ def sql_icerik_kosullari(ay: dict, renkli_recete_idler: list) -> str:
             "(ri.RIRaporKodId IS NOT NULL AND ri.RIRaporKodId > 0)")
 
     if not or_kosullar:
-        # 4 kriter de KAPALI → hiçbir satır gelmez
-        return "1 = 0"
+        # 4 kriter de KAPALI → içerik filtresi devre dışı.
+        # Eski davranış: "1 = 0" döndürüp tabloyu boşaltıyordu (kullanıcı
+        # tüm toggle'ları kapatınca sessizce hiçbir satır görmüyordu).
+        # Yeni davranış: boş string → SQL'de WHERE'e koşul EKLENMEZ →
+        # liste filtreleri (varsa) ve diğer şartlar normal çalışır.
+        return ""
     return "(" + " OR ".join(or_kosullar) + ")"
 
 
@@ -198,14 +243,14 @@ def _q(s: str) -> str:
 
 
 def _esit_kosul(kolon: str, deger: str) -> str:
-    """Tam eşitlik (= operatörü)."""
-    return f"{kolon} = {_q(deger)}"
+    """Tam eşitlik (= operatörü). NULL-safe: ISNULL(x, '') = deger."""
+    return f"ISNULL({kolon}, N'') = {_q(deger)}"
 
 
 def _like_kosul(kolon: str, deger: str) -> str:
-    """LIKE %deger% (case-insensitive) — etken/farma için."""
+    """LIKE %deger% (case-insensitive). NULL-safe: ISNULL(x, '') üzerinden."""
     safe = str(deger).replace("'", "''").strip()
-    return f"UPPER({kolon}) LIKE UPPER(N'%{safe}%')"
+    return f"UPPER(ISNULL({kolon}, N'')) LIKE UPPER(N'%{safe}%')"
 
 
 def _kategori_kosul(kurallar: list, kosul_fn) -> str:
@@ -214,6 +259,10 @@ def _kategori_kosul(kurallar: list, kosul_fn) -> str:
     İçerir kuralları OR ile birleşir (en az biri sağlansa yeter).
     İçermez kuralları AND NOT ile birleşir (hiçbiri eşleşmemeli).
     İkisi de varsa: (içerir OR ...) AND (NOT içermez1 AND NOT içermez2)
+
+    NOT: kosul_fn'lerinin tümü NULL-safe (ISNULL ile sarılı) olmalı —
+    aksi halde sütunda NULL olan satırlar (ör. UrunEsdegerId=NULL) tüm
+    "icermez" kurallarından UNKNOWN üretip yanlışlıkla elenir.
     """
     if not kurallar:
         return ""
@@ -233,7 +282,11 @@ def _kategori_kosul(kurallar: list, kosul_fn) -> str:
 
 def sql_liste_kosullari(ay: dict) -> str:
     """Liste bazlı filtrelerden SQL WHERE parçası üret. Her kategorideki
-    kurallar içerir/içermez moduna göre birleşir; kategoriler arası VE."""
+    kurallar içerir/içermez moduna göre birleşir; kategoriler arası VE.
+
+    NOT: "kurum" tipi BURAYA dahil DEĞİLDİR — `sql_kurum_kosullari` ile
+    toggle'dan bağımsız her zaman uygulanır (eski Dışlamalar davranışı).
+    """
     parcalar = []
 
     # İlaç adı — tam eşitlik
@@ -253,9 +306,22 @@ def sql_liste_kosullari(ay: dict) -> str:
     if p:
         parcalar.append(p)
 
-    # ATC — kod veya Türkçe ad eşitliği (her ikisi OR)
+    # ATC — kod veya Türkçe ad eşleşmesi. Akıllı eşleşme:
+    #   • 1-5 karakter (anatomik/terapötik/farmakolojik grup): LIKE prefix
+    #     "A10" → tüm A10AC, A10BA, A10BD ...
+    #     "C10AB" → tüm C10AB01, C10AB05 ...
+    #   • 7 karakter (ATC madde kodu, örn. C10AB05): tam eşitlik
+    # Türkçe ad daima tam eşitlik (picker'dan gelen tam isim).
+    # NULL-safe: ATC bağlantısı olmayan ürünleri içermez kuralları üzerinden
+    # yanlışlıkla elememek için ISNULL ile sarılı.
     def _atc_kosul(v):
-        return f"(atc.ATCKodu = {_q(v)} OR atc.ATCTurkce = {_q(v)})"
+        s = str(v).strip()
+        if 1 <= len(s) <= 5:
+            safe = s.replace("'", "''")
+            return (f"(ISNULL(atc.ATCKodu, N'') LIKE N'{safe}%' "
+                    f"OR ISNULL(atc.ATCTurkce, N'') = {_q(s)})")
+        return (f"(ISNULL(atc.ATCKodu, N'') = {_q(s)} "
+                f"OR ISNULL(atc.ATCTurkce, N'') = {_q(s)})")
 
     p = _kategori_kosul(ay.get("atc") or [], _atc_kosul)
     if p:
@@ -267,11 +333,13 @@ def sql_liste_kosullari(ay: dict) -> str:
     if p:
         parcalar.append(p)
 
-    # Tesis — hastane kodu veya adı (subquery)
+    # Tesis — hastane kodu veya adı (subquery). EXISTS zaten NULL-safe
+    # (kayıt yoksa false döner, NOT EXISTS true → satır kalır).
     def _tesis_kosul(v):
         return (f"EXISTS (SELECT 1 FROM Hastane h "
                 f"WHERE h.HastaneId = ra.RxHastaneId AND "
-                f"(h.HastaneKodu = {_q(v)} OR h.HastaneAdi = {_q(v)}))")
+                f"(ISNULL(h.HastaneKodu, N'') = {_q(v)} "
+                f"OR ISNULL(h.HastaneAdi, N'') = {_q(v)}))")
 
     p = _kategori_kosul(ay.get("tesis") or [], _tesis_kosul)
     if p:
@@ -280,19 +348,62 @@ def sql_liste_kosullari(ay: dict) -> str:
     # Eşdeğer grubu — u.UrunEsdegerId numerik eşitliği.
     # Değer "12345" veya "12345 — CALPOL ŞURUP" formatında olabilir;
     # baştaki sayıyı çekip SQL'e koyarız.
+    # NULL-safe: UrunEsdegerId NULL olan ürünler (eşdeğer grubu olmayanlar)
+    # her bir "icermez" kuralında UNKNOWN üretip yanlışlıkla elenmesin
+    # diye ISNULL(..., 0) ile 0'a çeviriyoruz (gerçek eşdeğer ID'leri 0 değil).
     import re as _re
 
     def _esdeger_kosul(v):
         m = _re.match(r"^\s*(\d+)", str(v))
         if not m:
-            return "1 = 0"  # geçersiz değer → eşleşme yok
-        return f"u.UrunEsdegerId = {int(m.group(1))}"
+            # Geçersiz değer (manuel "ABC" gibi) → kuralı eşleşmez yap.
+            # NOT: önceden "1 = 0" döndürüyordu — `icerir` modunda bu
+            # tüm satırları gizliyordu (sessiz tablo boşaltma).
+            # `0 = 1` da eşdeğer, ama yorum açıklığı için aynı.
+            return "0 = 1"
+        return f"ISNULL(u.UrunEsdegerId, 0) = {int(m.group(1))}"
 
     p = _kategori_kosul(ay.get("esdeger") or [], _esdeger_kosul)
     if p:
         parcalar.append(p)
 
     return " AND ".join(parcalar)
+
+
+def sql_kurum_kosullari(ay: dict) -> str:
+    """Kurum sekmesindeki içerir/içermez kurallarından SQL koşulu üret.
+
+    Bu koşul "Boş Satırları Gizle" toggle'ından BAĞIMSIZ her zaman uygulanır
+    (eski `dislama_ayarlari.sql_kurum_dislama_kosulu` davranışına eşdeğer).
+
+    İki giriş formatı desteklenir:
+      • Sayı ile başlayan değer → numerik KurumId eşitliği.
+        Örn picker'dan: "1234 — TÜRKİYE İŞ BANKASI A.Ş" veya düz "1234".
+      • Sayı ile başlamayan değer → KurumAdi LIKE %değer% (case-insensitive).
+        Örn manuel: "CEZA" → adında 'CEZA' geçen tüm kurumlar (cezaevi vb.).
+
+    NULL toleransı: NULL kurumlu reçeteler (elden satış vb.) içermez
+    kuralında DAHİL kalır — eski davranışla uyumlu.
+    """
+    import re as _re
+
+    def _kurum_kosul(v: str) -> str:
+        s = str(v).strip()
+        if not s:
+            return "1 = 0"
+        m = _re.match(r"^\s*(\d+)", s)
+        if m:
+            # Numerik ID — picker'dan gelen "21 — MALTEPE..." veya düz "21"
+            kid = int(m.group(1))
+            return f"(ra.RxKurumId IS NOT NULL AND ra.RxKurumId = {kid})"
+        # Manuel string girişi — KurumAdi LIKE %v% subquery
+        # Örn: "CEZA" → MALTEPE 3 NOLU CEZA EVİ + diğer cezaevleri
+        safe = s.replace("'", "''")
+        return (f"(ra.RxKurumId IS NOT NULL AND ra.RxKurumId IN "
+                f"(SELECT KurumId FROM Kurum WHERE "
+                f"UPPER(KurumAdi) LIKE UPPER(N'%{safe}%')))")
+
+    return _kategori_kosul(ay.get("kurum") or [], _kurum_kosul)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -344,6 +455,19 @@ def _liste_secici_pencere_ac(parent, db, tip, on_select):
                    "FROM Hastane h WHERE h.HastaneSilme = 0 "
                    "AND h.HastaneKodu IS NOT NULL "
                    "ORDER BY h.HastaneAdi", "Tesis"),
+        # Kurum — picker'da "KurumId — KurumAdi" + son 365 gün reçete adedi
+        "kurum": (
+            "SELECT CAST(k.KurumId AS NVARCHAR(20)) + N' — ' "
+            "       + ISNULL(k.KurumAdi, N'(adsız)') AS deger, "
+            "       CAST(ISNULL((SELECT COUNT(DISTINCT ra.RxId) "
+            "                    FROM ReceteAna ra "
+            "                    WHERE ra.RxKurumId = k.KurumId "
+            "                      AND ra.RxSilme = 0 "
+            "                      AND ra.RxKayitTarihi >= "
+            "                          DATEADD(DAY, -365, GETDATE())), 0) "
+            "            AS NVARCHAR(20)) + N' reçete (1 yıl)' AS ek "
+            "FROM Kurum k "
+            "ORDER BY k.KurumAdi", "Kurum"),
         # Eşdeğer grubu — picker'da "EsdegerId — Örnek İlaç Adı" gösterir.
         # Aynı eşdeğer grubundaki tüm ilaçlar paylaşır, kullanıcı bir
         # tanesini seçince grup ID'si rule'a yazılır.
@@ -573,12 +697,220 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
     banner = tk.Frame(win, bg="#B71C1C")
     banner.pack(fill="x")
     tk.Label(banner,
-              text="🚫  Hangi Satırlar Tabloya GELMEYECEK?  ─  "
+              text="🚫  Hangi Satırlar Tabloya GELSİN / GELMESİN?  ─  "
                    "Ana ekrandaki '🚫 Boş Satırları Gizle' AÇIKKEN bu "
                    "kurallar SQL'e uygulanır.",
               bg="#B71C1C", fg="white",
               font=("Segoe UI", 10, "bold"), padx=14, pady=8
               ).pack(anchor="w")
+
+    # ════════════════════════════════════════════════════════════════
+    # HIZLI PRESET — kontrol grubu seçimi için combobox
+    # ════════════════════════════════════════════════════════════════
+    # Presetler ATC sekmesine kural ekler. _atc_kosul akıllı eşleşme
+    # yapar:
+    #   • 1-5 karakter ("A10", "C10AB") → LIKE prefix → tüm alt gruplar
+    #   • 7 karakter ("B01AC04") → tam eşitlik (madde kodu)
+    # SQL builder içerir + içermez'i birlikte uygular: mevcut blacklist
+    # kuralları korunur, sadece istenen grup gelir.
+    #
+    # Her preset, ana ekrandaki bir kontrol butonuyla eşleşir
+    # (etiket / buton adı / kapsam birlikte gösterilir).
+    PRESETLER = {
+        "statin":   {"etiket": "🩺 Statin/Lipid",
+                     "buton":  "STATİN KONTROL",
+                     "kapsam": "ATC C10*",
+                     "atc":    ["C10"]},
+        "diyabet":  {"etiket": "💉 Diyabet",
+                     "buton":  "DİYABET KONTROL (4.2.38)",
+                     "kapsam": "ATC A10*",
+                     "atc":    ["A10"]},
+        "p2y12":    {"etiket": "💊 Klopidogrel/Prasugrel/Tikagrelor",
+                     "buton":  "KLOPİDOGREL (4.2.15)",
+                     "kapsam": "B01AC04 / B01AC22 / B01AC24",
+                     "atc":    ["B01AC04", "B01AC22", "B01AC24"]},
+        "arb":      {"etiket": "🩸 ARB ve Kombinasyonları",
+                     "buton":  "ARB (M.51)",
+                     "kapsam": "C09C* / C09D* / C02AC*",
+                     "atc":    ["C09C", "C09D", "C02AC"]},
+        "osteo":    {"etiket": "🦴 Kemik Erimesi (Osteoporoz)",
+                     "buton":  "KEMİK ERİMESİ (4.2.17)",
+                     "kapsam": "M05BA/BB/BX + H05AA + G03XC",
+                     "atc":    ["M05BA", "M05BB", "M05BX",
+                                "H05AA", "G03XC"]},
+        "yoak":     {"etiket": "🩸 YOAK / DOAK",
+                     "buton":  "YOAK (D-1/D-2)",
+                     "kapsam": "B01AE07 + B01AF01/02/03",
+                     "atc":    ["B01AE07", "B01AF01",
+                                "B01AF02", "B01AF03"]},
+        "cesitli":  {"etiket": "🧪 Çeşitli (Üriner / Gözyaşı / BPH)",
+                     "buton":  "ÇEŞİTLİ (M.45 / M.2 / BPH)",
+                     "kapsam": "G04BD* + G04CA* + S01XA20 + N06AX21",
+                     "atc":    ["G04BD", "G04CA",
+                                "S01XA20", "N06AX21"]},
+        "psik":     {"etiket": "🧠 Psikiyatri / Nöroloji",
+                     "buton":  "PSİKİYATRİ/NÖROLOJİ (4.2.2 + 4.2.25)",
+                     "kapsam": "N05A* / N06A* / N05B* / N03A*",
+                     "atc":    ["N05A", "N06A", "N05B", "N03A"]},
+        "enteral":  {"etiket": "🥛 Enteral Beslenme",
+                     "buton":  "ENTERAL BESLENME",
+                     "kapsam": "ATC V06D*",
+                     "atc":    ["V06D"]},
+        "hepatit":  {"etiket": "🦠 Hepatit B/C",
+                     "buton":  "HEPATİT B/C (4.2.13.3 / 4.2.13.4)",
+                     "kapsam": "J05AF* / J05AP* + J05AB04 + L03AB10/11",
+                     "atc":    ["J05AF", "J05AP", "J05AB04",
+                                "L03AB10", "L03AB11"]},
+        "astim":    {"etiket": "🌬️ Astım / KOAH",
+                     "buton":  "ASTIM/KOAH (4.2.24 / 4.2.24.B)",
+                     "kapsam": "ATC R03*",
+                     "atc":    ["R03"]},
+    }
+
+    def _preset_combo_etiket(key):
+        p = PRESETLER[key]
+        return f"{p['etiket']}  —  {p['buton']}  ({p['kapsam']})"
+
+    preset_frm = tk.LabelFrame(
+        win, text=" ⚡ HIZLI PRESET  ─  Bir kontrol grubunu seçip Uygula "
+                  "(ATC Grubu sekmesine İçerir kuralı ekler) ",
+        bg="#E8F5E9", fg="#1B5E20",
+        font=("Segoe UI", 10, "bold"), padx=8, pady=4,
+        bd=2, relief="ridge")
+    preset_frm.pack(fill="x", padx=10, pady=(6, 0))
+
+    btn_row = tk.Frame(preset_frm, bg="#E8F5E9")
+    btn_row.pack(fill="x", pady=2)
+
+    tk.Label(btn_row, text="Kontrol Grubu:",
+              bg="#E8F5E9", fg="#1B5E20",
+              font=("Segoe UI", 9, "bold")
+              ).pack(side="left", padx=(4, 6), pady=2)
+
+    preset_keys = list(PRESETLER.keys())
+    combo_values = [_preset_combo_etiket(k) for k in preset_keys]
+    preset_var = tk.StringVar()
+    preset_combo = ttk.Combobox(
+        btn_row, textvariable=preset_var,
+        values=combo_values, state="readonly",
+        font=("Segoe UI", 9))
+    preset_combo.pack(side="left", padx=(0, 6), pady=2,
+                       fill="x", expand=True)
+
+    preset_durum = tk.Label(
+        preset_frm,
+        text="ℹ Combobox'tan bir kontrol grubu seçip ✅ Uygula'ya basın → "
+             "ATC Grubu sekmesine 'İçerir' kuralı eklenir (kısa ATC kodları "
+             "prefix'le tüm alt grupları yakalar). Sonra 💾 Kaydet & Uygula "
+             "ile SQL'de aktif olur. (İçermez kuralları korunur.)",
+        bg="#E8F5E9", fg="#33691E",
+        font=("Segoe UI", 9, "italic"), anchor="w", justify="left",
+        wraplength=920)
+    preset_durum.pack(fill="x", pady=(2, 0))
+
+    def _preset_uygula(key):
+        """ATC sekmesinin mevcut 'icerir' kurallarını siler ve preset'in
+        kurallarını ekler. 'icermez' kurallarına ve diğer sekmelere dokunmaz."""
+        p = PRESETLER[key]
+        tv = sekmeler["atc"]["tv"]
+
+        mevcut_icerir = [iid for iid in tv.get_children()
+                          if "icerir" in (tv.item(iid, "tags") or ())]
+        if mevcut_icerir:
+            if not messagebox.askyesno(
+                    "Preset Onay",
+                    f"'{p['etiket']}' uygulanacak.\n\n"
+                    f"ATC Grubu sekmesindeki {len(mevcut_icerir)} mevcut "
+                    f"'İçerir' kuralı silinecek "
+                    f"(İçermez kuralları korunur).\n\n"
+                    f"Devam edilsin mi?",
+                    parent=win):
+                return
+        for iid in mevcut_icerir:
+            tv.delete(iid)
+
+        eklendi = 0
+        for deger in p.get("atc", []):
+            tv.insert("", "end", values=("✅ İçerir", deger),
+                       tags=("icerir",))
+            eklendi += 1
+
+        try:
+            nb.select(list(LISTE_TIPLERI).index("atc"))
+        except Exception:
+            pass
+
+        preset_durum.config(
+            text=f"✅ {p['etiket']} → ATC sekmesine {eklendi} 'İçerir' "
+                 f"kuralı eklendi. 💾 Kaydet & Uygula ile aktif et.",
+            fg="#1B5E20")
+
+    def _uygula_secileni():
+        sec = preset_var.get().strip()
+        if not sec:
+            preset_durum.config(
+                text="⚠ Önce combobox'tan bir kontrol grubu seçin.",
+                fg="#B71C1C")
+            return
+        for k in preset_keys:
+            if _preset_combo_etiket(k) == sec:
+                _preset_uygula(k)
+                return
+        preset_durum.config(
+            text=f"⚠ Seçim eşleşmedi: {sec}", fg="#B71C1C")
+
+    tk.Button(btn_row, text="✅ Uygula",
+               bg="#43A047", fg="white",
+               activebackground="#2E7D32", bd=0,
+               padx=12, pady=4,
+               font=("Segoe UI", 9, "bold"),
+               command=_uygula_secileni
+               ).pack(side="left", padx=2, pady=2)
+
+    # Enter ile combobox seçimi → uygula; seçim değişince durum metni
+    preset_combo.bind("<Return>", lambda e: _uygula_secileni())
+    preset_combo.bind(
+        "<<ComboboxSelected>>",
+        lambda e: preset_durum.config(
+            text=f"ℹ '{preset_var.get()}' seçildi — "
+                 f"✅ Uygula ile etken kuralını ekleyin.",
+            fg="#33691E"))
+
+    def _preset_temizle():
+        """Tüm sekmelerden 'icerir' kurallarını siler — whitelist modu kapatır.
+        'icermez' kuralları korunur."""
+        toplam = 0
+        for w in sekmeler.values():
+            tv = w["tv"]
+            toplam += sum(1 for iid in tv.get_children()
+                          if "icerir" in (tv.item(iid, "tags") or ()))
+        if toplam == 0:
+            preset_durum.config(
+                text="ℹ Hiç 'İçerir' kuralı yok — temizlenecek bir şey yok.",
+                fg="#33691E")
+            return
+        if not messagebox.askyesno(
+                "Preset Temizle",
+                f"Tüm sekmelerdeki {toplam} 'İçerir' kuralı silinecek "
+                f"(İçermez kuralları korunur).\n\nDevam edilsin mi?",
+                parent=win):
+            return
+        for w in sekmeler.values():
+            tv = w["tv"]
+            for iid in [iid for iid in tv.get_children()
+                         if "icerir" in (tv.item(iid, "tags") or ())]:
+                tv.delete(iid)
+        preset_durum.config(
+            text=f"🧹 {toplam} 'İçerir' kuralı silindi — whitelist modu "
+                 f"kapatıldı (İçermez kuralları aktif kalır).",
+            fg="#1B5E20")
+
+    tk.Button(btn_row, text="🧹 İçerir'leri Sil",
+               bg="#FFE082", fg="#5D4037", bd=0,
+               padx=8, pady=4,
+               font=("Segoe UI", 9, "bold"),
+               command=_preset_temizle
+               ).pack(side="right", padx=2, pady=2)
 
     # ════════════════════════════════════════════════════════════════
     # SECTION 1 — İÇERİK FİLTRESİ (TEK SATIR — 4 toggle yan yana)
@@ -669,7 +1001,9 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
                    "LIKE %X% kullanır. Örn: 'METFORMIN' yazınca tüm "
                    "metformin içeren ilaçlar etkilenir."),
         "atc": ("🧬 ATC kodu veya Türkçe adı (Urun.UrunATCId → ATC tablosu). "
-                 "Örn: 'C09AA' (ACE inhibitörleri) veya 'NÖROPATİK AĞRI'."),
+                 "Akıllı eşleşme: 1-5 karakter (ör. 'A10', 'C10AB') → "
+                 "PREFIX yakalar (A10AC01, A10BA02... hepsi gelir). "
+                 "7 karakter (ör. 'C10AB05') → tam madde kodu eşleşmesi."),
         "farma": ("💊 Farmasötik form — ilaç adında geçen anahtar kelime. "
                    "LIKE %X% kullanır. Örn: 'KREM', 'ŞURUP', 'AMPUL'."),
         "tesis": ("🏥 Hastane kodu veya adı (Hastane tablosu). "
@@ -679,6 +1013,16 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
                      "seçtiğinde tüm muadil şuruplar (PAROL, TYLOL vb.) "
                      "aynı kuralla etkilenir. Picker'da ID + örnek ilaç adı "
                      "görürsün; SQL filtresi UrunEsdegerId ile çalışır."),
+        "kurum": ("🚫 Kurum (eski 'Dışlamalar' butonunun yerine geçer). "
+                   "İki giriş formatı: ① Listeden seç → 'KurumId — Ad' "
+                   "(o tek kurum). ② Manuel → adın bir kısmını yaz "
+                   "(örn. 'CEZA') → adında bu metin geçen TÜM kurumları "
+                   "kapsar (KurumAdi LIKE %değer%). İçermez moduyla bu "
+                   "kurumların reçeteleri tüm sorgulardan ve SUT "
+                   "kontrollerinden çıkar. ÖNEMLİ: Kurum kuralları 'Boş "
+                   "Satırları Gizle' toggle'ından BAĞIMSIZ HER ZAMAN "
+                   "uygulanır. NULL kurumlu reçeteler (elden satış vb.) "
+                   "içermez kuralında dahil kalır."),
     }
 
     # Her tip için aynı arayüz — per-item içerir/içermez

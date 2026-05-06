@@ -60,24 +60,24 @@
     "total_time": 73.17448043823242
   },
   "recete_sorgu": {
-    "count": 1167,
-    "total_time": 264.2253465652466
+    "count": 1174,
+    "total_time": 264.9337499141693
   },
   "text_focus": {
-    "count": 1182,
-    "total_time": 177.3783187866211
+    "count": 1186,
+    "total_time": 177.58635330200195
   },
   "text_clear": {
-    "count": 1076,
-    "total_time": 99.49101853370667
+    "count": 1080,
+    "total_time": 99.61223435401917
   },
   "text_write": {
-    "count": 1013,
-    "total_time": 133.4735975265503
+    "count": 1017,
+    "total_time": 133.681871175766
   },
   "sorgula_butonu": {
-    "count": 996,
-    "total_time": 218.18372774124146
+    "count": 1000,
+    "total_time": 218.5852530002594
   },
   "sag_tik": {
     "count": 2034,

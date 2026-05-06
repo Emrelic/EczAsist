@@ -550,18 +550,18 @@ class BotanikDB:
         return self.sorgu_calistir(sql)
 
     def urun_ara(self, arama: str, limit: int = 50) -> List[Dict]:
-        """Ürün adına göre ara"""
+        """Ürün adına göre ara — parametreli (SQL injection-safe)."""
         sql = f"""
-        SELECT TOP {limit}
+        SELECT TOP {int(limit)}
             UrunId,
             UrunAdi,
             UrunFiyatEtiket,
             UrunStokDepo + UrunStokRaf + UrunStokAcik as ToplamStok
         FROM Urun
-        WHERE UrunAdi LIKE '%{arama}%' AND UrunSilme = 0
+        WHERE UrunAdi LIKE ? AND UrunSilme = 0
         ORDER BY UrunAdi
         """
-        return self.sorgu_calistir(sql)
+        return self.sorgu_calistir(sql, (f"%{arama}%",))
 
     def iade_fatura_detay_getir(self, fatura_no: str = None, fatura_tarihi: str = None, depo_adi: str = None) -> List[Dict]:
         """
@@ -810,7 +810,7 @@ class BotanikDB:
             SELECT dm.UrunId, dm.Miad
             FROM DigerMiadlar dm
             JOIN Urun u ON dm.UrunId = u.UrunId
-            WHERE u.UrunUrunTipId <> 1  -- İlaç olmayanlar
+            WHERE ISNULL(u.UrunUrunTipId, 0) <> 1  -- İlaç olmayanlar (NULL dahil)
         ),
         -- FIFO Ağırlıklı Ortalama Maliyet Hesabı
         FaturaAlislar AS (
@@ -1146,7 +1146,7 @@ class BotanikDB:
         LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
         LEFT JOIN SarfOzet s ON u.UrunId = s.UrunId
         LEFT JOIN FIFOMaliyet m ON u.UrunId = m.UrunId
-        WHERE u.UrunSilme = 0 AND u.UrunUrunTipId != 1
+        WHERE u.UrunSilme = 0 AND ISNULL(u.UrunUrunTipId, 0) != 1
         AND (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) > 0
         {urun_adi_filtre} {urun_tipi_filtre}
 
@@ -1532,8 +1532,9 @@ class BotanikDB:
                 'CIKIS' as Yon
             FROM ReceteIlaclari ri
             JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
-            WHERE ra.RxSilme = 0 AND ri.RISilme = 0 AND ri.RIIade = 0
-            AND ra.RxReceteTarihi >= '{baslangic_tarih}'
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0
+              AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+              AND ra.RxReceteTarihi >= '{baslangic_tarih}'
             """)
 
         if 'ELDEN_SATIS' in hareket_tipleri:
@@ -1546,8 +1547,9 @@ class BotanikDB:
                 'CIKIS' as Yon
             FROM EldenIlaclari ei
             JOIN EldenAna ea ON ei.RIRxId = ea.RxId
-            WHERE ea.RxSilme = 0 AND ei.RISilme = 0 AND ei.RIIade = 0
-            AND ea.RxReceteTarihi >= '{baslangic_tarih}'
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0
+              AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+              AND ea.RxReceteTarihi >= '{baslangic_tarih}'
             """)
 
         if not hareket_bloklari:
@@ -1672,8 +1674,9 @@ class BotanikDB:
             SELECT DISTINCT ri.RIUrunId as UrunId
             FROM ReceteIlaclari ri
             JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
-            WHERE ra.RxSilme = 0 AND ri.RISilme = 0 AND ri.RIIade = 0
-            AND ra.RxReceteTarihi >= '{baslangic_tarih}'
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0
+              AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+              AND ra.RxReceteTarihi >= '{baslangic_tarih}'
             """)
 
         if 'ELDEN_SATIS' in hareket_tipleri:
@@ -1681,8 +1684,9 @@ class BotanikDB:
             SELECT DISTINCT ei.RIUrunId as UrunId
             FROM EldenIlaclari ei
             JOIN EldenAna ea ON ei.RIRxId = ea.RxId
-            WHERE ea.RxSilme = 0 AND ei.RISilme = 0 AND ei.RIIade = 0
-            AND ea.RxReceteTarihi >= '{baslangic_tarih}'
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0
+              AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+              AND ea.RxReceteTarihi >= '{baslangic_tarih}'
             """)
 
         if not hareket_bloklari:
