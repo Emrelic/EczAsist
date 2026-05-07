@@ -29,6 +29,7 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Dict, List
 
 from botanik_db import BotanikDB
+from recete_kontrol.sut_kontrolleri import _tr_lower
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +231,10 @@ SUTUNLAR = [
     ("kutu",       "Kutu",         42,  "Kutu sayısı (kaç kutu verildiği)"),
     ("sut",        "SUT Maddesi",  130, "SUT 4.2.x kategorisi"),
     ("rap_kod",    "Rapor Kod",    65,  "Rapor kodu"),
+    ("rap_tesh_tak", "Rap.Teşhis/Rap.Tak.No", 145,
+     "Rapor teşhis kodu - Rapor takip numarası "
+     "(ör: '04.05 - 512432126'). Tak.No önceliği RIRaporNo, "
+     "boşsa eşleşen rapordan RaporAnaRaporNo."),
     ("rec_doz",    "Reçete Doz",   90,  "Reçete dozu"),
     ("rap_doz",    "Rapor Doz",    80,  "Rapor dozu"),
     ("msj",        "Msj",          35,  "İlaç mesaj durumu"),
@@ -251,6 +256,10 @@ SUTUNLAR = [
     ("renkli_rr",  "Renkli RR",    85,
      "RENKLİ REÇETE butonu doldurur: Kırmızı/Yeşil/Mor reçetelerin "
      "renkli reçete sisteminde kaydı VAR / YOK / — (kapsam dışı)"),
+    ("verdict_sart_raporu", "Şart Raporu", 460,
+     "SUT kontrolü sonrası şart raporu: kullanılan SUT maddesi, ana mesaj, "
+     "aranan/bulunan ibareler ve uyarılar. Excel kontrol raporundaki "
+     "özetin tablo görünümü."),
 ]
 SUTUN_KOD = [s[0] for s in SUTUNLAR]
 
@@ -493,6 +502,7 @@ class AylikReceteSorguGUI:
 
     STATE_DOSYASI = "aylik_inceleme_state.json"
     SUTUN_AYAR_DOSYASI = "aylik_inceleme_sutun_ayarlari.json"
+    SUTUN_SABLON_DOSYASI = "aylik_inceleme_sutun_sablonlari.json"
 
     def __init__(self, root: tk.Tk, ana_menu_callback=None):
         self.root = root
@@ -546,7 +556,12 @@ class AylikReceteSorguGUI:
         # Filtre durumu
         self.aktif_sutun_filtre = {}  # {sutun_kod: arama_metni}
         self.aktif_deger_filtre = {}  # {sutun_kod: set(secili_degerler)}  Excel-benzeri
-        self.aktif_metin_filtre = {}  # {sutun_kod: (op, deger)}  Başlar/Biter/İçerir vb.
+        # Çoklu koşul: {sutun_kod: [{"baglac": None|"ve"|"veya",
+        #                            "op": "icerir"|..., "deger": "..."}, ...]}
+        # İlk koşulun baglac'ı None. VEYA grup ayırıcı, VE grup içi.
+        # Eşleşme = HERHANGİ bir grubun TÜM koşulları sağlanır.
+        # (Geriye dönük: eski (op, deger) tuple tek-koşul listeye normalize edilir.)
+        self.aktif_metin_filtre = {}
         self.aktif_renk_filtre = {RENK_BEYAZ, RENK_YESIL, RENK_SARI,
                                     RENK_TURUNCU, RENK_KIRMIZI, RENK_GRI}
         # "Boş satırları gizle" — uyarı kodu / mesaj / rapor kodu olmayan
@@ -575,6 +590,12 @@ class AylikReceteSorguGUI:
 
         # Arayüz
         self._arayuz_olustur()
+
+        # Son aktif sütun şablonunu uygula (varsa) — tablo kuruldu, widths hazır
+        try:
+            self._aktif_sablonu_uygula()
+        except Exception as e:
+            logger.debug("Açılışta şablon uygulama: %s", e)
 
         # Async başlat
         self.root.after(100, self._db_baglan_async)
@@ -1994,6 +2015,16 @@ class AylikReceteSorguGUI:
         rk_id = r.get("RIRaporKodId") or 0
         rap_kod_str, rap_kod_acik = self._lookup_rapor_kodu.get(rk_id, ("", ""))
 
+        # Rapor takip numarası: RIRaporNo öncelikli (doktorun reçeteye yazdığı),
+        # boşsa eşleşen rapordan (RaporAnaRaporNo) — RIRaporNo bug'ında düşmez.
+        rap_tak_no = (str(r.get("RIRaporNo") or "").strip()
+                      or str(r.get("RaporAnaRaporNo") or "").strip())
+        # "Rap.Teşhis/Rap.Tak.No" birleşik gösterim: "04.05 - 512432126"
+        if rap_kod_str and rap_tak_no:
+            rap_tesh_tak = f"{rap_kod_str} - {rap_tak_no}"
+        else:
+            rap_tesh_tak = rap_kod_str or rap_tak_no
+
         # ATC (ana sorgudan, ATC tablosu join'lendi)
         atc_kodu = r.get("ATCKodu") or ""
         atc_ad = r.get("ATCTurkce") or ""
@@ -2154,6 +2185,8 @@ class AylikReceteSorguGUI:
             "kutu": str(r.get("RIAdet") or ""),
             "sut": sut_madde,
             "rap_kod": rap_kod_str,
+            "rap_tak_no": rap_tak_no,
+            "rap_tesh_tak": rap_tesh_tak,
             "rec_doz": rd_metin,
             "rec_doz_sayi": rd_sayi,
             "rap_doz": rap_doz_metin,
@@ -2239,6 +2272,115 @@ class AylikReceteSorguGUI:
         self._durum_yaz(f"{len(satirlar)} satır geldi (ilaç bazlı)")
 
     # ----------------------------------------------------------- TABLO RENDER
+    @staticmethod
+    def _sart_raporu_metni(s: dict) -> str:
+        """Satırın verdict_* alanlarından tabloya şart raporu üretir.
+
+        Önce yapısal `verdict_sartlar` (JSON: [{ad, durum, neden, ...}, ...])
+        varsa CLAUDE.md disiplinine uygun gruplandırma (✓/✗/?). Yoksa eski
+        verdict_detay/uyari/sut/aranan/bulunan birleşimine düşer.
+        """
+        verdict = (s.get("verdict") or "").strip()
+        if not verdict:
+            return ""
+
+        # Yapısal şart listesi varsa onu kullan
+        sartlar_raw = s.get("verdict_sartlar")
+        sartlar = None
+        if sartlar_raw:
+            if isinstance(sartlar_raw, str):
+                try:
+                    sartlar = json.loads(sartlar_raw)
+                except Exception:
+                    sartlar = None
+            elif isinstance(sartlar_raw, list):
+                sartlar = sartlar_raw
+
+        if sartlar:
+            saglanan = [p for p in sartlar if p.get("durum") == "var"]
+            saglanmayan = [p for p in sartlar if p.get("durum") == "yok"]
+            ke = [p for p in sartlar if p.get("durum") == "kontrol_edilemedi"]
+
+            def _ozet(p):
+                ad = (p.get("ad") or "").strip()
+                neden = (p.get("neden") or "").strip()
+                return f"{ad}: {neden}" if neden else ad
+
+            parcalar = [f"📋 {verdict}"]
+            sut_k = (s.get("verdict_sut") or "").strip()
+            if sut_k:
+                parcalar.append(sut_k)
+            if saglanan:
+                parcalar.append("✓ " + " | ".join(_ozet(p) for p in saglanan))
+            if saglanmayan:
+                parcalar.append("✗ " + " | ".join(_ozet(p) for p in saglanmayan))
+            if ke:
+                parcalar.append("? " + " | ".join(_ozet(p) for p in ke))
+            uyari = (s.get("verdict_uyari") or "").strip()
+            if uyari:
+                parcalar.append(f"⚠ {uyari}")
+            return " · ".join(parcalar)
+
+        # Eski özet (yapısal şart listesi yoksa)
+        parcalar = []
+        sut = (s.get("verdict_sut") or "").strip()
+        if sut:
+            parcalar.append(sut)
+        detay = (s.get("verdict_detay") or "").strip()
+        if detay:
+            parcalar.append(detay)
+        aranan = (s.get("verdict_aranan") or "").strip()
+        bulunan = (s.get("verdict_bulunan") or "").strip()
+        if aranan and bulunan:
+            parcalar.append(f"Aranan: {aranan} → Bulunan: {bulunan}")
+        elif aranan:
+            parcalar.append(f"Aranan: {aranan}")
+        elif bulunan:
+            parcalar.append(f"Bulunan: {bulunan}")
+        uyari = (s.get("verdict_uyari") or "").strip()
+        if uyari:
+            parcalar.append(f"⚠ {uyari}")
+        return " · ".join(parcalar)
+
+    @staticmethod
+    def _kontrol_raporunu_satira_yaz(s: dict, rapor, *, kategori: str = "",
+                                      alt_sinif: str = "") -> None:
+        """KontrolRaporu'u satırın verdict_* alanlarına yazar (yapısal sartlar dahil).
+
+        Tüm SUT kontrol fonksiyonları (statin/diyabet/arb/klopidogrel/...)
+        bu helper ile satıra yazsa kod tekrarı azalır.
+        """
+        from recete_kontrol.base_kontrol import KontrolSonucu
+        VERDICT_ETIKET = {
+            KontrolSonucu.UYGUN: "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL: "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.ATLANDI: "ATLANDI",
+        }
+        s["verdict"] = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+        s["verdict_detay"] = rapor.mesaj or ""
+        s["verdict_kategori"] = kategori
+        s["verdict_alt_sinif"] = alt_sinif
+        s["verdict_uyari"] = rapor.uyari or ""
+        s["verdict_sut"] = rapor.sut_kurali or ""
+        s["verdict_aranan"] = rapor.aranan_ibare or ""
+        s["verdict_bulunan"] = rapor.bulunan_metin or ""
+        try:
+            s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                                ensure_ascii=False)
+        except Exception:
+            s["verdict_detaylar"] = str(rapor.detaylar or {})
+        # Yapısal şart listesi (CLAUDE.md disiplini)
+        sartlar_obj = getattr(rapor, "sartlar", None) or []
+        try:
+            s["verdict_sartlar"] = json.dumps([
+                {"ad": p.ad, "durum": p.durum.value if hasattr(p.durum, "value") else str(p.durum),
+                 "neden": p.neden, "kaynak": getattr(p, "kaynak", "")}
+                for p in sartlar_obj
+            ], ensure_ascii=False)
+        except Exception:
+            s["verdict_sartlar"] = ""
+
     def _tabloyu_yenile(self):
         """tum_satirlar + filtreler + renk filtresi → tv'ye doldur.
         Filtreyle gizlenen satırlar seçim setinden de düşer; bu sayede sonraki
@@ -2267,6 +2409,8 @@ class AylikReceteSorguGUI:
                     continue
             # Seçim göstergesi (☐/☑)
             s["secim"] = "☑" if iid in self.secili_iidler else "☐"
+            # Şart raporu sütunu: verdict_* alanlarından kompakt özet
+            s["verdict_sart_raporu"] = self._sart_raporu_metni(s)
             values = tuple(str(s.get(k, "")) for k in SUTUN_KOD)
             self.tv.insert("", "end", iid=iid, values=values, tags=(renk,))
             self.gosterilen_iids.add(iid)
@@ -2286,17 +2430,23 @@ class AylikReceteSorguGUI:
         """
         # 1) Alt sütun arama kutuları (içerir) — placeholder metni filtreye
         # etki etmesin diye atla.
+        # Boşlukla ayrılmış kelimeler AND ile birleşir; aralarındaki diğer
+        # karakterler/sözcükler önemsiz. Her kelime hücre içinde substring
+        # olarak geçmeli. Örn: "metfor sülf maks" araması, hücredeki
+        # "...metformin ve sülfonil ürelerin maksimum tolere..." metniyle
+        # eşleşir.
         for kod, var in self.arama_varlari.items():
             if kod == haric_kod:
                 continue
             if (getattr(self, "_placeholder_aktif", {})
                     .get(kod)):
                 continue
-            ara = (var.get() or "").strip().lower()
+            ara = _tr_lower((var.get() or "").strip())
             if not ara:
                 continue
-            deger = str(s.get(kod, "")).lower()
-            if ara not in deger:
+            deger = _tr_lower(str(s.get(kod, "")))
+            parcalar = ara.split()
+            if not all(p in deger for p in parcalar):
                 return False
         # 2) Excel-benzeri değer filtreleri (set içinde mi?)
         for kod, secili in self.aktif_deger_filtre.items():
@@ -2307,43 +2457,88 @@ class AylikReceteSorguGUI:
             if str(s.get(kod, "")) not in secili:
                 return False
         # 3) Excel-tarzı metin operatör filtreleri (başlar/biter/içerir...)
-        for kod, (op, deger) in self.aktif_metin_filtre.items():
+        #    Çoklu koşul: VEYA grup ayırıcı, VE grup içi. Eşleşme = bir grubun
+        #    tüm koşulları sağlanır (gruplar OR ile birleşir).
+        for kod, kosullar in self.aktif_metin_filtre.items():
             if kod == haric_kod:
                 continue
-            s_str = str(s.get(kod, "") or "").lower()
-            d_str = (deger or "").lower()
-            if op == "icerir":
-                if d_str and d_str not in s_str:
-                    return False
-            elif op == "icermez":
-                if d_str and d_str in s_str:
-                    return False
-            elif op == "baslar":
-                if d_str and not s_str.startswith(d_str):
-                    return False
-            elif op == "biter":
-                if d_str and not s_str.endswith(d_str):
-                    return False
-            elif op == "esit":
-                if d_str and s_str != d_str:
-                    return False
-            elif op == "esit_degil":
-                if d_str and s_str == d_str:
-                    return False
-            elif op == "bos":
-                if s_str:
-                    return False
-            elif op == "bos_degil":
-                if not s_str:
-                    return False
-            elif op == "regex":
-                if d_str:
-                    try:
-                        import re as _re
-                        if not _re.search(d_str, s_str, _re.IGNORECASE):
-                            return False
-                    except _re.error:
-                        pass
+            kosul_listesi = self._metin_filtre_normalize(kosullar)
+            if not kosul_listesi:
+                continue
+            s_str = _tr_lower(str(s.get(kod, "") or ""))
+            # VEYA'lara göre gruplara böl
+            gruplar = []
+            mevcut = []
+            for i, k in enumerate(kosul_listesi):
+                if i > 0 and k.get("baglac") == "veya":
+                    if mevcut:
+                        gruplar.append(mevcut)
+                    mevcut = []
+                mevcut.append(k)
+            if mevcut:
+                gruplar.append(mevcut)
+            # Anlamlı koşulu olmayan grupları (ör. değer boş & op=içerir) at
+            anlamli_gruplar = [
+                g for g in gruplar
+                if any(self._metin_kosulu_anlamli(k) for k in g)
+            ]
+            if not anlamli_gruplar:
+                continue
+            # En az bir grup tamamen eşleşmeli
+            if not any(
+                all(self._metin_kosulu_test(s_str, k) for k in g
+                    if self._metin_kosulu_anlamli(k))
+                for g in anlamli_gruplar
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _metin_filtre_normalize(kosullar):
+        """Geriye dönük uyum: eski (op, deger) tuple → tek-koşul liste.
+        Yeni format zaten liste; aynen döner."""
+        if isinstance(kosullar, tuple) and len(kosullar) == 2:
+            op, deger = kosullar
+            return [{"baglac": None, "op": op, "deger": deger}]
+        if isinstance(kosullar, list):
+            return kosullar
+        return []
+
+    @staticmethod
+    def _metin_kosulu_anlamli(k):
+        """Boş değer + boş-olmayan op = anlamsız (filtre kapalı sayılır)."""
+        op = k.get("op", "icerir")
+        if op in ("bos", "bos_degil"):
+            return True
+        return bool((k.get("deger") or "").strip())
+
+    @staticmethod
+    def _metin_kosulu_test(s_str, k):
+        """Tek koşul s_str'e uyuyor mu? s_str ZATEN lowercase olmalı."""
+        op = k.get("op", "icerir")
+        d_str = _tr_lower(k.get("deger") or "")
+        if op == "icerir":
+            return d_str in s_str
+        if op == "icermez":
+            return d_str not in s_str
+        if op == "baslar":
+            return s_str.startswith(d_str)
+        if op == "biter":
+            return s_str.endswith(d_str)
+        if op == "esit":
+            return s_str == d_str
+        if op == "esit_degil":
+            return s_str != d_str
+        if op == "bos":
+            return not s_str
+        if op == "bos_degil":
+            return bool(s_str)
+        if op == "regex":
+            try:
+                import re as _re
+                return bool(_re.search(d_str, s_str, _re.IGNORECASE))
+            except _re.error:
+                return True  # geçersiz regex → koşulu yutkun
         return True
 
     def _sutun_filtre_degisti(self, kod: str):
@@ -2913,9 +3108,9 @@ class AylikReceteSorguGUI:
             for w in inner.winfo_children():
                 w.destroy()
             cb_dict.clear()
-            f = filtre_metni.lower()
+            f = _tr_lower(filtre_metni)
             for d in degerler:
-                if f and f not in str(d).lower():
+                if f and f not in _tr_lower(str(d)):
                     continue
                 v = var_dict.get(d)
                 if v is None:
@@ -2967,24 +3162,29 @@ class AylikReceteSorguGUI:
             v.set(deger)
 
     def _popup_aranana_uygula(self, var_dict, var_ara, deger):
-        f = (var_ara.get() or "").lower()
+        f = _tr_lower(var_ara.get() or "")
         for d, v in var_dict.items():
-            if not f or f in str(d).lower():
+            if not f or f in _tr_lower(str(d)):
                 v.set(deger)
 
     def _metin_filtre_popup(self, kod: str):
-        """Excel-tarzı metin filtre popup'ı: Başlar/Biter/İçerir/Eşit/Boş/Regex."""
+        """Çoklu koşul + ve/veya bağlaçlı Excel-tarzı metin filtre popup'ı.
+
+        Her satır: [bağlaç (ilk hariç)] [operatör] [değer] [×]
+        VEYA satırı yeni grup başlatır, VE satırı grubu sürdürür.
+        Eşleşme = bir grubun tüm koşulları sağlanır (gruplar OR'lanır).
+        """
         baslik = next((b for k, b, _g, _t in SUTUNLAR if k == kod), kod)
         win = tk.Toplevel(self.root)
         win.title(f"Metin Filtresi — {baslik}")
-        win.geometry("440x220")
+        win.geometry("720x560")
+        win.minsize(560, 420)
         win.transient(self.root)
 
+        # Başlık (üstte sabit)
         tk.Label(win, text=f"📋 {baslik}",
-                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=10, pady=(10, 4))
-
-        # Mevcut filtre
-        mevcut_op, mevcut_deger = self.aktif_metin_filtre.get(kod, ("icerir", ""))
+                 font=("Segoe UI", 11, "bold")
+                 ).pack(side="top", anchor="w", padx=10, pady=(10, 4))
 
         op_listesi = [
             ("İçerir",       "icerir"),
@@ -2997,52 +3197,134 @@ class AylikReceteSorguGUI:
             ("Boş değil",    "bos_degil"),
             ("Regex (gelişmiş)", "regex"),
         ]
+        op_disp_listesi = [d for d, _k in op_listesi]
         kod_to_disp = {k: d for d, k in op_listesi}
+        disp_to_kod = {d: k for d, k in op_listesi}
 
-        # Operatör
-        op_frame = tk.Frame(win)
-        op_frame.pack(fill="x", padx=10, pady=4)
-        tk.Label(op_frame, text="Operatör:", width=10, anchor="w"
-                 ).pack(side="left")
-        op_cb = ttk.Combobox(op_frame,
-                              values=[d for d, _k in op_listesi],
-                              width=22, state="readonly")
-        op_cb.set(kod_to_disp.get(mevcut_op, "İçerir"))
-        op_cb.pack(side="left", padx=4)
+        baglac_disp_to_kod = {"VE": "ve", "VEYA": "veya"}
+        baglac_kod_to_disp = {"ve": "VE", "veya": "VEYA"}
 
-        # Değer
-        deg_frame = tk.Frame(win)
-        deg_frame.pack(fill="x", padx=10, pady=4)
-        tk.Label(deg_frame, text="Değer:", width=10, anchor="w"
-                 ).pack(side="left")
-        var_deg = tk.StringVar(value=mevcut_deger)
-        ent = tk.Entry(deg_frame, textvariable=var_deg, font=("Segoe UI", 10))
-        ent.pack(side="left", padx=4, fill="x", expand=True)
-        ent.focus_set()
+        # Mevcut koşulları yükle (eski tuple format → tek koşullu listeye çevir)
+        mevcut = self.aktif_metin_filtre.get(kod)
+        baslangic = self._metin_filtre_normalize(mevcut)
+        if not baslangic:
+            baslangic = [{"baglac": None, "op": "icerir", "deger": ""}]
 
-        # Bilgi
-        bilgi = tk.Label(win,
-                          text="• İçerir/Başlar/Biter: metin parçası ara\n"
-                               "• Eşittir/Eşit değil: tam eşleşme\n"
-                               "• Boş/Boş değil: değer alanı kullanılmaz\n"
-                               "• Regex: gelişmiş, örn ^A.*B$",
-                          fg="#546E7A", font=("Segoe UI", 8),
-                          justify="left", anchor="w")
-        bilgi.pack(fill="x", padx=10, pady=(6, 4))
+        # Liste çerçevesini oluşturuyoruz ama PACK etmeyeceğiz —
+        # alt panelden (butonlar/bilgi/ekle) sonra en sona pack edilecek ki
+        # buttonlar her zaman pencerenin altında, görünür kalsın.
+        liste_cerceve = tk.Frame(win, bd=1, relief="solid")
 
-        # Butonlar
-        alt = tk.Frame(win)
-        alt.pack(fill="x", padx=10, pady=10)
+        canvas = tk.Canvas(liste_cerceve, highlightthickness=0)
+        scroll = ttk.Scrollbar(liste_cerceve, orient="vertical",
+                                command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+
+        ic = tk.Frame(canvas)
+        ic_id = canvas.create_window((0, 0), window=ic, anchor="nw")
+
+        def _ic_resize(_e=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfig(ic_id, width=canvas.winfo_width())
+        ic.bind("<Configure>", _ic_resize)
+        canvas.bind("<Configure>", _ic_resize)
+
+        # Tek satırın widget'larını tutar: list of dicts
+        satirlar = []
+
+        def _satir_ciz():
+            # Önce tüm satır widget'larını temizle
+            for w in ic.winfo_children():
+                w.destroy()
+            for i, s in enumerate(satirlar):
+                fr = tk.Frame(ic)
+                fr.pack(fill="x", padx=4, pady=2)
+                # Bağlaç sütunu (ilk satırda boş yer tutucu)
+                if i == 0:
+                    tk.Label(fr, text="", width=6).pack(side="left")
+                else:
+                    bg_cb = ttk.Combobox(fr, values=["VE", "VEYA"],
+                                          width=5, state="readonly")
+                    bg_cb.set(baglac_kod_to_disp.get(s["baglac_var"].get(),
+                                                      "VE"))
+                    bg_cb.pack(side="left", padx=(0, 4))
+
+                    def _on_baglac(_e=None, idx=i, cb=bg_cb):
+                        satirlar[idx]["baglac_var"].set(
+                            baglac_disp_to_kod.get(cb.get(), "ve"))
+                    bg_cb.bind("<<ComboboxSelected>>", _on_baglac)
+                # Operatör
+                op_cb = ttk.Combobox(fr, values=op_disp_listesi,
+                                      width=18, state="readonly")
+                op_cb.set(kod_to_disp.get(s["op_var"].get(), "İçerir"))
+                op_cb.pack(side="left", padx=2)
+
+                def _on_op(_e=None, idx=i, cb=op_cb):
+                    satirlar[idx]["op_var"].set(
+                        disp_to_kod.get(cb.get(), "icerir"))
+                op_cb.bind("<<ComboboxSelected>>", _on_op)
+                # Değer
+                ent = tk.Entry(fr, textvariable=s["deger_var"],
+                                font=("Segoe UI", 10))
+                ent.pack(side="left", padx=2, fill="x", expand=True)
+                # Sil
+                if len(satirlar) > 1:
+                    tk.Button(fr, text="×", width=2,
+                               command=lambda idx=i: _satir_sil(idx)
+                               ).pack(side="left", padx=(2, 0))
+                else:
+                    tk.Label(fr, text="", width=3).pack(side="left")
+            ic.update_idletasks()
+            _ic_resize()
+
+        def _satir_ekle(baglac="ve", op="icerir", deger=""):
+            satirlar.append({
+                "baglac_var": tk.StringVar(value=baglac or "ve"),
+                "op_var": tk.StringVar(value=op or "icerir"),
+                "deger_var": tk.StringVar(value=deger or ""),
+            })
+            _satir_ciz()
+
+        def _satir_sil(idx):
+            if 0 <= idx < len(satirlar) and len(satirlar) > 1:
+                del satirlar[idx]
+                # İlk satırın bağlacı her zaman None sayılır; tek tutmak için
+                # kalan satırlar arasında bir sorun yok (görsel olarak ilk
+                # satırda bağlaç gösterilmiyor zaten).
+                _satir_ciz()
+
+        # Mevcut koşulları yükle
+        for i, k in enumerate(baslangic):
+            satirlar.append({
+                "baglac_var": tk.StringVar(value=k.get("baglac") or "ve"),
+                "op_var": tk.StringVar(value=k.get("op", "icerir")),
+                "deger_var": tk.StringVar(value=k.get("deger", "") or ""),
+            })
+        _satir_ciz()
+
+        # === ALT PANEL — side="bottom" ile sabit, listeden ÖNCE pack ===
+        # Pack sırası: alt → bilgi → ekle_fr → (en son) liste_cerceve.
+        # side="bottom" ilk packlenen en alta yapışır; sonrakiler üstüne.
 
         def _uygula():
-            op_disp = op_cb.get()
-            op_kod = next((k for d, k in op_listesi if d == op_disp), "icerir")
-            deger = var_deg.get()
-            # Boş değer + boş olmayan op → filtreyi kaldır
-            if not deger and op_kod not in ("bos", "bos_degil"):
+            yeni = []
+            for i, s in enumerate(satirlar):
+                op = s["op_var"].get() or "icerir"
+                deger = s["deger_var"].get() or ""
+                # Boş-değer + değer-gerektiren op → bu koşulu at
+                if not deger.strip() and op not in ("bos", "bos_degil"):
+                    continue
+                baglac = None if i == 0 else (s["baglac_var"].get() or "ve")
+                yeni.append({"baglac": baglac, "op": op, "deger": deger})
+            # İlk anlamlı koşulun bağlacını None'a sabitle
+            if yeni:
+                yeni[0]["baglac"] = None
+            if not yeni:
                 self.aktif_metin_filtre.pop(kod, None)
             else:
-                self.aktif_metin_filtre[kod] = (op_kod, deger)
+                self.aktif_metin_filtre[kod] = yeni
             self._tabloyu_yenile()
             self._sayaclari_guncelle()
             self._siralama_gostergesini_guncelle()
@@ -3055,6 +3337,9 @@ class AylikReceteSorguGUI:
             self._siralama_gostergesini_guncelle()
             win.destroy()
 
+        # 1) En alta sabitlen → butonlar
+        alt = tk.Frame(win)
+        alt.pack(side="bottom", fill="x", padx=10, pady=(6, 10))
         tk.Button(alt, text="Uygula", bg="#1976D2", fg="white",
                   command=_uygula, padx=14, font=("Segoe UI", 9, "bold")
                   ).pack(side="right", padx=4)
@@ -3065,7 +3350,32 @@ class AylikReceteSorguGUI:
                   command=win.destroy, padx=10
                   ).pack(side="right", padx=4)
 
-        ent.bind("<Return>", lambda e: _uygula())
+        # 2) Butonların üstüne → bilgi
+        tk.Label(win,
+                  text="• VE = grup içi (hepsi sağlanmalı), "
+                       "VEYA = yeni grup başlatır.\n"
+                       "• Eşleşme: en az bir grubun TÜM koşulları sağlanır.\n"
+                       "• Boş/Boş değil için değer alanı yok sayılır. "
+                       "Regex: ^A.*B$",
+                  fg="#546E7A", font=("Segoe UI", 8),
+                  justify="left", anchor="w"
+                  ).pack(side="bottom", fill="x", padx=10, pady=(2, 4))
+
+        # 3) Bilginin üstüne → + Koşul ekle
+        ekle_fr = tk.Frame(win)
+        ekle_fr.pack(side="bottom", fill="x", padx=10, pady=(2, 4))
+        tk.Button(ekle_fr, text="+ Koşul ekle (VE)",
+                   command=lambda: _satir_ekle("ve")
+                   ).pack(side="left", padx=(0, 4))
+        tk.Button(ekle_fr, text="+ Koşul ekle (VEYA)",
+                   command=lambda: _satir_ekle("veya")
+                   ).pack(side="left")
+
+        # 4) En son: liste çerçevesi → ortayı doldurur (expand)
+        liste_cerceve.pack(fill="both", expand=True, padx=10, pady=4)
+
+        win.bind("<Return>", lambda e: _uygula())
+        win.bind("<Escape>", lambda e: win.destroy())
 
     def _sutun_filtresini_temizle(self, kod):
         self.aktif_deger_filtre.pop(kod, None)
@@ -3086,6 +3396,24 @@ class AylikReceteSorguGUI:
         if not self.tv.selection():
             return
         m = tk.Menu(self.root, tearoff=0)
+        # En üst: Reçete / Rapor detay pencereleri (Botanik EOS'tan canlı çek)
+        s_aktif = self.satir_indeks.get(self.tv.selection()[0]) or {}
+        rec_no_aktif = (s_aktif.get("rec_no") or "").strip()
+        rapor_ana_id_aktif = s_aktif.get("rapor_ana_id") or 0
+        if rec_no_aktif:
+            m.add_command(
+                label=f"🔍 Reçete Detayını Göster ({rec_no_aktif})",
+                command=self._recete_detay_goster)
+        else:
+            m.add_command(label="🔍 Reçete Detayını Göster (reçete no yok)",
+                          state="disabled")
+        if rapor_ana_id_aktif:
+            m.add_command(label="📄 Rapor Detayını Göster",
+                          command=self._rapor_detay_goster)
+        else:
+            m.add_command(label="📄 Rapor Detayını Göster (rapor yok)",
+                          state="disabled")
+        m.add_separator()
         # Üst grup: kopyala / Medula'da aç (tek satır işlemleri)
         m.add_command(label="📋 Hasta TC'sini Kopyala",
                       command=self._kopyala_hasta_tc)
@@ -3095,6 +3423,8 @@ class AylikReceteSorguGUI:
                       command=self._kopyala_sistem_recete_no)
         m.add_command(label="📄 Rapor Açıklamasını Kopyala",
                       command=self._kopyala_rapor_aciklamasi)
+        m.add_command(label="🪪 Tüm Künyeyi Kopyala",
+                      command=self._kopyala_tum_kunye)
         m.add_command(label="🔓 Reçeteyi Medula'da Aç",
                       command=self._medulada_ac)
         m.add_separator()
@@ -3188,6 +3518,33 @@ class AylikReceteSorguGUI:
         self._durum_yaz(
             f"📄 Rapor açıklaması panoya kopyalandı{ek} "
             f"({len(kopyalanan)} karakter)")
+
+    def _kopyala_tum_kunye(self):
+        """Sağ tık → seçili satırın tüm künyesini panoya kopyala.
+        TC, hasta adı, reçete tarihi, sistem reçete no, rapor açıklaması,
+        reçete açıklaması — her biri ayrı satırda."""
+        s = self._aktif_satir()
+        if not s:
+            return
+        tc        = (s.get("tc")               or "").strip()
+        hasta     = (s.get("hasta")            or "").strip()
+        rec_tar   = (s.get("rec_tar")          or "").strip()
+        sistem_no = (s.get("sistem_recete_no") or "").strip()
+        rap_ack   = (s.get("rap_ack")          or "").strip().replace(" | ", " / ")
+        rec_ack   = (s.get("rec_ack")          or "").strip().replace(" | ", " / ")
+        satirlar = [
+            f"TC: {tc}",
+            f"Hasta: {hasta}",
+            f"Reçete Tarihi: {rec_tar}",
+            f"Sistem Reçete No: {sistem_no}",
+            f"Rapor Açıklaması: {rap_ack}",
+            f"Reçete Açıklaması: {rec_ack}",
+        ]
+        kunye = "\n".join(satirlar)
+        self._panoya_yaz(kunye)
+        logger.info(f"Tüm künye panoya kopyalandı (TC: {tc})")
+        self._durum_yaz(
+            f"🪪 Künye panoya kopyalandı ({len(kunye)} karakter, 6 satır)")
 
     def _medulada_ac(self):
         """Seçili reçeteyi Medula'da aç:
@@ -3313,6 +3670,528 @@ class AylikReceteSorguGUI:
         txt.tag_configure("lbl", font=("Segoe UI", 9, "bold"), foreground="#1976D2")
         txt.config(state="disabled")
 
+    # ───────────────────────── Reçete / Rapor detay pencereleri (Botanik EOS canlı) ─────────────────────────
+    def _recete_detay_goster(self):
+        """Aktif satırın reçetesinin detayını Botanik EOS'tan çekip yeni pencerede göster."""
+        s = self._aktif_satir()
+        if not s:
+            return
+        rx_id = s.get("rx_id")
+        rec_no = (s.get("rec_no") or "").strip()
+        if not rx_id and not rec_no:
+            messagebox.showwarning("Uyarı", "Bu satırda reçete kimliği yok.", parent=self.root)
+            return
+        if not self.db:
+            messagebox.showerror("Hata", "Botanik EOS bağlantısı yok.", parent=self.root)
+            return
+        try:
+            data = self._recete_detay_verileri_cek(rx_id=rx_id, rec_no=rec_no)
+        except Exception as e:
+            logger.exception("Reçete detay sorgu hatası")
+            messagebox.showerror("Sorgu Hatası", f"Reçete detayı çekilemedi:\n{e}",
+                                 parent=self.root)
+            return
+        if not data:
+            messagebox.showinfo(
+                "Bulunamadı",
+                f"Reçete Botanik EOS'ta bulunamadı.\n(rec_no={rec_no} rx_id={rx_id})",
+                parent=self.root)
+            return
+        self._recete_detay_pencere_olustur(rec_no, data)
+
+    def _rapor_detay_goster(self):
+        """Aktif satırın rapor_ana_id'sine ait raporu Botanik EOS'tan çekip göster."""
+        s = self._aktif_satir()
+        if not s:
+            return
+        rapor_ana_id = s.get("rapor_ana_id") or 0
+        if not rapor_ana_id:
+            messagebox.showwarning(
+                "Uyarı",
+                "Bu satıra bağlı rapor yok (rapor_ana_id=0).\n"
+                "Reçete raporsuz olabilir veya rapor eşleşmesi yapılamamış.",
+                parent=self.root)
+            return
+        if not self.db:
+            messagebox.showerror("Hata", "Botanik EOS bağlantısı yok.", parent=self.root)
+            return
+        try:
+            data = self._rapor_detay_verileri_cek(rapor_ana_id, s.get("musteri_id"))
+        except Exception as e:
+            logger.exception("Rapor detay sorgu hatası")
+            messagebox.showerror("Sorgu Hatası", f"Rapor detayı çekilemedi:\n{e}",
+                                 parent=self.root)
+            return
+        if not data:
+            messagebox.showinfo("Bulunamadı",
+                                "Rapor Botanik EOS'ta bulunamadı.", parent=self.root)
+            return
+        self._rapor_detay_pencere_olustur(s, data)
+
+    def _recete_detay_verileri_cek(self, rx_id=None, rec_no=""):
+        """Tek reçete + ilaçları + teşhisleri + açıklamaları + medula yanıtlarını çek."""
+        # 1) Header + ilaçlar
+        if rx_id:
+            where_klozu = "ra.RxId = ?"
+            param_first = rx_id
+        else:
+            where_klozu = "ra.RxEReceteNo = ?"
+            param_first = rec_no
+        sql = f"""
+            SELECT
+                ra.RxId, ra.RxEReceteNo, ra.RxSgkIslemNo,
+                ra.RxIslemTarihi, ra.RxKayitTarihi, ra.RxReceteTarihi,
+                ra.RxBransId, ra.RxKurumId, ra.RxHastaneId,
+                ra.RxMusteriId, ra.RxDoktorId,
+                ra.RxReceteRenkId, ra.RxReceteAltTuruId, ra.RxProvizyonTipId,
+                m.MusteriAdiSoyadi, m.MusteriTCKN, m.MusteriDogumTarihi,
+                m.MusteriCinsiyet, m.MusteriKapsamId, m.MusteriEmeklilik,
+                d.DoktorAdiSoyadi,
+                h.HastaneAdi, h.HastaneKodu,
+                k.KurumAdi,
+                ri.RIId, ri.RIUrunId, ri.RIRaporKodId, ri.RIRaporNo,
+                ri.RIAdet, ri.RIDoz, ri.RITekrar, ri.RIAralik, ri.RIPeriyotId,
+                ri.RIToplam, ri.RIFiyatFarki,
+                u.UrunAdi, u.UrunBarkodu,
+                atc.ATCKodu, atc.ATCTurkce
+            FROM ReceteAna ra
+            LEFT JOIN Musteri m ON m.MusteriId = ra.RxMusteriId
+            LEFT JOIN Doktor d ON d.DoktorId = ra.RxDoktorId
+            LEFT JOIN Hastane h ON h.HastaneId = ra.RxHastaneId
+            LEFT JOIN Kurum k ON k.KurumId = ra.RxKurumId
+            INNER JOIN ReceteIlaclari ri ON ri.RIRxId = ra.RxId
+                                          AND (ri.RISilme IS NULL OR ri.RISilme = 0)
+            LEFT JOIN Urun u ON u.UrunId = ri.RIUrunId
+            LEFT JOIN ATC atc ON atc.ATCId = u.UrunATCId
+            WHERE {where_klozu} AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)
+            ORDER BY ri.RIId
+        """
+        rows = self.db.sorgu_calistir(sql, (param_first,))
+        if not rows:
+            return None
+        rx_id_resolved = rows[0]["RxId"]
+        doktor_id = rows[0].get("RxDoktorId")
+
+        # 2) Teşhisler (ReceteICD + ICD)
+        teshisler = []
+        try:
+            ricd = self.db.sorgu_calistir(
+                """SELECT icd.ICDKodu, icd.ICDAciklamasi
+                   FROM ReceteICD ricd
+                   LEFT JOIN ICD icd ON icd.ICDId = ricd.ReceteICDICDId
+                   WHERE ricd.ReceteICDRxId = ?
+                     AND (ricd.ReceteICDSilme IS NULL OR ricd.ReceteICDSilme = 0)""",
+                (rx_id_resolved,))
+            for r in ricd:
+                kod = (r.get("ICDKodu") or "").strip()
+                ack = (r.get("ICDAciklamasi") or "").strip()
+                if kod and ack:
+                    teshisler.append(f"{kod} — {ack}")
+                elif kod:
+                    teshisler.append(kod)
+        except Exception as e:
+            logger.debug(f"ReceteICD okunamadı: {e}")
+
+        # 3) ReceteTeshis (eski sistem)
+        try:
+            rt = self.db.sorgu_calistir(
+                """SELECT t.TeshisAciklama
+                   FROM ReceteTeshis rt
+                   LEFT JOIN Teshis t ON t.TeshisId = rt.RTTeshisId
+                   WHERE rt.RTRxId = ?""",
+                (rx_id_resolved,))
+            for r in rt:
+                ack = (r.get("TeshisAciklama") or "").strip()
+                if ack and "Seçiniz" not in ack and ack not in teshisler:
+                    teshisler.append(ack)
+        except Exception as e:
+            logger.debug(f"ReceteTeshis okunamadı: {e}")
+
+        # 4) E-Reçete açıklamaları
+        aciklamalar = []
+        try:
+            ea = self.db.sorgu_calistir(
+                """SELECT eat.EReceteAciklamaTuruAdi, ea.EReceteAciklamaAdi
+                   FROM ERecete er
+                   INNER JOIN EReceteAciklamalari era ON era.ERAEReceteId = er.EReceteId
+                   LEFT JOIN EReceteAciklama ea
+                       ON ea.EReceteAciklamaId = era.ERAEReceteAciklamaId
+                   LEFT JOIN EReceteAciklamaTuru eat
+                       ON eat.EReceteAciklamaTuruId = era.ERAEReceteAciklamaTuruId
+                   WHERE er.EReceteNo = ? AND (er.EReceteSilme IS NULL OR er.EReceteSilme = 0)""",
+                (rows[0].get("RxEReceteNo") or "",))
+            for r in ea:
+                tur = (r.get("EReceteAciklamaTuruAdi") or "").strip()
+                ad = (r.get("EReceteAciklamaAdi") or "").strip()
+                if not ad or ad in (".", ",", "-", "--"):
+                    continue
+                aciklamalar.append(f"[{tur}] {ad}" if tur and tur != "Seçiniz" else ad)
+        except Exception as e:
+            logger.debug(f"EReceteAciklamalari okunamadı: {e}")
+
+        # 5) Medula yanıt mesajları (RxUyarilari)
+        medula_yanitlari = []
+        try:
+            ru = self.db.sorgu_calistir(
+                "SELECT RUAciklama FROM RxUyarilari WHERE RxId = ?", (rx_id_resolved,))
+            for r in ru:
+                txt = (r.get("RUAciklama") or "").strip()
+                if txt:
+                    medula_yanitlari.append(txt)
+        except Exception as e:
+            logger.debug(f"RxUyarilari okunamadı: {e}")
+
+        # 6) Doktor branşı
+        doktor_brans = ""
+        if doktor_id:
+            try:
+                db_rows = self.db.sorgu_calistir(
+                    """SELECT b.BransAdi FROM DoktorBrans db
+                       INNER JOIN Brans b ON b.BransId = db.DoktorBransBransId
+                       WHERE db.DoktorBransDoktorId = ?
+                         AND (b.BransSilme IS NULL OR b.BransSilme = 0)""",
+                    (doktor_id,))
+                doktor_brans = ", ".join(
+                    (r.get("BransAdi") or "").strip() for r in db_rows
+                    if (r.get("BransAdi") or "").strip())
+            except Exception as e:
+                logger.debug(f"DoktorBrans okunamadı: {e}")
+
+        return {
+            "header": rows[0],
+            "ilaclar": rows,
+            "teshisler": teshisler,
+            "aciklamalar": aciklamalar,
+            "medula_yanitlari": medula_yanitlari,
+            "doktor_brans": doktor_brans,
+        }
+
+    def _rapor_detay_verileri_cek(self, rapor_ana_id, musteri_id=None):
+        """rapor_ana_id'ye ait raporu + ICD'leri + ek bilgileri + etkin maddeleri çek."""
+        ra_rows = self.db.sorgu_calistir(
+            """SELECT TOP 1 ra.*, rt.RaporTuruAdi, h.HastaneAdi, h.HastaneKodu
+               FROM RaporAna ra
+               LEFT JOIN RaporTuru rt ON rt.RaporTuruId = ra.RaporAnaRaporTuruId
+               LEFT JOIN Hastane h ON h.HastaneId = ra.RaporAnaHastaneId
+               WHERE ra.RaporAnaId = ?
+                 AND (ra.RaporAnaSilme IS NULL OR ra.RaporAnaSilme = 0)""",
+            (rapor_ana_id,))
+        if not ra_rows:
+            return None
+        rapor = ra_rows[0]
+        if not musteri_id:
+            musteri_id = rapor.get("RaporAnaMusteriId")
+
+        # Hasta bilgisi
+        hasta_bilgi = {}
+        if musteri_id:
+            hb = self.db.sorgu_calistir(
+                "SELECT MusteriAdiSoyadi, MusteriTCKN, MusteriDogumTarihi FROM Musteri WHERE MusteriId = ?",
+                (musteri_id,))
+            if hb:
+                hasta_bilgi = hb[0]
+
+        # ICD listesi (rapor kodu × ICD1..5)
+        icdler = []
+        try:
+            rows_icd = self.db.sorgu_calistir(
+                """SELECT icd1.ICDKodu AS K1, icd1.ICDAciklamasi AS A1,
+                          icd2.ICDKodu AS K2, icd2.ICDAciklamasi AS A2,
+                          icd3.ICDKodu AS K3, icd3.ICDAciklamasi AS A3,
+                          icd4.ICDKodu AS K4, icd4.ICDAciklamasi AS A4,
+                          icd5.ICDKodu AS K5, icd5.ICDAciklamasi AS A5,
+                          rk.RaporKodu, rk.RaporKodAciklama,
+                          rrki.RRKIBaslamaTarihi, rrki.RRKIBitisTarihi
+                   FROM RaporRaporKodlariICD rrki
+                   LEFT JOIN ICD icd1 ON icd1.ICDId = rrki.RRKIICDId
+                   LEFT JOIN ICD icd2 ON icd2.ICDId = rrki.RRKIICDId2
+                   LEFT JOIN ICD icd3 ON icd3.ICDId = rrki.RRKIICDId3
+                   LEFT JOIN ICD icd4 ON icd4.ICDId = rrki.RRKIICDId4
+                   LEFT JOIN ICD icd5 ON icd5.ICDId = rrki.RRKIICDId5
+                   LEFT JOIN RaporKodlari rk ON rk.RaporKodId = rrki.RRKIRaporKodId
+                   WHERE rrki.RRKIRaporAnaId = ?
+                     AND (rrki.RRKISilme IS NULL OR rrki.RRKISilme = 0)""",
+                (rapor_ana_id,))
+            for r in rows_icd:
+                grup = []
+                for n in (1, 2, 3, 4, 5):
+                    kod = (r.get(f"K{n}") or "").strip()
+                    ack = (r.get(f"A{n}") or "").strip()
+                    if kod and ack:
+                        grup.append(f"{kod} — {ack}")
+                    elif kod:
+                        grup.append(kod)
+                icdler.append({
+                    "rapor_kodu": (r.get("RaporKodu") or "").strip(),
+                    "rapor_kodu_aciklama": (r.get("RaporKodAciklama") or "").strip(),
+                    "icd_listesi": grup,
+                    "baslama": r.get("RRKIBaslamaTarihi"),
+                    "bitis": r.get("RRKIBitisTarihi"),
+                })
+        except Exception as e:
+            logger.debug(f"RaporRaporKodlariICD okunamadı: {e}")
+
+        # Ek bilgiler
+        ek_bilgiler = []
+        try:
+            rows_eb = self.db.sorgu_calistir(
+                """SELECT REBTuru, REBDeger, REBAciklama
+                   FROM RaporEkBilgi WHERE REBRaporAnaId = ?""",
+                (rapor_ana_id,))
+            for r in rows_eb:
+                parts = []
+                if r.get("REBTuru"):
+                    parts.append(str(r["REBTuru"]))
+                if r.get("REBDeger"):
+                    parts.append(str(r["REBDeger"]))
+                if r.get("REBAciklama"):
+                    parts.append(str(r["REBAciklama"]))
+                if parts:
+                    ek_bilgiler.append(": ".join(parts))
+        except Exception as e:
+            logger.debug(f"RaporEkBilgi okunamadı: {e}")
+
+        # Etkin maddeler (rapor tedavisi)
+        etkin_maddeler = []
+        try:
+            rows_em = self.db.sorgu_calistir(
+                """SELECT em.EtkinMaddeAdi, em.EtkinMaddeSGKKodu,
+                          re.EtkinMaddeDoz, re.EtkinMaddeAdetMiktar,
+                          re.EtkinMaddeTekrar, re.EtkinMaddeAralik
+                   FROM RaporEtkinMadde re
+                   LEFT JOIN EtkinMadde em ON em.EtkinMaddeId = re.EtkinMaddeId
+                   WHERE re.EtkinMaddeRaporAnaId = ?
+                     AND (re.EtkinMaddeSilme IS NULL OR re.EtkinMaddeSilme = 0)""",
+                (rapor_ana_id,))
+            for r in rows_em:
+                etkin_maddeler.append({
+                    "ad": (r.get("EtkinMaddeAdi") or "").strip(),
+                    "sgk": (r.get("EtkinMaddeSGKKodu") or "").strip(),
+                    "doz": r.get("EtkinMaddeDoz"),
+                    "adet": r.get("EtkinMaddeAdetMiktar"),
+                    "tekrar": r.get("EtkinMaddeTekrar"),
+                    "aralik": r.get("EtkinMaddeAralik"),
+                })
+        except Exception as e:
+            logger.debug(f"RaporEtkinMadde okunamadı: {e}")
+
+        return {
+            "rapor": rapor,
+            "hasta": hasta_bilgi,
+            "icdler": icdler,
+            "ek_bilgiler": ek_bilgiler,
+            "etkin_maddeler": etkin_maddeler,
+        }
+
+    def _recete_detay_pencere_olustur(self, rec_no, data):
+        h = data["header"]
+        win = tk.Toplevel(self.root)
+        win.title(f"Reçete Detayı — {rec_no or h.get('RxEReceteNo') or h.get('RxId')}")
+        win.geometry("900x650")
+        win.configure(bg="#1E3A5F")
+        win.transient(self.root)
+
+        text_frame = tk.Frame(win, bg="#1E3A5F")
+        text_frame.pack(fill="both", expand=True, padx=8, pady=8)
+        txt = tk.Text(text_frame, wrap="word", bg="#FFFFFF", fg="#000000",
+                       font=("Segoe UI", 10), padx=10, pady=8)
+        sb = ttk.Scrollbar(text_frame, orient="vertical", command=txt.yview)
+        txt.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        txt.pack(side="left", fill="both", expand=True)
+
+        txt.tag_configure("h1", font=("Segoe UI", 13, "bold"), foreground="#1E3A5F",
+                          spacing3=6)
+        txt.tag_configure("h2", font=("Segoe UI", 11, "bold"), foreground="#0D47A1",
+                          spacing1=8, spacing3=4)
+        txt.tag_configure("k", font=("Segoe UI", 10, "bold"), foreground="#37474F")
+        txt.tag_configure("warn", foreground="#C62828")
+
+        def yaz(s, tag=None):
+            txt.insert("end", s, tag) if tag else txt.insert("end", s)
+        def alan(et, dg):
+            if dg is None or str(dg).strip() == "":
+                return
+            yaz(f"  {et}: ", "k"); yaz(f"{dg}\n")
+
+        yaz(f"Reçete Detayı — {rec_no or h.get('RxEReceteNo') or '?'}\n", "h1")
+
+        yaz("Reçete Bilgileri\n", "h2")
+        alan("Reçete No (e-Reçete)", h.get("RxEReceteNo"))
+        alan("SGK İşlem No", h.get("RxSgkIslemNo"))
+        alan("Reçete Tarihi", h.get("RxReceteTarihi"))
+        alan("Kayıt Tarihi", h.get("RxKayitTarihi"))
+        alan("İşlem Tarihi", h.get("RxIslemTarihi"))
+        alan("RxId (sistem)", h.get("RxId"))
+
+        yaz("\nHasta\n", "h2")
+        alan("Ad Soyad", h.get("MusteriAdiSoyadi"))
+        alan("TCKN", h.get("MusteriTCKN"))
+        alan("Doğum Tarihi", h.get("MusteriDogumTarihi"))
+        alan("Cinsiyet", h.get("MusteriCinsiyet"))
+        alan("Emeklilik", h.get("MusteriEmeklilik"))
+
+        yaz("\nDoktor\n", "h2")
+        alan("Ad Soyad", h.get("DoktorAdiSoyadi"))
+        alan("Branş", data.get("doktor_brans") or "")
+
+        yaz("\nTesis / Kurum\n", "h2")
+        alan("Hastane", h.get("HastaneAdi"))
+        alan("Hastane Kodu", h.get("HastaneKodu"))
+        alan("Kurum", h.get("KurumAdi"))
+
+        yaz("\nTeşhisler\n", "h2")
+        if data["teshisler"]:
+            for t in data["teshisler"]:
+                yaz(f"  • {t}\n")
+        else:
+            yaz("  (Teşhis kaydı yok)\n")
+
+        yaz("\nReçete Açıklamaları\n", "h2")
+        if data["aciklamalar"]:
+            for a in data["aciklamalar"]:
+                yaz(f"  • {a}\n")
+        else:
+            yaz("  (Açıklama yok)\n")
+
+        if data["medula_yanitlari"]:
+            yaz("\nMedula Yanıt Mesajları\n", "h2")
+            for y in data["medula_yanitlari"]:
+                yaz(f"  • {y}\n", "warn")
+
+        yaz("\nİlaçlar\n", "h2")
+        for i, ilac in enumerate(data["ilaclar"], 1):
+            yaz(f"\n  {i}. {ilac.get('UrunAdi') or '(ürün adı yok)'}\n", "k")
+            atc_kodu = (ilac.get("ATCKodu") or "").strip()
+            atc_ad = (ilac.get("ATCTurkce") or "").strip()
+            if atc_kodu or atc_ad:
+                yaz(f"     ATC: {atc_kodu} {atc_ad}\n")
+            yaz(f"     Adet: {ilac.get('RIAdet') or '-'}  |  "
+                f"Doz: {ilac.get('RIDoz') or '-'}  |  "
+                f"Tekrar: {ilac.get('RITekrar') or '-'}  |  "
+                f"Aralık: {ilac.get('RIAralik') or '-'}\n")
+            rip_no = (str(ilac.get("RIRaporNo") or "")).strip()
+            rip_kod_id = ilac.get("RIRaporKodId") or 0
+            if rip_no or rip_kod_id:
+                yaz(f"     Rapor: kod_id={rip_kod_id}, takip_no={rip_no or '-'}\n")
+            barkod = (ilac.get("UrunBarkodu") or "").strip()
+            if barkod:
+                yaz(f"     Barkod: {barkod}\n")
+
+        txt.configure(state="disabled")
+
+        alt = tk.Frame(win, bg="#1E3A5F")
+        alt.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Button(alt, text="Kapat", font=("Segoe UI", 10, "bold"),
+                  fg="white", bg="#455A64", activebackground="#37474F",
+                  bd=0, padx=14, pady=4, command=win.destroy).pack(side="right")
+        win.bind("<Escape>", lambda e: win.destroy())
+
+    def _rapor_detay_pencere_olustur(self, satir, data):
+        r = data["rapor"]
+        h = data["hasta"]
+        win = tk.Toplevel(self.root)
+        win.title(f"Rapor Detayı — {r.get('RaporAnaRaporNo') or '?'}")
+        win.geometry("900x650")
+        win.configure(bg="#1E3A5F")
+        win.transient(self.root)
+
+        text_frame = tk.Frame(win, bg="#1E3A5F")
+        text_frame.pack(fill="both", expand=True, padx=8, pady=8)
+        txt = tk.Text(text_frame, wrap="word", bg="#FFFFFF", fg="#000000",
+                       font=("Segoe UI", 10), padx=10, pady=8)
+        sb = ttk.Scrollbar(text_frame, orient="vertical", command=txt.yview)
+        txt.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        txt.pack(side="left", fill="both", expand=True)
+
+        txt.tag_configure("h1", font=("Segoe UI", 13, "bold"), foreground="#1E3A5F",
+                          spacing3=6)
+        txt.tag_configure("h2", font=("Segoe UI", 11, "bold"), foreground="#0D47A1",
+                          spacing1=8, spacing3=4)
+        txt.tag_configure("k", font=("Segoe UI", 10, "bold"), foreground="#37474F")
+        txt.tag_configure("muted", foreground="#6B7280")
+
+        def yaz(s, tag=None):
+            txt.insert("end", s, tag) if tag else txt.insert("end", s)
+        def alan(et, dg):
+            if dg is None or str(dg).strip() == "":
+                return
+            yaz(f"  {et}: ", "k"); yaz(f"{dg}\n")
+
+        yaz(f"Rapor Detayı — {r.get('RaporAnaRaporNo') or '?'}\n", "h1")
+        yaz(f"  (Reçete: {satir.get('rec_no') or '-'} | "
+            f"Satır rapor kodu: {satir.get('rap_kod') or '-'} | "
+            f"Eşleşme kaynağı: {satir.get('rapor_secim_kaynagi') or '-'})\n", "muted")
+
+        yaz("\nRapor Bilgileri\n", "h2")
+        alan("Rapor No", r.get("RaporAnaRaporNo"))
+        alan("Takip No", r.get("RaporAnaRaporTakipNo"))
+        alan("Rapor Tarihi", r.get("RaporAnaRaporTarihi"))
+        alan("Tür", r.get("RaporTuruAdi"))
+        alan("Açıklamalar", r.get("RaporAnaAciklamalar"))
+
+        yaz("\nHasta\n", "h2")
+        alan("Ad Soyad", h.get("MusteriAdiSoyadi"))
+        alan("TCKN", h.get("MusteriTCKN"))
+        alan("Doğum Tarihi", h.get("MusteriDogumTarihi"))
+
+        yaz("\nTesis\n", "h2")
+        alan("Hastane", r.get("HastaneAdi"))
+        alan("Hastane Kodu", r.get("HastaneKodu"))
+
+        yaz("\nRapor Kodları + ICD Teşhisleri\n", "h2")
+        if data["icdler"]:
+            for grp in data["icdler"]:
+                kod = grp.get("rapor_kodu") or "-"
+                kod_ack = grp.get("rapor_kodu_aciklama") or ""
+                bas = grp.get("baslama") or ""
+                bit = grp.get("bitis") or ""
+                yaz(f"  • {kod} {kod_ack}\n", "k")
+                if bas or bit:
+                    yaz(f"      ({bas} → {bit})\n", "muted")
+                for ic in grp.get("icd_listesi", []):
+                    yaz(f"      ICD: {ic}\n")
+        else:
+            yaz("  (Rapor kodu/ICD kaydı yok)\n")
+
+        yaz("\nRapor Etkin Maddeleri (tedavi)\n", "h2")
+        if data["etkin_maddeler"]:
+            for em in data["etkin_maddeler"]:
+                ad = em.get("ad") or "-"
+                sgk = em.get("sgk") or ""
+                yaz(f"  • {ad}", "k")
+                if sgk:
+                    yaz(f"  [{sgk}]")
+                doz_ozet = []
+                if em.get("doz") is not None:
+                    doz_ozet.append(f"Doz:{em['doz']}")
+                if em.get("adet") is not None:
+                    doz_ozet.append(f"Adet:{em['adet']}")
+                if em.get("tekrar") is not None:
+                    doz_ozet.append(f"Tekrar:{em['tekrar']}")
+                if em.get("aralik") is not None:
+                    doz_ozet.append(f"Aralık:{em['aralik']}")
+                if doz_ozet:
+                    yaz(f"  ({', '.join(doz_ozet)})")
+                yaz("\n")
+        else:
+            yaz("  (Etkin madde tanımı yok)\n")
+
+        if data["ek_bilgiler"]:
+            yaz("\nEk Bilgiler\n", "h2")
+            for eb in data["ek_bilgiler"]:
+                yaz(f"  • {eb}\n")
+
+        txt.configure(state="disabled")
+
+        alt = tk.Frame(win, bg="#1E3A5F")
+        alt.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Button(alt, text="Kapat", font=("Segoe UI", 10, "bold"),
+                  fg="white", bg="#455A64", activebackground="#37474F",
+                  bd=0, padx=14, pady=4, command=win.destroy).pack(side="right")
+        win.bind("<Escape>", lambda e: win.destroy())
+
     def _sutuna_gore_sirala(self, kod: str):
         """Excel benzeri sütun başlığına tıklayarak sırala (asc/desc/reset toggle)."""
         # 3-aşamalı toggle: önce asc, sonra desc, sonra orijinal
@@ -3404,15 +4283,266 @@ class AylikReceteSorguGUI:
         except Exception:
             pass
 
+    # ------------------------------------------------------- SÜTUN ŞABLONLARI
+    def _sablonlari_yukle(self) -> dict:
+        """Şablon dosyasını oku. Format:
+        {"sablonlar": {ad: {"gosterim": {kod: bool}, "genislik": {kod: int}}},
+         "son_aktif": ad|null}
+        """
+        try:
+            if os.path.exists(self.SUTUN_SABLON_DOSYASI):
+                with open(self.SUTUN_SABLON_DOSYASI, "r", encoding="utf-8") as f:
+                    data = json.load(f) or {}
+                if "sablonlar" not in data:
+                    data["sablonlar"] = {}
+                return data
+        except Exception as e:
+            logger.warning("Şablon dosyası okunamadı: %s", e)
+        return {"sablonlar": {}, "son_aktif": None}
+
+    def _sablonlari_kaydet_dosyaya(self, data: dict) -> bool:
+        try:
+            with open(self.SUTUN_SABLON_DOSYASI, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            logger.error("Şablon kaydedilemedi: %s", e)
+            return False
+
+    def _sablon_olarak_kaydet(self, ad: str, gecici_gosterim: dict = None) -> bool:
+        """Anki sütun gösterim + tablo genişliklerini 'ad' adıyla kaydet.
+        gecici_gosterim verilirse popup'taki henüz uygulanmamış checkbox
+        durumu kullanılır; yoksa self.sutun_gosterim okunur."""
+        ad = (ad or "").strip()
+        if not ad:
+            return False
+        gosterim = {}
+        if gecici_gosterim is not None:
+            for kod in SUTUN_KOD:
+                v = gecici_gosterim.get(kod)
+                gosterim[kod] = bool(v.get()) if hasattr(v, "get") else bool(v)
+        else:
+            for kod in SUTUN_KOD:
+                gosterim[kod] = bool(self.sutun_gosterim.get(kod, True))
+
+        genislik = {}
+        try:
+            for kod in SUTUN_KOD:
+                try:
+                    genislik[kod] = int(self.tv.column(kod, "width"))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        data = self._sablonlari_yukle()
+        data.setdefault("sablonlar", {})[ad] = {
+            "gosterim": gosterim,
+            "genislik": genislik,
+        }
+        data["son_aktif"] = ad
+        return self._sablonlari_kaydet_dosyaya(data)
+
+    def _sablon_uygula(self, ad: str) -> bool:
+        """Verilen şablonu sütun görünümüne ve tablo genişliklerine uygula."""
+        ad = (ad or "").strip()
+        if not ad:
+            return False
+        data = self._sablonlari_yukle()
+        sablon = data.get("sablonlar", {}).get(ad)
+        if not sablon:
+            return False
+
+        gosterim = sablon.get("gosterim") or {}
+        for kod in SUTUN_KOD:
+            if kod in gosterim:
+                self.sutun_gosterim[kod] = bool(gosterim[kod])
+        self._sutun_ayarlarini_kaydet()
+
+        genislik = sablon.get("genislik") or {}
+        try:
+            for kod, w in genislik.items():
+                if kod in SUTUN_KOD:
+                    try:
+                        self.tv.column(kod, width=int(w))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        try:
+            self._sutun_gorunumunu_uygula()
+        except Exception:
+            pass
+        try:
+            self._filtre_slotlarini_hizala()
+        except Exception:
+            pass
+
+        data["son_aktif"] = ad
+        self._sablonlari_kaydet_dosyaya(data)
+        return True
+
+    def _sablon_sil(self, ad: str) -> bool:
+        ad = (ad or "").strip()
+        if not ad:
+            return False
+        data = self._sablonlari_yukle()
+        if ad in data.get("sablonlar", {}):
+            del data["sablonlar"][ad]
+            if data.get("son_aktif") == ad:
+                data["son_aktif"] = None
+            return self._sablonlari_kaydet_dosyaya(data)
+        return False
+
+    def _aktif_sablonu_uygula(self):
+        """Açılışta son aktif şablonu (varsa) uygula. Tablo zaten kurulmuş
+        olmalı — _arayuz_olustur sonrası çağrılır."""
+        try:
+            data = self._sablonlari_yukle()
+            ad = data.get("son_aktif")
+            if ad and ad in data.get("sablonlar", {}):
+                self._sablon_uygula(ad)
+        except Exception as e:
+            logger.debug("Aktif şablon yükleme: %s", e)
+
     def _sutun_ayar_penceresi(self):
         """Sütun göster/gizle popup penceresi."""
         win = tk.Toplevel(self.root)
         win.title("Sütun Ayarları")
-        win.geometry("420x680")
+        win.geometry("460x780")
         win.transient(self.root)
 
+        # ─────────── ŞABLONLAR BÖLÜMÜ (üstte) ───────────
+        sablon_frame = tk.LabelFrame(
+            win, text=" 💾 Şablonlar ",
+            font=("Segoe UI", 9, "bold"),
+            fg="#0D47A1", bd=1, relief="groove"
+        )
+        sablon_frame.pack(fill="x", padx=8, pady=(8, 4))
+
+        tk.Label(
+            sablon_frame,
+            text="Mevcut sutun gösterimi + tablo genişliklerini ad ile kaydet, "
+                 "sonra istediğin zaman tek tıkla uygula.",
+            font=("Segoe UI", 8), fg="#455A64", wraplength=420, justify="left"
+        ).pack(fill="x", padx=6, pady=(4, 2))
+
+        sablon_secim_frame = tk.Frame(sablon_frame)
+        sablon_secim_frame.pack(fill="x", padx=6, pady=(2, 2))
+
+        tk.Label(sablon_secim_frame, text="Şablon:",
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
+
+        sablon_data = self._sablonlari_yukle()
+        sablon_adlari = sorted(sablon_data.get("sablonlar", {}).keys())
+        son_aktif = sablon_data.get("son_aktif") or ""
+
+        sablon_var = tk.StringVar(value=son_aktif if son_aktif in sablon_adlari else "")
+        sablon_cb = ttk.Combobox(
+            sablon_secim_frame, textvariable=sablon_var,
+            values=sablon_adlari, state="readonly", width=28
+        )
+        sablon_cb.pack(side="left", fill="x", expand=True, padx=2)
+
+        def _sablonlari_yenile():
+            data = self._sablonlari_yukle()
+            adlar = sorted(data.get("sablonlar", {}).keys())
+            sablon_cb["values"] = adlar
+            if sablon_var.get() not in adlar:
+                sablon_var.set(data.get("son_aktif") or "")
+
+        sablon_btn_frame = tk.Frame(sablon_frame)
+        sablon_btn_frame.pack(fill="x", padx=6, pady=(2, 6))
+
+        def _sablon_kaydet_tikla():
+            from tkinter import simpledialog, messagebox
+            mevcut = sablon_var.get().strip()
+            ad = simpledialog.askstring(
+                "Şablon Kaydet",
+                "Şablon adı:\n(Aynı adla mevcutsa üzerine yazılır)",
+                initialvalue=mevcut, parent=win
+            )
+            if not ad:
+                return
+            ad = ad.strip()
+            if not ad:
+                return
+            mevcut_adlar = self._sablonlari_yukle().get("sablonlar", {})
+            if ad in mevcut_adlar:
+                if not messagebox.askyesno(
+                    "Üzerine Yaz",
+                    f"'{ad}' adlı şablon zaten var.\nÜzerine yazılsın mı?",
+                    parent=win):
+                    return
+            ok = self._sablon_olarak_kaydet(ad, gecici_gosterim=gecici)
+            if ok:
+                _sablonlari_yenile()
+                sablon_var.set(ad)
+                messagebox.showinfo(
+                    "Şablon Kaydedildi",
+                    f"'{ad}' şablonu kaydedildi.\n"
+                    f"({sum(1 for v in gecici.values() if v.get())} sütun görünür, "
+                    f"genişlikler tablodan alındı.)",
+                    parent=win)
+            else:
+                messagebox.showerror("Hata", "Şablon kaydedilemedi.", parent=win)
+
+        def _sablon_uygula_tikla():
+            from tkinter import messagebox
+            ad = sablon_var.get().strip()
+            if not ad:
+                messagebox.showwarning("Şablon Seçilmedi",
+                                        "Önce listeden bir şablon seç.",
+                                        parent=win)
+                return
+            ok = self._sablon_uygula(ad)
+            if ok:
+                # Popup'taki checkbox'ları da senkronla
+                for kod in SUTUN_KOD:
+                    if kod in gecici:
+                        gecici[kod].set(self.sutun_gosterim.get(kod, True))
+                messagebox.showinfo("Şablon Uygulandı",
+                                     f"'{ad}' şablonu uygulandı.",
+                                     parent=win)
+            else:
+                messagebox.showerror("Hata",
+                                      f"'{ad}' şablonu uygulanamadı.",
+                                      parent=win)
+
+        def _sablon_sil_tikla():
+            from tkinter import messagebox
+            ad = sablon_var.get().strip()
+            if not ad:
+                return
+            if not messagebox.askyesno(
+                "Şablonu Sil",
+                f"'{ad}' şablonunu silmek istediğine emin misin?",
+                parent=win):
+                return
+            if self._sablon_sil(ad):
+                _sablonlari_yenile()
+                sablon_var.set("")
+
+        tk.Button(sablon_btn_frame, text="💾 Şablon Olarak Kaydet",
+                  bg="#2E7D32", fg="white", activebackground="#1B5E20",
+                  bd=0, padx=8, pady=3, font=("Segoe UI", 9, "bold"),
+                  command=_sablon_kaydet_tikla
+                  ).pack(side="left", padx=2)
+        tk.Button(sablon_btn_frame, text="✓ Şablonu Uygula",
+                  bg="#1565C0", fg="white", activebackground="#0D47A1",
+                  bd=0, padx=8, pady=3, font=("Segoe UI", 9, "bold"),
+                  command=_sablon_uygula_tikla
+                  ).pack(side="left", padx=2)
+        tk.Button(sablon_btn_frame, text="🗑 Sil",
+                  bg="#C62828", fg="white", activebackground="#B71C1C",
+                  bd=0, padx=8, pady=3, font=("Segoe UI", 9, "bold"),
+                  command=_sablon_sil_tikla
+                  ).pack(side="left", padx=2)
+
+        # ─────────── SÜTUN GÖSTER/GİZLE BÖLÜMÜ ───────────
         tk.Label(win, text="Görünmesini istediğin sütunları işaretle:",
-                 font=("Segoe UI", 10, "bold")).pack(pady=8, padx=8, anchor="w")
+                 font=("Segoe UI", 10, "bold")).pack(pady=(6, 4), padx=8, anchor="w")
 
         # Scroll
         cont = tk.Frame(win)
@@ -3922,22 +5052,56 @@ class AylikReceteSorguGUI:
         (SUT EK-4/F Madde 51 kapsamı).
 
         ATC önceliği:
-          - C09C  → ARB tek başına (mono)
-          - C09D  → ARB + diüretik / + CCB / + ACE / 3'lü kombinasyonları
-          - C02AC → Santral etkili (Rilmeniden/Moksonidin) — SUT EK-4/F M.51
-                    bu ilaçları ARB listesi ile birlikte sayar.
+          - C09C   → ARB tek başına (mono)
+          - C09DA  → ARB + tiazid (HCT) — SGK 17.10.2016 istisnası kapsamı
+          - C09DB  → ARB + CCB
+          - C09DX  → ARB + diğer / 3'lü (genelde CCB+HCT)
+          - C09D*  → diğer ARB kombinasyonları
+          - C02AC  → Santral etkili (Rilmeniden/Moksonidin)
 
         ATC yoksa: etken madde + ticari isim fallback.
 
-        Dönüş: "ARB_MONO" / "ARB_KOMBI" / "NONE"
+        Dönüş: "ARB_MONO" / "ARB_KOMBI_HCT" / "ARB_KOMBI" / "NONE"
         """
         a = (atc or "").upper().strip()
-        if a.startswith("C09DA") or a.startswith("C09DB") or \
-                a.startswith("C09DX"):
+        ad = (ilac_adi or "").upper()
+        et = (etkin or "").upper()
+        arama = ad + " " + et
+
+        # HCT içeriği tespiti (etken madde + ilaç adı)
+        hct_var = (
+            'HIDROKLOROTIAZID' in arama
+            or 'HİDROKLOROTİAZİD' in arama
+            or 'HIDROKLORTIAZID' in arama
+            or 'HYDROCHLOROTHIAZID' in arama
+            or 'HCTZ' in arama
+            or ' HCT' in (' ' + arama + ' ')
+            or '/HCT' in arama
+        )
+        # CCB içeriği — HCT ile birlikte ise 3'lü demektir, istisna geçersiz
+        ccb_var = any(k in arama for k in (
+            'AMLODIPIN', 'AMLODIPINE', 'LERKANIDIPIN', 'LERKANIDIPINE',
+            'FELODIPIN', 'FELODIPINE', 'NIFEDIPIN', 'NIFEDIPINE',
+            'NITRENDIPIN', 'BARNIDIPIN', 'NIKARDIPIN', 'ISRADIPIN',
+        ))
+
+        # ATC bazlı sınıflandırma
+        if a.startswith("C09DA"):
+            # ARB + tiazid (sadece HCT) — SGK 17.10.2016 istisnası
+            return "ARB_KOMBI_HCT"
+        if a.startswith("C09DB"):
+            # ARB + CCB — istisna yok
+            return "ARB_KOMBI"
+        if a.startswith("C09DX"):
+            # 3'lü / diğer kombi — HCT olsa bile CCB içeriyorsa istisna yok
+            if hct_var and not ccb_var:
+                return "ARB_KOMBI_HCT"
             return "ARB_KOMBI"
         if a.startswith("C09CA"):
             return "ARB_MONO"
         if a.startswith("C09D"):  # Diğer C09D alt grupları
+            if hct_var and not ccb_var:
+                return "ARB_KOMBI_HCT"
             return "ARB_KOMBI"
         if a.startswith("C09C"):
             return "ARB_MONO"
@@ -3946,10 +5110,7 @@ class AylikReceteSorguGUI:
             # SUT'ta mono kabul ediliyor, kombi formu nadirdir.
             return "ARB_MONO"
 
-        ad = (ilac_adi or "").upper()
-        et = (etkin or "").upper()
-        arama = ad + " " + et
-
+        # ATC yok — etken madde + ticari isim fallback
         arb_var = (
             any(e in et for e in AylikReceteSorguGUI._ARB_MONO_ETKEN)
             or any(e in ad for e in AylikReceteSorguGUI._ARB_MONO_ETKEN)
@@ -3961,7 +5122,12 @@ class AylikReceteSorguGUI:
         # Kombi tespiti: etkin madde içinde "/" varsa veya ticari isim kombi
         is_kombi = ('/' in et) or any(
             t in ad for t in AylikReceteSorguGUI._ARB_KOMBI_TICARI)
-        return "ARB_KOMBI" if is_kombi else "ARB_MONO"
+        if not is_kombi:
+            return "ARB_MONO"
+        # HCT-only kombi mi? (CCB içermiyor → istisna)
+        if hct_var and not ccb_var:
+            return "ARB_KOMBI_HCT"
+        return "ARB_KOMBI"
 
     @staticmethod
     def _ilac_sonuc_olustur_arb(s: dict) -> dict:
@@ -5399,7 +6565,8 @@ class AylikReceteSorguGUI:
             "hasta_yasi": s.get("yas") or "",
         }
 
-    def _hasta_tum_icd_kodlarini_topla(self, musteri_idler: List[int]) -> Dict[int, List[str]]:
+    def _hasta_tum_icd_kodlarini_topla(self, musteri_idler: List[int],
+                                         kontrol_tarihi=None) -> Dict[int, List[str]]:
         """Verilen hastaların TÜM aktif raporlarındaki ICD kodlarını + rapor
         kodlarını + ICD açıklamalarını toplu olarak çek.
 
@@ -5408,6 +6575,13 @@ class AylikReceteSorguGUI:
         Bu sayede statin denetimi sırasında, ilgili hastanın bir BAŞKA
         raporunda DM/KAH varsa o tanı statin satırına da yansıtılır → risk
         faktörü algoritmik olarak doğru değerlendirilir.
+
+        kontrol_tarihi: rapor süresinin aktif sayılacağı referans tarih
+        (None ise SQL Server GETDATE() kullanılır). Süresi dolmuş ama
+        silinmemiş "hayalet" raporlar bu filtreyle elenir — aksi halde
+        eski I50 (KY) / N18 (KBH) / E11 (DM) ICD'leri yıllar sonra hâlâ
+        aktifmiş gibi sayılıyordu (HAMDULLAH AKSU 3JEQJ4C, ZELİHA
+        ÇELİKTENYILDIZ 3JBO64A — 2026-05-07).
         """
         if not musteri_idler or not self.db:
             return {}
@@ -5418,6 +6592,19 @@ class AylikReceteSorguGUI:
                 if not chunk:
                     continue
                 ph = ",".join("?" * len(chunk))
+                # Tarih filtresi: kontrol_tarihi verilmişse ?, yoksa GETDATE().
+                if kontrol_tarihi is not None:
+                    tarih_filtre = ("AND (rrki.RRKIBaslamaTarihi IS NULL "
+                                    "     OR rrki.RRKIBaslamaTarihi <= ?) "
+                                    "AND (rrki.RRKIBitisTarihi IS NULL "
+                                    "     OR rrki.RRKIBitisTarihi >= ?) ")
+                    params = tuple(chunk) + (kontrol_tarihi, kontrol_tarihi)
+                else:
+                    tarih_filtre = ("AND (rrki.RRKIBaslamaTarihi IS NULL "
+                                    "     OR rrki.RRKIBaslamaTarihi <= GETDATE()) "
+                                    "AND (rrki.RRKIBitisTarihi IS NULL "
+                                    "     OR rrki.RRKIBitisTarihi >= GETDATE()) ")
+                    params = tuple(chunk)
                 rows = self.db.sorgu_calistir(
                     f"""SELECT
                             ra.RaporAnaMusteriId AS musteri_id,
@@ -5434,8 +6621,9 @@ class AylikReceteSorguGUI:
                                 ON rk.RaporKodId = rrki.RRKIRaporKodId
                         WHERE ra.RaporAnaMusteriId IN ({ph})
                           AND (rrki.RRKISilme IS NULL OR rrki.RRKISilme = 0)
-                          AND (ra.RaporAnaSilme IS NULL OR ra.RaporAnaSilme = 0)""",
-                    tuple(chunk))
+                          AND (ra.RaporAnaSilme IS NULL OR ra.RaporAnaSilme = 0)
+                          {tarih_filtre}""",
+                    params)
                 for r in rows:
                     mid = r.get("musteri_id")
                     if not mid:
@@ -5498,7 +6686,7 @@ class AylikReceteSorguGUI:
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
                  "ŞÜPHELİ": 0, "ATLANDI": 0, "_arb_disi": 0}
-        kategori_sayac = {"ARB_MONO": 0, "ARB_KOMBI": 0}
+        kategori_sayac = {"ARB_MONO": 0, "ARB_KOMBI": 0, "ARB_KOMBI_HCT": 0}
         denetlenen_satirlar = []
 
         # Önceki çalıştırmadan kalan ARB verdict'lerini temizle
@@ -5506,7 +6694,7 @@ class AylikReceteSorguGUI:
             kategori = self._arb_kategori(
                 s.get("ilac"), s.get("etkin"), s.get("atc"))
             if kategori == "NONE":
-                if s.get("verdict_kategori") in ("ARB_MONO", "ARB_KOMBI"):
+                if s.get("verdict_kategori") in ("ARB_MONO", "ARB_KOMBI", "ARB_KOMBI_HCT"):
                     s["verdict"] = ""
                     s["verdict_detay"] = ""
                     s["verdict_kategori"] = ""
@@ -5558,6 +6746,9 @@ class AylikReceteSorguGUI:
             f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
             f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
             f"− ATLANDI {sayac['ATLANDI']}  "
+            f"[Mono {kategori_sayac['ARB_MONO']} / "
+            f"Kombi {kategori_sayac['ARB_KOMBI']} / "
+            f"HCT-istisna {kategori_sayac['ARB_KOMBI_HCT']}]  "
             f"(ARB dışı {sayac['_arb_disi']} satır boş bırakıldı)"
         )
 
@@ -5574,12 +6765,17 @@ class AylikReceteSorguGUI:
         cevap = messagebox.askyesno(
             "Kontrol Raporu",
             f"ARB SUT EK-4/F M.51 kontrolü tamamlandı.\n\n"
-            f"Toplam ARB satırı   : {toplam_arb}\n"
-            f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
-            f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
-            f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
-            f"  − ATLANDI        : {sayac['ATLANDI']}\n"
-            f"ARB dışı (atlanan)  : {sayac['_arb_disi']}\n\n"
+            f"Toplam ARB satırı       : {toplam_arb}\n"
+            f"  ✓ UYGUN              : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL        : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ            : {sayac['ŞÜPHELİ']}\n"
+            f"  − ATLANDI            : {sayac['ATLANDI']}\n\n"
+            f"Kategori dağılımı:\n"
+            f"  Mono ARB             : {kategori_sayac['ARB_MONO']}\n"
+            f"  Kombi (CCB/ACE/3'lü) : {kategori_sayac['ARB_KOMBI']}\n"
+            f"  Kombi HCT (istisna)  : {kategori_sayac['ARB_KOMBI_HCT']}\n"
+            f"      (SGK 17.10.2016 — diüretik kombileri kapsam dışı)\n\n"
+            f"ARB dışı (atlanan)      : {sayac['_arb_disi']}\n\n"
             f"Kontrol raporu Excel olarak masaüstündeki "
             f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
             f"Rapor oluşturulup açılsın mı?",
@@ -5982,7 +7178,8 @@ class AylikReceteSorguGUI:
                 parent=self.root)
             return
         try:
-            from recete_kontrol.sut_kontrolleri import kontrol_hepatit
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_hepatit, _diger_rapor_notunu_uyariya_ekle)
             from recete_kontrol.base_kontrol import KontrolSonucu
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
@@ -6043,12 +7240,7 @@ class AylikReceteSorguGUI:
             # Hastanın diğer raporlarındaki ICD'leri ekle
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
-            if ek_icd:
-                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
-                for code in ek_icd:
-                    if code not in mevcut:
-                        ilac_sonuc.setdefault(
-                            "recete_teshisleri", []).append(code)
+            ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
 
             try:
                 rapor = kontrol_hepatit(ilac_sonuc)
@@ -6068,6 +7260,7 @@ class AylikReceteSorguGUI:
                 denetlenen_satirlar.append(s)
                 continue
 
+            _diger_rapor_notunu_uyariya_ekle(rapor, ek_icd, ['DM', 'KY'])
             etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
             s["verdict"] = etiket
             s["verdict_detay"] = rapor.mesaj or ""
@@ -6168,7 +7361,8 @@ class AylikReceteSorguGUI:
                 parent=self.root)
             return
         try:
-            from recete_kontrol.sut_kontrolleri import kontrol_solunum
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_solunum, _diger_rapor_notunu_uyariya_ekle)
             from recete_kontrol.base_kontrol import KontrolSonucu
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
@@ -6254,12 +7448,7 @@ class AylikReceteSorguGUI:
             # Hastanın diğer raporlarındaki ICD'leri ekle
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
-            if ek_icd:
-                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
-                for code in ek_icd:
-                    if code not in mevcut:
-                        ilac_sonuc.setdefault(
-                            "recete_teshisleri", []).append(code)
+            ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
 
             try:
                 rapor = kontrol_solunum(ilac_sonuc)
@@ -6279,6 +7468,7 @@ class AylikReceteSorguGUI:
                 denetlenen_satirlar.append(s)
                 continue
 
+            _diger_rapor_notunu_uyariya_ekle(rapor, ek_icd, ['KOAH', 'ASTIM'])
             etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
             s["verdict"] = etiket
             s["verdict_detay"] = rapor.mesaj or ""
@@ -7677,7 +8867,8 @@ class AylikReceteSorguGUI:
                 parent=self.root)
             return
         try:
-            from recete_kontrol.sut_kontrolleri import kontrol_noropatik_4_2_35
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_noropatik_4_2_35, _diger_rapor_notunu_uyariya_ekle)
             from recete_kontrol.base_kontrol import KontrolSonucu
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
@@ -7747,6 +8938,8 @@ class AylikReceteSorguGUI:
                 denetlenen_satirlar.append(s)
                 continue
 
+            _diger_rapor_notunu_uyariya_ekle(
+                rapor, ek_icd, ['DM', 'INME'])
             etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
             s["verdict"] = etiket
             s["verdict_detay"] = rapor.mesaj or ""
@@ -7846,6 +9039,7 @@ class AylikReceteSorguGUI:
         try:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_statin, kontrol_fibrat,
+                _diger_rapor_notunu_uyariya_ekle,
             )
             from recete_kontrol.base_kontrol import KontrolSonucu
             from recete_kontrol.eski_rapor_kontrol import (
@@ -7913,18 +9107,13 @@ class AylikReceteSorguGUI:
                 continue
             kategori_sayac[kategori] = kategori_sayac.get(kategori, 0) + 1
             ilac_sonuc = self._ilac_sonuc_olustur(s)
-            # Hastanın diğer raporlarındaki ICD/rapor kodlarını da
-            # recete_teshisleri'ne ekle — DM/KAH ayrı raporda yazılıysa
-            # risk faktörü tespiti için statin algoritması bunları görsün.
+            # Hastanın diğer aktif raporlarındaki ICD/rapor kodlarını AYRI tut.
+            # Ana karar reçeteye ilintili rapora göre verilir; diğer
+            # raporlardaki bilgi sadece UYGUN_DEĞİL/ŞÜPHELİ sonuçlarda eczacı
+            # için bilgi notu olarak rapora eklenir (kullanıcı kuralı 2026-05-07).
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
-            if ek_icd:
-                # Çift kayıt önlemek için tekilleştir
-                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
-                for code in ek_icd:
-                    if code not in mevcut:
-                        ilac_sonuc.setdefault(
-                            "recete_teshisleri", []).append(code)
+            ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
             try:
                 if kategori == "FIBRAT":
                     rapor = kontrol_fibrat(ilac_sonuc)
@@ -7945,6 +9134,9 @@ class AylikReceteSorguGUI:
                 sayac["ŞÜPHELİ"] += 1
                 denetlenen_satirlar.append(s)
                 continue
+            _diger_rapor_notunu_uyariya_ekle(
+                rapor, ek_icd,
+                ['LIPID', 'DM', 'KAH', 'INME', 'PAH', 'KY', 'KBH'])
             etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
             detay = rapor.mesaj or ""
             uyari = rapor.uyari or ""
@@ -10105,7 +11297,8 @@ class AylikReceteSorguGUI:
                 parent=self.root)
             return
         try:
-            from recete_kontrol.sut_kontrolleri import kontrol_diyabet_dpp4_sglt2
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_diyabet_dpp4_sglt2, _diger_rapor_notunu_uyariya_ekle)
             from recete_kontrol.base_kontrol import KontrolSonucu
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
@@ -10178,15 +11371,12 @@ class AylikReceteSorguGUI:
 
             ilac_sonuc = self._ilac_sonuc_olustur_diyabet(s, diger_adlar)
 
-            # Hastanın diğer raporlarındaki ICD'leri ekle (KY/KBH tespiti için)
+            # Hastanın diğer aktif raporlarındaki ICD'leri AYRI tut. Ana sonucu
+            # reçeteye ilintili rapor belirler; diğer raporlardaki bilgi sadece
+            # uyarı/açıklama olarak rapora not edilir (kullanıcı kuralı 2026-05-07).
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
-            if ek_icd:
-                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
-                for code in ek_icd:
-                    if code not in mevcut:
-                        ilac_sonuc.setdefault(
-                            "recete_teshisleri", []).append(code)
+            ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
 
             try:
                 rapor = kontrol_diyabet_dpp4_sglt2(ilac_sonuc)
@@ -10206,20 +11396,11 @@ class AylikReceteSorguGUI:
                 denetlenen_satirlar.append(s)
                 continue
 
+            _diger_rapor_notunu_uyariya_ekle(rapor, ek_icd, ['DM', 'KY', 'KBH'])
             etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
-            s["verdict"] = etiket
-            s["verdict_detay"] = rapor.mesaj or ""
-            s["verdict_kategori"] = "DIYABET"
-            s["verdict_alt_sinif"] = alt_sinif
-            s["verdict_uyari"] = rapor.uyari or ""
-            s["verdict_sut"] = rapor.sut_kurali or ""
-            s["verdict_aranan"] = rapor.aranan_ibare or ""
-            s["verdict_bulunan"] = rapor.bulunan_metin or ""
-            try:
-                s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
-                                                    ensure_ascii=False)
-            except Exception:
-                s["verdict_detaylar"] = str(rapor.detaylar or {})
+            self._kontrol_raporunu_satira_yaz(s, rapor,
+                                                kategori="DIYABET",
+                                                alt_sinif=alt_sinif)
             sayac[etiket] = sayac.get(etiket, 0) + 1
             denetlenen_satirlar.append(s)
 
@@ -10575,7 +11756,8 @@ class AylikReceteSorguGUI:
                 parent=self.root)
             return
         try:
-            from recete_kontrol.sut_kontrolleri import kontrol_klopidogrel
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_klopidogrel, _diger_rapor_notunu_uyariya_ekle)
             from recete_kontrol.base_kontrol import KontrolSonucu, KontrolRaporu
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
@@ -10692,12 +11874,7 @@ class AylikReceteSorguGUI:
             # Hastanın diğer raporlarındaki ICD'leri ekle (KAH/inme/PAH cross-rapor)
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
-            if ek_icd:
-                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
-                for code in ek_icd:
-                    if code not in mevcut:
-                        ilac_sonuc.setdefault(
-                            "recete_teshisleri", []).append(code)
+            ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
 
             try:
                 rapor = kontrol_klopidogrel(ilac_sonuc)
@@ -10717,6 +11894,8 @@ class AylikReceteSorguGUI:
                 denetlenen_satirlar.append(s)
                 continue
 
+            _diger_rapor_notunu_uyariya_ekle(
+                rapor, ek_icd, ['KAH', 'INME', 'PAH'])
             etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
             s["verdict"] = etiket
             s["verdict_detay"] = rapor.mesaj or ""
@@ -11084,7 +12263,8 @@ class AylikReceteSorguGUI:
                 parent=self.root)
             return
         try:
-            from recete_kontrol.sut_kontrolleri import kontrol_yoak
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_yoak, _diger_rapor_notunu_uyariya_ekle)
             from recete_kontrol.base_kontrol import KontrolSonucu
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
@@ -11203,12 +12383,7 @@ class AylikReceteSorguGUI:
             # Cross-rapor ICD ekle (AF/DVT/PE/kanser ayrı raporda olabilir)
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
-            if ek_icd:
-                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
-                for code in ek_icd:
-                    if code not in mevcut:
-                        ilac_sonuc.setdefault(
-                            "recete_teshisleri", []).append(code)
+            ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
 
             try:
                 rapor = kontrol_yoak(ilac_sonuc)
@@ -11228,6 +12403,8 @@ class AylikReceteSorguGUI:
                 denetlenen_satirlar.append(s)
                 continue
 
+            _diger_rapor_notunu_uyariya_ekle(
+                rapor, ek_icd, ['KAH', 'INME', 'PAH'])
             etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
             s["verdict"] = etiket
             s["verdict_detay"] = rapor.mesaj or ""
@@ -11667,12 +12844,7 @@ class AylikReceteSorguGUI:
             # raporda olabilir)
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
-            if ek_icd:
-                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
-                for code in ek_icd:
-                    if code not in mevcut:
-                        ilac_sonuc.setdefault(
-                            "recete_teshisleri", []).append(code)
+            ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
 
             try:
                 if kategori == "BIYOLOJIK":
@@ -12070,7 +13242,8 @@ class AylikReceteSorguGUI:
                 parent=self.root)
             return
         try:
-            from recete_kontrol.sut_kontrolleri import kontrol_enteral_beslenme
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_enteral_beslenme, _diger_rapor_notunu_uyariya_ekle)
             from recete_kontrol.base_kontrol import KontrolSonucu
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
@@ -12132,12 +13305,7 @@ class AylikReceteSorguGUI:
             # endikasyon başka bir raporda yazıyor olabilir)
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
-            if ek_icd:
-                mevcut = set(ilac_sonuc.get("recete_teshisleri", []))
-                for code in ek_icd:
-                    if code not in mevcut:
-                        ilac_sonuc.setdefault(
-                            "recete_teshisleri", []).append(code)
+            ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
 
             try:
                 rapor = kontrol_enteral_beslenme(ilac_sonuc)
@@ -12157,6 +13325,7 @@ class AylikReceteSorguGUI:
                 denetlenen_satirlar.append(s)
                 continue
 
+            _diger_rapor_notunu_uyariya_ekle(rapor, ek_icd, ['DM'])
             etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
             s["verdict"] = etiket
             s["verdict_detay"] = rapor.mesaj or ""

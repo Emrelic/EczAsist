@@ -22,6 +22,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Callable, Dict, List, Optional
 
+from recete_kontrol.sut_kontrolleri import _tr_lower
+
 logger = logging.getLogger(__name__)
 
 
@@ -156,7 +158,8 @@ def dislama_penceresi_ac(parent: tk.Misc, db,
     """
     win = tk.Toplevel(parent)
     win.title("🚫 Dışlama Ayarları — Kurum")
-    win.geometry("760x620")
+    win.geometry("760x780")
+    win.minsize(760, 780)
     win.transient(parent)
 
     ay = ayarlari_yukle()
@@ -226,9 +229,9 @@ def dislama_penceresi_ac(parent: tk.Misc, db,
 
     def _doldur(filtre: str = ""):
         tv.delete(*tv.get_children())
-        f = (filtre or "").strip().lower()
+        f = _tr_lower((filtre or "").strip())
         for k in tum_kurumlar:
-            if f and f not in k["ad"].lower() and f not in str(k["id"]):
+            if f and f not in _tr_lower(k["ad"]) and f not in str(k["id"]):
                 continue
             tv.insert("", "end", iid=str(k["id"]), values=(
                 _disla_isaret(secimler.get(k["id"], False)),

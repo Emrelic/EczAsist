@@ -36,6 +36,7 @@ from tkinter import ttk, messagebox
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 import threading
@@ -2002,6 +2003,8 @@ class ReceteRaporKontrolGUI:
         self.kontrol_text.bind("<Control-c>", self._kontrol_kopyala)
         self.kontrol_text.bind("<Control-a>",
                                 lambda e: (self.kontrol_text.tag_add("sel", "1.0", "end"), "break")[1])
+        # Sağ-tık → Reçete/Rapor detay penceresi (log satırından recete_no parse edilir)
+        self.kontrol_text.bind("<Button-3>", self._kontrol_text_sag_tik)
 
         # --- Sekme 2: Sistem Logu (akış / debug) ---
         log_tab = tk.Frame(notebook, bg="#0D2137")
@@ -2019,6 +2022,7 @@ class ReceteRaporKontrolGUI:
         self.log_text.bind("<Control-c>", self._log_kopyala)
         self.log_text.bind("<Control-a>",
                             lambda e: (self.log_text.tag_add("sel", "1.0", "end"), "break")[1])
+        self.log_text.bind("<Button-3>", self._kontrol_text_sag_tik)
 
         # Tag'ler - her iki widget'a aynı tag'leri ekle
         for w in (self.log_text, self.kontrol_text):
@@ -2980,12 +2984,16 @@ class ReceteRaporKontrolGUI:
         tree.tag_configure("YENİ", background="#B3E5FC")
         tree.tag_configure("recete", background="#E8EAF6", font=("Segoe UI", 9, "bold"))
 
-        # Veri ekle
+        # Veri ekle (iid → satir map: sağ-tık menüsünde detay penceresi için)
+        satir_map = {}
+        son_recete_no = ""  # Boş "recete_no" olan satırlar bir önceki reçeteye ait
         onceki_recete = None
         for satir in satirlar:
             recete_no = satir.get("recete_no", "")
             yeni_recete = recete_no != onceki_recete
             onceki_recete = recete_no
+            if recete_no:
+                son_recete_no = recete_no
 
             degerler = (
                 recete_no if yeni_recete else "",
@@ -3003,7 +3011,17 @@ class ReceteRaporKontrolGUI:
 
             sonuc = satir.get("sonuc", "")
             tag = sonuc if sonuc in ("OK", "SORUN", "UYARI") else "YENİ" if sonuc == "YENİ" else ""
-            tree.insert("", "end", values=degerler, tags=(tag,))
+            iid = tree.insert("", "end", values=degerler, tags=(tag,))
+            # Map'e tam satır + çözümlenmiş recete_no kaydet
+            satir_map[iid] = dict(satir)
+            if not satir_map[iid].get("recete_no"):
+                satir_map[iid]["recete_no"] = son_recete_no
+
+        # Sağ-tık menüsü: Reçeteyi Göster / Raporu Göster
+        tree.bind(
+            "<Button-3>",
+            lambda e, t=tree, w=rapor_win, sm=satir_map: self._rapor_sag_tik_menu(e, t, w, sm),
+        )
 
         # Alt bilgi
         sorun_sayisi = sum(1 for s in satirlar if s.get("sonuc") == "SORUN")
@@ -3021,6 +3039,778 @@ class ReceteRaporKontrolGUI:
                  font=("Segoe UI", 10, "bold")).pack(side="left", padx=5)
         tk.Label(alt, text=f"Yeni: {yeni_sayisi}", fg="#03A9F4", bg="#1E3A5F",
                  font=("Segoe UI", 10, "bold")).pack(side="left", padx=5)
+
+    # ───────────────────────── Sağ-tık menüsü + detay pencereleri ─────────────────────────
+    def _kontrol_text_sag_tik(self, event):
+        """Kontrol Sonuçları / Sistem Logu Text widget'ında sağ-tık → menü.
+
+        Tıklanan satırdan başlayarak yukarı doğru yürüyüp şu desenleri arar:
+        - "━━━ Reçete #N: XXXXXXX ━━━"  → recete_no
+        - "╔══ İLAÇ #N: <ad> ══"       → ilac_adi (en yakın)
+        - "║ Rapor kodu: <kod>"         → rapor_kodu (en yakın, yok/- ise yoksay)
+        """
+        widget = event.widget
+        try:
+            idx = widget.index(f"@{event.x},{event.y}")
+            line_no = int(idx.split(".")[0])
+        except Exception:
+            return
+
+        recete_no = ""
+        ilac_adi = ""
+        rapor_kodu = ""
+
+        recete_re = re.compile(r"Reçete\s*#\d+\s*:\s*([A-Z0-9]{5,})", re.IGNORECASE)
+        ilac_re = re.compile(r"İLAÇ\s*#\d+\s*:\s*(.+?)(?:\s*══|\s*$)", re.IGNORECASE)
+        rapor_re = re.compile(r"Rapor\s+kodu\s*:\s*(\S+)", re.IGNORECASE)
+
+        # Tıklanan satırdan max 200 satır yukarı yürü; ilk Reçete #'da dur
+        for ln in range(line_no, max(0, line_no - 200), -1):
+            try:
+                line = widget.get(f"{ln}.0", f"{ln}.end")
+            except Exception:
+                continue
+            if not line:
+                continue
+            if not ilac_adi:
+                m = ilac_re.search(line)
+                if m:
+                    ilac_adi = m.group(1).strip()
+            if not rapor_kodu:
+                m = rapor_re.search(line)
+                if m:
+                    val = m.group(1).strip()
+                    if val.lower() not in ("yok", "-", "none"):
+                        rapor_kodu = val
+            m = recete_re.search(line)
+            if m:
+                recete_no = m.group(1).strip()
+                break
+
+        # Tıklanan satırdan aşağı doğru da bak (reçete bulunmamış olabilir
+        # — log akışında ilk satıra denk geldiyse bir sonraki reçete başlığı altta)
+        if not recete_no:
+            try:
+                last_line = int(widget.index("end-1c").split(".")[0])
+            except Exception:
+                last_line = line_no + 50
+            for ln in range(line_no + 1, min(last_line + 1, line_no + 100)):
+                try:
+                    line = widget.get(f"{ln}.0", f"{ln}.end")
+                except Exception:
+                    continue
+                m = recete_re.search(line)
+                if m:
+                    recete_no = m.group(1).strip()
+                    break
+
+        if not recete_no and not ilac_adi:
+            # Hiç bağlam çıkmadı — sessizce çık
+            return
+
+        satir = {"recete_no": recete_no, "rapor_kodu": rapor_kodu,
+                 "ilac_adi": ilac_adi, "etkin_madde": ""}
+
+        m = tk.Menu(self.root, tearoff=0)
+        if recete_no:
+            m.add_command(
+                label=f"🔍 Reçete Detayını Göster ({recete_no})",
+                command=lambda r=recete_no: self._recete_detay_penceresi(self.root, r),
+            )
+        else:
+            m.add_command(label="🔍 Reçete Detayını Göster (reçete no bulunamadı)",
+                          state="disabled")
+        if rapor_kodu and recete_no:
+            m.add_command(
+                label=f"📄 Rapor Detayını Göster ({rapor_kodu})",
+                command=lambda r=recete_no, s=dict(satir):
+                    self._rapor_detay_penceresi(self.root, r, s),
+            )
+        else:
+            m.add_command(label="📄 Rapor Detayını Göster (rapor yok)",
+                          state="disabled")
+        try:
+            m.tk_popup(event.x_root, event.y_root)
+        finally:
+            m.grab_release()
+        return "break"
+
+    def _rapor_sag_tik_menu(self, event, tree, parent_win, satir_map):
+        """Rapor tablosu satırına sağ-tık → Reçeteyi/Raporu Göster menüsü."""
+        iid = tree.identify_row(event.y)
+        if not iid:
+            return
+        tree.selection_set(iid)
+        satir = satir_map.get(iid) or {}
+        recete_no = (satir.get("recete_no") or "").strip()
+        rapor_kodu = (satir.get("rapor_kodu") or "").strip()
+
+        m = tk.Menu(parent_win, tearoff=0)
+        if recete_no:
+            m.add_command(
+                label=f"🔍 Reçete Detayını Göster ({recete_no})",
+                command=lambda r=recete_no, p=parent_win: self._recete_detay_penceresi(p, r),
+            )
+        else:
+            m.add_command(label="🔍 Reçete Detayını Göster (reçete no yok)", state="disabled")
+        if rapor_kodu and recete_no:
+            m.add_command(
+                label=f"📄 Rapor Detayını Göster ({rapor_kodu})",
+                command=lambda r=recete_no, s=dict(satir), p=parent_win:
+                    self._rapor_detay_penceresi(p, r, s),
+            )
+        else:
+            m.add_command(label="📄 Rapor Detayını Göster (rapor yok)", state="disabled")
+        try:
+            m.tk_popup(event.x_root, event.y_root)
+        finally:
+            m.grab_release()
+
+    def _detay_db_baglan(self):
+        """Botanik EOS DB bağlantısı (salt-okunur). Hata durumunda mesaj göster, None dön."""
+        try:
+            from botanik_db import BotanikDB
+        except Exception as e:
+            messagebox.showerror("Hata", f"Botanik DB modülü yüklenemedi:\n{e}")
+            return None
+        try:
+            db = BotanikDB(production=True)
+            if not db.baglan():
+                messagebox.showerror("Bağlantı Hatası",
+                                     "Botanik EOS veritabanına bağlanılamadı.")
+                return None
+            return db
+        except Exception as e:
+            messagebox.showerror("Bağlantı Hatası",
+                                 f"Botanik EOS bağlantısı kurulamadı:\n{e}")
+            return None
+
+    def _recete_detay_verileri_cek(self, db, recete_no):
+        """Bir reçetenin tüm detayını DB'den çek. Returns: dict veya None."""
+        # 1) Header + ilaçlar (tek sorgu, ReceteAna LEFT JOIN tüm referanslar)
+        sql = """
+            SELECT
+                ra.RxId, ra.RxEReceteNo, ra.RxSgkIslemNo,
+                ra.RxIslemTarihi, ra.RxKayitTarihi, ra.RxReceteTarihi,
+                ra.RxBransId, ra.RxKurumId, ra.RxHastaneId,
+                ra.RxMusteriId, ra.RxDoktorId,
+                ra.RxReceteRenkId, ra.RxReceteAltTuruId, ra.RxProvizyonTipId,
+                m.MusteriAdiSoyadi, m.MusteriTCKN, m.MusteriDogumTarihi,
+                m.MusteriCinsiyet, m.MusteriKapsamId, m.MusteriEmeklilik,
+                d.DoktorAdiSoyadi,
+                h.HastaneAdi, h.HastaneKodu,
+                k.KurumAdi,
+                ri.RIId, ri.RIUrunId, ri.RIRaporKodId, ri.RIRaporNo,
+                ri.RIAdet, ri.RIDoz, ri.RITekrar, ri.RIAralik, ri.RIPeriyotId,
+                ri.RIToplam, ri.RIFiyatFarki,
+                u.UrunAdi, u.UrunBarkodu,
+                atc.ATCKodu, atc.ATCTurkce
+            FROM ReceteAna ra
+            LEFT JOIN Musteri m ON m.MusteriId = ra.RxMusteriId
+            LEFT JOIN Doktor d ON d.DoktorId = ra.RxDoktorId
+            LEFT JOIN Hastane h ON h.HastaneId = ra.RxHastaneId
+            LEFT JOIN Kurum k ON k.KurumId = ra.RxKurumId
+            INNER JOIN ReceteIlaclari ri ON ri.RIRxId = ra.RxId
+                                          AND (ri.RISilme IS NULL OR ri.RISilme = 0)
+            LEFT JOIN Urun u ON u.UrunId = ri.RIUrunId
+            LEFT JOIN ATC atc ON atc.ATCId = u.UrunATCId
+            WHERE ra.RxEReceteNo = ? AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)
+            ORDER BY ri.RIId
+        """
+        rows = db.sorgu_calistir(sql, (recete_no,))
+        if not rows:
+            return None
+        rx_id = rows[0]["RxId"]
+        musteri_id = rows[0].get("RxMusteriId")
+        doktor_id = rows[0].get("RxDoktorId")
+
+        # 2) Teşhisler — ReceteICD + ICD
+        teshisler = []
+        try:
+            ricd = db.sorgu_calistir(
+                """SELECT icd.ICDKodu, icd.ICDAciklamasi
+                   FROM ReceteICD ricd
+                   LEFT JOIN ICD icd ON icd.ICDId = ricd.ReceteICDICDId
+                   WHERE ricd.ReceteICDRxId = ?
+                     AND (ricd.ReceteICDSilme IS NULL OR ricd.ReceteICDSilme = 0)""",
+                (rx_id,))
+            for r in ricd:
+                kod = (r.get("ICDKodu") or "").strip()
+                ack = (r.get("ICDAciklamasi") or "").strip()
+                if kod and ack:
+                    teshisler.append(f"{kod} — {ack}")
+                elif kod:
+                    teshisler.append(kod)
+        except Exception as e:
+            logger.debug(f"ReceteICD okunamadı: {e}")
+
+        # 3) Eski Teshis sistemi — ReceteTeshis + Teshis
+        try:
+            rt = db.sorgu_calistir(
+                """SELECT t.TeshisAciklama
+                   FROM ReceteTeshis rt
+                   LEFT JOIN Teshis t ON t.TeshisId = rt.RTTeshisId
+                   WHERE rt.RTRxId = ?""",
+                (rx_id,))
+            for r in rt:
+                ack = (r.get("TeshisAciklama") or "").strip()
+                if ack and "Seçiniz" not in ack and ack not in teshisler:
+                    teshisler.append(ack)
+        except Exception as e:
+            logger.debug(f"ReceteTeshis okunamadı: {e}")
+
+        # 4) E-Reçete açıklamaları
+        aciklamalar = []
+        try:
+            ea = db.sorgu_calistir(
+                """SELECT eat.EReceteAciklamaTuruAdi, ea.EReceteAciklamaAdi
+                   FROM ERecete er
+                   INNER JOIN EReceteAciklamalari era ON era.ERAEReceteId = er.EReceteId
+                   LEFT JOIN EReceteAciklama ea
+                       ON ea.EReceteAciklamaId = era.ERAEReceteAciklamaId
+                   LEFT JOIN EReceteAciklamaTuru eat
+                       ON eat.EReceteAciklamaTuruId = era.ERAEReceteAciklamaTuruId
+                   WHERE er.EReceteNo = ? AND (er.EReceteSilme IS NULL OR er.EReceteSilme = 0)""",
+                (recete_no,))
+            for r in ea:
+                tur = (r.get("EReceteAciklamaTuruAdi") or "").strip()
+                ad = (r.get("EReceteAciklamaAdi") or "").strip()
+                if not ad or ad in (".", ",", "-", "--"):
+                    continue
+                aciklamalar.append(f"[{tur}] {ad}" if tur and tur != "Seçiniz" else ad)
+        except Exception as e:
+            logger.debug(f"EReceteAciklamalari okunamadı: {e}")
+
+        # 5) Medula yanıt mesajları (RxUyarilari)
+        medula_yanitlari = []
+        try:
+            ru = db.sorgu_calistir(
+                "SELECT RUAciklama FROM RxUyarilari WHERE RxId = ?", (rx_id,))
+            for r in ru:
+                txt = (r.get("RUAciklama") or "").strip()
+                if txt:
+                    medula_yanitlari.append(txt)
+        except Exception as e:
+            logger.debug(f"RxUyarilari okunamadı: {e}")
+
+        # 6) Doktor branşı
+        doktor_brans = ""
+        if doktor_id:
+            try:
+                db_rows = db.sorgu_calistir(
+                    """SELECT b.BransAdi FROM DoktorBrans db
+                       INNER JOIN Brans b ON b.BransId = db.DoktorBransBransId
+                       WHERE db.DoktorBransDoktorId = ? AND (b.BransSilme IS NULL OR b.BransSilme = 0)""",
+                    (doktor_id,))
+                doktor_brans = ", ".join(
+                    (r.get("BransAdi") or "").strip() for r in db_rows
+                    if (r.get("BransAdi") or "").strip()
+                )
+            except Exception as e:
+                logger.debug(f"DoktorBrans okunamadı: {e}")
+
+        return {
+            "header": rows[0],
+            "ilaclar": rows,
+            "teshisler": teshisler,
+            "aciklamalar": aciklamalar,
+            "medula_yanitlari": medula_yanitlari,
+            "doktor_brans": doktor_brans,
+            "musteri_id": musteri_id,
+        }
+
+    def _recete_detay_penceresi(self, parent_win, recete_no):
+        """Reçete detayını Botanik EOS'tan çek ve ayrı pencerede göster."""
+        if not recete_no:
+            return
+        db = self._detay_db_baglan()
+        if not db:
+            return
+        try:
+            data = self._recete_detay_verileri_cek(db, recete_no)
+        except Exception as e:
+            logger.exception("Reçete detay sorgu hatası")
+            messagebox.showerror("Sorgu Hatası", f"Reçete detayı çekilemedi:\n{e}")
+            return
+        finally:
+            try:
+                db.kapat()
+            except Exception:
+                pass
+
+        if not data:
+            messagebox.showinfo(
+                "Bulunamadı",
+                f"'{recete_no}' numaralı reçete Botanik EOS veritabanında bulunamadı."
+            )
+            return
+
+        h = data["header"]
+        win = tk.Toplevel(parent_win)
+        win.title(f"Reçete Detayı — {recete_no}")
+        win.geometry("900x650")
+        win.configure(bg="#1E3A5F")
+        win.transient(parent_win)
+
+        # Ana scrollable text
+        text_frame = tk.Frame(win, bg="#1E3A5F")
+        text_frame.pack(fill="both", expand=True, padx=8, pady=8)
+        txt = tk.Text(text_frame, wrap="word", bg="#FFFFFF", fg="#000000",
+                       font=("Segoe UI", 10), padx=10, pady=8)
+        sb = ttk.Scrollbar(text_frame, orient="vertical", command=txt.yview)
+        txt.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        txt.pack(side="left", fill="both", expand=True)
+
+        # Stiller
+        txt.tag_configure("h1", font=("Segoe UI", 13, "bold"), foreground="#1E3A5F",
+                          spacing3=6)
+        txt.tag_configure("h2", font=("Segoe UI", 11, "bold"), foreground="#0D47A1",
+                          spacing1=8, spacing3=4)
+        txt.tag_configure("k", font=("Segoe UI", 10, "bold"), foreground="#37474F")
+        txt.tag_configure("warn", foreground="#C62828")
+        txt.tag_configure("mono", font=("Consolas", 10))
+
+        def yaz(s, tag=None):
+            txt.insert("end", s, tag) if tag else txt.insert("end", s)
+
+        def alan(etiket, deger):
+            if deger is None or str(deger).strip() == "":
+                return
+            yaz(f"  {etiket}: ", "k"); yaz(f"{deger}\n")
+
+        # Başlık
+        yaz(f"Reçete Detayı — {recete_no}\n", "h1")
+
+        # Reçete bilgileri
+        yaz("Reçete Bilgileri\n", "h2")
+        alan("Reçete No (e-Reçete)", h.get("RxEReceteNo"))
+        alan("SGK İşlem No", h.get("RxSgkIslemNo"))
+        alan("Reçete Tarihi", h.get("RxReceteTarihi"))
+        alan("Kayıt Tarihi", h.get("RxKayitTarihi"))
+        alan("İşlem Tarihi", h.get("RxIslemTarihi"))
+        alan("RxId (sistem)", h.get("RxId"))
+
+        # Hasta
+        yaz("\nHasta\n", "h2")
+        alan("Ad Soyad", h.get("MusteriAdiSoyadi"))
+        alan("TCKN", h.get("MusteriTCKN"))
+        alan("Doğum Tarihi", h.get("MusteriDogumTarihi"))
+        alan("Cinsiyet", h.get("MusteriCinsiyet"))
+        alan("Emeklilik", h.get("MusteriEmeklilik"))
+
+        # Doktor
+        yaz("\nDoktor\n", "h2")
+        alan("Ad Soyad", h.get("DoktorAdiSoyadi"))
+        alan("Branş", data.get("doktor_brans") or "")
+
+        # Tesis / Kurum
+        yaz("\nTesis / Kurum\n", "h2")
+        alan("Hastane", h.get("HastaneAdi"))
+        alan("Hastane Kodu", h.get("HastaneKodu"))
+        alan("Kurum", h.get("KurumAdi"))
+
+        # Teşhisler
+        yaz("\nTeşhisler\n", "h2")
+        if data["teshisler"]:
+            for t in data["teshisler"]:
+                yaz(f"  • {t}\n")
+        else:
+            yaz("  (Teşhis kaydı yok)\n")
+
+        # Reçete açıklamaları
+        yaz("\nReçete Açıklamaları\n", "h2")
+        if data["aciklamalar"]:
+            for a in data["aciklamalar"]:
+                yaz(f"  • {a}\n")
+        else:
+            yaz("  (Açıklama yok)\n")
+
+        # Medula yanıtları (varsa)
+        if data["medula_yanitlari"]:
+            yaz("\nMedula Yanıt Mesajları\n", "h2")
+            for y in data["medula_yanitlari"]:
+                yaz(f"  • {y}\n", "warn")
+
+        # İlaçlar
+        yaz("\nİlaçlar\n", "h2")
+        for i, ilac in enumerate(data["ilaclar"], 1):
+            yaz(f"\n  {i}. {ilac.get('UrunAdi') or '(ürün adı yok)'}\n", "k")
+            atc_kodu = (ilac.get("ATCKodu") or "").strip()
+            atc_ad = (ilac.get("ATCTurkce") or "").strip()
+            if atc_kodu or atc_ad:
+                yaz(f"     ATC: {atc_kodu} {atc_ad}\n")
+            yaz(f"     Adet: {ilac.get('RIAdet') or '-'}  |  "
+                f"Doz: {ilac.get('RIDoz') or '-'}  |  "
+                f"Tekrar: {ilac.get('RITekrar') or '-'}  |  "
+                f"Aralık: {ilac.get('RIAralik') or '-'}\n")
+            rip_no = (str(ilac.get("RIRaporNo") or "")).strip()
+            rip_kod_id = ilac.get("RIRaporKodId") or 0
+            if rip_no or rip_kod_id:
+                yaz(f"     Rapor: kod_id={rip_kod_id}, takip_no={rip_no or '-'}\n")
+            barkod = (ilac.get("UrunBarkodu") or "").strip()
+            if barkod:
+                yaz(f"     Barkod: {barkod}\n")
+
+        txt.configure(state="disabled")
+
+        # Alt: Kapat butonu
+        alt = tk.Frame(win, bg="#1E3A5F")
+        alt.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Button(alt, text="Kapat", font=("Segoe UI", 10, "bold"),
+                  fg="white", bg="#455A64", activebackground="#37474F",
+                  bd=0, padx=14, pady=4,
+                  command=win.destroy).pack(side="right")
+        win.bind("<Escape>", lambda e: win.destroy())
+
+    def _rapor_detay_verileri_cek(self, db, recete_no, ilac_adi="", etkin_madde="", rapor_kodu=""):
+        """Belirli bir satırın rapor_kodu'na ait raporu hasta üzerinden bul ve detayını çek."""
+        # Önce reçeteyi bulup hastayı al
+        rx = db.sorgu_calistir(
+            """SELECT TOP 1 ra.RxId, ra.RxMusteriId, ra.RxKayitTarihi
+               FROM ReceteAna ra
+               WHERE ra.RxEReceteNo = ? AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)""",
+            (recete_no,))
+        if not rx:
+            return None, "Reçete bulunamadı"
+        rx_id = rx[0]["RxId"]
+        musteri_id = rx[0].get("RxMusteriId")
+        rx_kayit_tarihi = rx[0].get("RxKayitTarihi")
+        if not musteri_id:
+            return None, "Reçetenin hastası bulunamadı"
+
+        # Rapor kodu üzerinden hastanın aktif raporlarından eşleşeni bul
+        rapor_ana = None
+        rapor_secim_kaynagi = ""
+
+        # 1) Önce aynı reçetede (RxId) bu rapor_kodu'nu kullanan ilac satırının
+        #    RIRaporKodId/RIRaporNo'sundan eşleşen RaporAna'yı bul (en isabetli)
+        try:
+            ri_rows = db.sorgu_calistir(
+                """SELECT ri.RIRaporKodId, ri.RIRaporNo, u.UrunAdi
+                   FROM ReceteIlaclari ri
+                   LEFT JOIN Urun u ON u.UrunId = ri.RIUrunId
+                   WHERE ri.RIRxId = ? AND (ri.RISilme IS NULL OR ri.RISilme = 0)""",
+                (rx_id,))
+            # ilac_adi/etkin_madde ile eşleştir
+            il_norm = (ilac_adi or "").strip().upper()
+            sec_kod_id = 0
+            sec_rapor_no = ""
+            for ri in ri_rows:
+                ri_urun = (ri.get("UrunAdi") or "").strip().upper()
+                if il_norm and ri_urun and (il_norm[:20] in ri_urun or ri_urun[:20] in il_norm):
+                    sec_kod_id = ri.get("RIRaporKodId") or 0
+                    sec_rapor_no = (ri.get("RIRaporNo") or "").strip()
+                    break
+            # Eşleşme bulunamadıysa, ilk raporlu ilacı dene
+            if not sec_kod_id and not sec_rapor_no:
+                for ri in ri_rows:
+                    if (ri.get("RIRaporKodId") or 0) > 0 or (ri.get("RIRaporNo") or "").strip():
+                        sec_kod_id = ri.get("RIRaporKodId") or 0
+                        sec_rapor_no = (ri.get("RIRaporNo") or "").strip()
+                        break
+
+            # Önce takip_no eşleşmesi (en kesin)
+            if sec_rapor_no:
+                ra_rows = db.sorgu_calistir(
+                    """SELECT TOP 1 ra.*, rt.RaporTuruAdi, h.HastaneAdi, h.HastaneKodu
+                       FROM RaporAna ra
+                       LEFT JOIN RaporTuru rt ON rt.RaporTuruId = ra.RaporAnaRaporTuruId
+                       LEFT JOIN Hastane h ON h.HastaneId = ra.RaporAnaHastaneId
+                       WHERE ra.RaporAnaMusteriId = ?
+                         AND ra.RaporAnaRaporNo = ?
+                         AND (ra.RaporAnaSilme IS NULL OR ra.RaporAnaSilme = 0)""",
+                    (musteri_id, sec_rapor_no))
+                if ra_rows:
+                    rapor_ana = ra_rows[0]
+                    rapor_secim_kaynagi = "RIRaporNo (takip no eşleşmesi)"
+
+            # Sonra RaporKodId üzerinden
+            if not rapor_ana and sec_kod_id:
+                ra_rows = db.sorgu_calistir(
+                    """SELECT TOP 1 ra.*, rt.RaporTuruAdi, h.HastaneAdi, h.HastaneKodu
+                       FROM RaporAna ra
+                       INNER JOIN RaporRaporKodlariICD rrki ON rrki.RRKIRaporAnaId = ra.RaporAnaId
+                       LEFT JOIN RaporTuru rt ON rt.RaporTuruId = ra.RaporAnaRaporTuruId
+                       LEFT JOIN Hastane h ON h.HastaneId = ra.RaporAnaHastaneId
+                       WHERE ra.RaporAnaMusteriId = ?
+                         AND rrki.RRKIRaporKodId = ?
+                         AND (ra.RaporAnaSilme IS NULL OR ra.RaporAnaSilme = 0)
+                         AND (rrki.RRKISilme IS NULL OR rrki.RRKISilme = 0)
+                       ORDER BY ra.RaporAnaRaporTarihi DESC""",
+                    (musteri_id, sec_kod_id))
+                if ra_rows:
+                    rapor_ana = ra_rows[0]
+                    rapor_secim_kaynagi = "RIRaporKodId eşleşmesi"
+        except Exception as e:
+            logger.debug(f"ReceteIlaclari→RaporAna sorgusu fail: {e}")
+
+        # 2) Hâlâ bulunamadıysa, ekrandaki rapor_kodu (örn. "10.04") metni üzerinden
+        #    RaporKodlari.RaporKodu LIKE eşleşmesi yap
+        if not rapor_ana and rapor_kodu:
+            try:
+                ra_rows = db.sorgu_calistir(
+                    """SELECT TOP 1 ra.*, rt.RaporTuruAdi, h.HastaneAdi, h.HastaneKodu
+                       FROM RaporAna ra
+                       INNER JOIN RaporRaporKodlariICD rrki ON rrki.RRKIRaporAnaId = ra.RaporAnaId
+                       INNER JOIN RaporKodlari rk ON rk.RaporKodId = rrki.RRKIRaporKodId
+                       LEFT JOIN RaporTuru rt ON rt.RaporTuruId = ra.RaporAnaRaporTuruId
+                       LEFT JOIN Hastane h ON h.HastaneId = ra.RaporAnaHastaneId
+                       WHERE ra.RaporAnaMusteriId = ?
+                         AND (rk.RaporKodu = ? OR rk.RaporKodu LIKE ?)
+                         AND (ra.RaporAnaSilme IS NULL OR ra.RaporAnaSilme = 0)
+                         AND (rrki.RRKISilme IS NULL OR rrki.RRKISilme = 0)
+                         AND (rk.RaporKodSilme IS NULL OR rk.RaporKodSilme = 0)
+                       ORDER BY ra.RaporAnaRaporTarihi DESC""",
+                    (musteri_id, rapor_kodu, rapor_kodu + "%"))
+                if ra_rows:
+                    rapor_ana = ra_rows[0]
+                    rapor_secim_kaynagi = f"RaporKodu='{rapor_kodu}' eşleşmesi"
+            except Exception as e:
+                logger.debug(f"RaporKodu eşleşme sorgusu fail: {e}")
+
+        if not rapor_ana:
+            return None, "Hastanın bu rapor koduna ait raporu bulunamadı"
+
+        rapor_ana_id = rapor_ana["RaporAnaId"]
+
+        # Hasta bilgisi
+        hasta = db.sorgu_calistir(
+            "SELECT MusteriAdiSoyadi, MusteriTCKN, MusteriDogumTarihi FROM Musteri WHERE MusteriId = ?",
+            (musteri_id,))
+        hasta_bilgi = hasta[0] if hasta else {}
+
+        # ICD'ler
+        icdler = []
+        try:
+            rows_icd = db.sorgu_calistir(
+                """SELECT icd1.ICDKodu AS K1, icd1.ICDAciklamasi AS A1,
+                          icd2.ICDKodu AS K2, icd2.ICDAciklamasi AS A2,
+                          icd3.ICDKodu AS K3, icd3.ICDAciklamasi AS A3,
+                          icd4.ICDKodu AS K4, icd4.ICDAciklamasi AS A4,
+                          icd5.ICDKodu AS K5, icd5.ICDAciklamasi AS A5,
+                          rk.RaporKodu, rk.RaporKodAciklama,
+                          rrki.RRKIBaslamaTarihi, rrki.RRKIBitisTarihi
+                   FROM RaporRaporKodlariICD rrki
+                   LEFT JOIN ICD icd1 ON icd1.ICDId = rrki.RRKIICDId
+                   LEFT JOIN ICD icd2 ON icd2.ICDId = rrki.RRKIICDId2
+                   LEFT JOIN ICD icd3 ON icd3.ICDId = rrki.RRKIICDId3
+                   LEFT JOIN ICD icd4 ON icd4.ICDId = rrki.RRKIICDId4
+                   LEFT JOIN ICD icd5 ON icd5.ICDId = rrki.RRKIICDId5
+                   LEFT JOIN RaporKodlari rk ON rk.RaporKodId = rrki.RRKIRaporKodId
+                   WHERE rrki.RRKIRaporAnaId = ?
+                     AND (rrki.RRKISilme IS NULL OR rrki.RRKISilme = 0)""",
+                (rapor_ana_id,))
+            for r in rows_icd:
+                grup = []
+                for n in (1, 2, 3, 4, 5):
+                    kod = (r.get(f"K{n}") or "").strip()
+                    ack = (r.get(f"A{n}") or "").strip()
+                    if kod and ack:
+                        grup.append(f"{kod} — {ack}")
+                    elif kod:
+                        grup.append(kod)
+                icdler.append({
+                    "rapor_kodu": (r.get("RaporKodu") or "").strip(),
+                    "rapor_kodu_aciklama": (r.get("RaporKodAciklama") or "").strip(),
+                    "icd_listesi": grup,
+                    "baslama": r.get("RRKIBaslamaTarihi"),
+                    "bitis": r.get("RRKIBitisTarihi"),
+                })
+        except Exception as e:
+            logger.debug(f"RaporRaporKodlariICD okunamadı: {e}")
+
+        # Ek bilgiler
+        ek_bilgiler = []
+        try:
+            rows_eb = db.sorgu_calistir(
+                """SELECT REBTuru, REBDeger, REBAciklama
+                   FROM RaporEkBilgi WHERE REBRaporAnaId = ?""",
+                (rapor_ana_id,))
+            for r in rows_eb:
+                parts = []
+                if r.get("REBTuru"):
+                    parts.append(str(r["REBTuru"]))
+                if r.get("REBDeger"):
+                    parts.append(str(r["REBDeger"]))
+                if r.get("REBAciklama"):
+                    parts.append(str(r["REBAciklama"]))
+                if parts:
+                    ek_bilgiler.append(": ".join(parts))
+        except Exception as e:
+            logger.debug(f"RaporEkBilgi okunamadı: {e}")
+
+        # Etkin maddeler
+        etkin_maddeler = []
+        try:
+            rows_em = db.sorgu_calistir(
+                """SELECT em.EtkinMaddeAdi, em.EtkinMaddeSGKKodu,
+                          re.EtkinMaddeDoz, re.EtkinMaddeAdetMiktar,
+                          re.EtkinMaddeTekrar, re.EtkinMaddeAralik
+                   FROM RaporEtkinMadde re
+                   LEFT JOIN EtkinMadde em ON em.EtkinMaddeId = re.EtkinMaddeId
+                   WHERE re.EtkinMaddeRaporAnaId = ?
+                     AND (re.EtkinMaddeSilme IS NULL OR re.EtkinMaddeSilme = 0)""",
+                (rapor_ana_id,))
+            for r in rows_em:
+                etkin_maddeler.append({
+                    "ad": (r.get("EtkinMaddeAdi") or "").strip(),
+                    "sgk": (r.get("EtkinMaddeSGKKodu") or "").strip(),
+                    "doz": r.get("EtkinMaddeDoz"),
+                    "adet": r.get("EtkinMaddeAdetMiktar"),
+                    "tekrar": r.get("EtkinMaddeTekrar"),
+                    "aralik": r.get("EtkinMaddeAralik"),
+                })
+        except Exception as e:
+            logger.debug(f"RaporEtkinMadde okunamadı: {e}")
+
+        return {
+            "rapor": rapor_ana,
+            "hasta": hasta_bilgi,
+            "icdler": icdler,
+            "ek_bilgiler": ek_bilgiler,
+            "etkin_maddeler": etkin_maddeler,
+            "secim_kaynagi": rapor_secim_kaynagi,
+        }, None
+
+    def _rapor_detay_penceresi(self, parent_win, recete_no, satir):
+        """Satırın rapor_kodu'na ait raporu Botanik EOS'tan çek ve göster."""
+        rapor_kodu = (satir.get("rapor_kodu") or "").strip()
+        ilac_adi = (satir.get("ilac_adi") or "").strip()
+        etkin = (satir.get("etkin_madde") or "").strip()
+
+        db = self._detay_db_baglan()
+        if not db:
+            return
+        try:
+            data, err = self._rapor_detay_verileri_cek(
+                db, recete_no, ilac_adi=ilac_adi, etkin_madde=etkin,
+                rapor_kodu=rapor_kodu)
+        except Exception as e:
+            logger.exception("Rapor detay sorgu hatası")
+            messagebox.showerror("Sorgu Hatası", f"Rapor detayı çekilemedi:\n{e}")
+            return
+        finally:
+            try:
+                db.kapat()
+            except Exception:
+                pass
+
+        if not data:
+            messagebox.showinfo("Bulunamadı", err or "Rapor bulunamadı.")
+            return
+
+        r = data["rapor"]
+        h = data["hasta"]
+        win = tk.Toplevel(parent_win)
+        win.title(f"Rapor Detayı — {r.get('RaporAnaRaporNo') or '?'}")
+        win.geometry("900x650")
+        win.configure(bg="#1E3A5F")
+        win.transient(parent_win)
+
+        text_frame = tk.Frame(win, bg="#1E3A5F")
+        text_frame.pack(fill="both", expand=True, padx=8, pady=8)
+        txt = tk.Text(text_frame, wrap="word", bg="#FFFFFF", fg="#000000",
+                       font=("Segoe UI", 10), padx=10, pady=8)
+        sb = ttk.Scrollbar(text_frame, orient="vertical", command=txt.yview)
+        txt.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        txt.pack(side="left", fill="both", expand=True)
+
+        txt.tag_configure("h1", font=("Segoe UI", 13, "bold"), foreground="#1E3A5F",
+                          spacing3=6)
+        txt.tag_configure("h2", font=("Segoe UI", 11, "bold"), foreground="#0D47A1",
+                          spacing1=8, spacing3=4)
+        txt.tag_configure("k", font=("Segoe UI", 10, "bold"), foreground="#37474F")
+        txt.tag_configure("muted", foreground="#6B7280")
+
+        def yaz(s, tag=None):
+            txt.insert("end", s, tag) if tag else txt.insert("end", s)
+        def alan(etiket, deger):
+            if deger is None or str(deger).strip() == "":
+                return
+            yaz(f"  {etiket}: ", "k"); yaz(f"{deger}\n")
+
+        yaz(f"Rapor Detayı — {r.get('RaporAnaRaporNo') or '?'}\n", "h1")
+        yaz(f"  (Reçete: {recete_no} | Satır rapor kodu: {rapor_kodu or '-'})\n",
+            "muted")
+        if data.get("secim_kaynagi"):
+            yaz(f"  (Eşleşme: {data['secim_kaynagi']})\n", "muted")
+
+        # Rapor başlık
+        yaz("\nRapor Bilgileri\n", "h2")
+        alan("Rapor No", r.get("RaporAnaRaporNo"))
+        alan("Takip No", r.get("RaporAnaRaporTakipNo"))
+        alan("Rapor Tarihi", r.get("RaporAnaRaporTarihi"))
+        alan("Tür", r.get("RaporTuruAdi"))
+        alan("Açıklamalar", r.get("RaporAnaAciklamalar"))
+
+        # Hasta
+        yaz("\nHasta\n", "h2")
+        alan("Ad Soyad", h.get("MusteriAdiSoyadi"))
+        alan("TCKN", h.get("MusteriTCKN"))
+        alan("Doğum Tarihi", h.get("MusteriDogumTarihi"))
+
+        # Tesis
+        yaz("\nTesis\n", "h2")
+        alan("Hastane", r.get("HastaneAdi"))
+        alan("Hastane Kodu", r.get("HastaneKodu"))
+
+        # ICD listesi (rapor kodu ile gruplu)
+        yaz("\nRapor Kodları + ICD Teşhisleri\n", "h2")
+        if data["icdler"]:
+            for grp in data["icdler"]:
+                kod = grp.get("rapor_kodu") or "-"
+                kod_ack = grp.get("rapor_kodu_aciklama") or ""
+                bas = grp.get("baslama") or ""
+                bit = grp.get("bitis") or ""
+                yaz(f"  • {kod} {kod_ack}\n", "k")
+                if bas or bit:
+                    yaz(f"      ({bas} → {bit})\n", "muted")
+                for ic in grp.get("icd_listesi", []):
+                    yaz(f"      ICD: {ic}\n")
+        else:
+            yaz("  (Rapor kodu/ICD kaydı yok)\n")
+
+        # Etkin maddeler
+        yaz("\nRapor Etkin Maddeleri (tedavi)\n", "h2")
+        if data["etkin_maddeler"]:
+            for em in data["etkin_maddeler"]:
+                ad = em.get("ad") or "-"
+                sgk = em.get("sgk") or ""
+                yaz(f"  • {ad}", "k")
+                if sgk:
+                    yaz(f"  [{sgk}]")
+                doz_ozet = []
+                if em.get("doz") is not None:
+                    doz_ozet.append(f"Doz:{em['doz']}")
+                if em.get("adet") is not None:
+                    doz_ozet.append(f"Adet:{em['adet']}")
+                if em.get("tekrar") is not None:
+                    doz_ozet.append(f"Tekrar:{em['tekrar']}")
+                if em.get("aralik") is not None:
+                    doz_ozet.append(f"Aralık:{em['aralik']}")
+                if doz_ozet:
+                    yaz(f"  ({', '.join(doz_ozet)})")
+                yaz("\n")
+        else:
+            yaz("  (Etkin madde tanımı yok)\n")
+
+        # Ek bilgiler
+        if data["ek_bilgiler"]:
+            yaz("\nEk Bilgiler\n", "h2")
+            for eb in data["ek_bilgiler"]:
+                yaz(f"  • {eb}\n")
+
+        txt.configure(state="disabled")
+
+        alt = tk.Frame(win, bg="#1E3A5F")
+        alt.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Button(alt, text="Kapat", font=("Segoe UI", 10, "bold"),
+                  fg="white", bg="#455A64", activebackground="#37474F",
+                  bd=0, padx=14, pady=4,
+                  command=win.destroy).pack(side="right")
+        win.bind("<Escape>", lambda e: win.destroy())
 
     def _pencereleri_konumlandir(self):
         """Tarama başladığında pencereleri konumlandır.

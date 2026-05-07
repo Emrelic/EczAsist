@@ -7,7 +7,7 @@ Tüm ilaç grubu kontrol sınıfları bu sınıftan türetilir.
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import logging
 
@@ -22,6 +22,35 @@ class KontrolSonucu(Enum):
     ATLANDI = "atlandi"       # Bu reçete için kontrol gerekmiyor
 
 
+class SartDurumu(Enum):
+    """Tek bir SUT şartının kontrol sonucu (CLAUDE.md disiplini).
+
+    VAR: şart kaynaklarda bulundu ve uygun.
+    YOK: şart arandı, sağlanmadığı NET.
+    KONTROL_EDILEMEDI: metin parse'ı / kaynak veri ile sorgulanamadı; manuel doğrulama gerekli.
+    NA: bu sınıf/akış için şart geçerli değil (raporlamada gizlenir).
+    """
+    VAR = "var"
+    YOK = "yok"
+    KONTROL_EDILEMEDI = "kontrol_edilemedi"
+    NA = "na"
+
+
+@dataclass
+class SartSonuc:
+    """Tek bir SUT şartının değerlendirme kaydı.
+
+    ad: insan-okur şart adı (ör: "Endokrin/iç hast. uzmanı veya raporu").
+    durum: SartDurumu.
+    neden: kısa açıklama (ör: "Doktor branşı: aile hekimliği — yetkili değil").
+    kaynak: bilgiyi nereden çıkardık (ör: "doktor_branş", "rapor_metni", "ICD").
+    """
+    ad: str
+    durum: SartDurumu
+    neden: str = ""
+    kaynak: str = ""
+
+
 @dataclass
 class KontrolRaporu:
     """Bir kontrol işleminin sonuç raporu"""
@@ -32,6 +61,7 @@ class KontrolRaporu:
     sut_kurali: Optional[str] = None      # Hangi SUT kuralına bakıldı (ör: "SUT 4.2.2 Psikiyatri")
     aranan_ibare: Optional[str] = None    # Metinde aranan ibare (ör: "uzman raporu (psikiyatri/nöroloji)")
     bulunan_metin: Optional[str] = None   # Metinde bulunan eşleşme (ör: "psikiyatri uzmanı tarafından...")
+    sartlar: List[SartSonuc] = field(default_factory=list)  # Şart-bazlı yapısal rapor (CLAUDE.md disiplini)
 
 
 class BaseKontrol(ABC):

@@ -11,6 +11,8 @@ from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict
 import threading
 
+from recete_kontrol.sut_kontrolleri import _tr_lower
+
 # tkcalendar için
 try:
     from tkcalendar import DateEntry
@@ -342,7 +344,7 @@ class TumHareketlerGUI:
         for col, entry in self.sutun_filtre_entries.items():
             val = entry.get().strip()
             if val:
-                self.sutun_filtreler[col] = val.lower()
+                self.sutun_filtreler[col] = _tr_lower(val)
                 aktif_filtreler.append(f"{self.column_headers.get(col, col)}: {val}")
             else:
                 self.sutun_filtreler.pop(col, None)
@@ -419,9 +421,9 @@ class TumHareketlerGUI:
 
             # Ek filtreler (yön, hasta, doktor, depo)
             yon = self.yon_filtre.get()
-            hasta = self.hasta_ara.get().strip().lower()
-            doktor = self.doktor_ara.get().strip().lower()
-            depo = self.depo_ara.get().strip().lower()
+            hasta = _tr_lower(self.hasta_ara.get().strip())
+            doktor = _tr_lower(self.doktor_ara.get().strip())
+            depo = _tr_lower(self.depo_ara.get().strip())
 
             if yon != "Tümü" or hasta or doktor or depo:
                 filtreli = []
@@ -429,13 +431,13 @@ class TumHareketlerGUI:
                     if yon != "Tümü" and v.get('Yon') != yon:
                         continue
                     if hasta:
-                        hasta_adi = (v.get('HastaAdi') or '').lower()
-                        ilgili = (v.get('Ilgili') or '').lower()
+                        hasta_adi = _tr_lower(v.get('HastaAdi'))
+                        ilgili = _tr_lower(v.get('Ilgili'))
                         if hasta not in hasta_adi and hasta not in ilgili:
                             continue
-                    if doktor and doktor not in (v.get('DoktorAdi') or '').lower():
+                    if doktor and doktor not in _tr_lower(v.get('DoktorAdi')):
                         continue
-                    if depo and depo not in (v.get('Ilgili') or '').lower():
+                    if depo and depo not in _tr_lower(v.get('Ilgili')):
                         continue
                     filtreli.append(v)
                 self.veriler = filtreli
@@ -468,7 +470,7 @@ class TumHareketlerGUI:
         for veri in self.veriler:
             uygun = True
             for col, filtre_val in self.sutun_filtreler.items():
-                hucre_val = str(veri.get(col, '') or '').lower()
+                hucre_val = _tr_lower(str(veri.get(col, '') or ''))
                 if filtre_val not in hucre_val:
                     uygun = False
                     break

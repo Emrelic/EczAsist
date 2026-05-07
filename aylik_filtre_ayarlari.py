@@ -660,8 +660,8 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
 
     win = tk.Toplevel(parent)
     win.title("⚙ Aylık İnceleme — Detaylı Filtre Ayarları")
-    # İçeriğe yeten kompakt boyut — tüm bölümler ve butonlar görünür
-    win.minsize(820, 680)
+    # Tüm sekmelerde alt butonların net görünmesi için ferah boyut
+    win.minsize(960, 820)
     win.resizable(True, True)
     win.configure(bg="#FAFAFA")
     win.transient(parent)
@@ -670,13 +670,13 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
         win.update_idletasks()
         sw = win.winfo_screenwidth()
         sh = win.winfo_screenheight()
-        ww = min(1000, sw - 80)
-        wh = min(780, sh - 80)
+        ww = min(1150, sw - 80)
+        wh = min(920, sh - 80)
         x = max(0, (sw - ww) // 2)
         y = max(0, (sh - wh) // 2)
         win.geometry(f"{ww}x{wh}+{x}+{y}")
     except Exception:
-        win.geometry("1000x780")
+        win.geometry("1150x920")
     win.lift()
     try:
         win.focus_force()
