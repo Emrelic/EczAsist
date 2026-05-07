@@ -622,31 +622,44 @@ def _liste_secici_pencere_ac(parent, db, tip, on_select):
     btn_frm = tk.Frame(bot, bg="#ECEFF1")
     btn_frm.pack(fill="x", padx=8, pady=(2, 6))
 
-    def _ekle():
+    def _ekle(kapat=True):
         secilenler = [tv.item(iid, "values")[0]
                       for iid in tv.selection()]
         if not secilenler:
             messagebox.showwarning("Uyarı",
                                        "Önce listeden öğe seç (Ctrl/Shift "
-                                       "ile çoklu seçim).")
+                                       "ile çoklu seçim).",
+                                       parent=win)
             return
         try:
             on_select(secilenler, mod_var.get())
         except Exception as e:
-            messagebox.showerror("Hata", f"Eklenemedi: {e}")
+            messagebox.showerror("Hata", f"Eklenemedi: {e}", parent=win)
             return
-        win.destroy()
+        if kapat:
+            win.destroy()
+        else:
+            # Pencere açık kalsın → yeni seçim yapıp tekrar ekleyebilsin
+            tv.selection_remove(*tv.selection())
+            lbl_sayim.config(
+                text=f"✓ {len(secilenler)} öğe eklendi — "
+                     f"yeni seçim yapıp ekleyebilirsin",
+                fg="#2E7D32")
 
+    tk.Button(btn_frm, text="➕ Seçilenleri Ekle",
+               bg="#1976D2", fg="white", bd=0, padx=12, pady=4,
+               font=("Segoe UI", 10, "bold"),
+               command=lambda: _ekle(kapat=False)).pack(side="left", padx=2)
     tk.Button(btn_frm, text="➕ Seçilenleri Ekle ve Kapat",
                bg="#43A047", fg="white", bd=0, padx=12, pady=4,
                font=("Segoe UI", 10, "bold"),
-               command=_ekle).pack(side="left", padx=2)
+               command=lambda: _ekle(kapat=True)).pack(side="left", padx=2)
     tk.Button(btn_frm, text="❌ İptal", bg="#90A4AE", fg="white",
                bd=0, padx=10, pady=4, font=("Segoe UI", 9, "bold"),
                command=win.destroy).pack(side="right", padx=2)
 
-    # Çift tık → seçileni ekle (tek satır)
-    tv.bind("<Double-1>", lambda e: _ekle())
+    # Çift tık → seçileni ekle (tek satır) ve pencereyi kapat
+    tv.bind("<Double-1>", lambda e: _ekle(kapat=True))
 
     win.grab_set()
 

@@ -820,6 +820,9 @@ class AylikReceteSorguGUI:
              "Filtreden geçen satırların seçimini KALDIR"),
             ("↻ Tersine", self._secimi_tersine_cevir,
              "Seçimi tersine çevir (filtreli satırlarda)"),
+            ("✓ Vurgulu", self._vurgulanmislari_isaretle,
+             "Shift/Ctrl ile vurgulanmış satırların\n"
+             "checkbox'larını işaretle"),
         ]:
             b = tk.Button(p1, text=txt, bg="white", bd=1,
                           command=cmd, padx=8, pady=3, font=FONT_BUTON)
@@ -2939,6 +2942,23 @@ class AylikReceteSorguGUI:
         self._tabloyu_yenile()
         self._sayaclari_guncelle()
 
+    def _vurgulanmislari_isaretle(self):
+        """Treeview'da Shift/Ctrl ile vurgulanmış satırların checkbox'ını işaretle."""
+        vurgulu = list(self.tv.selection())
+        if not vurgulu:
+            self._durum_yaz("Vurgulanmış satır yok "
+                            "(Shift/Ctrl ile satır seçin)")
+            return
+        eklendi = 0
+        for iid in vurgulu:
+            if iid not in self.secili_iidler:
+                self.secili_iidler.add(iid)
+                eklendi += 1
+        self._tabloyu_yenile()
+        self._sayaclari_guncelle()
+        self._durum_yaz(f"{len(vurgulu)} vurgulu satır işaretlendi "
+                        f"({eklendi} yeni)")
+
     # ----------------------------------------------------------- SAĞ TIK & DETAY
     def _sag_tik_dispatch(self, event):
         """Başlığa mı satıra mı tıklandı? Doğru menüyü aç."""
@@ -3398,9 +3418,15 @@ class AylikReceteSorguGUI:
         m = tk.Menu(self.root, tearoff=0)
         # En üst: Reçete / Rapor detay pencereleri (Botanik EOS'tan canlı çek)
         s_aktif = self.satir_indeks.get(self.tv.selection()[0]) or {}
+        sistem_no_aktif = (s_aktif.get("sistem_recete_no") or "").strip()
         rec_no_aktif = (s_aktif.get("rec_no") or "").strip()
         rapor_ana_id_aktif = s_aktif.get("rapor_ana_id") or 0
-        if rec_no_aktif:
+        # Etiketde önce sistem reçete no (Medula'da kullanılan), yoksa e-reçete no
+        if sistem_no_aktif:
+            m.add_command(
+                label=f"🔍 Reçete Detayını Göster ({sistem_no_aktif})",
+                command=self._recete_detay_goster)
+        elif rec_no_aktif:
             m.add_command(
                 label=f"🔍 Reçete Detayını Göster ({rec_no_aktif})",
                 command=self._recete_detay_goster)
@@ -3672,32 +3698,46 @@ class AylikReceteSorguGUI:
 
     # ───────────────────────── Reçete / Rapor detay pencereleri (Botanik EOS canlı) ─────────────────────────
     def _recete_detay_goster(self):
-        """Aktif satırın reçetesinin detayını Botanik EOS'tan çekip yeni pencerede göster."""
+        """Aktif satırın reçetesinin detayını Botanik EOS'tan çekip yeni pencerede göster.
+
+        Arama önceliği:
+        1. sistem_recete_no (RxSgkIslemNo) — Medula'da reçete açarken kullanılan no
+        2. rx_id (PK fallback)
+        3. rec_no (RxEReceteNo fallback)
+        """
         s = self._aktif_satir()
         if not s:
             return
+        sistem_recete_no = (s.get("sistem_recete_no") or "").strip()
         rx_id = s.get("rx_id")
         rec_no = (s.get("rec_no") or "").strip()
-        if not rx_id and not rec_no:
+        if not sistem_recete_no and not rx_id and not rec_no:
             messagebox.showwarning("Uyarı", "Bu satırda reçete kimliği yok.", parent=self.root)
             return
         if not self.db:
             messagebox.showerror("Hata", "Botanik EOS bağlantısı yok.", parent=self.root)
             return
         try:
-            data = self._recete_detay_verileri_cek(rx_id=rx_id, rec_no=rec_no)
+            data = self._recete_detay_verileri_cek(
+                sistem_recete_no=sistem_recete_no, rx_id=rx_id, rec_no=rec_no)
         except Exception as e:
             logger.exception("Reçete detay sorgu hatası")
             messagebox.showerror("Sorgu Hatası", f"Reçete detayı çekilemedi:\n{e}",
                                  parent=self.root)
             return
         if not data:
+            diag = getattr(self, "_son_recete_diag", "") or "(diagnostic yok)"
             messagebox.showinfo(
                 "Bulunamadı",
-                f"Reçete Botanik EOS'ta bulunamadı.\n(rec_no={rec_no} rx_id={rx_id})",
+                f"Reçete Botanik EOS'ta bulunamadı.\n\n"
+                f"Aktif satır:\n"
+                f"  sistem_recete_no = {sistem_recete_no!r}\n"
+                f"  rec_no = {rec_no!r}\n"
+                f"  rx_id = {rx_id!r}\n\n"
+                f"Denemeler:\n{diag}",
                 parent=self.root)
             return
-        self._recete_detay_pencere_olustur(rec_no, data)
+        self._recete_detay_pencere_olustur(sistem_recete_no or rec_no, data)
 
     def _rapor_detay_goster(self):
         """Aktif satırın rapor_ana_id'sine ait raporu Botanik EOS'tan çekip göster."""
@@ -3728,49 +3768,85 @@ class AylikReceteSorguGUI:
             return
         self._rapor_detay_pencere_olustur(s, data)
 
-    def _recete_detay_verileri_cek(self, rx_id=None, rec_no=""):
-        """Tek reçete + ilaçları + teşhisleri + açıklamaları + medula yanıtlarını çek."""
-        # 1) Header + ilaçlar
-        if rx_id:
-            where_klozu = "ra.RxId = ?"
-            param_first = rx_id
-        else:
-            where_klozu = "ra.RxEReceteNo = ?"
-            param_first = rec_no
-        sql = f"""
+    def _recete_detay_verileri_cek(self, sistem_recete_no="", rx_id=None, rec_no=""):
+        """Tek reçete + ilaçları + teşhisleri + açıklamaları + medula yanıtlarını çek.
+
+        Sıralı fallback: sistem_recete_no (RxSgkIslemNo) →
+        rx_id (RxId, PK) → rec_no (RxEReceteNo).
+        Birinde bulunmazsa sonrakine geçer.
+
+        Geri dönüş: bulunduysa dict; bulunamadıysa
+        ('NOT_FOUND', diagnostic_str) tuple'ı (caller diagnostic'i kullanıcıya göstersin).
+        """
+        # 1) Header — ReceteAna + LEFT JOIN'ler (INNER JOIN YOK, böylece ilaç
+        #    yoksa veya silinmiş bile olsa header çekilebilir)
+        header_kalibi = """
             SELECT
                 ra.RxId, ra.RxEReceteNo, ra.RxSgkIslemNo,
                 ra.RxIslemTarihi, ra.RxKayitTarihi, ra.RxReceteTarihi,
                 ra.RxBransId, ra.RxKurumId, ra.RxHastaneId,
-                ra.RxMusteriId, ra.RxDoktorId,
+                ra.RxMusteriId, ra.RxDoktorId, ra.RxSilme,
                 ra.RxReceteRenkId, ra.RxReceteAltTuruId, ra.RxProvizyonTipId,
                 m.MusteriAdiSoyadi, m.MusteriTCKN, m.MusteriDogumTarihi,
                 m.MusteriCinsiyet, m.MusteriKapsamId, m.MusteriEmeklilik,
                 d.DoktorAdiSoyadi,
                 h.HastaneAdi, h.HastaneKodu,
-                k.KurumAdi,
-                ri.RIId, ri.RIUrunId, ri.RIRaporKodId, ri.RIRaporNo,
-                ri.RIAdet, ri.RIDoz, ri.RITekrar, ri.RIAralik, ri.RIPeriyotId,
-                ri.RIToplam, ri.RIFiyatFarki,
-                u.UrunAdi, u.UrunBarkodu,
-                atc.ATCKodu, atc.ATCTurkce
+                k.KurumAdi
             FROM ReceteAna ra
             LEFT JOIN Musteri m ON m.MusteriId = ra.RxMusteriId
             LEFT JOIN Doktor d ON d.DoktorId = ra.RxDoktorId
             LEFT JOIN Hastane h ON h.HastaneId = ra.RxHastaneId
             LEFT JOIN Kurum k ON k.KurumId = ra.RxKurumId
-            INNER JOIN ReceteIlaclari ri ON ri.RIRxId = ra.RxId
-                                          AND (ri.RISilme IS NULL OR ri.RISilme = 0)
-            LEFT JOIN Urun u ON u.UrunId = ri.RIUrunId
-            LEFT JOIN ATC atc ON atc.ATCId = u.UrunATCId
-            WHERE {where_klozu} AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)
-            ORDER BY ri.RIId
+            WHERE {where_klozu}
         """
-        rows = self.db.sorgu_calistir(sql, (param_first,))
-        if not rows:
+        denemeler = []
+        if sistem_recete_no:
+            denemeler.append(("RxSgkIslemNo", "ra.RxSgkIslemNo = ?", sistem_recete_no))
+        if rx_id:
+            denemeler.append(("RxId", "ra.RxId = ?", rx_id))
+        if rec_no:
+            denemeler.append(("RxEReceteNo", "ra.RxEReceteNo = ?", rec_no))
+        header_rows = []
+        diag_satirlari = []
+        for alan_adi, where_klozu, param in denemeler:
+            sql = header_kalibi.format(where_klozu=where_klozu)
+            try:
+                header_rows = self.db.sorgu_calistir(sql, (param,))
+                diag_satirlari.append(f"  {alan_adi}={param!r} → {len(header_rows)} satır")
+            except Exception as e:
+                diag_satirlari.append(f"  {alan_adi}={param!r} → HATA: {e}")
+                logger.warning(f"Reçete detay sorgu hatası ({alan_adi}={param}): {e}")
+                header_rows = []
+            if header_rows:
+                logger.info(f"Reçete detay {alan_adi}={param} ile bulundu")
+                break
+        if not header_rows:
+            self._son_recete_diag = "\n".join(diag_satirlari)
             return None
-        rx_id_resolved = rows[0]["RxId"]
-        doktor_id = rows[0].get("RxDoktorId")
+        self._son_recete_diag = ""
+        header = header_rows[0]
+        rx_id_resolved = header["RxId"]
+        doktor_id = header.get("RxDoktorId")
+
+        # 2) İlaçlar — ayrı sorgu (silinmiş olanları da göster, render'da işaretle)
+        ilaclar = []
+        try:
+            ilaclar = self.db.sorgu_calistir(
+                """SELECT
+                       ri.RIId, ri.RIUrunId, ri.RIRaporKodId, ri.RIRaporNo,
+                       ri.RIAdet, ri.RIDoz, ri.RITekrar, ri.RIAralik, ri.RIPeriyotId,
+                       ri.RIToplam, ri.RIFiyatFarki, ri.RISilme,
+                       u.UrunAdi, u.UrunBarkodu,
+                       atc.ATCKodu, atc.ATCTurkce
+                   FROM ReceteIlaclari ri
+                   LEFT JOIN Urun u ON u.UrunId = ri.RIUrunId
+                   LEFT JOIN ATC atc ON atc.ATCId = u.UrunATCId
+                   WHERE ri.RIRxId = ?
+                   ORDER BY ri.RIId""",
+                (rx_id_resolved,))
+        except Exception as e:
+            logger.warning(f"ReceteIlaclari sorgu hatası: {e}")
+            ilaclar = []
 
         # 2) Teşhisler (ReceteICD + ICD)
         teshisler = []
@@ -3819,7 +3895,7 @@ class AylikReceteSorguGUI:
                    LEFT JOIN EReceteAciklamaTuru eat
                        ON eat.EReceteAciklamaTuruId = era.ERAEReceteAciklamaTuruId
                    WHERE er.EReceteNo = ? AND (er.EReceteSilme IS NULL OR er.EReceteSilme = 0)""",
-                (rows[0].get("RxEReceteNo") or "",))
+                (header.get("RxEReceteNo") or "",))
             for r in ea:
                 tur = (r.get("EReceteAciklamaTuruAdi") or "").strip()
                 ad = (r.get("EReceteAciklamaAdi") or "").strip()
@@ -3858,8 +3934,8 @@ class AylikReceteSorguGUI:
                 logger.debug(f"DoktorBrans okunamadı: {e}")
 
         return {
-            "header": rows[0],
-            "ilaclar": rows,
+            "header": header,
+            "ilaclar": ilaclar,
             "teshisler": teshisler,
             "aciklamalar": aciklamalar,
             "medula_yanitlari": medula_yanitlari,
@@ -4060,8 +4136,13 @@ class AylikReceteSorguGUI:
                 yaz(f"  • {y}\n", "warn")
 
         yaz("\nİlaçlar\n", "h2")
+        if not data["ilaclar"]:
+            yaz("  (ReceteIlaclari kaydı yok)\n")
         for i, ilac in enumerate(data["ilaclar"], 1):
-            yaz(f"\n  {i}. {ilac.get('UrunAdi') or '(ürün adı yok)'}\n", "k")
+            silinmis = bool(ilac.get("RISilme"))
+            silme_etiketi = "  [SİLİNMİŞ]" if silinmis else ""
+            yaz(f"\n  {i}. {ilac.get('UrunAdi') or '(ürün adı yok)'}{silme_etiketi}\n",
+                "warn" if silinmis else "k")
             atc_kodu = (ilac.get("ATCKodu") or "").strip()
             atc_ad = (ilac.get("ATCTurkce") or "").strip()
             if atc_kodu or atc_ad:

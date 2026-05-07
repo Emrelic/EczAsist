@@ -193,7 +193,7 @@ ETKIN_MADDE_KATEGORI = {
     'BEZAFIBRAT': 'FIBRAT',
     'SIPROFIBRAT': 'FIBRAT',
 
-    # BIFOSFONAT (Osteoporoz)
+    # BIFOSFONAT (Osteoporoz - SUT 4.2.17)
     'ALENDRONAT': 'BIFOSFONAT',
     'ALENDRONAT SODYUM': 'BIFOSFONAT',
     'ALENDRONIK ASIT': 'BIFOSFONAT',
@@ -204,6 +204,35 @@ ETKIN_MADDE_KATEGORI = {
     'ZOLEDRONAT': 'BIFOSFONAT',
     'ZOLEDRONIK ASIT': 'BIFOSFONAT',
     'KOLEKALSITEROL': 'BIFOSFONAT',  # Fosavance = alendronat+kolekalsiferol
+
+    # RALOKSIFEN (SERM - SUT 4.2.17.A(6a))
+    'RALOKSIFEN': 'RALOKSIFEN',
+    'RALOKSIFEN HCL': 'RALOKSIFEN',
+    'RALOKSIFEN HIDROKLORUR': 'RALOKSIFEN',
+    'RALOKSIFEN HIDROKLORÜR': 'RALOKSIFEN',
+    'BAZEDOKSIFEN': 'RALOKSIFEN',  # Aynı SERM grubu
+
+    # KALSITONIN (SUT 4.2.17.A(7-8) + 4.2.17.B Sudek)
+    'KALSITONIN': 'KALSITONIN',
+    'KALSİTONİN': 'KALSITONIN',
+    'CALCITONIN': 'KALSITONIN',
+    'KALSITONIN SOMON': 'KALSITONIN',
+    'CALCITONIN SALMON': 'KALSITONIN',
+
+    # AKTIF D VITAMINI (SUT 4.2.17.A(9): osteoporozda ödenmez)
+    'KALSITRIOL': 'AKTIF_D_VITAMINI',
+    'CALCITRIOL': 'AKTIF_D_VITAMINI',
+    'ALFAKALSIDOL': 'AKTIF_D_VITAMINI',
+    'ALFA KALSIDOL': 'AKTIF_D_VITAMINI',
+    'ALPHACALCIDOL': 'AKTIF_D_VITAMINI',
+
+    # OSTEOPOROZ BIYOLOJIK (SUT 4.2.17.A(6b))
+    'DENOSUMAB': 'OSTEOPOROZ_BIYOLOJIK',
+    'TERIPARATID': 'OSTEOPOROZ_BIYOLOJIK',
+    'TERIPARATIDE': 'OSTEOPOROZ_BIYOLOJIK',
+    'ROMOSOZUMAB': 'OSTEOPOROZ_BIYOLOJIK',
+    'STRONSIYUM RANELAT': 'OSTEOPOROZ_BIYOLOJIK',
+    'STRONTIUM RANELAT': 'OSTEOPOROZ_BIYOLOJIK',
 
     # İnkontinans antimuskarinikler (SUT 4.2.16.B)
     'SOLIFENASIN': 'INKONTINANS', 'SOLIFENASIN SUKSINAT': 'INKONTINANS',
@@ -1020,6 +1049,34 @@ ILAC_ADI_KATEGORI = {
     'OSTEOFOS': 'BIFOSFONAT',
     'OSTEOMAX': 'BIFOSFONAT',
     'ALENDRO': 'BIFOSFONAT',
+    'ALENOTOP': 'BIFOSFONAT',
+    'BENEFOS': 'BIFOSFONAT',
+    # Raloksifen (SERM)
+    'EVISTA': 'RALOKSIFEN',
+    'OPTRUMA': 'RALOKSIFEN',
+    'RALOXIN': 'RALOKSIFEN',
+    'CONBRIZA': 'RALOKSIFEN',     # Bazedoksifen
+    # Kalsitonin
+    'MIACALCIC': 'KALSITONIN',
+    'MIACALCIN': 'KALSITONIN',
+    'CALSYNAR': 'KALSITONIN',
+    'TONOCALCIN': 'KALSITONIN',
+    # Aktif D vitamini (osteoporozda ödenmez)
+    'ROCALTROL': 'AKTIF_D_VITAMINI',
+    'CALCIJEX': 'AKTIF_D_VITAMINI',
+    'ETALPHA': 'AKTIF_D_VITAMINI',
+    'ALPHA D3': 'AKTIF_D_VITAMINI',
+    'ONE-ALPHA': 'AKTIF_D_VITAMINI',
+    'ONEALPHA': 'AKTIF_D_VITAMINI',
+    # Osteoporoz biyolojik
+    'PROLIA': 'OSTEOPOROZ_BIYOLOJIK',
+    'XGEVA': 'OSTEOPOROZ_BIYOLOJIK',
+    'FORTEO': 'OSTEOPOROZ_BIYOLOJIK',
+    'FORSTEO': 'OSTEOPOROZ_BIYOLOJIK',
+    'MOVYMIA': 'OSTEOPOROZ_BIYOLOJIK',
+    'EVENITY': 'OSTEOPOROZ_BIYOLOJIK',
+    'OSSEOR': 'OSTEOPOROZ_BIYOLOJIK',
+    'PROTELOS': 'OSTEOPOROZ_BIYOLOJIK',
     # Statinler
     'ATOR': 'STATIN',
     'LIPITOR': 'STATIN',
@@ -7149,14 +7206,27 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
     teshis_metin = ' '.join(recete_teshisleri).upper() if recete_teshisleri else ''
     birlesik = (metin or '') + ' ' + teshis_metin
     metin_lower = birlesik.replace('İ', 'i').replace('I', 'ı').lower() if birlesik else ''
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
 
     sut_kurali = 'SUT 4.2.15.D — YOAK kullanım kuralları'
-    detaylar = {'endikasyon': None, 'varfarin_bilgi': False}
+    detaylar = {'endikasyon': None, 'varfarin_bilgi': False,
+                'rapor_kodu': rapor_kodu}
 
-    if not metin_lower:
-        return KontrolRaporu(KontrolSonucu.KONTROL_EDILEMEDI,
-                             "Rapor/mesaj metni yok", sut_kurali=sut_kurali,
-                             aranan_ibare='AF / DVT / PE / varfarin / INR')
+    if not metin_lower.strip():
+        # Rapor metni boş — YOAK SUT 4.2.15.D'ye göre uzman hekim raporu
+        # zorunlu (kardiyoloji/dahiliye/iç hast/aile hekimi).
+        if not rapor_kodu:
+            return KontrolRaporu(
+                KontrolSonucu.UYGUN_DEGIL,
+                "Raporsuz YOAK — uzman hekim raporu zorunlu",
+                sut_kurali=sut_kurali, detaylar=detaylar,
+                aranan_ibare='rapor / AF / DVT / PE')
+        return KontrolRaporu(
+            KontrolSonucu.KONTROL_EDILEMEDI,
+            f"Rapor kodu var ({rapor_kodu}) ama metni okunamadı — "
+            "manuel doğrulama gerekli",
+            sut_kurali=sut_kurali, detaylar=detaylar,
+            aranan_ibare='AF / DVT / PE / varfarin / INR')
 
     # Endikasyonlar
     # Varfarin varyasyonları: varfarin, warfarin, coumadin (ticari ad), kumadin, comadin (yanlış yazım)
@@ -7312,285 +7382,1859 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
     )
 
 
-def kontrol_bifosfonat(ilac_sonuc: Dict) -> KontrolRaporu:
-    """
-    SUT 4.2.17 - Bifosfonat (Alendronat/Fosavance/Fosamax/Risedronat/İbandronat/Zoledronat)
+# ═══════════════════════════════════════════════════════════════════════
+# SUT 4.2.17 — Osteoporoz / Bifosfonat / Raloksifen / Kalsitonin / Aktif-D
+# ═══════════════════════════════════════════════════════════════════════
 
-    T-skoru eşikleri:
-    - Patolojik kırığı OLAN: T ≤ -1
-    - 65 yaş üstü kırıksız: T ≤ -2.5
-    - 65 yaş altı kırıksız: T ≤ -3
-    - Sekonder osteoporoz (kortikosteroid): T ≤ -1
-    - 75 yaş üstü VEYA kalça kırığı: KMY gerekmez
+# 4.2.17.A(5): Bifosfonat raporu yetkili branşlar
+_OSTEO_YETKILI_BRANSLAR = (
+    'ic hastalik', 'iç hastalık', 'dahiliye',
+    'fizik tedavi', 'fiziksel tip', 'fiziksel tıp', 'ftr', 'rehabilitasyon',
+    'romatoloj',
+    'ortopedi', 'travmatoloj',
+    'kadin hastalik', 'kadın hastalık', 'kadin dogum', 'kadın doğum', 'jinekoloj',
+    'endokrinoloj', 'endokrin',
+    'tibbi ekoloji', 'tıbbi ekoloji', 'hidroklimatoloji',
+)
+
+# 4.2.17.A(7-8): Kalsitonin için yetkili branşlar (tıbbi ekoloji yok)
+_KALSITONIN_YETKILI_BRANSLAR = (
+    'ic hastalik', 'iç hastalık', 'dahiliye',
+    'fizik tedavi', 'fiziksel tip', 'fiziksel tıp', 'ftr', 'rehabilitasyon',
+    'romatoloj',
+    'ortopedi', 'travmatoloj',
+    'kadin hastalik', 'kadın hastalık', 'kadin dogum', 'kadın doğum', 'jinekoloj',
+    'endokrinoloj', 'endokrin',
+)
+
+# 4.2.17.A(4)(ç): Sekonder osteoporoz primer hastalık listesi
+# anahtar: hastalık adı | değer: (kelime listesi, ICD prefix listesi)
+_SEKONDER_OSTEO_PRIMER = {
+    'romatoid artrit':       (['romatoid artrit', 'rheumatoid arthrit', ' ra '],
+                              ['M05', 'M06']),
+    'çölyak hastalığı':      (['colyak', 'çölyak', 'celiac'], ['K90']),
+    'crohn hastalığı':       (['crohn'], ['K50']),
+    'ülseratif kolit':       (['ulseratif kolit', 'ülseratif kolit'], ['K51']),
+    'ankilozan spondilit':   (['ankilozan spondilit', 'spondiloartrit'], ['M45']),
+    'hipertiroidi':          (['hipertiroidi', 'tirotoksikoz', 'graves'],
+                              ['E05']),
+    'hipogonadizm':          (['hipogonadizm'], ['E23.0', 'E29']),
+    'hipopituitarizm':       (['hipopituitarizm', 'panhipopituitarizm'], ['E23']),
+    'anoreksia nervoza':     (['anoreksia nervoza', 'anoreksia nevroza',
+                              'anorexia nervosa'], ['F50']),
+    'KOAH':                  (['koah', 'kronik obstruktif', 'kronik obstrüktif',
+                              'copd'], ['J44']),
+    'tip 1 diyabet':         (['tip 1 diyabet', 'tip i diyabet', 'tip-1 dm',
+                              'tip 1 dm'], ['E10']),
+    'cushing sendromu':      (['cushing'], ['E24']),
+    'primer hiperparatiroidi': (['primer hiperparatiroid'], ['E21.0']),
+}
+
+
+def _osteo_yas_oku(ilac_sonuc: Dict, metin: str = '') -> Optional[int]:
+    """ilac_sonuc.hasta_yasi'ı veya metinden yaş kalıbını oku.
+
+    Yakalanan formatlar:
+      - 'yaş: 72' / 'yaş 72' / 'yas 72' (kelime önce)
+      - '56 YAŞ' / '69 YAŞINDADIR' / '78 yaşında' (sayı önce — Medula
+        rapor metinlerinde sıkça görülür)
+    """
+    hy_raw = ilac_sonuc.get('hasta_yasi') or ilac_sonuc.get('yas')
+    if hy_raw:
+        try:
+            yas = int(re.sub(r'[^0-9]', '', str(hy_raw)) or 0)
+            if 0 < yas < 130:
+                return yas
+        except (ValueError, TypeError):
+            pass
+    if metin:
+        # Sıra 1: 'yaş 72' / 'yas: 72' (kelime önce)
+        m = re.search(r'(?:yaş|yasi|yas)[^0-9]{0,8}(\d{1,3})', metin,
+                      re.IGNORECASE)
+        if m:
+            try:
+                yas = int(m.group(1))
+                if 0 < yas < 120:
+                    return yas
+            except ValueError:
+                pass
+        # Sıra 2: '56 YAŞ' / '69 YAŞINDADIR' / 'hasta 78 yaşında' (sayı önce)
+        m2 = re.search(r'(\d{1,3})\s*yaş', metin, re.IGNORECASE)
+        if m2:
+            try:
+                yas = int(m2.group(1))
+                if 0 < yas < 120:
+                    return yas
+            except ValueError:
+                pass
+    return None
+
+
+def _osteo_yetkili_brans(brans: str, brans_listesi=_OSTEO_YETKILI_BRANSLAR) -> bool:
+    if not brans:
+        return False
+    bl = _tr_lower(brans)
+    return any(k in bl for k in brans_listesi)
+
+
+def _osteo_kombi_var(ilac_sonuc: Dict, mevcut_kategori: str) -> Tuple[bool, str]:
+    """SUT 4.2.17.A(1) son cümle: bu grup ilaçların kombinasyonu halinde
+    sadece birinin bedeli ödenir.
+
+    Aynı reçetede başka bir osteoporoz ilacı varsa True döndür.
+    Returns: (kombi_var, tespit_edilen_ilac).
+    """
+    diger = ilac_sonuc.get('recete_ilaclari') or []
+    diger_str = ' '.join([
+        str(i.get('ad', '') if isinstance(i, dict) else i) for i in diger
+    ]).upper()
+    diger_etken = ilac_sonuc.get('diger_etken_maddeler') or []
+    diger_str += ' ' + ' '.join([str(x) for x in diger_etken]).upper()
+    if not diger_str.strip():
+        return False, ''
+
+    osteo_ilaclar = {
+        'BIFOSFONAT': ('ALENDRONAT', 'RISEDRONAT', 'IBANDRONAT', 'ZOLEDRONAT',
+                       'FOSAMAX', 'FOSAVANCE', 'ACTONEL', 'BONVIVA', 'ACLASTA',
+                       'ZOMETA', 'OSTEOFOS', 'OSTEOMAX', 'BENEFOS'),
+        'RALOKSIFEN': ('RALOKSIFEN', 'EVISTA', 'OPTRUMA', 'BAZEDOKSIFEN',
+                       'CONBRIZA'),
+        'KALSITONIN': ('KALSITONIN', 'CALCITONIN', 'MIACALCIC', 'MIACALCIN',
+                       'CALSYNAR', 'TONOCALCIN'),
+        'OSTEOPOROZ_BIYOLOJIK': ('DENOSUMAB', 'PROLIA', 'TERIPARATID', 'FORTEO',
+                                  'FORSTEO', 'MOVYMIA', 'ROMOSOZUMAB', 'EVENITY',
+                                  'STRONSIYUM', 'STRONTIUM', 'OSSEOR', 'PROTELOS'),
+    }
+    for kategori, ilaclar in osteo_ilaclar.items():
+        if kategori == mevcut_kategori:
+            continue
+        for ilac in ilaclar:
+            if ilac in diger_str:
+                return True, ilac
+    return False, ''
+
+
+def _parse_tarih_str(s):
+    """'dd/mm/yyyy' veya 'dd.mm.yyyy' string'ini date'e çevir, hatada None."""
+    if not s:
+        return None
+    from datetime import date
+    m = re.match(r'(\d{1,2})[./](\d{1,2})[./](\d{4})', str(s).strip())
+    if not m:
+        return None
+    try:
+        return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    except (ValueError, OverflowError):
+        return None
+
+
+def _kmy_tarihi_parse(metin_orijinal: str, metin_lower: str,
+                      pencere: int = 120,
+                      referans_tarih=None) -> Tuple[Optional[str], Optional[bool]]:
+    """KMY/DEXA ölçüm tarihini metinden çek.
+
+    Anchor: 'kmy', 'dexa', 'dxa', 'kemik mineral', 'lomber', 'femur', vb.
+    Pencere içindeki en yakın gg.aa.yyyy/gg/aa/yyyy tarihini en yenisi
+    olarak döndürür.
+
+    SUT 4.2.17.A(2): "düzenlenecek rapor tarihinden önce son 2 yıl içinde".
+    Bu yüzden 'son 2 yıl' kontrolü `referans_tarih` (rapor/reçete tarihi)
+    verildiyse ona göre, yoksa bugünkü tarihe göre yapılır.
+
+    Returns: (tarih_str veya None, son_2_yil_icinde_mi veya None).
+    """
+    if not metin_orijinal or not metin_lower:
+        return None, None
+    anahtarlar = ('kmy', 'dexa', 'dxa', 'kemik mineral',
+                  'kemik ölçüm', 'kemik olcum',
+                  'ölçüm tarih', 'olcum tarih',
+                  'lomber', 'l1-l4', 'l1- l4', 'l1-4',
+                  'l2-l4', 'l2-4', 'femur boyn', 'femur total')
+    pozlar = []
+    for k in anahtarlar:
+        ofset = 0
+        while True:
+            i = metin_lower.find(k, ofset)
+            if i < 0:
+                break
+            pozlar.append(i)
+            ofset = i + len(k)
+    if not pozlar:
+        return None, None
+
+    from datetime import date
+    tarih_pat = re.compile(r'(\d{2})[./](\d{2})[./](\d{4})')
+    n = len(metin_orijinal)
+    bulunan: Optional[date] = None
+    bulunan_str: Optional[str] = None
+    for p in pozlar:
+        b = max(0, p - pencere)
+        s = min(n, p + pencere)
+        for m in tarih_pat.finditer(metin_orijinal[b:s]):
+            try:
+                gun, ay, yil = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                if not (2000 <= yil <= 2030 and 1 <= ay <= 12 and 1 <= gun <= 31):
+                    continue
+                t = date(yil, ay, gun)
+            except (ValueError, OverflowError):
+                continue
+            if bulunan is None or t > bulunan:
+                bulunan = t
+                bulunan_str = m.group(0)
+    if bulunan is None:
+        return None, None
+    ref = referans_tarih if referans_tarih is not None else date.today()
+    fark = (ref - bulunan).days
+    son_2_yil = (-30 <= fark <= 730)  # rapor öncesi 2 yıl + 30 gün hata payı
+    return bulunan_str, son_2_yil
+
+
+def _kmy_olcum_yeri_uygun(metin_lower: str) -> bool:
+    """SUT 4.2.17.A(4): lomber total (L1-4 / L2-4) veya femur total /
+    femur boynu KMY ölçümü."""
+    return any(k in metin_lower for k in (
+        'lomber', 'l1-4', 'l1-l4', 'l2-4', 'l2-l4', 'l1 l4', 'l2 l4',
+        'femur', 'femoral', 'femur boyn',
+    ))
+
+
+_T_OLC_YERI_PAT = re.compile(
+    r'\b(?:l\s*1[\s\-]*l?\s*4|l\s*2[\s\-]*l?\s*4|lomber|'
+    r'femur(?:\s+(?:boyn[uı]?|total))?|trochanter|boyn|total)\b'
+)
+_T_TARIH_PAT = re.compile(r'\b\d{1,2}[./]\d{1,2}[./]\d{2,4}\b')
+_T_ANCHOR_PAT = re.compile(
+    r'(?:total[\s\-]+)?(?:t[\s\-]*)?(?:skor[ua]?|score|scor)\b'
+)
+_T_NUM_PAT = re.compile(r'([+\-]?)\s*(\d+(?:[.,]\d+)?)')
+
+
+def _t_skoru_parse(metin_lower: str, birlesik: str) -> Tuple[Optional[float], str]:
+    """T-skoru sayısal değerini parse et.
+
+    Yakalanan formatlar:
+      - 'T: -2.8' / 'T=-2,8' (bare T)
+      - 'T-skor: -3.1' / 'T-score: -2.5'
+      - 'T-SCOR -3,6' (typo: scor)
+      - 'T SKOR:-3' (tam sayı, ondalık yok)
+      - 'T-SKOR : - 2.6' (boşluklu eksi)
+      - 'TOTAL SKOR -3,2' (T-anchor yok, total prefix)
+      - 'TOTAL T-SKOR : - 2.6'
+      - 't-skor l1-l4 -3.6' (anchor↔sayı arası ölçüm yeri token)
+      - 'T-skoru: 2.6' / 'T:2.6' (eksi unutulmuş → negatif kabul edilir;
+        T-skoru pratikte hep negatiftir)
+
+    Strateji: 2 aşama.
+      1) skor/skoru/score/scor anchor bul, sonrası 60 char pencerede ilk
+         ondalık sayıyı al. Pencerede tarih ve ölçüm-yeri token'ları
+         temizlenir (yanlış yakalama önler).
+      2) Bare 'T:' / 'T=' formu.
+
+    İşaret unutulmuşsa veya '+' ise pozitif değer negatife çevrilir.
+    Sanity: [-10, 0] (T-skoru hep negatif/yakın-sıfır).
+
+    Returns: (t_skoru veya None, eslesen_str).
+    """
+    def _onceleme(pencere: str) -> str:
+        # Tarih ve ölçüm-yeri token'larını boşluğa çevir → yanlış sayı
+        # yakalamayı engelle (16.06.2025 / l1-l4 vs.).
+        p = _T_TARIH_PAT.sub(' ', pencere)
+        p = _T_OLC_YERI_PAT.sub(' ', p)
+        return p
+
+    def _negatife_cevir(t: float) -> float:
+        return -t if t > 0 else t
+
+    # Aşama 1: skor anchor + signed/unsigned sayı
+    for am in _T_ANCHOR_PAT.finditer(metin_lower):
+        pencere = _onceleme(metin_lower[am.end():am.end() + 60])
+        nm = _T_NUM_PAT.search(pencere)
+        if not nm:
+            continue
+        try:
+            ham = (nm.group(1) or '') + nm.group(2)
+            t = _negatife_cevir(float(ham.replace(',', '.')))
+        except (ValueError, IndexError):
+            continue
+        if -10 <= t <= 0:
+            return t, ham.replace(' ', '')
+
+    # Aşama 2: bare 'T:' / 'T=' (anchor word yok)
+    for m in re.finditer(r'\bt\s*[:=]\s*([+\-]?\s*\d+(?:[.,]\d+)?)',
+                         metin_lower):
+        try:
+            t = _negatife_cevir(
+                float(m.group(1).replace(' ', '').replace(',', '.'))
+            )
+        except (ValueError, IndexError):
+            continue
+        if -10 <= t <= 0:
+            return t, m.group(0)
+
+    # Aşama 3: '-2.5 SD' / '-2,5 standart' suffix
+    for m in re.finditer(
+        r'([+\-]?\s*\d+(?:[.,]\d+)?)\s*(?:sd|standart)', metin_lower
+    ):
+        try:
+            t = _negatife_cevir(
+                float(m.group(1).replace(' ', '').replace(',', '.'))
+            )
+        except (ValueError, IndexError):
+            continue
+        if -10 <= t <= 0:
+            return t, m.group(0)
+
+    return None, ''
+
+
+def _kalca_kirigi_var(metin_lower: str, teshis_metin: str) -> bool:
+    """4.2.17.A(3): osteoporotik patolojik kalça kırığı → KMY gerekmez."""
+    teshis_upper = (teshis_metin or '').upper()
+    if any(k in teshis_upper for k in ('S72', 'M80.05', 'M80.55', 'M84.45')):
+        return True
+    return any(k in metin_lower for k in (
+        'kalca kirigi', 'kalça kırığı', 'kalca kirik', 'femur kirigi',
+        'femur kırığı', 'femur boyun kirigi', 'femur boyun kırığı',
+        'hip fracture', 'kollum femoris', 'subtrokanterik kırık',
+    ))
+
+
+def _kirik_var(metin_lower: str, teshis_metin: str) -> bool:
+    """4.2.17.A(4)(a): patolojik kırık (vertebra, vb)."""
+    teshis_upper = (teshis_metin or '').upper()
+    if any(k in teshis_upper for k in ('M80', 'S22', 'S32', 'S72', 'M84.4')):
+        return True
+    return any(k in metin_lower for k in (
+        'patolojik kirik', 'patolojik kırık', 'fraktur', 'fraktür', 'fracture',
+        'vertebra komp', 'kompresyon kirik', 'kompresyon kırık',
+        'osteoporotik kirik', 'osteoporotik kırık',
+    ))
+
+
+def _sekonder_osteo_primer_tespit(metin_lower: str,
+                                   teshis_metin: str) -> Optional[str]:
+    """4.2.17.A(4)(ç) primer hastalık listesi taraması."""
+    teshis_upper = (teshis_metin or '').upper()
+    for hastalik, (kelimeler, icd_prefixleri) in _SEKONDER_OSTEO_PRIMER.items():
+        for k in kelimeler:
+            if k.lower() in metin_lower:
+                return hastalik
+        for prefix in icd_prefixleri:
+            if prefix in teshis_upper:
+                return hastalik
+    return None
+
+
+def _kortikosteroid_uzun_doz_yuksek(metin_lower: str) -> Tuple[bool, str]:
+    """4.2.17.A(4)(ç): >5 mg/gün ve ≥3 ay sistemik kortikosteroid kullanımı.
+
+    Returns: (uygun_mu, eslesen_str). Doz/süre okunamazsa (False, '') döner.
+    Kullanıcı isteği: doz+süre okunamazsa KONTROL_EDİLEMEDİ default — bu
+    fonksiyonun çağrıldığı yerde 'kortikosteroid kelimesi var ama doz/süre
+    yok' senaryosu KONTROL_EDİLEMEDİ olarak işlenmeli.
+    """
+    if not metin_lower:
+        return False, ''
+    # Doz pattern: "prednizolon 10 mg", "deltacortril 16 mg"
+    steroid_kelimeleri = ('prednizo', 'prednizolon', 'kortizon', 'kortison',
+                          'metilprednizolon', 'metilprednizo', 'deksametazon',
+                          'deksametazon', 'deflazakort', 'kortikosteroid',
+                          'sistemik steroid', 'sistemik kortikosteroid',
+                          'deltacortril', 'prednol', 'metypred', 'medrol',
+                          'dekort', 'oradexon')
+    doz_pat = (r'(?:' + '|'.join(re.escape(k) for k in steroid_kelimeleri)
+               + r')[^a-zA-Z0-9]{0,30}(\d+(?:[.,]\d+)?)\s*mg')
+    sure_pat = (r'(\d+)\s*(?:ay|hafta|yıl|yil|gün|gun)|'
+                r'(?:>|≥|en az|kronik)\s*(\d+)\s*(?:ay|hafta|yıl|yil)')
+
+    m_doz = re.search(doz_pat, metin_lower)
+    if not m_doz:
+        return False, ''
+    try:
+        doz = float(m_doz.group(1).replace(',', '.'))
+    except (ValueError, IndexError):
+        return False, ''
+    if doz <= 5:
+        return False, m_doz.group(0)
+
+    # Süre — doz eşleşmesinin etrafında ara
+    civar_b = max(0, m_doz.start() - 80)
+    civar_s = min(len(metin_lower), m_doz.end() + 120)
+    civar = metin_lower[civar_b:civar_s]
+    m_sure = re.search(sure_pat, civar)
+    if not m_sure:
+        return False, m_doz.group(0)
+    miktar_str = m_sure.group(1) or m_sure.group(2)
+    try:
+        miktar = int(miktar_str)
+    except (ValueError, TypeError):
+        return False, m_doz.group(0)
+    birim = (m_sure.group(0) or '').lower()
+    if 'yıl' in birim or 'yil' in birim:
+        ay = miktar * 12
+    elif 'ay' in birim:
+        ay = miktar
+    elif 'hafta' in birim:
+        ay = miktar / 4.0
+    elif 'gün' in birim or 'gun' in birim:
+        ay = miktar / 30.0
+    else:
+        ay = 0
+    if ay >= 3:
+        return True, f"{m_doz.group(0)} / {m_sure.group(0)}"
+    return False, m_doz.group(0)
+
+
+def _kortikosteroid_kelime_var(metin_lower: str) -> bool:
+    return any(k in metin_lower for k in (
+        'kortikosteroid', 'kortizon', 'kortison', 'prednizolon', 'prednol',
+        'metilprednizolon', 'deksametazon', 'deflazakort', 'sistemik steroid',
+        'glukokortikoid', 'deltacortril', 'medrol',
+    ))
+
+
+def _kanser_organnakli_tespit(metin_lower: str,
+                               teshis_metin: str) -> Tuple[bool, str]:
+    """4.2.17.A(4)(ç): kanser tedavisi alan veya organ nakli uygulanmış."""
+    if any(k in metin_lower for k in (
+        'organ nakli', 'organ transplant', 'transplantasyon', 'transplant',
+        'böbrek nakli', 'bobrek nakli', 'karaciğer nakli', 'karaciger nakli',
+        'kalp nakli', 'kemik iliği nakli', 'kemik iligi nakli',
+    )):
+        return True, 'organ nakli'
+    if any(k in metin_lower for k in (
+        'kemoterapi', 'radyoterapi', 'kanser tedavi',
+        'aromataz inhibitör', 'aromataz inhibitor', 'hormon ablasyonu',
+        'androjen deprivasyon', 'tamoksifen', 'anastrozol', 'letrozol',
+        'eksemestan',
+    )):
+        return True, 'kanser tedavisi (kemo/radyo/aromataz)'
+    teshis_upper = (teshis_metin or '').upper()
+    if re.search(r'\bC\d{2}', teshis_upper):
+        return True, 'onkoloji ICD (C-kodu)'
+    return False, ''
+
+
+def _ho_endikasyonu_var(metin_lower: str, teshis_metin: str) -> bool:
+    """4.2.17.A(4)(d): heterotopik ossifikasyon (HO) endikasyonu (kalça
+    çıkığı / bel kemiği zedelenmesi)."""
+    teshis_upper = (teshis_metin or '').upper()
+    if 'M61' in teshis_upper:
+        return True
+    return any(k in metin_lower for k in (
+        'heterotopik ossifikasyon', 'heterotopik osifikasyon',
+        'heterotopic ossification', 'ho endikasyon',
+    ))
+
+
+def _paget_var_mi(metin_lower: str, teshis_metin: str) -> bool:
+    """4.2.17.Ç: Paget hastalığı (M88)."""
+    teshis_upper = (teshis_metin or '').upper()
+    if 'M88' in teshis_upper:
+        return True
+    return any(k in metin_lower for k in (
+        'paget hastal', 'osteitis deformans', 'pagetik',
+    ))
+
+
+def _agrili_vertebral_kirik(metin_lower: str, teshis_metin: str) -> bool:
+    """4.2.17.A(7): ağrılı vertebral kırık (kalsitonin endikasyonu)."""
+    teshis_upper = (teshis_metin or '').upper()
+    if 'S22' in teshis_upper or 'M48.5' in teshis_upper:
+        return True
+    if 'M80' in teshis_upper and any(k in metin_lower for k in (
+            'agri', 'ağrı', 'agrili', 'ağrılı')):
+        return True
+    return ('vertebra' in metin_lower and any(k in metin_lower for k in (
+        'agrili', 'ağrılı', 'agri', 'ağrı'))
+            and any(k in metin_lower for k in (
+                'kirik', 'kırık', 'fraktur', 'fraktür', 'kompresyon')))
+
+
+def _sudek_atrofisi_var(metin_lower: str, teshis_metin: str) -> bool:
+    """4.2.17.B: Sudek atrofisi / Algonörodistrofi / CRPS."""
+    teshis_upper = (teshis_metin or '').upper()
+    if 'M89.0' in teshis_upper:
+        return True
+    return any(k in metin_lower for k in (
+        'sudek', 'algonorodistrofi', 'algonörodistrofi', 'algodistrofi',
+        'crps', 'kompleks bölgesel ağrı', 'reflex sympathetic dystrophy',
+        'kompleks rejyonel agri',
+    ))
+
+
+def _saglik_kurulu_raporu_mu(metin: str) -> bool:
+    """Sağlık kurulu raporu mu? (uzman hekim raporundan farklı)"""
+    if not metin:
+        return False
+    return bool(re.search(r'sa[ğg]l[iı]k\s*kurul', metin, re.IGNORECASE))
+
+
+# Medula tarafında osteoporoz sağlık kurulu raporu olarak doğrulanan kodlar
+_MEDULA_SK_RAPOR_KODLARI = ('06.01', '06.02')
+
+
+def _osteoporoz_sk_var(metin: str, rapor_kodu: str) -> Tuple[bool, str]:
+    """SUT 4.2.17.A(6)/(7)/(8) — sağlık kurulu raporu kontrolü.
+
+    Üç kabul yolu:
+      1. Rapor metninde "sağlık kurulu" lafzı geçiyor (en güçlü kanıt)
+      2. Medula rapor kodu 06.01/06.02 (osteoporoz raporu) — Medula bu kodu
+         verirken kurul kararını doğrulamış sayılır
+      3. Hiçbiri yoksa False (KONTROL_EDILEMEDI)
+
+    Returns: (sk_var, neden_str).
+    """
+    if metin and re.search(r'sa[ğg]l[iı]k\s*kurul', metin, re.IGNORECASE):
+        return True, '"sağlık kurulu" lafzı rapor metninde geçti'
+    rk = (rapor_kodu or '').strip()
+    if rk in _MEDULA_SK_RAPOR_KODLARI:
+        return True, f'Medula rapor kodu {rk} — kurul kararı varsayılır'
+    return False, ('"sağlık kurulu" lafzı metinde yok ve rapor kodu '
+                   '06.01/06.02 değil')
+
+
+def _osteo_uzman_brans_eslesti_mi(metin: str,
+                                  branslar=_OSTEO_YETKILI_BRANSLAR) -> bool:
+    """Rapor metninde yetkili branş ibaresi geçiyor mu?"""
+    if not metin:
+        return False
+    ml = _tr_lower(metin)
+    return any(b in ml for b in branslar)
+
+
+def _bifosfonat_onkosul_var_mi(metin_lower: str):
+    """SUT 4.2.17.A(6)(b) ön-koşul taraması: teriparatid/romosozumab/stronsiyum
+    için 'bifosfonat intolerans/yan etki/yetersiz yanıt' VEYA 'ciddi
+    osteoporoz' alternatifi raporda lafzen geçiyor mu?
+
+    Dönüş: (SartDurumu, açıklama) — VAR/KONTROL_EDILEMEDI.
+    YOK dönmez; intolerans/yetersiz yanıt klinik bir karardır,
+    sessizce 'YOK' demek hatalı — manuel doğrulama bekletilir.
+    """
+    if not metin_lower:
+        return SartDurumu.KONTROL_EDILEMEDI, 'Rapor metni boş'
+
+    # Alternatif 1: bifosfonat intolerans/yan etki/yetersiz yanıt
+    intolerans_kalip = re.compile(
+        r'(bifosfonat|alendronat|risedronat|zoledronat|ibandronat|'
+        r'fosamax|fosavance|actonel|aclasta|bonviva)\w{0,8}\s+'
+        r'(intoleran|yan\s*etki|yetersiz\s*yan[ıi]t|yan[ıi]ts[ıi]z|'
+        r'cevaps[ıi]z|kullanamaz|kullan[ıi]lamaz|kontrendike|'
+        r'kontraendike|tedavi(?:si)?\s+ba[şs]ar[ıi]s[ıi]z|'
+        r'tolere\s+ed[ie]me)',
+        re.IGNORECASE)
+    if intolerans_kalip.search(metin_lower):
+        m = intolerans_kalip.search(metin_lower)
+        return SartDurumu.VAR, f'Bifosfonat ön-koşul ibaresi: "{m.group(0)}"'
+
+    # Alternatif 2: 'ciddi osteoporoz' veya 'ağır osteoporoz' lafzı
+    if re.search(r'(ciddi|a[ğg][ıi]r|severe)\s+osteoporoz', metin_lower):
+        return SartDurumu.VAR, 'Ciddi/ağır osteoporoz ibaresi (alternatif şart)'
+
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            'Bifosfonat intolerans/yetersiz yanıt veya ciddi osteoporoz '
+            'ibaresi rapor metninde lafzen bulunamadı (manuel doğrulama)')
+
+
+def _endikasyon_disi_onay_var_mi(metin_lower: str):
+    """SUT 4.1.4 — endikasyon dışı kullanım için Bakanlık/SGK onayı şartı.
+
+    Rapor metninde 'endikasyon dışı' ibaresi geçiyorsa, ek olarak Sağlık
+    Bakanlığı / SGK / komisyon onayı ibaresi aranır.
+
+    Dönüş:
+      None → 'endikasyon dışı' ibaresi yok, şart uygulanmaz
+      (SartDurumu.VAR, açıklama) → endikasyon dışı + onay ibaresi VAR
+      (SartDurumu.KONTROL_EDILEMEDI, açıklama) → endikasyon dışı VAR ama
+        onay ibaresi metinde lafzen bulunamadı (manuel doğrulama)
+    """
+    if not metin_lower:
+        return None
+    if not re.search(r'endikasyon\s*d[ıi][şs][ıi]', metin_lower):
+        return None
+    onay_kalip = re.compile(
+        r'(sa[ğg]l[ıi]k\s*bakanl[ıi][ğg][ıi]|bakanl[ıi]k\s*onay|'
+        r'sgk\s*onay|komisyon\s*karar|titck\s*onay|'
+        r'endikasyon\s*d[ıi][şs][ıi]\s*kullan[ıi]m\s*onay)',
+        re.IGNORECASE)
+    if onay_kalip.search(metin_lower):
+        m = onay_kalip.search(metin_lower)
+        return (SartDurumu.VAR,
+                f'Endikasyon dışı kullanım onayı ibaresi: "{m.group(0)}"')
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            'Rapor "endikasyon dışı" ibaresi içeriyor; Bakanlık/SGK/komisyon '
+            'onayı ibaresi metinde bulunamadı (SUT 4.1.4 — manuel doğrulama)')
+
+
+# ── Kontrol fonksiyonları ─────────────────────────────────────────────
+
+def kontrol_bifosfonat(ilac_sonuc: Dict) -> KontrolRaporu:
+    """SUT 4.2.17.A — Bifosfonat (osteoporoz)
+    + 4.2.17.A(4)(d) HO endikasyonu (KMY gerekmez)
+    + 4.2.17.C Juvenil osteoporoz (yaş <18)
+    + 4.2.17.Ç Paget hastalığı (M88)
+
+    Şart taraması: yaş + KMY tarihi + KMY ölçüm yeri + T-skoru +
+    kırık + sekonder osteoporoz primer hastalık + kortikosteroid doz/süre +
+    kanser/organ nakli + doktor branşı + rapor kodu + kombi yasağı.
+
+    Tüm şartlar VAR / YOK / KONTROL_EDİLEMEDİ olarak değerlendirilir
+    (CLAUDE.md disiplini).
     """
     metin = _tum_metinleri_birlesir(ilac_sonuc)
-    recete_teshisleri = ilac_sonuc.get('recete_teshisleri', [])
+    recete_teshisleri = ilac_sonuc.get('recete_teshisleri', []) or []
     teshis_metin = ' '.join(recete_teshisleri).upper() if recete_teshisleri else ''
     birlesik = (metin or '') + ' ' + teshis_metin
-    metin_lower = birlesik.replace('İ', 'i').replace('I', 'ı').lower() if birlesik else ''
+    metin_lower = _tr_lower(birlesik)
 
-    sut_kurali = 'SUT 4.2.17 — Bifosfonat: DEXA T-skoru raporda belirtilmiş olmalı'
-    detaylar = {'t_skoru': None, 'kirik': False, 'kortikosteroid': False}
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
+    doktor_brans = (ilac_sonuc.get('doktor_uzmanligi') or '').strip()
+    hasta_yasi = _osteo_yas_oku(ilac_sonuc, birlesik)
+
+    sartlar: List[SartSonuc] = []
+    detaylar: Dict = {
+        'sut_maddesi': '4.2.17.A',
+        'hasta_yasi': hasta_yasi,
+        'rapor_kodu': rapor_kodu,
+        'doktor_brans': doktor_brans,
+    }
+    sut_kurali = ('SUT 4.2.17.A — Bifosfonat: rapor + KMY (son 2 yıl) + '
+                  'yaşa göre T-skoru eşiği')
 
     if not metin_lower:
-        return KontrolRaporu(KontrolSonucu.KONTROL_EDILEMEDI,
-                             "Rapor/mesaj metni yok", sut_kurali=sut_kurali,
-                             aranan_ibare='T-skoru / osteoporoz / DEXA / kırık')
+        # Rapor metni boş — rapor kodu olmadan bifosfonat ödenmez
+        # (SUT 4.2.17.A(1): uzman hekim raporu zorunlu)
+        if not rapor_kodu:
+            sartlar.append(SartSonuc('Rapor kodu', SartDurumu.YOK,
+                                     'Reçete satırında rap_kod boş',
+                                     'rap_kod'))
+            sartlar.append(SartSonuc('Rapor/mesaj metni', SartDurumu.YOK,
+                                     'Metin boş ve rapor da yok',
+                                     'tum_metin'))
+            return KontrolRaporu(
+                KontrolSonucu.UYGUN_DEGIL,
+                "Raporsuz bifosfonat — uzman hekim raporu zorunlu",
+                detaylar=detaylar, sartlar=sartlar, sut_kurali=sut_kurali,
+                aranan_ibare='rapor / T-skoru / KMY')
+        # Rapor kodu var ama metin Medula'dan çekilememiş → manuel doğrulama
+        sartlar.append(SartSonuc('Rapor kodu', SartDurumu.VAR,
+                                 rapor_kodu, 'rap_kod'))
+        sartlar.append(SartSonuc('Rapor/mesaj metni',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 'Rapor kodu var ancak metni okunamadı',
+                                 'tum_metin'))
+        return KontrolRaporu(
+            KontrolSonucu.KONTROL_EDILEMEDI,
+            f"Rapor kodu var ({rapor_kodu}) ama metni okunamadı — "
+            "manuel doğrulama gerekli",
+            detaylar=detaylar, sartlar=sartlar, sut_kurali=sut_kurali,
+            aranan_ibare='T-skoru / KMY / DEXA / kırık')
 
-    # ── 1. T-skoru ara ──
-    t_skoru = None
-    t_eslesen = ""
-    # Formatlar: "T: -2.8", "T=-2,8", "T skoru: -3.1", "T-score: -2.5"
-    t_patterns = [
-        r't[- ]*(?:skor|score|değer)[^0-9\-]*(-?\d+[.,]\d+)',
-        r't\s*[:=]\s*(-?\d+[.,]\d+)',
-        r'(-\d+[.,]\d+)\s*(?:sd|standart)',
-    ]
-    for pattern in t_patterns:
-        t_match = re.findall(pattern, metin_lower)
-        if t_match:
-            try:
-                t_skoru = float(t_match[0].replace(',', '.'))
-                t_eslesen = _eslesen_parcayi_bul(birlesik, str(t_match[0]))
-                break
-            except:
-                pass
+    # ── Kombinasyon yasağı (4.2.17.A(1) son cümle) ────────────────────
+    kombi_var, kombi_ilac = _osteo_kombi_var(ilac_sonuc, 'BIFOSFONAT')
+    if kombi_var:
+        sartlar.append(SartSonuc(
+            'Osteoporoz ilaç kombinasyon yasağı',
+            SartDurumu.YOK,
+            f'Aynı reçetede ek osteoporoz ilacı: {kombi_ilac}',
+            'recete_ilaclari'))
+    else:
+        sartlar.append(SartSonuc(
+            'Osteoporoz ilaç kombinasyon yasağı', SartDurumu.VAR,
+            'Aynı reçetede başka osteoporoz ilacı yok', 'recete_ilaclari'))
 
-    detaylar['t_skoru'] = t_skoru
+    # ── 1) Paget hastalığı dalı (4.2.17.Ç) ────────────────────────────
+    if _paget_var_mi(metin_lower, teshis_metin):
+        return _kontrol_paget(rapor_kodu, doktor_brans, sartlar, detaylar,
+                              kombi_var, kombi_ilac, metin_lower)
 
-    # ── 2. Kırık bilgisi ──
-    kirik = any(k in metin_lower for k in ['kırık', 'kirik', 'fraktür', 'fraktur', 'fracture',
-                                            'vertebra komp', 'kompresyon'])
-    kalca_kirigi = any(k in metin_lower for k in ['kalça kırığı', 'kalca kirigi', 'femur kırığı',
-                                                   'femur boyun kırığı', 'hip fracture'])
-    icd_kirik = any(k in teshis_metin for k in ['M80', 'M81', 'M82', 'S72', 'S32', 'S22'])
-    kirik = kirik or kalca_kirigi or icd_kirik
-    detaylar['kirik'] = kirik
+    # ── 2) Juvenil osteoporoz dalı (4.2.17.C) ─────────────────────────
+    if hasta_yasi is not None and hasta_yasi < 18:
+        return _kontrol_juvenil_osteoporoz(rapor_kodu, doktor_brans,
+                                           hasta_yasi, sartlar, detaylar,
+                                           kombi_var, kombi_ilac)
 
-    # ── 3. Kortikosteroid (sekonder osteoporoz) ──
-    kortiko = any(k in metin_lower for k in ['kortikosteroid', 'kortizon', 'prednizolon',
-                                              'metilprednizolon', 'deksametazon', 'steroid'])
-    detaylar['kortikosteroid'] = kortiko
+    # ── 3) HO endikasyonu (4.2.17.A(4)(d)) ────────────────────────────
+    if _ho_endikasyonu_var(metin_lower, teshis_metin):
+        sartlar.append(SartSonuc('HO endikasyonu (kalça çıkığı/bel zedelenmesi)',
+                                 SartDurumu.VAR, 'M61 / heterotopik ossifikasyon',
+                                 'rapor_metni/teshis'))
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj='Bifosfonat HO endikasyonu — KMY ölçüm sonucu aranmaz',
+            detaylar={**detaylar, 'alt_dal': 'HO_4.2.17.A.4.d'},
+            sartlar=sartlar,
+            sut_kurali='SUT 4.2.17.A(4)(d) — HO endikasyonu',
+            uyari=('Prospektüsteki dozlar ve sürelerde kullanılır. '
+                   'Bifosfonatın HO formu olduğu doğrulanmalı.'),
+            aranan_ibare='heterotopik ossifikasyon / kalça çıkığı / bel zedelenmesi'
+        )
 
-    # ── 4. Osteoporoz teşhisi ──
-    osteoporoz = any(k in metin_lower for k in ['osteoporoz', 'osteopeni', 'kemik erimesi',
-                                                 'kemik yoğunluğu', 'kmy', 'dexa', 'dxa'])
-    icd_osteo = any(k in teshis_metin for k in ['M80', 'M81', 'M82', 'M85'])
+    # ── 4) Genel akış (4.2.17.A(2)-(5)) ───────────────────────────────
 
-    # ── 5. Sonuç değerlendirme ──
+    # Rapor kodu (4.2.17.A(1))
+    if rapor_kodu:
+        sartlar.append(SartSonuc('Rapor kodu', SartDurumu.VAR,
+                                 rapor_kodu, 'rap_kod'))
+    else:
+        sartlar.append(SartSonuc('Rapor kodu', SartDurumu.YOK,
+                                 'Reçete satırında rap_kod boş', 'rap_kod'))
+
+    # Doktor branşı (4.2.17.A(5)) — bilgi amaçlı; SUT lafzına göre
+    # bifosfonat tüm uzmanlarca reçete edilebilir, ama RAPORU yetkili
+    # branş düzenlemiş olmalı. Doktor branşı yetkili değilse rapor
+    # metninde yetkili branş ibaresi aranır.
+    if _osteo_yetkili_brans(doktor_brans):
+        sartlar.append(SartSonuc('Reçete yazan doktor branşı',
+                                 SartDurumu.VAR,
+                                 doktor_brans, 'doktor_uzmanligi'))
+    elif doktor_brans:
+        # Reçete tüm uzmanlarca yazılabilir — bilgi notu
+        sartlar.append(SartSonuc('Reçete yazan doktor branşı',
+                                 SartDurumu.VAR,
+                                 f'{doktor_brans} (tüm uzmanlar reçete yazabilir)',
+                                 'doktor_uzmanligi'))
+    else:
+        sartlar.append(SartSonuc('Reçete yazan doktor branşı',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 'Doktor branşı bilgisi boş',
+                                 'doktor_uzmanligi'))
+
+    # Rapor düzenleyen yetkili branş (4.2.17.A(5))
+    if _osteo_uzman_brans_eslesti_mi(birlesik):
+        sartlar.append(SartSonuc('Raporu düzenleyen yetkili branş',
+                                 SartDurumu.VAR,
+                                 'Rapor metninde yetkili branş ibaresi var',
+                                 'rapor_metni'))
+    else:
+        sartlar.append(SartSonuc('Raporu düzenleyen yetkili branş',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 ('Rapor metninde İç hast/FTR/Romatoloji/'
+                                  'Ortopedi/Kadın doğum/Endokrinoloji/'
+                                  'Tıbbi ekoloji uzman ibaresi bulunamadı'),
+                                 'rapor_metni'))
+
+    # ── KMY istisna kontrolü (4.2.17.A(3)) — KMY tarih/yer şartlarından ÖNCE
+    yas_75_ustu = (hasta_yasi is not None and hasta_yasi >= 75)
+    kalca_kirigi = _kalca_kirigi_var(metin_lower, teshis_metin)
+    kmy_istisna = yas_75_ustu or kalca_kirigi
+    istisna_neden = ('75 yaş üstü' if yas_75_ustu
+                     else ('osteoporotik kalça kırığı' if kalca_kirigi else ''))
+
+    # KMY tarihi (4.2.17.A(2)) — referans: reçete tarihi
+    recete_tarih_dt = _parse_tarih_str(ilac_sonuc.get('recete_tarihi'))
+    detaylar['recete_tarihi'] = (recete_tarih_dt.isoformat()
+                                 if recete_tarih_dt else None)
+
+    if kmy_istisna:
+        # 4.2.17.A(3): KMY ölçüm şartı aranmaz — şartları NA olarak işaretle
+        sartlar.append(SartSonuc('KMY tarihi (son 2 yıl)', SartDurumu.NA,
+                                 f'Aranmaz — istisna: {istisna_neden}',
+                                 '4.2.17.A(3)'))
+        sartlar.append(SartSonuc('KMY ölçüm yeri (lomber/femur)',
+                                 SartDurumu.NA,
+                                 f'Aranmaz — istisna: {istisna_neden}',
+                                 '4.2.17.A(3)'))
+    else:
+        kmy_tarih, kmy_2yil = _kmy_tarihi_parse(birlesik, metin_lower,
+                                                referans_tarih=recete_tarih_dt)
+        if kmy_tarih:
+            ref_etiket = ('reçete tarihi' if recete_tarih_dt else 'bugün')
+            if kmy_2yil:
+                sartlar.append(SartSonuc('KMY tarihi (son 2 yıl)',
+                                         SartDurumu.VAR,
+                                         f'{kmy_tarih} ({ref_etiket}\'e göre)',
+                                         'rapor_metni regex'))
+            else:
+                sartlar.append(SartSonuc('KMY tarihi (son 2 yıl)',
+                                         SartDurumu.YOK,
+                                         f'KMY {kmy_tarih} > 2 yıl ({ref_etiket}\'e göre)',
+                                         'rapor_metni regex'))
+        else:
+            sartlar.append(SartSonuc('KMY tarihi (son 2 yıl)',
+                                     SartDurumu.KONTROL_EDILEMEDI,
+                                     'KMY/DEXA ölçüm tarihi metinde bulunamadı',
+                                     'rapor_metni'))
+
+        if _kmy_olcum_yeri_uygun(metin_lower):
+            sartlar.append(SartSonuc('KMY ölçüm yeri (lomber/femur)',
+                                     SartDurumu.VAR, '', 'rapor_metni'))
+        else:
+            sartlar.append(SartSonuc('KMY ölçüm yeri (lomber/femur)',
+                                     SartDurumu.KONTROL_EDILEMEDI,
+                                     'lomber/femur ibaresi bulunamadı',
+                                     'rapor_metni'))
+
+    # ── 75 yaş üstü → KMY ölçümü gerekmez (4.2.17.A(3)) ───────────────
+    if yas_75_ustu:
+        sartlar.append(SartSonuc('75 yaş üstü (KMY istisnası)',
+                                 SartDurumu.VAR,
+                                 f'Yaş: {hasta_yasi}', 'hasta_yasi'))
+        return _osteo_karar_topla(
+            sonuc=(KontrolSonucu.UYGUN_DEGIL if not rapor_kodu
+                   else (KontrolSonucu.UYGUN_DEGIL if kombi_var
+                         else KontrolSonucu.UYGUN)),
+            mesaj=(f'75+ yaş ({hasta_yasi}) — KMY gerekmez'
+                   if rapor_kodu and not kombi_var
+                   else 'Rapor/kombinasyon ihlali var — bkz. şartlar'),
+            detaylar={**detaylar, 'alt_dal': '75+_KMY_GEREKMEZ'},
+            sartlar=sartlar, sut_kurali=sut_kurali,
+            aranan_ibare='75 yaş üstü hasta')
 
     # Kalça kırığı → KMY gerekmez
     if kalca_kirigi:
-        eslesen = _eslesen_parcayi_bul(birlesik, 'kalça kırığı') or _eslesen_parcayi_bul(birlesik, 'femur')
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN,
-            mesaj='Osteoporotik kalça kırığı — KMY ölçümü gerekmez',
-            detaylar=detaylar, sut_kurali=sut_kurali,
-            aranan_ibare='kalça kırığı / femur kırığı',
-            bulunan_metin=eslesen
-        )
+        sartlar.append(SartSonuc('Patolojik kalça kırığı (KMY istisnası)',
+                                 SartDurumu.VAR, 'kalça/femur kırığı',
+                                 'rapor_metni/teshis'))
+        return _osteo_karar_topla(
+            sonuc=(KontrolSonucu.UYGUN_DEGIL if not rapor_kodu
+                   else (KontrolSonucu.UYGUN_DEGIL if kombi_var
+                         else KontrolSonucu.UYGUN)),
+            mesaj=('Osteoporotik kalça kırığı — KMY gerekmez'
+                   if rapor_kodu and not kombi_var
+                   else 'Rapor/kombinasyon ihlali var — bkz. şartlar'),
+            detaylar={**detaylar, 'alt_dal': 'KALCA_KIRIGI_KMY_GEREKMEZ'},
+            sartlar=sartlar, sut_kurali=sut_kurali,
+            aranan_ibare='kalça kırığı / femur kırığı')
 
-    # T-skoru bulundu → eşik kontrolü
+    # ── T-skoru ve eşik kontrolü (4.2.17.A(4)) ────────────────────────
+    t_skoru, t_eslesen = _t_skoru_parse(metin_lower, birlesik)
+    detaylar['t_skoru'] = t_skoru
+
+    kirik = _kirik_var(metin_lower, teshis_metin)
+    if kirik:
+        sartlar.append(SartSonuc('Patolojik kırık (vertebra/diğer)',
+                                 SartDurumu.VAR, '', 'rapor_metni/teshis'))
+
+    # Sekonder osteoporoz şartları
+    primer_hastalik = _sekonder_osteo_primer_tespit(metin_lower, teshis_metin)
+    kortiko_uygun, kortiko_str = _kortikosteroid_uzun_doz_yuksek(metin_lower)
+    kanser_organ_var, kanser_organ_neden = _kanser_organnakli_tespit(
+        metin_lower, teshis_metin)
+
+    sekonder_sartlar = []
+    if primer_hastalik:
+        sekonder_sartlar.append(f'primer hastalık: {primer_hastalik}')
+    if kortiko_uygun:
+        sekonder_sartlar.append(f'kortikosteroid >5mg ≥3ay ({kortiko_str})')
+    if kanser_organ_var:
+        sekonder_sartlar.append(kanser_organ_neden)
+
+    if sekonder_sartlar:
+        sartlar.append(SartSonuc(
+            'Sekonder osteoporoz şartı (4.2.17.A(4)(ç))', SartDurumu.VAR,
+            ' / '.join(sekonder_sartlar), 'rapor_metni/teshis'))
+        sekonder_var = True
+    elif _kortikosteroid_kelime_var(metin_lower):
+        sartlar.append(SartSonuc(
+            'Sekonder osteoporoz şartı (4.2.17.A(4)(ç))',
+            SartDurumu.KONTROL_EDILEMEDI,
+            'Kortikosteroid ibaresi var ama doz (>5mg) ve süre (≥3ay) parse edilemedi',
+            'rapor_metni'))
+        sekonder_var = False
+    else:
+        sartlar.append(SartSonuc(
+            'Sekonder osteoporoz şartı (4.2.17.A(4)(ç))', SartDurumu.YOK,
+            ('Primer hastalık listesi / steroid >5mg ≥3ay / kanser tedavisi / '
+             'organ nakli bulunamadı'),
+            'rapor_metni/teshis'))
+        sekonder_var = False
+
     if t_skoru is not None:
-        if kirik and t_skoru <= -1:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN,
-                mesaj=f'T-skoru {t_skoru} ≤ -1 + kırık mevcut',
-                detaylar=detaylar, sut_kurali=sut_kurali,
-                aranan_ibare='T ≤ -1 + patolojik kırık',
-                bulunan_metin=t_eslesen
-            )
-        if kortiko and t_skoru <= -1:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN,
-                mesaj=f'T-skoru {t_skoru} ≤ -1 + kortikosteroid (sekonder osteoporoz)',
-                detaylar=detaylar, sut_kurali=sut_kurali,
-                aranan_ibare='T ≤ -1 + kortikosteroid kullanımı',
-                bulunan_metin=t_eslesen
-            )
+        sartlar.append(SartSonuc('T-skoru sayısal değeri', SartDurumu.VAR,
+                                 f'T = {t_skoru}', 'rapor_metni regex'))
+    else:
+        sartlar.append(SartSonuc('T-skoru sayısal değeri',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 'Raporda DEXA T-skoru sayısal değeri yok',
+                                 'rapor_metni'))
+
+    # Karar matrisi
+    sonuc, mesaj, alt_dal = _bifosfonat_karar_matrisi(
+        t_skoru, hasta_yasi, kirik, sekonder_var, rapor_kodu, kombi_var)
+    detaylar['alt_dal'] = alt_dal
+
+    return _osteo_karar_topla(
+        sonuc=sonuc, mesaj=mesaj, detaylar=detaylar, sartlar=sartlar,
+        sut_kurali=sut_kurali,
+        aranan_ibare='T-skoru / yaş / kırık / sekonder şart',
+        bulunan_metin=t_eslesen)
+
+
+def _bifosfonat_karar_matrisi(t_skoru, hasta_yasi, kirik, sekonder_var,
+                               rapor_kodu, kombi_var):
+    """T-skoru + yaş + kırık + sekonder şartlarına göre karar üret.
+
+    Returns: (KontrolSonucu, mesaj, alt_dal_etiketi).
+    """
+    if not rapor_kodu:
+        return (KontrolSonucu.UYGUN_DEGIL,
+                'Bifosfonat RAPORSUZ — uzman raporu zorunlu (SUT 4.2.17.A(1))',
+                'RAPORSUZ')
+    if kombi_var:
+        return (KontrolSonucu.UYGUN_DEGIL,
+                'Aynı reçetede ek osteoporoz ilacı — SUT 4.2.17.A(1) son cümle: '
+                'sadece birinin bedeli ödenir',
+                'KOMBI_YASAK')
+
+    if t_skoru is None:
+        return (KontrolSonucu.KONTROL_EDILEMEDI,
+                'T-skoru sayısal değeri raporda bulunamadı — manuel doğrulama',
+                'T_SKORU_YOK')
+
+    # ç) Sekonder osteoporoz: T ≤ -1 yeterli
+    if sekonder_var and t_skoru <= -1:
+        return (KontrolSonucu.UYGUN,
+                f'T={t_skoru} ≤ -1 + sekonder osteoporoz şartı sağlandı',
+                'SEKONDER_T_-1')
+
+    # a) Patolojik kırık + T ≤ -1
+    if kirik and t_skoru <= -1:
+        return (KontrolSonucu.UYGUN,
+                f'T={t_skoru} ≤ -1 + patolojik kırık (4.2.17.A(4)(a))',
+                'KIRIK_T_-1')
+
+    # b) 65+ kırıksız: T ≤ -2.5
+    # c) 65 altı kırıksız: T ≤ -3
+    if hasta_yasi is None:
+        # Yaş bilinmiyor — şüpheli
         if t_skoru <= -3:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN,
-                mesaj=f'T-skoru {t_skoru} ≤ -3 (65 yaş altı kırıksız eşik)',
-                detaylar=detaylar, sut_kurali=sut_kurali,
-                aranan_ibare='T ≤ -3',
-                bulunan_metin=t_eslesen
-            )
+            return (KontrolSonucu.UYGUN,
+                    f'T={t_skoru} ≤ -3 (yaş bilinmiyor, en düşük eşik sağlandı)',
+                    'YAS_BILINMIYOR_T_-3')
         if t_skoru <= -2.5:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN,
-                mesaj=f'T-skoru {t_skoru} ≤ -2.5 (65 yaş üstü eşik)',
-                detaylar=detaylar, sut_kurali=sut_kurali,
-                aranan_ibare='T ≤ -2.5 (65 yaş üstü)',
-                bulunan_metin=t_eslesen,
-                uyari='65 yaş altı ise T ≤ -3 gerekli'
-            )
+            return (KontrolSonucu.KONTROL_EDILEMEDI,
+                    f'T={t_skoru} ≤ -2.5; yaş bilinmiyor — 65+ ise UYGUN, '
+                    '65 altı ise UYGUN_DEĞİL (T ≤ -3 gerekli)',
+                    'YAS_BILINMIYOR_T_-2.5')
         if t_skoru <= -1:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=f'T-skoru {t_skoru} — kırık veya kortikosteroid bilgisi gerekli',
-                detaylar=detaylar, sut_kurali=sut_kurali,
-                uyari='T -1 ile -2.5 arası: patolojik kırık veya sekonder osteoporoz şartı aranır',
-                aranan_ibare='kırık / kortikosteroid kullanımı',
-                bulunan_metin=t_eslesen
-            )
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=f'T-skoru {t_skoru} > -1 — bifosfonat endikasyonu yok',
-            detaylar=detaylar, sut_kurali=sut_kurali,
-            aranan_ibare='T ≤ -1 (en düşük eşik)',
-            bulunan_metin=t_eslesen
-        )
+            return (KontrolSonucu.UYGUN_DEGIL,
+                    f'T={t_skoru} > -2.5 ve kırık/sekonder şart yok — endikasyon yok',
+                    'T_-1_-2.5_KIRIKSIZ')
+        return (KontrolSonucu.UYGUN_DEGIL,
+                f'T={t_skoru} > -1 — bifosfonat endikasyonu yok',
+                'T_USTU_-1')
 
-    # T-skoru yok ama osteoporoz/kırık ibaresi var
-    if osteoporoz or icd_osteo or kirik:
-        eslesen = ""
-        for k in ['osteoporoz', 'kmy', 'dexa', 'kırık', 'kemik']:
-            p = _eslesen_parcayi_bul(birlesik, k)
-            if p:
-                eslesen = p
-                break
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-            mesaj='Osteoporoz/kırık ibaresi var ama T-skoru sayısal değeri bulunamadı',
-            detaylar=detaylar, sut_kurali=sut_kurali,
-            uyari='Raporda DEXA T-skoru sayısal değeri olmalı (ör: T: -2.8)',
-            aranan_ibare='T-skoru sayısal değeri',
-            bulunan_metin=eslesen
-        )
+    if hasta_yasi >= 65:
+        if t_skoru <= -2.5:
+            return (KontrolSonucu.UYGUN,
+                    f'T={t_skoru} ≤ -2.5 + yaş {hasta_yasi} ≥ 65 (4.2.17.A(4)(b))',
+                    '65PLUS_T_-2.5')
+        if t_skoru <= -1:
+            return (KontrolSonucu.UYGUN_DEGIL,
+                    f'T={t_skoru} > -2.5 ve kırık/sekonder şart yok — yaş {hasta_yasi}',
+                    '65PLUS_KIRIKSIZ_YETERSIZ')
+        return (KontrolSonucu.UYGUN_DEGIL,
+                f'T={t_skoru} > -1 — bifosfonat endikasyonu yok',
+                'T_USTU_-1')
+    else:
+        # 65 altı (18-64 — juvenil zaten ayrı dalda)
+        if t_skoru <= -3:
+            return (KontrolSonucu.UYGUN,
+                    f'T={t_skoru} ≤ -3 + yaş {hasta_yasi} < 65 (4.2.17.A(4)(c))',
+                    '65ALTI_T_-3')
+        if t_skoru <= -1:
+            return (KontrolSonucu.UYGUN_DEGIL,
+                    f'T={t_skoru} > -3 ve kırık/sekonder şart yok — yaş {hasta_yasi}',
+                    '65ALTI_KIRIKSIZ_YETERSIZ')
+        return (KontrolSonucu.UYGUN_DEGIL,
+                f'T={t_skoru} > -1 — bifosfonat endikasyonu yok',
+                'T_USTU_-1')
 
+
+def _osteo_karar_topla(sonuc, mesaj, detaylar, sartlar, sut_kurali,
+                       aranan_ibare='', bulunan_metin='', uyari=None):
+    """KontrolRaporu üretici — şart listesi UYGUN/UYGUN_DEĞİL/ŞÜPHELİ
+    sınıflandırmasıyla birlikte döner."""
+    var_sayisi = sum(1 for s in sartlar if s.durum == SartDurumu.VAR)
+    yok_sayisi = sum(1 for s in sartlar if s.durum == SartDurumu.YOK)
+    kontrol_edilemedi_sayisi = sum(1 for s in sartlar
+                                    if s.durum == SartDurumu.KONTROL_EDILEMEDI)
+    detaylar = {**detaylar,
+                'sart_var': var_sayisi, 'sart_yok': yok_sayisi,
+                'sart_kontrol_edilemedi': kontrol_edilemedi_sayisi}
     return KontrolRaporu(
-        sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-        mesaj='Osteoporoz/T-skoru/kırık ibaresi bulunamadı',
-        detaylar=detaylar, sut_kurali=sut_kurali,
-        uyari='RAPOR KONTROLÜ GEREKLİ: DEXA T-skoru raporda olmalı',
-        aranan_ibare='osteoporoz / T-skoru / DEXA / kırık'
+        sonuc=sonuc, mesaj=mesaj, detaylar=detaylar, sartlar=sartlar,
+        sut_kurali=sut_kurali, uyari=uyari,
+        aranan_ibare=aranan_ibare, bulunan_metin=bulunan_metin)
+
+
+def _kontrol_paget(rapor_kodu, doktor_brans, sartlar, detaylar,
+                   kombi_var, kombi_ilac, metin_lower):
+    """SUT 4.2.17.Ç — Paget hastalığı: Endokrinoloji uzman raporu, 1 yıl."""
+    sartlar.append(SartSonuc('Paget hastalığı endikasyonu', SartDurumu.VAR,
+                             'M88 / paget ibaresi', 'rapor_metni/teshis'))
+    sut_kurali = ('SUT 4.2.17.Ç — Paget: Endokrinoloji uzman raporu, '
+                  'rapor süresi 1 yıl')
+
+    if rapor_kodu:
+        sartlar.append(SartSonuc('Rapor kodu', SartDurumu.VAR, rapor_kodu,
+                                 'rap_kod'))
+    else:
+        sartlar.append(SartSonuc('Rapor kodu', SartDurumu.YOK,
+                                 'Reçetede rap_kod boş', 'rap_kod'))
+
+    endokrin_brans = ('endokrin' in _tr_lower(doktor_brans)
+                      if doktor_brans else False)
+    endokrin_metin = 'endokrin' in metin_lower
+    if endokrin_brans or endokrin_metin:
+        sartlar.append(SartSonuc('Endokrinoloji uzman raporu',
+                                 SartDurumu.VAR,
+                                 ('doktor branşı endokrin' if endokrin_brans
+                                  else 'rapor metninde endokrin ibaresi'),
+                                 ('doktor_uzmanligi' if endokrin_brans
+                                  else 'rapor_metni')))
+        endokrin_var = True
+    else:
+        sartlar.append(SartSonuc('Endokrinoloji uzman raporu',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 ('Endokrinoloji ibaresi rapor/branş bilgisinde '
+                                  'bulunamadı'),
+                                 'doktor_uzmanligi/rapor_metni'))
+        endokrin_var = False
+
+    detaylar = {**detaylar, 'alt_dal': 'PAGET_4.2.17.Ç'}
+
+    if not rapor_kodu:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            'Paget hastalığı RAPORSUZ — Endokrinoloji uzman raporu zorunlu',
+            detaylar, sartlar, sut_kurali,
+            aranan_ibare='Endokrinoloji uzman raporu')
+    if kombi_var:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            f'Paget + ek osteoporoz ilacı ({kombi_ilac}) — kombi yasağı',
+            detaylar, sartlar, sut_kurali)
+    if not endokrin_var:
+        return _osteo_karar_topla(
+            KontrolSonucu.KONTROL_EDILEMEDI,
+            'Paget — Endokrinoloji uzmanlığı manuel doğrulanmalı',
+            detaylar, sartlar, sut_kurali,
+            uyari='Rapor süresi 1 yıl olmalı')
+    return _osteo_karar_topla(
+        KontrolSonucu.UYGUN,
+        'Paget — Endokrinoloji uzman raporu (rapor süresi 1 yıl olmalı)',
+        detaylar, sartlar, sut_kurali,
+        uyari='Rapor süresi 1 yıl ile sınırlı (4.2.17.Ç)')
+
+
+def _kontrol_juvenil_osteoporoz(rapor_kodu, doktor_brans, hasta_yasi,
+                                 sartlar, detaylar, kombi_var, kombi_ilac):
+    """SUT 4.2.17.C — Juvenil osteoporoz: uzman hekim raporu, 1 yıl."""
+    sartlar.append(SartSonuc('Juvenil osteoporoz dalı (yaş < 18)',
+                             SartDurumu.VAR,
+                             f'Yaş: {hasta_yasi}', 'hasta_yasi'))
+    sut_kurali = ('SUT 4.2.17.C — Juvenil osteoporoz: uzman hekim raporu, '
+                  'rapor süresi 1 yıl')
+
+    if rapor_kodu:
+        sartlar.append(SartSonuc('Uzman hekim rapor kodu', SartDurumu.VAR,
+                                 rapor_kodu, 'rap_kod'))
+    else:
+        sartlar.append(SartSonuc('Uzman hekim rapor kodu', SartDurumu.YOK,
+                                 'Reçetede rap_kod boş', 'rap_kod'))
+
+    detaylar = {**detaylar, 'alt_dal': 'JUVENIL_4.2.17.C'}
+
+    if not rapor_kodu:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            f'Juvenil osteoporoz (yaş {hasta_yasi}) RAPORSUZ — uzman raporu zorunlu',
+            detaylar, sartlar, sut_kurali,
+            aranan_ibare='Uzman hekim raporu')
+    if kombi_var:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            f'Juvenil osteoporoz + ek osteoporoz ilacı ({kombi_ilac}) — '
+            'kombi yasağı',
+            detaylar, sartlar, sut_kurali)
+    return _osteo_karar_topla(
+        KontrolSonucu.UYGUN,
+        f'Juvenil osteoporoz (yaş {hasta_yasi}) — uzman raporu mevcut',
+        detaylar, sartlar, sut_kurali,
+        uyari='Rapor süresi 1 yıl ile sınırlı (4.2.17.C)')
+
+
+def kontrol_raloksifen(ilac_sonuc: Dict) -> KontrolRaporu:
+    """SUT 4.2.17.A(6)(a) — Raloksifen / Bazedoksifen.
+
+    Şart: bifosfonatları tolere edemeyen veya yeterli yanıt alınamayan
+    osteoporozlu hastalarda + sağlık kurulu raporu (yetkili branşlardan
+    en az birinin yer aldığı) + bifosfonat eşik kuralları (T-skoru/yaş/kırık).
+    """
+    metin = _tum_metinleri_birlesir(ilac_sonuc)
+    teshis_metin = ' '.join(ilac_sonuc.get('recete_teshisleri', []) or [])
+    birlesik = (metin or '') + ' ' + teshis_metin
+    metin_lower = _tr_lower(birlesik)
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
+
+    sartlar: List[SartSonuc] = []
+    detaylar = {'alt_kategori': 'RALOKSIFEN', 'sut_maddesi': '4.2.17.A(6a)',
+                'rapor_kodu': rapor_kodu}
+    sut_kurali = ('SUT 4.2.17.A(6)(a) — Raloksifen: bifosfonat intolerans/'
+                  'yetersiz yanıt + sağlık kurulu raporu')
+
+    # Kombinasyon
+    kombi_var, kombi_ilac = _osteo_kombi_var(ilac_sonuc, 'RALOKSIFEN')
+    if kombi_var:
+        sartlar.append(SartSonuc('Osteoporoz ilaç kombinasyon yasağı',
+                                 SartDurumu.YOK,
+                                 f'Aynı reçetede: {kombi_ilac}',
+                                 'recete_ilaclari'))
+    else:
+        sartlar.append(SartSonuc('Osteoporoz ilaç kombinasyon yasağı',
+                                 SartDurumu.VAR,
+                                 'Aynı reçetede başka osteoporoz ilacı yok',
+                                 'recete_ilaclari'))
+
+    # Rapor kodu
+    if rapor_kodu:
+        sartlar.append(SartSonuc('Sağlık kurulu rapor kodu', SartDurumu.VAR,
+                                 rapor_kodu, 'rap_kod'))
+    else:
+        sartlar.append(SartSonuc('Sağlık kurulu rapor kodu', SartDurumu.YOK,
+                                 'Reçetede rap_kod boş', 'rap_kod'))
+
+    # Sağlık kurulu raporu mu? (lafzen VEYA Medula rapor kodu 06.01/06.02)
+    sk_var, sk_neden = _osteoporoz_sk_var(birlesik, rapor_kodu)
+    if sk_var:
+        sartlar.append(SartSonuc('Sağlık kurulu raporu',
+                                 SartDurumu.VAR, sk_neden,
+                                 'rapor_metni/rap_kod'))
+    else:
+        sartlar.append(SartSonuc('Sağlık kurulu raporu',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 sk_neden, 'rapor_metni/rap_kod'))
+
+    # Yetkili branş ibaresi
+    if _osteo_uzman_brans_eslesti_mi(birlesik):
+        sartlar.append(SartSonuc('Yetkili uzman branş (en az biri)',
+                                 SartDurumu.VAR,
+                                 'Yetkili branş ibaresi mevcut', 'rapor_metni'))
+    else:
+        sartlar.append(SartSonuc('Yetkili uzman branş (en az biri)',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 'İç hast/FTR/Romatoloji/Ortopedi/Kadın doğum/'
+                                 'Endokrinoloji ibaresi rapor metninde yok',
+                                 'rapor_metni'))
+
+    # Bifosfonat intolerans / yetersiz yanıt
+    intolerans = any(k in metin_lower for k in (
+        'bifosfonat intoleran', 'bifosfonata intoleran', 'tolere edemiyor',
+        'tolere edemeyen', 'yan etki', 'gis intoleran', 'reflu',
+        'yetersiz yanit', 'yetersiz yanıt', 'yanitsiz', 'yanıtsız',
+    ))
+    if intolerans:
+        sartlar.append(SartSonuc(
+            'Bifosfonat intolerans/yetersiz yanıt',
+            SartDurumu.VAR, 'Rapor metninde ibare bulundu', 'rapor_metni'))
+    else:
+        sartlar.append(SartSonuc(
+            'Bifosfonat intolerans/yetersiz yanıt',
+            SartDurumu.KONTROL_EDILEMEDI,
+            'Rapor metninde "bifosfonat intolerans/yetersiz yanıt" ibaresi yok',
+            'rapor_metni'))
+
+    # Bifosfonat eşik kuralı (T-skoru/yaş/kırık) — alt-rapor olarak ekle
+    bif_rapor = kontrol_bifosfonat(ilac_sonuc)
+    sartlar.extend([SartSonuc(f'[Bifosfonat eşik] {s.ad}', s.durum,
+                              s.neden, s.kaynak)
+                    for s in bif_rapor.sartlar
+                    if s.ad not in ('Osteoporoz ilaç kombinasyon yasağı',)])
+
+    # Karar
+    if not rapor_kodu:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            'Raloksifen RAPORSUZ — sağlık kurulu raporu zorunlu',
+            detaylar, sartlar, sut_kurali,
+            aranan_ibare='Sağlık kurulu raporu')
+    if kombi_var:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            f'Raloksifen + ek osteoporoz ilacı ({kombi_ilac}) — kombi yasağı',
+            detaylar, sartlar, sut_kurali)
+    if not intolerans:
+        return _osteo_karar_topla(
+            KontrolSonucu.KONTROL_EDILEMEDI,
+            ('Raloksifen — "bifosfonat intolerans/yetersiz yanıt" ibaresi '
+             'rapor metninde bulunamadı (manuel doğrulama)'),
+            detaylar, sartlar, sut_kurali,
+            uyari='SUT 4.2.17.A(6)(a) ön şart: bifosfonata intolerans/yetersiz yanıt')
+    if not sk_var:
+        return _osteo_karar_topla(
+            KontrolSonucu.KONTROL_EDILEMEDI,
+            'Raloksifen — sağlık kurulu raporu ibaresi metinde bulunamadı',
+            detaylar, sartlar, sut_kurali,
+            uyari='Sağlık kurulu raporu (uzman hekim raporundan farklı) gerekli')
+    # Bifosfonat eşik sonucu
+    if bif_rapor.sonuc == KontrolSonucu.UYGUN_DEGIL:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            f'Raloksifen — bifosfonat eşik kuralları sağlanmıyor: {bif_rapor.mesaj}',
+            detaylar, sartlar, sut_kurali)
+    if bif_rapor.sonuc == KontrolSonucu.KONTROL_EDILEMEDI:
+        return _osteo_karar_topla(
+            KontrolSonucu.KONTROL_EDILEMEDI,
+            f'Raloksifen — bifosfonat eşik şüpheli: {bif_rapor.mesaj}',
+            detaylar, sartlar, sut_kurali)
+    return _osteo_karar_topla(
+        KontrolSonucu.UYGUN,
+        ('Raloksifen — sağlık kurulu raporu + bifosfonat intolerans/'
+         'yetersiz yanıt + T-skoru eşiği sağlandı'),
+        detaylar, sartlar, sut_kurali)
+
+
+def kontrol_kalsitonin(ilac_sonuc: Dict) -> KontrolRaporu:
+    """SUT 4.2.17.A(7-8) — Kalsitonin (osteoporoz)
+    + SUT 4.2.17.B — Sudek atrofisi (algonörodistrofi)
+
+    (7) Ağrılı vertebral kırık + sağlık kurulu raporu + her kırıkta max 3 ay
+    (8) Ağrısız + bifosfonat intolerans + sağlık kurulu raporu + 3. basamak
+    4.2.17.B — Sudek atrofisi: tanıdan sonraki ilk 6 ay (FTR/Ortopedi/Romatoloji)
+    """
+    metin = _tum_metinleri_birlesir(ilac_sonuc)
+    teshis_metin = ' '.join(ilac_sonuc.get('recete_teshisleri', []) or [])
+    birlesik = (metin or '') + ' ' + teshis_metin
+    metin_lower = _tr_lower(birlesik)
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
+    doktor_brans = (ilac_sonuc.get('doktor_uzmanligi') or '').strip()
+
+    sartlar: List[SartSonuc] = []
+    detaylar = {'alt_kategori': 'KALSITONIN', 'rapor_kodu': rapor_kodu}
+
+    # Kombinasyon
+    kombi_var, kombi_ilac = _osteo_kombi_var(ilac_sonuc, 'KALSITONIN')
+    if kombi_var:
+        sartlar.append(SartSonuc('Osteoporoz ilaç kombinasyon yasağı',
+                                 SartDurumu.YOK,
+                                 f'Aynı reçetede: {kombi_ilac}',
+                                 'recete_ilaclari'))
+    else:
+        sartlar.append(SartSonuc('Osteoporoz ilaç kombinasyon yasağı',
+                                 SartDurumu.VAR,
+                                 'Aynı reçetede başka osteoporoz ilacı yok',
+                                 'recete_ilaclari'))
+
+    # ── 4.2.17.B Sudek atrofisi dalı ─────────────────────────────────
+    if _sudek_atrofisi_var(metin_lower, teshis_metin):
+        sartlar.append(SartSonuc('Sudek atrofisi (algonörodistrofi/CRPS)',
+                                 SartDurumu.VAR, '', 'rapor_metni/teshis'))
+        sut_kurali = ('SUT 4.2.17.B — Sudek atrofisi: tanıdan itibaren ilk '
+                      '6 ay FTR/Ortopedi/Romatoloji uzman raporu')
+        detaylar['alt_dal'] = 'SUDEK_4.2.17.B'
+
+        sudek_yetkili = ('fizik tedavi', 'fiziksel tip', 'fiziksel tıp',
+                         'ftr', 'rehabilitasyon', 'ortopedi', 'travmatoloj',
+                         'romatoloj')
+        if _osteo_yetkili_brans(doktor_brans, sudek_yetkili):
+            sartlar.append(SartSonuc('FTR/Ortopedi/Romatoloji uzmanı',
+                                     SartDurumu.VAR, doktor_brans,
+                                     'doktor_uzmanligi'))
+            sudek_brans_var = True
+        elif _osteo_uzman_brans_eslesti_mi(birlesik, sudek_yetkili):
+            sartlar.append(SartSonuc('FTR/Ortopedi/Romatoloji uzmanı',
+                                     SartDurumu.VAR,
+                                     'Rapor metninde branş ibaresi var',
+                                     'rapor_metni'))
+            sudek_brans_var = True
+        else:
+            sartlar.append(SartSonuc('FTR/Ortopedi/Romatoloji uzmanı',
+                                     SartDurumu.KONTROL_EDILEMEDI,
+                                     'Branş bilgisi/ibaresi bulunamadı',
+                                     'doktor_uzmanligi/rapor_metni'))
+            sudek_brans_var = False
+
+        if rapor_kodu:
+            sartlar.append(SartSonuc('Uzman hekim raporu', SartDurumu.VAR,
+                                     rapor_kodu, 'rap_kod'))
+        else:
+            sartlar.append(SartSonuc('Uzman hekim raporu', SartDurumu.YOK,
+                                     'Rap_kod boş', 'rap_kod'))
+            return _osteo_karar_topla(
+                KontrolSonucu.UYGUN_DEGIL,
+                'Sudek atrofisi — kalsitonin RAPORSUZ',
+                detaylar, sartlar, sut_kurali,
+                aranan_ibare='Uzman hekim raporu')
+
+        if kombi_var:
+            return _osteo_karar_topla(
+                KontrolSonucu.UYGUN_DEGIL,
+                f'Sudek + ek osteoporoz ilacı ({kombi_ilac}) — kombi yasağı',
+                detaylar, sartlar, sut_kurali)
+        if not sudek_brans_var:
+            return _osteo_karar_topla(
+                KontrolSonucu.KONTROL_EDILEMEDI,
+                'Sudek atrofisi — FTR/Ortopedi/Romatoloji branşı manuel doğrulanmalı',
+                detaylar, sartlar, sut_kurali)
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN,
+            'Sudek atrofisi — uzman raporu mevcut (ilk 6 ay sınırı manuel)',
+            detaylar, sartlar, sut_kurali,
+            uyari=('SUT 4.2.17.B: tanıdan itibaren İLK 6 AY ödenir; '
+                   'sürenin üstündeki kullanım ödenmez — tanı tarihi kontrol edilmeli'))
+
+    # ── 4.2.17.A Osteoporoz dalı ─────────────────────────────────────
+    sut_kurali = 'SUT 4.2.17.A(7-8) — Kalsitonin osteoporoz'
+    if rapor_kodu:
+        sartlar.append(SartSonuc('Sağlık kurulu rapor kodu', SartDurumu.VAR,
+                                 rapor_kodu, 'rap_kod'))
+    else:
+        sartlar.append(SartSonuc('Sağlık kurulu rapor kodu', SartDurumu.YOK,
+                                 'Rap_kod boş', 'rap_kod'))
+
+    sk_var, sk_neden = _osteoporoz_sk_var(birlesik, rapor_kodu)
+    if sk_var:
+        sartlar.append(SartSonuc('Sağlık kurulu raporu',
+                                 SartDurumu.VAR, sk_neden,
+                                 'rapor_metni/rap_kod'))
+    else:
+        sartlar.append(SartSonuc('Sağlık kurulu raporu',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 sk_neden, 'rapor_metni/rap_kod'))
+
+    # Yetkili branş (kalsitonin için tıbbi ekoloji yok)
+    if (_osteo_yetkili_brans(doktor_brans, _KALSITONIN_YETKILI_BRANSLAR)
+            or _osteo_uzman_brans_eslesti_mi(birlesik,
+                                             _KALSITONIN_YETKILI_BRANSLAR)):
+        sartlar.append(SartSonuc('Yetkili uzman branş', SartDurumu.VAR,
+                                 'doktor branşı veya rapor metninde ibare',
+                                 'doktor_uzmanligi/rapor_metni'))
+    else:
+        sartlar.append(SartSonuc('Yetkili uzman branş',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 'İç hast/FTR/Romatoloji/Ortopedi/Kadın doğum/'
+                                 'Endokrinoloji ibaresi yok',
+                                 'doktor_uzmanligi/rapor_metni'))
+
+    agrili_kirik = _agrili_vertebral_kirik(metin_lower, teshis_metin)
+    if agrili_kirik:
+        sartlar.append(SartSonuc('Ağrılı vertebral kırık (4.2.17.A(7))',
+                                 SartDurumu.VAR, '', 'rapor_metni/teshis'))
+    else:
+        sartlar.append(SartSonuc('Ağrılı vertebral kırık (4.2.17.A(7))',
+                                 SartDurumu.YOK,
+                                 'Ağrılı vertebral kırık ibaresi/ICD yok',
+                                 'rapor_metni/teshis'))
+
+    intolerans = any(k in metin_lower for k in (
+        'bifosfonat intoleran', 'bifosfonata intoleran', 'tolere edemiyor',
+        'tolere edemeyen', 'yetersiz yanit', 'yetersiz yanıt',
+    ))
+    if intolerans:
+        sartlar.append(SartSonuc('Bifosfonat intolerans/yetersiz yanıt',
+                                 SartDurumu.VAR, '', 'rapor_metni'))
+    else:
+        sartlar.append(SartSonuc('Bifosfonat intolerans/yetersiz yanıt',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 'İbare metinde yok', 'rapor_metni'))
+
+    ucuncu_basamak = any(k in metin_lower for k in (
+        'üçüncü basamak', 'ucuncu basamak', '3. basamak', 'eğitim araştırma',
+        'egitim arastirma', 'üniversite hastane', 'universite hastane',
+    ))
+    if ucuncu_basamak:
+        sartlar.append(SartSonuc('Üçüncü basamak resmi sağlık kurumu',
+                                 SartDurumu.VAR, '', 'rapor_metni'))
+    else:
+        sartlar.append(SartSonuc('Üçüncü basamak resmi sağlık kurumu',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 '"Üçüncü basamak/üniversite hastane" ibaresi yok',
+                                 'rapor_metni'))
+
+    if not rapor_kodu:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            'Kalsitonin RAPORSUZ — sağlık kurulu raporu zorunlu',
+            detaylar, sartlar, sut_kurali,
+            aranan_ibare='Sağlık kurulu raporu')
+    if kombi_var:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            f'Kalsitonin + ek osteoporoz ilacı ({kombi_ilac}) — kombi yasağı',
+            detaylar, sartlar, sut_kurali)
+
+    if agrili_kirik:
+        # 4.2.17.A(7) dalı
+        detaylar['alt_dal'] = 'KALSITONIN_AGRILI_4.2.17.A.7'
+        if not sk_var:
+            return _osteo_karar_topla(
+                KontrolSonucu.KONTROL_EDILEMEDI,
+                'Kalsitonin (ağrılı vertebral kırık) — sağlık kurulu raporu manuel doğrulanmalı',
+                detaylar, sartlar, sut_kurali,
+                uyari='Her ağrılı vertebral kırık için MAX 3 AYLIK doz')
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN,
+            'Kalsitonin — ağrılı vertebral kırık (4.2.17.A(7))',
+            detaylar, sartlar, sut_kurali,
+            uyari='SUT 4.2.17.A(7): her ağrılı vertebral kırık için MAX 3 AYLIK doz')
+    else:
+        # 4.2.17.A(8) dalı: ağrısız + intolerans + 3. basamak
+        detaylar['alt_dal'] = 'KALSITONIN_AGRISIZ_4.2.17.A.8'
+        if not (intolerans and ucuncu_basamak and sk_var):
+            eksikler = []
+            if not intolerans: eksikler.append('bifosfonat intolerans')
+            if not ucuncu_basamak: eksikler.append('3. basamak resmi kurum')
+            if not sk_var: eksikler.append('sağlık kurulu raporu ibaresi')
+            return _osteo_karar_topla(
+                KontrolSonucu.KONTROL_EDILEMEDI,
+                ('Kalsitonin (ağrısız vertebral kırık yok) — eksik şartlar: '
+                 + ', '.join(eksikler)),
+                detaylar, sartlar, sut_kurali,
+                uyari='SUT 4.2.17.A(8): ağrısız + bifosfonat intolerans + 3. basamak şart')
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN,
+            'Kalsitonin — ağrısız + bifosfonat intolerans + 3. basamak (4.2.17.A(8))',
+            detaylar, sartlar, sut_kurali)
+
+
+def kontrol_aktif_d_vitamini(ilac_sonuc: Dict) -> KontrolRaporu:
+    """SUT 4.2.17.A(9) — Aktif D vitaminleri (kalsitriol/alfakalsidol)
+    osteoporoz tedavisinde ödenmez. EK-4/D istisnaları (renal osteodistrofi,
+    hipoparatiroidi, vb.) hariç.
+    """
+    metin = _tum_metinleri_birlesir(ilac_sonuc)
+    teshis_metin = ' '.join(ilac_sonuc.get('recete_teshisleri', []) or [])
+    birlesik = (metin or '') + ' ' + teshis_metin
+    metin_lower = _tr_lower(birlesik)
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
+    teshis_upper = teshis_metin.upper()
+
+    sartlar: List[SartSonuc] = []
+    detaylar = {'alt_kategori': 'AKTIF_D_VITAMINI',
+                'sut_maddesi': '4.2.17.A(9)', 'rapor_kodu': rapor_kodu}
+    sut_kurali = ('SUT 4.2.17.A(9) — Aktif D vitaminleri (kalsitriol/'
+                  'alfakalsidol) osteoporozda ödenmez')
+
+    # Osteoporoz endikasyonu var mı?
+    osteo_endik = (
+        any(k in metin_lower for k in ('osteoporoz', 'osteopeni',
+                                        'kemik erimesi', 'kmy', 'dexa', 'dxa'))
+        or any(k in teshis_upper for k in ('M80', 'M81', 'M82', 'M85'))
+        or rapor_kodu in ('06.01', '06.02')
     )
+
+    # EK-4/D istisnaları
+    ek4d_istisna = any(k in metin_lower for k in (
+        'renal osteodistrofi', 'kronik böbrek', 'kronik bobrek', 'ckd',
+        'sekonder hiperparatiroid', 'hipoparatiroid', 'hipokalsemi',
+        'rikets', 'osteomalazi', 'd vitamini eksikli',
+    )) or any(k in teshis_upper for k in (
+        'E20', 'E21.1', 'E21.2', 'E21.3', 'E55', 'E83.3',
+        'N18', 'N18.5', 'N18.6',
+    ))
+
+    if osteo_endik:
+        sartlar.append(SartSonuc('Osteoporoz endikasyonu',
+                                 SartDurumu.VAR,
+                                 'osteoporoz/M80-M85 ibaresi/06.01-02 rapor',
+                                 'rapor_metni/teshis/rap_kod'))
+    else:
+        sartlar.append(SartSonuc('Osteoporoz endikasyonu', SartDurumu.YOK,
+                                 'Osteoporoz ibare/ICD/rapor kodu yok',
+                                 'rapor_metni/teshis'))
+
+    if ek4d_istisna:
+        sartlar.append(SartSonuc('EK-4/D istisna (renal osteodistrofi/'
+                                 'hipoparatiroidi/hipokalsemi/rikets)',
+                                 SartDurumu.VAR, '',
+                                 'rapor_metni/teshis'))
+    else:
+        sartlar.append(SartSonuc('EK-4/D istisna', SartDurumu.YOK,
+                                 'EK-4/D listesi endikasyonu bulunamadı',
+                                 'rapor_metni/teshis'))
+
+    if osteo_endik and not ek4d_istisna:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            'Aktif D vitamini (kalsitriol/alfakalsidol) osteoporozda ödenmez '
+            '(SUT 4.2.17.A(9))',
+            detaylar, sartlar, sut_kurali,
+            aranan_ibare='renal osteodistrofi / hipoparatiroidi / EK-4/D')
+    if ek4d_istisna:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN,
+            'Aktif D vitamini — EK-4/D istisnası (renal osteodistrofi vb.)',
+            detaylar, sartlar, sut_kurali,
+            uyari='Endikasyon raporu/branş ayrı kontrol edilmeli')
+    return _osteo_karar_topla(
+        KontrolSonucu.KONTROL_EDILEMEDI,
+        'Aktif D vitamini — endikasyon (osteoporoz mu / EK-4/D mi) belirsiz',
+        detaylar, sartlar, sut_kurali,
+        uyari='Manuel doğrulama: osteoporoz endikasyonuysa ödenmez (4.2.17.A(9))')
 
 
 def kontrol_osteoporoz_biyolojik(ilac_sonuc: Dict) -> KontrolRaporu:
-    """
-    SUT 4.2.28.C - Osteoporoz biyolojik ilaçları
-        Denosumab (Prolia/Xgeva)
-        Teriparatid (Forteo/Forsteo/Movymia)
-        Romosozumab (Evenity)
-        Stronsiyum ranelat (Osseor/Protelos — büyük ölçüde piyasadan çekildi)
+    """SUT 4.2.17.A(6)(b) - Osteoporoz biyolojik ilaçları (Denosumab/Prolia)
+    + SUT 4.2.28.C destek + onkoloji destek (XGEVA)
 
-    Kurallar:
-    - Uzman raporu (Endokrinoloji/Romatoloji/FTR/Geriatri) ZORUNLU
-    - Bifosfonat eşik kuralı + uzman raporu / yan etki / yetersiz yanıt
-    - Denosumab XGEVA: kemik metastazı (onkoloji) endikasyonu — ayrı ele alınır
-    - 'PROLIA' (60 mg s.c. 6 ayda bir) → osteoporoz endikasyonu
+    Şimdi detaylı dallar ile:
+      (b)(1) Hormon ablasyonu prostat / aromataz inhibitör meme Ca + onkoloji SK
+      (b)(2)(a) Postmenopozal kadın / erkek osteoporoz
+      (b)(2)(b) Glukokortikoid + yüksek kırık riski
+      Stronsiyum/Teriparatid/Romosozumab → bifosfonat intolerans + SK raporu
+      XGEVA (denosumab 120 mg) → onkoloji (kemik metastazı), ayrı SUT
     """
     ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
     etkin_madde = (ilac_sonuc.get('etkin_madde') or '').upper()
     rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
     arama = ilac_adi + ' ' + etkin_madde
 
-    sut_kurali = ('SUT 4.2.28.C — Osteoporoz biyolojik ilaçları '
-                  '(Endokrinoloji/Romatoloji/FTR uzman raporu zorunlu)')
+    metin = _tum_metinleri_birlesir(ilac_sonuc)
+    teshis_metin = ' '.join(ilac_sonuc.get('recete_teshisleri', []) or [])
+    birlesik = (metin or '') + ' ' + teshis_metin
+    metin_lower = _tr_lower(birlesik)
+    teshis_upper = teshis_metin.upper()
 
-    # Hangi alt grup?
-    is_denosumab = ('DENOSUMAB' in arama or 'PROLIA' in arama or
-                    'XGEVA' in arama)
+    sut_kurali = ('SUT 4.2.17.A(6)(b) — Denosumab/Prolia (sağlık kurulu raporu '
+                  'zorunlu)')
+
+    is_denosumab = ('DENOSUMAB' in arama or 'PROLIA' in arama or 'XGEVA' in arama)
     is_xgeva = 'XGEVA' in arama
     is_teriparatid = ('TERIPARATID' in arama or 'TERIPARATIDE' in arama or
-                      'FORTEO' in arama or 'FORSTEO' in arama or
-                      'MOVYMIA' in arama)
+                      'FORTEO' in arama or 'FORSTEO' in arama or 'MOVYMIA' in arama)
     is_romosozumab = 'ROMOSOZUMAB' in arama or 'EVENITY' in arama
     is_stronsiyum = ('STRONSIYUM' in arama or 'STRONTIUM' in arama or
                      'OSSEOR' in arama or 'PROTELOS' in arama)
 
+    sartlar: List[SartSonuc] = []
     detaylar = {
-        'alt_kategori': 'OSTEOPOROZ_BIYOLOJIK',
-        'sut_maddesi': '4.2.28.C',
+        'alt_kategori': 'OSTEOPOROZ_BIYOLOJIK', 'sut_maddesi': '4.2.17.A(6b)',
         'rapor_kodu': rapor_kodu,
         'denosumab': is_denosumab, 'xgeva': is_xgeva,
         'teriparatid': is_teriparatid, 'romosozumab': is_romosozumab,
         'stronsiyum': is_stronsiyum,
     }
 
-    # XGEVA = onkoloji (kemik metastazı / dev hücreli tümör) — ayrı SUT
+    # Kombinasyon
+    kombi_var, kombi_ilac = _osteo_kombi_var(ilac_sonuc, 'OSTEOPOROZ_BIYOLOJIK')
+    if kombi_var:
+        sartlar.append(SartSonuc('Osteoporoz ilaç kombinasyon yasağı',
+                                 SartDurumu.YOK,
+                                 f'Aynı reçetede: {kombi_ilac}',
+                                 'recete_ilaclari'))
+    else:
+        sartlar.append(SartSonuc('Osteoporoz ilaç kombinasyon yasağı',
+                                 SartDurumu.VAR,
+                                 'Aynı reçetede başka osteoporoz ilacı yok',
+                                 'recete_ilaclari'))
+
+    # ── XGEVA = onkoloji (kemik metastazı / dev hücreli tümör) ────────
     if is_xgeva:
+        sartlar.append(SartSonuc('XGEVA dalı (onkoloji)', SartDurumu.VAR,
+                                 'denosumab 120 mg', 'ilac_adi'))
         if not rapor_kodu:
-            return KontrolRaporu(
+            return _osteo_karar_topla(
                 KontrolSonucu.UYGUN_DEGIL,
                 'XGEVA (denosumab 120 mg) RAPORSUZ — onkoloji uzman raporu ZORUNLU',
-                detaylar=detaylar,
-                uyari='XGEVA: kemik metastazı / dev hücreli kemik tümörü — onkoloji raporu',
-                sut_kurali='SUT 12.7.X — Onkoloji destek tedavisi (denosumab 120 mg)'
-            )
-        return KontrolRaporu(
+                {**detaylar, 'alt_dal': 'XGEVA_RAPORSUZ'},
+                sartlar,
+                'SUT 12.7.X — Onkoloji destek tedavisi (denosumab 120 mg)',
+                uyari='XGEVA: kemik metastazı / dev hücreli kemik tümörü')
+        return _osteo_karar_topla(
             KontrolSonucu.UYGUN,
-            f'XGEVA — onkoloji rapor kodu {rapor_kodu} (kemik metastazı endikasyonu)',
-            detaylar=detaylar,
-            uyari='Onkoloji rapor süresi ve dozaj kontrol edilmeli (4 haftada bir 120 mg)',
-            sut_kurali='SUT 12.7.X — Onkoloji destek tedavisi (denosumab 120 mg)'
-        )
+            f'XGEVA — onkoloji rapor kodu {rapor_kodu} (kemik metastazı)',
+            {**detaylar, 'alt_dal': 'XGEVA_ONKOLOJI'}, sartlar,
+            'SUT 12.7.X — Onkoloji destek tedavisi (denosumab 120 mg)',
+            uyari='Onkoloji rapor süresi ve dozaj kontrol (4 haftada bir 120 mg)')
 
-    # Stronsiyum ranelat — Türkiye'de büyük ölçüde piyasada yok, uyarı verelim
+    # ── PROLIA / Denosumab (osteoporoz) ──────────────────────────────
+    if is_denosumab:
+        return _kontrol_denosumab_osteoporoz(
+            ilac_sonuc, rapor_kodu, metin_lower, teshis_upper,
+            sartlar, detaylar, kombi_var, kombi_ilac)
+
+    # ── Stronsiyum ranelat ─────────────────────────────────────────────
     if is_stronsiyum:
+        sartlar.append(SartSonuc('Stronsiyum ranelat dalı', SartDurumu.VAR,
+                                 '', 'ilac_adi'))
         if not rapor_kodu:
-            return KontrolRaporu(
+            return _osteo_karar_topla(
                 KontrolSonucu.UYGUN_DEGIL,
-                'Stronsiyum ranelat RAPORSUZ — uzman raporu ZORUNLU',
-                detaylar=detaylar,
-                uyari='Stronsiyum ranelat: KV risk nedeniyle kullanımı kısıtlı',
-                sut_kurali=sut_kurali
-            )
-        # Rapor varsa bifosfonat eşik kontrolünü uygula
-        rapor = kontrol_bifosfonat(ilac_sonuc)
-        ek_uyari = 'Stronsiyum ranelat: KV risk — kardiyak öykü kontrol edilmeli'
-        return KontrolRaporu(
-            sonuc=rapor.sonuc,
-            mesaj=f'Stronsiyum ranelat — {rapor.mesaj}',
-            detaylar={**detaylar, **(rapor.detaylar or {})},
-            uyari=(rapor.uyari + ' | ' if rapor.uyari else '') + ek_uyari,
-            sut_kurali=sut_kurali,
-            aranan_ibare=rapor.aranan_ibare,
-            bulunan_metin=rapor.bulunan_metin,
-        )
+                'Stronsiyum ranelat RAPORSUZ — sağlık kurulu raporu zorunlu',
+                detaylar, sartlar, sut_kurali,
+                uyari='KV risk nedeniyle kullanımı kısıtlı')
+        rapor_bif = kontrol_bifosfonat(ilac_sonuc)
+        sartlar.extend([SartSonuc(f'[Bifosfonat eşik] {s.ad}', s.durum,
+                                  s.neden, s.kaynak)
+                        for s in rapor_bif.sartlar
+                        if s.ad != 'Osteoporoz ilaç kombinasyon yasağı'])
+        return _osteo_karar_topla(
+            sonuc=rapor_bif.sonuc,
+            mesaj=f'Stronsiyum ranelat — {rapor_bif.mesaj}',
+            detaylar={**detaylar, **(rapor_bif.detaylar or {})},
+            sartlar=sartlar, sut_kurali=sut_kurali,
+            uyari='Stronsiyum ranelat: KV risk — kardiyak öykü kontrol edilmeli')
 
-    # Genel biyolojik osteoporoz dalı (Prolia, Forteo, Evenity)
-    # 1) Rapor kodu yoksa kesin UYGUN_DEGIL — uzman raporu zorunlu
+    # ── Teriparatid / Romosozumab ─────────────────────────────────────
+    if is_teriparatid or is_romosozumab:
+        ad = 'Teriparatid (Forteo/Forsteo)' if is_teriparatid else 'Romosozumab (Evenity)'
+        sartlar.append(SartSonuc(f'{ad} dalı', SartDurumu.VAR, '', 'ilac_adi'))
+        if not rapor_kodu:
+            return _osteo_karar_topla(
+                KontrolSonucu.UYGUN_DEGIL,
+                f'{ad} RAPORSUZ — sağlık kurulu raporu zorunlu',
+                detaylar, sartlar, sut_kurali)
+        sk_var, sk_neden = _osteoporoz_sk_var(birlesik, rapor_kodu)
+        if sk_var:
+            sartlar.append(SartSonuc('Sağlık kurulu raporu',
+                                     SartDurumu.VAR, sk_neden,
+                                     'rapor_metni/rap_kod'))
+        else:
+            sartlar.append(SartSonuc('Sağlık kurulu raporu',
+                                     SartDurumu.KONTROL_EDILEMEDI,
+                                     sk_neden, 'rapor_metni/rap_kod'))
+
+        if is_romosozumab:
+            kv_oykusu = any(k in metin_lower for k in (
+                'miyokard infarkt', 'inme öyküsü', 'inme oykusu',
+                'serebrovaskuler', 'serebrovasküler', 'akut koroner sendrom',
+                'sva', 'i21', 'i63', 'i64',
+            )) or any(k in teshis_upper for k in ('I21', 'I22', 'I63', 'I64'))
+            if kv_oykusu:
+                sartlar.append(SartSonuc(
+                    'Romosozumab KV kontrendikasyon (MI/inme öyküsü)',
+                    SartDurumu.YOK,
+                    'KV olay öyküsü tespit edildi → KONTRENDİKE',
+                    'rapor_metni/teshis'))
+                return _osteo_karar_topla(
+                    KontrolSonucu.UYGUN_DEGIL,
+                    'Romosozumab KONTRENDİKE — MI/inme öyküsü mevcut',
+                    detaylar, sartlar, sut_kurali)
+
+        # ── SUT 4.2.17.A(6)(b) ön-koşul: bifosfonat intolerans/yetersiz yanıt
+        # veya ciddi osteoporoz alternatifi (zorunlu şart) ────────────────
+        bif_durum, bif_neden = _bifosfonat_onkosul_var_mi(metin_lower)
+        sartlar.append(SartSonuc(
+            'Bifosfonat intolerans/yetersiz yanıt veya ciddi osteoporoz',
+            bif_durum, bif_neden, 'rapor_metni'))
+
+        # ── SUT 4.1.4 — Endikasyon dışı kullanım onayı (varsa uygulanır) ─
+        ed_sonuc = _endikasyon_disi_onay_var_mi(metin_lower)
+        ed_durum = None
+        if ed_sonuc is not None:
+            ed_durum, ed_neden = ed_sonuc
+            sartlar.append(SartSonuc(
+                'Endikasyon dışı kullanım onayı (SUT 4.1.4)',
+                ed_durum, ed_neden, 'rapor_metni'))
+
+        rapor_bif = kontrol_bifosfonat(ilac_sonuc)
+        sartlar.extend([SartSonuc(f'[Bifosfonat eşik] {s.ad}', s.durum,
+                                  s.neden, s.kaynak)
+                        for s in rapor_bif.sartlar
+                        if s.ad != 'Osteoporoz ilaç kombinasyon yasağı'])
+
+        # ── Sonuç ağırlıklandırması ──────────────────────────────────────
+        # Yeni eklenen şartlar: bif_durum (zorunlu) + ed_durum (varsa)
+        son_sonuc = rapor_bif.sonuc
+        # Bif eşik UYGUN_DEGIL ise zaten UYGUN_DEGIL — değiştirme
+        if son_sonuc != KontrolSonucu.UYGUN_DEGIL:
+            # YOK varsa UYGUN_DEGIL
+            yeni_yok = (bif_durum == SartDurumu.YOK or
+                        ed_durum == SartDurumu.YOK)
+            # KONTROL_EDILEMEDI varsa şüpheli
+            yeni_supheli = (bif_durum == SartDurumu.KONTROL_EDILEMEDI or
+                            ed_durum == SartDurumu.KONTROL_EDILEMEDI)
+            if yeni_yok:
+                son_sonuc = KontrolSonucu.UYGUN_DEGIL
+            elif yeni_supheli:
+                son_sonuc = KontrolSonucu.KONTROL_EDILEMEDI
+
+        ek_uyari = ('Bifosfonat intolerans/yan etki/yetersiz yanıt veya ciddi '
+                    'osteoporoz endikasyonu raporda lafzen aranır')
+        if is_teriparatid:
+            ek_uyari += ' | Teriparatid: maks 24 ay; T ≤ -2.5 + ileri yaş'
+        if is_romosozumab:
+            ek_uyari += ' | Romosozumab: 12 ay; KV olay öyküsünde KONTRENDİKE'
+        if ed_sonuc is not None:
+            ek_uyari += (' | Endikasyon dışı kullanım: SUT 4.1.4 — Bakanlık/'
+                         'SGK/komisyon onayı zorunlu')
+        return _osteo_karar_topla(
+            sonuc=son_sonuc,
+            mesaj=f'{ad} — {rapor_bif.mesaj}',
+            detaylar={**detaylar, **(rapor_bif.detaylar or {})},
+            sartlar=sartlar, sut_kurali=sut_kurali, uyari=ek_uyari)
+
+    # Bilinmeyen biyolojik
+    return _osteo_karar_topla(
+        KontrolSonucu.KONTROL_EDILEMEDI,
+        'Osteoporoz biyolojik — alt grup belirlenemedi',
+        detaylar, sartlar, sut_kurali)
+
+
+def _kontrol_denosumab_osteoporoz(ilac_sonuc, rapor_kodu, metin_lower,
+                                   teshis_upper, sartlar, detaylar,
+                                   kombi_var, kombi_ilac):
+    """SUT 4.2.17.A(6)(b)(1) ve (6)(b)(2): Denosumab (PROLIA) osteoporoz dalları."""
+    sut_kurali = ('SUT 4.2.17.A(6)(b) — Denosumab/Prolia '
+                  '(sağlık kurulu raporu zorunlu)')
+    sk_var, sk_neden = _osteoporoz_sk_var(metin_lower, rapor_kodu)
+
     if not rapor_kodu:
-        ad_etiket = 'Osteoporoz biyolojik ilacı'
-        if is_denosumab:
-            ad_etiket = 'Denosumab (Prolia)'
-        elif is_teriparatid:
-            ad_etiket = 'Teriparatid (Forteo/Forsteo)'
-        elif is_romosozumab:
-            ad_etiket = 'Romosozumab (Evenity)'
-        return KontrolRaporu(
+        return _osteo_karar_topla(
             KontrolSonucu.UYGUN_DEGIL,
-            f'{ad_etiket} RAPORSUZ yazılmış! Uzman raporu ZORUNLU '
-            '(Endokrinoloji/Romatoloji/FTR/Geriatri)',
-            detaylar=detaylar,
-            uyari='SUT 4.2.28.C: Uzman raporu olmadan ödenmez',
-            sut_kurali=sut_kurali
-        )
+            'Denosumab/Prolia RAPORSUZ — sağlık kurulu raporu zorunlu',
+            {**detaylar, 'alt_dal': 'DENOSUMAB_RAPORSUZ'},
+            sartlar, sut_kurali)
+    if kombi_var:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            f'Denosumab + ek osteoporoz ilacı ({kombi_ilac}) — kombi yasağı',
+            detaylar, sartlar, sut_kurali)
 
-    # 2) Rapor varsa bifosfonat eşik kuralını uygula (T-skoru, kırık,
-    #    kortikosteroid). Biyolojik ilaçlar genellikle bifosfonata
-    #    intolerans/yetersiz yanıt sonrası başlanır → ek uyarı.
-    rapor_bif = kontrol_bifosfonat(ilac_sonuc)
-    ek_uyari = ('Biyolojik ilaç: bifosfonata intolerans/yan etki/yetersiz '
-                'yanıt veya ciddi osteoporoz endikasyonu raporda olmalı')
-    if is_teriparatid:
-        ek_uyari += (' | Teriparatid: maks 24 ay kullanım, '
-                     'osteoporotik kırık + T ≤ -2.5 + ileri yaş')
-    if is_romosozumab:
-        ek_uyari += (' | Romosozumab: 12 ay; KV olay (MI/inme) öyküsünde KONTRENDİKE')
+    if sk_var:
+        sartlar.append(SartSonuc('Sağlık kurulu raporu',
+                                 SartDurumu.VAR, sk_neden,
+                                 'rapor_metni/rap_kod'))
+    else:
+        sartlar.append(SartSonuc('Sağlık kurulu raporu',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 sk_neden, 'rapor_metni/rap_kod'))
 
-    return KontrolRaporu(
-        sonuc=rapor_bif.sonuc,
-        mesaj=f'Osteoporoz biyolojik (rapor {rapor_kodu}) — {rapor_bif.mesaj}',
-        detaylar={**detaylar, **(rapor_bif.detaylar or {})},
-        uyari=(rapor_bif.uyari + ' | ' if rapor_bif.uyari else '') + ek_uyari,
-        sut_kurali=sut_kurali,
-        aranan_ibare=rapor_bif.aranan_ibare,
-        bulunan_metin=rapor_bif.bulunan_metin,
+    # 4.2.17.A(6)(b)(1) — Hormon ablasyonu prostat / aromataz inhibitörü meme Ca
+    prostat_ca = any(k in metin_lower for k in (
+        'prostat kanser', 'prostat ca', 'hormon ablasyon',
+        'androjen deprivasyon', 'lhrh agonist', 'gnrh agonist',
+        'lupron', 'eligard', 'zoladex',
+    )) or 'C61' in teshis_upper
+    meme_ca_aromataz = (
+        ('meme kanser' in metin_lower or 'meme ca' in metin_lower
+         or 'C50' in teshis_upper)
+        and any(k in metin_lower for k in (
+            'aromataz inhibitör', 'aromataz inhibitor', 'anastrozol',
+            'letrozol', 'eksemestan', 'arimidex', 'femara', 'aromasin',))
     )
+    onkoloji_brans = ('onkoloji' in metin_lower or 'medikal onkolog' in metin_lower)
+
+    if prostat_ca or meme_ca_aromataz:
+        sartlar.append(SartSonuc('Onkoloji endikasyonu (4.2.17.A(6)(b)(1))',
+                                 SartDurumu.VAR,
+                                 ('hormon ablasyonu prostat Ca' if prostat_ca
+                                  else 'aromataz inhibitör + meme Ca'),
+                                 'rapor_metni/teshis'))
+        if not onkoloji_brans:
+            sartlar.append(SartSonuc('Tıbbi onkoloji uzmanı (sağlık kurulu)',
+                                     SartDurumu.KONTROL_EDILEMEDI,
+                                     'Onkoloji ibaresi rapor metninde bulunamadı',
+                                     'rapor_metni'))
+        else:
+            sartlar.append(SartSonuc('Tıbbi onkoloji uzmanı (sağlık kurulu)',
+                                     SartDurumu.VAR, '', 'rapor_metni'))
+        if not sk_var:
+            return _osteo_karar_topla(
+                KontrolSonucu.KONTROL_EDILEMEDI,
+                'Denosumab onkoloji endikasyonu — sağlık kurulu raporu manuel doğrulanmalı',
+                {**detaylar, 'alt_dal': 'DENOSUMAB_4.2.17.A.6.b.1'},
+                sartlar, sut_kurali,
+                uyari='SUT 4.2.17.A(6)(b)(1): tıbbi onkoloji uzmanlı sağlık kurulu raporu')
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN,
+            ('Denosumab — hormon ablasyonu prostat / aromataz inh. meme Ca '
+             'osteoporozu (4.2.17.A(6)(b)(1))'),
+            {**detaylar, 'alt_dal': 'DENOSUMAB_4.2.17.A.6.b.1'},
+            sartlar, sut_kurali)
+
+    # 4.2.17.A(6)(b)(2): Bifosfonat intolerans VEYA renal yetmezlik
+    intolerans = any(k in metin_lower for k in (
+        'bifosfonat intoleran', 'bifosfonata intoleran', 'tolere edemiyor',
+        'tolere edemeyen', 'yetersiz yanit', 'yetersiz yanıt',
+    ))
+    renal_yetmezlik = any(k in metin_lower for k in (
+        'renal yetmezlik', 'kronik böbrek', 'kronik bobrek', 'ckd',
+        'son donem bobrek', 'son dönem böbrek', 'diyaliz',
+    )) or any(k in teshis_upper for k in ('N18', 'N19'))
+
+    if intolerans:
+        sartlar.append(SartSonuc('Bifosfonat intolerans/yetersiz yanıt',
+                                 SartDurumu.VAR, '', 'rapor_metni'))
+    elif renal_yetmezlik:
+        sartlar.append(SartSonuc('Renal yetmezlik (bifosfonat kullanılamaz)',
+                                 SartDurumu.VAR, '', 'rapor_metni/teshis'))
+    else:
+        sartlar.append(SartSonuc(
+            'Bifosfonat intolerans/yetersiz yanıt VEYA renal yetmezlik',
+            SartDurumu.KONTROL_EDILEMEDI,
+            'İbare metinde yok', 'rapor_metni'))
+
+    # (a) Postmenopozal kadın / erkek osteoporoz
+    pm_osteo = any(k in metin_lower for k in (
+        'postmenopozal', 'post menopozal', 'menopoz sonras',
+    ))
+    erkek_osteo = any(k in metin_lower for k in (
+        'erkek osteoporoz', 'erkek hasta', 'male osteoporos',
+    ))
+    # (b) Glukokortikoid + yüksek kırık riski
+    glukokortikoid_kirik = (
+        _kortikosteroid_kelime_var(metin_lower)
+        and any(k in metin_lower for k in (
+            'yüksek kırık', 'yuksek kirik', 'osteoporotik kırık',
+            'osteoporotik kirik', 'patolojik kırık', 'patolojik kirik',
+        ))
+    )
+
+    sub_endik = pm_osteo or erkek_osteo or glukokortikoid_kirik
+    if sub_endik:
+        if pm_osteo:
+            etiket = 'postmenopozal osteoporoz'
+        elif erkek_osteo:
+            etiket = 'erkek osteoporoz'
+        else:
+            etiket = 'glukokortikoid + yüksek kırık'
+        sartlar.append(SartSonuc('4.2.17.A(6)(b)(2) alt endikasyon',
+                                 SartDurumu.VAR, etiket,
+                                 'rapor_metni'))
+    else:
+        sartlar.append(SartSonuc('4.2.17.A(6)(b)(2) alt endikasyon',
+                                 SartDurumu.KONTROL_EDILEMEDI,
+                                 ('Postmenopozal/erkek/glukokortikoid+kırık '
+                                  'ibaresi yok'),
+                                 'rapor_metni'))
+
+    # Bifosfonat eşik kuralı — info
+    rapor_bif = kontrol_bifosfonat(ilac_sonuc)
+    sartlar.extend([SartSonuc(f'[Bifosfonat eşik] {s.ad}', s.durum,
+                              s.neden, s.kaynak)
+                    for s in rapor_bif.sartlar
+                    if s.ad != 'Osteoporoz ilaç kombinasyon yasağı'])
+
+    eksik_sk = '' if sk_var else ' | sağlık kurulu raporu ibaresi yok'
+
+    if not (intolerans or renal_yetmezlik):
+        return _osteo_karar_topla(
+            KontrolSonucu.KONTROL_EDILEMEDI,
+            ('Denosumab — bifosfonat intolerans/yetersiz yanıt VEYA renal '
+             'yetmezlik şartı bulunamadı (manuel doğrulama)'),
+            {**detaylar, 'alt_dal': 'DENOSUMAB_4.2.17.A.6.b.2'},
+            sartlar, sut_kurali,
+            uyari='SUT 4.2.17.A(6)(b)(2) ön şart' + eksik_sk)
+    if not sub_endik:
+        return _osteo_karar_topla(
+            KontrolSonucu.KONTROL_EDILEMEDI,
+            ('Denosumab — alt endikasyon (postmenopozal/erkek/glukokortikoid'
+             '+kırık) ibaresi rapor metninde bulunamadı'),
+            {**detaylar, 'alt_dal': 'DENOSUMAB_4.2.17.A.6.b.2'},
+            sartlar, sut_kurali, uyari='SUT 4.2.17.A(6)(b)(2)' + eksik_sk)
+    if rapor_bif.sonuc == KontrolSonucu.UYGUN_DEGIL:
+        return _osteo_karar_topla(
+            KontrolSonucu.UYGUN_DEGIL,
+            f'Denosumab — bifosfonat eşik sağlanmıyor: {rapor_bif.mesaj}',
+            {**detaylar, 'alt_dal': 'DENOSUMAB_4.2.17.A.6.b.2'},
+            sartlar, sut_kurali)
+    if rapor_bif.sonuc == KontrolSonucu.KONTROL_EDILEMEDI:
+        return _osteo_karar_topla(
+            KontrolSonucu.KONTROL_EDILEMEDI,
+            f'Denosumab — bifosfonat eşik şüpheli: {rapor_bif.mesaj}',
+            {**detaylar, 'alt_dal': 'DENOSUMAB_4.2.17.A.6.b.2'},
+            sartlar, sut_kurali, uyari=eksik_sk.lstrip(' |'))
+    return _osteo_karar_topla(
+        KontrolSonucu.UYGUN,
+        ('Denosumab — bifosfonat intolerans/renal yetmezlik + alt endikasyon '
+         '+ T-skoru eşiği sağlandı (4.2.17.A(6)(b)(2))'),
+        {**detaylar, 'alt_dal': 'DENOSUMAB_4.2.17.A.6.b.2'},
+        sartlar, sut_kurali,
+        uyari=eksik_sk.lstrip(' |') if eksik_sk else None)
 
 
 def kontrol_ivabradin(ilac_sonuc: Dict) -> KontrolRaporu:
@@ -7598,10 +9242,21 @@ def kontrol_ivabradin(ilac_sonuc: Dict) -> KontrolRaporu:
     İvabradin: NYHA II-IV + sinüs ritmi VEYA beta blokör intoleransı VEYA EF≤%45
     """
     metin = _tum_metinleri_birlesir(ilac_sonuc)
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
 
     if not metin:
-        return KontrolRaporu(KontrolSonucu.KONTROL_EDILEMEDI,
-                             "Rapor/mesaj metni yok")
+        # Rapor metni boş — İvabradin SUT 4.2.15.C'ye göre kardiyoloji
+        # uzman hekim raporu zorunlu.
+        if not rapor_kodu:
+            return KontrolRaporu(
+                KontrolSonucu.UYGUN_DEGIL,
+                "Raporsuz İvabradin/Eplerenon — uzman hekim raporu zorunlu",
+                detaylar={'rapor_kodu': rapor_kodu})
+        return KontrolRaporu(
+            KontrolSonucu.KONTROL_EDILEMEDI,
+            f"Rapor kodu var ({rapor_kodu}) ama metni okunamadı — "
+            "manuel doğrulama gerekli",
+            detaylar={'rapor_kodu': rapor_kodu})
 
     bb_intolerans = _turkce_ara(metin, 'beta blok') and (_turkce_ara(metin, 'intolerans') or _turkce_ara(metin, 'kontrendik'))
     kalp_yetmezligi = _turkce_ara(metin, 'kalp yetmezli') or _turkce_ara(metin, 'heart failure')
@@ -12863,6 +14518,10 @@ KATEGORI_KONTROL_FONKSIYONU = {
     'POTASYUM_SITRAT': kontrol_potasyum_sitrat,
     'MEDULA_OTOMATIK': kontrol_medula_otomatik,
     'BIFOSFONAT': kontrol_bifosfonat,
+    'RALOKSIFEN': kontrol_raloksifen,
+    'KALSITONIN': kontrol_kalsitonin,
+    'AKTIF_D_VITAMINI': kontrol_aktif_d_vitamini,
+    'OSTEOPOROZ_BIYOLOJIK': kontrol_osteoporoz_biyolojik,
     # Minimal handlers — rapor varsa uygun, yoksa kontroledilemedi
     'BENZODIAZEPIN': kontrol_raporsuz_bilgilendirme,  # Raporsuz, uzman değerlendirmesi
     'GOZ_LUBRIKAN': kontrol_raporsuz_bilgilendirme,   # Raporsuz, suni gözyaşı
@@ -12918,7 +14577,11 @@ KATEGORI_ISIMLERI = {
     'GOZ': 'Göz İlaçları',
     'ANTIVIRAL': 'Antiviral İlaçlar',
     'GIS': 'GİS İlaçları',
-    'BIFOSFONAT': 'Bifosfonat/Osteoporoz (4.2.17)',
+    'BIFOSFONAT': 'Bifosfonat/Osteoporoz (4.2.17.A)',
+    'RALOKSIFEN': 'Raloksifen/Bazedoksifen (4.2.17.A(6a))',
+    'KALSITONIN': 'Kalsitonin (4.2.17.A 7-8 + 4.2.17.B Sudek)',
+    'AKTIF_D_VITAMINI': 'Aktif D vitamini (4.2.17.A(9) — osteoporozda ödenmez)',
+    'OSTEOPOROZ_BIYOLOJIK': 'Osteoporoz biyolojik / Denosumab (4.2.17.A(6b))',
     'RECETE_TURU_KIRMIZI': 'Kırmızı Reçete Zorunlu (4.2.4)',
     'RECETE_TURU_YESIL': 'Yeşil Reçete Zorunlu',
     'TRIMETAZIDIN': 'Trimetazidin (4.2.14.C)',
