@@ -830,127 +830,166 @@ class AylikReceteSorguGUI:
             _Tooltip(b, tip)
         tk.Frame(p1, bg=P_SECIM_BG, width=4).pack(side="left")
 
-        # ─── PANEL 2: BOYAMA (açık sarı) ───
+        # ─── PANEL 2: BOYAMA (açık sarı) — TEK PARÇA + radio mod selector ───
         P_BOYA_BG = "#FFF8E1"
         p2 = _panel_olustur(row2, "🎨 Boyama", "#E65100", P_BOYA_BG)
 
-        # Seçiliyi boya
-        sub = tk.Frame(p2, bg=P_BOYA_BG)
-        sub.pack(side="left", padx=(0, 4), pady=4)
-        tk.Label(sub, text="Seçili →", bg=P_BOYA_BG, fg="#5D4037",
-                 font=("Segoe UI", 8, "bold")
-                 ).pack(side="left", padx=(2, 3))
+        # Mod seçici: Seçili / Filtreli (radiobutton — yer kazanır)
+        self.boya_mod = tk.StringVar(value="secili")
+        mod_frame = tk.Frame(p2, bg=P_BOYA_BG)
+        mod_frame.pack(side="left", padx=(0, 6), pady=2)
+        rb_secili = tk.Radiobutton(
+            mod_frame, text="Seçili",
+            variable=self.boya_mod, value="secili",
+            bg=P_BOYA_BG, fg="#5D4037",
+            selectcolor="#FFFFFF",
+            font=("Segoe UI", 8, "bold"),
+            bd=0, anchor="w")
+        rb_secili.pack(side="top", anchor="w")
+        rb_filtreli = tk.Radiobutton(
+            mod_frame, text="Filtreli",
+            variable=self.boya_mod, value="filtreli",
+            bg=P_BOYA_BG, fg="#5D4037",
+            selectcolor="#FFFFFF",
+            font=("Segoe UI", 8, "bold"),
+            bd=0, anchor="w")
+        rb_filtreli.pack(side="top", anchor="w")
+        _Tooltip(rb_secili, "Seçili: SADECE tabloda işaretli satırlar boyanır")
+        _Tooltip(rb_filtreli,
+                  "Filtreli: filtre sonucunda görünen TÜM satırlar boyanır\n"
+                  "(scroll dışındakiler dahil)")
+
+        # Tek satır 6 renk butonu — radio'ya göre çalışır
+        btn_frame = tk.Frame(p2, bg=P_BOYA_BG)
+        btn_frame.pack(side="left", padx=(0, 6), pady=4)
         for renk in [RENK_YESIL, RENK_SARI, RENK_TURUNCU,
                        RENK_KIRMIZI, RENK_BEYAZ, RENK_GRI]:
-            b = tk.Button(sub, text=renk_kisa[renk],
+            b = tk.Button(btn_frame, text=renk_kisa[renk],
                           bg=RENK_BG[renk], fg=RENK_FG[renk], bd=1,
-                          command=lambda r=renk: self._secilenleri_renge_boya(r),
+                          command=lambda r=renk: self._boya_dispatch(r),
                           padx=4, width=2, font=("Segoe UI", 11))
             b.pack(side="left", padx=1)
             _Tooltip(b,
-                      f"SEÇİLİ satırları boya:\n{renk_aciklama[renk]}\n"
-                      "(Boyamadan sonra seçim temizlenir)")
-
-        tk.Frame(p2, width=1, bg="#FFE082").pack(side="left", fill="y",
-                                                   padx=4, pady=4)
-
-        # Filtreliyi boya
-        sub = tk.Frame(p2, bg=P_BOYA_BG)
-        sub.pack(side="left", padx=(0, 6), pady=4)
-        tk.Label(sub, text="Filtreli →", bg=P_BOYA_BG, fg="#5D4037",
-                 font=("Segoe UI", 8, "bold")
-                 ).pack(side="left", padx=(2, 3))
-        for renk in [RENK_YESIL, RENK_SARI, RENK_TURUNCU,
-                       RENK_KIRMIZI, RENK_BEYAZ, RENK_GRI]:
-            b = tk.Button(sub, text=renk_kisa[renk],
-                          bg=RENK_BG[renk], fg=RENK_FG[renk], bd=1,
-                          command=lambda r=renk: self._gorunenleri_boya(r),
-                          padx=4, width=2, font=("Segoe UI", 11))
-            b.pack(side="left", padx=1)
-            _Tooltip(b,
-                      f"FİLTRELİ tüm satırları boya:\n{renk_aciklama[renk]}\n"
-                      "(Listede kalan tüm satırlar — scroll dışındakiler dahil)")
+                      f"Boya: {renk_aciklama[renk]}\n"
+                      "Mod (sol): Seçili = işaretli satırlar / "
+                      "Filtreli = görünen tümü")
 
         # ─── PANEL 3: FİLTRE (açık yeşil) — alt sıraya geçiyor ───
         P_FLT_BG = "#E8F5E9"
         p3 = _panel_olustur(row3, "👁 Göster", "#1B5E20", P_FLT_BG)
 
+        # Label'sız renkli kareler (yer kazanmak için — UX karar 2026-05-08)
+        # Renk kendisi bilgi taşır (Gestalt similarity). Tooltip ile ad açıklanır.
         self.var_renk = {}
         for renk in [RENK_BEYAZ, RENK_YESIL, RENK_SARI,
                        RENK_TURUNCU, RENK_KIRMIZI, RENK_GRI]:
             v = tk.BooleanVar(value=True)
-            cb = tk.Checkbutton(p3, text=renk_etiket[renk],
+            cb = tk.Checkbutton(p3, text="",  # label kaldırıldı (yer için)
                                   variable=v, bg=RENK_BG[renk],
                                   fg=RENK_FG[renk],
                                   selectcolor=RENK_BG[renk],
                                   font=("Segoe UI", 9, "bold"),
-                                  padx=4, bd=1, relief="solid",
+                                  padx=2, bd=1, relief="solid", width=2,
                                   command=self._renk_filtre_degisti)
             cb.pack(side="left", padx=1, pady=4)
             self.var_renk[renk] = v
             _Tooltip(cb,
+                      f"{renk_etiket[renk]}\n"
                       f"{renk_aciklama[renk]}\n"
                       "renkli satırları tabloda GÖSTER / GİZLE")
 
-        tk.Frame(p3, width=1, bg="#A5D6A7").pack(side="left", fill="y",
-                                                   padx=6, pady=4)
+        # 🧹 Filtreleri Sıfırla — Göster panelinin İÇİNE taşındı (kullanıcı isteği)
+        btn_sifirla_p3 = tk.Button(
+            p3, text="🧹 Sıfırla",
+            bg="#FFE082", fg="#5D4037",
+            activebackground="#FFD54F", bd=1,
+            command=self._tum_filtreleri_temizle,
+            font=FONT_BUTON, padx=8, pady=2)
+        btn_sifirla_p3.pack(side="left", padx=(8, 6), pady=4)
+        _Tooltip(btn_sifirla_p3,
+                  "Tüm filtreleri SIFIRLA:\n"
+                  "• Sütun arama kutuları\n"
+                  "• Renk filtresi (6 renk açık)\n"
+                  "• Excel-benzeri değer/metin filtreleri\n"
+                  "• Sıralama")
 
-        cb_bos = tk.Checkbutton(
-            p3, text="🚫 Boş Satırları Gizle",
-            variable=self.gizle_bos_satirlar,
-            bg=P_FLT_BG, fg="#1B5E20", selectcolor="#FFFFFF",
-            font=FONT_GROUP, padx=4, bd=0,
-            command=self._bos_satir_filtre_degisti)
-        cb_bos.pack(side="left", padx=(2, 2), pady=4)
-        _Tooltip(cb_bos,
-                  "Detaylı filtre kurallarının AÇIK/KAPALI anahtarı.\n\n"
-                  "✅ İŞARETLİ: yandaki ⚙ butonundan tanımlanan kurallar "
-                  "SQL'e uygulanır. (uyarı/mesaj/rapor/KYM içerik filtresi "
-                  "+ ilaç/etken/atc/farma/tesis liste filtreleri)\n\n"
-                  "☐ İŞARETSİZ: hiçbir filtre uygulanmaz, tüm kayıtlar "
-                  "tabloya gelir.")
-
-        btn_ayar = tk.Button(p3, text="⚙",
-                              bg="#1976D2", fg="white",
-                              activebackground="#1565C0",
-                              bd=0, padx=4, pady=0,
-                              font=("Segoe UI", 10, "bold"),
-                              command=self._filtre_ayar_penceresi_ac)
-        btn_ayar.pack(side="left", padx=(0, 6), pady=4)
-        _Tooltip(btn_ayar,
-                  "Detaylı filtre ayarları:\n"
-                  "• Hangi içerikler gelsin (renkli reçete / mesaj / "
-                  "uyarı / rapor)\n"
-                  "• İlaç / etken madde / ATC / farmasötik form / tesis / "
-                  "eşdeğer için içerir/içermez kuralları\n"
-                  "• 🚫 Kurum (Dışlamalar) — özel sigorta vb. kurumları "
-                  "tüm sorgulardan çıkar (toggle'dan bağımsız her zaman)\n"
-                  "Kaydet & Uygula sonrası SQL yeniden çalışır.")
-
-        # 🚫 Dışlamalar butonu kaldırıldı — fonksiyonu artık ⚙ Ayarlar
-        # penceresindeki "Kurum (Dışlamalar)" sekmesinden yönetilir.
+        # 🚫 Boş Satırları Gizle + ⚙ Ayar butonu KALDIRILDI — yerine
+        # ayrı bir "📁 Filtrelemeler" kompozit dikdörtgen butonu eklendi.
 
         # Reçete türü filtresi kaldırıldı; ilgili kod yolları boş dict ile çalışır.
         # Hücre içeriği göstergesi sağ kolonda (sag_kol) oluşturulur — aşağıda.
         self.var_recete_turu = {}
 
-        # ─── PANEL 4: SIFIRLA (açık kırmızı/sarı vurgu) ───
-        P_RST_BG = "#FFEBEE"
-        p4 = tk.Frame(row3, bg=P_RST_BG, bd=1, relief="solid")
-        p4.pack(side="left", padx=2, pady=1, fill="y")
-        btn = tk.Button(p4, text="🧹 Filtreleri Sıfırla",
-                         bg="#FFE082", fg="#5D4037",
-                         activebackground="#FFD54F", bd=1,
-                         command=self._tum_filtreleri_temizle,
-                         font=FONT_BUTON, padx=10, pady=4)
-        btn.pack(side="left", padx=6, pady=4)
-        _Tooltip(btn,
-                  "Tüm filtreleri SIFIRLA:\n"
-                  "• Sütun arama kutuları\n"
-                  "• Excel-benzeri değer/metin filtreleri\n"
-                  "• Renk filtresi (5 renk açık)\n"
-                  "• 🚫 Boş Satırları Gizle (varsayılana döner)\n"
-                  "• Sıralama")
+        # ─── PANEL: FİLTRELEMELER kompozit (Kullan + Filtrelemeler + Sıfırla)
+        # Tek bir mavi dikdörtgen panel — soldan sağa 3 widget
+        P_FLT_BG2 = "#E3F2FD"
+        p_flt = tk.Frame(row3, bg=P_FLT_BG2, bd=1, relief="solid")
+        p_flt.pack(side="left", padx=2, pady=1, fill="y")
+
+        cb_flt = tk.Checkbutton(
+            p_flt, text="Kullan",
+            variable=self.gizle_bos_satirlar,
+            bg=P_FLT_BG2, fg="#1565C0",
+            selectcolor="#FFFFFF",
+            font=FONT_GROUP, padx=4, bd=0,
+            command=self._bos_satir_filtre_degisti)
+        cb_flt.pack(side="left", padx=(6, 0), pady=4)
+        _Tooltip(cb_flt,
+                  "Filtre kurallarının AÇIK/KAPALI anahtarı.\n\n"
+                  "✅ İŞARETLİ: tanımlanan kurallar SQL'e uygulanır\n"
+                  "  (uyarı/mesaj/rapor + ilaç/etken/ATC/farma/tesis filtreleri)\n\n"
+                  "☐ İŞARETSİZ: hiçbir filtre uygulanmaz")
+
+        btn_flt_ayar = tk.Button(
+            p_flt, text="📁 Filtrelemeler",
+            bg="#1976D2", fg="white",
+            activebackground="#1565C0",
+            bd=0, padx=10, pady=4,
+            font=FONT_BUTON, cursor="hand2",
+            command=self._filtre_ayar_penceresi_ac)
+        btn_flt_ayar.pack(side="left", padx=(2, 4), pady=4)
+        _Tooltip(btn_flt_ayar,
+                  "Tıklayınca filtre ayar penceresi açılır:\n"
+                  "• Hangi içerikler gelsin (renkli reçete / mesaj / uyarı / rapor)\n"
+                  "• İlaç / etken / ATC / farma / tesis / eşdeğer kuralları\n"
+                  "• 🚫 Kurum (Dışlamalar) sekmesi\n\n"
+                  "Üst checkbox: kuralları aktif/pasif yapar.")
+
+        # 🧹 Sıfırla — Göster panelinin içine taşındı (yukarıda)
+
+        # ─── PANEL: KONTROL BUTONLARI — Filtrelemeler'in YANINDA, sağ tarafta ───
+        # İçinde: ▢ Sadece seçilenler checkbox + 🎯 Kontrol Butonları butonu
+        P_KTR_BG = "#E8EAF6"
+        p_kontrol = tk.Frame(row3, bg=P_KTR_BG, bd=1, relief="solid")
+        p_kontrol.pack(side="left", padx=2, pady=1, fill="y")
+
+        # Checkbox: "Sadece seçilenler" — 2 satır (yer kazanmak için)
+        self.kontrol_sadece_secili = tk.BooleanVar(value=False)
+        cb_secili = tk.Checkbutton(
+            p_kontrol, text="Sadece\nseçilenler",
+            variable=self.kontrol_sadece_secili,
+            bg=P_KTR_BG, fg="#1A237E",
+            selectcolor="#FFFFFF",
+            font=("Segoe UI", 8, "bold"),
+            padx=2, bd=0, justify="left", anchor="w")
+        cb_secili.pack(side="left", padx=(6, 0), pady=2)
+        _Tooltip(cb_secili,
+                  "✅ İŞARETLİ: kontrol sadece TABLODA SEÇİLİ reçetelere\n"
+                  "  uygulanır (tablo satırlarını ☑ ile işaretle ya da\n"
+                  "  Ctrl+Click ile çoklu seç)\n\n"
+                  "☐ İŞARETSİZ: kontrol tablodaki TÜM reçetelere uygulanır")
+
+        btn_kontrol = tk.Button(p_kontrol, text="🎯 Kontrol Butonları",
+                                 bg="#283593", fg="white",
+                                 activebackground="#1A237E", bd=1,
+                                 command=self._kontrol_butonlari_popup_ac,
+                                 font=FONT_BUTON, padx=10, pady=4,
+                                 cursor="hand2")
+        btn_kontrol.pack(side="left", padx=(2, 6), pady=4)
+        _Tooltip(btn_kontrol,
+                 "15 SUT/uyarı kontrol butonunu içeren popup açılır.\n"
+                 "Bir kontrol seç → otomatik çalışır.\n\n"
+                 "▢ 'Sadece seçilenler' işaretliyse SEÇİLİ satırlara uygulanır.")
 
         # ─── HÜCRE İÇERİĞİ GÖSTERGESİ (sağ kolon, 2 sıra yüksekliğinde) ───
         # Tabloda bir hücreye tıklanınca içeriği burada gösterilir.
@@ -997,16 +1036,24 @@ class AylikReceteSorguGUI:
         self._tablo_kur(tablo_frame)
 
         # ───── DURUM ÇUBUĞU ─────
+        # NOT: 3 buton satırı (row_kontrol/sut/diger) ARTIK GİZLİ — popup'a alındı.
+        # Sadece row_durum (durum mesajı + sayaç) ekranda görünür.
+        # Butonlar widget olarak alive kalır (popup invoke için).
         self._durum_frame = tk.Frame(self.root, bg="#ECEFF1")
         self._durum_frame.pack(fill="x", side="bottom")
 
-        # 3 buton satırı + 1 durum mesajı satırı
-        row_kontrol = tk.Frame(self._durum_frame, bg="#ECEFF1")
-        row_kontrol.pack(fill="x", side="top")
-        row_sut = tk.Frame(self._durum_frame, bg="#ECEFF1")
-        row_sut.pack(fill="x", side="top")
-        row_diger = tk.Frame(self._durum_frame, bg="#ECEFF1")
-        row_diger.pack(fill="x", side="top")
+        # 3 buton satırı (gizli — popup'tan invoke edilir) + 1 durum mesajı
+        self._row_kontrol_btn = tk.Frame(self._durum_frame, bg="#ECEFF1")
+        # NOT: pack EDİLMEZ — gizli kalır, butonlar oluşturulur
+        self._row_sut_btn = tk.Frame(self._durum_frame, bg="#ECEFF1")
+        self._row_diger_btn = tk.Frame(self._durum_frame, bg="#ECEFF1")
+        self._row_diger2_btn = tk.Frame(self._durum_frame, bg="#ECEFF1")
+        # Backward-compat: eski kod row_kontrol vs adlarını kullanıyor
+        row_kontrol = self._row_kontrol_btn
+        row_sut = self._row_sut_btn
+        row_diger = self._row_diger_btn
+        row_diger2 = self._row_diger2_btn
+        # Durum mesajı satırı (görünür kalır)
         row_durum = tk.Frame(self._durum_frame, bg="#ECEFF1")
         row_durum.pack(fill="x", side="top")
 
@@ -1222,7 +1269,88 @@ class AylikReceteSorguGUI:
         )
         self.btn_noropatik_435.pack(side="left", padx=(0, 8), pady=2)
 
-        # ── SATIR 4: Durum mesajı + sağda renk dağılımı sayacı ──
+        # ── SATIR 4: ANTİHT (mono+kombi) butonu (SUT 4.2.12.B) ──
+        # ATC C09A* (ACE-i), C09C* (ARB), C03* (diüretik), C07* (BB), C08*
+        # (KKB) — mono. C09B*/C09D* — kombi. Endikasyon-bazlı dispatch:
+        #   - MONO_ANTIHIPERTANSIF   → kontrol_mono_antihipertansif
+        #     (6 alt grup: ACE-i / ARB / KKB / BB / Diüretik / Alfa bloker;
+        #      raporsuz uyumluluk + ACE+ARB kontrendikasyon + doz aşımı)
+        #   - KOMBINE_ANTIHIPERTANSIF → kontrol_kombine_antihipertansif
+        #     (raporsuz/04.05/monoterapi ibaresi 3-yollu kontrol)
+        # Kategori tespiti: sut_kategorisi_tespit_et() (ATC + etken madde +
+        # SUT_MADDESI_KATEGORI mapping) — kontrolü kategoriye göre dispatch eder.
+        self.btn_antiht = tk.Button(
+            row_diger2, text="🩸 ANTİHT (mono+kombi)",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#01579B", activebackground="#01428A",  # koyu mavi
+            bd=0, padx=12, pady=3, cursor="hand2",
+            command=self._antiht_kontrol_baslat
+        )
+        self.btn_antiht.pack(side="left", padx=(4, 4), pady=2)
+
+        # ── SATIR 4: İSKEMİK KALP butonu (SUT 4.2.15.C / 4.2.15.F) ──
+        # ATC C01EB17 (İvabradin) / C01EB18 (Ranolazin) / C03DA04 (Eplerenon).
+        # Endikasyon-bazlı dispatch:
+        #   - IVABRADIN/EPLERENON  → kontrol_ivabradin (NYHA + EF≤45% + BB
+        #                            intoleransı + sinüs ritmi + angina/KY)
+        #   - RANOLAZIN            → kontrol_ranolazin (kronik stabil angina
+        #                            + BB/CCB intoleransı veya yetersiz yanıt)
+        self.btn_iskemik_kalp = tk.Button(
+            row_diger2, text="❤️ İSKEMİK KALP",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#B71C1C", activebackground="#7F0000",  # koyu kırmızı
+            bd=0, padx=12, pady=3, cursor="hand2",
+            command=self._iskemik_kalp_kontrol_baslat
+        )
+        self.btn_iskemik_kalp.pack(side="left", padx=(0, 4), pady=2)
+
+        # ── K-SİTRAT butonu (Potasyum Sitrat — SUT EK-4/F) ──
+        # ATC A12BA02. Üroloji/nefroloji uzmanı raporu zorunlu.
+        # ICD: N20.0/N20.1 (böbrek taşı), N25.8/N25.9 (RTA — renal tübüler
+        # asidoz). Raporlu + uzman branş + ICD eşleşmesi kontrolü.
+        self.btn_potasyum_sitrat = tk.Button(
+            row_diger2, text="🧂 K-SİTRAT",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#0277BD", activebackground="#01579B",  # mavi
+            bd=0, padx=12, pady=3, cursor="hand2",
+            command=self._potasyum_sitrat_kontrol_baslat
+        )
+        self.btn_potasyum_sitrat.pack(side="left", padx=(0, 4), pady=2)
+
+        # ── RAPORSUZ BİLGİ butonu (Raporsuz verilebilen ilaçlar) ──
+        # kontrol_raporsuz_bilgilendirme — 28 ilaç sınıfı dispatcher.
+        # Filter: RAPORSUZ_BILGILENDIRME + BENZODIAZEPIN + GOZ_LUBRIKAN
+        # kategorileri (hepsi aynı fn'ye dispatch edilir).
+        # NOT: Bu buton sadece sut_kategorisi_tespit_et()'in mapping'inde
+        # tanıdığı ilaçları kapsar — bazı raporsuz ilaçlar (Augmentin kombi,
+        # PPI'lar vb.) None döndüğünde bu butona dahil olmaz.
+        self.btn_raporsuz_bilgi = tk.Button(
+            row_diger2, text="📋 RAPORSUZ BİLGİ",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#455A64", activebackground="#37474F",  # gri
+            bd=0, padx=12, pady=3, cursor="hand2",
+            command=self._raporsuz_bilgi_kontrol_baslat
+        )
+        self.btn_raporsuz_bilgi.pack(side="left", padx=(0, 4), pady=2)
+
+        # ── BASIT SUT butonu (4 mikro kontrol — rapor var/yok binary) ──
+        # 4 fonksiyon dispatch:
+        #   - DMAH                   → kontrol_dmah (4.2.7)
+        #   - KADIN_HORMON           → kontrol_kadin_hormon (4.2.29)
+        #   - TRIMETAZIDIN           → kontrol_trimetazidin (4.2.14.C)
+        #   - ANTIBIYOTIK_FLOROKINOLON → kontrol_antibiyotik_florokinolon (EK-4/E)
+        # Hepsi <15 satırlık binary kontroller (rapor var/yok + uyarı kodu)
+        # — tek tabloda gruplanır.
+        self.btn_basit_sut = tk.Button(
+            row_diger2, text="🔍 BASIT SUT",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#558B2F", activebackground="#33691E",  # yeşil
+            bd=0, padx=12, pady=3, cursor="hand2",
+            command=self._basit_sut_kontrol_baslat
+        )
+        self.btn_basit_sut.pack(side="left", padx=(0, 8), pady=2)
+
+        # ── SATIR 5: Durum mesajı + sağda renk dağılımı sayacı ──
         self.durum_bar = tk.Label(row_durum, text="Hazır", anchor="w",
                                     bg="#ECEFF1", fg="#37474F", padx=10)
         self.durum_bar.pack(fill="x", side="left", expand=True)
@@ -1319,8 +1447,45 @@ class AylikReceteSorguGUI:
         filtre_inner.update_idletasks()
         self._filtre_canvas.config(scrollregion=(0, 0, toplam_gen, FILTRE_H))
 
-        # ─────────── Tablo (filtrenin altında, kalan alanı doldurur) ───────────
-        tree_frame = tk.Frame(cont, bg="white")
+        # ─── Body: tablo (üst) + devre şeması paneli (alt) ───────────────
+        body_frame = tk.Frame(cont, bg="white")
+        body_frame.pack(fill="both", expand=True, side="top")
+
+        # Devre şeması paneli ALTTA, yatay akış için tam genişlik + sabit yükseklik
+        # Açılır/kapanır: tablonun 1/3'ü (380px) ↔ 1/2'si (genişletilmiş)
+        self._sema_yukseklikler = {"normal": 380, "buyuk": 600, "kucuk": 50}
+        self._sema_durum = "normal"
+        self.sema_frame = tk.Frame(body_frame, bg="#FAFBFC",
+                                    height=self._sema_yukseklikler["normal"],
+                                    relief="solid", bd=2)
+        self.sema_frame.pack(side="bottom", fill="x", pady=(4, 0))
+        self.sema_frame.pack_propagate(False)
+        try:
+            self._sema_kur(self.sema_frame)
+            import logging
+            logging.getLogger(__name__).info(
+                "SEMA: sema_frame oluştu, _sema_kur tamamlandı (h=%d)",
+                self._sema_yukseklikler["normal"])
+            # Geometry'i ölç (pack uygulandıktan sonra)
+            def _olc():
+                try:
+                    bf = body_frame
+                    sf = self.sema_frame
+                    logging.getLogger(__name__).info(
+                        "SEMA GEO: body=%dx%d (y=%d), sema=%dx%d (y=%d) "
+                        "ismapped=%s",
+                        bf.winfo_width(), bf.winfo_height(), bf.winfo_y(),
+                        sf.winfo_width(), sf.winfo_height(), sf.winfo_y(),
+                        sf.winfo_ismapped())
+                except Exception as e2:
+                    logging.getLogger(__name__).error("SEMA GEO HATA: %s", e2)
+            self.root.after(800, _olc)
+        except Exception as e:
+            import logging, traceback
+            logging.getLogger(__name__).error(
+                "SEMA HATASI: _sema_kur fail: %s\n%s", e, traceback.format_exc())
+
+        tree_frame = tk.Frame(body_frame, bg="white")
         tree_frame.pack(fill="both", expand=True, side="top")
 
         kolonlar = tuple(SUTUN_KOD)
@@ -1346,6 +1511,8 @@ class AylikReceteSorguGUI:
         self.tv.bind("<Button-3>", self._sag_tik_dispatch)
         self.tv.bind("<Double-1>", self._satir_detay)
         self.tv.bind("<Button-1>", self._sol_tik_dispatch, add="+")
+        # Tek tıklamada şema panelini güncelle
+        self.tv.bind("<<TreeviewSelect>>", self._sema_secim_guncelle, add="+")
         # Sütun genişlikleri değiştiğinde filtre slotlarını yeniden hizala.
         # Treeview'in column-resize özel event'i yok; mouse release sonrası
         # küçük bir gecikme ile güncel genişlikleri okuruz.
@@ -1380,6 +1547,1111 @@ class AylikReceteSorguGUI:
         self._filtre_inner = filtre_inner
         self._filtre_slotlar = filtre_inner.winfo_children()
         self._filtre_h = FILTRE_H
+
+    # ─────────────────────────────────────────────────────────────────
+    # ATOMİK ŞART ŞEMASI PANELİ (sağ kolon, 1/3)
+    # ─────────────────────────────────────────────────────────────────
+    # Renkler: VAR yeşil, YOK kırmızı, KE sarı, NA gri
+    _SEMA_DURUM_RENK = {
+        "var": ("#1B5E20", "#E8F5E9", "✓"),
+        "yok": ("#B71C1C", "#FFEBEE", "✗"),
+        "kontrol_edilemedi": ("#E65100", "#FFF3E0", "?"),
+        "na": ("#616161", "#ECEFF1", "—"),
+    }
+    _SEMA_SONUC_RENK = {
+        "UYGUN": ("#1B5E20", "#C8E6C9"),
+        "UYGUN DEĞİL": ("#B71C1C", "#FFCDD2"),
+        "ŞÜPHELİ": ("#E65100", "#FFE0B2"),
+        "ATLANDI": ("#616161", "#ECEFF1"),
+    }
+
+    # Devre şeması renk pallet (kullanıcı isteği — yeşil/sarı/kırmızı/koyu gri)
+    # YEŞİL = eşleşti (veri var ve uygun)
+    # SARI  = şüpheli (KE — manuel doğrulama)
+    # KIRMIZI = uygunsuz (AND zorunlu şart karşılanmıyor)
+    # KOYU GRİ = eşleşmedi (VEYA grupta alternatif var, bu yol seçilmedi)
+    # AÇIK GRİ = bilgi (manuel — hesap dışı)
+    _DEVRE_RENK = {
+        "var":    ("#66BB6A", "#1B5E20"),  # YEŞİL — eşleşti
+        "yok":    ("#EF5350", "#B71C1C"),  # KIRMIZI — uygunsuz
+        "or_yok": ("#757575", "#424242"),  # KOYU GRİ — eşleşmedi (alt yol)
+        "ke":     ("#FFEE58", "#F57F17"),  # SARI — şüpheli
+        "bilgi":  ("#E0E0E0", "#9E9E9E"),  # AÇIK GRİ — bilgi
+    }
+    _DEVRE_SEMBOL = {"var": "✓", "yok": "✗", "or_yok": "—",
+                     "ke": "?", "bilgi": "i"}
+    _DEVRE_KABLO_RENK = "#90A4AE"          # akımsız kablo (gri)
+    _DEVRE_KABLO_W = 2
+    _DEVRE_AKIM_RENK = "#43A047"           # akımlı kablo (yeşil, kalın)
+    _DEVRE_AKIM_W = 4
+
+    def _sema_kur(self, parent: tk.Frame) -> None:
+        """Atomik şart paneli — yatay devre şeması (alt panel, sol⊕→sağ⊖).
+
+        Başlıkta 3 toggle butonu: ▼ küçült (sadece başlık 50px) /
+                                     ▬ normal (380px, tablonun 1/3'ü) /
+                                     ▲ büyüt (600px, tablonun 1/2'si)
+        """
+        # Başlık + toggle butonları
+        baslik = tk.Frame(parent, bg="#37474F", height=30)
+        baslik.pack(side="top", fill="x")
+        baslik.pack_propagate(False)
+        tk.Label(baslik, text="📋  Atomik SUT Devre Şeması",
+                 bg="#37474F", fg="white",
+                 font=("Segoe UI", 10, "bold")).pack(side="left", padx=10)
+
+        # Toggle butonları (sağda)
+        for sembol, durum, ipucu in [("▼", "kucuk", "Küçült (sadece başlık)"),
+                                       ("▬", "normal", "Normal (1/3)"),
+                                       ("▲", "buyuk", "Büyüt (1/2)")]:
+            btn = tk.Button(baslik, text=sembol,
+                             bg="#455A64", fg="white",
+                             font=("Segoe UI", 10, "bold"),
+                             relief="flat", bd=0, padx=8, pady=2,
+                             cursor="hand2",
+                             command=lambda d=durum: self._sema_boyut_degistir(d))
+            btn.pack(side="right", padx=2, pady=4)
+
+        # Üst özet bandı — YATAY tek satır (yolak | sayım | sonuç)
+        self._sema_ozet = tk.Frame(parent, bg="#FAFBFC", height=44)
+        self._sema_ozet.pack(side="top", fill="x", padx=4, pady=(4, 0))
+        self._sema_ozet.pack_propagate(False)
+
+        # Canvas alanı — yatay scroll (devre uzun olabilir) + dikey scroll (bilgi listesi)
+        body = tk.Frame(parent, bg="#FAFBFC")
+        body.pack(side="top", fill="both", expand=True, padx=4, pady=4)
+
+        self._sema_canvas = tk.Canvas(body, bg="white",
+                                       highlightthickness=0)
+        # Yatay scroll alt
+        xsb = ttk.Scrollbar(body, orient="horizontal",
+                             command=self._sema_canvas.xview)
+        xsb.pack(side="bottom", fill="x")
+        # Dikey scroll sağ
+        ysb = ttk.Scrollbar(body, orient="vertical",
+                             command=self._sema_canvas.yview)
+        ysb.pack(side="right", fill="y")
+        self._sema_canvas.pack(side="left", fill="both", expand=True)
+        self._sema_canvas.configure(xscrollcommand=xsb.set,
+                                     yscrollcommand=ysb.set)
+
+        # _sema_inner kart-modu için yedek (Canvas dışında ayrı bir frame)
+        # Devre modu canvas'ı doğrudan kullanır.
+        self._sema_inner = tk.Frame(self._sema_canvas, bg="#FAFBFC")
+
+        # Hover tooltip için bind
+        self._sema_neden_map = {}
+        self._sema_canvas.bind("<Motion>", self._sema_canvas_hover)
+        self._sema_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
+
+        # Mouse wheel — yatay scroll için Shift+Wheel, dikey için Wheel
+        def _on_wheel(event):
+            self._sema_canvas.yview_scroll(int(-1 * (event.delta / 120)),
+                                             "units")
+        def _on_shift_wheel(event):
+            self._sema_canvas.xview_scroll(int(-1 * (event.delta / 120)),
+                                             "units")
+        self._sema_canvas.bind("<MouseWheel>", _on_wheel)
+        self._sema_canvas.bind("<Shift-MouseWheel>", _on_shift_wheel)
+
+        self._sema_temizle("Bir reçete satırı seçin")
+
+    # ─────────────────────────────────────────────────────────────────
+    # KONTROL BUTONLARI POPUP — 15 buton tek bir popup grid'inde
+    # ─────────────────────────────────────────────────────────────────
+    def _kontrol_butonlari_topla(self) -> list:
+        """Gizli buton frame'lerinden tüm Button widget'larını topla.
+
+        Returns: List[(text, bg, button_widget)] — invoke için widget kendisi.
+        """
+        butonlar = []
+        for frame_attr in ("_row_kontrol_btn", "_row_sut_btn",
+                            "_row_diger_btn", "_row_diger2_btn"):
+            f = getattr(self, frame_attr, None)
+            if f is None:
+                continue
+            for ch in f.winfo_children():
+                if isinstance(ch, tk.Button):
+                    try:
+                        butonlar.append((ch.cget("text"),
+                                          ch.cget("bg"), ch))
+                    except Exception:
+                        pass
+        return butonlar
+
+    def _kontrol_butonlari_popup_ac(self) -> None:
+        """Popup pencere açar — 15 SUT/uyarı butonunu 3×5 grid'de gösterir."""
+        try:
+            butonlar = self._kontrol_butonlari_topla()
+        except Exception as e:
+            butonlar = []
+        if not butonlar:
+            try:
+                from tkinter import messagebox
+                messagebox.showinfo("Kontrol Butonları",
+                                     "Henüz buton yüklenmemiş.")
+            except Exception:
+                pass
+            return
+
+        pop = tk.Toplevel(self.root)
+        pop.title("🎯 Kontrol Butonları")
+        pop.configure(bg="#FAFBFC")
+        pop.transient(self.root)
+        # Pencere boyutu: butona göre dinamik (3x5 = ~860x320)
+        n = len(butonlar)
+        sutun = 5
+        satir = (n + sutun - 1) // sutun
+        pop.geometry(f"{160 * sutun + 40}x{60 * satir + 100}")
+
+        # Üstte "TÜMÜ" butonu
+        tk.Button(pop, text="🎯  TÜMÜNÜ KONTROL ET (15 buton sırayla)",
+                   bg="#1A237E", fg="white",
+                   font=("Segoe UI", 11, "bold"),
+                   activebackground="#283593",
+                   relief="flat", bd=0, padx=20, pady=10, cursor="hand2",
+                   command=lambda: self._kontrol_tumunu_calistir(pop)
+                   ).pack(side="top", fill="x", padx=8, pady=(8, 4))
+
+        tk.Label(pop, text="—— veya tek bir kontrol seç ——",
+                 bg="#FAFBFC", fg="#90A4AE",
+                 font=("Segoe UI", 8, "italic")
+                 ).pack(side="top", pady=(4, 6))
+
+        # Grid alanı
+        grid_frame = tk.Frame(pop, bg="#FAFBFC")
+        grid_frame.pack(side="top", fill="both", expand=True, padx=8, pady=4)
+
+        for i, (text, bg, widget) in enumerate(butonlar):
+            r, col = divmod(i, sutun)
+            try:
+                fg = widget.cget("fg")
+            except Exception:
+                fg = "white"
+            b = tk.Button(grid_frame, text=text,
+                           bg=bg, fg=fg,
+                           font=("Segoe UI", 9, "bold"),
+                           activebackground=bg,
+                           relief="flat", bd=0, padx=4, pady=10,
+                           cursor="hand2", wraplength=140,
+                           command=lambda w=widget, p=pop:
+                               self._kontrol_buton_secildi(w, p))
+            b.grid(row=r, column=col, padx=3, pady=3, sticky="nsew")
+
+        for col in range(sutun):
+            grid_frame.columnconfigure(col, weight=1, uniform="kontrol")
+        for r in range(satir):
+            grid_frame.rowconfigure(r, weight=1)
+
+        # Klavye: Esc kapatır
+        pop.bind("<Escape>", lambda _e: pop.destroy())
+        pop.focus_set()
+
+    def _kontrol_buton_secildi(self, widget: tk.Button,
+                                 popup: tk.Toplevel) -> None:
+        """Popup'tan bir buton seçildiğinde — popup'ı kapat + butonu invoke et.
+
+        Çift tıklama koruması: aynı butonun art arda iki kez çağrılmasını
+        engeller (yoksa 2 Excel raporu üretilir).
+        """
+        if getattr(self, "_kontrol_calistiriliyor", False):
+            return
+        self._kontrol_calistiriliyor = True
+        try:
+            popup.destroy()
+        except Exception:
+            pass
+
+        def _calistir_ve_resetle():
+            try:
+                widget.invoke()
+            finally:
+                # Bir sonraki kontrol için flag'i sıfırla
+                self._kontrol_calistiriliyor = False
+        try:
+            self.root.after(80, _calistir_ve_resetle)
+        except Exception:
+            self._kontrol_calistiriliyor = False
+
+    def _kontrol_tumunu_calistir(self, popup: tk.Toplevel) -> None:
+        """TÜMÜ butonu — tüm kontrolleri sırayla çalıştırır."""
+        try:
+            popup.destroy()
+        except Exception:
+            pass
+        butonlar = self._kontrol_butonlari_topla()
+        # Her butonu sırayla invoke et (yeterince gecikmeli — UI bloklamasın)
+        gecikme = 100
+        for i, (_text, _bg, widget) in enumerate(butonlar):
+            try:
+                self.root.after(gecikme + i * 80, widget.invoke)
+            except Exception:
+                pass
+
+    def _sema_boyut_degistir(self, durum: str) -> None:
+        """Şema panelinin yüksekliğini değiştir (kucuk/normal/buyuk).
+
+        kucuk: sadece başlık (50px) — devre gizlenir
+        normal: 380px (tablonun 1/3'ü)
+        buyuk: 600px (tablonun 1/2'si)
+        """
+        if not hasattr(self, "_sema_yukseklikler"):
+            return
+        yeni_h = self._sema_yukseklikler.get(durum, 380)
+        self._sema_durum = durum
+        try:
+            self.sema_frame.configure(height=yeni_h)
+        except Exception:
+            pass
+        # Render'ı yeni yüksekliğe göre tekrar çiz
+        self.root.after(120, self._sema_secim_guncelle)
+
+    def _sema_canvas_hover(self, event) -> None:
+        """Canvas üzerinde hover — ampule yakınsa neden tooltip aç."""
+        try:
+            c = self._sema_canvas
+            cx = c.canvasx(event.x)
+            cy = c.canvasy(event.y)
+            items = c.find_overlapping(cx - 1, cy - 1, cx + 1, cy + 1)
+            for it in items:
+                if it in self._sema_neden_map:
+                    if getattr(self, "_sema_tip_item", None) == it:
+                        return
+                    self._sema_hide_tip()
+                    neden = self._sema_neden_map[it]
+                    x = c.winfo_rootx() + event.x + 16
+                    y = c.winfo_rooty() + event.y + 16
+                    tip = tk.Toplevel(self.root)
+                    tip.wm_overrideredirect(True)
+                    tip.wm_geometry(f"+{x}+{y}")
+                    tk.Label(tip, text=neden, bg="#FFFDE7", fg="#37474F",
+                             font=("Segoe UI", 9), justify="left",
+                             relief="solid", bd=1, padx=6, pady=3,
+                             wraplength=420).pack()
+                    self._sema_tip = tip
+                    self._sema_tip_item = it
+                    return
+            self._sema_hide_tip()
+        except Exception:
+            pass
+
+    def _sema_temizle(self, mesaj: str = "") -> None:
+        """Şema panelini temizle, opsiyonel placeholder mesaj."""
+        for w in self._sema_ozet.winfo_children():
+            w.destroy()
+        try:
+            for w in self._sema_inner.winfo_children():
+                w.destroy()
+        except Exception:
+            pass
+        if mesaj:
+            tk.Label(self._sema_ozet, text=mesaj, bg="#FAFBFC",
+                     fg="#90A4AE",
+                     font=("Segoe UI", 9, "italic")).pack(pady=20)
+
+    def _sema_secim_guncelle(self, _event=None) -> None:
+        """Treeview'de seçilen reçete için şema panelini günceller."""
+        try:
+            secimler = self.tv.selection()
+            if not secimler:
+                self._sema_temizle("Bir reçete satırı seçin")
+                return
+            iid = secimler[0]  # ilk seçili — iid = str(s["ri_id"])
+            # tum_satirlar içinde ri_id eşleşmesi
+            satir = None
+            for s in (self.tum_satirlar or []):
+                if str(s.get("ri_id")) == str(iid):
+                    satir = s
+                    break
+            if satir is None:
+                self._sema_temizle("Satır bulunamadı")
+                return
+            self._sema_render(satir)
+        except Exception as e:
+            self._sema_temizle(f"Hata: {e}")
+
+    @staticmethod
+    def _sema_grup_matematigi(sartlar: list) -> dict:
+        """VEYA-aware şart matematiği — kaç gerekli, kaç sağlanıyor.
+
+        Kurallar:
+          • "(bilgi)" suffix grup → tamamen hesap dışı
+          • veya_grubu=True olan grup (≥1 yeterli):
+              gerekli = 1
+              sağlanan = min(1, VAR sayısı)
+          • Diğer (AND) gruplar:
+              gerekli = grup uzunluğu
+              sağlanan = VAR sayısı
+          • Üst-VEYA çiftleri ("(a)" VEYA "(b)"; "Varfarin (D-2)" VEYA
+            "İstisna grubu (D-2)"):
+              en az birinin saglanan==gerekli olduğu yol seçilir;
+              ikisi de tam değilse → daha tam olan seçilir; eşitse minimum
+              gerekli olan yol baz alınır.
+
+        Returns: {
+            'gerekli_toplam': int,
+            'saglanan_toplam': int,
+            'gruplar': [{'grup', 'gerekli', 'saglanan', 'toplam',
+                         'veya', 'durum_kismi'}],
+        }
+        """
+        # Gruplara ayır (sıra korunur)
+        gruplar_dict: dict = {}
+        sira = []
+        for s in sartlar:
+            g = s.get("grup", "") or "(grupsuz)"
+            if g not in gruplar_dict:
+                gruplar_dict[g] = []
+                sira.append(g)
+            gruplar_dict[g].append(s)
+
+        # İlk pass — her grubun gerekli/saglanan'ını hesapla
+        ham_gruplar = {}
+        for g in sira:
+            if "(bilgi)" in g:
+                continue
+            gs = gruplar_dict[g]
+            veya = any(s.get("veya_grubu") for s in gs)
+            var_sayi = sum(1 for s in gs if s.get("durum") == "var")
+            toplam_sayi = len(gs)
+            if veya:
+                gerekli, saglanan = 1, min(1, var_sayi)
+            else:
+                gerekli, saglanan = toplam_sayi, var_sayi
+            ham_gruplar[g] = {
+                "grup": g, "gerekli": gerekli, "saglanan": saglanan,
+                "toplam": toplam_sayi, "veya": veya,
+                "var_sayi": var_sayi,
+            }
+
+        # Üst-VEYA çiftleri — birleştir
+        cift_prefix_listesi = [
+            ("Varfarin yolu (a)", "Varfarin yolu (b)",
+             "Varfarin yolu [(a) VEYA (b)]"),
+            ("Varfarin yolu (D-2", "İstisna grubu (D-2",
+             "Varfarin VEYA istisna [(1)(b) VEYA (2)]"),
+        ]
+        for pa, pb, birlesik in cift_prefix_listesi:
+            ka = next((k for k in ham_gruplar if k.startswith(pa)), None)
+            kb = next((k for k in ham_gruplar if k.startswith(pb)), None)
+            if ka and kb:
+                ga, gb = ham_gruplar[ka], ham_gruplar[kb]
+                # En kısa yol = düşük gerekli; tamamlanmış olan tercih
+                a_tam = ga["saglanan"] == ga["gerekli"]
+                b_tam = gb["saglanan"] == gb["gerekli"]
+                if a_tam and not b_tam:
+                    secilen = ga
+                elif b_tam and not a_tam:
+                    secilen = gb
+                elif a_tam and b_tam:
+                    # ikisi de tam → daha kısa olanı seç
+                    secilen = ga if ga["gerekli"] <= gb["gerekli"] else gb
+                else:
+                    # ikisi de eksik → daha çok ilerlemiş veya minimum gerekli
+                    if ga["saglanan"] > gb["saglanan"]:
+                        secilen = ga
+                    elif gb["saglanan"] > ga["saglanan"]:
+                        secilen = gb
+                    else:
+                        # eşit → minimum gerekli
+                        secilen = ga if ga["gerekli"] <= gb["gerekli"] else gb
+                ham_gruplar[birlesik] = {
+                    "grup": birlesik,
+                    "gerekli": secilen["gerekli"],
+                    "saglanan": secilen["saglanan"],
+                    "toplam": ga["toplam"] + gb["toplam"],
+                    "veya": True,
+                    "var_sayi": ga["var_sayi"] + gb["var_sayi"],
+                    "secilen_yol": secilen["grup"],
+                }
+                ham_gruplar.pop(ka)
+                ham_gruplar.pop(kb)
+
+        sonuc_listesi = list(ham_gruplar.values())
+        gerekli_t = sum(g["gerekli"] for g in sonuc_listesi)
+        saglanan_t = sum(g["saglanan"] for g in sonuc_listesi)
+        return {
+            "gerekli_toplam": gerekli_t,
+            "saglanan_toplam": saglanan_t,
+            "gruplar": sonuc_listesi,
+        }
+
+    # Render modu: "devre" (Canvas devre şeması — pil/ampul/kablo)
+    #              "kart"  (kart-bazlı 2-kolonlu liste — yedek)
+    _SEMA_MOD_DEFAULT = "devre"
+
+    def _sema_render(self, satir: dict) -> None:
+        """Aktif moda göre kart-bazlı veya devre şeması render dispatcher."""
+        mod = getattr(self, "_sema_mod", self._SEMA_MOD_DEFAULT)
+        if mod == "kart":
+            self._sema_render_kart(satir)
+        else:
+            self._sema_render_devre(satir)
+
+    def _sema_render_kart(self, satir: dict) -> None:
+        """[YEDEK] Kart-bazlı render — SUT lafzı sol/açık gri + durum sağ/renkli.
+
+        Devre şeması yapılamazsa veya kullanıcı tercih ederse bu kullanılır.
+        """
+        self._sema_temizle()
+
+        verdict = (satir.get("verdict") or "").strip()
+        sartlar_json = satir.get("verdict_sartlar") or ""
+        detaylar_json = satir.get("verdict_detaylar") or ""
+        if not verdict and not sartlar_json:
+            tk.Label(self._sema_ozet,
+                     text="Bu reçete için kontrol yapılmamış",
+                     bg="#FAFBFC", fg="#90A4AE",
+                     font=("Segoe UI", 9, "italic")).pack(pady=20)
+            return
+
+        # Şart listesini parse et
+        try:
+            sartlar = json.loads(sartlar_json) if sartlar_json else []
+        except Exception:
+            sartlar = []
+        try:
+            detaylar = json.loads(detaylar_json) if detaylar_json else {}
+        except Exception:
+            detaylar = {}
+
+        # Yolak: alt_dal var mı (örn. "4.2.15.D-1" / "4.2.15.D-2")?
+        alt_dal = (detaylar.get("alt_dal") or "").strip()
+        endikasyon = (detaylar.get("endikasyon") or "").strip()
+        # SUT madde (verdict_sut) içinden de yolak bilgisi çıkarılır
+        sut_kurali = (satir.get("verdict_sut") or "").strip()
+
+        yolak_text = ""
+        if alt_dal:
+            if "D-1" in alt_dal:
+                yolak_text = f"📍 SUT {alt_dal} — AF YOLAĞI"
+            elif "D-2" in alt_dal:
+                yolak_text = f"📍 SUT {alt_dal} — DVT/PE YOLAĞI"
+            else:
+                yolak_text = f"📍 SUT {alt_dal}"
+        elif sut_kurali:
+            yolak_text = f"📍 {sut_kurali[:50]}"
+
+        # Hesaplama: VEYA-aware matematik
+        # AND grup: gerekli=N, sağlanan=VAR sayısı
+        # OR (≥1) grup: gerekli=1, sağlanan=min(1, VAR)
+        # Üst-VEYA (örn. (a) VEYA (b)): en kısa yol seçilir, hangisi
+        # tamamlanmışsa o saglanan sayılır; ikisi de değilse minimum yol gerekli
+        sayilar = {"var": 0, "yok": 0, "kontrol_edilemedi": 0, "na": 0}
+        for s in sartlar:
+            grup = s.get("grup", "") or ""
+            if "(bilgi)" in grup:
+                continue
+            d = s.get("durum", "")
+            if d in sayilar:
+                sayilar[d] += 1
+        gmat = self._sema_grup_matematigi(sartlar)
+        toplam_hesap = gmat["gerekli_toplam"]
+        sayilan_var = gmat["saglanan_toplam"]
+
+        # ── Üst özet bandı (3 katman) ─────────────────────────────────
+        # 1. Yolak (büyük başlık)
+        if yolak_text:
+            tk.Label(self._sema_ozet, text=yolak_text,
+                     bg="#FAFBFC", fg="#1565C0",
+                     font=("Segoe UI", 9, "bold"),
+                     anchor="w", justify="left",
+                     wraplength=400).pack(side="top", fill="x", padx=6,
+                                          pady=(2, 0))
+        if endikasyon:
+            tk.Label(self._sema_ozet, text=f"Endikasyon: {endikasyon}",
+                     bg="#FAFBFC", fg="#455A64",
+                     font=("Segoe UI", 8),
+                     anchor="w").pack(side="top", fill="x", padx=8)
+
+        # 2. Sayım — büyük, ana bilgi (VEYA-aware: gerekli vs sağlanan)
+        sayim_buyuk = f"  {sayilan_var} / {toplam_hesap}  ŞART KARŞILANIYOR"
+        # Renk: %≥80 yeşil, %50-80 turuncu, <50 kırmızı
+        oran = (sayilan_var / toplam_hesap) if toplam_hesap else 0
+        if oran >= 0.8:
+            sayim_fg, sayim_bg = "#1B5E20", "#C8E6C9"
+        elif oran >= 0.5:
+            sayim_fg, sayim_bg = "#E65100", "#FFE0B2"
+        else:
+            sayim_fg, sayim_bg = "#B71C1C", "#FFCDD2"
+        tk.Label(self._sema_ozet, text=sayim_buyuk,
+                 bg=sayim_bg, fg=sayim_fg,
+                 font=("Segoe UI", 10, "bold"),
+                 anchor="w").pack(side="top", fill="x", padx=4, pady=(2, 0))
+
+        # 3. Detay sayım + sonuç etiketi (küçük, ikincil)
+        renk_fg, renk_bg = self._SEMA_SONUC_RENK.get(
+            verdict.upper(), ("#37474F", "#ECEFF1"))
+        alt_satir = tk.Frame(self._sema_ozet, bg="#FAFBFC")
+        alt_satir.pack(side="top", fill="x", padx=4, pady=(2, 0))
+        tk.Label(alt_satir,
+                 text=f"✓{sayilar['var']}  ✗{sayilar['yok']}  "
+                      f"?{sayilar['kontrol_edilemedi']}",
+                 bg="#FAFBFC", fg="#455A64",
+                 font=("Segoe UI", 8, "bold")).pack(side="left", padx=4)
+        tk.Label(alt_satir, text=f" {verdict or '—'} ",
+                 bg=renk_bg, fg=renk_fg,
+                 font=("Segoe UI", 8, "bold")).pack(side="right", padx=4)
+
+        ilac = (satir.get("ilac") or "")[:50]
+        if ilac:
+            tk.Label(self._sema_ozet, text=ilac, bg="#FAFBFC", fg="#90A4AE",
+                     font=("Segoe UI", 7)).pack(anchor="w", padx=6)
+
+        if not sartlar:
+            tk.Label(self._sema_ozet,
+                     text="(atomik şart listesi yok — eski format)",
+                     bg="#FAFBFC", fg="#90A4AE",
+                     font=("Segoe UI", 8, "italic")).pack(pady=10, padx=8)
+            return
+
+        # ── Gruplara ayır ─────────────────────────────────────────────
+        gruplar: dict = {}
+        sira = []
+        for s in sartlar:
+            g = s.get("grup", "") or "(grupsuz)"
+            if g not in gruplar:
+                gruplar[g] = []
+                sira.append(g)
+            gruplar[g].append(s)
+
+        # Her grubun gerekli/sağlanan eşlemesi (gmat'tan)
+        grup_mat = {gm["grup"]: gm for gm in gmat.get("gruplar", [])}
+
+        # ── Kart-bazlı render: SUT lafzı (sol, açık gri) + durum (sağ, renkli)
+        # Algoritmik akış: tepeden alta — grup başlıkları + indented şartlar
+        for g in sira:
+            gs = gruplar[g]
+            bilgi = "(bilgi)" in g
+            veya = any(s.get("veya_grubu") for s in gs)
+
+            # Grup başlığı kartı
+            if bilgi:
+                grup_bg, grup_fg = "#ECEFF1", "#616161"
+                sayim_text = "—"
+                sayim_bg, sayim_fg = "#ECEFF1", "#9E9E9E"
+                grup_text = g
+            else:
+                gm = grup_mat.get(g, {"saglanan": 0, "gerekli": len(gs)})
+                gerekli = gm["gerekli"]
+                saglanan = gm["saglanan"]
+                ke_count = sum(1 for s in gs
+                               if s.get("durum") == "kontrol_edilemedi")
+                if saglanan >= gerekli:
+                    grup_bg, grup_fg = "#1B5E20", "white"
+                    sayim_bg, sayim_fg = "#A5D6A7", "#1B5E20"
+                elif ke_count > 0 and (saglanan + ke_count) >= gerekli:
+                    grup_bg, grup_fg = "#E65100", "white"
+                    sayim_bg, sayim_fg = "#FFCC80", "#BF360C"
+                else:
+                    grup_bg, grup_fg = "#B71C1C", "white"
+                    sayim_bg, sayim_fg = "#EF9A9A", "#B71C1C"
+                sayim_text = f"{saglanan}/{gerekli}"
+                grup_text = g + ("  [VEYA ≥1]" if veya else "")
+
+            grup_kart = tk.Frame(self._sema_inner, bg=grup_bg)
+            grup_kart.pack(side="top", fill="x", padx=4, pady=(8, 0))
+            tk.Label(grup_kart, text=" " + grup_text, bg=grup_bg,
+                     fg=grup_fg, font=("Segoe UI", 8, "bold"),
+                     anchor="w", justify="left",
+                     wraplength=300).pack(side="left", fill="x", expand=True,
+                                           padx=2, pady=2)
+            tk.Label(grup_kart, text=f" {sayim_text} ", bg=sayim_bg,
+                     fg=sayim_fg, font=("Segoe UI", 9, "bold")
+                     ).pack(side="right", padx=4, pady=2)
+
+            # ── Atomik şart satırları (indented, 2-kolonlu kart) ───────
+            for s in gs:
+                ad = s.get("ad", "")
+                d = s.get("durum", "na")
+                neden = s.get("neden", "")
+                veya_uye = bool(s.get("veya_grubu"))
+
+                # Durum badge: SAĞ kolon (renkli) — Sol kolon AÇIK GRİ
+                if bilgi:
+                    bdg_bg, bdg_fg, bdg_text = "#ECEFF1", "#9E9E9E", "i  bilgi"
+                elif veya_uye:
+                    if d == "var":
+                        bdg_bg, bdg_fg, bdg_text = "#A5D6A7", "#1B5E20", "✓ VAR"
+                    elif d == "yok":
+                        # VEYA grubunda YOK = SARI (kritik değil, alternatif)
+                        bdg_bg, bdg_fg, bdg_text = "#FFF59D", "#F57F17", "○ yok"
+                    elif d == "kontrol_edilemedi":
+                        bdg_bg, bdg_fg, bdg_text = "#FFCC80", "#E65100", "? KE"
+                    else:
+                        bdg_bg, bdg_fg, bdg_text = "#ECEFF1", "#9E9E9E", "—"
+                else:
+                    if d == "var":
+                        bdg_bg, bdg_fg, bdg_text = "#A5D6A7", "#1B5E20", "✓ VAR"
+                    elif d == "yok":
+                        bdg_bg, bdg_fg, bdg_text = "#EF9A9A", "#B71C1C", "✗ YOK"
+                    elif d == "kontrol_edilemedi":
+                        bdg_bg, bdg_fg, bdg_text = "#FFCC80", "#E65100", "? KE"
+                    else:
+                        bdg_bg, bdg_fg, bdg_text = "#ECEFF1", "#9E9E9E", "—"
+
+                # Şart kartı — 20px sol indent (tree hissi)
+                sart_kart = tk.Frame(self._sema_inner, bg="#FAFBFC")
+                sart_kart.pack(side="top", fill="x", padx=(20, 4), pady=1)
+
+                # SAĞ — durum badge (önce pack edilince sağda kalır)
+                bdg = tk.Label(sart_kart, text=f" {bdg_text} ",
+                                bg=bdg_bg, fg=bdg_fg,
+                                font=("Segoe UI", 8, "bold"))
+                bdg.pack(side="right", padx=2)
+
+                # SOL — SUT lafzı, AÇIK GRİ italik (mevzuat referansı)
+                lafz = tk.Label(sart_kart, text="• " + ad,
+                                 bg="#FAFBFC", fg="#9E9E9E",
+                                 font=("Segoe UI", 8, "italic"),
+                                 anchor="w", justify="left",
+                                 wraplength=260)
+                lafz.pack(side="left", fill="x", expand=True, padx=2)
+
+                # Hover tooltip — neden
+                if neden:
+                    def _bind_tip(widgets, text=neden, parent_w=sart_kart):
+                        def _show(_e=None, t=text, w=parent_w):
+                            try:
+                                self._sema_show_tip(w, t)
+                            except Exception:
+                                pass
+                        def _hide(_e=None):
+                            self._sema_hide_tip()
+                        for w in widgets:
+                            w.bind("<Enter>", _show)
+                            w.bind("<Leave>", _hide)
+                    _bind_tip([sart_kart, lafz, bdg])
+
+    # ─────────────────────────────────────────────────────────────────
+    # DEVRE ŞEMASI (Canvas) — pil/ampul/kablo metaforu
+    # ⊕ üstte, ⊖ altta. Seri (AND) → düz hat. Paralel (OR) → Y kavşak.
+    # Ampul rengi: yeşil VAR / kırmızı YOK / sarı VEYA-YOK / turuncu KE / gri bilgi
+    # ─────────────────────────────────────────────────────────────────
+    def _sema_render_devre(self, satir: dict) -> None:
+        """Devre şeması render — Canvas üzerinde pil/ampul/kablo çizer."""
+        self._sema_temizle()
+
+        verdict = (satir.get("verdict") or "").strip()
+        sartlar_json = satir.get("verdict_sartlar") or ""
+        detaylar_json = satir.get("verdict_detaylar") or ""
+
+        # DEBUG — sema render giriş
+        try:
+            import logging
+            logging.getLogger(__name__).info(
+                "SEMA RENDER: ri_id=%s, verdict=%r, "
+                "sartlar_json_len=%d, ilac=%r",
+                satir.get("ri_id"), verdict, len(sartlar_json),
+                (satir.get("ilac") or "")[:40])
+            if sartlar_json:
+                logging.getLogger(__name__).info(
+                    "SEMA SARTLAR JSON: %s", sartlar_json[:400])
+        except Exception:
+            pass
+
+        if not verdict and not sartlar_json:
+            tk.Label(self._sema_ozet,
+                     text="Bu reçete için kontrol yapılmamış",
+                     bg="#FAFBFC", fg="#90A4AE",
+                     font=("Segoe UI", 9, "italic")).pack(pady=20)
+            return
+
+        try:
+            sartlar = json.loads(sartlar_json) if sartlar_json else []
+        except Exception:
+            sartlar = []
+        try:
+            detaylar = json.loads(detaylar_json) if detaylar_json else {}
+        except Exception:
+            detaylar = {}
+
+        gmat = self._sema_grup_matematigi(sartlar)
+        gerekli_t = gmat["gerekli_toplam"]
+        saglanan_t = gmat["saglanan_toplam"]
+
+        # Üst banda (devre + kart için ortak)
+        self._sema_ust_banda_yaz(satir, sartlar, detaylar, verdict,
+                                  gerekli_t, saglanan_t)
+
+        if not sartlar:
+            return
+
+        # Canvas üzerinde devre şeması
+        self.root.update_idletasks()  # canvas genişliğini al
+        self._devre_ciz_canvas(sartlar, gmat)
+
+    def _sema_ust_banda_yaz(self, satir: dict, sartlar: list, detaylar: dict,
+                             verdict: str, gerekli_t: int, saglanan_t: int) -> None:
+        """Üst özet bandını yatay tek satır olarak yazar (alt panel için)."""
+        alt_dal = (detaylar.get("alt_dal") or "").strip()
+        endikasyon = (detaylar.get("endikasyon") or "").strip()
+        sut_kurali = (satir.get("verdict_sut") or "").strip()
+
+        yolak_text = ""
+        if alt_dal:
+            if "D-1" in alt_dal:
+                yolak_text = f"📍 {alt_dal} AF"
+            elif "D-2" in alt_dal:
+                yolak_text = f"📍 {alt_dal} DVT/PE"
+            else:
+                yolak_text = f"📍 {alt_dal}"
+        elif sut_kurali:
+            yolak_text = f"📍 {sut_kurali[:30]}"
+
+        # Yatay tek satır: yolak | sayım (büyük) | sonuç badge | ilaç
+        sayim_text = f"  {saglanan_t} / {gerekli_t}  ŞART KARŞILANIYOR  "
+        oran = (saglanan_t / gerekli_t) if gerekli_t else 0
+        if oran >= 0.99:
+            sayim_fg, sayim_bg = "#1B5E20", "#C8E6C9"
+        elif oran >= 0.5:
+            sayim_fg, sayim_bg = "#E65100", "#FFE0B2"
+        else:
+            sayim_fg, sayim_bg = "#B71C1C", "#FFCDD2"
+        renk_fg, renk_bg = self._SEMA_SONUC_RENK.get(
+            verdict.upper(), ("#37474F", "#ECEFF1"))
+
+        if yolak_text:
+            tk.Label(self._sema_ozet, text=yolak_text,
+                     bg="#FAFBFC", fg="#1565C0",
+                     font=("Segoe UI", 10, "bold")
+                     ).pack(side="left", padx=(8, 12), pady=8)
+        tk.Label(self._sema_ozet, text=sayim_text,
+                 bg=sayim_bg, fg=sayim_fg,
+                 font=("Segoe UI", 11, "bold")
+                 ).pack(side="left", padx=4, pady=8)
+        tk.Label(self._sema_ozet,
+                 text=f" ✓{sum(1 for s in sartlar if s.get('durum')=='var')}"
+                      f"  ✗{sum(1 for s in sartlar if s.get('durum')=='yok')}"
+                      f"  ?{sum(1 for s in sartlar if s.get('durum')=='kontrol_edilemedi')} ",
+                 bg="#FAFBFC", fg="#455A64",
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=8, pady=8)
+        tk.Label(self._sema_ozet, text=f"  {verdict or '—'}  ",
+                 bg=renk_bg, fg=renk_fg,
+                 font=("Segoe UI", 10, "bold")).pack(side="right", padx=8, pady=8)
+        if endikasyon:
+            tk.Label(self._sema_ozet, text=f"({endikasyon})",
+                     bg="#FAFBFC", fg="#455A64",
+                     font=("Segoe UI", 9)).pack(side="left", padx=4, pady=8)
+        ilac = (satir.get("ilac") or "")[:30]
+        if ilac:
+            tk.Label(self._sema_ozet, text=ilac,
+                     bg="#FAFBFC", fg="#90A4AE",
+                     font=("Segoe UI", 8)).pack(side="right", padx=8, pady=8)
+
+    def _devre_kablo(self, c: tk.Canvas, x1: int, y1: int, x2: int, y2: int,
+                      akim: bool = False) -> None:
+        """Kablo çiz — akım varsa yeşil kalın, yoksa gri normal."""
+        if akim:
+            c.create_line(x1, y1, x2, y2,
+                          fill=self._DEVRE_AKIM_RENK,
+                          width=self._DEVRE_AKIM_W, tags="devre")
+        else:
+            c.create_line(x1, y1, x2, y2,
+                          fill=self._DEVRE_KABLO_RENK,
+                          width=self._DEVRE_KABLO_W, tags="devre")
+
+    def _devre_ciz_canvas(self, sartlar: list, gmat: dict) -> None:
+        """Yatay devre şeması: ⊕ sol → ⊖ sağ. AND yatay seri, OR dikey paralel.
+
+        Layout:
+          ⊕ ── ●AF ── ●Mitral ── ●Mekanik ──┬─●i─┐         ┬─ ... ─ ⊖
+                                              ├─●T─┤         │
+                                              ├─●75─┤        │
+                                              └─●H──┘
+        """
+        c = self._sema_canvas
+        c.delete("all")
+        self._sema_neden_map = {}
+
+        canvas_h = max(c.winfo_height(), 320)
+        y_merkez = canvas_h // 2
+
+        AMPUL_R = 14                           # küçültüldü 18→14 (yazı sığsın)
+        AMPUL_X_GAP = 165                      # 130→165 (yazılar çakışmasın)
+        PARALEL_Y_GAP = 75                     # 60→75 (üst+alt etiket için yer)
+        KENAR = 36
+        PIL_FONT = ("Segoe UI", 18, "bold")
+        SEMBOL_FONT = ("Segoe UI", 11, "bold")
+        ETIKET_FONT = ("Segoe UI", 8)          # 9→8 (sığsın)
+        BASLIK_FONT = ("Segoe UI", 9, "bold")
+        SAYIM_FONT = ("Segoe UI", 9, "bold")
+
+        # Gruplara ayır
+        gruplar_dict: dict = {}
+        sira = []
+        for s in sartlar:
+            g = s.get("grup", "") or "(grupsuz)"
+            if g not in gruplar_dict:
+                gruplar_dict[g] = []
+                sira.append(g)
+            gruplar_dict[g].append(s)
+        grup_mat = {gm["grup"]: gm for gm in gmat.get("gruplar", [])}
+
+        # ── Üst-VEYA çiftleri — eşleştir (akım hesabı için) ───────────
+        ust_veya_ciftleri = [
+            ("Varfarin yolu (a)", "Varfarin yolu (b)",
+             "Varfarin yolu [(a) VEYA (b)]"),
+            ("Varfarin yolu (D-2", "İstisna grubu (D-2",
+             "Varfarin VEYA istisna [(1)(b) VEYA (2)]"),
+        ]
+        ust_veya_eslesme = {}  # alt grup adı -> birleşik grup adı
+        for prefix_a, prefix_b, birlesik in ust_veya_ciftleri:
+            a_grup = next((g for g in gruplar_dict
+                           if g.startswith(prefix_a)
+                           and "(bilgi)" not in g), None)
+            b_grup = next((g for g in gruplar_dict
+                           if g.startswith(prefix_b)
+                           and "(bilgi)" not in g), None)
+            if a_grup and b_grup:
+                ust_veya_eslesme[a_grup] = (birlesik, prefix_b)
+
+        def grup_tam(g_ad):
+            gm = grup_mat.get(g_ad, {})
+            return (gm.get("saglanan", 0) >= gm.get("gerekli", 999) and
+                    gm.get("gerekli", 0) > 0)
+
+        def grup_birlesik_tam(birlesik_ad):
+            gm = grup_mat.get(birlesik_ad, {})
+            return (gm.get("saglanan", 0) >= gm.get("gerekli", 999) and
+                    gm.get("gerekli", 0) > 0)
+
+        # Akım track değişkenleri
+        akim_aktif = True   # sol pilden akım gelir, kesilmediyse devam
+        cift_baslangic_akim = None  # üst-VEYA çiftin başında prev_akim'i sakla
+
+        # ⊕ Pil — SOL (akım kaynağı)
+        x = KENAR
+        c.create_text(x, y_merkez, text="⊕", fill="#1B5E20",
+                      font=PIL_FONT, tags="devre")
+        c.create_text(x, y_merkez + 28, text="GİRİŞ", fill="#37474F",
+                      font=("Segoe UI", 8, "bold"), tags="devre")
+        son_x = x + 14
+        x += 35
+
+        # Gruplar yatay olarak ardışık çizilir
+        for g_ad in sira:
+            if "(bilgi)" in g_ad:
+                continue
+            gs = gruplar_dict[g_ad]
+            veya = any(s.get("veya_grubu") for s in gs)
+            gm = grup_mat.get(g_ad, {})
+
+            # Üst-VEYA çift kontrolü — bu grup çift parçası mı?
+            cift_par = ust_veya_eslesme.get(g_ad)
+            if cift_par:
+                birlesik_ad, prefix_b = cift_par
+                cift_son_grup = g_ad.startswith(prefix_b)
+                if not cift_son_grup and cift_baslangic_akim is None:
+                    cift_baslangic_akim = akim_aktif
+                cift_tam = grup_birlesik_tam(birlesik_ad)
+
+            kendi_tam = grup_tam(g_ad)
+            # Bu grubun yolunda akım var mı?
+            yol_akim = akim_aktif and kendi_tam
+
+            if veya and len(gs) > 1:
+                # ── DİKEY PARALEL (OR ≥1) ──
+                n = len(gs)
+                ampul_x = x + 60
+                sol_kavsak_x = x + 5
+                sag_kavsak_x = ampul_x + 60
+                ampul_ys = [y_merkez + (i - (n - 1) / 2) * PARALEL_Y_GAP
+                            for i in range(n)]
+
+                # Ana hat → sol kavşak (akım giriş varsa yeşil)
+                self._devre_kablo(c, son_x, y_merkez, sol_kavsak_x, y_merkez,
+                                   akim=akim_aktif)
+                # Sol dikey kavşak (var olan ampuller arası akım yayılır)
+                self._devre_kablo(c, sol_kavsak_x, min(ampul_ys),
+                                   sol_kavsak_x, max(ampul_ys),
+                                   akim=akim_aktif)
+                # Her ampul: sol kavşak → ampul → sağ kavşak
+                # Sadece VAR olan ampul yolu yeşil
+                for ay, s in zip(ampul_ys, gs):
+                    bu_ampul_var = (s.get("durum") == "var")
+                    bu_yol_akim = akim_aktif and bu_ampul_var
+                    self._devre_kablo(c, sol_kavsak_x, ay,
+                                       ampul_x - AMPUL_R, ay,
+                                       akim=bu_yol_akim)
+                    self._devre_ampul_at(c, ampul_x, ay, s, AMPUL_R,
+                                          veya_grubu=True,
+                                          font_sembol=SEMBOL_FONT,
+                                          font_etiket=ETIKET_FONT)
+                    self._devre_kablo(c, ampul_x + AMPUL_R, ay,
+                                       sag_kavsak_x, ay,
+                                       akim=bu_yol_akim)
+                # Sağ dikey kavşak (akım çıkışı varsa yeşil)
+                cikis_akim = akim_aktif and (kendi_tam)
+                self._devre_kablo(c, sag_kavsak_x, min(ampul_ys),
+                                   sag_kavsak_x, max(ampul_ys),
+                                   akim=cikis_akim)
+                son_x = sag_kavsak_x
+                x = sag_kavsak_x + 25
+
+                # Akım güncellemesi
+                if cift_par:
+                    if cift_son_grup:
+                        # Çift sonu — birleşik tamlığa göre akım
+                        akim_aktif = (cift_baslangic_akim if cift_baslangic_akim is not None else True) and cift_tam
+                        cift_baslangic_akim = None
+                else:
+                    akim_aktif = akim_aktif and kendi_tam
+            else:
+                # ── YATAY SERİ (AND) ──
+                # Ampuller yan yana, her ampul kendi durumuna göre akım keser
+                grup_akim_baslangic = akim_aktif
+                local_akim = akim_aktif
+                for s in gs:
+                    ampul_x = x + AMPUL_R + 5
+                    self._devre_kablo(c, son_x, y_merkez,
+                                       ampul_x - AMPUL_R, y_merkez,
+                                       akim=local_akim)
+                    self._devre_ampul_at(c, ampul_x, y_merkez, s, AMPUL_R,
+                                          veya_grubu=False,
+                                          font_sembol=SEMBOL_FONT,
+                                          font_etiket=ETIKET_FONT)
+                    # Bu ampul VAR değilse sonraki kablolarda akım kesilir
+                    if s.get("durum") != "var":
+                        local_akim = False
+                    son_x = ampul_x + AMPUL_R
+                    x = son_x + AMPUL_X_GAP - 2 * AMPUL_R - 5
+                x += 5
+
+                # Akım güncellemesi
+                if cift_par:
+                    if cift_son_grup:
+                        akim_aktif = (cift_baslangic_akim if cift_baslangic_akim is not None else True) and cift_tam
+                        cift_baslangic_akim = None
+                    # else: çift başlangıcı, akım değişmez (son grupta belirlenir)
+                else:
+                    akim_aktif = local_akim
+
+        # ⊖ Pil — SAĞ (akım çıkışı varsa yeşil kablo)
+        x += 25
+        self._devre_kablo(c, son_x, y_merkez, x - 14, y_merkez,
+                           akim=akim_aktif)
+        cikis_renk = "#1B5E20" if akim_aktif else "#37474F"
+        c.create_text(x, y_merkez, text="⊖", fill=cikis_renk,
+                      font=PIL_FONT, tags="devre")
+        c.create_text(x, y_merkez + 28, text="ÇIKIŞ", fill="#37474F",
+                      font=("Segoe UI", 8, "bold"), tags="devre")
+        toplam_w = x + 30
+
+        # Bilgi grupları — devre dışında alt sağ köşeye yatay liste
+        bilgi_var = any("(bilgi)" in g for g in sira)
+        if bilgi_var:
+            bilgi_y = canvas_h - 60
+            bilgi_x = KENAR
+            c.create_text(bilgi_x, bilgi_y,
+                          text="ⓘ Manuel doğrulama (devre dışı):",
+                          anchor="w", fill="#9E9E9E",
+                          font=("Segoe UI", 8, "bold"), tags="devre")
+            bilgi_y += 16
+            for g_ad in sira:
+                if "(bilgi)" not in g_ad:
+                    continue
+                for s in gruplar_dict[g_ad]:
+                    d = s.get("durum", "na")
+                    sembol = "?" if d == "kontrol_edilemedi" else "i"
+                    ad = s.get("ad", "")[:48]
+                    c.create_text(bilgi_x + 10, bilgi_y,
+                                  text=f"{sembol}  {ad}",
+                                  anchor="w", fill="#BDBDBD",
+                                  font=("Segoe UI", 8), tags="devre")
+                    bilgi_y += 14
+
+        # Scroll region — toplam genişlik baz al
+        c.configure(scrollregion=(0, 0, max(toplam_w, c.winfo_width()),
+                                    canvas_h))
+
+    def _devre_ampul_at(self, canvas: tk.Canvas, x: int, y: int,
+                         sart: dict, r: int, veya_grubu: bool = False,
+                         font_sembol=("Segoe UI", 14, "bold"),
+                         font_etiket=("Segoe UI", 9)) -> None:
+        """Tek bir ampul + ÜST etiket (SUT lafzı, gri) + ALT etiket (durum, renkli).
+
+        Üst: SUT kuralı lafzı, açık gri (sart.ad)
+        Alt: hastanın reçete/rapor durumu, duruma göre yeşil/kırmızı/sarı (sart.neden)
+        """
+        d = sart.get("durum", "na")
+        if d == "var":
+            renk_key = "var"
+        elif d == "yok":
+            renk_key = "or_yok" if veya_grubu else "yok"
+        elif d == "kontrol_edilemedi":
+            renk_key = "ke"
+        else:
+            renk_key = "bilgi"
+
+        fill, outline = self._DEVRE_RENK[renk_key]
+        sembol = self._DEVRE_SEMBOL[renk_key]
+
+        # Ampul halo (parlama efekti)
+        canvas.create_oval(x - r - 3, y - r - 3, x + r + 3, y + r + 3,
+                           fill="", outline=fill, width=1, tags="devre")
+        item = canvas.create_oval(x - r, y - r, x + r, y + r,
+                                    fill=fill, outline=outline, width=2,
+                                    tags=("devre", "ampul"))
+        # Sembol (büyük) ampul içinde
+        canvas.create_text(x, y, text=sembol, fill="white",
+                            font=font_sembol, tags="devre")
+
+        # ── ÜST etiket: SUT lafzı (ne aranır) — açık gri ──────────────
+        sut_lafzi = sart.get("ad", "")
+        sut_kisa = sut_lafzi if len(sut_lafzi) <= 28 else sut_lafzi[:26] + ".."
+        canvas.create_text(x, y - r - 14, text=sut_kisa,
+                            fill="#90A4AE",  # açık gri (mevzuat referansı)
+                            font=font_etiket, tags="devre",
+                            width=145, anchor="s")
+
+        # ── ALT etiket: hasta durumu (gerçek değer/sebep) — duruma göre renk ──
+        durum_renk_map = {
+            "var":    "#1B5E20",  # koyu yeşil
+            "yok":    "#B71C1C",  # koyu kırmızı
+            "or_yok": "#F57F17",  # koyu sarı/turuncu
+            "ke":     "#E65100",  # turuncu
+            "bilgi":  "#9E9E9E",  # gri
+        }
+        durum_fg = durum_renk_map.get(renk_key, "#37474F")
+        # Alt etiket: neden alanı (rapor/teşhis'ten gelen gerçek bilgi)
+        neden = sart.get("neden", "") or "—"
+        # Sembol önek olarak ekle
+        bdg_sembol = {"var": "✓", "yok": "✗", "or_yok": "○",
+                       "ke": "?", "bilgi": "i"}.get(renk_key, "•")
+        neden_kisa = neden if len(neden) <= 30 else neden[:28] + ".."
+        canvas.create_text(x, y + r + 14,
+                            text=f"{bdg_sembol} {neden_kisa}",
+                            fill=durum_fg,
+                            font=("Segoe UI", 8, "bold"),
+                            tags="devre", width=145, anchor="n")
+
+        if neden:
+            self._sema_neden_map[item] = sart.get("neden", "")
+
+    def _sema_show_tip(self, widget: tk.Widget, text: str) -> None:
+        """Basit tooltip — sadece sebep metni."""
+        self._sema_hide_tip()
+        x = widget.winfo_rootx() + 20
+        y = widget.winfo_rooty() + widget.winfo_height() + 4
+        tip = tk.Toplevel(self.root)
+        tip.wm_overrideredirect(True)
+        tip.wm_geometry(f"+{x}+{y}")
+        tk.Label(tip, text=text, bg="#FFFDE7", fg="#37474F",
+                 font=("Segoe UI", 8), justify="left",
+                 relief="solid", bd=1, padx=6, pady=3,
+                 wraplength=380).pack()
+        self._sema_tip = tip
+
+    def _sema_hide_tip(self) -> None:
+        tip = getattr(self, "_sema_tip", None)
+        if tip is not None:
+            try:
+                tip.destroy()
+            except Exception:
+                pass
+            self._sema_tip = None
+            self._sema_tip_row = None
 
     # ----------------------------------------------------------- AY/YIL
     def _ay_listesini_yukle(self):
@@ -2374,11 +3646,16 @@ class AylikReceteSorguGUI:
         except Exception:
             s["verdict_detaylar"] = str(rapor.detaylar or {})
         # Yapısal şart listesi (CLAUDE.md disiplini)
+        # grup + veya_grubu: atomik şart paneli için
         sartlar_obj = getattr(rapor, "sartlar", None) or []
         try:
             s["verdict_sartlar"] = json.dumps([
-                {"ad": p.ad, "durum": p.durum.value if hasattr(p.durum, "value") else str(p.durum),
-                 "neden": p.neden, "kaynak": getattr(p, "kaynak", "")}
+                {"ad": p.ad,
+                 "durum": p.durum.value if hasattr(p.durum, "value") else str(p.durum),
+                 "neden": p.neden,
+                 "kaynak": getattr(p, "kaynak", ""),
+                 "grup": getattr(p, "grup", ""),
+                 "veya_grubu": bool(getattr(p, "veya_grubu", False))}
                 for p in sartlar_obj
             ], ensure_ascii=False)
         except Exception:
@@ -2714,6 +3991,15 @@ class AylikReceteSorguGUI:
             except Exception as e:
                 logger.warning("Filtre ayarları yazılamadı: %s", e)
         return eklendi
+
+    def _boya_dispatch(self, renk: str) -> None:
+        """Tek-buton boyama: radio mod'a göre Seçili veya Filtreli boyar."""
+        mod = (self.boya_mod.get() if hasattr(self, "boya_mod")
+               else "secili")
+        if mod == "filtreli":
+            self._gorunenleri_boya(renk)
+        else:
+            self._secilenleri_renge_boya(renk)
 
     def _secilenleri_renge_boya(self, renk: str):
         """secili_iidler set'indeki satırları renge boya.
@@ -5327,6 +6613,460 @@ class AylikReceteSorguGUI:
         }
 
     # ───────────────────────────────────────────────────────────────────
+    # ANTİHT (SUT 4.2.12.B Mono + Kombi Antihipertansif) KATEGORİ + ilac_sonuc
+    # ───────────────────────────────────────────────────────────────────
+    # ARB etken madde markerleri (ANTİHT'ten dışlanır — ARB butonu var)
+    _ARB_ETKEN_MARKERLAR = ("ARTAN", "RILMENIDEN", "MOKSONIDIN")
+    # Kombi etken madde göstergeleri ("RAMIPRIL/HCT" gibi)
+    _ANTIHT_KOMBI_MARKERLAR = (
+        "PRIL", "DIPIN", "OLOL", "TIAZID",
+        "FUROSEMID", "SPIRONOLAKTON", "INDAPAMID",
+        "HIDROKLOROTIAZID",
+    )
+
+    @staticmethod
+    def _antiht_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Satırın ANTİHT (mono/kombi antihipertansif) kapsamına girip
+        girmediğini sınıflandırır.
+
+        Önce ATC bazlı net karar; ardından etken madde fallback
+        (sut_kategorisi_tespit_et kombi etken maddeyi MONO sayma hatasını
+        önlemek için).
+
+        ARB (C09C*/C09D*) ve ARB etken maddeleri (sartan/rilmeniden/
+        moksonidin) → 'NONE' döner çünkü ARB için ayrı buton var
+        (kontrol_arb_ek4f_m51, 1300/51 istisnası ile).
+
+        Dönüş: 'MONO' / 'KOMBI' / 'NONE'
+        """
+        a = (atc or "").upper().strip()
+        et = (etkin or "").upper()
+        cls = AylikReceteSorguGUI
+
+        # 1) ARB'yi tamamen dışla (kendi butonu var)
+        if a.startswith("C09C") or a.startswith("C09D"):
+            return "NONE"
+        if any(m in et for m in cls._ARB_ETKEN_MARKERLAR):
+            return "NONE"
+
+        # 2) ATC bazlı net karar
+        if a.startswith("C09B"):  # ACE-i + diüretik/KKB kombi
+            return "KOMBI"
+        if a.startswith("C09A"):  # ACE-i mono
+            return "MONO"
+        if a.startswith("C03") or a.startswith("C07") \
+                or a.startswith("C08") or a.startswith("C02AC"):
+            return "MONO"  # Diüretik / BB / KKB / santral
+
+        # 3) Kombi etken madde göstergesi ("RAMIPRIL/HCT" gibi)
+        if "/" in et or ("+" in et and len(et) > 3):
+            import re as _re
+            sub_etkenler = [s.strip() for s in _re.split(r"[/+]", et)
+                            if s.strip()]
+            if len(sub_etkenler) >= 2 and any(
+                    any(m in p for m in cls._ANTIHT_KOMBI_MARKERLAR)
+                    for p in sub_etkenler):
+                return "KOMBI"
+
+        # 4) Son çare: sut_kategorisi_tespit_et fallback
+        try:
+            from recete_kontrol.sut_kontrolleri import sut_kategorisi_tespit_et
+        except Exception:
+            return "NONE"
+        kategori = sut_kategorisi_tespit_et({
+            "ilac_adi": ilac_adi or "",
+            "etkin_madde": etkin or "",
+            "atc_kodu": atc or "",
+        })
+        if kategori == "MONO_ANTIHIPERTANSIF":
+            return "MONO"
+        if kategori == "KOMBINE_ANTIHIPERTANSIF":
+            return "KOMBI"
+        return "NONE"
+
+    @staticmethod
+    def _ilac_sonuc_olustur_antiht(s: dict, diger_satirlar: list = None) -> dict:
+        """Satır dict'inden ANTİHT kontrol fn'inin (mono/kombi) beklediği
+        ilac_sonuc dict'ini üret. Aynı reçetedeki diğer satırlar
+        diger_etken_maddeler/diger_ilac_adlari olarak iletilir
+        (ACE+ARB kombi yasağı için)."""
+        def _bol(metin):
+            if not metin:
+                return []
+            return [p.strip() for p in str(metin).split(" | ") if p.strip()]
+
+        rapor_aciklamalari = []
+        rap_ack = s.get("rap_ack")
+        if rap_ack:
+            rapor_aciklamalari.append(str(rap_ack).strip())
+        for t in _bol(s.get("rap_tesh")):
+            rapor_aciklamalari.append(t)
+
+        diger_etken = []
+        diger_ilac = []
+        if diger_satirlar:
+            for d in diger_satirlar:
+                if d is s:
+                    continue
+                et = (d.get("etkin") or "").strip()
+                ad = (d.get("ilac") or "").strip()
+                if et:
+                    diger_etken.append(et)
+                if ad:
+                    diger_ilac.append(ad)
+
+        return {
+            "ilac_adi": s.get("ilac") or "",
+            "etkin_madde": s.get("etkin") or "",
+            "atc_kodu": s.get("atc") or "",
+            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            "rapor_kodu_aciklama": "",
+            "recete_teshisleri": _bol(s.get("rec_tesh")),
+            "rapor_aciklamalari": rapor_aciklamalari,
+            "recete_aciklamalari": _bol(s.get("rec_ack")),
+            "mesaj_metni": s.get("medula_msj") or "",
+            "doktor_uzmanligi": s.get("brans") or "",
+            "kurum_adi": s.get("kurum_adi") or "",
+            "tesis_kodu": s.get("tesis_kodu") or "",
+            "kutu_sayisi": s.get("kutu") or "",
+            "cinsiyet": s.get("cins") or "",
+            "yas": s.get("yas") or "",
+            "diger_etken_maddeler": diger_etken,
+            "diger_ilac_adlari": diger_ilac,
+        }
+
+    # ───────────────────────────────────────────────────────────────────
+    # İSKEMİK KALP (SUT 4.2.15.C İvabradin + 4.2.15.F Ranolazin) KATEGORİ
+    # ───────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _iskemik_kalp_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Satırın İSKEMİK KALP (ivabradin/ranolazin/eplerenon) kapsamına
+        girip girmediğini sınıflandırır.
+
+        ATC öncelikli (C01EB17 / C01EB18 / C03DA04); ATC yoksa etken madde
+        fallback. Her üçü de tek etken maddeli ilaçlar — kombi parsing
+        gerekmez.
+
+        Dönüş: 'IVABRADIN' / 'RANOLAZIN' / 'EPLERENON' / 'NONE'
+        """
+        a = (atc or "").upper().strip()
+        et = (etkin or "").upper()
+
+        if a.startswith("C01EB17") or "IVABRADIN" in et:
+            return "IVABRADIN"
+        if a.startswith("C01EB18") or "RANOLAZIN" in et:
+            return "RANOLAZIN"
+        if a.startswith("C03DA04") or "EPLERENON" in et:
+            return "EPLERENON"
+
+        # Fallback — sut_kategorisi_tespit_et
+        try:
+            from recete_kontrol.sut_kontrolleri import sut_kategorisi_tespit_et
+        except Exception:
+            return "NONE"
+        kategori = sut_kategorisi_tespit_et({
+            "ilac_adi": ilac_adi or "", "etkin_madde": etkin or "",
+            "atc_kodu": atc or "",
+        })
+        if kategori in ("IVABRADIN", "RANOLAZIN", "EPLERENON"):
+            return kategori
+        return "NONE"
+
+    @staticmethod
+    def _ilac_sonuc_olustur_iskemik_kalp(s: dict, diger_satirlar: list = None) -> dict:
+        """Satır dict'inden ivabradin/ranolazin/eplerenon kontrol fn'inin
+        beklediği ilac_sonuc dict'ini üret.
+
+        Aynı reçetenin diğer satırları diger_etken_maddeler/
+        diger_ilac_adlari olarak iletilir (BB intoleransı kontrolünde
+        beraber yazılan BB tespiti için)."""
+        def _bol(metin):
+            if not metin:
+                return []
+            return [p.strip() for p in str(metin).split(" | ") if p.strip()]
+
+        rapor_aciklamalari = []
+        rap_ack = s.get("rap_ack")
+        if rap_ack:
+            rapor_aciklamalari.append(str(rap_ack).strip())
+        for t in _bol(s.get("rap_tesh")):
+            rapor_aciklamalari.append(t)
+
+        diger_etken = []
+        diger_ilac = []
+        if diger_satirlar:
+            for d in diger_satirlar:
+                if d is s:
+                    continue
+                et = (d.get("etkin") or "").strip()
+                ad = (d.get("ilac") or "").strip()
+                if et:
+                    diger_etken.append(et)
+                if ad:
+                    diger_ilac.append(ad)
+
+        return {
+            "ilac_adi": s.get("ilac") or "",
+            "etkin_madde": s.get("etkin") or "",
+            "atc_kodu": s.get("atc") or "",
+            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            "rapor_kodu_aciklama": "",
+            "recete_teshisleri": _bol(s.get("rec_tesh")),
+            "rapor_aciklamalari": rapor_aciklamalari,
+            "recete_aciklamalari": _bol(s.get("rec_ack")),
+            "mesaj_metni": s.get("medula_msj") or "",
+            "doktor_uzmanligi": s.get("brans") or "",
+            "kurum_adi": s.get("kurum_adi") or "",
+            "tesis_kodu": s.get("tesis_kodu") or "",
+            "kutu_sayisi": s.get("kutu") or "",
+            "cinsiyet": s.get("cins") or "",
+            "yas": s.get("yas") or "",
+            "diger_etken_maddeler": diger_etken,
+            "diger_ilac_adlari": diger_ilac,
+        }
+
+    # ───────────────────────────────────────────────────────────────────
+    # K-SİTRAT (Potasyum Sitrat — SUT EK-4/F) KATEGORİ + ilac_sonuc
+    # ───────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _potasyum_sitrat_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Potasyum sitrat kapsam kontrolü.
+
+        ATC A12BA02 veya etken madde 'POTASYUM SITRAT' içeriyorsa POTASYUM,
+        aksi halde NONE.
+
+        Dönüş: 'POTASYUM' / 'NONE'
+        """
+        a = (atc or "").upper().strip()
+        et = (etkin or "").upper()
+        if a.startswith("A12BA02") or "POTASYUM SITRAT" in et \
+                or "POTASYUM SİTRAT" in et:
+            return "POTASYUM"
+
+        try:
+            from recete_kontrol.sut_kontrolleri import sut_kategorisi_tespit_et
+        except Exception:
+            return "NONE"
+        kategori = sut_kategorisi_tespit_et({
+            "ilac_adi": ilac_adi or "", "etkin_madde": etkin or "",
+            "atc_kodu": atc or "",
+        })
+        return "POTASYUM" if kategori == "POTASYUM_SITRAT" else "NONE"
+
+    @staticmethod
+    def _ilac_sonuc_olustur_potasyum_sitrat(s: dict, diger_satirlar: list = None) -> dict:
+        """Satır dict'inden kontrol_potasyum_sitrat'ın beklediği ilac_sonuc
+        dict'ini üret."""
+        def _bol(metin):
+            if not metin:
+                return []
+            return [p.strip() for p in str(metin).split(" | ") if p.strip()]
+
+        rapor_aciklamalari = []
+        rap_ack = s.get("rap_ack")
+        if rap_ack:
+            rapor_aciklamalari.append(str(rap_ack).strip())
+        for t in _bol(s.get("rap_tesh")):
+            rapor_aciklamalari.append(t)
+
+        return {
+            "ilac_adi": s.get("ilac") or "",
+            "etkin_madde": s.get("etkin") or "",
+            "atc_kodu": s.get("atc") or "",
+            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            "rapor_kodu_aciklama": "",
+            "recete_teshisleri": _bol(s.get("rec_tesh")),
+            "rapor_aciklamalari": rapor_aciklamalari,
+            "recete_aciklamalari": _bol(s.get("rec_ack")),
+            "mesaj_metni": s.get("medula_msj") or "",
+            "doktor_uzmanligi": s.get("brans") or "",
+            "kurum_adi": s.get("kurum_adi") or "",
+            "tesis_kodu": s.get("tesis_kodu") or "",
+            "kutu_sayisi": s.get("kutu") or "",
+            "cinsiyet": s.get("cins") or "",
+            "yas": s.get("yas") or "",
+        }
+
+    # ───────────────────────────────────────────────────────────────────
+    # RAPORSUZ BİLGİ (Raporsuz verilebilen ilaçlar) KATEGORİ + ilac_sonuc
+    # ───────────────────────────────────────────────────────────────────
+    # 3 kategori birleşir → kontrol_raporsuz_bilgilendirme dispatcher'ı
+    # 28 ilaç sınıfı kontrolü yapar (NSAİD, parasetamol, makrolid, penisilin,
+    # antihistaminik, dekonjestan, MAO-B, PPI, H2RA, antidiyareik, laksatif,
+    # antispazmodik, kas gevşetici, topikal NSAİD, vitamin, vb.)
+    _RAPORSUZ_BILGI_KATEGORILER = frozenset({
+        "RAPORSUZ_BILGILENDIRME", "BENZODIAZEPIN", "GOZ_LUBRIKAN",
+    })
+
+    @staticmethod
+    def _raporsuz_bilgi_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Satırın raporsuz bilgilendirme kapsamına girip girmediğini
+        sınıflandırır.
+
+        sut_kategorisi_tespit_et() ile RAPORSUZ_BILGILENDIRME / BENZODIAZEPIN
+        / GOZ_LUBRIKAN'dan birine düşerse 'RAPORSUZ' döner. Aksi halde NONE.
+
+        Dönüş: 'RAPORSUZ' / 'NONE'
+        """
+        try:
+            from recete_kontrol.sut_kontrolleri import sut_kategorisi_tespit_et
+        except Exception:
+            return "NONE"
+        kategori = sut_kategorisi_tespit_et({
+            "ilac_adi": ilac_adi or "", "etkin_madde": etkin or "",
+            "atc_kodu": atc or "",
+        })
+        cls = AylikReceteSorguGUI
+        if kategori in cls._RAPORSUZ_BILGI_KATEGORILER:
+            return "RAPORSUZ"
+        return "NONE"
+
+    @staticmethod
+    def _ilac_sonuc_olustur_raporsuz_bilgi(s: dict, diger_satirlar: list = None) -> dict:
+        """Satır dict'inden kontrol_raporsuz_bilgilendirme'nin beklediği
+        ilac_sonuc dict'ini üret.
+
+        Aynı reçetenin diğer satırları diger_etken_maddeler/diger_ilac_adlari
+        olarak iletilir (gizli parasetamol kombinasyonu kontrolü için)."""
+        def _bol(metin):
+            if not metin:
+                return []
+            return [p.strip() for p in str(metin).split(" | ") if p.strip()]
+
+        rapor_aciklamalari = []
+        rap_ack = s.get("rap_ack")
+        if rap_ack:
+            rapor_aciklamalari.append(str(rap_ack).strip())
+        for t in _bol(s.get("rap_tesh")):
+            rapor_aciklamalari.append(t)
+
+        diger_etken = []
+        diger_ilac = []
+        if diger_satirlar:
+            for d in diger_satirlar:
+                if d is s:
+                    continue
+                et = (d.get("etkin") or "").strip()
+                ad = (d.get("ilac") or "").strip()
+                if et:
+                    diger_etken.append(et)
+                if ad:
+                    diger_ilac.append(ad)
+
+        return {
+            "ilac_adi": s.get("ilac") or "",
+            "etkin_madde": s.get("etkin") or "",
+            "atc_kodu": s.get("atc") or "",
+            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            "rapor_kodu_aciklama": "",
+            "recete_teshisleri": _bol(s.get("rec_tesh")),
+            "rapor_aciklamalari": rapor_aciklamalari,
+            "recete_aciklamalari": _bol(s.get("rec_ack")),
+            "mesaj_metni": s.get("medula_msj") or "",
+            "doktor_uzmanligi": s.get("brans") or "",
+            "kurum_adi": s.get("kurum_adi") or "",
+            "tesis_kodu": s.get("tesis_kodu") or "",
+            "kutu_sayisi": s.get("kutu") or "",
+            "cinsiyet": s.get("cins") or "",
+            "yas": s.get("yas") or "",
+            "diger_etken_maddeler": diger_etken,
+            "diger_ilac_adlari": diger_ilac,
+        }
+
+    # ───────────────────────────────────────────────────────────────────
+    # BASIT SUT (DMAH+Kadın+Trimetazidin+Kinolon mikro kontroller) KATEGORİ
+    # ───────────────────────────────────────────────────────────────────
+    # 4 farklı SUT kategorisi → 4 farklı kontrol fonksiyonu dispatch
+    _BASIT_SUT_KATEGORILER = frozenset({
+        "DMAH", "KADIN_HORMON", "TRIMETAZIDIN", "ANTIBIYOTIK_FLOROKINOLON",
+    })
+
+    @staticmethod
+    def _basit_sut_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Satırın BASIT SUT (DMAH/Kadın hormon/Trimetazidin/Florokinolon)
+        kapsamına girip girmediğini sınıflandırır.
+
+        Dönüş: 'DMAH' / 'KADIN_HORMON' / 'TRIMETAZIDIN' /
+               'ANTIBIYOTIK_FLOROKINOLON' / 'NONE'
+        """
+        a = (atc or "").upper().strip()
+        et = (etkin or "").upper()
+
+        # ATC öncelikli net kararlar
+        if a.startswith("B01AB"):  # DMAH ATC ailesi
+            return "DMAH"
+        if a.startswith("C01EB15") or "TRIMETAZIDIN" in et:
+            return "TRIMETAZIDIN"
+        if a.startswith("J01MA"):  # Florokinolon ailesi
+            return "ANTIBIYOTIK_FLOROKINOLON"
+
+        # Kadın hormon ATC ailesi (estradiol/estriol/progesteron + kombiler)
+        if a.startswith("G03C") or a.startswith("G03D") \
+                or a.startswith("G03F"):
+            return "KADIN_HORMON"
+
+        # DMAH etken madde fallback (mapping eksikse)
+        if any(em in et for em in (
+                "ENOKSAPARIN", "TINZAPARIN", "DALTEPARIN",
+                "NADROPARIN", "BEMIPARIN", "PARNAPARIN")):
+            return "DMAH"
+
+        # Florokinolon etken madde fallback
+        if any(em in et for em in (
+                "SIPROFLOKSASIN", "CIPROFLOKSASIN",
+                "LEVOFLOKSASIN", "MOKSIFLOKSASIN",
+                "NORFLOKSASIN", "OFLOKSASIN", "GEMIFLOKSASIN")):
+            return "ANTIBIYOTIK_FLOROKINOLON"
+
+        # sut_kategorisi_tespit_et fallback (mapping varsa)
+        try:
+            from recete_kontrol.sut_kontrolleri import sut_kategorisi_tespit_et
+        except Exception:
+            return "NONE"
+        kategori = sut_kategorisi_tespit_et({
+            "ilac_adi": ilac_adi or "", "etkin_madde": etkin or "",
+            "atc_kodu": atc or "",
+        })
+        cls = AylikReceteSorguGUI
+        if kategori in cls._BASIT_SUT_KATEGORILER:
+            return kategori
+        return "NONE"
+
+    @staticmethod
+    def _ilac_sonuc_olustur_basit_sut(s: dict, diger_satirlar: list = None) -> dict:
+        """Satır dict'inden BASIT SUT kontrol fn'lerinin beklediği
+        ilac_sonuc dict'ini üret."""
+        def _bol(metin):
+            if not metin:
+                return []
+            return [p.strip() for p in str(metin).split(" | ") if p.strip()]
+
+        rapor_aciklamalari = []
+        rap_ack = s.get("rap_ack")
+        if rap_ack:
+            rapor_aciklamalari.append(str(rap_ack).strip())
+        for t in _bol(s.get("rap_tesh")):
+            rapor_aciklamalari.append(t)
+
+        return {
+            "ilac_adi": s.get("ilac") or "",
+            "etkin_madde": s.get("etkin") or "",
+            "atc_kodu": s.get("atc") or "",
+            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            "rapor_kodu_aciklama": "",
+            "recete_teshisleri": _bol(s.get("rec_tesh")),
+            "rapor_aciklamalari": rapor_aciklamalari,
+            "recete_aciklamalari": _bol(s.get("rec_ack")),
+            "mesaj_metni": s.get("medula_msj") or "",
+            "doktor_uzmanligi": s.get("brans") or "",
+            "kurum_adi": s.get("kurum_adi") or "",
+            "tesis_kodu": s.get("tesis_kodu") or "",
+            "kutu_sayisi": s.get("kutu") or "",
+            "cinsiyet": s.get("cins") or "",
+            "yas": s.get("yas") or "",
+        }
+
+    # ───────────────────────────────────────────────────────────────────
     # PSİKİYATRİ + ANTİEPİLEPTİK (SUT 4.2.2 + 4.2.25) KATEGORİ + ilac_sonuc
     # ───────────────────────────────────────────────────────────────────
     # Antidepresanlar — ATC N06A*
@@ -7033,6 +8773,802 @@ class AylikReceteSorguGUI:
             )
         except Exception as e:
             logger.exception("Çeşitli rapor üretim hatası")
+            messagebox.showerror(
+                "Rapor Hatası",
+                f"Kontrol raporu oluşturulamadı:\n{e}",
+                parent=self.root)
+            return
+
+        try:
+            os.startfile(rapor_yolu)
+            self._durum_yaz(f"Kontrol raporu: {rapor_yolu}")
+        except Exception as e:
+            messagebox.showinfo(
+                "Rapor Kaydedildi",
+                f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
+                parent=self.root)
+
+    # ── ANTİHT KONTROL (SUT 4.2.12.B mono + kombi antihipertansif) ──
+    def _antiht_kontrol_baslat(self):
+        """ANTİHT KONTROL butonu — yüklenen satırlardan mono/kombi
+        antihipertansif kapsamına girenleri sut_kategorisi_tespit_et()
+        üzerinden sınıflar ve uygun kontrol fn'ine dispatch eder.
+
+        Dispatch:
+          - MONO  → kontrol_mono_antihipertansif
+                    (ACE-i / ARB / KKB / BB / Diüretik / Alfa bloker;
+                     raporsuz uyumluluk + ACE+ARB kontrendikasyon)
+          - KOMBI → kontrol_kombine_antihipertansif
+                    (raporsuz / 04.05 / monoterapi ibaresi 3-yollu)
+        """
+        if not self.tum_satirlar:
+            messagebox.showinfo(
+                "ANTİHT Kontrol",
+                "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_mono_antihipertansif,
+                kontrol_kombine_antihipertansif,
+            )
+            from recete_kontrol.base_kontrol import KontrolSonucu
+        except Exception as e:
+            self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
+            messagebox.showerror(
+                "Modül Hatası",
+                f"recete_kontrol modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        VERDICT_ETIKET = {
+            KontrolSonucu.UYGUN:             "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.ATLANDI:           "ATLANDI",
+        }
+        sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
+                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+        kategori_sayac = {"MONO": 0, "KOMBI": 0}
+        denetlenen_satirlar = []
+
+        # Aynı reçetenin diğer satırlarını grupla (ACE+ARB kombi yasağı için)
+        rec_grup = {}
+        for s in self.tum_satirlar:
+            rno = s.get("rec_no") or ""
+            rec_grup.setdefault(rno, []).append(s)
+
+        # Önceki çalıştırmadan kalan ANTİHT verdict'lerini temizle
+        for s in self.tum_satirlar:
+            kategori = self._antiht_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori == "NONE":
+                if s.get("verdict_kategori") in ("MONO", "KOMBI"):
+                    s["verdict"] = ""
+                    s["verdict_detay"] = ""
+                    s["verdict_kategori"] = ""
+                    s["verdict_uyari"] = ""
+                    s["verdict_sut"] = ""
+                    s["verdict_aranan"] = ""
+                    s["verdict_bulunan"] = ""
+                    s["verdict_detaylar"] = ""
+                sayac["_kapsam_disi"] += 1
+                continue
+            kategori_sayac[kategori] = kategori_sayac.get(kategori, 0) + 1
+
+            rno = s.get("rec_no") or ""
+            ayni_recete = rec_grup.get(rno, [])
+            ilac_sonuc = self._ilac_sonuc_olustur_antiht(s, ayni_recete)
+
+            try:
+                if kategori == "MONO":
+                    rapor = kontrol_mono_antihipertansif(ilac_sonuc)
+                else:  # KOMBI
+                    rapor = kontrol_kombine_antihipertansif(ilac_sonuc)
+            except Exception as e:
+                logger.warning("ANTİHT kontrol hata (rx %s): %s",
+                                s.get("rec_no"), e)
+                s["verdict"] = "ŞÜPHELİ"
+                s["verdict_detay"] = f"Hata: {e}"
+                s["verdict_kategori"] = kategori
+                s["verdict_uyari"] = ""
+                s["verdict_sut"] = ""
+                s["verdict_aranan"] = ""
+                s["verdict_bulunan"] = ""
+                s["verdict_detaylar"] = ""
+                sayac["ŞÜPHELİ"] += 1
+                denetlenen_satirlar.append(s)
+                continue
+
+            etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+            s["verdict"] = etiket
+            s["verdict_detay"] = rapor.mesaj or ""
+            s["verdict_kategori"] = kategori
+            s["verdict_uyari"] = rapor.uyari or ""
+            s["verdict_sut"] = rapor.sut_kurali or ""
+            s["verdict_aranan"] = rapor.aranan_ibare or ""
+            s["verdict_bulunan"] = rapor.bulunan_metin or ""
+            try:
+                s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                                    ensure_ascii=False)
+            except Exception:
+                s["verdict_detaylar"] = str(rapor.detaylar or {})
+            sayac[etiket] = sayac.get(etiket, 0) + 1
+            denetlenen_satirlar.append(s)
+
+        self._tabloyu_yenile()
+        self._durum_yaz(
+            f"ANTİHT (4.2.12.B) kontrolü: "
+            f"✓ UYGUN {sayac['UYGUN']}  "
+            f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
+            f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
+            f"− ATLANDI {sayac['ATLANDI']}  "
+            f"(kapsam dışı {sayac['_kapsam_disi']} satır boş bırakıldı)"
+        )
+
+        # ── KONTROL RAPORU ÜRET ──
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                   + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+        if toplam == 0:
+            messagebox.showinfo(
+                "ANTİHT Kontrol",
+                "Bu dönemde mono/kombi antihipertansif grubuna giren reçete bulunamadı.",
+                parent=self.root)
+            return
+
+        cevap = messagebox.askyesno(
+            "Kontrol Raporu",
+            f"ANTİHT (4.2.12.B mono+kombi) kontrolü tamamlandı.\n\n"
+            f"Toplam ANTİHT satır : {toplam}\n"
+            f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
+            f"  − ATLANDI        : {sayac['ATLANDI']}\n\n"
+            f"Tip dağılımı:\n"
+            f"  • Mono  : {kategori_sayac.get('MONO', 0)}\n"
+            f"  • Kombi : {kategori_sayac.get('KOMBI', 0)}\n\n"
+            f"Kapsam dışı (atlanan): {sayac['_kapsam_disi']}\n\n"
+            f"Kontrol raporu Excel olarak masaüstündeki "
+            f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
+            f"Rapor oluşturulup açılsın mı?",
+            parent=self.root)
+        if not cevap:
+            return
+
+        try:
+            rapor_yolu = self._antiht_rapor_excel_olustur(
+                sayac=sayac,
+                kategori_sayac=kategori_sayac,
+                denetlenen_satirlar=denetlenen_satirlar,
+            )
+        except Exception as e:
+            logger.exception("ANTİHT rapor üretim hatası")
+            messagebox.showerror(
+                "Rapor Hatası",
+                f"Kontrol raporu oluşturulamadı:\n{e}",
+                parent=self.root)
+            return
+
+        try:
+            os.startfile(rapor_yolu)
+            self._durum_yaz(f"Kontrol raporu: {rapor_yolu}")
+        except Exception as e:
+            messagebox.showinfo(
+                "Rapor Kaydedildi",
+                f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
+                parent=self.root)
+
+    # ── İSKEMİK KALP KONTROL (SUT 4.2.15.C İvabradin + 4.2.15.F Ranolazin) ──
+    def _iskemik_kalp_kontrol_baslat(self):
+        """İSKEMİK KALP KONTROL butonu — yüklenen satırlardan ivabradin/
+        ranolazin/eplerenon kapsamına girenleri kategoriye göre dispatch eder.
+
+        Dispatch:
+          - IVABRADIN / EPLERENON → kontrol_ivabradin (NYHA + EF≤45% + BB
+                                    intoleransı + sinüs ritmi)
+          - RANOLAZIN             → kontrol_ranolazin (kronik stabil angina
+                                    + BB/CCB intoleransı / yetersiz yanıt)
+        """
+        if not self.tum_satirlar:
+            messagebox.showinfo(
+                "İSKEMİK KALP Kontrol",
+                "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_ivabradin, kontrol_ranolazin,
+            )
+            from recete_kontrol.base_kontrol import KontrolSonucu
+        except Exception as e:
+            self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
+            messagebox.showerror(
+                "Modül Hatası",
+                f"recete_kontrol modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        VERDICT_ETIKET = {
+            KontrolSonucu.UYGUN:             "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.ATLANDI:           "ATLANDI",
+        }
+        sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
+                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+        kategori_sayac = {"IVABRADIN": 0, "RANOLAZIN": 0, "EPLERENON": 0}
+        denetlenen_satirlar = []
+
+        rec_grup = {}
+        for s in self.tum_satirlar:
+            rno = s.get("rec_no") or ""
+            rec_grup.setdefault(rno, []).append(s)
+
+        for s in self.tum_satirlar:
+            kategori = self._iskemik_kalp_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori == "NONE":
+                if s.get("verdict_kategori") in (
+                        "IVABRADIN", "RANOLAZIN", "EPLERENON"):
+                    s["verdict"] = ""
+                    s["verdict_detay"] = ""
+                    s["verdict_kategori"] = ""
+                    s["verdict_uyari"] = ""
+                    s["verdict_sut"] = ""
+                    s["verdict_aranan"] = ""
+                    s["verdict_bulunan"] = ""
+                    s["verdict_detaylar"] = ""
+                sayac["_kapsam_disi"] += 1
+                continue
+            kategori_sayac[kategori] = kategori_sayac.get(kategori, 0) + 1
+
+            rno = s.get("rec_no") or ""
+            ayni_recete = rec_grup.get(rno, [])
+            ilac_sonuc = self._ilac_sonuc_olustur_iskemik_kalp(s, ayni_recete)
+
+            try:
+                if kategori == "RANOLAZIN":
+                    rapor = kontrol_ranolazin(ilac_sonuc)
+                else:  # IVABRADIN veya EPLERENON
+                    rapor = kontrol_ivabradin(ilac_sonuc)
+            except Exception as e:
+                logger.warning("İSKEMİK KALP kontrol hata (rx %s): %s",
+                                s.get("rec_no"), e)
+                s["verdict"] = "ŞÜPHELİ"
+                s["verdict_detay"] = f"Hata: {e}"
+                s["verdict_kategori"] = kategori
+                s["verdict_uyari"] = ""
+                s["verdict_sut"] = ""
+                s["verdict_aranan"] = ""
+                s["verdict_bulunan"] = ""
+                s["verdict_detaylar"] = ""
+                sayac["ŞÜPHELİ"] += 1
+                denetlenen_satirlar.append(s)
+                continue
+
+            etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+            s["verdict"] = etiket
+            s["verdict_detay"] = rapor.mesaj or ""
+            s["verdict_kategori"] = kategori
+            s["verdict_uyari"] = rapor.uyari or ""
+            s["verdict_sut"] = rapor.sut_kurali or ""
+            s["verdict_aranan"] = rapor.aranan_ibare or ""
+            s["verdict_bulunan"] = rapor.bulunan_metin or ""
+            try:
+                s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                                    ensure_ascii=False)
+            except Exception:
+                s["verdict_detaylar"] = str(rapor.detaylar or {})
+            sayac[etiket] = sayac.get(etiket, 0) + 1
+            denetlenen_satirlar.append(s)
+
+        self._tabloyu_yenile()
+        self._durum_yaz(
+            f"İSKEMİK KALP (4.2.15.C/F) kontrolü: "
+            f"✓ UYGUN {sayac['UYGUN']}  "
+            f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
+            f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
+            f"− ATLANDI {sayac['ATLANDI']}  "
+            f"(kapsam dışı {sayac['_kapsam_disi']} satır boş bırakıldı)"
+        )
+
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                   + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+        if toplam == 0:
+            messagebox.showinfo(
+                "İSKEMİK KALP Kontrol",
+                "Bu dönemde ivabradin/ranolazin/eplerenon grubuna giren reçete bulunamadı.",
+                parent=self.root)
+            return
+
+        cevap = messagebox.askyesno(
+            "Kontrol Raporu",
+            f"İSKEMİK KALP (4.2.15.C/F) kontrolü tamamlandı.\n\n"
+            f"Toplam İSKEMİK KALP satır : {toplam}\n"
+            f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
+            f"  − ATLANDI        : {sayac['ATLANDI']}\n\n"
+            f"İlaç dağılımı:\n"
+            f"  • İvabradin  : {kategori_sayac.get('IVABRADIN', 0)}\n"
+            f"  • Ranolazin  : {kategori_sayac.get('RANOLAZIN', 0)}\n"
+            f"  • Eplerenon  : {kategori_sayac.get('EPLERENON', 0)}\n\n"
+            f"Kapsam dışı (atlanan): {sayac['_kapsam_disi']}\n\n"
+            f"Kontrol raporu Excel olarak masaüstündeki "
+            f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
+            f"Rapor oluşturulup açılsın mı?",
+            parent=self.root)
+        if not cevap:
+            return
+
+        try:
+            rapor_yolu = self._iskemik_kalp_rapor_excel_olustur(
+                sayac=sayac,
+                kategori_sayac=kategori_sayac,
+                denetlenen_satirlar=denetlenen_satirlar,
+            )
+        except Exception as e:
+            logger.exception("İSKEMİK KALP rapor üretim hatası")
+            messagebox.showerror(
+                "Rapor Hatası",
+                f"Kontrol raporu oluşturulamadı:\n{e}",
+                parent=self.root)
+            return
+
+        try:
+            os.startfile(rapor_yolu)
+            self._durum_yaz(f"Kontrol raporu: {rapor_yolu}")
+        except Exception as e:
+            messagebox.showinfo(
+                "Rapor Kaydedildi",
+                f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
+                parent=self.root)
+
+    # ── K-SİTRAT KONTROL (Potasyum Sitrat — SUT EK-4/F) ─────────────
+    def _potasyum_sitrat_kontrol_baslat(self):
+        """K-SİTRAT KONTROL butonu — yüklenen satırlardan potasyum sitrat
+        kapsamına girenleri kontrol_potasyum_sitrat'a yollar.
+
+        Üroloji/nefroloji uzmanı raporu zorunlu, ICD eşleşmesi (N20.0/N20.1
+        böbrek taşı, N25.8/N25.9 RTA) kontrolü yapılır."""
+        if not self.tum_satirlar:
+            messagebox.showinfo(
+                "K-SİTRAT Kontrol",
+                "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.sut_kontrolleri import kontrol_potasyum_sitrat
+            from recete_kontrol.base_kontrol import KontrolSonucu
+        except Exception as e:
+            self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
+            messagebox.showerror(
+                "Modül Hatası",
+                f"recete_kontrol modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        VERDICT_ETIKET = {
+            KontrolSonucu.UYGUN:             "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.ATLANDI:           "ATLANDI",
+        }
+        sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
+                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+        kategori_sayac = {"POTASYUM": 0}
+        denetlenen_satirlar = []
+
+        for s in self.tum_satirlar:
+            kategori = self._potasyum_sitrat_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori == "NONE":
+                if s.get("verdict_kategori") == "POTASYUM":
+                    s["verdict"] = ""
+                    s["verdict_detay"] = ""
+                    s["verdict_kategori"] = ""
+                    s["verdict_uyari"] = ""
+                    s["verdict_sut"] = ""
+                    s["verdict_aranan"] = ""
+                    s["verdict_bulunan"] = ""
+                    s["verdict_detaylar"] = ""
+                sayac["_kapsam_disi"] += 1
+                continue
+            kategori_sayac[kategori] = kategori_sayac.get(kategori, 0) + 1
+
+            ilac_sonuc = self._ilac_sonuc_olustur_potasyum_sitrat(s)
+            try:
+                rapor = kontrol_potasyum_sitrat(ilac_sonuc)
+            except Exception as e:
+                logger.warning("K-SİTRAT kontrol hata (rx %s): %s",
+                                s.get("rec_no"), e)
+                s["verdict"] = "ŞÜPHELİ"
+                s["verdict_detay"] = f"Hata: {e}"
+                s["verdict_kategori"] = kategori
+                s["verdict_uyari"] = ""
+                s["verdict_sut"] = ""
+                s["verdict_aranan"] = ""
+                s["verdict_bulunan"] = ""
+                s["verdict_detaylar"] = ""
+                sayac["ŞÜPHELİ"] += 1
+                denetlenen_satirlar.append(s)
+                continue
+
+            etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+            s["verdict"] = etiket
+            s["verdict_detay"] = rapor.mesaj or ""
+            s["verdict_kategori"] = kategori
+            s["verdict_uyari"] = rapor.uyari or ""
+            s["verdict_sut"] = rapor.sut_kurali or ""
+            s["verdict_aranan"] = rapor.aranan_ibare or ""
+            s["verdict_bulunan"] = rapor.bulunan_metin or ""
+            try:
+                s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                                    ensure_ascii=False)
+            except Exception:
+                s["verdict_detaylar"] = str(rapor.detaylar or {})
+            sayac[etiket] = sayac.get(etiket, 0) + 1
+            denetlenen_satirlar.append(s)
+
+        self._tabloyu_yenile()
+        self._durum_yaz(
+            f"K-SİTRAT (EK-4/F) kontrolü: "
+            f"✓ UYGUN {sayac['UYGUN']}  "
+            f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
+            f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
+            f"− ATLANDI {sayac['ATLANDI']}  "
+            f"(kapsam dışı {sayac['_kapsam_disi']} satır boş bırakıldı)"
+        )
+
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                   + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+        if toplam == 0:
+            messagebox.showinfo(
+                "K-SİTRAT Kontrol",
+                "Bu dönemde potasyum sitrat reçetesi bulunamadı.",
+                parent=self.root)
+            return
+
+        cevap = messagebox.askyesno(
+            "Kontrol Raporu",
+            f"K-SİTRAT (EK-4/F) kontrolü tamamlandı.\n\n"
+            f"Toplam K-SİTRAT satır : {toplam}\n"
+            f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
+            f"  − ATLANDI        : {sayac['ATLANDI']}\n\n"
+            f"Kapsam dışı (atlanan): {sayac['_kapsam_disi']}\n\n"
+            f"Kontrol raporu Excel olarak masaüstündeki "
+            f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
+            f"Rapor oluşturulup açılsın mı?",
+            parent=self.root)
+        if not cevap:
+            return
+
+        try:
+            rapor_yolu = self._potasyum_sitrat_rapor_excel_olustur(
+                sayac=sayac,
+                kategori_sayac=kategori_sayac,
+                denetlenen_satirlar=denetlenen_satirlar,
+            )
+        except Exception as e:
+            logger.exception("K-SİTRAT rapor üretim hatası")
+            messagebox.showerror(
+                "Rapor Hatası",
+                f"Kontrol raporu oluşturulamadı:\n{e}",
+                parent=self.root)
+            return
+
+        try:
+            os.startfile(rapor_yolu)
+            self._durum_yaz(f"Kontrol raporu: {rapor_yolu}")
+        except Exception as e:
+            messagebox.showinfo(
+                "Rapor Kaydedildi",
+                f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
+                parent=self.root)
+
+    # ── RAPORSUZ BİLGİ KONTROL (Raporsuz verilebilen ilaçlar) ────────
+    def _raporsuz_bilgi_kontrol_baslat(self):
+        """RAPORSUZ BİLGİ KONTROL butonu — raporsuz verilebilen ilaçları
+        kontrol_raporsuz_bilgilendirme'ye yollar (28 ilaç sınıfı dispatcher).
+
+        Kapsam: RAPORSUZ_BILGILENDIRME / BENZODIAZEPIN / GOZ_LUBRIKAN
+        kategorilerinin tümü."""
+        if not self.tum_satirlar:
+            messagebox.showinfo(
+                "RAPORSUZ BİLGİ Kontrol",
+                "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.sut_kontrolleri import kontrol_raporsuz_bilgilendirme
+            from recete_kontrol.base_kontrol import KontrolSonucu
+        except Exception as e:
+            self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
+            messagebox.showerror(
+                "Modül Hatası",
+                f"recete_kontrol modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        VERDICT_ETIKET = {
+            KontrolSonucu.UYGUN:             "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.ATLANDI:           "ATLANDI",
+        }
+        sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
+                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+        kategori_sayac = {"RAPORSUZ": 0}
+        denetlenen_satirlar = []
+
+        rec_grup = {}
+        for s in self.tum_satirlar:
+            rno = s.get("rec_no") or ""
+            rec_grup.setdefault(rno, []).append(s)
+
+        for s in self.tum_satirlar:
+            kategori = self._raporsuz_bilgi_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori == "NONE":
+                if s.get("verdict_kategori") == "RAPORSUZ":
+                    s["verdict"] = ""
+                    s["verdict_detay"] = ""
+                    s["verdict_kategori"] = ""
+                    s["verdict_uyari"] = ""
+                    s["verdict_sut"] = ""
+                    s["verdict_aranan"] = ""
+                    s["verdict_bulunan"] = ""
+                    s["verdict_detaylar"] = ""
+                sayac["_kapsam_disi"] += 1
+                continue
+            kategori_sayac[kategori] = kategori_sayac.get(kategori, 0) + 1
+
+            rno = s.get("rec_no") or ""
+            ayni_recete = rec_grup.get(rno, [])
+            ilac_sonuc = self._ilac_sonuc_olustur_raporsuz_bilgi(s, ayni_recete)
+
+            try:
+                rapor = kontrol_raporsuz_bilgilendirme(ilac_sonuc)
+            except Exception as e:
+                logger.warning("RAPORSUZ BİLGİ kontrol hata (rx %s): %s",
+                                s.get("rec_no"), e)
+                s["verdict"] = "ŞÜPHELİ"
+                s["verdict_detay"] = f"Hata: {e}"
+                s["verdict_kategori"] = kategori
+                s["verdict_uyari"] = ""
+                s["verdict_sut"] = ""
+                s["verdict_aranan"] = ""
+                s["verdict_bulunan"] = ""
+                s["verdict_detaylar"] = ""
+                sayac["ŞÜPHELİ"] += 1
+                denetlenen_satirlar.append(s)
+                continue
+
+            etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+            s["verdict"] = etiket
+            s["verdict_detay"] = rapor.mesaj or ""
+            s["verdict_kategori"] = kategori
+            s["verdict_uyari"] = rapor.uyari or ""
+            s["verdict_sut"] = rapor.sut_kurali or ""
+            s["verdict_aranan"] = rapor.aranan_ibare or ""
+            s["verdict_bulunan"] = rapor.bulunan_metin or ""
+            try:
+                s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                                    ensure_ascii=False)
+            except Exception:
+                s["verdict_detaylar"] = str(rapor.detaylar or {})
+            sayac[etiket] = sayac.get(etiket, 0) + 1
+            denetlenen_satirlar.append(s)
+
+        self._tabloyu_yenile()
+        self._durum_yaz(
+            f"RAPORSUZ BİLGİ kontrolü: "
+            f"✓ UYGUN {sayac['UYGUN']}  "
+            f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
+            f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
+            f"− ATLANDI {sayac['ATLANDI']}  "
+            f"(kapsam dışı {sayac['_kapsam_disi']} satır boş bırakıldı)"
+        )
+
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                   + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+        if toplam == 0:
+            messagebox.showinfo(
+                "RAPORSUZ BİLGİ Kontrol",
+                "Bu dönemde raporsuz bilgilendirme kapsamına giren reçete bulunamadı.",
+                parent=self.root)
+            return
+
+        cevap = messagebox.askyesno(
+            "Kontrol Raporu",
+            f"RAPORSUZ BİLGİ kontrolü tamamlandı.\n\n"
+            f"Toplam RAPORSUZ satır : {toplam}\n"
+            f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
+            f"  − ATLANDI        : {sayac['ATLANDI']}\n\n"
+            f"Kapsam dışı (atlanan): {sayac['_kapsam_disi']}\n\n"
+            f"Kontrol raporu Excel olarak masaüstündeki "
+            f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
+            f"Rapor oluşturulup açılsın mı?",
+            parent=self.root)
+        if not cevap:
+            return
+
+        try:
+            rapor_yolu = self._raporsuz_bilgi_rapor_excel_olustur(
+                sayac=sayac,
+                kategori_sayac=kategori_sayac,
+                denetlenen_satirlar=denetlenen_satirlar,
+            )
+        except Exception as e:
+            logger.exception("RAPORSUZ BİLGİ rapor üretim hatası")
+            messagebox.showerror(
+                "Rapor Hatası",
+                f"Kontrol raporu oluşturulamadı:\n{e}",
+                parent=self.root)
+            return
+
+        try:
+            os.startfile(rapor_yolu)
+            self._durum_yaz(f"Kontrol raporu: {rapor_yolu}")
+        except Exception as e:
+            messagebox.showinfo(
+                "Rapor Kaydedildi",
+                f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
+                parent=self.root)
+
+    # ── BASIT SUT KONTROL (DMAH+Kadın+Trimetazidin+Kinolon) ──────────
+    def _basit_sut_kontrol_baslat(self):
+        """BASIT SUT KONTROL butonu — 4 mikro fonksiyonu kategoriye göre
+        dispatch eder.
+
+        Dispatch:
+          - DMAH                     → kontrol_dmah
+          - KADIN_HORMON             → kontrol_kadin_hormon
+          - TRIMETAZIDIN             → kontrol_trimetazidin
+          - ANTIBIYOTIK_FLOROKINOLON → kontrol_antibiyotik_florokinolon
+        """
+        if not self.tum_satirlar:
+            messagebox.showinfo(
+                "BASIT SUT Kontrol",
+                "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_dmah, kontrol_kadin_hormon, kontrol_trimetazidin,
+                kontrol_antibiyotik_florokinolon,
+            )
+            from recete_kontrol.base_kontrol import KontrolSonucu
+        except Exception as e:
+            self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
+            messagebox.showerror(
+                "Modül Hatası",
+                f"recete_kontrol modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        VERDICT_ETIKET = {
+            KontrolSonucu.UYGUN:             "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.ATLANDI:           "ATLANDI",
+        }
+        DISPATCH = {
+            "DMAH":                     kontrol_dmah,
+            "KADIN_HORMON":             kontrol_kadin_hormon,
+            "TRIMETAZIDIN":             kontrol_trimetazidin,
+            "ANTIBIYOTIK_FLOROKINOLON": kontrol_antibiyotik_florokinolon,
+        }
+        sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
+                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+        kategori_sayac = {k: 0 for k in DISPATCH}
+        denetlenen_satirlar = []
+
+        for s in self.tum_satirlar:
+            kategori = self._basit_sut_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori == "NONE":
+                if s.get("verdict_kategori") in DISPATCH:
+                    s["verdict"] = ""
+                    s["verdict_detay"] = ""
+                    s["verdict_kategori"] = ""
+                    s["verdict_uyari"] = ""
+                    s["verdict_sut"] = ""
+                    s["verdict_aranan"] = ""
+                    s["verdict_bulunan"] = ""
+                    s["verdict_detaylar"] = ""
+                sayac["_kapsam_disi"] += 1
+                continue
+            kategori_sayac[kategori] = kategori_sayac.get(kategori, 0) + 1
+
+            ilac_sonuc = self._ilac_sonuc_olustur_basit_sut(s)
+            kontrol_fn = DISPATCH[kategori]
+
+            try:
+                rapor = kontrol_fn(ilac_sonuc)
+            except Exception as e:
+                logger.warning("BASIT SUT kontrol hata (rx %s): %s",
+                                s.get("rec_no"), e)
+                s["verdict"] = "ŞÜPHELİ"
+                s["verdict_detay"] = f"Hata: {e}"
+                s["verdict_kategori"] = kategori
+                s["verdict_uyari"] = ""
+                s["verdict_sut"] = ""
+                s["verdict_aranan"] = ""
+                s["verdict_bulunan"] = ""
+                s["verdict_detaylar"] = ""
+                sayac["ŞÜPHELİ"] += 1
+                denetlenen_satirlar.append(s)
+                continue
+
+            etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+            s["verdict"] = etiket
+            s["verdict_detay"] = rapor.mesaj or ""
+            s["verdict_kategori"] = kategori
+            s["verdict_uyari"] = rapor.uyari or ""
+            s["verdict_sut"] = rapor.sut_kurali or ""
+            s["verdict_aranan"] = rapor.aranan_ibare or ""
+            s["verdict_bulunan"] = rapor.bulunan_metin or ""
+            try:
+                s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                                    ensure_ascii=False)
+            except Exception:
+                s["verdict_detaylar"] = str(rapor.detaylar or {})
+            sayac[etiket] = sayac.get(etiket, 0) + 1
+            denetlenen_satirlar.append(s)
+
+        self._tabloyu_yenile()
+        self._durum_yaz(
+            f"BASIT SUT kontrolü: "
+            f"✓ UYGUN {sayac['UYGUN']}  "
+            f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
+            f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
+            f"− ATLANDI {sayac['ATLANDI']}  "
+            f"(kapsam dışı {sayac['_kapsam_disi']} satır boş bırakıldı)"
+        )
+
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                   + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+        if toplam == 0:
+            messagebox.showinfo(
+                "BASIT SUT Kontrol",
+                "Bu dönemde DMAH/Kadın hormon/Trimetazidin/Florokinolon kapsamına giren reçete bulunamadı.",
+                parent=self.root)
+            return
+
+        cevap = messagebox.askyesno(
+            "Kontrol Raporu",
+            f"BASIT SUT kontrolü tamamlandı.\n\n"
+            f"Toplam BASIT SUT satır : {toplam}\n"
+            f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
+            f"  − ATLANDI        : {sayac['ATLANDI']}\n\n"
+            f"Kategori dağılımı:\n"
+            f"  • DMAH             : {kategori_sayac.get('DMAH', 0)}\n"
+            f"  • Kadın hormon     : {kategori_sayac.get('KADIN_HORMON', 0)}\n"
+            f"  • Trimetazidin     : {kategori_sayac.get('TRIMETAZIDIN', 0)}\n"
+            f"  • Florokinolon     : {kategori_sayac.get('ANTIBIYOTIK_FLOROKINOLON', 0)}\n\n"
+            f"Kapsam dışı (atlanan): {sayac['_kapsam_disi']}\n\n"
+            f"Kontrol raporu Excel olarak masaüstündeki "
+            f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
+            f"Rapor oluşturulup açılsın mı?",
+            parent=self.root)
+        if not cevap:
+            return
+
+        try:
+            rapor_yolu = self._basit_sut_rapor_excel_olustur(
+                sayac=sayac,
+                kategori_sayac=kategori_sayac,
+                denetlenen_satirlar=denetlenen_satirlar,
+            )
+        except Exception as e:
+            logger.exception("BASIT SUT rapor üretim hatası")
             messagebox.showerror(
                 "Rapor Hatası",
                 f"Kontrol raporu oluşturulamadı:\n{e}",
@@ -9622,6 +12158,1177 @@ class AylikReceteSorguGUI:
         ri = 4
         for s in self.tum_satirlar:
             kategori = self._arb_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori != "NONE":
+                continue
+            for ci, (kod, _b, _g) in enumerate(atlanan_kolonlar, 1):
+                ws3.cell(row=ri, column=ci, value=str(s.get(kod, "")))
+            ri += 1
+        for ci, (_k, _b, gen) in enumerate(atlanan_kolonlar, 1):
+            ws3.column_dimensions[get_column_letter(ci)].width = gen
+        ws3.freeze_panes = "A4"
+
+        wb.save(path)
+        return path
+
+    # ── ANTİHT KONTROL RAPORU EXCEL ÜRETİCİ ──────────────────────────
+    def _antiht_rapor_excel_olustur(self, *, sayac: dict, kategori_sayac: dict,
+                                      denetlenen_satirlar: list) -> str:
+        """Masaüstü/Reçete Kontrol/ klasörüne ANTİHT SUT denetim raporu yazar.
+
+        3 sayfa:
+          - Özet           : Toplam sayım, mono/kombi dağılımı, çalışma zamanı
+          - ANTİHT Reçeteleri : Denetlenen satır + SUT detayları + verdict
+          - ANTİHT Dışı   : Atlanan satırların kısa özeti
+        """
+        try:
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font, Alignment
+            from openpyxl.utils import get_column_letter
+        except ImportError as e:
+            raise RuntimeError("openpyxl yüklü değil") from e
+
+        from datetime import datetime as _dt
+
+        masa = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop")
+        if not os.path.exists(masa):
+            masa = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.exists(masa):
+                masa = os.path.expanduser("~")
+        klasor = os.path.join(masa, "Reçete Kontrol")
+        os.makedirs(klasor, exist_ok=True)
+
+        donem = self.aktif_donem or "tum"
+        zaman = _dt.now().strftime("%Y%m%d_%H%M%S")
+        dosya_adi = f"ANTIHT_Kontrol_{donem}_{zaman}.xlsx"
+        path = os.path.join(klasor, dosya_adi)
+
+        wb = openpyxl.Workbook()
+
+        # ────────── SAYFA 1: ÖZET ──────────
+        ws1 = wb.active
+        ws1.title = "Özet"
+
+        VERDICT_RENK = {
+            "UYGUN":       "C8E6C9",
+            "UYGUN DEĞİL": "FFCDD2",
+            "ŞÜPHELİ":     "FFE0B2",
+            "ATLANDI":     "ECEFF1",
+        }
+        baslik_font = Font(bold=True, color="FFFFFF", size=11)
+        baslik_fill = PatternFill("solid", fgColor="01579B")  # koyu mavi
+        toplam_antiht = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                          + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+
+        ws1.cell(row=1, column=1,
+                 value="ANTİHT SUT 4.2.12.B (Mono + Kombi Antihipertansif) KONTROL RAPORU")
+        ws1.cell(row=1, column=1).font = Font(bold=True, size=14, color="01579B")
+        ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+
+        bilgi_satirlari = [
+            ("Dönem (Yıl-Ay)", donem),
+            ("Rapor Üretim Tarihi", _dt.now().strftime("%d.%m.%Y %H:%M:%S")),
+            ("Toplam Yüklenen Satır", str(len(self.tum_satirlar))),
+            ("ANTİHT Olarak Tespit Edilen", str(toplam_antiht)),
+            ("ANTİHT Dışı (Atlanan)", str(sayac["_kapsam_disi"])),
+            ("", ""),
+            ("Uygulanan SUT Kuralı",
+             "SUT 4.2.12.B — Mono ve kombine antihipertansif kullanım"),
+            ("Filtreleme",
+             "ATC C09A* (ACE-i) / C09C* (ARB) / C03* (Diüretik) / "
+             "C07* (BB) / C08* (KKB) — mono. C09B*/C09D* — kombi. "
+             "Etken madde + SUT_MADDESI_KATEGORI mapping fallback."),
+            ("Kapsam (Mono)",
+             "ACE-i (ramipril/perindopril/lisinopril vb.), ARB (telmisartan/"
+             "valsartan/losartan vb.), KKB (amlodipin/lerkanidipin vb.), "
+             "BB (bisoprolol/metoprolol vb.), Diüretik, Alfa bloker"),
+            ("Kapsam (Kombi)",
+             "ACE-i+Diüretik / ARB+Diüretik / ACE-i+KKB / ARB+KKB / "
+             "üçlü kombiler (C09B*/C09D*)"),
+            ("Veri Kaynağı",
+             "Botanik EOS DB (SADECE SELECT) — hiçbir veri değiştirilmedi"),
+        ]
+        for i, (etk, deg) in enumerate(bilgi_satirlari, start=3):
+            c1 = ws1.cell(row=i, column=1, value=etk)
+            c2 = ws1.cell(row=i, column=2, value=deg)
+            if etk:
+                c1.font = Font(bold=True, color="37474F")
+            c2.font = Font(color="01579B")
+            ws1.merge_cells(start_row=i, start_column=2, end_row=i, end_column=4)
+
+        bas = len(bilgi_satirlari) + 4
+        ws1.cell(row=bas, column=1, value="SONUÇ DAĞILIMI")
+        ws1.cell(row=bas, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas, start_column=1,
+                        end_row=bas, end_column=4)
+        bas += 1
+        for col, hd in enumerate(["Sonuç", "Adet", "Yüzde", ""], start=1):
+            c = ws1.cell(row=bas, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        for i, etiket in enumerate(["UYGUN", "UYGUN DEĞİL",
+                                     "ŞÜPHELİ", "ATLANDI"], start=bas + 1):
+            adet = sayac[etiket]
+            yuzde = (adet / toplam_antiht * 100) if toplam_antiht else 0
+            c1 = ws1.cell(row=i, column=1, value=etiket)
+            c2 = ws1.cell(row=i, column=2, value=adet)
+            c3 = ws1.cell(row=i, column=3, value=f"%{yuzde:.1f}")
+            fill = PatternFill("solid", fgColor=VERDICT_RENK[etiket])
+            for c in (c1, c2, c3):
+                c.fill = fill
+                c.font = Font(bold=True)
+            c2.alignment = Alignment(horizontal="center")
+            c3.alignment = Alignment(horizontal="center")
+
+        # Mono / Kombi dağılımı
+        bas2 = bas + 6
+        ws1.cell(row=bas2, column=1, value="ANTİHT TİPİ DAĞILIMI")
+        ws1.cell(row=bas2, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas2, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas2, start_column=1,
+                        end_row=bas2, end_column=4)
+        bas2 += 1
+        for col, hd in enumerate(["Tip", "Adet", "Açıklama", ""], start=1):
+            c = ws1.cell(row=bas2, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        kat_aciklama = {
+            "MONO":  "Tek başına antihipertansif (ACE-i / ARB / KKB / BB / "
+                     "Diüretik / Alfa bloker) — raporsuz uyumluluk + ACE+ARB "
+                     "kontrendikasyon + doz aşımı kontrolü",
+            "KOMBI": "Sabit kombine antihipertansif (ATC C09B*/C09D*) — "
+                     "raporsuz / rapor 04.05 / monoterapi yetersizliği "
+                     "ibaresi 3-yollu kontrol",
+        }
+        for i, k in enumerate(["MONO", "KOMBI"], start=bas2 + 1):
+            ws1.cell(row=i, column=1, value=k).font = Font(bold=True)
+            ws1.cell(row=i, column=2, value=kategori_sayac.get(k, 0)
+                     ).alignment = Alignment(horizontal="center")
+            ws1.cell(row=i, column=3, value=kat_aciklama[k])
+
+        # Notlar
+        bas3 = bas2 + 4
+        ws1.cell(row=bas3, column=1, value="NOTLAR / SUT KURALI ÖZETİ")
+        ws1.cell(row=bas3, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas3, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas3, start_column=1,
+                        end_row=bas3, end_column=4)
+        notlar = [
+            "• Mono raporsuz → genelde UYGUN (alt grup-bazlı uyarılar var: "
+            "ACE-i/ARB doz aşımı, ACE+ARB kontrendikasyon)",
+            "• Mono raporlu (rapor kodu 04.05) → UYGUN — antihipertansiyon raporu",
+            "• Kombi raporsuz → UYGUN (kombine etken madde monoterapi "
+            "yetersizliğinin örtük kanıtı sayılır)",
+            "• Kombi raporlu (04.05) → UYGUN — antihipertansiyon raporu mevcut",
+            "• Kombi raporlu (başka kod) → 'monoterapi' / 'tek ilaç yetersiz' "
+            "ibaresi raporda olmalı; yoksa ŞÜPHELİ",
+            "• ŞÜPHELİ = monoterapi ibaresi parse edilemedi veya rapor kodu "
+            "antihipertansiyon değil — manuel kontrol",
+            "• Kapsam dışı = ATC C09/C03/C07/C08 dışında olduğu için bu butonun "
+            "kapsamına girmiyor",
+        ]
+        for i, n in enumerate(notlar, start=bas3 + 1):
+            ws1.cell(row=i, column=1, value=n)
+            ws1.merge_cells(start_row=i, start_column=1,
+                            end_row=i, end_column=8)
+
+        for col, w in enumerate([34, 22, 70, 12], start=1):
+            ws1.column_dimensions[get_column_letter(col)].width = w
+
+        # ────────── SAYFA 2: ANTİHT REÇETELERİ ──────────
+        ws2 = wb.create_sheet("ANTİHT Reçeteleri")
+        kolonlar = [
+            ("rec_tar",          "Reç.Tarih",       12),
+            ("rec_no",           "Reçete No",       18),
+            ("hasta",            "Hasta",           24),
+            ("tc",               "TC",              13),
+            ("yas",              "Yaş",             6),
+            ("cins",             "Cin.",            6),
+            ("doktor",           "Doktor",          22),
+            ("brans",            "Branş",           20),
+            ("kurum_adi",        "Kurum",           28),
+            ("tesis_kodu",       "Tesis Kodu",      11),
+            ("ilac",             "İlaç",            28),
+            ("etkin",            "Etken Madde",     22),
+            ("atc",              "ATC",             10),
+            ("verdict_kategori", "Tip",             10),
+            ("rap_kod",          "Rapor Kod",       11),
+            ("rec_doz",          "Reçete Doz",      14),
+            ("rap_doz",          "Rapor Doz",       14),
+            ("kutu",             "Kutu",            6),
+            ("msj",              "Msj",             7),
+            ("uyari",            "Uyarı Kod",       18),
+            ("medula_msj",       "Medula Msj",      30),
+            ("rec_tesh",         "Reçete Teşhis",   30),
+            ("rap_tesh",         "Rapor Teşhis",    30),
+            ("rec_ack",          "Reçete Açıklama", 30),
+            ("rap_ack",          "Rapor Açıklama",  30),
+            ("verdict_sut",      "Uygulanan SUT",   30),
+            ("verdict_aranan",   "Aranan İbare",    28),
+            ("verdict_bulunan",  "Bulunan Metin",   28),
+            ("verdict_detaylar", "SUT Detaylar",    38),
+            ("verdict_uyari",    "Uyarı",           34),
+            ("verdict_detay",    "Açıklama",        50),
+            ("verdict",          "SONUÇ",           14),
+        ]
+        for c, (_kod, baslik, _g) in enumerate(kolonlar, 1):
+            cell = ws2.cell(row=1, column=c, value=baslik)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        ws2.row_dimensions[1].height = 28
+        ws2.freeze_panes = "A2"
+
+        for ri, s in enumerate(denetlenen_satirlar, start=2):
+            for ci, (kod, _baslik, _g) in enumerate(kolonlar, start=1):
+                deger = s.get(kod, "")
+                cell = ws2.cell(row=ri, column=ci, value=str(deger))
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            verdict = s.get("verdict") or ""
+            renk = VERDICT_RENK.get(verdict)
+            if renk:
+                son_col = len(kolonlar)
+                vcell = ws2.cell(row=ri, column=son_col)
+                vcell.fill = PatternFill("solid", fgColor=renk)
+                vcell.font = Font(bold=True)
+                vcell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for ci, (_kod, _baslik, gen) in enumerate(kolonlar, 1):
+            ws2.column_dimensions[get_column_letter(ci)].width = gen
+
+        ws2.auto_filter.ref = ws2.dimensions
+
+        # ────────── SAYFA 3: ANTİHT DIŞI ──────────
+        ws3 = wb.create_sheet("ANTİHT Dışı (Atlanan)")
+        ws3.cell(row=1, column=1,
+                 value="Aşağıdaki ilaçlar mono/kombi antihipertansif "
+                       "kapsamında olmadığı için ANTİHT butonu KAPSAMI "
+                       "DIŞINDA bırakıldı.").font = (
+            Font(italic=True, color="546E7A"))
+        ws3.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+
+        atlanan_kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12),
+            ("rec_no",  "Reçete No", 18),
+            ("hasta",   "Hasta",     24),
+            ("ilac",    "İlaç",      30),
+            ("etkin",   "Etken",     22),
+            ("atc",     "ATC",       10),
+        ]
+        for c, (_k, b, _g) in enumerate(atlanan_kolonlar, 1):
+            cell = ws3.cell(row=3, column=c, value=b)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center")
+        ri = 4
+        for s in self.tum_satirlar:
+            kategori = self._antiht_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori != "NONE":
+                continue
+            for ci, (kod, _b, _g) in enumerate(atlanan_kolonlar, 1):
+                ws3.cell(row=ri, column=ci, value=str(s.get(kod, "")))
+            ri += 1
+        for ci, (_k, _b, gen) in enumerate(atlanan_kolonlar, 1):
+            ws3.column_dimensions[get_column_letter(ci)].width = gen
+        ws3.freeze_panes = "A4"
+
+        wb.save(path)
+        return path
+
+    # ── İSKEMİK KALP KONTROL RAPORU EXCEL ÜRETİCİ ────────────────────
+    def _iskemik_kalp_rapor_excel_olustur(
+            self, *, sayac: dict, kategori_sayac: dict,
+            denetlenen_satirlar: list) -> str:
+        """Masaüstü/Reçete Kontrol/ klasörüne İSKEMİK KALP SUT denetim
+        raporu yazar.
+
+        3 sayfa:
+          - Özet : Toplam sayım, ivabradin/ranolazin/eplerenon dağılımı
+          - İSKEMİK KALP Reçeteleri : Denetlenen satır + SUT detay + verdict
+          - İSKEMİK KALP Dışı : Atlanan satırların kısa özeti
+        """
+        try:
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font, Alignment
+            from openpyxl.utils import get_column_letter
+        except ImportError as e:
+            raise RuntimeError("openpyxl yüklü değil") from e
+
+        from datetime import datetime as _dt
+
+        masa = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop")
+        if not os.path.exists(masa):
+            masa = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.exists(masa):
+                masa = os.path.expanduser("~")
+        klasor = os.path.join(masa, "Reçete Kontrol")
+        os.makedirs(klasor, exist_ok=True)
+
+        donem = self.aktif_donem or "tum"
+        zaman = _dt.now().strftime("%Y%m%d_%H%M%S")
+        dosya_adi = f"ISKEMIK_KALP_Kontrol_{donem}_{zaman}.xlsx"
+        path = os.path.join(klasor, dosya_adi)
+
+        wb = openpyxl.Workbook()
+        ws1 = wb.active
+        ws1.title = "Özet"
+
+        VERDICT_RENK = {
+            "UYGUN":       "C8E6C9",
+            "UYGUN DEĞİL": "FFCDD2",
+            "ŞÜPHELİ":     "FFE0B2",
+            "ATLANDI":     "ECEFF1",
+        }
+        baslik_font = Font(bold=True, color="FFFFFF", size=11)
+        baslik_fill = PatternFill("solid", fgColor="B71C1C")  # koyu kırmızı
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                   + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+
+        ws1.cell(row=1, column=1,
+                 value="İSKEMİK KALP SUT 4.2.15.C/F (İvabradin + Ranolazin + Eplerenon) KONTROL RAPORU")
+        ws1.cell(row=1, column=1).font = Font(bold=True, size=14, color="B71C1C")
+        ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+
+        bilgi_satirlari = [
+            ("Dönem (Yıl-Ay)", donem),
+            ("Rapor Üretim Tarihi", _dt.now().strftime("%d.%m.%Y %H:%M:%S")),
+            ("Toplam Yüklenen Satır", str(len(self.tum_satirlar))),
+            ("İSKEMİK KALP Olarak Tespit Edilen", str(toplam)),
+            ("Kapsam Dışı (Atlanan)", str(sayac["_kapsam_disi"])),
+            ("", ""),
+            ("Uygulanan SUT Kuralı",
+             "SUT 4.2.15.C (İvabradin/Eplerenon) + SUT 4.2.15.F (Ranolazin)"),
+            ("Filtreleme",
+             "ATC C01EB17 (İvabradin) / C01EB18 (Ranolazin) / "
+             "C03DA04 (Eplerenon) — etken madde fallback."),
+            ("Kapsam (İvabradin)",
+             "NYHA II-IV + EF≤45% + sinüs ritmi + BB intoleransı veya "
+             "yetersiz yanıt + uzman branş raporu"),
+            ("Kapsam (Ranolazin)",
+             "Kronik stabil angina + BB veya CCB intoleransı/yetersiz yanıt"),
+            ("Kapsam (Eplerenon)",
+             "İvabradin'le benzer koşullar (KY + EF≤45%) — kontrol_ivabradin "
+             "üzerinden delege"),
+            ("Veri Kaynağı",
+             "Botanik EOS DB (SADECE SELECT) — hiçbir veri değiştirilmedi"),
+        ]
+        for i, (etk, deg) in enumerate(bilgi_satirlari, start=3):
+            c1 = ws1.cell(row=i, column=1, value=etk)
+            c2 = ws1.cell(row=i, column=2, value=deg)
+            if etk:
+                c1.font = Font(bold=True, color="37474F")
+            c2.font = Font(color="B71C1C")
+            ws1.merge_cells(start_row=i, start_column=2, end_row=i, end_column=4)
+
+        bas = len(bilgi_satirlari) + 4
+        ws1.cell(row=bas, column=1, value="SONUÇ DAĞILIMI")
+        ws1.cell(row=bas, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas, start_column=1,
+                        end_row=bas, end_column=4)
+        bas += 1
+        for col, hd in enumerate(["Sonuç", "Adet", "Yüzde", ""], start=1):
+            c = ws1.cell(row=bas, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        for i, etiket in enumerate(["UYGUN", "UYGUN DEĞİL",
+                                     "ŞÜPHELİ", "ATLANDI"], start=bas + 1):
+            adet = sayac[etiket]
+            yuzde = (adet / toplam * 100) if toplam else 0
+            c1 = ws1.cell(row=i, column=1, value=etiket)
+            c2 = ws1.cell(row=i, column=2, value=adet)
+            c3 = ws1.cell(row=i, column=3, value=f"%{yuzde:.1f}")
+            fill = PatternFill("solid", fgColor=VERDICT_RENK[etiket])
+            for c in (c1, c2, c3):
+                c.fill = fill
+                c.font = Font(bold=True)
+            c2.alignment = Alignment(horizontal="center")
+            c3.alignment = Alignment(horizontal="center")
+
+        bas2 = bas + 6
+        ws1.cell(row=bas2, column=1, value="İLAÇ DAĞILIMI")
+        ws1.cell(row=bas2, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas2, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas2, start_column=1,
+                        end_row=bas2, end_column=4)
+        bas2 += 1
+        for col, hd in enumerate(["İlaç", "Adet", "Açıklama", ""], start=1):
+            c = ws1.cell(row=bas2, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        kat_aciklama = {
+            "IVABRADIN": "ATC C01EB17 — NYHA II-IV + EF≤45% + sinüs ritmi + "
+                         "BB intoleransı/yetersiz yanıt (kontrol_ivabradin)",
+            "RANOLAZIN": "ATC C01EB18 — kronik stabil angina + BB/CCB "
+                         "intoleransı veya yetersiz yanıt (kontrol_ranolazin)",
+            "EPLERENON": "ATC C03DA04 — KY + EF≤45% (kontrol_ivabradin'e delege "
+                         "edilir, koşullar benzer)",
+        }
+        for i, k in enumerate(["IVABRADIN", "RANOLAZIN", "EPLERENON"],
+                              start=bas2 + 1):
+            ws1.cell(row=i, column=1, value=k).font = Font(bold=True)
+            ws1.cell(row=i, column=2, value=kategori_sayac.get(k, 0)
+                     ).alignment = Alignment(horizontal="center")
+            ws1.cell(row=i, column=3, value=kat_aciklama[k])
+
+        bas3 = bas2 + 5
+        ws1.cell(row=bas3, column=1, value="NOTLAR / SUT KURALI ÖZETİ")
+        ws1.cell(row=bas3, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas3, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas3, start_column=1,
+                        end_row=bas3, end_column=4)
+        notlar = [
+            "• İvabradin → kalp yetmezliği (NYHA II-IV) + EF≤45% + sinüs "
+            "ritmi + BB intoleransı veya yetersiz yanıt (KH ≥75 atım/dk)",
+            "• Ranolazin → kronik stabil angina + BB/CCB intoleransı veya "
+            "yetersiz semptom kontrolü",
+            "• Eplerenon → İvabradin koşullarına benzer (KY + EF≤45%); "
+            "kontrol_ivabradin'e delege edilir",
+            "• Tüm üçü için raporlu olmak ZORUNLU; raporsuz → UYGUN DEĞİL",
+            "• ŞÜPHELİ = NYHA/EF/BB-intolerans ibaresi parse edilemedi — manuel kontrol",
+            "• Kapsam dışı = ATC C01EB17/18 + C03DA04 dışında olduğu için bu "
+            "butonun kapsamına girmiyor",
+        ]
+        for i, n in enumerate(notlar, start=bas3 + 1):
+            ws1.cell(row=i, column=1, value=n)
+            ws1.merge_cells(start_row=i, start_column=1,
+                            end_row=i, end_column=8)
+
+        for col, w in enumerate([34, 22, 70, 12], start=1):
+            ws1.column_dimensions[get_column_letter(col)].width = w
+
+        # ────────── SAYFA 2 ──────────
+        ws2 = wb.create_sheet("İSKEMİK KALP Reçeteleri")
+        kolonlar = [
+            ("rec_tar",          "Reç.Tarih",       12),
+            ("rec_no",           "Reçete No",       18),
+            ("hasta",            "Hasta",           24),
+            ("tc",               "TC",              13),
+            ("yas",              "Yaş",             6),
+            ("cins",             "Cin.",            6),
+            ("doktor",           "Doktor",          22),
+            ("brans",            "Branş",           20),
+            ("kurum_adi",        "Kurum",           28),
+            ("tesis_kodu",       "Tesis Kodu",      11),
+            ("ilac",             "İlaç",            28),
+            ("etkin",            "Etken Madde",     22),
+            ("atc",              "ATC",             10),
+            ("verdict_kategori", "Tip",             10),
+            ("rap_kod",          "Rapor Kod",       11),
+            ("rec_doz",          "Reçete Doz",      14),
+            ("rap_doz",          "Rapor Doz",       14),
+            ("kutu",             "Kutu",            6),
+            ("msj",              "Msj",             7),
+            ("uyari",            "Uyarı Kod",       18),
+            ("medula_msj",       "Medula Msj",      30),
+            ("rec_tesh",         "Reçete Teşhis",   30),
+            ("rap_tesh",         "Rapor Teşhis",    30),
+            ("rec_ack",          "Reçete Açıklama", 30),
+            ("rap_ack",          "Rapor Açıklama",  30),
+            ("verdict_sut",      "Uygulanan SUT",   30),
+            ("verdict_aranan",   "Aranan İbare",    28),
+            ("verdict_bulunan",  "Bulunan Metin",   28),
+            ("verdict_detaylar", "SUT Detaylar",    38),
+            ("verdict_uyari",    "Uyarı",           34),
+            ("verdict_detay",    "Açıklama",        50),
+            ("verdict",          "SONUÇ",           14),
+        ]
+        for c, (_kod, baslik, _g) in enumerate(kolonlar, 1):
+            cell = ws2.cell(row=1, column=c, value=baslik)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        ws2.row_dimensions[1].height = 28
+        ws2.freeze_panes = "A2"
+
+        for ri, s in enumerate(denetlenen_satirlar, start=2):
+            for ci, (kod, _baslik, _g) in enumerate(kolonlar, start=1):
+                deger = s.get(kod, "")
+                cell = ws2.cell(row=ri, column=ci, value=str(deger))
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            verdict = s.get("verdict") or ""
+            renk = VERDICT_RENK.get(verdict)
+            if renk:
+                son_col = len(kolonlar)
+                vcell = ws2.cell(row=ri, column=son_col)
+                vcell.fill = PatternFill("solid", fgColor=renk)
+                vcell.font = Font(bold=True)
+                vcell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for ci, (_kod, _baslik, gen) in enumerate(kolonlar, 1):
+            ws2.column_dimensions[get_column_letter(ci)].width = gen
+
+        ws2.auto_filter.ref = ws2.dimensions
+
+        # ────────── SAYFA 3 ──────────
+        ws3 = wb.create_sheet("İSKEMİK KALP Dışı (Atlanan)")
+        ws3.cell(row=1, column=1,
+                 value="Aşağıdaki ilaçlar İvabradin/Ranolazin/Eplerenon "
+                       "kapsamında olmadığı için İSKEMİK KALP butonu "
+                       "KAPSAMI DIŞINDA bırakıldı.").font = (
+            Font(italic=True, color="546E7A"))
+        ws3.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+
+        atlanan_kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12),
+            ("rec_no",  "Reçete No", 18),
+            ("hasta",   "Hasta",     24),
+            ("ilac",    "İlaç",      30),
+            ("etkin",   "Etken",     22),
+            ("atc",     "ATC",       10),
+        ]
+        for c, (_k, b, _g) in enumerate(atlanan_kolonlar, 1):
+            cell = ws3.cell(row=3, column=c, value=b)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center")
+        ri = 4
+        for s in self.tum_satirlar:
+            kategori = self._iskemik_kalp_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori != "NONE":
+                continue
+            for ci, (kod, _b, _g) in enumerate(atlanan_kolonlar, 1):
+                ws3.cell(row=ri, column=ci, value=str(s.get(kod, "")))
+            ri += 1
+        for ci, (_k, _b, gen) in enumerate(atlanan_kolonlar, 1):
+            ws3.column_dimensions[get_column_letter(ci)].width = gen
+        ws3.freeze_panes = "A4"
+
+        wb.save(path)
+        return path
+
+    # ── K-SİTRAT KONTROL RAPORU EXCEL ÜRETİCİ ────────────────────────
+    def _potasyum_sitrat_rapor_excel_olustur(
+            self, *, sayac: dict, kategori_sayac: dict,
+            denetlenen_satirlar: list) -> str:
+        """Masaüstü/Reçete Kontrol/ klasörüne K-SİTRAT (Potasyum sitrat —
+        SUT EK-4/F) denetim raporu yazar. 3 sayfa: Özet / Reçeteler /
+        K-SİTRAT Dışı."""
+        try:
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font, Alignment
+            from openpyxl.utils import get_column_letter
+        except ImportError as e:
+            raise RuntimeError("openpyxl yüklü değil") from e
+
+        from datetime import datetime as _dt
+
+        masa = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop")
+        if not os.path.exists(masa):
+            masa = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.exists(masa):
+                masa = os.path.expanduser("~")
+        klasor = os.path.join(masa, "Reçete Kontrol")
+        os.makedirs(klasor, exist_ok=True)
+
+        donem = self.aktif_donem or "tum"
+        zaman = _dt.now().strftime("%Y%m%d_%H%M%S")
+        dosya_adi = f"K_SITRAT_Kontrol_{donem}_{zaman}.xlsx"
+        path = os.path.join(klasor, dosya_adi)
+
+        wb = openpyxl.Workbook()
+        ws1 = wb.active
+        ws1.title = "Özet"
+
+        VERDICT_RENK = {
+            "UYGUN":       "C8E6C9",
+            "UYGUN DEĞİL": "FFCDD2",
+            "ŞÜPHELİ":     "FFE0B2",
+            "ATLANDI":     "ECEFF1",
+        }
+        baslik_font = Font(bold=True, color="FFFFFF", size=11)
+        baslik_fill = PatternFill("solid", fgColor="0277BD")
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                   + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+
+        ws1.cell(row=1, column=1,
+                 value="K-SİTRAT (Potasyum Sitrat) SUT EK-4/F KONTROL RAPORU")
+        ws1.cell(row=1, column=1).font = Font(bold=True, size=14, color="0277BD")
+        ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+
+        bilgi_satirlari = [
+            ("Dönem (Yıl-Ay)", donem),
+            ("Rapor Üretim Tarihi", _dt.now().strftime("%d.%m.%Y %H:%M:%S")),
+            ("Toplam Yüklenen Satır", str(len(self.tum_satirlar))),
+            ("K-SİTRAT Olarak Tespit Edilen", str(toplam)),
+            ("Kapsam Dışı (Atlanan)", str(sayac["_kapsam_disi"])),
+            ("", ""),
+            ("Uygulanan SUT Kuralı", "SUT EK-4/F — Potasyum Sitrat"),
+            ("Filtreleme",
+             "ATC A12BA02 + etken madde 'POTASYUM SITRAT'"),
+            ("Kapsam",
+             "Üroloji veya Nefroloji uzmanı raporu zorunlu. ICD: N20.0/N20.1 "
+             "(böbrek taşı), N25.8/N25.9 (renal tübüler asidoz). "
+             "Aile hekimi yazımı UYGUN DEĞİL."),
+            ("Veri Kaynağı",
+             "Botanik EOS DB (SADECE SELECT) — hiçbir veri değiştirilmedi"),
+        ]
+        for i, (etk, deg) in enumerate(bilgi_satirlari, start=3):
+            c1 = ws1.cell(row=i, column=1, value=etk)
+            c2 = ws1.cell(row=i, column=2, value=deg)
+            if etk:
+                c1.font = Font(bold=True, color="37474F")
+            c2.font = Font(color="0277BD")
+            ws1.merge_cells(start_row=i, start_column=2, end_row=i, end_column=4)
+
+        bas = len(bilgi_satirlari) + 4
+        ws1.cell(row=bas, column=1, value="SONUÇ DAĞILIMI")
+        ws1.cell(row=bas, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas, start_column=1,
+                        end_row=bas, end_column=4)
+        bas += 1
+        for col, hd in enumerate(["Sonuç", "Adet", "Yüzde", ""], start=1):
+            c = ws1.cell(row=bas, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        for i, etiket in enumerate(["UYGUN", "UYGUN DEĞİL",
+                                     "ŞÜPHELİ", "ATLANDI"], start=bas + 1):
+            adet = sayac[etiket]
+            yuzde = (adet / toplam * 100) if toplam else 0
+            c1 = ws1.cell(row=i, column=1, value=etiket)
+            c2 = ws1.cell(row=i, column=2, value=adet)
+            c3 = ws1.cell(row=i, column=3, value=f"%{yuzde:.1f}")
+            fill = PatternFill("solid", fgColor=VERDICT_RENK[etiket])
+            for c in (c1, c2, c3):
+                c.fill = fill
+                c.font = Font(bold=True)
+            c2.alignment = Alignment(horizontal="center")
+            c3.alignment = Alignment(horizontal="center")
+
+        bas3 = bas + 6
+        ws1.cell(row=bas3, column=1, value="NOTLAR / SUT KURALI ÖZETİ")
+        ws1.cell(row=bas3, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas3, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas3, start_column=1,
+                        end_row=bas3, end_column=4)
+        notlar = [
+            "• Üroloji veya Nefroloji uzmanı raporu ZORUNLU",
+            "• Aile hekimi / pratisyen yazımı → UYGUN DEĞİL",
+            "• ICD: N20.0/N20.1 (böbrek taşı) veya N25.8/N25.9 (RTA)",
+            "• Raporsuz → ŞÜPHELİ (rapor metni okunamadığı için manuel)",
+            "• Kapsam dışı = ATC A12BA02 / Potasyum Sitrat değil",
+        ]
+        for i, n in enumerate(notlar, start=bas3 + 1):
+            ws1.cell(row=i, column=1, value=n)
+            ws1.merge_cells(start_row=i, start_column=1,
+                            end_row=i, end_column=8)
+
+        for col, w in enumerate([34, 22, 70, 12], start=1):
+            ws1.column_dimensions[get_column_letter(col)].width = w
+
+        # ────────── SAYFA 2 ──────────
+        ws2 = wb.create_sheet("K-SİTRAT Reçeteleri")
+        kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12), ("rec_no", "Reçete No", 18),
+            ("hasta", "Hasta", 24), ("tc", "TC", 13),
+            ("yas", "Yaş", 6), ("cins", "Cin.", 6),
+            ("doktor", "Doktor", 22), ("brans", "Branş", 20),
+            ("kurum_adi", "Kurum", 28), ("tesis_kodu", "Tesis Kodu", 11),
+            ("ilac", "İlaç", 28), ("etkin", "Etken Madde", 22),
+            ("atc", "ATC", 10), ("rap_kod", "Rapor Kod", 11),
+            ("rec_doz", "Reçete Doz", 14), ("kutu", "Kutu", 6),
+            ("medula_msj", "Medula Msj", 30),
+            ("rec_tesh", "Reçete Teşhis", 30), ("rap_tesh", "Rapor Teşhis", 30),
+            ("rec_ack", "Reçete Açıklama", 30), ("rap_ack", "Rapor Açıklama", 30),
+            ("verdict_sut", "Uygulanan SUT", 30),
+            ("verdict_aranan", "Aranan İbare", 28),
+            ("verdict_bulunan", "Bulunan Metin", 28),
+            ("verdict_detaylar", "SUT Detaylar", 38),
+            ("verdict_uyari", "Uyarı", 34),
+            ("verdict_detay", "Açıklama", 50),
+            ("verdict", "SONUÇ", 14),
+        ]
+        for c, (_kod, baslik, _g) in enumerate(kolonlar, 1):
+            cell = ws2.cell(row=1, column=c, value=baslik)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        ws2.row_dimensions[1].height = 28
+        ws2.freeze_panes = "A2"
+
+        for ri, s in enumerate(denetlenen_satirlar, start=2):
+            for ci, (kod, _baslik, _g) in enumerate(kolonlar, start=1):
+                deger = s.get(kod, "")
+                cell = ws2.cell(row=ri, column=ci, value=str(deger))
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            verdict = s.get("verdict") or ""
+            renk = VERDICT_RENK.get(verdict)
+            if renk:
+                son_col = len(kolonlar)
+                vcell = ws2.cell(row=ri, column=son_col)
+                vcell.fill = PatternFill("solid", fgColor=renk)
+                vcell.font = Font(bold=True)
+                vcell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for ci, (_kod, _baslik, gen) in enumerate(kolonlar, 1):
+            ws2.column_dimensions[get_column_letter(ci)].width = gen
+        ws2.auto_filter.ref = ws2.dimensions
+
+        # ────────── SAYFA 3 ──────────
+        ws3 = wb.create_sheet("K-SİTRAT Dışı (Atlanan)")
+        ws3.cell(row=1, column=1,
+                 value="Aşağıdaki ilaçlar potasyum sitrat kapsamında "
+                       "olmadığı için bu butonun KAPSAMI DIŞINDA "
+                       "bırakıldı.").font = Font(italic=True, color="546E7A")
+        ws3.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+
+        atlanan_kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12), ("rec_no", "Reçete No", 18),
+            ("hasta", "Hasta", 24), ("ilac", "İlaç", 30),
+            ("etkin", "Etken", 22), ("atc", "ATC", 10),
+        ]
+        for c, (_k, b, _g) in enumerate(atlanan_kolonlar, 1):
+            cell = ws3.cell(row=3, column=c, value=b)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center")
+        ri = 4
+        for s in self.tum_satirlar:
+            kategori = self._potasyum_sitrat_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori != "NONE":
+                continue
+            for ci, (kod, _b, _g) in enumerate(atlanan_kolonlar, 1):
+                ws3.cell(row=ri, column=ci, value=str(s.get(kod, "")))
+            ri += 1
+        for ci, (_k, _b, gen) in enumerate(atlanan_kolonlar, 1):
+            ws3.column_dimensions[get_column_letter(ci)].width = gen
+        ws3.freeze_panes = "A4"
+
+        wb.save(path)
+        return path
+
+    # ── RAPORSUZ BİLGİ KONTROL RAPORU EXCEL ÜRETİCİ ──────────────────
+    def _raporsuz_bilgi_rapor_excel_olustur(
+            self, *, sayac: dict, kategori_sayac: dict,
+            denetlenen_satirlar: list) -> str:
+        """Masaüstü/Reçete Kontrol/ klasörüne RAPORSUZ BİLGİ denetim
+        raporu yazar. 3 sayfa: Özet / Reçeteler / RAPORSUZ Dışı."""
+        try:
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font, Alignment
+            from openpyxl.utils import get_column_letter
+        except ImportError as e:
+            raise RuntimeError("openpyxl yüklü değil") from e
+
+        from datetime import datetime as _dt
+
+        masa = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop")
+        if not os.path.exists(masa):
+            masa = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.exists(masa):
+                masa = os.path.expanduser("~")
+        klasor = os.path.join(masa, "Reçete Kontrol")
+        os.makedirs(klasor, exist_ok=True)
+
+        donem = self.aktif_donem or "tum"
+        zaman = _dt.now().strftime("%Y%m%d_%H%M%S")
+        dosya_adi = f"RAPORSUZ_BILGI_Kontrol_{donem}_{zaman}.xlsx"
+        path = os.path.join(klasor, dosya_adi)
+
+        wb = openpyxl.Workbook()
+        ws1 = wb.active
+        ws1.title = "Özet"
+
+        VERDICT_RENK = {
+            "UYGUN":       "C8E6C9",
+            "UYGUN DEĞİL": "FFCDD2",
+            "ŞÜPHELİ":     "FFE0B2",
+            "ATLANDI":     "ECEFF1",
+        }
+        baslik_font = Font(bold=True, color="FFFFFF", size=11)
+        baslik_fill = PatternFill("solid", fgColor="455A64")  # gri
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                   + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+
+        ws1.cell(row=1, column=1,
+                 value="RAPORSUZ BİLGİ (Raporsuz verilebilen ilaçlar) KONTROL RAPORU")
+        ws1.cell(row=1, column=1).font = Font(bold=True, size=14, color="455A64")
+        ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+
+        bilgi_satirlari = [
+            ("Dönem (Yıl-Ay)", donem),
+            ("Rapor Üretim Tarihi", _dt.now().strftime("%d.%m.%Y %H:%M:%S")),
+            ("Toplam Yüklenen Satır", str(len(self.tum_satirlar))),
+            ("RAPORSUZ Olarak Tespit Edilen", str(toplam)),
+            ("Kapsam Dışı (Atlanan)", str(sayac["_kapsam_disi"])),
+            ("", ""),
+            ("Uygulanan Kontrol", "kontrol_raporsuz_bilgilendirme — 28 alt sınıf dispatcher"),
+            ("Filtreleme",
+             "RAPORSUZ_BILGILENDIRME / BENZODIAZEPIN / GOZ_LUBRIKAN "
+             "kategorileri (sut_kategorisi_tespit_et mapping'inde tanınan)"),
+            ("Kapsam",
+             "NSAİD, parasetamol, makrolid, penisilin, sefalosporin, "
+             "antihistaminik, dekonjestan, MAO-B, PPI, H2RA, antidiyareik, "
+             "laksatif, antispazmodik, kas gevşetici, topikal NSAİD, "
+             "topikal kortikosteroid, oftalmik/otik/nazal, mukolitik, "
+             "antitüsif, vitamin, oral antifungal, antiemetik, vb."),
+            ("Veri Kaynağı",
+             "Botanik EOS DB (SADECE SELECT) — hiçbir veri değiştirilmedi"),
+        ]
+        for i, (etk, deg) in enumerate(bilgi_satirlari, start=3):
+            c1 = ws1.cell(row=i, column=1, value=etk)
+            c2 = ws1.cell(row=i, column=2, value=deg)
+            if etk:
+                c1.font = Font(bold=True, color="37474F")
+            c2.font = Font(color="455A64")
+            ws1.merge_cells(start_row=i, start_column=2, end_row=i, end_column=4)
+
+        bas = len(bilgi_satirlari) + 4
+        ws1.cell(row=bas, column=1, value="SONUÇ DAĞILIMI")
+        ws1.cell(row=bas, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas, start_column=1,
+                        end_row=bas, end_column=4)
+        bas += 1
+        for col, hd in enumerate(["Sonuç", "Adet", "Yüzde", ""], start=1):
+            c = ws1.cell(row=bas, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        for i, etiket in enumerate(["UYGUN", "UYGUN DEĞİL",
+                                     "ŞÜPHELİ", "ATLANDI"], start=bas + 1):
+            adet = sayac[etiket]
+            yuzde = (adet / toplam * 100) if toplam else 0
+            c1 = ws1.cell(row=i, column=1, value=etiket)
+            c2 = ws1.cell(row=i, column=2, value=adet)
+            c3 = ws1.cell(row=i, column=3, value=f"%{yuzde:.1f}")
+            fill = PatternFill("solid", fgColor=VERDICT_RENK[etiket])
+            for c in (c1, c2, c3):
+                c.fill = fill
+                c.font = Font(bold=True)
+            c2.alignment = Alignment(horizontal="center")
+            c3.alignment = Alignment(horizontal="center")
+
+        bas3 = bas + 6
+        ws1.cell(row=bas3, column=1, value="NOTLAR")
+        ws1.cell(row=bas3, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas3, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas3, start_column=1,
+                        end_row=bas3, end_column=4)
+        notlar = [
+            "• Bu butonun amacı RAPORSUZ verilebilen ilaçları toplu görmek + "
+            "doz/etkileşim/yan etki uyarılarını listelemek (UYGUN olsalar bile)",
+            "• kontrol_raporsuz_bilgilendirme her ilaç için detaylı uyarı "
+            "döndürür — verdict_uyari sütununa bakın",
+            "• Bazı raporsuz ilaçlar (Augmentin gibi kombi antibiyotikler, "
+            "PPI'lar) sut_kategorisi_tespit_et mapping'inde tanınmadığı için "
+            "bu butona dahil olmayabilir — kapsam sınırlı",
+            "• ŞÜPHELİ = doz/etkileşim parse edilemedi — manuel kontrol",
+            "• Kapsam dışı = RAPORSUZ_BILGILENDIRME / BENZODIAZEPIN / "
+            "GOZ_LUBRIKAN kategorilerinden hiçbirine düşmedi",
+        ]
+        for i, n in enumerate(notlar, start=bas3 + 1):
+            ws1.cell(row=i, column=1, value=n)
+            ws1.merge_cells(start_row=i, start_column=1,
+                            end_row=i, end_column=8)
+
+        for col, w in enumerate([34, 22, 70, 12], start=1):
+            ws1.column_dimensions[get_column_letter(col)].width = w
+
+        # ────────── SAYFA 2 ──────────
+        ws2 = wb.create_sheet("RAPORSUZ Reçeteleri")
+        kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12), ("rec_no", "Reçete No", 18),
+            ("hasta", "Hasta", 24), ("tc", "TC", 13),
+            ("yas", "Yaş", 6), ("cins", "Cin.", 6),
+            ("doktor", "Doktor", 22), ("brans", "Branş", 20),
+            ("kurum_adi", "Kurum", 28), ("ilac", "İlaç", 28),
+            ("etkin", "Etken Madde", 22), ("atc", "ATC", 10),
+            ("kutu", "Kutu", 6),
+            ("medula_msj", "Medula Msj", 30),
+            ("rec_tesh", "Reçete Teşhis", 30),
+            ("rec_ack", "Reçete Açıklama", 30),
+            ("verdict_sut", "Uygulanan Kural", 30),
+            ("verdict_uyari", "Uyarı / Etkileşim / Doz", 60),
+            ("verdict_detay", "Açıklama", 50),
+            ("verdict", "SONUÇ", 14),
+        ]
+        for c, (_kod, baslik, _g) in enumerate(kolonlar, 1):
+            cell = ws2.cell(row=1, column=c, value=baslik)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        ws2.row_dimensions[1].height = 28
+        ws2.freeze_panes = "A2"
+
+        for ri, s in enumerate(denetlenen_satirlar, start=2):
+            for ci, (kod, _baslik, _g) in enumerate(kolonlar, start=1):
+                deger = s.get(kod, "")
+                cell = ws2.cell(row=ri, column=ci, value=str(deger))
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            verdict = s.get("verdict") or ""
+            renk = VERDICT_RENK.get(verdict)
+            if renk:
+                son_col = len(kolonlar)
+                vcell = ws2.cell(row=ri, column=son_col)
+                vcell.fill = PatternFill("solid", fgColor=renk)
+                vcell.font = Font(bold=True)
+                vcell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for ci, (_kod, _baslik, gen) in enumerate(kolonlar, 1):
+            ws2.column_dimensions[get_column_letter(ci)].width = gen
+        ws2.auto_filter.ref = ws2.dimensions
+
+        # ────────── SAYFA 3 ──────────
+        ws3 = wb.create_sheet("RAPORSUZ Dışı (Atlanan)")
+        ws3.cell(row=1, column=1,
+                 value="Aşağıdaki ilaçlar raporsuz bilgilendirme kapsamında "
+                       "olmadığı (veya mapping'de tanınmadığı) için bu "
+                       "butonun KAPSAMI DIŞINDA bırakıldı.").font = (
+            Font(italic=True, color="546E7A"))
+        ws3.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+
+        atlanan_kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12), ("rec_no", "Reçete No", 18),
+            ("hasta", "Hasta", 24), ("ilac", "İlaç", 30),
+            ("etkin", "Etken", 22), ("atc", "ATC", 10),
+        ]
+        for c, (_k, b, _g) in enumerate(atlanan_kolonlar, 1):
+            cell = ws3.cell(row=3, column=c, value=b)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center")
+        ri = 4
+        for s in self.tum_satirlar:
+            kategori = self._raporsuz_bilgi_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori != "NONE":
+                continue
+            for ci, (kod, _b, _g) in enumerate(atlanan_kolonlar, 1):
+                ws3.cell(row=ri, column=ci, value=str(s.get(kod, "")))
+            ri += 1
+        for ci, (_k, _b, gen) in enumerate(atlanan_kolonlar, 1):
+            ws3.column_dimensions[get_column_letter(ci)].width = gen
+        ws3.freeze_panes = "A4"
+
+        wb.save(path)
+        return path
+
+    # ── BASIT SUT KONTROL RAPORU EXCEL ÜRETİCİ ───────────────────────
+    def _basit_sut_rapor_excel_olustur(
+            self, *, sayac: dict, kategori_sayac: dict,
+            denetlenen_satirlar: list) -> str:
+        """Masaüstü/Reçete Kontrol/ klasörüne BASIT SUT (DMAH+Kadın+
+        Trimetazidin+Kinolon) denetim raporu yazar. 3 sayfa: Özet /
+        Reçeteler / BASIT SUT Dışı."""
+        try:
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font, Alignment
+            from openpyxl.utils import get_column_letter
+        except ImportError as e:
+            raise RuntimeError("openpyxl yüklü değil") from e
+
+        from datetime import datetime as _dt
+
+        masa = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop")
+        if not os.path.exists(masa):
+            masa = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.exists(masa):
+                masa = os.path.expanduser("~")
+        klasor = os.path.join(masa, "Reçete Kontrol")
+        os.makedirs(klasor, exist_ok=True)
+
+        donem = self.aktif_donem or "tum"
+        zaman = _dt.now().strftime("%Y%m%d_%H%M%S")
+        dosya_adi = f"BASIT_SUT_Kontrol_{donem}_{zaman}.xlsx"
+        path = os.path.join(klasor, dosya_adi)
+
+        wb = openpyxl.Workbook()
+        ws1 = wb.active
+        ws1.title = "Özet"
+
+        VERDICT_RENK = {
+            "UYGUN":       "C8E6C9",
+            "UYGUN DEĞİL": "FFCDD2",
+            "ŞÜPHELİ":     "FFE0B2",
+            "ATLANDI":     "ECEFF1",
+        }
+        baslik_font = Font(bold=True, color="FFFFFF", size=11)
+        baslik_fill = PatternFill("solid", fgColor="558B2F")  # yeşil
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"]
+                   + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
+
+        ws1.cell(row=1, column=1,
+                 value="BASIT SUT (DMAH + Kadın Hormon + Trimetazidin + Florokinolon) KONTROL RAPORU")
+        ws1.cell(row=1, column=1).font = Font(bold=True, size=14, color="558B2F")
+        ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+
+        bilgi_satirlari = [
+            ("Dönem (Yıl-Ay)", donem),
+            ("Rapor Üretim Tarihi", _dt.now().strftime("%d.%m.%Y %H:%M:%S")),
+            ("Toplam Yüklenen Satır", str(len(self.tum_satirlar))),
+            ("BASIT SUT Olarak Tespit Edilen", str(toplam)),
+            ("Kapsam Dışı (Atlanan)", str(sayac["_kapsam_disi"])),
+            ("", ""),
+            ("Uygulanan SUT Kuralları",
+             "DMAH (4.2.7) + Kadın Hormon (4.2.29) + Trimetazidin "
+             "(4.2.14.C) + Florokinolon (EK-4/E)"),
+            ("Filtreleme",
+             "ATC: B01AB* (DMAH) / G03C/D/F* (Kadın hormon) / "
+             "C01EB15 (Trimetazidin) / J01MA* (Florokinolon)"),
+            ("Veri Kaynağı",
+             "Botanik EOS DB (SADECE SELECT) — hiçbir veri değiştirilmedi"),
+        ]
+        for i, (etk, deg) in enumerate(bilgi_satirlari, start=3):
+            c1 = ws1.cell(row=i, column=1, value=etk)
+            c2 = ws1.cell(row=i, column=2, value=deg)
+            if etk:
+                c1.font = Font(bold=True, color="37474F")
+            c2.font = Font(color="558B2F")
+            ws1.merge_cells(start_row=i, start_column=2, end_row=i, end_column=4)
+
+        bas = len(bilgi_satirlari) + 4
+        ws1.cell(row=bas, column=1, value="SONUÇ DAĞILIMI")
+        ws1.cell(row=bas, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas, start_column=1,
+                        end_row=bas, end_column=4)
+        bas += 1
+        for col, hd in enumerate(["Sonuç", "Adet", "Yüzde", ""], start=1):
+            c = ws1.cell(row=bas, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        for i, etiket in enumerate(["UYGUN", "UYGUN DEĞİL",
+                                     "ŞÜPHELİ", "ATLANDI"], start=bas + 1):
+            adet = sayac[etiket]
+            yuzde = (adet / toplam * 100) if toplam else 0
+            c1 = ws1.cell(row=i, column=1, value=etiket)
+            c2 = ws1.cell(row=i, column=2, value=adet)
+            c3 = ws1.cell(row=i, column=3, value=f"%{yuzde:.1f}")
+            fill = PatternFill("solid", fgColor=VERDICT_RENK[etiket])
+            for c in (c1, c2, c3):
+                c.fill = fill
+                c.font = Font(bold=True)
+            c2.alignment = Alignment(horizontal="center")
+            c3.alignment = Alignment(horizontal="center")
+
+        bas2 = bas + 6
+        ws1.cell(row=bas2, column=1, value="KATEGORİ DAĞILIMI")
+        ws1.cell(row=bas2, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas2, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas2, start_column=1,
+                        end_row=bas2, end_column=4)
+        bas2 += 1
+        for col, hd in enumerate(["Kategori", "Adet", "Açıklama", ""], start=1):
+            c = ws1.cell(row=bas2, column=col, value=hd)
+            c.font = baslik_font
+            c.fill = baslik_fill
+            c.alignment = Alignment(horizontal="center")
+        kat_aciklama = {
+            "DMAH":                     "DMAH/Enoksaparin (SUT 4.2.7) — rapor + uyarı kodu (280/281) kontrolü",
+            "KADIN_HORMON":             "Kadın cinsiyet hormonları (SUT 4.2.29) — rapor var/yok + süre uyarısı",
+            "TRIMETAZIDIN":             "Trimetazidin (SUT 4.2.14.C) — rapor zorunlu",
+            "ANTIBIYOTIK_FLOROKINOLON": "Florokinolon (EK-4/E) — raporsuz verilebilir + kültür antibiyogram önerisi",
+        }
+        for i, k in enumerate(["DMAH", "KADIN_HORMON",
+                                "TRIMETAZIDIN", "ANTIBIYOTIK_FLOROKINOLON"],
+                              start=bas2 + 1):
+            ws1.cell(row=i, column=1, value=k).font = Font(bold=True)
+            ws1.cell(row=i, column=2, value=kategori_sayac.get(k, 0)
+                     ).alignment = Alignment(horizontal="center")
+            ws1.cell(row=i, column=3, value=kat_aciklama[k])
+
+        bas3 = bas2 + 6
+        ws1.cell(row=bas3, column=1, value="NOTLAR")
+        ws1.cell(row=bas3, column=1).font = Font(bold=True, color="FFFFFF")
+        ws1.cell(row=bas3, column=1).fill = baslik_fill
+        ws1.merge_cells(start_row=bas3, start_column=1,
+                        end_row=bas3, end_column=4)
+        notlar = [
+            "• 4 farklı SUT kategorisi tek butonda — hepsi <15 satırlık binary kontroller",
+            "• DMAH → rapor + uyarı kodu (280/281) zorunlu",
+            "• Kadın hormon → rapor zorunlu, uzun süreli kullanım uyarısı",
+            "• Trimetazidin → rapor zorunlu",
+            "• Florokinolon → raporsuz verilebilir (ayaktan tedavi), kültür antibiyogram önerisi",
+            "• ŞÜPHELİ = rapor metni okunamadı — manuel kontrol",
+            "• Kapsam dışı = bu 4 kategoriden hiçbirine düşmedi",
+        ]
+        for i, n in enumerate(notlar, start=bas3 + 1):
+            ws1.cell(row=i, column=1, value=n)
+            ws1.merge_cells(start_row=i, start_column=1,
+                            end_row=i, end_column=8)
+
+        for col, w in enumerate([34, 22, 70, 12], start=1):
+            ws1.column_dimensions[get_column_letter(col)].width = w
+
+        # ────────── SAYFA 2 ──────────
+        ws2 = wb.create_sheet("BASIT SUT Reçeteleri")
+        kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12), ("rec_no", "Reçete No", 18),
+            ("hasta", "Hasta", 24), ("tc", "TC", 13),
+            ("yas", "Yaş", 6), ("cins", "Cin.", 6),
+            ("doktor", "Doktor", 22), ("brans", "Branş", 20),
+            ("kurum_adi", "Kurum", 28), ("ilac", "İlaç", 28),
+            ("etkin", "Etken Madde", 22), ("atc", "ATC", 10),
+            ("verdict_kategori", "Kategori", 18),
+            ("rap_kod", "Rapor Kod", 11),
+            ("kutu", "Kutu", 6), ("uyari", "Uyarı Kod", 18),
+            ("medula_msj", "Medula Msj", 30),
+            ("rec_tesh", "Reçete Teşhis", 30),
+            ("verdict_sut", "Uygulanan SUT", 30),
+            ("verdict_uyari", "Uyarı", 34),
+            ("verdict_detay", "Açıklama", 50),
+            ("verdict", "SONUÇ", 14),
+        ]
+        for c, (_kod, baslik, _g) in enumerate(kolonlar, 1):
+            cell = ws2.cell(row=1, column=c, value=baslik)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        ws2.row_dimensions[1].height = 28
+        ws2.freeze_panes = "A2"
+
+        for ri, s in enumerate(denetlenen_satirlar, start=2):
+            for ci, (kod, _baslik, _g) in enumerate(kolonlar, start=1):
+                deger = s.get(kod, "")
+                cell = ws2.cell(row=ri, column=ci, value=str(deger))
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            verdict = s.get("verdict") or ""
+            renk = VERDICT_RENK.get(verdict)
+            if renk:
+                son_col = len(kolonlar)
+                vcell = ws2.cell(row=ri, column=son_col)
+                vcell.fill = PatternFill("solid", fgColor=renk)
+                vcell.font = Font(bold=True)
+                vcell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for ci, (_kod, _baslik, gen) in enumerate(kolonlar, 1):
+            ws2.column_dimensions[get_column_letter(ci)].width = gen
+        ws2.auto_filter.ref = ws2.dimensions
+
+        # ────────── SAYFA 3 ──────────
+        ws3 = wb.create_sheet("BASIT SUT Dışı (Atlanan)")
+        ws3.cell(row=1, column=1,
+                 value="Aşağıdaki ilaçlar DMAH/Kadın hormon/Trimetazidin/"
+                       "Florokinolon kapsamında olmadığı için bu butonun "
+                       "KAPSAMI DIŞINDA bırakıldı.").font = (
+            Font(italic=True, color="546E7A"))
+        ws3.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+
+        atlanan_kolonlar = [
+            ("rec_tar", "Reç.Tarih", 12), ("rec_no", "Reçete No", 18),
+            ("hasta", "Hasta", 24), ("ilac", "İlaç", 30),
+            ("etkin", "Etken", 22), ("atc", "ATC", 10),
+        ]
+        for c, (_k, b, _g) in enumerate(atlanan_kolonlar, 1):
+            cell = ws3.cell(row=3, column=c, value=b)
+            cell.font = baslik_font
+            cell.fill = baslik_fill
+            cell.alignment = Alignment(horizontal="center")
+        ri = 4
+        for s in self.tum_satirlar:
+            kategori = self._basit_sut_kategori(
                 s.get("ilac"), s.get("etkin"), s.get("atc"))
             if kategori != "NONE":
                 continue
@@ -12500,6 +16207,21 @@ class AylikReceteSorguGUI:
                                                    ensure_ascii=False)
             except Exception:
                 s["verdict_detaylar"] = str(rapor.detaylar or {})
+            # Atomik şart listesi — atomik şema paneli için (BUG FIX 2026-05-08)
+            sartlar_obj = getattr(rapor, "sartlar", None) or []
+            try:
+                s["verdict_sartlar"] = json.dumps([
+                    {"ad": p.ad,
+                     "durum": (p.durum.value if hasattr(p.durum, "value")
+                                else str(p.durum)),
+                     "neden": p.neden,
+                     "kaynak": getattr(p, "kaynak", ""),
+                     "grup": getattr(p, "grup", ""),
+                     "veya_grubu": bool(getattr(p, "veya_grubu", False))}
+                    for p in sartlar_obj
+                ], ensure_ascii=False)
+            except Exception:
+                s["verdict_sartlar"] = ""
             sayac[etiket] = sayac.get(etiket, 0) + 1
             denetlenen_satirlar.append(s)
 
