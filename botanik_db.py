@@ -77,6 +77,7 @@ class BotanikDB:
             self.config = self.PRODUCTION_CONFIG if production else self.TEST_CONFIG
         self.conn = None
         self.cursor = None
+        self.son_sorgu_hatasi = None  # son SQL hata metni (tanilama icin)
 
     def baglan(self) -> bool:
         """Veritabanına bağlan"""
@@ -151,15 +152,19 @@ class BotanikDB:
         """
         SQL sorgusu çalıştır ve sonuçları döndür.
         GÜVENLİK: Sadece SELECT sorguları çalıştırılabilir!
+        Son hata mesajı self.son_sorgu_hatasi'na kaydedilir (boş sonuç tanılaması için).
         """
+        self.son_sorgu_hatasi = None
         try:
             # GÜVENLİK KONTROLÜ
             if not self._guvenlik_kontrolu(sql):
+                self.son_sorgu_hatasi = "Guvenlik kontrolu reddetti"
                 logger.error("SORGU REDDEDİLDİ: Güvenlik kontrolünden geçemedi!")
                 return []
 
             if not self.conn:
                 if not self.baglan():
+                    self.son_sorgu_hatasi = "DB baglantisi kurulamadi"
                     return []
 
             if params:
@@ -174,6 +179,7 @@ class BotanikDB:
             return results
 
         except Exception as e:
+            self.son_sorgu_hatasi = str(e)
             logger.error(f"Sorgu hatası: {e}")
             return []
 
@@ -1163,6 +1169,7 @@ class BotanikDB:
         ortalama_ay: int = 6,
         depo_id: Optional[int] = None,
         urun_adi: Optional[str] = None,
+        urun_tipleri: Optional[List[str]] = None,
         limit: int = 5000
     ) -> List[Dict]:
         """
@@ -1201,6 +1208,14 @@ class BotanikDB:
         if urun_adi:
             urun_adi_temiz = urun_adi.replace("'", "''")
             urun_filtre = f" AND u.UrunAdi LIKE '%{urun_adi_temiz}%'"
+
+        # Ürün tipi filtresi (çoklu seçim — IN listesi)
+        urun_tipi_filtre = ""
+        if urun_tipleri:
+            tip_temiz = [t.replace("'", "''") for t in urun_tipleri if t]
+            if tip_temiz:
+                tip_listesi = ",".join([f"'{t}'" for t in tip_temiz])
+                urun_tipi_filtre = f" AND ut.UrunTipAdi IN ({tip_listesi})"
 
         sql = f"""
         ;WITH
@@ -1257,6 +1272,16 @@ class BotanikDB:
                 SUM(GunlukSatis) as GunlukSatis
             FROM PerakendeSatislar
             GROUP BY UrunId, Tarih
+        ),
+        -- GÜNCEL aylık ortalama: bugünden geriye X ay, UrunId başına TEK SEFER (per-row scan yerine CTE)
+        GuncelAylikOrt AS (
+            SELECT
+                UrunId,
+                ROUND(SUM(GunlukSatis) / {ortalama_ay}.0, 2) as Ort
+            FROM PerakendeSatisOzet
+            WHERE Tarih >= DATEADD(MONTH, -{ortalama_ay}, CAST(GETDATE() as date))
+              AND Tarih <  CAST(GETDATE() as date)
+            GROUP BY UrunId
         ),
         -- Tüm çıkışlar (Reçeteli + Elden + Takas) - STOK HESABI İÇİN
         TumCikislar AS (
@@ -1369,6 +1394,12 @@ class BotanikDB:
                 ), 0) / {ortalama_ay}.0
             , 2) as AylikOrtalama,
 
+            -- GÜNCEL aylık ortalama (CTE'den JOIN — UrunId başına tek hesap)
+            COALESCE(gao.Ort, 0) as GuncelAylikOrtalama,
+
+            -- Ürün tipi (İlaç / Medikal / İtriyat ...)
+            COALESCE(ut.UrunTipAdi, 'Belirsiz') as UrunTipi,
+
             -- Parametre olarak kullanılan ay sayısı
             {ortalama_ay} as OrtalamaAy
 
@@ -1376,10 +1407,13 @@ class BotanikDB:
         JOIN FaturaSatir fs ON fg.FGId = fs.FSFGId
         JOIN Urun u ON fs.FSUrunId = u.UrunId
         LEFT JOIN Depo d ON fg.FGIlgiliId = d.DepoId AND fg.FGIlgiliTipi = 1
+        LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
+        LEFT JOIN GuncelAylikOrt gao ON gao.UrunId = fs.FSUrunId
         WHERE fg.FGSilme = 0 AND fs.FSUrunAdet > 0
         {tarih_filtre}
         {depo_filtre}
         {urun_filtre}
+        {urun_tipi_filtre}
 
         ORDER BY fg.FGFaturaTarihi DESC, fg.FGId DESC, u.UrunAdi
         """
