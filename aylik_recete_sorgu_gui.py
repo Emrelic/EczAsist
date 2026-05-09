@@ -1788,6 +1788,13 @@ class AylikReceteSorguGUI:
             except Exception:
                 pass
 
+    def _pasif_detay_toggle(self) -> None:
+        """Pasif yolak gösterimini aç/kapat: özet ↔ detaylı."""
+        self._sema_pasif_detayli = not getattr(self, "_sema_pasif_detayli",
+                                                 False)
+        # Render'ı yeniden tetikle
+        self.root.after(80, self._sema_secim_guncelle)
+
     def _sema_boyut_degistir(self, durum: str) -> None:
         """Şema panelinin yüksekliğini değiştir (kucuk/normal/buyuk).
 
@@ -2370,9 +2377,12 @@ class AylikReceteSorguGUI:
         y_merkez = canvas_h // 2
 
         AMPUL_R = 13                           # ampul radius
-        AMPUL_X_GAP = 150                      # yatay seri ampul aralığı (kutu w=130)
-        PARALEL_Y_GAP = 125                    # paralel kutular dikey çakışmasın
-        KENAR = 36
+        AMPUL_X_GAP = 190                      # yatay seri (kutu w=130, boşluk 60px)
+        PARALEL_Y_GAP = 150                    # paralel dikey (kutu h=102, boşluk 48px)
+        KENAR = 40
+        # Kutu kenarları — kablo bunlara ulaşır, ampul'e (R'ye) değil!
+        KUTU_YARI_W = 65                       # kutu_w/2 (130/2)
+        KUTU_YARI_H = AMPUL_R + 38             # ampul + üst etiket alanı (13+38=51)
         PIL_FONT = ("Segoe UI", 18, "bold")
         SEMBOL_FONT = ("Segoe UI", 11, "bold")
         ETIKET_FONT = ("Segoe UI", 8)
@@ -2484,19 +2494,17 @@ class AylikReceteSorguGUI:
                 for ay, s in zip(ampul_ys, gs):
                     bu_ampul_var = (s.get("durum") == "var")
                     bu_yol_akim = akim_aktif and bu_ampul_var
+                    # Kablo kutu sol kenarına ulaşır (içine girmez)
                     self._devre_kablo(c, sol_kavsak_x, ay,
-                                       ampul_x - AMPUL_R, ay,
+                                       ampul_x - KUTU_YARI_W, ay,
                                        akim=bu_yol_akim)
-                    # AND-paralel grubunda VEYA görseli ama mantık AND;
-                    # ampul rendering için "veya_grubu" parametresi sadece
-                    # YOK durumunda renk seçimini etkiler (sarı vs kırmızı).
-                    # AND mantıklı paralel grupta YOK = kırmızı (kritik).
                     ampul_veya_render = (veya and not paralel_gosterim)
                     self._devre_ampul_at(c, ampul_x, ay, s, AMPUL_R,
                                           veya_grubu=ampul_veya_render,
                                           font_sembol=SEMBOL_FONT,
                                           font_etiket=ETIKET_FONT)
-                    self._devre_kablo(c, ampul_x + AMPUL_R, ay,
+                    # Kablo kutu sağ kenarından çıkar
+                    self._devre_kablo(c, ampul_x + KUTU_YARI_W, ay,
                                        sag_kavsak_x, ay,
                                        akim=bu_yol_akim)
                 # Sağ dikey kavşak (akım çıkışı varsa yeşil)
@@ -2521,19 +2529,20 @@ class AylikReceteSorguGUI:
                 grup_akim_baslangic = akim_aktif
                 local_akim = akim_aktif
                 for s in gs:
-                    ampul_x = x + AMPUL_R + 5
+                    # Ampul merkezi: önceki son_x'ten yarım kutu kadar uzakta
+                    ampul_x = x + KUTU_YARI_W
+                    # Kablo kutu sol kenarına ulaşır
                     self._devre_kablo(c, son_x, y_merkez,
-                                       ampul_x - AMPUL_R, y_merkez,
+                                       ampul_x - KUTU_YARI_W, y_merkez,
                                        akim=local_akim)
                     self._devre_ampul_at(c, ampul_x, y_merkez, s, AMPUL_R,
                                           veya_grubu=False,
                                           font_sembol=SEMBOL_FONT,
                                           font_etiket=ETIKET_FONT)
-                    # Bu ampul VAR değilse sonraki kablolarda akım kesilir
                     if s.get("durum") != "var":
                         local_akim = False
-                    son_x = ampul_x + AMPUL_R
-                    x = son_x + AMPUL_X_GAP - 2 * AMPUL_R - 5
+                    son_x = ampul_x + KUTU_YARI_W  # kutu sağ kenarı
+                    x = son_x + AMPUL_X_GAP - 2 * KUTU_YARI_W
                 x += 5
 
                 # Akım güncellemesi
@@ -2555,9 +2564,11 @@ class AylikReceteSorguGUI:
             pasif_yok = 0
             pasif_ke = 0
             pasif_toplam = 0
+            pasif_sartlar_listesi = []
             for pg in pasif_gruplar:
                 for s in gruplar_dict[pg]:
                     pasif_toplam += 1
+                    pasif_sartlar_listesi.append(s)
                     d = s.get('durum', '')
                     if d == 'var':
                         pasif_var += 1
@@ -2565,49 +2576,108 @@ class AylikReceteSorguGUI:
                         pasif_yok += 1
                     elif d == 'kontrol_edilemedi':
                         pasif_ke += 1
-            # Pasif yolak adı ("D-1" veya "D-2")
-            pasif_yolak = '?'
-            for pg in pasif_gruplar:
-                if 'D-1' in pg or '4.2.15.D-1' in pg or 'AF' in pg:
-                    pasif_yolak = 'D-1 (AF)'
-                    break
-                elif 'D-2' in pg or 'DVT' in pg or 'PE' in pg:
-                    pasif_yolak = 'D-2 (DVT/PE)'
-                    break
+            # Pasif yolak adı — detaylar dict'ten oku (kontrol_yoak set eder)
+            pasif_yolak_kod = (gmat.get('detaylar', {}).get('pasif_yolak')
+                               if isinstance(gmat.get('detaylar'), dict)
+                               else None)
+            if not pasif_yolak_kod:
+                # Fallback: detaylardan oku (verdict_detaylar JSON)
+                pasif_yolak_kod = detaylar.get('pasif_yolak') if detaylar else None
+            if pasif_yolak_kod == 'D-1':
+                pasif_yolak = 'D-1 (AF)'
+            elif pasif_yolak_kod == 'D-2':
+                pasif_yolak = 'D-2 (DVT/PE)'
+            else:
+                pasif_yolak = 'D-?'
 
-            y_pasif = y_merkez - 110  # üst paralel hat
+            # ── y_pasif: paralel grupların maksimum üst koordinatından
+            # üstüne çiz, çakışmasın
+            max_paralel_n = 1
+            for g in sira:
+                if "[pasif]" in g or "(bilgi)" in g:
+                    continue
+                gs2 = gruplar_dict[g]
+                if any(s.get("veya_grubu") for s in gs2) or "[paralel]" in g:
+                    if len(gs2) > max_paralel_n:
+                        max_paralel_n = len(gs2)
+            # Maksimum paralel grubun üst kenarı + kutu yüksekliği + buffer
+            paralel_yarim = (max_paralel_n - 1) * PARALEL_Y_GAP // 2
+            kutu_ust = 40   # _devre_ampul_at içindeki kutu_h_ust
+            buffer = 30
+            y_pasif = y_merkez - paralel_yarim - kutu_ust - buffer
+
+            # Pasif yolak gösterim modu (varsayılan: özet)
+            if not hasattr(self, "_sema_pasif_detayli"):
+                self._sema_pasif_detayli = False
+            pasif_detayli = self._sema_pasif_detayli
+
             kavsak_sol_x = KENAR + 30
             kavsak_sag_x = x + 5
-            ozet_ampul_x = (kavsak_sol_x + kavsak_sag_x) // 2
 
-            # Sol kavşak: ⊕ → üst dal başı
+            # Sol kavşak: ⊕ → üst dal başı (pasif gri kablolar)
             self._devre_kablo(c, KENAR + 14, y_merkez,
                                kavsak_sol_x, y_merkez, akim=False)
             self._devre_kablo(c, kavsak_sol_x, y_merkez,
                                kavsak_sol_x, y_pasif, akim=False)
-            self._devre_kablo(c, kavsak_sol_x, y_pasif,
-                               ozet_ampul_x - 50, y_pasif, akim=False)
 
-            # Pasif özet ampul (her zaman gri/bilgi)
-            pasif_neden = (f'{pasif_var}/{pasif_toplam} şart sağlanıyor '
-                           f'(✓{pasif_var} ✗{pasif_yok} ?{pasif_ke})')
-            pasif_sart_obj = {
-                'ad': f'Diğer SUT yolağı: {pasif_yolak}',
-                'durum': 'na',
-                'neden': pasif_neden,
-                'kaynak': 'pasif',
-                'grup': '[pasif] özet',
-                'veya_grubu': False,
-            }
-            self._devre_ampul_at(c, ozet_ampul_x, y_pasif,
-                                  pasif_sart_obj, AMPUL_R,
-                                  veya_grubu=False,
-                                  font_sembol=SEMBOL_FONT,
-                                  font_etiket=ETIKET_FONT)
+            # Toggle butonu: detay/özet (pasif hat üstünde)
+            toggle_text = ('▼ Özete dön' if pasif_detayli
+                           else '▶ Detaylı göster')
+            toggle_x = kavsak_sol_x + 10
+            toggle_y = y_pasif - 20
+            toggle_id = c.create_text(toggle_x, toggle_y,
+                                       text=toggle_text, anchor="w",
+                                       fill="#1565C0",
+                                       font=("Segoe UI", 8, "underline"),
+                                       tags=("devre", "pasif_toggle"))
+            # Tıklama bind
+            c.tag_bind(toggle_id, "<Button-1>",
+                       lambda _e: self._pasif_detay_toggle())
 
-            # Sağ kavşak: üst dal sonu → ⊖
-            self._devre_kablo(c, ozet_ampul_x + 50, y_pasif,
-                               kavsak_sag_x, y_pasif, akim=False)
+            if pasif_detayli:
+                # Detaylı: tüm pasif şartları yatay seri olarak çiz
+                pasif_x = kavsak_sol_x + 30
+                pasif_son_x = kavsak_sol_x
+                for ps in pasif_sartlar_listesi:
+                    ampul_x = pasif_x + KUTU_YARI_W
+                    # Pasif gri kablo — kutu kenarına kadar
+                    self._devre_kablo(c, pasif_son_x, y_pasif,
+                                       ampul_x - KUTU_YARI_W, y_pasif,
+                                       akim=False)
+                    self._devre_ampul_at(c, ampul_x, y_pasif, ps,
+                                          AMPUL_R,
+                                          veya_grubu=False,
+                                          font_sembol=SEMBOL_FONT,
+                                          font_etiket=ETIKET_FONT)
+                    pasif_son_x = ampul_x + KUTU_YARI_W
+                    pasif_x = pasif_son_x + AMPUL_X_GAP - 2 * KUTU_YARI_W
+                # Pasif son → sağ kavşak
+                self._devre_kablo(c, pasif_son_x, y_pasif,
+                                   kavsak_sag_x, y_pasif, akim=False)
+            else:
+                # Özet: tek ampul (varsayılan)
+                ozet_ampul_x = (kavsak_sol_x + kavsak_sag_x) // 2
+                self._devre_kablo(c, kavsak_sol_x, y_pasif,
+                                   ozet_ampul_x - 50, y_pasif, akim=False)
+                pasif_neden = (f'{pasif_var}/{pasif_toplam} şart '
+                               f'(✓{pasif_var} ✗{pasif_yok} ?{pasif_ke})')
+                pasif_sart_obj = {
+                    'ad': f'Diğer SUT yolağı: {pasif_yolak}',
+                    'durum': 'na',
+                    'neden': pasif_neden,
+                    'kaynak': 'pasif',
+                    'grup': '[pasif] özet',
+                    'veya_grubu': False,
+                }
+                self._devre_ampul_at(c, ozet_ampul_x, y_pasif,
+                                      pasif_sart_obj, AMPUL_R,
+                                      veya_grubu=False,
+                                      font_sembol=SEMBOL_FONT,
+                                      font_etiket=ETIKET_FONT)
+                self._devre_kablo(c, ozet_ampul_x + 50, y_pasif,
+                                   kavsak_sag_x, y_pasif, akim=False)
+
+            # Sağ kavşak dikey: üst dal → ⊖
             self._devre_kablo(c, kavsak_sag_x, y_pasif,
                                kavsak_sag_x, y_merkez, akim=False)
 
@@ -2645,9 +2715,23 @@ class AylikReceteSorguGUI:
                                   font=("Segoe UI", 8), tags="devre")
                     bilgi_y += 14
 
-        # Scroll region — toplam genişlik baz al
-        c.configure(scrollregion=(0, 0, max(toplam_w, c.winfo_width()),
-                                    canvas_h))
+        # Scroll region — TÜM çizim alanını içerecek şekilde otomatik
+        # (pasif hat negatif y'ye taşmış olabilir, bbox tüm item'ları içerir)
+        c.update_idletasks()
+        bbox = c.bbox("devre")
+        if bbox:
+            x_min, y_min, x_max, y_max = bbox
+            pad = 30
+            c.configure(scrollregion=(x_min - pad, y_min - pad,
+                                        max(x_max + pad, c.winfo_width()),
+                                        max(y_max + pad, canvas_h)))
+            # Render sonrası en üste otomatik scroll (pasif hat görünür olsun)
+            c.yview_moveto(0)
+            c.xview_moveto(0)
+        else:
+            c.configure(scrollregion=(0, 0,
+                                        max(toplam_w, c.winfo_width()),
+                                        canvas_h))
 
     def _devre_ampul_at(self, canvas: tk.Canvas, x: int, y: int,
                          sart: dict, r: int, veya_grubu: bool = False,

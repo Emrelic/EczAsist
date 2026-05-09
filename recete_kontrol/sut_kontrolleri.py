@@ -7656,6 +7656,20 @@ def _yoak_atom_mitral_darlik(metin_lower: str) -> bool:
     ])
 
 
+def _yoak_atom_mitral_darlik_yok_ibaresi(metin_lower: str) -> bool:
+    """SUT 4.2.15.D-1(1): rapor metninde 'mitral darlık YOK/OLMAYAN/yoktur'
+    lafzen ibaresi var mı (örtük kabul yasağı)."""
+    if not metin_lower:
+        return False
+    return bool(re.search(
+        r'mitral[^.]{0,30}(?:darl[ıi]k|stenos)[^.]{0,30}'
+        r'(?:olmay|yoktur|yok\b|saptanm|tespit\s+edilmem)',
+        metin_lower)) or bool(re.search(
+        r'(?:olmay|yoktur|yok)[^.]{0,30}mitral[^.]{0,30}(?:darl[ıi]k|stenos)',
+        metin_lower)) or 'mitral darlık olmayan' in metin_lower or \
+        'mitral darlik olmayan' in metin_lower
+
+
 def _yoak_atom_mekanik_kapak(metin_lower: str) -> bool:
     """SUT 4.2.15.D-1(1): 'mekanik protez kapak' VAR mı (kontrendikasyon).
 
@@ -7667,6 +7681,20 @@ def _yoak_atom_mekanik_kapak(metin_lower: str) -> bool:
         'mekanik mitral', 'mekanik aort',
         'mechanical valve',
     ])
+
+
+def _yoak_atom_mekanik_kapak_yok_ibaresi(metin_lower: str) -> bool:
+    """SUT 4.2.15.D-1(1): rapor metninde 'mekanik kapak YOK/OLMAYAN/yoktur'
+    lafzen ibaresi var mı (örtük kabul yasağı)."""
+    if not metin_lower:
+        return False
+    return bool(re.search(
+        r'mekanik[^.]{0,30}(?:kapak|protez|valve)[^.]{0,30}'
+        r'(?:olmay|yoktur|yok\b|saptanm|tespit\s+edilmem)',
+        metin_lower)) or bool(re.search(
+        r'(?:olmay|yoktur|yok)[^.]{0,30}mekanik[^.]{0,30}(?:kapak|protez)',
+        metin_lower)) or 'mekanik protez kapağı olmayan' in metin_lower or \
+        'mekanik protez kapagi olmayan' in metin_lower
 
 
 def _yoak_atom_biyoprotez(metin_lower: str) -> bool:
@@ -7958,33 +7986,62 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         'rapor_metni/teshis', grup=g_rf, veya_grubu=True))
 
     # ── GRUP B: Kontrendikasyon [SUT (1) - 2.] ────────────────────────
-    # SUT lafzı: "mitral darlık VEYA mekanik kapak OLMAYAN" → DeMorgan ile
-    # mantıksal AND (her ikisi YOK olmalı), AMA görsel olarak SUT lafzına
-    # uygun PARALEL çiz (grup adındaki [paralel] etiketi sema render'a sinyal).
+    # SUT lafzı: "mitral darlık VEYA mekanik kapak OLMAYAN"
+    # DeMorgan: NOT(mitral OR mekanik) = NOT-mitral AND NOT-mekanik
+    # Görsel paralel (SUT "veya" lafzı), mantıksal AND (her ikisi YOK).
+    #
+    # ÖRTÜK KABUL YASAĞI: rapor metninde "mitral darlık YOK/olmayan" gibi
+    # lafzen NEGATİF ibare aranır. Sessizlik = KONTROL_EDILEMEDI (manuel).
+    #   Pozitif ibare (mitral darlık VAR) → şart YOK (kontrendikasyon)
+    #   Negatif ibare ("mitral darlık olmayan/yok") → şart VAR (lafzen ikrar)
+    #   Hiçbiri → KONTROL_EDILEMEDI (rapor sessiz, manuel doğrulama)
     g_kontr = 'Kontrendikasyon — yok olmalı [(1)] [paralel]'
+
+    # Mitral darlık 3-durumlu kontrol
     md_var = _yoak_atom_mitral_darlik(metin_lower)
-    sartlar.append(SartSonuc(
-        'Orta-ciddi mitral darlık YOK',
-        SartDurumu.YOK if md_var else SartDurumu.VAR,
-        'orta-ciddi/ciddi/romatizmal mitral darlık ibaresi tespit edildi'
-        if md_var else 'mitral darlık ibaresi yok',
-        'rapor_metni', grup=g_kontr))
-    mk_var = _yoak_atom_mekanik_kapak(metin_lower)
-    biyo_var = _yoak_atom_biyoprotez(metin_lower)
-    if mk_var and not biyo_var:
+    md_yok_ibaresi = _yoak_atom_mitral_darlik_yok_ibaresi(metin_lower)
+    if md_var:
         sartlar.append(SartSonuc(
-            'Mekanik protez kapak YOK', SartDurumu.YOK,
-            'mekanik kapak/protez ibaresi var, biyoprotez ibaresi yok',
-            'rapor_metni', grup=g_kontr))
-    elif mk_var and biyo_var:
+            'Orta-ciddi mitral darlık YOK', SartDurumu.YOK,
+            'orta-ciddi/ciddi/romatizmal mitral darlık ibaresi tespit edildi '
+            '(kontrendikasyon)', 'rapor_metni', grup=g_kontr))
+    elif md_yok_ibaresi:
         sartlar.append(SartSonuc(
-            'Mekanik protez kapak YOK', SartDurumu.VAR,
-            'mekanik kapak ibaresi var ama biyoprotez kaydı da var → istisna',
+            'Orta-ciddi mitral darlık YOK', SartDurumu.VAR,
+            '"mitral darlık olmayan/yok" ibaresi rapor metninde tespit edildi',
             'rapor_metni', grup=g_kontr))
     else:
         sartlar.append(SartSonuc(
+            'Orta-ciddi mitral darlık YOK', SartDurumu.KONTROL_EDILEMEDI,
+            'rapor metninde mitral darlık ibaresi (var/yok) yok — '
+            'manuel doğrulama gerekli',
+            'rapor_metni', grup=g_kontr))
+
+    # Mekanik kapak 3-durumlu kontrol (biyoprotez istisnası dahil)
+    mk_var = _yoak_atom_mekanik_kapak(metin_lower)
+    biyo_var = _yoak_atom_biyoprotez(metin_lower)
+    mk_yok_ibaresi = _yoak_atom_mekanik_kapak_yok_ibaresi(metin_lower)
+    if mk_var and not biyo_var:
+        sartlar.append(SartSonuc(
+            'Mekanik protez kapak YOK', SartDurumu.YOK,
+            'mekanik kapak/protez ibaresi var, biyoprotez ibaresi yok '
+            '(kontrendikasyon)', 'rapor_metni', grup=g_kontr))
+    elif mk_var and biyo_var:
+        sartlar.append(SartSonuc(
             'Mekanik protez kapak YOK', SartDurumu.VAR,
-            'mekanik kapak/protez ibaresi yok',
+            'mekanik kapak ibaresi var ama biyoprotez kaydı da var → '
+            'istisna (biyoprotez kontrendike değil)',
+            'rapor_metni', grup=g_kontr))
+    elif mk_yok_ibaresi:
+        sartlar.append(SartSonuc(
+            'Mekanik protez kapak YOK', SartDurumu.VAR,
+            '"mekanik protez kapak olmayan/yok" ibaresi rapor metninde tespit',
+            'rapor_metni', grup=g_kontr))
+    else:
+        sartlar.append(SartSonuc(
+            'Mekanik protez kapak YOK', SartDurumu.KONTROL_EDILEMEDI,
+            'rapor metninde mekanik kapak ibaresi (var/yok) yok — '
+            'manuel doğrulama gerekli',
             'rapor_metni', grup=g_kontr))
 
     # ── GRUP A: Endikasyon (AF) [SUT (1) - 3., zorunlu] ───────────────

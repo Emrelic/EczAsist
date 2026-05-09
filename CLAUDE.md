@@ -78,14 +78,66 @@ Her bir SUT ibaresi **bir atomik şart** = bir ampul. Birleştirme yapma:
 - "DM veya HT" → 2 atomik (DM + HT), VEYA grubunda
 - "2 ay varfarin... son 5 ölçüm... 3'ünde tutulamadı... INR 2-3 hedef... varfarin kesildi" → 5+ atomik AND zincir
 
-### 2. Mantık operatörleri (VE/VEYA)
-SUT lafzındaki bağlaçları matematiksel olarak çöz:
-- "ve" / virgül + ardışık → **AND** (hepsi gerekir)
-- "veya" / "ya da" → **OR**
-- "olmayan" / "değil" / "yasak" → **NOT** (DeMorgan ile dönüştür: NOT(a OR b) = NOT a AND NOT b)
-- "bir ya da daha fazlası" / "≥1" → **OR (≥1 yeterli)**
-- Paragraflar (a)/(b) → mantıksal **OR** (alternatif yollar)
-- "ile" → genelde **AND** (ardışık ifadeler)
+### 2. Mantık operatörleri (VE/VEYA/OLAN/OLMAYAN/parantez)
+
+SUT lafzındaki bağlaçları **çok sıkı** çöz. Yanlış mantık = yanlış sonuç.
+
+#### 2.1. Bağlaçlar
+| SUT lafzı | Mantık |
+|---|---|
+| "ve" / virgül + ardışık liste | **AND** (hepsi) |
+| "veya" / "ya da" | **OR** |
+| "ile" (ardışık ibareler) | **AND** |
+| "bir ya da daha fazlası" / "≥1" | **OR (≥1 yeterli)** |
+| Paragraflar (a) / (b) | **OR** (alternatif yollar) |
+| "yalnız" / "sadece" | **XOR** veya tek-seçenek |
+
+#### 2.2. Olumlu/Olumsuz sıfat-fiil ekleri
+| Türkçe | Mantık |
+|---|---|
+| "olan" / "olmuş" / "saptanmış" / "tespit edilmiş" | **POZİTİF** (VAR olmalı) |
+| "olmayan" / "olamayan" / "olmayanlarda" | **NEGATİF** (NOT, YOK olmalı) |
+| "yoksa" / "tespit edilmemişse" / "saptanmamışsa" | **NEGATİF** (NOT) |
+| "değil" / "değilse" | **NEGATİF** (NOT) |
+| "kontrendike" / "yasak" | **NEGATİF** (NOT) |
+
+#### 2.3. Parantez ve operatör öncelik (Türkçe gramer)
+SUT lafzında parantez nadir; sıralama ve sıfat-fiilin **kapsama alanı** kritik:
+
+| Lafız | Doğru Yorum | Yanlış Yorum (kaçın!) |
+|---|---|---|
+| "(A VEYA B) OLMAYAN" | NOT(A OR B) = ¬A AND ¬B (DeMorgan) | A OR (NOT B) ✗ |
+| "A VEYA B OLMAYAN" (parantezsiz) | "OLMAYAN" tüm listeyi kapsar → NOT(A OR B) | sadece B'yi kapsar ✗ |
+| "A, B, C VEYA D durumlarından biri" | A OR B OR C OR D (≥1) | virgüller AND ✗ |
+| "A olan, B olmayan, C'li hastalarda" | A=VAR AND B=YOK AND C=VAR (zincir) | virgüller OR ✗ |
+
+#### 2.4. DeMorgan dönüşümü zorunlu
+- `NOT (A OR B)` = `(NOT A) AND (NOT B)` ← her ikisi de YOK olmalı
+- `NOT (A AND B)` = `(NOT A) OR (NOT B)` ← en az biri YOK olmalı
+
+Örn: SUT "(orta-ciddi mitral darlık VEYA mekanik protez kapak) OLMAYAN" →
+matematiksel olarak `mitral YOK AND mekanik YOK` (her ikisi YOK olmalı).
+
+#### 2.5. Sessizlik = KONTROL_EDILEMEDI (örtük kabul yasağı)
+Bir şartı NEGATİF parsing yaparken (örn. "mitral darlık YOK olmalı"):
+- Rapor lafzen "mitral darlık olmayan/yok" diyorsa → ŞART VAR (lafzen ikrar)
+- Rapor lafzen "mitral darlık var" diyorsa → ŞART YOK (kontrendikasyon)
+- Rapor **sessiz** (mitral'dan bahsetmiyor) → **KONTROL_EDILEMEDI** (manuel)
+
+**Yasak**: rapor sessiz olunca "şart sağlanıyor" varsayma — bu örtük kabuldür.
+Memory: `feedback_sut_ortuk_kabul_yasak.md`.
+
+#### 2.6. Parser üç-yönlü yapı (zorunlu kalıp)
+```python
+poz_var = _atom_pozitif_ibare(metin)     # "X var/saptandı"
+neg_var = _atom_negatif_ibare(metin)     # "X yok/olmayan/saptanmadı"
+if poz_var:
+    durum = SartDurumu.YOK  # ya da VAR — kontrendikasyon mu, gerekli mi?
+elif neg_var:
+    durum = SartDurumu.VAR  # ya da YOK — tersi
+else:
+    durum = SartDurumu.KONTROL_EDILEMEDI  # sessiz, manuel doğrulama
+```
 
 ### 3. Şart sırası SUT lafzına uymalı
 SUT'ta hangi sırada yazılmışsa devre öyle akmalı:
