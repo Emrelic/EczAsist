@@ -1453,7 +1453,7 @@ class AylikReceteSorguGUI:
 
         # Devre şeması paneli ALTTA, yatay akış için tam genişlik + sabit yükseklik
         # Açılır/kapanır: tablonun 1/3'ü (380px) ↔ 1/2'si (genişletilmiş)
-        self._sema_yukseklikler = {"normal": 560, "buyuk": 760, "kucuk": 50}
+        self._sema_yukseklikler = {"normal": 600, "buyuk": 820, "kucuk": 50}
         self._sema_durum = "normal"
         self.sema_frame = tk.Frame(body_frame, bg="#FAFBFC",
                                     height=self._sema_yukseklikler["normal"],
@@ -1908,7 +1908,8 @@ class AylikReceteSorguGUI:
         # İlk pass — her grubun gerekli/saglanan'ını hesapla
         ham_gruplar = {}
         for g in sira:
-            if "(bilgi)" in g:
+            # (bilgi) ve [pasif] gruplar hesap dışı
+            if "(bilgi)" in g or "[pasif]" in g:
                 continue
             gs = gruplar_dict[g]
             veya = any(s.get("veya_grubu") for s in gs)
@@ -2040,7 +2041,8 @@ class AylikReceteSorguGUI:
         sayilar = {"var": 0, "yok": 0, "kontrol_edilemedi": 0, "na": 0}
         for s in sartlar:
             grup = s.get("grup", "") or ""
-            if "(bilgi)" in grup:
+            # (bilgi) ve [pasif] hesap dışı
+            if "(bilgi)" in grup or "[pasif]" in grup:
                 continue
             d = s.get("durum", "")
             if d in sayilar:
@@ -2433,6 +2435,9 @@ class AylikReceteSorguGUI:
         for g_ad in sira:
             if "(bilgi)" in g_ad:
                 continue
+            # [pasif] gruplar üst paralel hatta ayrı çizilir, alt hatta atlanır
+            if "[pasif]" in g_ad:
+                continue
             gs = gruplar_dict[g_ad]
             veya = any(s.get("veya_grubu") for s in gs)
             gm = grup_mat.get(g_ad, {})
@@ -2539,6 +2544,72 @@ class AylikReceteSorguGUI:
                     # else: çift başlangıcı, akım değişmez (son grupta belirlenir)
                 else:
                     akim_aktif = local_akim
+
+        # ── PASİF YOLAK (üst paralel hat) ─────────────────────────────
+        # [pasif] grupları varsa üst hatta tek özet ampul olarak çiz
+        pasif_gruplar = [g for g in sira if '[pasif]' in g
+                         and '(bilgi)' not in g]
+        if pasif_gruplar:
+            # Pasif yolun toplam VAR/YOK/KE sayımı
+            pasif_var = 0
+            pasif_yok = 0
+            pasif_ke = 0
+            pasif_toplam = 0
+            for pg in pasif_gruplar:
+                for s in gruplar_dict[pg]:
+                    pasif_toplam += 1
+                    d = s.get('durum', '')
+                    if d == 'var':
+                        pasif_var += 1
+                    elif d == 'yok':
+                        pasif_yok += 1
+                    elif d == 'kontrol_edilemedi':
+                        pasif_ke += 1
+            # Pasif yolak adı ("D-1" veya "D-2")
+            pasif_yolak = '?'
+            for pg in pasif_gruplar:
+                if 'D-1' in pg or '4.2.15.D-1' in pg or 'AF' in pg:
+                    pasif_yolak = 'D-1 (AF)'
+                    break
+                elif 'D-2' in pg or 'DVT' in pg or 'PE' in pg:
+                    pasif_yolak = 'D-2 (DVT/PE)'
+                    break
+
+            y_pasif = y_merkez - 110  # üst paralel hat
+            kavsak_sol_x = KENAR + 30
+            kavsak_sag_x = x + 5
+            ozet_ampul_x = (kavsak_sol_x + kavsak_sag_x) // 2
+
+            # Sol kavşak: ⊕ → üst dal başı
+            self._devre_kablo(c, KENAR + 14, y_merkez,
+                               kavsak_sol_x, y_merkez, akim=False)
+            self._devre_kablo(c, kavsak_sol_x, y_merkez,
+                               kavsak_sol_x, y_pasif, akim=False)
+            self._devre_kablo(c, kavsak_sol_x, y_pasif,
+                               ozet_ampul_x - 50, y_pasif, akim=False)
+
+            # Pasif özet ampul (her zaman gri/bilgi)
+            pasif_neden = (f'{pasif_var}/{pasif_toplam} şart sağlanıyor '
+                           f'(✓{pasif_var} ✗{pasif_yok} ?{pasif_ke})')
+            pasif_sart_obj = {
+                'ad': f'Diğer SUT yolağı: {pasif_yolak}',
+                'durum': 'na',
+                'neden': pasif_neden,
+                'kaynak': 'pasif',
+                'grup': '[pasif] özet',
+                'veya_grubu': False,
+            }
+            self._devre_ampul_at(c, ozet_ampul_x, y_pasif,
+                                  pasif_sart_obj, AMPUL_R,
+                                  veya_grubu=False,
+                                  font_sembol=SEMBOL_FONT,
+                                  font_etiket=ETIKET_FONT)
+
+            # Sağ kavşak: üst dal sonu → ⊖
+            self._devre_kablo(c, ozet_ampul_x + 50, y_pasif,
+                               kavsak_sag_x, y_pasif, akim=False)
+            self._devre_kablo(c, kavsak_sag_x, y_pasif,
+                               kavsak_sag_x, y_merkez, akim=False)
 
         # ⊖ Pil — SAĞ (akım çıkışı varsa yeşil kablo)
         x += 25

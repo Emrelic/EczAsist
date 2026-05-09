@@ -8495,8 +8495,9 @@ def _yoak_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,
 
     grup_durumlari: Dict[str, SartDurumu] = {}
     for ad, gs in gruplar.items():
-        # Boş grup adı = grupsuz — bireysel olarak işle
-        if not ad or '(bilgi)' in ad or 'Apiksaban özel' in ad:
+        # Boş grup, (bilgi), [pasif], Apiksaban özel → hesap dışı
+        if (not ad or '(bilgi)' in ad or '[pasif]' in ad
+                or 'Apiksaban özel' in ad):
             continue
         # OR mı AND mi?
         if any(s.veya_grubu for s in gs):
@@ -8684,19 +8685,70 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
 
     # ── 2) Endikasyon tespiti ─────────────────────────────────────────
     end = _yoak_endikasyonlari_tespit(metin_lower, teshis_metin)
+    has_af = end['af']
+    has_dvtpe = end['dvt'] or end['pe']
 
-    # ── 3) AF dalı (D-1) — DVT/PE yoksa ───────────────────────────────
-    if end['af'] and not (end['dvt'] or end['pe']):
-        return _yoak_d1_af_kontrol(metin_lower, teshis_metin, birlesik,
-                                    ilac_sonuc, yas, rapor_kodu,
-                                    sartlar, detaylar)
+    # ── 3) Aktif yolak belirle (D-1 vs D-2) ──────────────────────────
+    # Endikasyona göre: AF varsa D-1, DVT/PE varsa D-2.
+    # İkisi birden varsa D-2 önceliği (daha spesifik DVT/PE durumu).
+    # Hiçbiri yoksa endikasyon yok → KE.
+    if has_dvtpe:
+        aktif_yolak = 'D-2'
+    elif has_af:
+        aktif_yolak = 'D-1'
+    else:
+        aktif_yolak = None
 
-    # ── 4) DVT/PE dalı (D-2) — DVT veya PE varsa ──────────────────────
-    if end['dvt'] or end['pe']:
-        return _yoak_d2_dvtpe_kontrol(metin_lower, teshis_metin, birlesik,
-                                       ilac_sonuc, yas, rapor_kodu,
-                                       end['dvt'], end['pe'],
-                                       sartlar, detaylar)
+    # ── 4) ÇOKLU YOLAK: hem aktif hem pasif dalları çalıştır ─────────
+    # Aktif yolak normal şartları üretir; pasif yolak bilgi amaçlı,
+    # grup adlarına "[pasif]" prefix eklenir → GUI üst paralel hatta
+    # gri olarak gösterilir.
+    if aktif_yolak == 'D-1':
+        # Aktif: D-1, Pasif: D-2
+        rapor = _yoak_d1_af_kontrol(metin_lower, teshis_metin, birlesik,
+                                     ilac_sonuc, yas, rapor_kodu,
+                                     sartlar, detaylar)
+        # Pasif D-2 şartlarını ayrı listede üret
+        pasif_sartlar: List[SartSonuc] = []
+        try:
+            _yoak_d2_dvtpe_kontrol(
+                metin_lower, teshis_metin, birlesik,
+                ilac_sonuc, yas, rapor_kodu,
+                end['dvt'], end['pe'],
+                pasif_sartlar, {})
+        except Exception:
+            pass
+        # Pasif şartların gruplarına [pasif] prefix
+        for ps in pasif_sartlar:
+            ps.grup = '[pasif] ' + ps.grup if ps.grup else '[pasif]'
+        rapor.sartlar.extend(pasif_sartlar)
+        rapor.detaylar = rapor.detaylar or {}
+        rapor.detaylar['aktif_yolak'] = 'D-1'
+        rapor.detaylar['pasif_yolak'] = 'D-2'
+        return rapor
+
+    if aktif_yolak == 'D-2':
+        # Aktif: D-2, Pasif: D-1
+        rapor = _yoak_d2_dvtpe_kontrol(metin_lower, teshis_metin, birlesik,
+                                        ilac_sonuc, yas, rapor_kodu,
+                                        end['dvt'], end['pe'],
+                                        sartlar, detaylar)
+        # Pasif D-1 şartlarını ayrı listede üret
+        pasif_sartlar = []
+        try:
+            _yoak_d1_af_kontrol(
+                metin_lower, teshis_metin, birlesik,
+                ilac_sonuc, yas, rapor_kodu,
+                pasif_sartlar, {})
+        except Exception:
+            pass
+        for ps in pasif_sartlar:
+            ps.grup = '[pasif] ' + ps.grup if ps.grup else '[pasif]'
+        rapor.sartlar.extend(pasif_sartlar)
+        rapor.detaylar = rapor.detaylar or {}
+        rapor.detaylar['aktif_yolak'] = 'D-2'
+        rapor.detaylar['pasif_yolak'] = 'D-1'
+        return rapor
 
     # ── 5) Endikasyon yok ─────────────────────────────────────────────
     sartlar.append(SartSonuc(
