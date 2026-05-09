@@ -68,6 +68,71 @@ Tüm şartlar değerlendirildikten sonra reçete için:
 
 Detaylı uygulama için `feedback_sut_kontrol_tum_sartlar.md` memory'sine bakılır.
 
+## ATOMİK DEVRE ŞEMASI PRENSİPLERİ (zorunlu — tüm SUT kontrollerinde uygulanır)
+
+YOAK 4.2.15.D pilot uygulaması ile şekillenmiştir (commit `28b74b6`, 2026-05-08). Tüm SUT kontrolleri bu kalıba göre yazılır.
+
+### 1. SUT lafzı → atomik şart üretimi
+Her bir SUT ibaresi **bir atomik şart** = bir ampul. Birleştirme yapma:
+- "inme veya TIA öyküsü" → 2 atomik (inme + TIA), VEYA grubunda
+- "DM veya HT" → 2 atomik (DM + HT), VEYA grubunda
+- "2 ay varfarin... son 5 ölçüm... 3'ünde tutulamadı... INR 2-3 hedef... varfarin kesildi" → 5+ atomik AND zincir
+
+### 2. Mantık operatörleri (VE/VEYA)
+SUT lafzındaki bağlaçları matematiksel olarak çöz:
+- "ve" / virgül + ardışık → **AND** (hepsi gerekir)
+- "veya" / "ya da" → **OR**
+- "olmayan" / "değil" / "yasak" → **NOT** (DeMorgan ile dönüştür: NOT(a OR b) = NOT a AND NOT b)
+- "bir ya da daha fazlası" / "≥1" → **OR (≥1 yeterli)**
+- Paragraflar (a)/(b) → mantıksal **OR** (alternatif yollar)
+- "ile" → genelde **AND** (ardışık ifadeler)
+
+### 3. Şart sırası SUT lafzına uymalı
+SUT'ta hangi sırada yazılmışsa devre öyle akmalı:
+- (1) ilk şart → ⊕'dan sonra ilk grup
+- (4) son şart (örn. kombi yasağı) → ⊖'den önce son grup
+- Erken çıkış (early-return) **YASAK** — tüm atomik şartlar üretilsin (kontrendikasyon olsa bile devam et)
+
+### 4. Grup yapısı (`SartSonuc.grup`)
+- Aynı SUT alt-maddesindeki şartlar tek grup adında
+- Grup adında özel suffix:
+  - `(bilgi)` → hesaplama dışı (parser zayıf, manuel doğrulama)
+  - `[paralel]` → görsel paralel ama mantıksal AND (örn. "X VEYA Y OLMAYAN" — DeMorgan)
+- `veya_grubu=True` → alt-OR mantığı (≥1 yeterli)
+- `veya_grubu=False` (default) → AND (hepsi gerekir)
+
+### 5. Üst-VEYA çiftleri (alternatif yollar)
+Aynı seviyede 2 grup VEYA bağlı ise (örn. (a) yolu VEYA (b) yolu):
+- `_yoak_genel_sonuc_atomik` içinde `ust_or_ciftleri` listesine prefix tanımla
+- Çift gruplardan biri tam ise üst-OR VAR sayılır
+
+### 6. Bilinemeyen şartlar (parser yetersiz) → KE + bilgi grubu
+- "1 yıl rapor süresi" / "24 ay tamam" / "ölçümler ≥1 hafta arayla" gibi parse edilemeyen şartlar
+- `SartDurumu.KONTROL_EDILEMEDI` ile işaretlenir
+- `(bilgi)` suffix grupta tutulur → matematiği bozmaz, görsel olarak görünür
+
+### 7. Görsel devre şeması (GUI yatay layout)
+- ⊕ sol pil → seri/paralel ampuller → ⊖ sağ pil
+- AND grup → seri (yatay aynı hatta)
+- VEYA grup → paralel (Y kavşaklı dikey)
+- Her ampul çerçeve içinde: ÜST=SUT lafzı (siyah), AMPUL=durum rengi, ALT=neden (renkli)
+- Akım yolu: VAR ampullerden geçen kablo **yeşil kalın**, geçmeyen **gri ince**
+- Renkler: VAR=yeşil, YOK(AND)=kırmızı, YOK(VEYA)=koyu gri, KE=sarı, bilgi=açık gri
+
+### 8. Kullanıcı isteği üzerine eklenen / planlanan
+- **Çoklu madde** (örn. D-1 + D-2): aynı şemada 2 ana yol paralel (aktif yolak renkli, diğeri pasif gri) — *planlandı*
+- **Basit/Detaylı switch**: paralel grup kapanınca tek ampul + yan liste (✓/✗ ile) — *planlandı*
+- **Ana yol göster/gizle switch**: kapalı = tek çizgi, açık = tüm detay — *planlandı*
+
+### 9. Yeni kontrol yazarken kontrol listesi
+1. SUT lafzını parça parça oku, her ibareyi atomik kabul et
+2. VE/VEYA/NOT operatörlerini DeMorgan ile çöz
+3. Atomik fonksiyon yaz (`_<kontrol>_atom_<sart>`) — her şart için ayrı
+4. Dispatcher fonksiyon (`_<kontrol>_kontrol`) — atomikleri sırayla çağırır, `SartSonuc` listesi üretir
+5. `_kontrol_raporunu_satira_yaz` veya inline çağrıda `verdict_sartlar` JSON'a yazıldığından emin ol
+6. `grup` alanı + `veya_grubu` flag doğru → sema panel otomatik render eder
+7. Akıl testi yaz: en az 5-10 senaryo (UYGUN / UYGUN_DEGIL / ŞÜPHELİ + edge case)
+
 ## Kullanıcı Kısaltmaları
 - **\*sss** = "Soracağın soru var ise sor". Bu kısaltma görüldüğünde sorularımı sormalıyım.
 
