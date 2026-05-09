@@ -44,11 +44,20 @@ class SartSonuc:
     durum: SartDurumu.
     neden: kısa açıklama (ör: "Doktor branşı: aile hekimliği — yetkili değil").
     kaynak: bilgiyi nereden çıkardık (ör: "doktor_branş", "rapor_metni", "ICD").
+    grup: aynı SUT alt-maddesine ait şartları ortak başlık altında topla
+        (ör: "Risk faktörü (≥1)", "Kontrendikasyon", "Varfarin yolu (a)").
+        GUI atomik şart paneli `grup` alanına göre başlıklı render eder.
+        Boşsa varsayılan/grupsuz şart.
+    veya_grubu: aynı `grup` içindeki şartlar VEYA mantığında mı (≥1 sağlanırsa
+        grup VAR sayılır)? False ise AND mantığı (hepsi sağlanmalı). Grup
+        başlığında "(≥1 olmalı)" / "(hepsi)" işareti için kullanılır.
     """
     ad: str
     durum: SartDurumu
     neden: str = ""
     kaynak: str = ""
+    grup: str = ""
+    veya_grubu: bool = False
 
 
 @dataclass

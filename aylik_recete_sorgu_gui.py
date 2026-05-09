@@ -1453,7 +1453,7 @@ class AylikReceteSorguGUI:
 
         # Devre şeması paneli ALTTA, yatay akış için tam genişlik + sabit yükseklik
         # Açılır/kapanır: tablonun 1/3'ü (380px) ↔ 1/2'si (genişletilmiş)
-        self._sema_yukseklikler = {"normal": 380, "buyuk": 600, "kucuk": 50}
+        self._sema_yukseklikler = {"normal": 560, "buyuk": 760, "kucuk": 50}
         self._sema_durum = "normal"
         self.sema_frame = tk.Frame(body_frame, bg="#FAFBFC",
                                     height=self._sema_yukseklikler["normal"],
@@ -2367,13 +2367,13 @@ class AylikReceteSorguGUI:
         canvas_h = max(c.winfo_height(), 320)
         y_merkez = canvas_h // 2
 
-        AMPUL_R = 14                           # küçültüldü 18→14 (yazı sığsın)
-        AMPUL_X_GAP = 165                      # 130→165 (yazılar çakışmasın)
-        PARALEL_Y_GAP = 75                     # 60→75 (üst+alt etiket için yer)
+        AMPUL_R = 13                           # ampul radius
+        AMPUL_X_GAP = 150                      # yatay seri ampul aralığı (kutu w=130)
+        PARALEL_Y_GAP = 125                    # paralel kutular dikey çakışmasın
         KENAR = 36
         PIL_FONT = ("Segoe UI", 18, "bold")
         SEMBOL_FONT = ("Segoe UI", 11, "bold")
-        ETIKET_FONT = ("Segoe UI", 8)          # 9→8 (sığsın)
+        ETIKET_FONT = ("Segoe UI", 8)
         BASLIK_FONT = ("Segoe UI", 9, "bold")
         SAYIM_FONT = ("Segoe UI", 9, "bold")
 
@@ -2450,8 +2450,13 @@ class AylikReceteSorguGUI:
             # Bu grubun yolunda akım var mı?
             yol_akim = akim_aktif and kendi_tam
 
-            if veya and len(gs) > 1:
-                # ── DİKEY PARALEL (OR ≥1) ──
+            # SUT lafzında "VEYA" var ama mantıksal AND olan gruplar
+            # için grup adına "[paralel]" suffix konulmuş — görsel olarak
+            # paralel çiz, mantık AND kalır.
+            paralel_gosterim = '[paralel]' in g_ad
+
+            if (veya or paralel_gosterim) and len(gs) > 1:
+                # ── DİKEY PARALEL (OR ≥1 veya görsel-paralel AND) ──
                 n = len(gs)
                 ampul_x = x + 60
                 sol_kavsak_x = x + 5
@@ -2467,15 +2472,23 @@ class AylikReceteSorguGUI:
                                    sol_kavsak_x, max(ampul_ys),
                                    akim=akim_aktif)
                 # Her ampul: sol kavşak → ampul → sağ kavşak
-                # Sadece VAR olan ampul yolu yeşil
+                # OR grupta: VAR olan ampul yolu yeşil (alternatif, biri yeterli)
+                # AND-paralel grupta: VAR olan ampul yolu yeşil (her biri ayrı,
+                # hepsi VAR olmalı). VEYA mantığı sadece görsel; akım rengi
+                # yine ampul durumuna göre.
                 for ay, s in zip(ampul_ys, gs):
                     bu_ampul_var = (s.get("durum") == "var")
                     bu_yol_akim = akim_aktif and bu_ampul_var
                     self._devre_kablo(c, sol_kavsak_x, ay,
                                        ampul_x - AMPUL_R, ay,
                                        akim=bu_yol_akim)
+                    # AND-paralel grubunda VEYA görseli ama mantık AND;
+                    # ampul rendering için "veya_grubu" parametresi sadece
+                    # YOK durumunda renk seçimini etkiler (sarı vs kırmızı).
+                    # AND mantıklı paralel grupta YOK = kırmızı (kritik).
+                    ampul_veya_render = (veya and not paralel_gosterim)
                     self._devre_ampul_at(c, ampul_x, ay, s, AMPUL_R,
-                                          veya_grubu=True,
+                                          veya_grubu=ampul_veya_render,
                                           font_sembol=SEMBOL_FONT,
                                           font_etiket=ETIKET_FONT)
                     self._devre_kablo(c, ampul_x + AMPUL_R, ay,
@@ -2587,6 +2600,25 @@ class AylikReceteSorguGUI:
         fill, outline = self._DEVRE_RENK[renk_key]
         sembol = self._DEVRE_SEMBOL[renk_key]
 
+        # ── Çerçeve (ampul + üst + alt etiketleri kapsar) ─────────────
+        # Boyutlar: ampul yarıçapı + üst etiket alanı + alt etiket alanı
+        kutu_w = 130   # genişlik (etiket için yeterli, ampul X_GAP'e sığar)
+        kutu_h_ust = 38  # ampul üzerinde alan (2 satır wrap için yer)
+        kutu_h_alt = 38  # ampul altında alan
+        # Kutu kenar rengi: durum'a göre yumuşak ton (içerik hâlâ canlı renkli)
+        kenar_renk = {
+            "var":    "#A5D6A7",  # açık yeşil
+            "yok":    "#EF9A9A",  # açık kırmızı
+            "or_yok": "#BDBDBD",  # gri (alternatif var)
+            "ke":     "#FFE082",  # açık sarı
+            "bilgi":  "#E0E0E0",  # açık gri
+        }.get(renk_key, "#E0E0E0")
+        canvas.create_rectangle(
+            x - kutu_w // 2, y - r - kutu_h_ust,
+            x + kutu_w // 2, y + r + kutu_h_alt,
+            outline=kenar_renk, width=2, fill="#FFFFFF",
+            tags="devre")
+
         # Ampul halo (parlama efekti)
         canvas.create_oval(x - r - 3, y - r - 3, x + r + 3, y + r + 3,
                            fill="", outline=fill, width=1, tags="devre")
@@ -2597,13 +2629,13 @@ class AylikReceteSorguGUI:
         canvas.create_text(x, y, text=sembol, fill="white",
                             font=font_sembol, tags="devre")
 
-        # ── ÜST etiket: SUT lafzı (ne aranır) — açık gri ──────────────
+        # ── ÜST etiket: SUT lafzı — siyah, kutu içinde ────────────────
         sut_lafzi = sart.get("ad", "")
-        sut_kisa = sut_lafzi if len(sut_lafzi) <= 28 else sut_lafzi[:26] + ".."
-        canvas.create_text(x, y - r - 14, text=sut_kisa,
-                            fill="#90A4AE",  # açık gri (mevzuat referansı)
+        sut_kisa = sut_lafzi if len(sut_lafzi) <= 30 else sut_lafzi[:28] + ".."
+        canvas.create_text(x, y - r - 18, text=sut_kisa,
+                            fill="#000000",
                             font=font_etiket, tags="devre",
-                            width=145, anchor="s")
+                            width=125, anchor="s")
 
         # ── ALT etiket: hasta durumu (gerçek değer/sebep) — duruma göre renk ──
         durum_renk_map = {
@@ -2620,11 +2652,11 @@ class AylikReceteSorguGUI:
         bdg_sembol = {"var": "✓", "yok": "✗", "or_yok": "○",
                        "ke": "?", "bilgi": "i"}.get(renk_key, "•")
         neden_kisa = neden if len(neden) <= 30 else neden[:28] + ".."
-        canvas.create_text(x, y + r + 14,
+        canvas.create_text(x, y + r + 18,
                             text=f"{bdg_sembol} {neden_kisa}",
                             fill=durum_fg,
                             font=("Segoe UI", 8, "bold"),
-                            tags="devre", width=145, anchor="n")
+                            tags="devre", width=125, anchor="n")
 
         if neden:
             self._sema_neden_map[item] = sart.get("neden", "")
