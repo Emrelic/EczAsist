@@ -1792,7 +1792,31 @@ class AylikReceteSorguGUI:
         """Pasif yolak gösterimini aç/kapat: özet ↔ detaylı."""
         self._sema_pasif_detayli = not getattr(self, "_sema_pasif_detayli",
                                                  False)
-        # Render'ı yeniden tetikle
+        self.root.after(80, self._sema_secim_guncelle)
+
+    def _aktif_detay_toggle(self) -> None:
+        """Aktif yolak gösterimini aç/kapat: özet ↔ detaylı.
+
+        Default detaylı (tüm gruplar görünür); kapatılınca tek özet ampul
+        + sayım — pasif yolaktaki davranışın aynısı.
+        """
+        self._sema_aktif_detayli = not getattr(self, "_sema_aktif_detayli",
+                                                 True)
+        self.root.after(80, self._sema_secim_guncelle)
+
+    def _grup_detay_toggle(self, grup_ad: str) -> None:
+        """Paralel grup için özet/detay aç-kapa (varsayılan: özet)."""
+        if not hasattr(self, "_sema_grup_detayli"):
+            self._sema_grup_detayli = set()
+        if grup_ad in self._sema_grup_detayli:
+            self._sema_grup_detayli.discard(grup_ad)
+        else:
+            self._sema_grup_detayli.add(grup_ad)
+        self.root.after(80, self._sema_secim_guncelle)
+
+    def _bilgi_toggle(self) -> None:
+        """Manuel doğrulama listesi aç-kapa (varsayılan: kapalı)."""
+        self._sema_bilgi_acik = not getattr(self, "_sema_bilgi_acik", False)
         self.root.after(80, self._sema_secim_guncelle)
 
     def _sema_boyut_degistir(self, durum: str) -> None:
@@ -1972,12 +1996,15 @@ class AylikReceteSorguGUI:
                     "var_sayi": ga["var_sayi"] + gb["var_sayi"],
                     "secilen_yol": secilen["grup"],
                 }
-                ham_gruplar.pop(ka)
-                ham_gruplar.pop(kb)
+                # Alt grupları sil yerine "alt" işaretle: detail render
+                # (üst-VEYA paralel blok) saglanan/gerekli erişimini korur,
+                # totals'da çift sayılmasın diye `alt` filtrelenir.
+                ham_gruplar[ka]["alt"] = True
+                ham_gruplar[kb]["alt"] = True
 
         sonuc_listesi = list(ham_gruplar.values())
-        gerekli_t = sum(g["gerekli"] for g in sonuc_listesi)
-        saglanan_t = sum(g["saglanan"] for g in sonuc_listesi)
+        gerekli_t = sum(g["gerekli"] for g in sonuc_listesi if not g.get("alt"))
+        saglanan_t = sum(g["saglanan"] for g in sonuc_listesi if not g.get("alt"))
         return {
             "gerekli_toplam": gerekli_t,
             "saglanan_toplam": saglanan_t,
@@ -2288,7 +2315,8 @@ class AylikReceteSorguGUI:
 
         # Canvas üzerinde devre şeması
         self.root.update_idletasks()  # canvas genişliğini al
-        self._devre_ciz_canvas(sartlar, gmat)
+        self._devre_ciz_canvas(sartlar, gmat, detaylar=detaylar,
+                                 verdict=verdict)
 
     def _sema_ust_banda_yaz(self, satir: dict, sartlar: list, detaylar: dict,
                              verdict: str, gerekli_t: int, saglanan_t: int) -> None:
@@ -2360,7 +2388,9 @@ class AylikReceteSorguGUI:
                           fill=self._DEVRE_KABLO_RENK,
                           width=self._DEVRE_KABLO_W, tags="devre")
 
-    def _devre_ciz_canvas(self, sartlar: list, gmat: dict) -> None:
+    def _devre_ciz_canvas(self, sartlar: list, gmat: dict,
+                           detaylar: dict = None,
+                           verdict: str = "") -> None:
         """Yatay devre şeması: ⊕ sol → ⊖ sağ. AND yatay seri, OR dikey paralel.
 
         Layout:
@@ -2401,11 +2431,23 @@ class AylikReceteSorguGUI:
         grup_mat = {gm["grup"]: gm for gm in gmat.get("gruplar", [])}
 
         # ── Üst-VEYA çiftleri — eşleştir (akım hesabı için) ───────────
+        # SUT 4.2.15.D mevzuatına göre alternatif yollar (VEYA bağı):
+        #   • Varfarin (a) VEYA (b): aday ön-koşul (D-1)
+        #   • E (ilk 24 ay SK reçete) VEYA F (24 ay sonrası): zamansal alternatif
+        #   • Varfarin (D-2) VEYA İstisna grubu (D-2): aday ön-koşul (D-2)
         ust_veya_ciftleri = [
             ("Varfarin yolu (a)", "Varfarin yolu (b)",
              "Varfarin yolu [(a) VEYA (b)]"),
-            ("Varfarin yolu (D-2", "İstisna grubu (D-2",
+            ("SK raporu — ilk 24 ay [(2)",
+             "24 ay sonrası alt yol [(2)",
+             "Reçete eden hekim yetkisi [E VEYA F] (D-1)"),
+            # D-2: g_varfa = 'Varfarin yolu — 2ay+...', g_ist = 'İstisna grubu ≥1 [(2)]'
+            # Mevzuat: (1)(b) varfarin denemesi VEYA (2) istisna durumlar
+            ("Varfarin yolu — ", "İstisna grubu",
              "Varfarin VEYA istisna [(1)(b) VEYA (2)]"),
+            ("SK raporu — ilk 24 ay [(3)",
+             "24 ay sonrası alt yol [(3)",
+             "Reçete eden hekim yetkisi [E VEYA F] (D-2)"),
         ]
         ust_veya_eslesme = {}  # alt grup adı -> birleşik grup adı
         for prefix_a, prefix_b, birlesik in ust_veya_ciftleri:
@@ -2416,7 +2458,10 @@ class AylikReceteSorguGUI:
                            if g.startswith(prefix_b)
                            and "(bilgi)" not in g), None)
             if a_grup and b_grup:
+                # a_grup için key: paralel blok bu noktada çizilir
                 ust_veya_eslesme[a_grup] = (birlesik, prefix_b)
+                # b_grup için key: cift_son_grup tespiti → continue (atla)
+                ust_veya_eslesme[b_grup] = (birlesik, prefix_b)
 
         def grup_tam(g_ad):
             gm = grup_mat.get(g_ad, {})
@@ -2432,7 +2477,68 @@ class AylikReceteSorguGUI:
         akim_aktif = True   # sol pilden akım gelir, kesilmediyse devam
         cift_baslangic_akim = None  # üst-VEYA çiftin başında prev_akim'i sakla
 
-        # ⊕ Pil — SOL (akım kaynağı)
+        # ── SUT LAFIZ SIRASINA GÖRE GRUP SIRALAMA ──────────────────────
+        # SUT 4.2.15.D mevzuatına göre lafzi sıra:
+        #   1) Endikasyon (AF / DVT-PE) — yol seçimi
+        #   2) Yetişkin (yaş ≥18) — sadece D-2
+        #   3) Kontrendikasyon (mitral darlık YOK ∧ mekanik kapak YOK) — D-1
+        #   4) Risk faktörü (≥1) — D-1
+        #   5) Varfarin yolu (a)/(b) VEYA istisna grubu (D-2 (2))
+        #   6) SK raporu / 24 ay sonrası (E ↔ F zamansal alternatif)
+        #   7) Kombi yasağı (4)
+        def _sut_oncelik(g_ad: str) -> int:
+            ga = g_ad or ""
+            # [pasif] önek soyutla
+            ga_pure = ga.replace("[pasif] ", "")
+            if "Endikasyon" in ga_pure:
+                return 0
+            if "Yetişkin" in ga_pure:
+                return 1
+            if "Kontrendikasyon" in ga_pure:
+                return 2
+            if "Risk faktörü" in ga_pure:
+                return 3
+            if "Varfarin yolu" in ga_pure or "İstisna grubu" in ga_pure:
+                return 4
+            if "SK raporu" in ga_pure or "24 ay sonrası" in ga_pure:
+                return 5
+            if "Kombi" in ga_pure or "2. YOAK" in ga_pure:
+                return 99
+            return 50
+        # `sira` listesini SUT öncelik sıralamasına göre yeniden düzenle
+        # (kararlı sıra: aynı önceliklerde mevcut sıra korunur)
+        sira = sorted(sira, key=lambda g: (_sut_oncelik(g), sira.index(g)))
+
+        # ── ÇOKLU YOLAK MİMARİSİ (D-1 üst, D-2 alt, simetrik) ─────────
+        # Şartları D-1 ve D-2 olarak ayır + Kombi ortak
+        aktif_kod = (detaylar.get('aktif_yolak') if isinstance(detaylar, dict)
+                     else None) or 'D-1'
+        d1_grup_listesi = []
+        d2_grup_listesi = []
+        kombi_grup = None
+        for g in sira:
+            if "(bilgi)" in g:
+                continue
+            if "Kombi" in g:
+                kombi_grup = g
+                continue
+            is_pasif = "[pasif]" in g
+            # Bu grup hangi yolağa ait?
+            if is_pasif:
+                # Aktif D-1 ise pasif D-2 demektir (ve tersi)
+                grup_yolak = 'D-2' if aktif_kod == 'D-1' else 'D-1'
+            else:
+                grup_yolak = aktif_kod
+            if grup_yolak == 'D-1':
+                d1_grup_listesi.append(g)
+            else:
+                d2_grup_listesi.append(g)
+
+        # Yatay y koordinatları (simetrik)
+        y_d1 = y_merkez - 80   # D-1 üst
+        y_d2 = y_merkez + 80   # D-2 alt
+
+        # ⊕ Pil — SOL (akım kaynağı, ortada)
         x = KENAR
         c.create_text(x, y_merkez, text="⊕", fill="#1B5E20",
                       font=PIL_FONT, tags="devre")
@@ -2441,8 +2547,106 @@ class AylikReceteSorguGUI:
         son_x = x + 14
         x += 35
 
+        # ── ENDİKASYON AMPULÜ (yol seçim noktası) ─────────────────────
+        # Hasta'nın endikasyonu hangi yolu aktif yapar (D-1 AF / D-2 DVT-PE)
+        if aktif_kod:
+            end_metin = ('AF (Atriyal fibrilasyon)' if aktif_kod == 'D-1'
+                         else 'DVT/PE (Tromboz)')
+            end_durum = 'var'
+            end_renk_aciklama = (f'D-1 yolağı aktif'
+                                  if aktif_kod == 'D-1'
+                                  else 'D-2 yolağı aktif')
+        else:
+            end_metin = 'Tespit edilemedi'
+            end_durum = 'kontrol_edilemedi'
+            end_renk_aciklama = 'AF/DVT/PE belirsiz'
+        end_sart_obj = {
+            'ad': 'Endikasyon (yol seçimi)',
+            'durum': end_durum,
+            'neden': f'{end_metin} — {end_renk_aciklama}',
+            'kaynak': 'rapor_metni/teshis',
+            'grup': 'Endikasyon (giriş)',
+            'veya_grubu': False,
+        }
+        end_x = x + KUTU_YARI_W
+        self._devre_kablo(c, son_x, y_merkez,
+                           end_x - KUTU_YARI_W, y_merkez,
+                           akim=(end_durum == 'var'))
+        self._devre_ampul_at(c, end_x, y_merkez, end_sart_obj, AMPUL_R,
+                              veya_grubu=False,
+                              font_sembol=SEMBOL_FONT,
+                              font_etiket=ETIKET_FONT)
+        son_x = end_x + KUTU_YARI_W
+        x = son_x + AMPUL_X_GAP - 2 * KUTU_YARI_W
+
+        # ── AKTİF YOLAK detay/özet toggle (default: detaylı) ──────────
+        if not hasattr(self, "_sema_aktif_detayli"):
+            self._sema_aktif_detayli = True
+        aktif_detayli = self._sema_aktif_detayli
+
+        # Toggle butonu — Endikasyon ampulünün altında
+        akt_toggle_text = ('▼ Özete dön' if aktif_detayli
+                            else '▶ Detaylı göster')
+        akt_toggle_id = c.create_text(
+            end_x, y_merkez + KUTU_YARI_H + 22,
+            text=akt_toggle_text, fill="#1565C0",
+            font=("Segoe UI", 8, "underline"),
+            tags=("devre", "aktif_toggle"))
+        c.tag_bind(akt_toggle_id, "<Button-1>",
+                   lambda _e: self._aktif_detay_toggle())
+
+        if not aktif_detayli:
+            # ── ÖZET MOD: tek büyük ampul (verdict + sayım) ──
+            # Aktif yolakla ilgili tüm grupların toplam sayımı
+            akt_var = sum(1 for s in sartlar
+                          if "[pasif]" not in (s.get('grup', '') or '')
+                          and "(bilgi)" not in (s.get('grup', '') or '')
+                          and s.get('durum') == 'var')
+            akt_yok = sum(1 for s in sartlar
+                          if "[pasif]" not in (s.get('grup', '') or '')
+                          and "(bilgi)" not in (s.get('grup', '') or '')
+                          and s.get('durum') == 'yok')
+            akt_ke = sum(1 for s in sartlar
+                         if "[pasif]" not in (s.get('grup', '') or '')
+                         and "(bilgi)" not in (s.get('grup', '') or '')
+                         and s.get('durum') == 'kontrol_edilemedi')
+            akt_top = akt_var + akt_yok + akt_ke
+            # Verdict'e göre durum
+            v_up_lcl = (verdict or '').strip().upper()
+            if v_up_lcl == 'UYGUN':
+                akt_dur = 'var'
+            elif v_up_lcl == 'UYGUN DEĞİL':
+                akt_dur = 'yok'
+            else:
+                akt_dur = 'kontrol_edilemedi'
+            akt_neden = (f'{akt_var}/{akt_top} şart '
+                          f'(✓{akt_var} ✗{akt_yok} ?{akt_ke})')
+            akt_obj = {
+                'ad': f'Aktif yolak ({aktif_kod}): {verdict or "—"}',
+                'durum': akt_dur,
+                'neden': akt_neden,
+                'kaynak': 'aktif_ozet',
+                'grup': 'Aktif yolak özet',
+                'veya_grubu': False,
+            }
+            ozet_x_akt = x + KUTU_YARI_W
+            self._devre_kablo(c, son_x, y_merkez,
+                               ozet_x_akt - KUTU_YARI_W, y_merkez,
+                               akim=(akt_dur == 'var'))
+            self._devre_ampul_at(c, ozet_x_akt, y_merkez, akt_obj, AMPUL_R,
+                                  veya_grubu=False,
+                                  font_sembol=SEMBOL_FONT,
+                                  font_etiket=ETIKET_FONT)
+            son_x = ozet_x_akt + KUTU_YARI_W
+            x = son_x + 25
+            akim_aktif = (akt_dur == 'var')
+            # Grup loop'u atla — özet mod
+            sira_ranger = []
+        else:
+            sira_ranger = sira
+
         # Gruplar yatay olarak ardışık çizilir
-        for g_ad in sira:
+        for g_ad in sira_ranger:
             if "(bilgi)" in g_ad:
                 continue
             # [pasif] gruplar üst paralel hatta ayrı çizilir, alt hatta atlanır
@@ -2457,9 +2661,221 @@ class AylikReceteSorguGUI:
             if cift_par:
                 birlesik_ad, prefix_b = cift_par
                 cift_son_grup = g_ad.startswith(prefix_b)
-                if not cift_son_grup and cift_baslangic_akim is None:
+                if cift_son_grup:
+                    # 2. çift grubu — 1. grupta paralel blok zaten çizildi, atla
+                    continue
+                if cift_baslangic_akim is None:
                     cift_baslangic_akim = akim_aktif
                 cift_tam = grup_birlesik_tam(birlesik_ad)
+
+                # ── ÜST-VEYA PARALEL BLOK (a yolu // b yolu) ──────────
+                # Çiftin ikinci grubunu bul (b)
+                b_grup_ad = next((g for g in sira
+                                   if g.startswith(prefix_b)
+                                   and "[pasif]" not in g
+                                   and "(bilgi)" not in g), None)
+                if b_grup_ad:
+                    a_gs = gruplar_dict[g_ad]
+                    b_gs = gruplar_dict[b_grup_ad]
+                    a_gm = grup_mat.get(g_ad, {})
+                    b_gm = grup_mat.get(b_grup_ad, {})
+                    def _ozet_durum(gm, gs2):
+                        sag = gm.get('saglanan', 0)
+                        ger = gm.get('gerekli', len(gs2))
+                        ke = sum(1 for s in gs2
+                                 if s.get('durum') == 'kontrol_edilemedi')
+                        if sag >= ger:
+                            return 'var', sag, ger
+                        if ke > 0:
+                            return 'kontrol_edilemedi', sag, ger
+                        return 'yok', sag, ger
+                    a_dur, a_sag, a_ger = _ozet_durum(a_gm, a_gs)
+                    b_dur, b_sag, b_ger = _ozet_durum(b_gm, b_gs)
+
+                    # Detay durumu (her dal bağımsız)
+                    detayli_set = getattr(self, '_sema_grup_detayli', set())
+                    a_detay = g_ad in detayli_set
+                    b_detay = b_grup_ad in detayli_set
+
+                    # Mini AND seri ampul ölçüleri (detay modu)
+                    MINI_R = 10
+                    MINI_KUTU_W = 55          # mini kutu yarı genişlik
+                    MINI_GAP = 130            # ampul merkezleri arası
+                    OZET_AMPUL_W = KUTU_YARI_W * 2 + 20  # özet 1 ampul gen.
+
+                    # Mini paralel kavşak için dikey adım
+                    MINI_DAL_GAP = 50
+
+                    def _dal_grup_veya(gs2):
+                        # Detay açıkken VEYA grup ise dikey paralel kavşak
+                        return (any(s.get('veya_grubu') for s in gs2)
+                                and len(gs2) >= 2)
+
+                    def _dal_genislik(detayli, gs2):
+                        # Sol kavşaktan sağ kavşağa dalın yatay yer kaplaması
+                        if detayli:
+                            if _dal_grup_veya(gs2):
+                                # VEYA grup: dikey kavşak — yatayda 1 ampul yer
+                                return MINI_KUTU_W * 2 + 110
+                            return len(gs2) * MINI_GAP + 60
+                        return OZET_AMPUL_W + 60
+                    a_w = _dal_genislik(a_detay, a_gs)
+                    b_w = _dal_genislik(b_detay, b_gs)
+                    dal_w = max(a_w, b_w)
+
+                    def _dal_dikey_yuks(detayli, gs2):
+                        # Detay açıkken dalın dikey yer kaplaması (kutu+30)
+                        if detayli and _dal_grup_veya(gs2):
+                            n = len(gs2)
+                            return ((n - 1) * MINI_DAL_GAP +
+                                    KUTU_YARI_H * 2 + 30)
+                        if detayli:
+                            return KUTU_YARI_H * 2 + 30
+                        return KUTU_YARI_H * 2
+                    a_yuks = _dal_dikey_yuks(a_detay, a_gs)
+                    b_yuks = _dal_dikey_yuks(b_detay, b_gs)
+                    y_gap = max(70, (a_yuks + b_yuks) // 2 + 20)
+                    y_a = y_merkez - y_gap
+                    y_b = y_merkez + y_gap
+
+                    sol_kavsak_x = x + 5
+                    sag_kavsak_x = sol_kavsak_x + dal_w
+
+                    # Ana hat → sol kavşak
+                    self._devre_kablo(c, son_x, y_merkez,
+                                       sol_kavsak_x, y_merkez,
+                                       akim=akim_aktif)
+                    # Sol dikey kavşak (üst+alt arası)
+                    self._devre_kablo(c, sol_kavsak_x, y_a,
+                                       sol_kavsak_x, y_b,
+                                       akim=akim_aktif)
+
+                    def _dal_ciz(yy, gs2, gm2, dur, sag_n, ger_n,
+                                  detayli, ga_ad):
+                        yol_akim = akim_aktif and (dur == 'var')
+                        if detayli and _dal_grup_veya(gs2):
+                            # ── DİKEY PARALEL KAVŞAK (VEYA grup, ≥1 yeterli)
+                            n = len(gs2)
+                            top_y = yy - (n - 1) * MINI_DAL_GAP // 2
+                            mini_sol_x = sol_kavsak_x + 30
+                            mini_x = mini_sol_x + MINI_KUTU_W + 20
+                            mini_sag_x = mini_x + MINI_KUTU_W + 20
+                            # Ana hat → sol mini kavşak
+                            self._devre_kablo(c, sol_kavsak_x, yy,
+                                               mini_sol_x, yy,
+                                               akim=yol_akim)
+                            # Sol dikey kavşak (üst-alt arası)
+                            self._devre_kablo(c, mini_sol_x, top_y,
+                                               mini_sol_x,
+                                               top_y + (n - 1) * MINI_DAL_GAP,
+                                               akim=yol_akim)
+                            for i, s in enumerate(gs2):
+                                yi = top_y + i * MINI_DAL_GAP
+                                ampul_akim = (yol_akim and
+                                              s.get('durum') == 'var')
+                                # Sol kavşak → mini ampul
+                                self._devre_kablo(c, mini_sol_x, yi,
+                                                   mini_x - MINI_KUTU_W, yi,
+                                                   akim=ampul_akim)
+                                mini_obj = dict(s)
+                                mini_obj['ad'] = (s.get('ad', '') or '')[:22]
+                                self._devre_ampul_at(c, mini_x, yi, mini_obj,
+                                                      MINI_R, veya_grubu=True,
+                                                      font_sembol=("Segoe UI", 9, "bold"),
+                                                      font_etiket=("Segoe UI", 7))
+                                self._devre_kablo(c,
+                                                   mini_x + MINI_KUTU_W, yi,
+                                                   mini_sag_x, yi,
+                                                   akim=ampul_akim)
+                            # Sağ dikey kavşak
+                            self._devre_kablo(c, mini_sag_x, top_y,
+                                               mini_sag_x,
+                                               top_y + (n - 1) * MINI_DAL_GAP,
+                                               akim=yol_akim)
+                            self._devre_kablo(c, mini_sag_x, yy,
+                                               sag_kavsak_x, yy,
+                                               akim=yol_akim)
+                        elif detayli:
+                            # Yatay SERİ mini ampuller (AND zinciri)
+                            x_mini = sol_kavsak_x + 30 + MINI_KUTU_W
+                            # Sol kavşak → ilk ampul
+                            self._devre_kablo(c, sol_kavsak_x, yy,
+                                               x_mini - MINI_KUTU_W, yy,
+                                               akim=yol_akim)
+                            for i, s in enumerate(gs2):
+                                # Ampul (mini boyut, AND grubu)
+                                # Etiket'i kısa tut: ampul.ad'ın ilk 22 karakteri
+                                mini_obj = dict(s)
+                                mini_obj['ad'] = (s.get('ad', '') or '')[:22]
+                                self._devre_ampul_at(c, x_mini, yy, mini_obj,
+                                                      MINI_R, veya_grubu=False,
+                                                      font_sembol=("Segoe UI", 9, "bold"),
+                                                      font_etiket=("Segoe UI", 7))
+                                # Bu ampul VAR mı? Akım o noktaya kadar geçer
+                                ampul_akim = yol_akim and (s.get('durum') == 'var')
+                                if i < len(gs2) - 1:
+                                    self._devre_kablo(c,
+                                                       x_mini + MINI_KUTU_W, yy,
+                                                       x_mini + MINI_GAP - MINI_KUTU_W, yy,
+                                                       akim=ampul_akim)
+                                x_mini += MINI_GAP
+                            # Son ampul → sağ kavşak
+                            son_ampul_x = x_mini - MINI_GAP + MINI_KUTU_W
+                            self._devre_kablo(c, son_ampul_x, yy,
+                                               sag_kavsak_x, yy,
+                                               akim=yol_akim)
+                        else:
+                            # ÖZET — 1 büyük ampul (sayım ile)
+                            ozet_x = sol_kavsak_x + 30 + KUTU_YARI_W
+                            self._devre_kablo(c, sol_kavsak_x, yy,
+                                               ozet_x - KUTU_YARI_W, yy,
+                                               akim=yol_akim)
+                            ozet_obj = {
+                                'ad': ga_ad[:30],
+                                'durum': dur,
+                                'neden': f'{sag_n}/{ger_n} şart',
+                                'kaynak': 'ozet', 'grup': ga_ad,
+                                'veya_grubu': True,
+                            }
+                            self._devre_ampul_at(c, ozet_x, yy, ozet_obj,
+                                                  AMPUL_R, veya_grubu=False,
+                                                  font_sembol=SEMBOL_FONT,
+                                                  font_etiket=ETIKET_FONT)
+                            self._devre_kablo(c, ozet_x + KUTU_YARI_W, yy,
+                                               sag_kavsak_x, yy,
+                                               akim=yol_akim)
+                        # Detay toggle butonu (özet/detay arasında geçiş)
+                        d_text = "▲ Özete dön" if detayli else "▼ Detay"
+                        # Buton y pozisyonu: dal merkezinin altında
+                        d_y = yy + (MINI_R + 50 if detayli
+                                     else KUTU_YARI_H + 22)
+                        # Buton x: dal genişliğinin ortası
+                        d_x = sol_kavsak_x + dal_w // 2
+                        d_id = c.create_text(
+                            d_x, d_y, text=d_text, fill="#1565C0",
+                            font=("Segoe UI", 7, "underline"),
+                            tags=("devre", "grup_detay_toggle"))
+                        c.tag_bind(d_id, "<Button-1>",
+                                   lambda _e, g=ga_ad:
+                                       self._grup_detay_toggle(g))
+
+                    _dal_ciz(y_a, a_gs, a_gm, a_dur, a_sag, a_ger,
+                              a_detay, g_ad)
+                    _dal_ciz(y_b, b_gs, b_gm, b_dur, b_sag, b_ger,
+                              b_detay, b_grup_ad)
+
+                    # Sağ dikey kavşak — birleşik akım çıkışı
+                    cikis_akim = (cift_baslangic_akim
+                                   if cift_baslangic_akim is not None
+                                   else True) and cift_tam
+                    self._devre_kablo(c, sag_kavsak_x, y_a,
+                                       sag_kavsak_x, y_b,
+                                       akim=cikis_akim)
+                    son_x = sag_kavsak_x
+                    x = sag_kavsak_x + 25
+                    akim_aktif = cikis_akim
+                    cift_baslangic_akim = None
+                    continue  # normal render bloğuna girme
 
             kendi_tam = grup_tam(g_ad)
             # Bu grubun yolunda akım var mı?
@@ -2471,58 +2887,157 @@ class AylikReceteSorguGUI:
             paralel_gosterim = '[paralel]' in g_ad
 
             if (veya or paralel_gosterim) and len(gs) > 1:
-                # ── DİKEY PARALEL (OR ≥1 veya görsel-paralel AND) ──
-                n = len(gs)
-                ampul_x = x + 60
-                sol_kavsak_x = x + 5
-                sag_kavsak_x = ampul_x + 60
-                ampul_ys = [y_merkez + (i - (n - 1) / 2) * PARALEL_Y_GAP
-                            for i in range(n)]
+                # Default: özet (tek ampul). Tıklayınca detay açılır
+                if not hasattr(self, "_sema_grup_detayli"):
+                    self._sema_grup_detayli = set()
+                grup_detayli = g_ad in self._sema_grup_detayli
 
-                # Ana hat → sol kavşak (akım giriş varsa yeşil)
-                self._devre_kablo(c, son_x, y_merkez, sol_kavsak_x, y_merkez,
-                                   akim=akim_aktif)
-                # Sol dikey kavşak (var olan ampuller arası akım yayılır)
-                self._devre_kablo(c, sol_kavsak_x, min(ampul_ys),
-                                   sol_kavsak_x, max(ampul_ys),
-                                   akim=akim_aktif)
-                # Her ampul: sol kavşak → ampul → sağ kavşak
-                # OR grupta: VAR olan ampul yolu yeşil (alternatif, biri yeterli)
-                # AND-paralel grupta: VAR olan ampul yolu yeşil (her biri ayrı,
-                # hepsi VAR olmalı). VEYA mantığı sadece görsel; akım rengi
-                # yine ampul durumuna göre.
-                for ay, s in zip(ampul_ys, gs):
-                    bu_ampul_var = (s.get("durum") == "var")
-                    bu_yol_akim = akim_aktif and bu_ampul_var
-                    # Kablo kutu sol kenarına ulaşır (içine girmez)
-                    self._devre_kablo(c, sol_kavsak_x, ay,
-                                       ampul_x - KUTU_YARI_W, ay,
-                                       akim=bu_yol_akim)
-                    ampul_veya_render = (veya and not paralel_gosterim)
-                    self._devre_ampul_at(c, ampul_x, ay, s, AMPUL_R,
-                                          veya_grubu=ampul_veya_render,
+                if not grup_detayli:
+                    # ── ÖZET MODU: tek ampul + ▼ Detay göster ──────────
+                    gm = grup_mat.get(g_ad, {})
+                    saglanan = gm.get('saglanan', 0)
+                    gerekli = gm.get('gerekli', len(gs))
+                    ke_count = sum(1 for s in gs
+                                    if s.get('durum') == 'kontrol_edilemedi')
+                    if saglanan >= gerekli:
+                        ozet_durum = 'var'
+                    elif ke_count > 0:
+                        ozet_durum = 'kontrol_edilemedi'
+                    else:
+                        ozet_durum = 'yok'
+                    grup_kisa = g_ad[:30]
+                    ozet_sart = {
+                        'ad': grup_kisa,
+                        'durum': ozet_durum,
+                        'neden': f'{saglanan}/{gerekli} şart sağlanıyor',
+                        'kaynak': 'ozet',
+                        'grup': g_ad,
+                        'veya_grubu': True,
+                    }
+                    ampul_x = x + KUTU_YARI_W
+                    self._devre_kablo(c, son_x, y_merkez,
+                                       ampul_x - KUTU_YARI_W, y_merkez,
+                                       akim=akim_aktif and saglanan >= gerekli)
+                    self._devre_ampul_at(c, ampul_x, y_merkez,
+                                          ozet_sart, AMPUL_R,
+                                          veya_grubu=False,
                                           font_sembol=SEMBOL_FONT,
                                           font_etiket=ETIKET_FONT)
-                    # Kablo kutu sağ kenarından çıkar
-                    self._devre_kablo(c, ampul_x + KUTU_YARI_W, ay,
-                                       sag_kavsak_x, ay,
-                                       akim=bu_yol_akim)
-                # Sağ dikey kavşak (akım çıkışı varsa yeşil)
-                cikis_akim = akim_aktif and (kendi_tam)
-                self._devre_kablo(c, sag_kavsak_x, min(ampul_ys),
-                                   sag_kavsak_x, max(ampul_ys),
-                                   akim=cikis_akim)
-                son_x = sag_kavsak_x
-                x = sag_kavsak_x + 25
+                    # Detay göster butonu
+                    detay_text_id = c.create_text(
+                        ampul_x, y_merkez + KUTU_YARI_H + 22,
+                        text="▼ Detay göster",
+                        fill="#1565C0",
+                        font=("Segoe UI", 7, "underline"),
+                        tags=("devre", "grup_detay_toggle"))
+                    c.tag_bind(detay_text_id, "<Button-1>",
+                               lambda _e, ga=g_ad:
+                                   self._grup_detay_toggle(ga))
+                    son_x = ampul_x + KUTU_YARI_W
+                    x = son_x + AMPUL_X_GAP - 2 * KUTU_YARI_W
+                    # Akım güncelleme (özet mod)
+                    if cift_par:
+                        if cift_son_grup:
+                            akim_aktif = (cift_baslangic_akim
+                                          if cift_baslangic_akim is not None
+                                          else True) and cift_tam
+                            cift_baslangic_akim = None
+                    else:
+                        akim_aktif = akim_aktif and (saglanan >= gerekli)
+                    continue  # detaylı bloğa girme
 
-                # Akım güncellemesi
+                # ── DETAY MODU: tek özet ampul ana hatta + dikey liste ──
+                # Özet ampul (mevcut özet render gibi, ana hatta tek)
+                gm = grup_mat.get(g_ad, {})
+                saglanan = gm.get('saglanan', 0)
+                gerekli = gm.get('gerekli', len(gs))
+                ke_count = sum(1 for s in gs
+                                if s.get('durum') == 'kontrol_edilemedi')
+                if saglanan >= gerekli:
+                    ozet_durum = 'var'
+                elif ke_count > 0:
+                    ozet_durum = 'kontrol_edilemedi'
+                else:
+                    ozet_durum = 'yok'
+                ozet_sart = {
+                    'ad': g_ad[:30],
+                    'durum': ozet_durum,
+                    'neden': f'{saglanan}/{gerekli} şart sağlanıyor',
+                    'kaynak': 'ozet',
+                    'grup': g_ad,
+                    'veya_grubu': True,
+                }
+                ampul_x = x + KUTU_YARI_W
+                self._devre_kablo(c, son_x, y_merkez,
+                                   ampul_x - KUTU_YARI_W, y_merkez,
+                                   akim=akim_aktif and saglanan >= gerekli)
+                self._devre_ampul_at(c, ampul_x, y_merkez, ozet_sart, AMPUL_R,
+                                      veya_grubu=False,
+                                      font_sembol=SEMBOL_FONT,
+                                      font_etiket=ETIKET_FONT)
+
+                # ── DİKEY LİSTE: özet ampulün ALTINDA mini ampul + metin ──
+                liste_x = ampul_x - 60   # liste sol kenarı (özet ampulün soluna)
+                liste_y = y_merkez + KUTU_YARI_H + 30
+                # Önce ▲ Özete dön butonu
+                gizle_id = c.create_text(
+                    ampul_x, liste_y,
+                    text="▲ Özete dön", anchor="center",
+                    fill="#1565C0",
+                    font=("Segoe UI", 8, "underline"),
+                    tags=("devre", "grup_detay_toggle"))
+                c.tag_bind(gizle_id, "<Button-1>",
+                           lambda _e, ga=g_ad: self._grup_detay_toggle(ga))
+                liste_y += 18
+                # Liste satırları: küçük yuvarlak ampul + metin
+                MINI_R = 6
+                durum_metin = {
+                    'var': ('uygun', '#1B5E20'),       # yeşil
+                    'yok': ('uygun değil', '#B71C1C'), # kırmızı
+                    'kontrol_edilemedi': ('bulunamadı', '#E65100'),  # turuncu
+                    'na': ('—', '#9E9E9E'),
+                }
+                for s in gs:
+                    d = s.get('durum', 'na')
+                    fill_renk, _ = self._DEVRE_RENK.get(
+                        'var' if d == 'var'
+                        else ('or_yok' if (d == 'yok' and veya
+                                            and not paralel_gosterim)
+                              else d),
+                        ('#E0E0E0', '#9E9E9E'))
+                    sembol = self._DEVRE_SEMBOL.get(d, '—')
+                    sonuc_text, sonuc_fg = durum_metin.get(d,
+                                                            ('—', '#9E9E9E'))
+                    # Mini ampul
+                    c.create_oval(liste_x - MINI_R, liste_y - MINI_R,
+                                   liste_x + MINI_R, liste_y + MINI_R,
+                                   fill=fill_renk, outline="#37474F",
+                                   width=1, tags="devre")
+                    c.create_text(liste_x, liste_y, text=sembol,
+                                   fill="white",
+                                   font=("Segoe UI", 7, "bold"),
+                                   tags="devre")
+                    # Metin: SUT lafzı + durum
+                    ad_kisa = s.get('ad', '')[:32]
+                    c.create_text(liste_x + MINI_R + 6, liste_y,
+                                   text=f"{ad_kisa}  →  {sonuc_text}",
+                                   anchor="w", fill=sonuc_fg,
+                                   font=("Segoe UI", 8),
+                                   tags="devre")
+                    liste_y += 16
+
+                son_x = ampul_x + KUTU_YARI_W
+                x = son_x + AMPUL_X_GAP - 2 * KUTU_YARI_W
+
+                # Akım güncellemesi (özet ile aynı)
                 if cift_par:
                     if cift_son_grup:
-                        # Çift sonu — birleşik tamlığa göre akım
-                        akim_aktif = (cift_baslangic_akim if cift_baslangic_akim is not None else True) and cift_tam
+                        akim_aktif = (cift_baslangic_akim
+                                      if cift_baslangic_akim is not None
+                                      else True) and cift_tam
                         cift_baslangic_akim = None
                 else:
-                    akim_aktif = akim_aktif and kendi_tam
+                    akim_aktif = akim_aktif and (saglanan >= gerekli)
             else:
                 # ── YATAY SERİ (AND) ──
                 # Ampuller yan yana, her ampul kendi durumuna göre akım keser
@@ -2558,6 +3073,15 @@ class AylikReceteSorguGUI:
         # [pasif] grupları varsa üst hatta tek özet ampul olarak çiz
         pasif_gruplar = [g for g in sira if '[pasif]' in g
                          and '(bilgi)' not in g]
+        try:
+            import logging
+            logging.getLogger(__name__).info(
+                "PASIF DEBUG: sira=%d grup, pasif_gruplar=%d, "
+                "ornek: %r",
+                len(sira), len(pasif_gruplar),
+                pasif_gruplar[:3] if pasif_gruplar else [])
+        except Exception:
+            pass
         if pasif_gruplar:
             # Pasif yolun toplam VAR/YOK/KE sayımı
             pasif_var = 0
@@ -2577,12 +3101,20 @@ class AylikReceteSorguGUI:
                     elif d == 'kontrol_edilemedi':
                         pasif_ke += 1
             # Pasif yolak adı — detaylar dict'ten oku (kontrol_yoak set eder)
-            pasif_yolak_kod = (gmat.get('detaylar', {}).get('pasif_yolak')
-                               if isinstance(gmat.get('detaylar'), dict)
-                               else None)
+            pasif_yolak_kod = None
+            if detaylar and isinstance(detaylar, dict):
+                pasif_yolak_kod = detaylar.get('pasif_yolak')
+            # Fallback: pasif grup adlarından D-1/D-2 tespit
             if not pasif_yolak_kod:
-                # Fallback: detaylardan oku (verdict_detaylar JSON)
-                pasif_yolak_kod = detaylar.get('pasif_yolak') if detaylar else None
+                for pg in pasif_gruplar:
+                    if 'D-2' in pg or 'DVT' in pg or 'Yetişkin' in pg \
+                            or 'İstisna' in pg:
+                        pasif_yolak_kod = 'D-2'
+                        break
+                    elif 'D-1' in pg or 'AF' in pg or 'Risk faktörü' in pg \
+                            or 'Kontrendikasyon' in pg:
+                        pasif_yolak_kod = 'D-1'
+                        break
             if pasif_yolak_kod == 'D-1':
                 pasif_yolak = 'D-1 (AF)'
             elif pasif_yolak_kod == 'D-2':
@@ -2590,25 +3122,54 @@ class AylikReceteSorguGUI:
             else:
                 pasif_yolak = 'D-?'
 
-            # ── y_pasif: paralel grupların maksimum üst koordinatından
-            # üstüne çiz, çakışmasın
+            # ── y_pasif: aktif paralel + pasif paralel + üst-VEYA çift
+            # bloklarının hiçbiriyle çakışmayacak şekilde dinamik hesaplanır.
             max_paralel_n = 1
             for g in sira:
                 if "[pasif]" in g or "(bilgi)" in g:
                     continue
                 gs2 = gruplar_dict[g]
-                if any(s.get("veya_grubu") for s in gs2) or "[paralel]" in g:
-                    if len(gs2) > max_paralel_n:
-                        max_paralel_n = len(gs2)
-            # Maksimum paralel grubun üst kenarı + kutu yüksekliği + buffer
+                if (g in self._sema_grup_detayli if
+                        hasattr(self, "_sema_grup_detayli") else False):
+                    if any(s.get("veya_grubu") for s in gs2) or \
+                            "[paralel]" in g:
+                        if len(gs2) > max_paralel_n:
+                            max_paralel_n = len(gs2)
             paralel_yarim = (max_paralel_n - 1) * PARALEL_Y_GAP // 2
-            kutu_ust = 40   # _devre_ampul_at içindeki kutu_h_ust
+            kutu_ust = 40
             buffer = 30
-            y_pasif = y_merkez - paralel_yarim - kutu_ust - buffer
+            # Üst-VEYA paralel blok (Varfarin a/b veya E↔F) varsa: y_a kutu
+            # üst kenarı = y_merkez - y_gap (~90) - KUTU_YARI_H (51) → ~141
+            ust_veya_var = bool(ust_veya_eslesme)
+            if ust_veya_var:
+                ust_veya_yarim = 100 + KUTU_YARI_H
+                paralel_yarim = max(paralel_yarim, ust_veya_yarim)
+            # Pasif paralel-VEYA grup yüksekliği — y_pasif'in altına dal düşer,
+            # bu dalın kutu altı aktif yolun en üst kutusunun üzerine binmemeli
+            PASIF_DAL_Y_GAP = 65
+            max_pasif_dal_n = 1
+            _pasif_grup_dict = {}
+            for ps in pasif_sartlar_listesi:
+                ga = ps.get('grup', '') or ''
+                _pasif_grup_dict.setdefault(ga, []).append(ps)
+            for ga, lst in _pasif_grup_dict.items():
+                if any(p.get('veya_grubu') for p in lst) and len(lst) >= 2:
+                    if len(lst) > max_pasif_dal_n:
+                        max_pasif_dal_n = len(lst)
+            pasif_paralel_yarim = ((max_pasif_dal_n - 1) *
+                                    PASIF_DAL_Y_GAP) // 2
+            # Final y_pasif: aktif blok kutu üstü + buffer + pasif blok alt
+            # dal kutu altı (pasif_paralel_yarim + KUTU_YARI_H)
+            y_pasif_dist = max(
+                paralel_yarim + kutu_ust + buffer +
+                pasif_paralel_yarim + KUTU_YARI_H,
+                100,
+            )
+            y_pasif = y_merkez - y_pasif_dist
 
-            # Pasif yolak gösterim modu (varsayılan: özet)
+            # Pasif yolak gösterim modu (varsayılan: DETAYLI — eşit önem)
             if not hasattr(self, "_sema_pasif_detayli"):
-                self._sema_pasif_detayli = False
+                self._sema_pasif_detayli = True   # default: tüm atomikler
             pasif_detayli = self._sema_pasif_detayli
 
             kavsak_sol_x = KENAR + 30
@@ -2620,11 +3181,15 @@ class AylikReceteSorguGUI:
             self._devre_kablo(c, kavsak_sol_x, y_merkez,
                                kavsak_sol_x, y_pasif, akim=False)
 
-            # Toggle butonu: detay/özet (pasif hat üstünde)
-            toggle_text = ('▼ Özete dön' if pasif_detayli
-                           else '▶ Detaylı göster')
-            toggle_x = kavsak_sol_x + 10
-            toggle_y = y_pasif - 20
+            # Toggle butonu: detay/özet — pasif blok ALT KENARI ile aktif
+            # blok ÜST KENARI arasındaki boşlukta konumla (hiçbir paralel
+            # kutuyla yatay çakışma yok)
+            toggle_text = ('▼ Diğer yolu özetle' if pasif_detayli
+                           else '▶ Diğer yolu detaylı göster')
+            y_pasif_alt = y_pasif + pasif_paralel_yarim + KUTU_YARI_H
+            y_aktif_ust = y_merkez - paralel_yarim - KUTU_YARI_H
+            toggle_x = KENAR + 30
+            toggle_y = (y_pasif_alt + y_aktif_ust) // 2
             toggle_id = c.create_text(toggle_x, toggle_y,
                                        text=toggle_text, anchor="w",
                                        fill="#1565C0",
@@ -2635,22 +3200,169 @@ class AylikReceteSorguGUI:
                        lambda _e: self._pasif_detay_toggle())
 
             if pasif_detayli:
-                # Detaylı: tüm pasif şartları yatay seri olarak çiz
+                # Detaylı: pasif şartları gruplara ayır, her grup için
+                # AND (yatay seri) veya VEYA (dikey paralel kavşak) çiz.
+                def _pasif_oncelik(s):
+                    g = s.get('grup', '') or ''
+                    if 'Endikasyon' in g:
+                        return 0
+                    if 'Yetişkin' in g:
+                        return 1
+                    if 'Kombi' in g:
+                        return 99
+                    return 50
+                pasif_sartlar_listesi = sorted(pasif_sartlar_listesi,
+                                                key=_pasif_oncelik)
+                # Grup grup topla (sıralı OrderedDict gibi)
+                pasif_gruplari = []
+                _grup_idx = {}
+                for ps in pasif_sartlar_listesi:
+                    ga = ps.get('grup', '') or ''
+                    if ga not in _grup_idx:
+                        _grup_idx[ga] = len(pasif_gruplari)
+                        pasif_gruplari.append((ga, []))
+                    pasif_gruplari[_grup_idx[ga]][1].append(ps)
+
+                # Üst-VEYA çift eşlemesi pasif gruplar için (önek soyutla)
+                # Pasif grup adları '[pasif] X' şeklinde — pure_grup ile prefix eşleşmesi
+                pasif_ust_veya_es = {}
+                pasif_pure_to_full = {}
+                for ga, _ in pasif_gruplari:
+                    pure_g = ga.replace('[pasif] ', '')
+                    pasif_pure_to_full[pure_g] = ga
+                for prefix_a, prefix_b, birlesik in ust_veya_ciftleri:
+                    pa = next((g for g in pasif_pure_to_full
+                                if g.startswith(prefix_a)), None)
+                    pb = next((g for g in pasif_pure_to_full
+                                if g.startswith(prefix_b)), None)
+                    if pa and pb:
+                        full_a = pasif_pure_to_full[pa]
+                        full_b = pasif_pure_to_full[pb]
+                        pasif_ust_veya_es[full_a] = full_b
+                        pasif_ust_veya_es[full_b] = full_a
+
+                # Çiftin ikinci grubunu atlamak için bir set
+                pasif_atlanacak = set()
                 pasif_x = kavsak_sol_x + 30
                 pasif_son_x = kavsak_sol_x
-                for ps in pasif_sartlar_listesi:
-                    ampul_x = pasif_x + KUTU_YARI_W
-                    # Pasif gri kablo — kutu kenarına kadar
-                    self._devre_kablo(c, pasif_son_x, y_pasif,
-                                       ampul_x - KUTU_YARI_W, y_pasif,
-                                       akim=False)
-                    self._devre_ampul_at(c, ampul_x, y_pasif, ps,
-                                          AMPUL_R,
-                                          veya_grubu=False,
-                                          font_sembol=SEMBOL_FONT,
-                                          font_etiket=ETIKET_FONT)
-                    pasif_son_x = ampul_x + KUTU_YARI_W
-                    pasif_x = pasif_son_x + AMPUL_X_GAP - 2 * KUTU_YARI_W
+                for ga, ps_list in pasif_gruplari:
+                    if ga in pasif_atlanacak:
+                        continue
+                    # ── ÜST-VEYA ÇİFT (pasif): a yolu // b yolu paralel ──
+                    cift_b = pasif_ust_veya_es.get(ga)
+                    if cift_b and cift_b not in pasif_atlanacak:
+                        b_ps_list = next((lst for g2, lst in pasif_gruplari
+                                          if g2 == cift_b), None)
+                        if b_ps_list:
+                            pasif_atlanacak.add(cift_b)
+                            # 2 dal: a (üst) yatay seri, b (alt) yatay seri
+                            DAL_GAP = 70
+                            y_a_p = y_pasif - DAL_GAP
+                            y_b_p = y_pasif + DAL_GAP
+                            sol_kvs = pasif_x
+                            # Her dalın yatay genişliği = şart sayısı * AMPUL_X_GAP
+                            a_w = len(ps_list) * AMPUL_X_GAP + 30
+                            b_w = len(b_ps_list) * AMPUL_X_GAP + 30
+                            blok_w = max(a_w, b_w) + 30
+                            sag_kvs = sol_kvs + blok_w
+                            # Ana hat → sol kavşak
+                            self._devre_kablo(c, pasif_son_x, y_pasif,
+                                               sol_kvs, y_pasif, akim=False)
+                            # Sol dikey kavşak
+                            self._devre_kablo(c, sol_kvs, y_a_p,
+                                               sol_kvs, y_b_p, akim=False)
+                            # a dalı yatay seri
+                            xi = sol_kvs + 30
+                            for p in ps_list:
+                                ax = xi + KUTU_YARI_W
+                                self._devre_kablo(c, xi - 30, y_a_p,
+                                                   ax - KUTU_YARI_W, y_a_p,
+                                                   akim=False)
+                                self._devre_ampul_at(c, ax, y_a_p, p,
+                                                      AMPUL_R,
+                                                      veya_grubu=False,
+                                                      font_sembol=SEMBOL_FONT,
+                                                      font_etiket=ETIKET_FONT)
+                                xi = ax + KUTU_YARI_W + 30
+                            self._devre_kablo(c, xi - 30, y_a_p,
+                                               sag_kvs, y_a_p, akim=False)
+                            # b dalı yatay seri
+                            xi = sol_kvs + 30
+                            for p in b_ps_list:
+                                ax = xi + KUTU_YARI_W
+                                self._devre_kablo(c, xi - 30, y_b_p,
+                                                   ax - KUTU_YARI_W, y_b_p,
+                                                   akim=False)
+                                self._devre_ampul_at(c, ax, y_b_p, p,
+                                                      AMPUL_R,
+                                                      veya_grubu=False,
+                                                      font_sembol=SEMBOL_FONT,
+                                                      font_etiket=ETIKET_FONT)
+                                xi = ax + KUTU_YARI_W + 30
+                            self._devre_kablo(c, xi - 30, y_b_p,
+                                               sag_kvs, y_b_p, akim=False)
+                            # Sağ dikey kavşak
+                            self._devre_kablo(c, sag_kvs, y_a_p,
+                                               sag_kvs, y_b_p, akim=False)
+                            # Çıkış: sağ kavşak → ana hat
+                            self._devre_kablo(c, sag_kvs, y_pasif,
+                                               sag_kvs, y_pasif, akim=False)
+                            pasif_son_x = sag_kvs
+                            pasif_x = pasif_son_x + 30
+                            continue
+
+                    veya_g = any(p.get('veya_grubu') for p in ps_list)
+                    if veya_g and len(ps_list) >= 2:
+                        # PARALEL ALT-VEYA: dikey kavşak (n dal)
+                        n = len(ps_list)
+                        # Dal y koordinatları: y_pasif merkezde, dallar simetrik
+                        DAL_Y_GAP = 65
+                        toplam_yuks = (n - 1) * DAL_Y_GAP
+                        y_dal_list = [y_pasif - toplam_yuks // 2 +
+                                       i * DAL_Y_GAP for i in range(n)]
+                        sol_kvs_x = pasif_x
+                        ampul_x = sol_kvs_x + KUTU_YARI_W + 30
+                        sag_kvs_x = ampul_x + KUTU_YARI_W + 25
+                        # Ana hat → sol kavşak
+                        self._devre_kablo(c, pasif_son_x, y_pasif,
+                                           sol_kvs_x, y_pasif, akim=False)
+                        # Sol dikey kavşak (üst-alt arası)
+                        self._devre_kablo(c, sol_kvs_x, y_dal_list[0],
+                                           sol_kvs_x, y_dal_list[-1],
+                                           akim=False)
+                        # Her dal: sol kavşak → ampul → sağ kavşak
+                        for i, p in enumerate(ps_list):
+                            yy = y_dal_list[i]
+                            self._devre_kablo(c, sol_kvs_x, yy,
+                                               ampul_x - KUTU_YARI_W, yy,
+                                               akim=False)
+                            self._devre_ampul_at(c, ampul_x, yy, p,
+                                                  AMPUL_R, veya_grubu=True,
+                                                  font_sembol=SEMBOL_FONT,
+                                                  font_etiket=ETIKET_FONT)
+                            self._devre_kablo(c,
+                                               ampul_x + KUTU_YARI_W, yy,
+                                               sag_kvs_x, yy, akim=False)
+                        # Sağ dikey kavşak
+                        self._devre_kablo(c, sag_kvs_x, y_dal_list[0],
+                                           sag_kvs_x, y_dal_list[-1],
+                                           akim=False)
+                        pasif_son_x = sag_kvs_x
+                        pasif_x = pasif_son_x + 30
+                    else:
+                        # YATAY SERİ AND (mevcut davranış)
+                        for p in ps_list:
+                            ampul_x = pasif_x + KUTU_YARI_W
+                            self._devre_kablo(c, pasif_son_x, y_pasif,
+                                               ampul_x - KUTU_YARI_W,
+                                               y_pasif, akim=False)
+                            self._devre_ampul_at(c, ampul_x, y_pasif, p,
+                                                  AMPUL_R, veya_grubu=False,
+                                                  font_sembol=SEMBOL_FONT,
+                                                  font_etiket=ETIKET_FONT)
+                            pasif_son_x = ampul_x + KUTU_YARI_W
+                            pasif_x = (pasif_son_x + AMPUL_X_GAP -
+                                        2 * KUTU_YARI_W)
                 # Pasif son → sağ kavşak
                 self._devre_kablo(c, pasif_son_x, y_pasif,
                                    kavsak_sag_x, y_pasif, akim=False)
@@ -2690,44 +3402,117 @@ class AylikReceteSorguGUI:
                       font=PIL_FONT, tags="devre")
         c.create_text(x, y_merkez + 28, text="ÇIKIŞ", fill="#37474F",
                       font=("Segoe UI", 8, "bold"), tags="devre")
+
+        # ── Devre çıkışı: VERDICT etiketi EN SAĞDA ─────────────────────
+        # Alt/üst yolaktaki tüm çizimlerin sağ kenarını bul, ⊖ pilden
+        # oraya kadar akım hattını uzat, etiketi tam o noktaya koy.
+        c.update_idletasks()
+        bbox_devre = c.bbox("devre")
+        if bbox_devre:
+            max_x_pre = bbox_devre[2]
+        else:
+            max_x_pre = x + 14
+        # ⊖ pilden devrenin en sağına kadar uzun akım hattı
+        if max_x_pre > x + 40:
+            self._devre_kablo(c, x + 14, y_merkez,
+                               max_x_pre + 20, y_merkez,
+                               akim=akim_aktif)
+            etiket_x = max_x_pre + 60
+        else:
+            etiket_x = x + 50
+
+        v_up = (verdict or "").strip().upper()
+        if v_up:
+            etiket_palet = {
+                "UYGUN":         ("#1B5E20", "#A5D6A7"),
+                "UYGUN DEĞİL":   ("#B71C1C", "#FFCDD2"),
+                "ŞÜPHELİ":       ("#E65100", "#FFE0B2"),
+                "KONTROL EDİLEMEDİ": ("#E65100", "#FFE0B2"),
+            }
+            v_fg, v_bg = etiket_palet.get(v_up, ("#37474F", "#ECEFF1"))
+            etiket_y = y_merkez
+            if akim_aktif and v_up == "UYGUN":
+                # Parlama halkası — devre kapalı (akım girişten çıkışa geçti)
+                c.create_oval(etiket_x - 12, etiket_y - 22,
+                               etiket_x + 84, etiket_y + 22,
+                               outline="#66BB6A", width=3,
+                               fill="#E8F5E9", tags="devre")
+            else:
+                c.create_oval(etiket_x - 8, etiket_y - 22,
+                               etiket_x + 90, etiket_y + 22,
+                               outline=v_fg, width=2,
+                               fill=v_bg, tags="devre")
+            c.create_text(etiket_x + 40, etiket_y, text=v_up,
+                           fill=v_fg, font=("Segoe UI", 10, "bold"),
+                           tags="devre")
+            x = etiket_x + 100
+        else:
+            x = etiket_x
+
         toplam_w = x + 30
 
-        # Bilgi grupları — devre dışında alt sağ köşeye yatay liste
+        # Bilgi grupları — devre dışında alt sağ köşeye toggle başlık + liste
         bilgi_var = any("(bilgi)" in g for g in sira)
         if bilgi_var:
+            # Toggle state (default kapalı)
+            if not hasattr(self, "_sema_bilgi_acik"):
+                self._sema_bilgi_acik = False
+            bilgi_acik = self._sema_bilgi_acik
+            # Bilgi şartlarını topla + sayı
+            bilgi_sayi = sum(1 for g_ad in sira if "(bilgi)" in g_ad
+                             for _ in gruplar_dict[g_ad])
             bilgi_y = canvas_h - 60
             bilgi_x = KENAR
-            c.create_text(bilgi_x, bilgi_y,
-                          text="ⓘ Manuel doğrulama (devre dışı):",
-                          anchor="w", fill="#9E9E9E",
-                          font=("Segoe UI", 8, "bold"), tags="devre")
-            bilgi_y += 16
-            for g_ad in sira:
-                if "(bilgi)" not in g_ad:
-                    continue
-                for s in gruplar_dict[g_ad]:
-                    d = s.get("durum", "na")
-                    sembol = "?" if d == "kontrol_edilemedi" else "i"
-                    ad = s.get("ad", "")[:48]
-                    c.create_text(bilgi_x + 10, bilgi_y,
-                                  text=f"{sembol}  {ad}",
-                                  anchor="w", fill="#BDBDBD",
-                                  font=("Segoe UI", 8), tags="devre")
-                    bilgi_y += 14
+            ok = "▼" if bilgi_acik else "▶"
+            baslik_text = (f"{ok}  ⓘ Manuel doğrulama gereken şartlar "
+                           f"({bilgi_sayi}) — hesap dışı")
+            baslik_id = c.create_text(
+                bilgi_x, bilgi_y, text=baslik_text,
+                anchor="w", fill="#1565C0",
+                font=("Segoe UI", 8, "bold", "underline"),
+                tags=("devre", "bilgi_toggle"))
+            c.tag_bind(baslik_id, "<Button-1>",
+                       lambda _e: self._bilgi_toggle())
+            if bilgi_acik:
+                bilgi_y += 16
+                for g_ad in sira:
+                    if "(bilgi)" not in g_ad:
+                        continue
+                    for s in gruplar_dict[g_ad]:
+                        d = s.get("durum", "na")
+                        sembol = "?" if d == "kontrol_edilemedi" else "i"
+                        ad = s.get("ad", "")[:60]
+                        c.create_text(bilgi_x + 10, bilgi_y,
+                                      text=f"{sembol}  {ad}",
+                                      anchor="w", fill="#90A4AE",
+                                      font=("Segoe UI", 8), tags="devre")
+                        bilgi_y += 14
 
         # Scroll region — TÜM çizim alanını içerecek şekilde otomatik
-        # (pasif hat negatif y'ye taşmış olabilir, bbox tüm item'ları içerir)
+        # Buffer: dikey %15 üst + %15 alt = toplam %30 ek mesafe (sınırlı)
         c.update_idletasks()
         bbox = c.bbox("devre")
         if bbox:
             x_min, y_min, x_max, y_max = bbox
-            pad = 30
-            c.configure(scrollregion=(x_min - pad, y_min - pad,
-                                        max(x_max + pad, c.winfo_width()),
-                                        max(y_max + pad, canvas_h)))
-            # Render sonrası en üste otomatik scroll (pasif hat görünür olsun)
-            c.yview_moveto(0)
-            c.xview_moveto(0)
+            bbox_h = max(y_max - y_min, 100)
+            pad_v = int(bbox_h * 0.15)   # %15 üst + %15 alt = %30 toplam
+            pad_h = 30                    # yatay sabit
+            c.configure(scrollregion=(x_min - pad_h, y_min - pad_v,
+                                        max(x_max + pad_h, c.winfo_width()),
+                                        max(y_max + pad_v, canvas_h)))
+            # Auto-scroll SADECE yeni satır seçildiğinde (sartlar fingerprint
+            # değişti). Detay toggle gibi durumlarda kullanıcı scroll'unu
+            # koru. Yoksa kullanıcı sağa kaydırırken her render reset eder.
+            try:
+                fp = (id(sartlar), len(sartlar))
+                if getattr(self, "_son_render_fingerprint", None) != fp:
+                    c.update_idletasks()
+                    c.yview_moveto(0)
+                    c.xview_moveto(0)
+                    self._son_render_fingerprint = fp
+            except Exception:
+                c.yview_moveto(0)
+                c.xview_moveto(0)
         else:
             c.configure(scrollregion=(0, 0,
                                         max(toplam_w, c.winfo_width()),

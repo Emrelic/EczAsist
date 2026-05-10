@@ -7646,41 +7646,89 @@ def _yoak_atom_ht(metin_lower: str, teshis_metin: str) -> bool:
 
 
 def _yoak_atom_mitral_darlik(metin_lower: str) -> bool:
-    """SUT 4.2.15.D-1(1): 'orta-ciddi mitral darlık' VAR mı (kontrendikasyon)."""
-    return any(k in metin_lower for k in [
+    """SUT 4.2.15.D-1(1): 'orta-ciddi mitral darlık' VAR mı (kontrendikasyon).
+
+    DİKKAT: ibareden sonra 50 karakter içinde 'olmayan/olmadığı/yok/yoktur'
+    varsa NEGATİF ek tespit edilir → ibare aslında YOK demek olur (False).
+    Örn: "ORTA CİDDİ MİTRAL DARLIK KAPAK OLMADIĞI" → False (mitral YOK).
+    """
+    if not metin_lower:
+        return False
+    pozitif_anahtarlar = [
         'orta mitral darlık', 'orta mitral darlik',
         'ciddi mitral darlık', 'ciddi mitral darlik',
         'severe mitral stenos', 'moderate mitral stenos',
         'romatizmal mitral darlık', 'romatizmal mitral darlik',
         'orta-ciddi mitral', 'orta-ağır mitral', 'orta-agir mitral',
-    ])
+    ]
+    negatif_ekler = ('olmay', 'yoktur', 'olmadi', 'olmadı',
+                     'saptanma', 'tespit edilmem', 'gozlenmem',
+                     'gözlenmem')
+    for k in pozitif_anahtarlar:
+        idx = metin_lower.find(k)
+        if idx < 0:
+            continue
+        # Sonrasında 50 char içinde negatif ek var mı?
+        sonraki_50 = metin_lower[idx + len(k):idx + len(k) + 50]
+        if any(neg in sonraki_50 for neg in negatif_ekler):
+            continue  # bu eşleşme aslında negatif (mitral YOK), atla
+        # Pozitif eşleşme — başka pozitif anahtar başka yerde negatif değilse
+        # ekstra güvence: aynı pozisyon önce 30 karakter geriye "olm" var mı?
+        # Genelde gereksiz, ama "olmayan ciddi mitral darlık" gibi tersi
+        oncesi_30 = metin_lower[max(0, idx - 30):idx]
+        if any(neg in oncesi_30 for neg in negatif_ekler):
+            continue
+        return True
+    return False
 
 
 def _yoak_atom_mitral_darlik_yok_ibaresi(metin_lower: str) -> bool:
-    """SUT 4.2.15.D-1(1): rapor metninde 'mitral darlık YOK/OLMAYAN/yoktur'
-    lafzen ibaresi var mı (örtük kabul yasağı)."""
+    """SUT 4.2.15.D-1(1): rapor metninde 'mitral darlık YOK/OLMAYAN/
+    OLMADIĞI/yoktur/saptanmadı/gözlenmedi' lafzen ibaresi var mı
+    (örtük kabul yasağı)."""
     if not metin_lower:
         return False
+    # Negatif ek varyantları (Türkçe çekim)
+    neg_pat = (r'(?:olmay|olmadi|olmadı|yoktur|yok\b|'
+               r'saptanm|tespit\s+edilmem|gozlenmem|gözlenmem)')
     return bool(re.search(
-        r'mitral[^.]{0,30}(?:darl[ıi]k|stenos)[^.]{0,30}'
-        r'(?:olmay|yoktur|yok\b|saptanm|tespit\s+edilmem)',
+        rf'mitral[^.]{{0,40}}(?:darl[ıi]k|stenos)[^.]{{0,40}}{neg_pat}',
         metin_lower)) or bool(re.search(
-        r'(?:olmay|yoktur|yok)[^.]{0,30}mitral[^.]{0,30}(?:darl[ıi]k|stenos)',
-        metin_lower)) or 'mitral darlık olmayan' in metin_lower or \
-        'mitral darlik olmayan' in metin_lower
+        rf'{neg_pat}[^.]{{0,40}}mitral[^.]{{0,40}}(?:darl[ıi]k|stenos)',
+        metin_lower))
 
 
 def _yoak_atom_mekanik_kapak(metin_lower: str) -> bool:
     """SUT 4.2.15.D-1(1): 'mekanik protez kapak' VAR mı (kontrendikasyon).
 
+    DİKKAT: ibareden sonra 50 karakter içinde 'olmayan/olmadığı/yok' varsa
+    negatif ek → False döner. Örn: "MEKANİK PROTEZ KAPAK OLMAYAN" → False.
+
     NOT: Biyoprotez kapak _yoak_atom_biyoprotez ile ayrı sorgulanır;
     biyoprotez VARSA bu fonksiyon True dönse bile kontrendikasyon değildir.
     """
-    return any(k in metin_lower for k in [
+    if not metin_lower:
+        return False
+    pozitif_anahtarlar = [
         'mekanik kapak', 'mekanik protez kapak',
         'mekanik mitral', 'mekanik aort',
         'mechanical valve',
-    ])
+    ]
+    negatif_ekler = ('olmay', 'yoktur', 'olmadi', 'olmadı',
+                     'saptanma', 'tespit edilmem', 'gozlenmem',
+                     'gözlenmem')
+    for k in pozitif_anahtarlar:
+        idx = metin_lower.find(k)
+        if idx < 0:
+            continue
+        sonraki_50 = metin_lower[idx + len(k):idx + len(k) + 50]
+        if any(neg in sonraki_50 for neg in negatif_ekler):
+            continue  # negatif ek var, ibare YOK demek
+        oncesi_30 = metin_lower[max(0, idx - 30):idx]
+        if any(neg in oncesi_30 for neg in negatif_ekler):
+            continue
+        return True
+    return False
 
 
 def _yoak_atom_mekanik_kapak_yok_ibaresi(metin_lower: str) -> bool:
@@ -7724,12 +7772,26 @@ def _yoak_atom_apiksaban_kapsam_disi(etkin_madde: str) -> bool:
     return 'APIKSABAN' in e or 'APIXABAN' in e
 
 
-def _yoak_atom_sk_ibaresi(metin_lower: str) -> bool:
-    """'sağlık kurulu' ibaresi metinde geçiyor mu."""
-    return any(k in metin_lower for k in [
+def _yoak_atom_sk_ibaresi(metin_lower: str, rapor_kodu: str = '') -> bool:
+    """SK rapor tespiti — iki yöntem (mantıksal OR):
+
+    1. Lafzen 'sağlık kurulu' ibaresi metinde geçiyor (en güvenilir)
+    2. Rapor kodu 04.03.* (YOAK Medula kodu) — Medula'da YOAK için
+       SK zorunludur, başka rapor tipi YOAK rapor kodu üretmez.
+
+    NOT: Rapor metninde "sağlık kurulu" lafzı yazılmaz çoğu zaman
+    (Medula ekranındaki başlık tipinden anlaşılır). Bu yüzden
+    rapor_kodu 04.03 ise SK varsayım yapılır.
+    """
+    if any(k in metin_lower for k in [
         'sağlık kurulu', 'saglik kurulu',
         'sağlık kurul', 'saglik kurul',
-    ])
+    ]):
+        return True
+    # Medula rapor kodu çıkarsama: 04.03 YOAK için SK zorunlu
+    if rapor_kodu and str(rapor_kodu).strip().startswith('04.03'):
+        return True
+    return False
 
 
 def _yoak_atom_brans_var(metin_lower: str, anahtarlar: Tuple[str, ...]) -> bool:
@@ -7815,12 +7877,51 @@ def _yoak_atom_e_uzman_recete(doktor_brans: str,
 
 # ─── F grubu atomik (24 ay sonrası alt yol) ────────────────────────────
 
-def _yoak_atom_f_aile_hekimi(doktor_brans: str) -> bool:
-    """24 ay sonrası: aile hekimi de reçete edebilir."""
-    if not doktor_brans:
-        return False
-    return any(a in _tr_lower(doktor_brans)
-               for a in _YOAK_AILE_HEKIMI_KEYS)
+def _yoak_atom_f_aile_hekimi(ilac_sonuc: Dict) -> Tuple[bool, str]:
+    """24 ay sonrası: aile hekimi de reçete edebilir.
+
+    Aile hekimi tespiti 3 yol (ARB'deki kalıbın aynısı, herhangi biri yeterli):
+      1. Doktorun branş listesinde 'AİLE HEK...' geçer (sertifikalı pratisyen)
+      2. Reçetenin yazıldığı kurum ASM/AHM/Aile Sağlığı Merkezi
+      3. Tesis kodu (Hastane.HastaneKodu) AILE_HEKIMLIGI_TESIS_KODLARI listesi
+
+    Returns:
+        (aile_hekimi_mi, neden_string)
+    """
+    doktor_brans = (ilac_sonuc.get('doktor_uzmanligi') or '').upper()
+    kurum_adi = (ilac_sonuc.get('kurum_adi') or '').upper()
+    tesis_kodu = str(ilac_sonuc.get('tesis_kodu') or '').strip()
+
+    brans_aile_hek = (
+        'AILE HEK' in doktor_brans
+        or 'AİLE HEK' in doktor_brans
+        or 'AİLE HEKİMLİĞİ' in doktor_brans
+        or 'AILE HEKIMLIGI' in doktor_brans
+    )
+    kurum_asm = bool(kurum_adi) and (
+        'AILE SAGLIGI' in kurum_adi
+        or 'AİLE SAĞLIĞI' in kurum_adi
+        or 'AILE SAĞLIĞI' in kurum_adi
+        or 'AİLE SAGLIGI' in kurum_adi
+        or 'AILE HEKIMLIGI' in kurum_adi
+        or 'AİLE HEKİMLİĞİ' in kurum_adi
+        or any(tok in kurum_adi.split() for tok in ('ASM', 'AHM'))
+    )
+    tesis_aile_hek = bool(tesis_kodu) and (
+        tesis_kodu in AILE_HEKIMLIGI_TESIS_KODLARI
+    )
+
+    aile_hekimi = brans_aile_hek or kurum_asm or tesis_aile_hek
+
+    nedenler = []
+    if brans_aile_hek:
+        nedenler.append(f'branş: {doktor_brans[:30]}')
+    if kurum_asm:
+        nedenler.append(f'kurum: {kurum_adi[:40]}')
+    if tesis_aile_hek:
+        nedenler.append(f'tesis kodu: {tesis_kodu}')
+    neden = ' + '.join(nedenler) if nedenler else (doktor_brans or '(boş)')
+    return aile_hekimi, neden
 
 
 # ─── D-2 endikasyon atomikleri ─────────────────────────────────────────
@@ -8135,15 +8236,31 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         'rapor_metni/teshis', grup=g_varfa_b))
 
     # ── GRUP E: SK raporu — ilk 24 ay [(2)] [AND, 5 atomik] ───────────
+    # NOT: rapor_kodu 04.03 (YOAK Medula kodu) varsa Medula SK formalitesini
+    # zaten onaylamış demektir. Bu durumda E1, E2, E3 otomatik VAR varsayılır
+    # (Medula otoritesi). E5 (reçete eden hekim) ayrı kontrol edilir.
     g_e = 'SK raporu — ilk 24 ay [(2)]'
-    sk_ib = _yoak_atom_sk_ibaresi(metin_lower)
-    # E1: SK ibaresi
-    sartlar.append(SartSonuc(
-        '"Sağlık kurulu raporu" ibaresi',
-        SartDurumu.VAR if sk_ib else SartDurumu.YOK,
-        '"sağlık kurulu" geçiyor' if sk_ib
-        else '"sağlık kurulu" ibaresi yok',
-        'rapor_metni', grup=g_e))
+    medula_sk_var = bool(rapor_kodu and rapor_kodu.startswith('04.03'))
+    sk_ib_lafzen = _yoak_atom_sk_ibaresi(metin_lower)
+    # E1: SK ibaresi (lafzen veya rapor_kodu üzerinden)
+    if sk_ib_lafzen:
+        sartlar.append(SartSonuc(
+            '"Sağlık kurulu raporu" ibaresi',
+            SartDurumu.VAR,
+            '"sağlık kurulu" lafzen rapor metninde geçiyor',
+            'rapor_metni', grup=g_e))
+    elif medula_sk_var:
+        sartlar.append(SartSonuc(
+            '"Sağlık kurulu raporu" ibaresi',
+            SartDurumu.VAR,
+            f'Medula rapor kodu {rapor_kodu} = SK zorunlu (Medula otoritesi)',
+            'rapor_kodu', grup=g_e))
+    else:
+        sartlar.append(SartSonuc(
+            '"Sağlık kurulu raporu" ibaresi',
+            SartDurumu.YOK,
+            'rapor metninde SK ibaresi yok ve rapor kodu da yok',
+            'rapor_metni/rapor_kodu', grup=g_e))
 
     # Branş tespiti (D-1: kard/iç/göğüs/KVC/nöroloji 5 branş)
     brans_kategoriler_d1 = [
@@ -8173,19 +8290,60 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
 
     g_e_bilgi = 'SK raporu (D-1) — manuel doğrulama (bilgi)'
     # E KRİTİK (4 atomik AND): SK ibaresi + kard/nöro + ≥3 branş + uzman reçete
-    # E2: kard VEYA nöro zorunlu
-    sartlar.append(SartSonuc(
-        'Kardiyoloji VEYA Nöroloji uzmanı (zorunlu)',
-        SartDurumu.VAR if kard_veya_noro else SartDurumu.YOK,
-        'kard/nöro uzman SK\'da var' if kard_veya_noro
-        else 'kard/nöro uzman SK\'da yok',
-        'rapor_metni', grup=g_e))
-    # E3: ≥3 farklı uzman
-    sartlar.append(SartSonuc(
-        '≥3 farklı uzmanlık branşı',
-        SartDurumu.VAR if bulunan_brans_sayisi >= 3 else SartDurumu.YOK,
-        f'{bulunan_brans_sayisi}/5 farklı branş tespit',
-        'rapor_metni', grup=g_e))
+    # E2: kard VEYA nöro zorunlu — lafzen veya Medula otoritesi
+    if kard_veya_noro:
+        sartlar.append(SartSonuc(
+            'Kardiyoloji VEYA Nöroloji uzmanı (zorunlu)',
+            SartDurumu.VAR,
+            'kard/nöro uzman lafzen SK\'da var',
+            'rapor_metni', grup=g_e))
+    elif medula_sk_var:
+        sartlar.append(SartSonuc(
+            'Kardiyoloji VEYA Nöroloji uzmanı (zorunlu)',
+            SartDurumu.VAR,
+            f'Medula 04.03 = kard/nöro zorunlu uzman onayı (otorite)',
+            'rapor_kodu', grup=g_e))
+    else:
+        sartlar.append(SartSonuc(
+            'Kardiyoloji VEYA Nöroloji uzmanı (zorunlu)',
+            SartDurumu.YOK,
+            'kard/nöro uzman ibaresi rapor metninde yok',
+            'rapor_metni', grup=g_e))
+    # E3a: Herhangi ≥3 farklı uzmanlık dalı (lafzen veya Medula otoritesi)
+    # SUT lafzı: "...uzman hekimlerinden aynı uzmanlık dalından üçünün
+    # VEYA herhangi üçünün bulunduğu..." → alt-VEYA grubu (≥1 yeterli)
+    if bulunan_brans_sayisi >= 3:
+        sartlar.append(SartSonuc(
+            'Herhangi ≥3 farklı uzmanlık dalı',
+            SartDurumu.VAR,
+            f'{bulunan_brans_sayisi}/5 farklı branş lafzen tespit',
+            'rapor_metni', grup=g_e, veya_grubu=True))
+    elif medula_sk_var:
+        sartlar.append(SartSonuc(
+            'Herhangi ≥3 farklı uzmanlık dalı',
+            SartDurumu.VAR,
+            f'Medula 04.03 = ≥3 uzman onayı zorunlu (otorite)',
+            'rapor_kodu', grup=g_e, veya_grubu=True))
+    else:
+        sartlar.append(SartSonuc(
+            'Herhangi ≥3 farklı uzmanlık dalı',
+            SartDurumu.YOK,
+            f'{bulunan_brans_sayisi}/5 lafzen tespit, rapor kodu yok',
+            'rapor_metni', grup=g_e, veya_grubu=True))
+    # E3b: Aynı uzmanlık dalından ≥3 uzman (parser zayıf, KE — manuel)
+    # alt-VEYA: ya farklı dal ya aynı dal — birinin sağlanması yeterli.
+    if medula_sk_var:
+        sartlar.append(SartSonuc(
+            'Aynı uzmanlık dalından ≥3 uzman',
+            SartDurumu.VAR,
+            'Medula 04.03 = SK kapsar (otorite)',
+            'rapor_kodu', grup=g_e, veya_grubu=True))
+    else:
+        sartlar.append(SartSonuc(
+            'Aynı uzmanlık dalından ≥3 uzman',
+            SartDurumu.KONTROL_EDILEMEDI,
+            'Aynı daldan uzman sayısı parse edilemiyor — manuel doğrulama',
+            'rapor_metni', grup=g_e, veya_grubu=True))
     # E5: bu uzman hekimlerce reçete edildi
     e_uzman_recete = _yoak_atom_e_uzman_recete(
         doktor_brans, _YOAK_AF_SK_BRANSLAR)
@@ -8221,13 +8379,14 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         else 'uzman branş ibaresi yok',
         'rapor_metni', grup=g_f))
     # F3: aile hekimi VEYA uzman reçete edebilir
-    aile_hk = _yoak_atom_f_aile_hekimi(doktor_brans)
+    # Aile hekimi tespiti: branş + ASM kurum + tesis kodu (3 yol)
+    aile_hk, aile_neden = _yoak_atom_f_aile_hekimi(ilac_sonuc)
     if aile_hk:
         sartlar.append(SartSonuc(
             'Aile hekimi VEYA uzman reçete edebilir',
             SartDurumu.VAR,
-            f'Aile hekimi reçete (24 ay sonrası yetki): {doktor_brans}',
-            'doktor_uzmanligi', grup=g_f))
+            f'Aile hekimi reçete (24 ay sonrası yetki): {aile_neden}',
+            'doktor_uzmanligi/tesis', grup=g_f))
     elif e_uzman_recete:
         sartlar.append(SartSonuc(
             'Aile hekimi VEYA uzman reçete edebilir',
@@ -8238,8 +8397,8 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         sartlar.append(SartSonuc(
             'Aile hekimi VEYA uzman reçete edebilir',
             SartDurumu.YOK,
-            f'Doktor ne aile hekimi ne uzman: {doktor_brans or "(boş)"}',
-            'doktor_uzmanligi', grup=g_f))
+            f'Doktor ne aile hekimi ne uzman: {aile_neden}',
+            'doktor_uzmanligi/tesis', grup=g_f))
 
     # ── BİLGİ: Apiksaban Mülga (3) ────────────────────────────────────
     if _yoak_atom_apiksaban_kapsam_disi(etkin_madde):
@@ -8259,6 +8418,17 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         'Aynı reçetede başka YOAK yok',
         'recete_ilaclari',
         grup='Kombi yasağı [(4)]'))
+
+    # ── (4) Rapor yenileme bilgi notu (parser zayıf, KE bilgi grubu) ──
+    # SUT lafzı: "Rapor süresinin bitiminde tedavinin devamına karar
+    # verilmesi halinde, bu durumun belirtildiği yeni SK raporu
+    # düzenlenerek tedaviye devam edilebilir."
+    sartlar.append(SartSonuc(
+        'Rapor süresi bitiminde devam kararı + yeni SK raporu',
+        SartDurumu.KONTROL_EDILEMEDI,
+        'Tedavi devamı için rapor yenilenmiş mi — manuel doğrulama',
+        'rapor_metni/hasta_gecmisi',
+        grup='Rapor yenileme [(4)] (bilgi)'))
 
     detaylar.update({'alt_dal': '4.2.15.D-1', 'endikasyon': 'AF',
                      'varfarin_2ay': da1_2ay,
@@ -8445,11 +8615,20 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
             f'"{ad.lower()}" tespit' if v else f'"{ad.lower()}" yok',
             'rapor_metni', grup=g_sk_brans))
     g_e2_bilgi = 'SK raporu (D-2) — manuel doğrulama (bilgi)'
-    # E2-2
+    # E2-2a: Herhangi ≥3 farklı uzmanlık dalı (kard/iç/göğüs/KVC)
+    # SUT D-2(3): "...uzman hekimlerinden aynı uzmanlık dalından üçünün
+    # VEYA herhangi üçünün bulunduğu..." → alt-VEYA grubu
     sartlar.append(SartSonuc(
-        '≥3 uzman (kard/iç/göğüs/KVC) — aynı 3 VEYA farklı 3',
+        'Herhangi ≥3 farklı uzmanlık dalı (kard/iç/göğüs/KVC)',
         SartDurumu.VAR if bulunan_brans >= 3 else SartDurumu.YOK,
-        f'{bulunan_brans}/4 farklı branş tespit', 'rapor_metni', grup=g_e2))
+        f'{bulunan_brans}/4 farklı branş tespit',
+        'rapor_metni', grup=g_e2, veya_grubu=True))
+    # E2-2b: Aynı uzmanlık dalından ≥3 uzman (parser zayıf, KE)
+    sartlar.append(SartSonuc(
+        'Aynı uzmanlık dalından ≥3 uzman',
+        SartDurumu.KONTROL_EDILEMEDI,
+        'Aynı daldan uzman sayısı parse edilemiyor — manuel doğrulama',
+        'rapor_metni', grup=g_e2, veya_grubu=True))
     # E2-4 — bu uzmanlarca reçete
     e2_uzman_recete = _yoak_atom_e_uzman_recete(
         doktor_brans, _YOAK_DVTPE_SK_BRANSLAR)
@@ -8488,14 +8667,14 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         f'{bulunan_brans_f2}/5 uzman branş tespit (24ay sonrası nöroloji+)'
         if bulunan_brans_f2 >= 1 else 'uzman branş ibaresi yok',
         'rapor_metni', grup=g_f2))
-    # F2-3: aile hekimi reçete
-    aile_hk = _yoak_atom_f_aile_hekimi(doktor_brans)
+    # F2-3: aile hekimi reçete (branş + ASM kurum + tesis kodu)
+    aile_hk, aile_neden = _yoak_atom_f_aile_hekimi(ilac_sonuc)
     if aile_hk:
         sartlar.append(SartSonuc(
             'Aile hekimi VEYA uzman reçete edebilir',
             SartDurumu.VAR,
-            f'Aile hekimi reçete: {doktor_brans}',
-            'doktor_uzmanligi', grup=g_f2))
+            f'Aile hekimi reçete: {aile_neden}',
+            'doktor_uzmanligi/tesis', grup=g_f2))
     elif e2_uzman_recete or _yoak_atom_e_uzman_recete(
             doktor_brans, ('noroloji', 'nöroloji', 'noroloj')):
         sartlar.append(SartSonuc(
@@ -8507,8 +8686,8 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         sartlar.append(SartSonuc(
             'Aile hekimi VEYA uzman reçete edebilir',
             SartDurumu.YOK,
-            f'Doktor ne aile hekimi ne uzman: {doktor_brans or "(boş)"}',
-            'doktor_uzmanligi', grup=g_f2))
+            f'Doktor ne aile hekimi ne uzman: {aile_neden}',
+            'doktor_uzmanligi/tesis', grup=g_f2))
 
     # ── GRUP G: Kombi yasağı [(D-1(4))] — D-2'de de geçerli, EN SONDA ─
     sartlar.append(SartSonuc(
@@ -8517,6 +8696,17 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         'Aynı reçetede başka YOAK yok',
         'recete_ilaclari',
         grup='Kombi yasağı [(4)]'))
+
+    # ── (4) Rapor yenileme bilgi notu (D-2'de de geçerli) ──
+    # SUT D-2(4): "Rapor süresinin bitiminde ilaç tedavisinin devamına
+    # karar verilmesi halinde, bu durumun belirtildiği yeni sağlık kurulu
+    # raporu düzenlenerek tedaviye devam edilebilir."
+    sartlar.append(SartSonuc(
+        'Rapor süresi bitiminde devam kararı + yeni SK raporu',
+        SartDurumu.KONTROL_EDILEMEDI,
+        'Tedavi devamı için rapor yenilenmiş mi — manuel doğrulama',
+        'rapor_metni/hasta_gecmisi',
+        grup='Rapor yenileme [(4)] (bilgi)'))
 
     end_str = '/'.join([e for e, v in [('DVT', end_dvt), ('PE', end_pe)] if v])
     detaylar.update({'alt_dal': '4.2.15.D-2', 'endikasyon': end_str,

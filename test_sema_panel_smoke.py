@@ -58,33 +58,11 @@ root.geometry('1500x420')
 from aylik_recete_sorgu_gui import AylikReceteSorguGUI
 
 # Minimal mock — sadece sema panel methodları için
-class MockGUI:
-    _SEMA_DURUM_RENK = AylikReceteSorguGUI._SEMA_DURUM_RENK
-    _SEMA_SONUC_RENK = AylikReceteSorguGUI._SEMA_SONUC_RENK
-    _DEVRE_RENK = AylikReceteSorguGUI._DEVRE_RENK
-    _DEVRE_SEMBOL = AylikReceteSorguGUI._DEVRE_SEMBOL
-    _DEVRE_KABLO_RENK = AylikReceteSorguGUI._DEVRE_KABLO_RENK
-    _DEVRE_KABLO_W = AylikReceteSorguGUI._DEVRE_KABLO_W
-    _DEVRE_AKIM_RENK = AylikReceteSorguGUI._DEVRE_AKIM_RENK
-    _DEVRE_AKIM_W = AylikReceteSorguGUI._DEVRE_AKIM_W
-    _SEMA_MOD_DEFAULT = AylikReceteSorguGUI._SEMA_MOD_DEFAULT
-    _sema_kur = AylikReceteSorguGUI._sema_kur
-    _sema_temizle = AylikReceteSorguGUI._sema_temizle
-    _sema_render = AylikReceteSorguGUI._sema_render
-    _sema_render_kart = AylikReceteSorguGUI._sema_render_kart
-    _sema_render_devre = AylikReceteSorguGUI._sema_render_devre
-    _sema_ust_banda_yaz = AylikReceteSorguGUI._sema_ust_banda_yaz
-    _devre_ciz_canvas = AylikReceteSorguGUI._devre_ciz_canvas
-    _devre_ampul_at = AylikReceteSorguGUI._devre_ampul_at
-    _devre_kablo = AylikReceteSorguGUI._devre_kablo
-    _sema_show_tip = AylikReceteSorguGUI._sema_show_tip
-    _sema_hide_tip = AylikReceteSorguGUI._sema_hide_tip
-    _sema_canvas_hover = AylikReceteSorguGUI._sema_canvas_hover
-    _sema_grup_matematigi = staticmethod(
-        AylikReceteSorguGUI._sema_grup_matematigi.__func__
-        if hasattr(AylikReceteSorguGUI._sema_grup_matematigi, '__func__')
-        else AylikReceteSorguGUI._sema_grup_matematigi)
+# AylikReceteSorguGUI'nin tüm sema-related attribute/metodlarını otomatik kopyala
+_SEMA_ATTR_PREFIX = ('_SEMA_', '_DEVRE_', '_sema_', '_devre_', '_grup_',
+                     '_pasif_', '_bilgi_')
 
+class MockGUI:
     def __init__(self, root):
         self.root = root
         self.tum_satirlar = [satir]
@@ -96,6 +74,10 @@ class MockGUI:
         self._sema_kur(sema_frame)
         # Hemen render et
         self.root.after(100, lambda: self._sema_render(satir))
+
+for _attr in dir(AylikReceteSorguGUI):
+    if _attr.startswith(_SEMA_ATTR_PREFIX):
+        setattr(MockGUI, _attr, getattr(AylikReceteSorguGUI, _attr))
 
 mock = MockGUI(root)
 
