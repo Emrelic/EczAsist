@@ -185,10 +185,14 @@ Aynı seviyede 2 grup VEYA bağlı ise (örn. (a) yolu VEYA (b) yolu):
 6. `grup` alanı + `veya_grubu` flag doğru → sema panel otomatik render eder
 7. Akıl testi yaz: en az 5-10 senaryo (UYGUN / UYGUN_DEGIL / ŞÜPHELİ + edge case)
 
+### 10. ⚠️ ZORUNLU: SUT mevzuat çözümleme protokolü
+Yeni SUT kontrol / ilaç grubu implementasyonuna başlamadan **önce** mutlaka `docs/SUT_MANTIK_SEMA_PROTOKOLU.md` belgesini oku. Bu belge 7-adımlık metodolojiyi (SUT metni → yolak dispatcher → atomik tablo → DeMorgan → boolean formül → kullanıcı onayı → kod) ve YOAK SUT 4.2.15.D çalışılmış örneğini içerir. Bu protokole uymadan koda geçilmez; özellikle adım 1–6 "kod öncesi" tasarım aşamasıdır ve kullanıcı onayı şarttır. Pilot: YOAK D-1+D-2+EK-4/F (2026-05-11).
+
 ## Kullanıcı Kısaltmaları
 - **\*sss** = "Soracağın soru var ise sor". Bu kısaltma görüldüğünde sorularımı sormalıyım.
 
 ## Detaylı Dokümanlar (gerektiğinde oku)
+- `docs/SUT_MANTIK_SEMA_PROTOKOLU.md` — ⚠️ **SUT kontrol implementasyonu için ZORUNLU metodoloji** (7-adım + YOAK çalışılmış örnek). Yeni SUT/ilaç grubu işlerinde mutlaka oku.
 - `KALDIGI_YER.md` — aktif modül geliştirme durumları (reçete kontrol, MF analiz, vs.)
 - `MF_ANALIZ_MODULU_SPEC.md` — MF analiz modülü detayları
 - `RECETE_ISLEME_SEMASI.md` — reçete işleme akışı

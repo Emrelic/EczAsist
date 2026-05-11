@@ -7,9 +7,16 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import logging
 import os
+import sys
+import importlib
 from datetime import datetime
 
 from kullanici_yonetimi import get_kullanici_yonetimi, KullaniciYonetimi
+
+# Geliştirme modu: True iken modüller her açılışta sys.modules cache'inden
+# yeniden yüklenir; bu sayede kodda yapılan değişiklikler ana_menu kapatılmadan etki eder.
+# Üretim için False yap (küçük ek yükü önler).
+DEV_MODE = True
 
 # Tema yönetimi merkezi modül
 try:
@@ -190,6 +197,10 @@ class AnaMenu:
         # Medula Canlı Tut state (idle-tabanlı MedulaOturumCanli servisine bağlı)
         self.var_medula_canli = tk.BooleanVar(value=False)
         self.lbl_canli_durum = None
+
+        # Açık modül pencerelerini takip et: aynı modüle ikinci kez tıklanınca
+        # var olan pencereyi öne getir, yeni kopya açma.
+        self.acik_moduller = {}
 
         # Pencere kapatılırsa
         self.root.protocol("WM_DELETE_WINDOW", self.cikis_yap)
@@ -590,144 +601,127 @@ class AnaMenu:
 
     def ilac_takip_ac(self):
         """İlaç Takip modülünü aç"""
+        ilac_root = None
         try:
-            # Ana menüyü gizle
-            self.root.withdraw()
+            ilac_root = self._modul_pencere_al("ilac_takip")
+            if ilac_root is None:
+                return
 
-            # Mevcut botanik_gui'yi çalıştır
+            self._yeniden_yukle("botanik_gui")
             from botanik_gui import BotanikGUI
 
-            # Yeni pencere oluştur
-            ilac_root = tk.Toplevel()
-
-            # Ana menüye dönüş callback'i
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            # Pencere kapatma
-            ilac_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(ilac_root))
-
-            # BotanikGUI'yi callback ile başlat
-            app = BotanikGUI(ilac_root, ana_menu_callback=ana_menuye_don)
+            BotanikGUI(ilac_root, ana_menu_callback=lambda: None)
 
         except Exception as e:
             logger.error(f"İlaç Takip açma hatası: {e}")
             messagebox.showerror("Hata", f"İlaç Takip modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if ilac_root is not None:
+                try: ilac_root.destroy()
+                except Exception: pass
 
     def depo_ekstre_ac(self):
         """Depo Ekstre modülünü aç"""
+        ekstre_root = None
         try:
-            self.root.withdraw()
+            ekstre_root = self._modul_pencere_al("depo_ekstre")
+            if ekstre_root is None:
+                return
 
+            self._yeniden_yukle("depo_ekstre_modul")
             from depo_ekstre_modul import DepoEkstreModul
 
-            # Yeni pencere oluştur
-            ekstre_root = tk.Toplevel()
-
-            # Ana menüye dönüş callback'i
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            # Pencere kapatma
-            ekstre_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(ekstre_root))
-
-            # DepoEkstreModul'u callback ile başlat
-            app = DepoEkstreModul(ekstre_root, ana_menu_callback=ana_menuye_don)
+            DepoEkstreModul(ekstre_root, ana_menu_callback=lambda: None)
 
         except ImportError as e:
             logger.error(f"Depo Ekstre import hatası: {e}")
             messagebox.showinfo("Bilgi", "Depo Ekstre modülü yüklenemedi.\nİlaç Takip modülündeki Ekstre sekmesini kullanabilirsiniz.")
-            self.root.deiconify()
+            if ekstre_root is not None:
+                try: ekstre_root.destroy()
+                except Exception: pass
         except Exception as e:
             logger.error(f"Depo Ekstre açma hatası: {e}")
             messagebox.showerror("Hata", f"Depo Ekstre modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if ekstre_root is not None:
+                try: ekstre_root.destroy()
+                except Exception: pass
 
     def kasa_takip_ac(self):
         """Kasa Takip modülünü aç"""
+        kasa_root = None
         try:
-            self.root.withdraw()
+            kasa_root = self._modul_pencere_al("kasa_takip")
+            if kasa_root is None:
+                return
 
+            self._yeniden_yukle("kasa_takip_modul")
             from kasa_takip_modul import KasaKapatmaModul
 
-            # Yeni pencere oluştur
-            kasa_root = tk.Toplevel()
-
-            # Ana menüye dönüş callback'i
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            # Pencere kapatma
-            kasa_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(kasa_root))
-
-            # KasaKapatmaModul'u callback ile başlat
-            app = KasaKapatmaModul(kasa_root, ana_menu_callback=ana_menuye_don)
+            KasaKapatmaModul(kasa_root, ana_menu_callback=lambda: None)
 
         except ImportError as e:
             logger.error(f"Kasa Takip import hatası: {e}")
             messagebox.showerror("Hata", "Kasa Takip modülü yüklenemedi.")
-            self.root.deiconify()
+            if kasa_root is not None:
+                try: kasa_root.destroy()
+                except Exception: pass
         except Exception as e:
             logger.error(f"Kasa Takip açma hatası: {e}")
             messagebox.showerror("Hata", f"Kasa Takip modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if kasa_root is not None:
+                try: kasa_root.destroy()
+                except Exception: pass
 
     def rapor_kontrol_ac(self):
         """Rapor Kontrol modülünü aç"""
+        kontrol_root = None
         try:
-            self.root.withdraw()
+            kontrol_root = self._modul_pencere_al("rapor_kontrol")
+            if kontrol_root is None:
+                return
 
+            self._yeniden_yukle("recete_rapor_kontrol_gui")
             from recete_rapor_kontrol_gui import ReceteRaporKontrolGUI
 
-            # Yeni pencere oluştur
-            kontrol_root = tk.Toplevel()
-
-            # Ana menüye dönüş callback'i
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            # Pencere kapatma
-            kontrol_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(kontrol_root))
-
-            # ReceteRaporKontrolGUI'yi başlat
-            app = ReceteRaporKontrolGUI(kontrol_root, ana_menu_callback=ana_menuye_don)
+            ReceteRaporKontrolGUI(kontrol_root, ana_menu_callback=lambda: None)
 
         except ImportError as e:
             logger.error(f"Rapor Kontrol import hatası: {e}")
             messagebox.showerror("Hata", "Rapor Kontrol modülü yüklenemedi.")
-            self.root.deiconify()
+            if kontrol_root is not None:
+                try: kontrol_root.destroy()
+                except Exception: pass
         except Exception as e:
             logger.error(f"Rapor Kontrol açma hatası: {e}")
             messagebox.showerror("Hata", f"Rapor Kontrol modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if kontrol_root is not None:
+                try: kontrol_root.destroy()
+                except Exception: pass
 
     def aylik_recete_sorgu_ac(self):
         """Aylık Reçete Sorgu modülünü aç (Botanik EOS salt-okunur)"""
+        sorgu_root = None
         try:
-            self.root.withdraw()
+            sorgu_root = self._modul_pencere_al("aylik_recete_sorgu")
+            if sorgu_root is None:
+                return
 
+            self._yeniden_yukle("aylik_recete_sorgu_gui")
             from aylik_recete_sorgu_gui import AylikReceteSorguGUI
 
-            sorgu_root = tk.Toplevel()
-
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            sorgu_root.protocol(
-                "WM_DELETE_WINDOW",
-                lambda: self._modul_kapat_ve_don(sorgu_root),
-            )
-            AylikReceteSorguGUI(sorgu_root, ana_menu_callback=ana_menuye_don)
+            AylikReceteSorguGUI(sorgu_root, ana_menu_callback=lambda: None)
 
         except ImportError as e:
             logger.error(f"Aylık Reçete Sorgu import hatası: {e}")
             messagebox.showerror("Hata", f"Aylık Reçete Sorgu modülü yüklenemedi:\n{e}")
-            self.root.deiconify()
+            if sorgu_root is not None:
+                try: sorgu_root.destroy()
+                except Exception: pass
         except Exception as e:
             logger.error(f"Aylık Reçete Sorgu açma hatası: {e}")
             messagebox.showerror("Hata", f"Aylık Reçete Sorgu modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if sorgu_root is not None:
+                try: sorgu_root.destroy()
+                except Exception: pass
 
     def t_cetvel_ac(self):
         """T Cetvel modülünü aç"""
@@ -736,240 +730,233 @@ class AnaMenu:
 
     def ek_raporlar_ac(self):
         """Ek Raporlar modülünü aç"""
+        ek_root = None
         try:
-            self.root.withdraw()
+            ek_root = self._modul_pencere_al("ek_raporlar")
+            if ek_root is None:
+                return
 
+            self._yeniden_yukle("ek_raporlar_gui")
             from ek_raporlar_gui import EkRaporlarGUI
 
-            # Yeni pencere oluştur
-            ek_root = tk.Toplevel()
-
-            # Ana menüye dönüş callback'i
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            # Pencere kapatma
-            ek_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(ek_root))
-
-            # EkRaporlarGUI'yi başlat
-            app = EkRaporlarGUI(ek_root, ana_menu_callback=ana_menuye_don)
+            EkRaporlarGUI(ek_root, ana_menu_callback=lambda: None)
 
         except ImportError as e:
             logger.error(f"Ek Raporlar import hatası: {e}")
             messagebox.showerror("Hata", f"Ek Raporlar modülü yüklenemedi:\n{e}")
-            self.root.deiconify()
+            if ek_root is not None:
+                try: ek_root.destroy()
+                except Exception: pass
         except Exception as e:
             logger.error(f"Ek Raporlar açma hatası: {e}")
             messagebox.showerror("Hata", f"Ek Raporlar modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if ek_root is not None:
+                try: ek_root.destroy()
+                except Exception: pass
 
     def mf_analiz_ac(self):
         """MF Analiz modülünü aç"""
+        mf_root = None
         try:
-            self.root.withdraw()
+            mf_root = self._modul_pencere_al(
+                "mf_analiz",
+                title="MF Analiz - Nakit Fiyat Simulasyonu",
+                zoomed=True,
+            )
+            if mf_root is None:
+                return
 
+            self._yeniden_yukle("nf_analiz_gui")
             from nf_analiz_gui import MFAnalizGUI
 
-            # Yeni pencere oluştur
-            mf_root = tk.Toplevel()
-            mf_root.title("MF Analiz - Nakit Fiyat Simulasyonu")
-            mf_root.state('zoomed')
-
-            # Ana menüye dönüş callback'i
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            # Pencere kapatma
-            mf_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(mf_root))
-
-            # MFAnalizGUI'yi başlat
-            app = MFAnalizGUI(mf_root)
+            MFAnalizGUI(mf_root)
 
         except ImportError as e:
             logger.error(f"MF Analiz import hatası: {e}")
             messagebox.showerror("Hata", "MF Analiz modülü yüklenemedi.")
-            self.root.deiconify()
+            if mf_root is not None:
+                try: mf_root.destroy()
+                except Exception: pass
         except Exception as e:
             logger.error(f"MF Analiz açma hatası: {e}")
             messagebox.showerror("Hata", f"MF Analiz modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if mf_root is not None:
+                try: mf_root.destroy()
+                except Exception: pass
 
     def mf_hizli_ac(self):
         """MF Hızlı Hesaplama modülünü aç"""
+        mf_root = None
         try:
-            self.root.withdraw()
+            mf_root = self._modul_pencere_al(
+                "mf_hizli",
+                title="MF Hızlı Hesaplama - NPV Bazlı Karlılık Analizi",
+            )
+            if mf_root is None:
+                return
 
+            self._yeniden_yukle("mf_hizli_hesaplama_gui")
             from mf_hizli_hesaplama_gui import MFHizliHesaplamaGUI
 
-            # Yeni pencere oluştur
-            mf_root = tk.Toplevel()
-            mf_root.title("MF Hızlı Hesaplama - NPV Bazlı Karlılık Analizi")
-
-            # Ana menüye dönüş callback'i
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            # Pencere kapatma
-            mf_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(mf_root))
-
-            # MFHizliHesaplamaGUI'yi başlat
-            app = MFHizliHesaplamaGUI(mf_root, ana_menu_callback=ana_menuye_don)
+            MFHizliHesaplamaGUI(mf_root, ana_menu_callback=lambda: None)
 
         except ImportError as e:
             logger.error(f"MF Hızlı Hesaplama import hatası: {e}")
             messagebox.showerror("Hata", "MF Hızlı Hesaplama modülü yüklenemedi.")
-            self.root.deiconify()
+            if mf_root is not None:
+                try: mf_root.destroy()
+                except Exception: pass
         except Exception as e:
             logger.error(f"MF Hızlı Hesaplama açma hatası: {e}")
             messagebox.showerror("Hata", f"MF Hızlı Hesaplama modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if mf_root is not None:
+                try: mf_root.destroy()
+                except Exception: pass
 
     def siparis_verme_ac(self):
         """Sipariş Verme modülünü aç"""
+        siparis_root = None
         try:
-            self.root.withdraw()
+            siparis_root = self._modul_pencere_al(
+                "siparis_verme",
+                title="Sipariş Verme Modülü",
+                zoomed=True,
+            )
+            if siparis_root is None:
+                return
 
+            self._yeniden_yukle("siparis_verme_gui")
             from siparis_verme_gui import SiparisVermeGUI
 
-            # Yeni pencere oluştur
-            siparis_root = tk.Toplevel()
-            siparis_root.title("Sipariş Verme Modülü")
-            siparis_root.state('zoomed')
-
-            # Ana menüye dönüş callback'i
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            # Pencere kapatma
-            siparis_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(siparis_root))
-
-            # SiparisVermeGUI'yi başlat
-            app = SiparisVermeGUI(siparis_root)
+            SiparisVermeGUI(siparis_root)
 
         except ImportError as e:
             logger.error(f"Sipariş Verme import hatası: {e}")
             messagebox.showerror("Hata", "Sipariş Verme modülü yüklenemedi.")
-            self.root.deiconify()
+            if siparis_root is not None:
+                try: siparis_root.destroy()
+                except Exception: pass
         except Exception as e:
             logger.error(f"Sipariş Verme açma hatası: {e}")
             messagebox.showerror("Hata", f"Sipariş Verme modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if siparis_root is not None:
+                try: siparis_root.destroy()
+                except Exception: pass
 
     def min_stok_analiz_ac(self):
         """Minimum Stok Analizi modülünü aç"""
+        analiz_root = None
         try:
-            self.root.withdraw()
+            analiz_root = self._modul_pencere_al(
+                "min_stok_analiz",
+                title="Minimum Stok Analizi",
+                zoomed=True,
+            )
+            if analiz_root is None:
+                return
 
+            self._yeniden_yukle("min_stok_analiz_gui")
             from min_stok_analiz_gui import MinStokAnalizGUI
 
-            # Yeni pencere oluştur
-            analiz_root = tk.Toplevel()
-            analiz_root.title("Minimum Stok Analizi")
-            analiz_root.state('zoomed')
-
-            # Ana menüye dönüş callback'i
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            # Pencere kapatma
-            analiz_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(analiz_root))
-
-            # MinStokAnalizGUI'yi başlat
-            app = MinStokAnalizGUI(analiz_root, ana_menu_callback=ana_menuye_don)
+            MinStokAnalizGUI(analiz_root, ana_menu_callback=lambda: None)
 
         except ImportError as e:
             logger.error(f"Min Stok Analiz import hatası: {e}")
             messagebox.showerror("Hata", "Minimum Stok Analizi modülü yüklenemedi.")
-            self.root.deiconify()
+            if analiz_root is not None:
+                try: analiz_root.destroy()
+                except Exception: pass
         except Exception as e:
             logger.error(f"Min Stok Analiz açma hatası: {e}")
             messagebox.showerror("Hata", f"Minimum Stok Analizi modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if analiz_root is not None:
+                try: analiz_root.destroy()
+                except Exception: pass
 
     def prim_raporlama_ac(self):
         """Prim Raporlama modülünü aç"""
+        prim_root = None
         try:
-            self.root.withdraw()
+            prim_root = self._modul_pencere_al(
+                "prim_raporlama",
+                title="Prim Raporlama",
+                zoomed=True,
+            )
+            if prim_root is None:
+                return
 
+            self._yeniden_yukle("prim_raporlama_gui")
             from prim_raporlama_gui import PrimRaporlamaGUI
 
-            prim_root = tk.Toplevel()
-            prim_root.title("Prim Raporlama")
-            prim_root.state('zoomed')
-
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            prim_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(prim_root))
-
-            app = PrimRaporlamaGUI(prim_root, ana_menu_callback=ana_menuye_don)
+            PrimRaporlamaGUI(prim_root, ana_menu_callback=lambda: None)
 
         except ImportError as e:
             logger.error(f"Prim Raporlama import hatası: {e}")
             messagebox.showerror("Hata", "Prim Raporlama modülü yüklenemedi.")
-            self.root.deiconify()
+            if prim_root is not None:
+                try: prim_root.destroy()
+                except Exception: pass
         except Exception as e:
             logger.error(f"Prim Raporlama açma hatası: {e}")
             messagebox.showerror("Hata", f"Prim Raporlama modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if prim_root is not None:
+                try: prim_root.destroy()
+                except Exception: pass
 
     def stok_maliyet_analiz_ac(self):
         """Stok Maliyet Analizi modülünü aç"""
+        analiz_root = None
         try:
-            self.root.withdraw()
+            analiz_root = self._modul_pencere_al(
+                "stok_maliyet_analiz",
+                title="Stok Maliyet Analizi",
+                zoomed=True,
+            )
+            if analiz_root is None:
+                return
 
+            self._yeniden_yukle("stok_maliyet_analiz_gui")
             from stok_maliyet_analiz_gui import StokMaliyetAnalizGUI
 
-            # Yeni pencere oluştur
-            analiz_root = tk.Toplevel()
-            analiz_root.title("Stok Maliyet Analizi")
-            analiz_root.state('zoomed')
-
-            # Ana menüye dönüş callback'i
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            # Pencere kapatma
-            analiz_root.protocol("WM_DELETE_WINDOW", lambda: self._modul_kapat_ve_don(analiz_root))
-
-            # StokMaliyetAnalizGUI'yi başlat
-            app = StokMaliyetAnalizGUI(analiz_root, ana_menu_callback=ana_menuye_don)
+            StokMaliyetAnalizGUI(analiz_root, ana_menu_callback=lambda: None)
 
         except ImportError as e:
             logger.error(f"Stok Maliyet Analiz import hatası: {e}")
             messagebox.showerror("Hata", "Stok Maliyet Analizi modülü yüklenemedi.")
-            self.root.deiconify()
+            if analiz_root is not None:
+                try: analiz_root.destroy()
+                except Exception: pass
         except Exception as e:
             logger.error(f"Stok Maliyet Analiz açma hatası: {e}")
             messagebox.showerror("Hata", f"Stok Maliyet Analizi modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if analiz_root is not None:
+                try: analiz_root.destroy()
+                except Exception: pass
 
     def hasta_takip_ac(self):
         """Hasta Takip & WhatsApp modülünü aç"""
+        pencere = None
         try:
-            self.root.withdraw()
+            pencere = self._modul_pencere_al("hasta_takip")
+            if pencere is None:
+                return
 
+            self._yeniden_yukle("hasta_takip_gui")
             from hasta_takip_gui import HastaTakipGUI
 
-            pencere = tk.Toplevel()
-
-            def ana_menuye_don():
-                self.root.deiconify()
-
-            pencere.protocol(
-                "WM_DELETE_WINDOW",
-                lambda: self._modul_kapat_ve_don(pencere),
-            )
-            HastaTakipGUI(pencere, ana_menu_callback=ana_menuye_don)
+            HastaTakipGUI(pencere, ana_menu_callback=lambda: None)
 
         except Exception as e:
             logger.error(f"Hasta Takip açma hatası: {e}")
             messagebox.showerror("Hata", f"Hasta Takip modülü açılamadı:\n{e}")
-            self.root.deiconify()
+            if pencere is not None:
+                try: pencere.destroy()
+                except Exception: pass
 
     def kullanici_yonetimi_ac(self):
         """Kullanıcı Yönetimi modülünü aç"""
         try:
+            self._yeniden_yukle("kullanici_yonetimi_gui")
             from kullanici_yonetimi_gui import KullaniciYonetimiPenceresi
 
             yonetim_pencere = KullaniciYonetimiPenceresi(self.root, self.kullanici)
@@ -980,20 +967,62 @@ class AnaMenu:
             logger.error(f"Kullanıcı Yönetimi açma hatası: {e}")
             messagebox.showerror("Hata", f"Kullanıcı Yönetimi açılamadı:\n{e}")
 
-    def _modul_kapat(self, pencere):
-        """Modül penceresini kapat ve ana menüyü göster"""
-        pencere.destroy()
-        self.root.deiconify()
+    def _yeniden_yukle(self, *modul_adlari):
+        """Geliştirme modunda verilen modülleri sys.modules cache'inden yeniden yükler.
 
-    def _modul_kapat_ve_don(self, pencere):
-        """Modül penceresini kapat ve ana menüyü göster (X butonuyla kapatırken)"""
-        pencere.destroy()
-        self.root.deiconify()
+        DEV_MODE = False iken hiçbir şey yapmaz.
+        Modül daha önce import edilmemişse atlanır (ilk açılışta normal import çalışır).
+        Reload başarısızsa uyarı loglanır ama akış kesilmez (eski cache ile devam edilir).
+        """
+        if not DEV_MODE:
+            return
+        for ad in modul_adlari:
+            modul = sys.modules.get(ad)
+            if modul is None:
+                continue
+            try:
+                importlib.reload(modul)
+            except Exception as e:
+                logger.warning(f"Modül reload başarısız ({ad}): {e}")
 
-    def _ana_menu_goster_if_closed(self, event, pencere):
-        """Pencere tamamen kapandıysa ana menüyü göster"""
-        if event.widget == pencere:
-            self.root.deiconify()
+    def _modul_pencere_al(self, modul_key, title=None, zoomed=False):
+        """Modül için pencere ayarla.
+
+        - Modül zaten açıksa: var olan pencereyi öne getir, None döndür (çağıran erken çıkar)
+        - Modül kapalıysa: yeni Toplevel oluştur, takip dict'ine ekle, döndür
+        Pencere yok edildiğinde dict otomatik temizlenir (Destroy event).
+        """
+        eski = self.acik_moduller.get(modul_key)
+        if eski is not None:
+            try:
+                if eski.winfo_exists():
+                    try:
+                        eski.deiconify()
+                    except Exception:
+                        pass
+                    eski.lift()
+                    eski.focus_force()
+                    return None
+            except tk.TclError:
+                pass
+            self.acik_moduller.pop(modul_key, None)
+
+        yeni = tk.Toplevel()
+        if title:
+            yeni.title(title)
+        if zoomed:
+            try:
+                yeni.state('zoomed')
+            except Exception:
+                pass
+
+        def _on_destroy(event, w=yeni, mk=modul_key):
+            if event.widget is w:
+                self.acik_moduller.pop(mk, None)
+        yeni.bind('<Destroy>', _on_destroy)
+
+        self.acik_moduller[modul_key] = yeni
+        return yeni
 
     # ---------------- Medula Canlı Tut ----------------
     def _medula_canli_toggle(self):

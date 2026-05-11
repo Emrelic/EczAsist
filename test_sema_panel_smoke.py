@@ -60,7 +60,8 @@ from aylik_recete_sorgu_gui import AylikReceteSorguGUI
 # Minimal mock — sadece sema panel methodları için
 # AylikReceteSorguGUI'nin tüm sema-related attribute/metodlarını otomatik kopyala
 _SEMA_ATTR_PREFIX = ('_SEMA_', '_DEVRE_', '_sema_', '_devre_', '_grup_',
-                     '_pasif_', '_bilgi_')
+                     '_pasif_', '_bilgi_', '_fta_', '_madde_', '_dmn_',
+                     '_aktif_', '_kontrol_')
 
 class MockGUI:
     def __init__(self, root):

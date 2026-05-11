@@ -7682,12 +7682,34 @@ def _yoak_atom_mitral_darlik(metin_lower: str) -> bool:
     return False
 
 
+def _yoak_atom_nonvalvuler_lafzen(metin_lower: str) -> bool:
+    """SUT 4.2.15.D-1: rapor metninde 'non-valvüler AF' / 'nonvalvuler AF'
+    lafzen direkt yazıyor mu (örtük kabul DEĞİL — explicit declaration).
+
+    'Non-valvüler AF' raporda lafzen geçtiğinde hekim valve hastalığını
+    (mitral darlık, mekanik protez kapak) açıkça dışlamış demektir; bu
+    SUT'un (1) maddesindeki "mitral darlık VEYA mekanik kapak OLMAYAN
+    nonvalvuler AF" şartının lafzen ikrarıdır.
+    """
+    if not metin_lower:
+        return False
+    # 'non-valvüler' / 'nonvalvuler' / 'non valvuler' / 'nonvalv' varyantları
+    return bool(re.search(
+        r'non[\s\-]?valv[uü]ler', metin_lower))
+
+
 def _yoak_atom_mitral_darlik_yok_ibaresi(metin_lower: str) -> bool:
     """SUT 4.2.15.D-1(1): rapor metninde 'mitral darlık YOK/OLMAYAN/
     OLMADIĞI/yoktur/saptanmadı/gözlenmedi' lafzen ibaresi var mı
-    (örtük kabul yasağı)."""
+    (örtük kabul yasağı).
+
+    'Non-valvüler AF' lafzen geçiyorsa (hekim AF tipini valve-dışı olarak
+    direkt deklare etmiş) bu da geçerli bir negatif ikrar sayılır."""
     if not metin_lower:
         return False
+    # 'non-valvüler' lafzen direkt → açık negatif ikrar
+    if _yoak_atom_nonvalvuler_lafzen(metin_lower):
+        return True
     # Negatif ek varyantları (Türkçe çekim)
     neg_pat = (r'(?:olmay|olmadi|olmadı|yoktur|yok\b|'
                r'saptanm|tespit\s+edilmem|gozlenmem|gözlenmem)')
@@ -7733,9 +7755,15 @@ def _yoak_atom_mekanik_kapak(metin_lower: str) -> bool:
 
 def _yoak_atom_mekanik_kapak_yok_ibaresi(metin_lower: str) -> bool:
     """SUT 4.2.15.D-1(1): rapor metninde 'mekanik kapak YOK/OLMAYAN/yoktur'
-    lafzen ibaresi var mı (örtük kabul yasağı)."""
+    lafzen ibaresi var mı (örtük kabul yasağı).
+
+    'Non-valvüler AF' lafzen geçiyorsa (hekim AF tipini valve-dışı olarak
+    direkt deklare etmiş) bu da geçerli bir negatif ikrar sayılır."""
     if not metin_lower:
         return False
+    # 'non-valvüler' lafzen direkt → açık negatif ikrar (valve hastalığı yok)
+    if _yoak_atom_nonvalvuler_lafzen(metin_lower):
+        return True
     return bool(re.search(
         r'mekanik[^.]{0,30}(?:kapak|protez|valve)[^.]{0,30}'
         r'(?:olmay|yoktur|yok\b|saptanm|tespit\s+edilmem)',
@@ -7951,6 +7979,21 @@ def _yoak_atom_tekrarlayan_pe_dvt(metin_lower: str) -> bool:
         metin_lower))
 
 
+def _yoak_atom_akut_dvt_sonrasi(metin_lower: str) -> bool:
+    """SUT D-2(1)(a) — alt-madde 2: 'akut DVT sonrası tekrarlayan DVT ve
+    Pulmoner Embolizmin (PE) önlenmesinde'.
+
+    Rapor metninde 'akut' + 'dvt/derin ven' + 'tekrar/önle' ibareleri birlikte
+    aranır.
+    """
+    has_akut = 'akut' in metin_lower
+    has_dvt = any(k in metin_lower for k in ['dvt', 'derin ven'])
+    has_tekrar = any(k in metin_lower for k in [
+        'tekrar', 'rekur', 'rekürren', 'önle', 'profilaks',
+    ])
+    return has_akut and has_dvt and has_tekrar
+
+
 def _yoak_atom_recete_hekim_yetkili(doktor_brans: str,
                                      dval: str = 'd1') -> Optional[bool]:
     """Reçete eden hekim YOAK reçete edebilir mi (D-1 veya D-2 listesi).
@@ -7976,6 +8019,155 @@ def _yoak_atom_recete_hekim_yetkili(doktor_brans: str,
     if any(a in bl for a in _YOAK_AILE_HEKIMI_KEYS):
         return None  # 24 ay tamamlanmış mı bilmiyoruz
     return False
+
+
+# ─── EK-4/F Madde 53-54 atomikleri (ortopedi profilaksi yolu) ──────────
+# SUT: rivaroksaban (Madde 54) + dabigatran (Madde 53). Apiksaban/edoksaban
+# EK-4/F kapsamı YOK (D-2 yoluna düşer).
+
+_YOAK_EK4F_ORTOPEDI_KEYS = (
+    'ortopedi', 'ortopedik', 'travmatolog', 'travmatoloji',
+)
+
+def _yoak_ek4f_atom_elektif_replasman(metin_lower: str) -> bool:
+    """SUT EK-4/F: 'elektif kalça VEYA diz total eklem replasmanı'."""
+    has_elektif = ('elektif' in metin_lower or 'planlı' in metin_lower
+                   or 'planli' in metin_lower)
+    has_kalca_diz = any(k in metin_lower for k in [
+        'kalça', 'kalca', 'diz', 'kalça eklem', 'kalca eklem',
+        'diz eklem', 'total kalça', 'total kalca', 'total diz',
+    ])
+    has_replasman = any(k in metin_lower for k in [
+        'replasman', 'protez', 'artroplast', 'eklem cerrahi',
+        'tep ', 'tha ', 'tka ',  # total endoprotez, total hip/knee arthroplasty
+    ])
+    # Güçlü tek-ibare eşleşmeleri (cerrahi bağlamı kesinleştirir)
+    has_full_phrase = any(k in metin_lower for k in [
+        'total kalça replasman', 'total kalca replasman',
+        'total diz replasman', 'total kalça protez',
+        'total diz protez', 'kalça artroplast', 'diz artroplast',
+        'elektif kalça', 'elektif diz',
+    ])
+    if has_full_phrase:
+        return True
+    return has_kalca_diz and (has_replasman or has_elektif)
+
+
+def _yoak_ek4f_lokalizasyon(metin_lower: str) -> Optional[str]:
+    """Rapor metninden lokalizasyon: 'diz' / 'kalca' / None (KE).
+
+    Hem diz hem kalça geçiyorsa daha güçlü bağlam'a göre seçilir; eşit ise
+    None (manuel doğrulama).
+    """
+    diz_kanit = sum(1 for k in [
+        'diz eklem', 'total diz', 'diz protez', 'diz artroplast',
+        'elektif diz', 'tka ', 'gonartroz',
+    ] if k in metin_lower)
+    kalca_kanit = sum(1 for k in [
+        'kalça eklem', 'kalca eklem', 'total kalça', 'total kalca',
+        'kalça protez', 'kalca protez', 'kalça artroplast',
+        'kalca artroplast', 'elektif kalça', 'elektif kalca',
+        'tha ', 'koksartroz',
+    ] if k in metin_lower)
+    # Zayıf tek-kelime fallback
+    if diz_kanit == 0 and 'diz' in metin_lower:
+        diz_kanit = 1
+    if kalca_kanit == 0 and ('kalça' in metin_lower or 'kalca' in metin_lower):
+        kalca_kanit = 1
+    if diz_kanit > kalca_kanit:
+        return 'diz'
+    if kalca_kanit > diz_kanit:
+        return 'kalca'
+    return None
+
+
+def _yoak_ek4f_atom_dvt_profilaksi(metin_lower: str) -> bool:
+    """SUT EK-4/F: 'derin ven trombozunun profilaksisinde'."""
+    return any(k in metin_lower for k in [
+        'dvt profilaks', 'derin ven trombozu profilaks',
+        'derin ven trombozunun profilaks', 'tromboz profilaks',
+        'venöz tromboemboli profilaks', 'venoz tromboemboli profilaks',
+        'vte profilaks',
+    ])
+
+
+def _yoak_ek4f_atom_ortopedi_rapor(doktor_brans: str) -> bool:
+    """SUT EK-4/F: 'ortopedi uzman hekimlerince düzenlenen rapor'."""
+    if not doktor_brans:
+        return False
+    bl = _tr_lower(doktor_brans)
+    return any(k in bl for k in _YOAK_EK4F_ORTOPEDI_KEYS)
+
+
+def _yoak_ek4f_atom_miktar_uygun(etken: str, lokalizasyon: Optional[str],
+                                  kutu: float,
+                                  gunluk_doz: Optional[float] = None
+                                  ) -> Tuple[Optional[bool], str]:
+    """SUT EK-4/F miktar/süre limiti.
+
+    Rivaroksaban: diz ≤1 kutu, kalça ≤3 kutu (kutu bazlı SUT lafzı)
+    Dabigatran:   diz ≤10 gün, kalça ≤35 gün (SUT lafzen GÜN bazlı)
+       gün = (kutu × 60 cap/kutu) / günlük_doz (cap/gün)
+       günlük_doz bilinmiyorsa DDD profilaksi varsayımı: 2 cap/gün (220 mg)
+
+    Returns (uygun_mu, açıklama). uygun_mu=None → KE (lokalizasyon/doz yok).
+    """
+    et = (etken or '').upper()
+    if lokalizasyon is None:
+        return None, (f'Lokalizasyon (diz/kalça) raporda tespit edilemedi — '
+                      f'miktar limiti manuel doğrulama (kutu: {kutu:.0f})')
+    if 'RIVAROKSABAN' in et:
+        if lokalizasyon == 'diz':
+            limit = 1
+        else:  # kalça
+            limit = 3
+        if kutu <= limit:
+            return True, (f'Rivaroksaban {lokalizasyon}: {kutu:.0f} kutu '
+                          f'(≤{limit} limit OK)')
+        return False, (f'Rivaroksaban {lokalizasyon}: {kutu:.0f} kutu '
+                       f'limit aşıldı (>{limit})')
+    if 'DABIGATRAN' in et or 'DABİGATRAN' in et:
+        # SUT lafzı: diz ≤10 gün, kalça ≤35 gün — GÜN bazlı hesap
+        # Pradaxa kutu içeriği TR pazarında 60 kapsül (standart).
+        # DVT profilaksi günlük dozu 220 mg = 2 cap 110 mg / gün (DDD).
+        KUTU_KAPSUL = 60
+        DDD_VARSAYIM = 2.0  # cap/gün (profilaksi DDD)
+        try:
+            gd = float(gunluk_doz) if gunluk_doz else 0.0
+        except (TypeError, ValueError):
+            gd = 0.0
+        if gd <= 0:
+            gd_efektif = DDD_VARSAYIM
+            doz_kaynak = f'DDD varsayım ({DDD_VARSAYIM:.0f} cap/gün)'
+        else:
+            gd_efektif = gd
+            doz_kaynak = f'reçete günlük doz ({gd:g} cap/gün)'
+        toplam_cap = kutu * KUTU_KAPSUL
+        tedavi_gun = toplam_cap / gd_efektif if gd_efektif > 0 else 0
+        if lokalizasyon == 'diz':
+            limit_gun = 10
+        else:  # kalça
+            limit_gun = 35
+        if tedavi_gun <= limit_gun:
+            return True, (
+                f'Dabigatran {lokalizasyon}: {kutu:.0f} kutu × '
+                f'{KUTU_KAPSUL} cap / {doz_kaynak} = {tedavi_gun:.1f} gün '
+                f'(SUT ≤{limit_gun} gün OK)')
+        return False, (
+            f'Dabigatran {lokalizasyon}: {kutu:.0f} kutu × '
+            f'{KUTU_KAPSUL} cap / {doz_kaynak} = {tedavi_gun:.1f} gün '
+            f'SUT limiti aşıldı (>{limit_gun} gün)')
+    return None, f'Etken madde EK-4/F kapsamı dışı: {et}'
+
+
+def _yoak_ek4f_etken_madde_uygun(etken: str) -> bool:
+    """EK-4/F sadece rivaroksaban + dabigatran için geçerli.
+
+    Apiksaban/edoksaban için kapsam yok — D-2 yoluna fallback edilmeli.
+    """
+    et = (etken or '').upper()
+    return ('RIVAROKSABAN' in et or 'DABIGATRAN' in et
+            or 'DABİGATRAN' in et)
 
 
 # ─── Grup değerlendirme yardımcısı ──────────────────────────────────────
@@ -8036,33 +8228,44 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
     # SUT 4.2.15.D-1(1) lafzı sırası: önce risk faktörü, sonra kontrendikasyon,
     # sonra non-valvüler AF, sonra (a)/(b) varfarin yolu.
 
-    # ── GRUP C: Risk faktörü (≥1 olmalı) [VEYA grubu] [SUT (1) - 1.] ─
-    g_rf = 'Risk faktörü ≥1 [(1)]'
+    # ── GRUP C: Risk faktörü (≥1 olmalı) [SUT (1) - 1.] ────────────────
+    # SUT lafzı 4 alt-grup, üst seviye OR ≥1:
+    #   (a) {inme VEYA TIA öyküsü}  — alt-paralel
+    #   (b) ≥75 yaş
+    #   (c) NYHA Sınıf ≥II KY
+    #   (d) {DM VEYA HT}            — alt-paralel
+    # Alt-pair'ler kendi gruplarında veya_grubu=True; üst seviye 4-way OR
+    # `_yoak_genel_sonuc_atomik` / `_sema_grup_matematigi` ust_or_coklu ile
+    # birleştirilir (matematik: ≥1 of 4 sub-groups = ≥1 of 6 atoms, eşdeğer).
+    g_rf_a = 'Risk fakt. (a) — inme/TIA [(1)]'
+    g_rf_b = 'Risk fakt. (b) — ≥75 yaş [(1)]'
+    g_rf_c = 'Risk fakt. (c) — NYHA≥II KY [(1)]'
+    g_rf_d = 'Risk fakt. (d) — DM/HT [(1)]'
     inme = _yoak_atom_inme(metin_lower, teshis_metin)
     sartlar.append(SartSonuc(
         'İnme öyküsü',
         SartDurumu.VAR if inme else SartDurumu.YOK,
         'inme/SVO/I63-66 tespit edildi' if inme else 'inme ibaresi yok',
-        'rapor_metni/teshis', grup=g_rf, veya_grubu=True))
+        'rapor_metni/teshis', grup=g_rf_a, veya_grubu=True))
     tia = _yoak_atom_tia(metin_lower, teshis_metin)
     sartlar.append(SartSonuc(
         'Geçici iskemik atak (TIA) öyküsü',
         SartDurumu.VAR if tia else SartDurumu.YOK,
         'TIA/G45-46 tespit edildi' if tia else 'TIA ibaresi yok',
-        'rapor_metni/teshis', grup=g_rf, veya_grubu=True))
+        'rapor_metni/teshis', grup=g_rf_a, veya_grubu=True))
 
     yas_75 = _yoak_atom_yas_75(yas)
     if yas_75 is None:
         sartlar.append(SartSonuc(
             '≥75 yaş', SartDurumu.KONTROL_EDILEMEDI,
             'Hasta yaşı bilinmiyor', 'hasta_yasi',
-            grup=g_rf, veya_grubu=True))
+            grup=g_rf_b, veya_grubu=True))
     else:
         sartlar.append(SartSonuc(
             '≥75 yaş',
             SartDurumu.VAR if yas_75 else SartDurumu.YOK,
             f'Hasta yaşı: {yas}', 'hasta_yasi',
-            grup=g_rf, veya_grubu=True))
+            grup=g_rf_b, veya_grubu=True))
 
     nyha = _yoak_atom_nyha_2_ustu(metin_lower)
     sartlar.append(SartSonuc(
@@ -8070,21 +8273,21 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         SartDurumu.VAR if nyha else SartDurumu.YOK,
         'NYHA ≥II ibaresi tespit edildi' if nyha
         else 'NYHA Sınıf ≥II ibaresi yok',
-        'rapor_metni', grup=g_rf, veya_grubu=True))
+        'rapor_metni', grup=g_rf_c, veya_grubu=True))
 
     dm = _yoak_atom_dm(metin_lower, teshis_metin)
     sartlar.append(SartSonuc(
         'Diabetes mellitus',
         SartDurumu.VAR if dm else SartDurumu.YOK,
         'DM/E10-14 tespit edildi' if dm else 'DM ibaresi yok',
-        'rapor_metni/teshis', grup=g_rf, veya_grubu=True))
+        'rapor_metni/teshis', grup=g_rf_d, veya_grubu=True))
 
     ht = _yoak_atom_ht(metin_lower, teshis_metin)
     sartlar.append(SartSonuc(
         'Hipertansiyon',
         SartDurumu.VAR if ht else SartDurumu.YOK,
         'HT/I10-15 tespit edildi' if ht else 'HT ibaresi yok',
-        'rapor_metni/teshis', grup=g_rf, veya_grubu=True))
+        'rapor_metni/teshis', grup=g_rf_d, veya_grubu=True))
 
     # ── GRUP B: Kontrendikasyon [SUT (1) - 2.] ────────────────────────
     # SUT lafzı: "mitral darlık VEYA mekanik kapak OLMAYAN"
@@ -8167,8 +8370,9 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
     # Birleşik "INR son 5/3 tutulamadı" tespiti — eski parser (yedek):
     inr_5_3 = _yoak_inr_5_3_tutulamadi(metin_lower)
 
-    # Da KRİTİK ŞARTLAR (ana grup, hesaba dahil): Da1, Da3, Da4, Da5
-    g_varfa_a_bilgi = 'Varfarin yolu (a) — manuel doğrulama (bilgi)'
+    # Da KRİTİK ŞARTLAR (6 atom AND — mantık şeması ile birebir):
+    # Da1, Da2, Da3, Da4, Da5, Da6 — hepsi g_varfa_a (kritik AND grup)
+    # Parser zayıf olan Da2/Da6 sessizse KE → grup ŞÜPHELİ (UYGUN_DEGIL değil).
 
     # Da1 — 2 ay varfarin (kritik)
     sartlar.append(SartSonuc(
@@ -8176,6 +8380,13 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         SartDurumu.VAR if da1_2ay else SartDurumu.YOK,
         '"2 ay varfarin" tespit' if da1_2ay
         else '"2 ay varfarin" ibaresi yok',
+        'rapor_metni', grup=g_varfa_a))
+    # Da2 — ≥1 hafta arayla ölçüm (kritik AND, parser zayıf → sessiz=KE)
+    sartlar.append(SartSonuc(
+        'INR ölçümleri ≥1 hafta arayla yapıldı',
+        SartDurumu.VAR if da2_haftalik else SartDurumu.KONTROL_EDILEMEDI,
+        'haftalık ölçüm ibaresi tespit' if da2_haftalik
+        else 'haftalık ölçüm ibaresi yok — manuel doğrulama',
         'rapor_metni', grup=g_varfa_a))
     # Da3 — son 5 ölçüm (kritik)
     sartlar.append(SartSonuc(
@@ -8198,22 +8409,13 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         '"INR 2-3" hedef tespit' if (da5_inr23 or inr_5_3)
         else '"INR 2-3" ibaresi yok',
         'rapor_metni', grup=g_varfa_a))
-
-    # Da BİLGİ ŞARTLAR (parser zayıf, hesap dışı): Da2, Da6
-    # Da2 — ≥1 hafta arayla ölçüm
-    sartlar.append(SartSonuc(
-        'INR ölçümleri ≥1 hafta arayla yapıldı',
-        SartDurumu.VAR if da2_haftalik else SartDurumu.KONTROL_EDILEMEDI,
-        'haftalık ölçüm ibaresi tespit' if da2_haftalik
-        else 'haftalık ölçüm ibaresi yok — manuel doğrulama',
-        'rapor_metni', grup=g_varfa_a_bilgi))
-    # Da6 — varfarin kesilerek
+    # Da6 — varfarin kesilerek (kritik AND, parser zayıf → sessiz=KE)
     sartlar.append(SartSonuc(
         'Varfarin kesilerek YOAK\'a geçildi',
         SartDurumu.VAR if da6_kesildi else SartDurumu.KONTROL_EDILEMEDI,
         '"varfarin kesilerek" tespit' if da6_kesildi
         else '"varfarin kesilerek" ibaresi yok — manuel doğrulama',
-        'rapor_metni', grup=g_varfa_a_bilgi))
+        'rapor_metni', grup=g_varfa_a))
 
     # Db: Varfarin altı SVO — 2 atomik AND
     db1_alti = _yoak_atom_db_varfarin_altinda(metin_lower)
@@ -8309,41 +8511,27 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
             SartDurumu.YOK,
             'kard/nöro uzman ibaresi rapor metninde yok',
             'rapor_metni', grup=g_e))
-    # E3a: Herhangi ≥3 farklı uzmanlık dalı (lafzen veya Medula otoritesi)
-    # SUT lafzı: "...uzman hekimlerinden aynı uzmanlık dalından üçünün
-    # VEYA herhangi üçünün bulunduğu..." → alt-VEYA grubu (≥1 yeterli)
+    # E3: 5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro) — tek koşul, alt-VEYA yok
+    # SUT D-1(2) lafzı: "...uzman hekimlerinden en az üçünün bulunduğu..."
+    # NOT: "aynı dal VEYA farklı dal" alt-VEYA SUT D-2(3)'e özgü, D-1'de YOK.
     if bulunan_brans_sayisi >= 3:
         sartlar.append(SartSonuc(
-            'Herhangi ≥3 farklı uzmanlık dalı',
+            '5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro)',
             SartDurumu.VAR,
             f'{bulunan_brans_sayisi}/5 farklı branş lafzen tespit',
-            'rapor_metni', grup=g_e, veya_grubu=True))
+            'rapor_metni', grup=g_e))
     elif medula_sk_var:
         sartlar.append(SartSonuc(
-            'Herhangi ≥3 farklı uzmanlık dalı',
+            '5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro)',
             SartDurumu.VAR,
             f'Medula 04.03 = ≥3 uzman onayı zorunlu (otorite)',
-            'rapor_kodu', grup=g_e, veya_grubu=True))
+            'rapor_kodu', grup=g_e))
     else:
         sartlar.append(SartSonuc(
-            'Herhangi ≥3 farklı uzmanlık dalı',
+            '5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro)',
             SartDurumu.YOK,
             f'{bulunan_brans_sayisi}/5 lafzen tespit, rapor kodu yok',
-            'rapor_metni', grup=g_e, veya_grubu=True))
-    # E3b: Aynı uzmanlık dalından ≥3 uzman (parser zayıf, KE — manuel)
-    # alt-VEYA: ya farklı dal ya aynı dal — birinin sağlanması yeterli.
-    if medula_sk_var:
-        sartlar.append(SartSonuc(
-            'Aynı uzmanlık dalından ≥3 uzman',
-            SartDurumu.VAR,
-            'Medula 04.03 = SK kapsar (otorite)',
-            'rapor_kodu', grup=g_e, veya_grubu=True))
-    else:
-        sartlar.append(SartSonuc(
-            'Aynı uzmanlık dalından ≥3 uzman',
-            SartDurumu.KONTROL_EDILEMEDI,
-            'Aynı daldan uzman sayısı parse edilemiyor — manuel doğrulama',
-            'rapor_metni', grup=g_e, veya_grubu=True))
+            'rapor_metni', grup=g_e))
     # E5: bu uzman hekimlerce reçete edildi
     e_uzman_recete = _yoak_atom_e_uzman_recete(
         doktor_brans, _YOAK_AF_SK_BRANSLAR)
@@ -8419,16 +8607,9 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         'recete_ilaclari',
         grup='Kombi yasağı [(4)]'))
 
-    # ── (4) Rapor yenileme bilgi notu (parser zayıf, KE bilgi grubu) ──
-    # SUT lafzı: "Rapor süresinin bitiminde tedavinin devamına karar
-    # verilmesi halinde, bu durumun belirtildiği yeni SK raporu
-    # düzenlenerek tedaviye devam edilebilir."
-    sartlar.append(SartSonuc(
-        'Rapor süresi bitiminde devam kararı + yeni SK raporu',
-        SartDurumu.KONTROL_EDILEMEDI,
-        'Tedavi devamı için rapor yenilenmiş mi — manuel doğrulama',
-        'rapor_metni/hasta_gecmisi',
-        grup='Rapor yenileme [(4)] (bilgi)'))
+    # NOT: SUT D-1(4) "Dabigatran/rivaroksaban/edoksaban/apiksaban kombine
+    # kullanılması halinde bedeli karşılanmaz" — kombi yasağı (yukarıda).
+    # D-1'de "rapor yenileme" maddesi SUT lafzında YOK (sadece D-2(4)'te var).
 
     detaylar.update({'alt_dal': '4.2.15.D-1', 'endikasyon': 'AF',
                      'varfarin_2ay': da1_2ay,
@@ -8478,18 +8659,32 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
             SartDurumu.VAR,
             f'Hasta yaşı: {yas}', 'hasta_yasi', grup=g_yas))
 
-    # ── GRUP H: Endikasyon (≥1, OR) [(1)(a)] ──────────────────────────
+    # ── GRUP H: Endikasyon (≥1, OR) [(1)(a)] — 4 atom (mevzuat lafzı) ──
+    # SUT D-2(1)(a): "DVT tedavisi ile akut DVT sonrası tekrarlayan
+    # DVT ve PE'nin önlenmesinde VEYA PE tedavisi ile tekrarlayan PE
+    # ve DVT'nin önlenmesinde kullanılır" — 4 alt-endikasyon, OR ≥1.
     g_end = 'Endikasyon ≥1 [(1)(a)]'
+    # I1 — DVT tedavisi
     sartlar.append(SartSonuc(
-        'Derin ven trombozu (DVT)',
+        'DVT tedavisi',
         SartDurumu.VAR if end_dvt else SartDurumu.YOK,
         'DVT/derin ven/I80-82 tespit' if end_dvt else 'DVT ibaresi yok',
         'rapor_metni/teshis', grup=g_end, veya_grubu=True))
+    # I2 — Akut DVT sonrası tekrarlayan DVT/PE önlenmesi
+    akut_dvt_sonrasi = _yoak_atom_akut_dvt_sonrasi(metin_lower)
     sartlar.append(SartSonuc(
-        'Pulmoner emboli (PE)',
+        'Akut DVT sonrası tekrarlayan DVT/PE önlenmesi',
+        SartDurumu.VAR if akut_dvt_sonrasi else SartDurumu.YOK,
+        'akut DVT + tekrar/önleme ibaresi tespit' if akut_dvt_sonrasi
+        else 'akut DVT sonrası tekrar/önleme ibaresi yok',
+        'rapor_metni', grup=g_end, veya_grubu=True))
+    # I3 — PE tedavisi
+    sartlar.append(SartSonuc(
+        'PE tedavisi',
         SartDurumu.VAR if end_pe else SartDurumu.YOK,
         'PE/akciğer emboli/I26 tespit' if end_pe else 'PE ibaresi yok',
         'rapor_metni/teshis', grup=g_end, veya_grubu=True))
+    # I4 — Tekrarlayan PE/DVT önlenmesi
     tekrar = _yoak_atom_tekrarlayan_pe_dvt(metin_lower)
     sartlar.append(SartSonuc(
         'Tekrarlayan PE/DVT önlenmesi',
@@ -8508,13 +8703,18 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
     da6_kesildi = _yoak_atom_da_varfarin_kesildi(metin_lower)
     inr_5_3 = _yoak_inr_5_3_tutulamadi(metin_lower)
 
-    g_varfa_bilgi = 'Varfarin yolu (D-2) — manuel doğrulama (bilgi)'
-
-    # Kritik (4 atomik): Da1, Da3, Da4, Da5
+    # 6 atom AND — Da1, Da2, Da3, Da4, Da5, Da6 (mantık şeması birebir)
+    # Parser zayıf Da2/Da6 sessizse KE → ŞÜPHELİ (UYGUN_DEGIL değil)
     sartlar.append(SartSonuc(
         '≥2 ay süre ile varfarin kullanımı',
         SartDurumu.VAR if da1_2ay else SartDurumu.YOK,
         '"2 ay varfarin" tespit' if da1_2ay else '"2 ay varfarin" yok',
+        'rapor_metni', grup=g_varfa))
+    sartlar.append(SartSonuc(
+        'INR ölçümleri ≥1 hafta arayla',
+        SartDurumu.VAR if da2_haftalik else SartDurumu.KONTROL_EDILEMEDI,
+        'haftalık ölçüm tespit' if da2_haftalik
+        else 'haftalık ölçüm ibaresi yok — manuel doğrulama',
         'rapor_metni', grup=g_varfa))
     sartlar.append(SartSonuc(
         'Son 5 ölçüm yapıldı',
@@ -8534,20 +8734,12 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         '"INR 2-3" hedef tespit' if (da5_inr23 or inr_5_3)
         else '"INR 2-3" ibaresi yok',
         'rapor_metni', grup=g_varfa))
-
-    # Bilgi (parser zayıf): Da2, Da6
-    sartlar.append(SartSonuc(
-        'INR ölçümleri ≥1 hafta arayla',
-        SartDurumu.VAR if da2_haftalik else SartDurumu.KONTROL_EDILEMEDI,
-        'haftalık ölçüm tespit' if da2_haftalik
-        else 'haftalık ölçüm ibaresi yok — manuel doğrulama',
-        'rapor_metni', grup=g_varfa_bilgi))
     sartlar.append(SartSonuc(
         'Varfarin kesilerek YOAK\'a geçildi',
         SartDurumu.VAR if da6_kesildi else SartDurumu.KONTROL_EDILEMEDI,
         '"varfarin kesilerek" tespit' if da6_kesildi
         else '"varfarin kesilerek" ibaresi yok — manuel doğrulama',
-        'rapor_metni', grup=g_varfa_bilgi))
+        'rapor_metni', grup=g_varfa))
 
     # ── GRUP I: İstisna grubu [(2)] [VEYA, ≥1] ────────────────────────
     g_ist = 'İstisna grubu ≥1 [(2)]'
@@ -8717,6 +8909,147 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
                                      birlesik=birlesik, anahtar=anahtar)
 
 
+def _yoak_ek4f_kontrol(metin_lower: str, birlesik: str,
+                       ilac_sonuc: Dict, sartlar: List[SartSonuc],
+                       detaylar: Dict) -> KontrolRaporu:
+    """SUT EK-4/F Madde 53 (dabigatran) + Madde 54 (rivaroksaban) —
+    Elektif kalça/diz total eklem replasmanı sonrası DVT profilaksisi.
+
+    Yapı: L1 ∧ L2 ∧ L3 ∧ M_uygun (hepsi AND, ilaç-spesifik miktar limiti).
+      L1  Elektif kalça/diz total eklem replasmanı (rapor)
+      L2  DVT profilaksisi amacı (rapor)
+      L3  Ortopedi uzmanı rapor düzenlemiş (doktor branş)
+      M   Miktar limiti — riva diz≤1ku/kalça≤3ku; dab diz≤1ku/kalça≤2ku
+    """
+    sut_kurali = ('SUT EK-4/F Madde 53–54 — Elektif kalça/diz total eklem '
+                  'replasmanı DVT profilaksisi (atomik şart taraması)')
+    etkin_madde = (ilac_sonuc.get('etkin_madde') or '').upper()
+    doktor_brans = ilac_sonuc.get('doktor_uzmanligi') or ''
+    # Kutu sayısı parse (kutu_sayisi → miktar fallback)
+    kutu_raw = ilac_sonuc.get('kutu_sayisi')
+    if kutu_raw is None:
+        kutu_raw = ilac_sonuc.get('miktar', '')
+    try:
+        kutu = float(str(kutu_raw).replace(',', '.')) if str(kutu_raw).strip() \
+            else 0.0
+    except (ValueError, TypeError):
+        kutu = 0.0
+    # Günlük doz (cap/gün) — dabigatran gün hesabı için
+    gunluk_doz_raw = None
+    rec_doz_dict = ilac_sonuc.get('recete_doz')
+    if isinstance(rec_doz_dict, dict):
+        gunluk_doz_raw = rec_doz_dict.get('gunluk_doz')
+    if gunluk_doz_raw is None:
+        gunluk_doz_raw = ilac_sonuc.get('rec_doz_sayi')
+    try:
+        gunluk_doz = (float(str(gunluk_doz_raw).replace(',', '.'))
+                      if gunluk_doz_raw not in (None, '') else None)
+    except (ValueError, TypeError):
+        gunluk_doz = None
+
+    # ── GRUP L0: Etken madde uygunluğu (EK-4/F için kritik) ───────────
+    # SUT EK-4/F Madde 53 (dabigatran) + Madde 54 (rivaroksaban).
+    # Apiksaban/Edoksaban EK-4/F kapsamı YOK → bu yola düşülmüş demektir
+    # ki etken madde uygun (kontrol_yoak'ta erken filtre). Görsel olarak
+    # 2 ampul göster: (1) etken madde riva/dab VAR, (2) apiks/edox YOK.
+    g_etken = 'Etken madde uygunluğu [Madde 53–54]'
+    riva_var = 'RIVAROKSABAN' in etkin_madde
+    dab_var = 'DABIGATRAN' in etkin_madde or 'DABİGATRAN' in etkin_madde
+    sartlar.append(SartSonuc(
+        'Etken madde rivaroksaban VEYA dabigatran',
+        SartDurumu.VAR if (riva_var or dab_var) else SartDurumu.YOK,
+        f'Etken madde: {etkin_madde} (EK-4/F kapsamında)'
+        if (riva_var or dab_var)
+        else f'Etken madde EK-4/F kapsamı dışı: {etkin_madde}',
+        'recete_ilac', grup=g_etken, veya_grubu=True))
+    apiks_var = 'APIKSABAN' in etkin_madde or 'APİKSABAN' in etkin_madde
+    edox_var = 'EDOKSABAN' in etkin_madde
+    sartlar.append(SartSonuc(
+        'Apiksaban/Edoksaban kapsam dışı (NOT)',
+        SartDurumu.YOK if (apiks_var or edox_var) else SartDurumu.VAR,
+        f'Etken madde apiksaban/edoksaban — EK-4/F kapsamı dışı'
+        if (apiks_var or edox_var)
+        else 'Reçete etken maddesi apiks/edox değil — kontrendikasyon yok',
+        'recete_ilac', grup=g_etken))
+
+    # ── GRUP L1: Endikasyon — elektif kalça/diz total eklem replasmanı ─
+    g_end = 'Elektif kalça/diz total eklem replasmanı [Madde 53–54]'
+    elektif_var = _yoak_ek4f_atom_elektif_replasman(metin_lower)
+    sartlar.append(SartSonuc(
+        'Elektif kalça/diz total eklem replasmanı',
+        SartDurumu.VAR if elektif_var else SartDurumu.KONTROL_EDILEMEDI,
+        'rapor metninde elektif kalça/diz replasman ibaresi tespit'
+        if elektif_var
+        else 'rapor metninde elektif kalça/diz replasman ibaresi yok — '
+             'manuel doğrulama',
+        'rapor_metni', grup=g_end))
+
+    # Lokalizasyon (diz/kalça) — miktar limiti için kritik
+    lokalizasyon = _yoak_ek4f_lokalizasyon(metin_lower)
+    g_lok = 'Lokalizasyon (diz/kalça) [Madde 53–54] (bilgi)'
+    if lokalizasyon:
+        sartlar.append(SartSonuc(
+            f'Lokalizasyon: {lokalizasyon}',
+            SartDurumu.VAR,
+            f'rapor metninde "{lokalizasyon}" ibaresi tespit',
+            'rapor_metni', grup=g_lok))
+    else:
+        sartlar.append(SartSonuc(
+            'Lokalizasyon: diz / kalça',
+            SartDurumu.KONTROL_EDILEMEDI,
+            'rapor metninde diz/kalça ayrımı belirsiz — manuel doğrulama',
+            'rapor_metni', grup=g_lok))
+
+    # ── GRUP L2: Amaç — DVT profilaksisi ──────────────────────────────
+    g_amac = 'DVT profilaksisi amacı [Madde 53–54]'
+    dvt_prof = _yoak_ek4f_atom_dvt_profilaksi(metin_lower)
+    sartlar.append(SartSonuc(
+        'DVT profilaksisi amacı',
+        SartDurumu.VAR if dvt_prof else SartDurumu.KONTROL_EDILEMEDI,
+        'rapor metninde "DVT profilaksi" ibaresi tespit' if dvt_prof
+        else 'rapor metninde "DVT profilaksi" ibaresi yok — manuel doğrulama',
+        'rapor_metni', grup=g_amac))
+
+    # ── GRUP L3: Ortopedi uzmanı rapor düzenlemiş ─────────────────────
+    g_rapor = 'Ortopedi uzmanı raporu [Madde 53–54]'
+    ortopedi = _yoak_ek4f_atom_ortopedi_rapor(doktor_brans)
+    sartlar.append(SartSonuc(
+        'Ortopedi uzman hekimi raporu',
+        SartDurumu.VAR if ortopedi else SartDurumu.YOK,
+        f'Doktor branşı: {doktor_brans} (ortopedi tespit)' if ortopedi
+        else f'Doktor branşı ortopedi değil: {doktor_brans or "(boş)"}',
+        'doktor_uzmanligi', grup=g_rapor))
+
+    # ── GRUP M: Miktar limiti (ilaç + lokalizasyon spesifik) ──────────
+    g_miktar = 'Miktar limiti [Madde 53–54]'
+    miktar_ok, miktar_aciklama = _yoak_ek4f_atom_miktar_uygun(
+        etkin_madde, lokalizasyon, kutu, gunluk_doz)
+    if miktar_ok is True:
+        sartlar.append(SartSonuc(
+            'İlaç miktar/süre limiti', SartDurumu.VAR,
+            miktar_aciklama, 'recete_kalem/rapor_metni', grup=g_miktar))
+    elif miktar_ok is False:
+        sartlar.append(SartSonuc(
+            'İlaç miktar/süre limiti', SartDurumu.YOK,
+            miktar_aciklama, 'recete_kalem/rapor_metni', grup=g_miktar))
+    else:
+        sartlar.append(SartSonuc(
+            'İlaç miktar/süre limiti', SartDurumu.KONTROL_EDILEMEDI,
+            miktar_aciklama, 'recete_kalem/rapor_metni', grup=g_miktar))
+
+    detaylar.update({
+        'alt_dal': 'EK-4/F (M.53–54)',
+        'endikasyon': 'Elektif kalça/diz total eklem replasmanı',
+        'lokalizasyon': lokalizasyon or 'belirsiz',
+        'kutu_sayisi': kutu,
+        'gunluk_doz': gunluk_doz,
+    })
+
+    return _yoak_genel_sonuc_atomik(sartlar, detaylar, sut_kurali,
+                                     birlesik=birlesik,
+                                     anahtar='replasman')
+
+
 def _yoak_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,
                               sut_kurali: str, birlesik: str,
                               anahtar: str) -> KontrolRaporu:
@@ -8780,6 +9113,32 @@ def _yoak_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,
                                                 grup_durumlari[kb])
             grup_durumlari.pop(ka)
             grup_durumlari.pop(kb)
+
+    # Üst-OR çoklu (n-way): D-1(1) risk faktörü 4 alt-grup → tek üst-OR
+    # SUT lafzı 4 alt-grup, ≥1 yeterli ((a)∨(b)∨(c)∨(d))
+    ust_or_coklu = [
+        (('Risk fakt. (a) — inme/TIA',
+          'Risk fakt. (b) — ≥75 yaş',
+          'Risk fakt. (c) — NYHA',
+          'Risk fakt. (d) — DM/HT'),
+         'Risk faktörü ≥1 [(a)∨(b)∨(c)∨(d)]'),
+    ]
+    for prefixes, birlesik in ust_or_coklu:
+        keys = [next((k for k in grup_durumlari if k.startswith(p)), None)
+                for p in prefixes]
+        keys = [k for k in keys if k]
+        if not keys:
+            continue
+        durumlar = [grup_durumlari[k] for k in keys]
+        if any(d == SartDurumu.VAR for d in durumlar):
+            sonuc = SartDurumu.VAR
+        elif any(d == SartDurumu.KONTROL_EDILEMEDI for d in durumlar):
+            sonuc = SartDurumu.KONTROL_EDILEMEDI
+        else:
+            sonuc = SartDurumu.YOK
+        grup_durumlari[birlesik] = sonuc
+        for k in keys:
+            grup_durumlari.pop(k, None)
 
     # Genel sonuç
     yok_gruplar = [g for g, d in grup_durumlari.items() if d == SartDurumu.YOK]
@@ -8852,17 +9211,21 @@ def _yoak_sonuc_uret(sartlar: List[SartSonuc], detaylar: Dict,
 
 
 def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
-    """SUT 4.2.15.D — YOAK (Rivaroksaban/Apiksaban/Edoksaban/Dabigatran)
+    """SUT 4.2.15.D + EK-4/F M.53-54 — YOAK
+    (Rivaroksaban/Apiksaban/Edoksaban/Dabigatran)
 
     Kontrol akışı:
       0. Boş metin erken çıkışı (raporsuz → UYGUN_DEGIL, raporlu → KE)
       1. Kombi yasağı [D-1(4)]: aynı reçetede 2 YOAK → UYGUN_DEGIL
-      2. Endikasyon tespiti (AF / DVT / PE)
-      3. AF varsa _yoak_d1_af_kontrol() — D-1
+      2. EK-4/F erken-tespit: etken madde riva/dab + ortopedi branş →
+         _yoak_ek4f_kontrol (elektif kalça/diz replasmanı profilaksisi).
+         Apiksaban/Edoksaban + ortopedi sinyali EK-4/F kapsamı YOK → D-2.
+      3. Endikasyon tespiti (AF / DVT / PE)
+      4. AF varsa _yoak_d1_af_kontrol() — D-1
          · Risk faktörü, kontrendikasyon, varfarin/INR, sağlık kurulu
-      4. DVT/PE varsa _yoak_d2_dvtpe_kontrol() — D-2
+      5. DVT/PE varsa _yoak_d2_dvtpe_kontrol() — D-2
          · Yetişkin, varfarin/INR VEYA istisna, sağlık kurulu
-      5. Endikasyon yok → KONTROL_EDILEMEDI
+      6. Endikasyon yok → KONTROL_EDILEMEDI
 
     Şart-bazlı raporlama (CLAUDE.md disiplini):
       Her şart VAR / YOK / KONTROL_EDILEMEDI olarak `sartlar`'a yazılır.
@@ -8930,12 +9293,24 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
             sut_kurali=sut_kurali_genel, detaylar=detaylar, sartlar=sartlar,
             aranan_ibare='aynı reçetede 2 YOAK')
 
-    # ── 2) Endikasyon tespiti ─────────────────────────────────────────
+    # ── 2) EK-4/F erken-tespit (ortopedi profilaksi yolu) ─────────────
+    # SUT EK-4/F Madde 53-54 sadece rivaroksaban + dabigatran için geçerli.
+    # Apiksaban/edoksaban + ortopedi sinyali → D-2 yoluna düşer (kapsam dışı).
+    etkin_madde_main = (ilac_sonuc.get('etkin_madde') or '').upper()
+    doktor_brans_main = ilac_sonuc.get('doktor_uzmanligi') or ''
+    ek4f_etken_uygun = _yoak_ek4f_etken_madde_uygun(etkin_madde_main)
+    ek4f_ortopedi = _yoak_ek4f_atom_ortopedi_rapor(doktor_brans_main)
+    if ek4f_etken_uygun and ek4f_ortopedi:
+        # EK-4/F yoluna düş — D-1/D-2'den önce
+        return _yoak_ek4f_kontrol(metin_lower, birlesik, ilac_sonuc,
+                                   sartlar, detaylar)
+
+    # ── 3) Endikasyon tespiti ─────────────────────────────────────────
     end = _yoak_endikasyonlari_tespit(metin_lower, teshis_metin)
     has_af = end['af']
     has_dvtpe = end['dvt'] or end['pe']
 
-    # ── 3) Aktif yolak belirle (D-1 vs D-2) ──────────────────────────
+    # ── 4) Aktif yolak belirle (D-1 vs D-2) ──────────────────────────
     # Endikasyona göre: AF varsa D-1, DVT/PE varsa D-2.
     # İkisi birden varsa D-2 önceliği (daha spesifik DVT/PE durumu).
     # Hiçbiri yoksa endikasyon yok → KE.

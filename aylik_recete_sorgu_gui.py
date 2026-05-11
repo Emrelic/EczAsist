@@ -1617,34 +1617,34 @@ class AylikReceteSorguGUI:
         self._sema_ozet.pack(side="top", fill="x", padx=4, pady=(4, 0))
         self._sema_ozet.pack_propagate(False)
 
-        # Canvas alanı — yatay scroll (devre uzun olabilir) + dikey scroll (bilgi listesi)
-        body = tk.Frame(parent, bg="#FAFBFC")
-        body.pack(side="top", fill="both", expand=True, padx=4, pady=4)
+        # Notebook: 2 sekme — (A) Devre Şeması, (B) FTA Ağacı (IEC 61025)
+        nb = ttk.Notebook(parent)
+        nb.pack(side="top", fill="both", expand=True, padx=4, pady=4)
+        self._sema_notebook = nb
 
-        self._sema_canvas = tk.Canvas(body, bg="white",
+        # ── TAB A: Devre Şeması (elektrik devresi metaforu) ───────────
+        tab_devre = tk.Frame(nb, bg="#FAFBFC")
+        nb.add(tab_devre, text="🔌 Devre Şeması")
+
+        self._sema_canvas = tk.Canvas(tab_devre, bg="white",
                                        highlightthickness=0)
-        # Yatay scroll alt
-        xsb = ttk.Scrollbar(body, orient="horizontal",
+        xsb = ttk.Scrollbar(tab_devre, orient="horizontal",
                              command=self._sema_canvas.xview)
         xsb.pack(side="bottom", fill="x")
-        # Dikey scroll sağ
-        ysb = ttk.Scrollbar(body, orient="vertical",
+        ysb = ttk.Scrollbar(tab_devre, orient="vertical",
                              command=self._sema_canvas.yview)
         ysb.pack(side="right", fill="y")
         self._sema_canvas.pack(side="left", fill="both", expand=True)
         self._sema_canvas.configure(xscrollcommand=xsb.set,
                                      yscrollcommand=ysb.set)
 
-        # _sema_inner kart-modu için yedek (Canvas dışında ayrı bir frame)
-        # Devre modu canvas'ı doğrudan kullanır.
+        # _sema_inner kart-modu için yedek
         self._sema_inner = tk.Frame(self._sema_canvas, bg="#FAFBFC")
 
-        # Hover tooltip için bind
         self._sema_neden_map = {}
         self._sema_canvas.bind("<Motion>", self._sema_canvas_hover)
         self._sema_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
 
-        # Mouse wheel — yatay scroll için Shift+Wheel, dikey için Wheel
         def _on_wheel(event):
             self._sema_canvas.yview_scroll(int(-1 * (event.delta / 120)),
                                              "units")
@@ -1653,6 +1653,192 @@ class AylikReceteSorguGUI:
                                              "units")
         self._sema_canvas.bind("<MouseWheel>", _on_wheel)
         self._sema_canvas.bind("<Shift-MouseWheel>", _on_shift_wheel)
+
+        # ── TAB B: FTA Ağacı (Fault Tree Analysis, IEC 61025) ─────────
+        tab_fta = tk.Frame(nb, bg="#FAFBFC")
+        nb.add(tab_fta, text="🌳 FTA Ağacı")
+
+        self._fta_canvas = tk.Canvas(tab_fta, bg="white",
+                                      highlightthickness=0)
+        fta_xsb = ttk.Scrollbar(tab_fta, orient="horizontal",
+                                 command=self._fta_canvas.xview)
+        fta_xsb.pack(side="bottom", fill="x")
+        fta_ysb = ttk.Scrollbar(tab_fta, orient="vertical",
+                                 command=self._fta_canvas.yview)
+        fta_ysb.pack(side="right", fill="y")
+        self._fta_canvas.pack(side="left", fill="both", expand=True)
+        self._fta_canvas.configure(xscrollcommand=fta_xsb.set,
+                                    yscrollcommand=fta_ysb.set)
+
+        self._fta_neden_map = {}
+        self._fta_canvas.bind("<Motion>", self._fta_canvas_hover)
+        self._fta_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
+
+        def _fta_on_wheel(event):
+            self._fta_canvas.yview_scroll(int(-1 * (event.delta / 120)),
+                                           "units")
+        def _fta_on_shift_wheel(event):
+            self._fta_canvas.xview_scroll(int(-1 * (event.delta / 120)),
+                                           "units")
+        self._fta_canvas.bind("<MouseWheel>", _fta_on_wheel)
+        self._fta_canvas.bind("<Shift-MouseWheel>", _fta_on_shift_wheel)
+
+        # ── TAB C: SUT Madde Akış Çizelgesi (mevzuat sırası bire bir) ──
+        tab_madde = tk.Frame(nb, bg="#FAFBFC")
+        nb.add(tab_madde, text="📜 SUT Madde Akışı")
+
+        self._madde_canvas = tk.Canvas(tab_madde, bg="white",
+                                        highlightthickness=0)
+        madde_xsb = ttk.Scrollbar(tab_madde, orient="horizontal",
+                                   command=self._madde_canvas.xview)
+        madde_xsb.pack(side="bottom", fill="x")
+        madde_ysb = ttk.Scrollbar(tab_madde, orient="vertical",
+                                   command=self._madde_canvas.yview)
+        madde_ysb.pack(side="right", fill="y")
+        self._madde_canvas.pack(side="left", fill="both", expand=True)
+        self._madde_canvas.configure(xscrollcommand=madde_xsb.set,
+                                      yscrollcommand=madde_ysb.set)
+
+        self._madde_neden_map = {}
+        self._madde_canvas.bind("<Motion>", self._madde_canvas_hover)
+        self._madde_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
+
+        def _madde_on_wheel(event):
+            self._madde_canvas.yview_scroll(int(-1 * (event.delta / 120)),
+                                             "units")
+        def _madde_on_shift_wheel(event):
+            self._madde_canvas.xview_scroll(int(-1 * (event.delta / 120)),
+                                             "units")
+        self._madde_canvas.bind("<MouseWheel>", _madde_on_wheel)
+        self._madde_canvas.bind("<Shift-MouseWheel>", _madde_on_shift_wheel)
+
+        # ── TAB D: DMN Karar Modeli (OMG/HL7 FHIR CPG standardı) ──────
+        # Decision Requirements Diagram (üst) + Decision Table (alt) +
+        # Toulmin Rebuttal (en alt, sadece UYGUN_DEĞİL/ŞÜPHELİ'de görünür)
+        # Pilot kapsam: YOAK SUT 4.2.15.D (D-1 AF / D-2 DVT-PE / EK-4/F)
+        tab_dmn = tk.Frame(nb, bg="#FAFBFC")
+        nb.add(tab_dmn, text="🎯 DMN Karar Modeli")
+
+        self._dmn_canvas = tk.Canvas(tab_dmn, bg="white",
+                                      highlightthickness=0)
+        dmn_xsb = ttk.Scrollbar(tab_dmn, orient="horizontal",
+                                 command=self._dmn_canvas.xview)
+        dmn_xsb.pack(side="bottom", fill="x")
+        dmn_ysb = ttk.Scrollbar(tab_dmn, orient="vertical",
+                                 command=self._dmn_canvas.yview)
+        dmn_ysb.pack(side="right", fill="y")
+        self._dmn_canvas.pack(side="left", fill="both", expand=True)
+        self._dmn_canvas.configure(xscrollcommand=dmn_xsb.set,
+                                    yscrollcommand=dmn_ysb.set)
+
+        self._dmn_neden_map = {}
+        self._dmn_canvas.bind("<Motion>", self._dmn_canvas_hover)
+        self._dmn_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
+
+        def _dmn_on_wheel(event):
+            self._dmn_canvas.yview_scroll(int(-1 * (event.delta / 120)),
+                                           "units")
+        def _dmn_on_shift_wheel(event):
+            self._dmn_canvas.xview_scroll(int(-1 * (event.delta / 120)),
+                                           "units")
+        self._dmn_canvas.bind("<MouseWheel>", _dmn_on_wheel)
+        self._dmn_canvas.bind("<Shift-MouseWheel>", _dmn_on_shift_wheel)
+
+        # ── TAB E: IEC 60617-12 Mantık Kapısı Şeması ──────────────────
+        # Boolean cebrinin resmi mühendislik gösterimi (IEEE Std 91-1984).
+        # AND (& kutusu), OR (≥1 kutusu), NOT (çıkışta küçük daire).
+        # Atomlar renkli input pin · akan yol yeşil kalın · alt boolean formül
+        tab_gates = tk.Frame(nb, bg="#FAFBFC")
+        nb.add(tab_gates, text="⚙ Mantık Kapısı")
+
+        self._gates_canvas = tk.Canvas(tab_gates, bg="white",
+                                        highlightthickness=0)
+        gt_xsb = ttk.Scrollbar(tab_gates, orient="horizontal",
+                                command=self._gates_canvas.xview)
+        gt_xsb.pack(side="bottom", fill="x")
+        gt_ysb = ttk.Scrollbar(tab_gates, orient="vertical",
+                                command=self._gates_canvas.yview)
+        gt_ysb.pack(side="right", fill="y")
+        self._gates_canvas.pack(side="left", fill="both", expand=True)
+        self._gates_canvas.configure(xscrollcommand=gt_xsb.set,
+                                      yscrollcommand=gt_ysb.set)
+
+        self._gates_neden_map = {}
+        self._gates_canvas.bind("<Motion>", self._gates_canvas_hover)
+        self._gates_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
+
+        def _gates_on_wheel(event):
+            self._gates_canvas.yview_scroll(int(-1 * (event.delta / 120)),
+                                             "units")
+        def _gates_on_shift_wheel(event):
+            self._gates_canvas.xview_scroll(int(-1 * (event.delta / 120)),
+                                             "units")
+        self._gates_canvas.bind("<MouseWheel>", _gates_on_wheel)
+        self._gates_canvas.bind("<Shift-MouseWheel>", _gates_on_shift_wheel)
+
+        # ── TAB F: RBD — Reliability Block Diagram (IEC 61078) ────────
+        # Karar verici mantık formülasyonuna birebir eşlenik akım şeması.
+        # Top-level AND = bloklar yatay seri; veya_grubu = dikey paralel.
+        # NOT atom = blok başında "¬"; akan yol yeşil kalın.
+        tab_rbd = tk.Frame(nb, bg="#FAFBFC")
+        nb.add(tab_rbd, text="🔗 RBD (IEC 61078)")
+
+        self._rbd_canvas = tk.Canvas(tab_rbd, bg="white",
+                                      highlightthickness=0)
+        rbd_xsb = ttk.Scrollbar(tab_rbd, orient="horizontal",
+                                 command=self._rbd_canvas.xview)
+        rbd_xsb.pack(side="bottom", fill="x")
+        rbd_ysb = ttk.Scrollbar(tab_rbd, orient="vertical",
+                                 command=self._rbd_canvas.yview)
+        rbd_ysb.pack(side="right", fill="y")
+        self._rbd_canvas.pack(side="left", fill="both", expand=True)
+        self._rbd_canvas.configure(xscrollcommand=rbd_xsb.set,
+                                    yscrollcommand=rbd_ysb.set)
+
+        self._rbd_neden_map = {}
+        self._rbd_canvas.bind("<Motion>", self._rbd_canvas_hover)
+        self._rbd_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
+
+        def _rbd_on_wheel(event):
+            self._rbd_canvas.yview_scroll(int(-1 * (event.delta / 120)),
+                                           "units")
+        def _rbd_on_shift_wheel(event):
+            self._rbd_canvas.xview_scroll(int(-1 * (event.delta / 120)),
+                                           "units")
+        self._rbd_canvas.bind("<MouseWheel>", _rbd_on_wheel)
+        self._rbd_canvas.bind("<Shift-MouseWheel>", _rbd_on_shift_wheel)
+
+        # ── TAB G: Klasik Akım Şeması (ampul + sade dikey paralel) ────
+        # Tab F (RBD) ile aynı topoloji (dikey paralel + yatay seri) ama
+        # kutu yerine ampul/lamba sembolü, kavşaklar düz paralel raylar
+        # ("V" şeklinde değil), VE bağlantısı seri ana hat.
+        tab_klasik = tk.Frame(nb, bg="#FAFBFC")
+        nb.add(tab_klasik, text="🔆 Klasik Akım")
+
+        self._klasik_canvas = tk.Canvas(tab_klasik, bg="white",
+                                          highlightthickness=0)
+        klasik_xsb = ttk.Scrollbar(tab_klasik, orient="horizontal",
+                                     command=self._klasik_canvas.xview)
+        klasik_xsb.pack(side="bottom", fill="x")
+        klasik_ysb = ttk.Scrollbar(tab_klasik, orient="vertical",
+                                     command=self._klasik_canvas.yview)
+        klasik_ysb.pack(side="right", fill="y")
+        self._klasik_canvas.pack(side="left", fill="both", expand=True)
+        self._klasik_canvas.configure(xscrollcommand=klasik_xsb.set,
+                                        yscrollcommand=klasik_ysb.set)
+
+        self._klasik_neden_map = {}
+        self._klasik_canvas.bind("<Motion>", self._klasik_canvas_hover)
+        self._klasik_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
+
+        def _klasik_on_wheel(event):
+            self._klasik_canvas.yview_scroll(int(-1 * (event.delta / 120)),
+                                               "units")
+        def _klasik_on_shift_wheel(event):
+            self._klasik_canvas.xview_scroll(int(-1 * (event.delta / 120)),
+                                               "units")
+        self._klasik_canvas.bind("<MouseWheel>", _klasik_on_wheel)
+        self._klasik_canvas.bind("<Shift-MouseWheel>", _klasik_on_shift_wheel)
 
         self._sema_temizle("Bir reçete satırı seçin")
 
@@ -1875,10 +2061,214 @@ class AylikReceteSorguGUI:
                 w.destroy()
         except Exception:
             pass
+        # Her iki canvas'ı da temizle
+        try:
+            self._sema_canvas.delete("all")
+        except Exception:
+            pass
+        try:
+            self._fta_canvas.delete("all")
+            self._fta_neden_map = {}
+        except Exception:
+            pass
+        try:
+            self._madde_canvas.delete("all")
+            self._madde_neden_map = {}
+        except Exception:
+            pass
+        try:
+            self._dmn_canvas.delete("all")
+            self._dmn_neden_map = {}
+        except Exception:
+            pass
+        try:
+            self._gates_canvas.delete("all")
+            self._gates_neden_map = {}
+        except Exception:
+            pass
+        try:
+            self._rbd_canvas.delete("all")
+            self._rbd_neden_map = {}
+        except Exception:
+            pass
         if mesaj:
             tk.Label(self._sema_ozet, text=mesaj, bg="#FAFBFC",
                      fg="#90A4AE",
                      font=("Segoe UI", 9, "italic")).pack(pady=20)
+
+    def _madde_canvas_hover(self, event) -> None:
+        """SUT Madde Akış canvas hover — atom satırı için neden tooltip."""
+        try:
+            c = self._madde_canvas
+            cx = c.canvasx(event.x)
+            cy = c.canvasy(event.y)
+            items = c.find_overlapping(cx - 1, cy - 1, cx + 1, cy + 1)
+            for it in items:
+                if it in self._madde_neden_map:
+                    if getattr(self, "_sema_tip_item", None) == it:
+                        return
+                    self._sema_hide_tip()
+                    neden = self._madde_neden_map[it]
+                    x = c.winfo_rootx() + event.x + 16
+                    y = c.winfo_rooty() + event.y + 16
+                    tip = tk.Toplevel(self.root)
+                    tip.wm_overrideredirect(True)
+                    tip.wm_geometry(f"+{x}+{y}")
+                    tk.Label(tip, text=neden, bg="#FFFDE7", fg="#37474F",
+                             font=("Segoe UI", 9), justify="left",
+                             relief="solid", bd=1, padx=6, pady=3,
+                             wraplength=420).pack()
+                    self._sema_tip = tip
+                    self._sema_tip_item = it
+                    return
+            self._sema_hide_tip()
+        except Exception:
+            pass
+
+    def _rbd_canvas_hover(self, event) -> None:
+        """RBD canvas hover — blok/atom için neden tooltip."""
+        try:
+            c = self._rbd_canvas
+            cx = c.canvasx(event.x)
+            cy = c.canvasy(event.y)
+            items = c.find_overlapping(cx - 1, cy - 1, cx + 1, cy + 1)
+            for it in items:
+                if it in self._rbd_neden_map:
+                    if getattr(self, "_sema_tip_item", None) == it:
+                        return
+                    self._sema_hide_tip()
+                    neden = self._rbd_neden_map[it]
+                    x = c.winfo_rootx() + event.x + 16
+                    y = c.winfo_rooty() + event.y + 16
+                    tip = tk.Toplevel(self.root)
+                    tip.wm_overrideredirect(True)
+                    tip.wm_geometry(f"+{x}+{y}")
+                    tk.Label(tip, text=neden, bg="#FFFDE7", fg="#37474F",
+                             font=("Segoe UI", 9), justify="left",
+                             relief="solid", bd=1, padx=6, pady=3,
+                             wraplength=420).pack()
+                    self._sema_tip = tip
+                    self._sema_tip_item = it
+                    return
+            self._sema_hide_tip()
+        except Exception:
+            pass
+
+    def _gates_canvas_hover(self, event) -> None:
+        """IEC 60617 Mantık Kapısı canvas hover — pin/kapı için tooltip."""
+        try:
+            c = self._gates_canvas
+            cx = c.canvasx(event.x)
+            cy = c.canvasy(event.y)
+            items = c.find_overlapping(cx - 1, cy - 1, cx + 1, cy + 1)
+            for it in items:
+                if it in self._gates_neden_map:
+                    if getattr(self, "_sema_tip_item", None) == it:
+                        return
+                    self._sema_hide_tip()
+                    neden = self._gates_neden_map[it]
+                    x = c.winfo_rootx() + event.x + 16
+                    y = c.winfo_rooty() + event.y + 16
+                    tip = tk.Toplevel(self.root)
+                    tip.wm_overrideredirect(True)
+                    tip.wm_geometry(f"+{x}+{y}")
+                    tk.Label(tip, text=neden, bg="#FFFDE7", fg="#37474F",
+                             font=("Segoe UI", 9), justify="left",
+                             relief="solid", bd=1, padx=6, pady=3,
+                             wraplength=420).pack()
+                    self._sema_tip = tip
+                    self._sema_tip_item = it
+                    return
+            self._sema_hide_tip()
+        except Exception:
+            pass
+
+    def _dmn_canvas_hover(self, event) -> None:
+        """DMN Karar Modeli canvas hover — hücre/atom için neden tooltip."""
+        try:
+            c = self._dmn_canvas
+            cx = c.canvasx(event.x)
+            cy = c.canvasy(event.y)
+            items = c.find_overlapping(cx - 1, cy - 1, cx + 1, cy + 1)
+            for it in items:
+                if it in self._dmn_neden_map:
+                    if getattr(self, "_sema_tip_item", None) == it:
+                        return
+                    self._sema_hide_tip()
+                    neden = self._dmn_neden_map[it]
+                    x = c.winfo_rootx() + event.x + 16
+                    y = c.winfo_rooty() + event.y + 16
+                    tip = tk.Toplevel(self.root)
+                    tip.wm_overrideredirect(True)
+                    tip.wm_geometry(f"+{x}+{y}")
+                    tk.Label(tip, text=neden, bg="#FFFDE7", fg="#37474F",
+                             font=("Segoe UI", 9), justify="left",
+                             relief="solid", bd=1, padx=6, pady=3,
+                             wraplength=420).pack()
+                    self._sema_tip = tip
+                    self._sema_tip_item = it
+                    return
+            self._sema_hide_tip()
+        except Exception:
+            pass
+
+    def _klasik_canvas_hover(self, event) -> None:
+        """Klasik Akım Şeması canvas hover — ampul için neden tooltip."""
+        try:
+            c = self._klasik_canvas
+            cx = c.canvasx(event.x)
+            cy = c.canvasy(event.y)
+            items = c.find_overlapping(cx - 1, cy - 1, cx + 1, cy + 1)
+            for it in items:
+                if it in self._klasik_neden_map:
+                    if getattr(self, "_sema_tip_item", None) == it:
+                        return
+                    self._sema_hide_tip()
+                    neden = self._klasik_neden_map[it]
+                    x = c.winfo_rootx() + event.x + 16
+                    y = c.winfo_rooty() + event.y + 16
+                    tip = tk.Toplevel(self.root)
+                    tip.wm_overrideredirect(True)
+                    tip.wm_geometry(f"+{x}+{y}")
+                    tk.Label(tip, text=neden, bg="#FFFDE7", fg="#37474F",
+                             font=("Segoe UI", 9), justify="left",
+                             relief="solid", bd=1, padx=6, pady=3,
+                             wraplength=420).pack()
+                    self._sema_tip = tip
+                    self._sema_tip_item = it
+                    return
+            self._sema_hide_tip()
+        except Exception:
+            pass
+
+    def _fta_canvas_hover(self, event) -> None:
+        """FTA canvas üzerinde hover — node'a yakınsa neden tooltip aç."""
+        try:
+            c = self._fta_canvas
+            cx = c.canvasx(event.x)
+            cy = c.canvasy(event.y)
+            items = c.find_overlapping(cx - 1, cy - 1, cx + 1, cy + 1)
+            for it in items:
+                if it in self._fta_neden_map:
+                    if getattr(self, "_sema_tip_item", None) == it:
+                        return
+                    self._sema_hide_tip()
+                    neden = self._fta_neden_map[it]
+                    x = c.winfo_rootx() + event.x + 16
+                    y = c.winfo_rooty() + event.y + 16
+                    tip = tk.Toplevel(self.root)
+                    tip.wm_overrideredirect(True)
+                    tip.wm_geometry(f"+{x}+{y}")
+                    tk.Label(tip, text=neden, bg="#FFFDE7", fg="#37474F",
+                             font=("Segoe UI", 9), justify="left",
+                             relief="solid", bd=1, padx=6, pady=3,
+                             wraplength=420).pack()
+                    self._sema_tip = tip
+                    self._sema_tip_item = it
+                    return
+            self._sema_hide_tip()
+        except Exception:
+            pass
 
     def _sema_secim_guncelle(self, _event=None) -> None:
         """Treeview'de seçilen reçete için şema panelini günceller."""
@@ -2001,6 +2391,43 @@ class AylikReceteSorguGUI:
                 # totals'da çift sayılmasın diye `alt` filtrelenir.
                 ham_gruplar[ka]["alt"] = True
                 ham_gruplar[kb]["alt"] = True
+
+        # Üst-VEYA çoklu (n-way): D-1(1) risk faktörü 4 alt-grup → tek üst-OR
+        # SUT lafzı (a)∨(b)∨(c)∨(d): ≥1 yeterli; alt-gruplar görsel kalır,
+        # toplamlarda alt=True ile dışlanır.
+        coklu_prefix_listesi = [
+            (("Risk fakt. (a) — inme/TIA",
+              "Risk fakt. (b) — ≥75 yaş",
+              "Risk fakt. (c) — NYHA",
+              "Risk fakt. (d) — DM/HT"),
+             "Risk faktörü ≥1 [(a)∨(b)∨(c)∨(d)]"),
+        ]
+        for prefixes, birlesik in coklu_prefix_listesi:
+            keys = [next((k for k in ham_gruplar if k.startswith(p)), None)
+                    for p in prefixes]
+            keys = [k for k in keys if k]
+            if not keys:
+                continue
+            gruplari = [ham_gruplar[k] for k in keys]
+            # Tam olanlardan ilki "seçilen"; yoksa max saglanan; yoksa ilk
+            tam_olanlar = [g for g in gruplari
+                           if g["saglanan"] >= g["gerekli"]
+                           and g["gerekli"] > 0]
+            if tam_olanlar:
+                secilen = min(tam_olanlar, key=lambda g: g["gerekli"])
+            else:
+                secilen = max(gruplari, key=lambda g: g["saglanan"])
+            ham_gruplar[birlesik] = {
+                "grup": birlesik,
+                "gerekli": 1,
+                "saglanan": 1 if tam_olanlar else 0,
+                "toplam": sum(g["toplam"] for g in gruplari),
+                "veya": True,
+                "var_sayi": sum(g["var_sayi"] for g in gruplari),
+                "secilen_yol": secilen["grup"],
+            }
+            for k in keys:
+                ham_gruplar[k]["alt"] = True
 
         sonuc_listesi = list(ham_gruplar.values())
         gerekli_t = sum(g["gerekli"] for g in sonuc_listesi if not g.get("alt"))
@@ -2313,10 +2740,57 @@ class AylikReceteSorguGUI:
         if not sartlar:
             return
 
-        # Canvas üzerinde devre şeması
+        # Canvas üzerinde devre şeması (Tab A)
         self.root.update_idletasks()  # canvas genişliğini al
         self._devre_ciz_canvas(sartlar, gmat, detaylar=detaylar,
                                  verdict=verdict)
+        # FTA Ağacı (Tab B, IEC 61025 standart hiyerarşik gösterim)
+        try:
+            self._fta_ciz_canvas(sartlar, detaylar=detaylar,
+                                  verdict=verdict)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception('FTA renderer hatası')
+        # SUT Madde Akış Çizelgesi (Tab C, mevzuat sırasına bire bir)
+        try:
+            self._sut_madde_ciz_canvas(sartlar, detaylar=detaylar,
+                                        verdict=verdict)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                'SUT Madde Akış renderer hatası')
+        # DMN Karar Modeli (Tab D, OMG/HL7 FHIR CPG standardı, pilot: YOAK)
+        try:
+            self._dmn_ciz_canvas(sartlar, detaylar=detaylar,
+                                  verdict=verdict, satir=satir)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                'DMN Karar Modeli renderer hatası')
+        # Mantık Kapısı Şeması (Tab E, IEC 60617-12 / IEEE 91, pilot: YOAK)
+        try:
+            self._gates_ciz_canvas(sartlar, detaylar=detaylar,
+                                    verdict=verdict, satir=satir)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                'Mantık Kapısı renderer hatası')
+        # RBD — Reliability Block Diagram (Tab F, IEC 61078, pilot: YOAK)
+        try:
+            self._rbd_ciz_canvas(sartlar, detaylar=detaylar,
+                                  verdict=verdict, satir=satir)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                'RBD renderer hatası')
+        # Klasik Akım Şeması — ampul + dikey paralel (Tab G, sade görsel)
+        try:
+            self._klasik_ciz_canvas(sartlar, detaylar=detaylar,
+                                     verdict=verdict, satir=satir)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                'Klasik Akım renderer hatası')
 
     def _sema_ust_banda_yaz(self, satir: dict, sartlar: list, detaylar: dict,
                              verdict: str, gerekli_t: int, saglanan_t: int) -> None:
@@ -2375,6 +2849,29 @@ class AylikReceteSorguGUI:
             tk.Label(self._sema_ozet, text=ilac,
                      bg="#FAFBFC", fg="#90A4AE",
                      font=("Segoe UI", 8)).pack(side="right", padx=8, pady=8)
+
+    def _ust_veya_baslik_bul(self, ga: str, cift_b: str,
+                              ust_veya_ciftleri: list) -> str:
+        """Üst-VEYA çiftine kısa görsel başlık üret.
+
+        Örnekler:
+          Varfarin (a) ∨ Varfarin (b) → '(a) ∨ (b)'
+          Varfarin yolu ∨ İstisna grubu → 'Varfarin ∨ İstisna'
+          SK ilk 24 ∨ 24 ay sonrası → 'SK ilk 24ay ∨ sonrası'
+        """
+        a_pure = (ga or '').replace('[pasif] ', '').strip()
+        b_pure = (cift_b or '').replace('[pasif] ', '').strip()
+        # Bilinen kalıplara göre kısa başlık
+        if 'Varfarin yolu (a)' in a_pure and 'Varfarin yolu (b)' in b_pure:
+            return '(a) ∨ (b)'
+        if 'Varfarin yolu' in a_pure and 'İstisna grubu' in b_pure:
+            return 'Varfarin ∨ İstisna'
+        if 'SK raporu — ilk 24' in a_pure and '24 ay sonrası' in b_pure:
+            return 'SK ilk 24ay ∨ sonrası'
+        # Fallback: ilk 18 karakter ∨ ikinci ilk 18 karakter
+        a_short = a_pure[:18].rstrip(' —[')
+        b_short = b_pure[:18].rstrip(' —[')
+        return f'{a_short} ∨ {b_short}'
 
     def _devre_kablo(self, c: tk.Canvas, x1: int, y1: int, x2: int, y2: int,
                       akim: bool = False) -> None:
@@ -2490,13 +2987,22 @@ class AylikReceteSorguGUI:
             ga = g_ad or ""
             # [pasif] önek soyutla
             ga_pure = ga.replace("[pasif] ", "")
+            # EK-4/F sıralama: elektif > amaç > rapor > miktar
+            if "Elektif kalça" in ga_pure or "replasman" in ga_pure.lower():
+                return 0
+            if "DVT profilaksisi" in ga_pure:
+                return 1
+            if "Ortopedi uzman" in ga_pure:
+                return 2
+            if "Miktar limiti" in ga_pure:
+                return 3
             if "Endikasyon" in ga_pure:
                 return 0
             if "Yetişkin" in ga_pure:
                 return 1
             if "Kontrendikasyon" in ga_pure:
                 return 2
-            if "Risk faktörü" in ga_pure:
+            if "Risk faktörü" in ga_pure or "Risk fakt." in ga_pure:
                 return 3
             if "Varfarin yolu" in ga_pure or "İstisna grubu" in ga_pure:
                 return 4
@@ -2704,7 +3210,9 @@ class AylikReceteSorguGUI:
                     OZET_AMPUL_W = KUTU_YARI_W * 2 + 20  # özet 1 ampul gen.
 
                     # Mini paralel kavşak için dikey adım
-                    MINI_DAL_GAP = 50
+                    # 70 = mini kutu yüksekliği (22+10+22=54) + 16 emniyet
+                    # → çakışmasız dikey paralel görünüm (eski 50 ile çakışıyordu)
+                    MINI_DAL_GAP = 70
 
                     def _dal_grup_veya(gs2):
                         # Detay açıkken VEYA grup ise dikey paralel kavşak
@@ -2723,32 +3231,63 @@ class AylikReceteSorguGUI:
                     b_w = _dal_genislik(b_detay, b_gs)
                     dal_w = max(a_w, b_w)
 
+                    # Mini kutu yüksekliği (kutu_boyut="mini" için) =
+                    # 22 (h_ust) + MINI_R*2 (=20) + 22 (h_alt) + 4 emniyet = 68
+                    MINI_KUTU_H_FULL = 68
+
                     def _dal_dikey_yuks(detayli, gs2):
-                        # Detay açıkken dalın dikey yer kaplaması (kutu+30)
+                        # Detay açıkken dalın dikey yer kaplaması
                         if detayli and _dal_grup_veya(gs2):
+                            # n ampul × MINI_DAL_GAP arası + mini kutu yüksekliği
                             n = len(gs2)
                             return ((n - 1) * MINI_DAL_GAP +
-                                    KUTU_YARI_H * 2 + 30)
+                                    MINI_KUTU_H_FULL + 30)
                         if detayli:
-                            return KUTU_YARI_H * 2 + 30
+                            # Yatay AND zinciri: tek satır mini kutu
+                            return MINI_KUTU_H_FULL + 30
                         return KUTU_YARI_H * 2
                     a_yuks = _dal_dikey_yuks(a_detay, a_gs)
                     b_yuks = _dal_dikey_yuks(b_detay, b_gs)
-                    y_gap = max(70, (a_yuks + b_yuks) // 2 + 20)
+                    # y_gap minimum 100 (eski 70'ti) — bitişik üst-VEYA
+                    # çiftlerinin paralel olduğu net görünür
+                    y_gap = max(100, (a_yuks + b_yuks) // 2 + 20)
                     y_a = y_merkez - y_gap
                     y_b = y_merkez + y_gap
 
                     sol_kavsak_x = x + 5
                     sag_kavsak_x = sol_kavsak_x + dal_w
 
+                    # ── ÜST-VEYA başlığı (pair üstünde) ─────────────────
+                    birlesik_baslik = self._ust_veya_baslik_bul(
+                        g_ad, b_grup_ad, ust_veya_ciftleri)
+                    c.create_rectangle(
+                        sol_kavsak_x - 5, y_a - 38,
+                        sag_kavsak_x + 5, y_a - 18,
+                        fill='#E3F2FD', outline='#1565C0',
+                        width=1, tags='devre')
+                    c.create_text((sol_kavsak_x + sag_kavsak_x) // 2,
+                                  y_a - 28,
+                                  text=f'⫷ ÜST-VEYA: {birlesik_baslik} ⫸',
+                                  fill='#1565C0',
+                                  font=('Segoe UI', 8, 'bold'),
+                                  tags='devre')
+
                     # Ana hat → sol kavşak
                     self._devre_kablo(c, son_x, y_merkez,
                                        sol_kavsak_x, y_merkez,
                                        akim=akim_aktif)
-                    # Sol dikey kavşak (üst+alt arası)
-                    self._devre_kablo(c, sol_kavsak_x, y_a,
-                                       sol_kavsak_x, y_b,
-                                       akim=akim_aktif)
+                    # Sol dikey kavşak (üst+alt arası) — kalın, üst-VEYA fork
+                    sol_kv_renk = (self._DEVRE_AKIM_RENK if akim_aktif
+                                    else self._DEVRE_KABLO_RENK)
+                    sol_kv_w = 4 if akim_aktif else 3
+                    c.create_line(sol_kavsak_x, y_a, sol_kavsak_x, y_b,
+                                  fill=sol_kv_renk, width=sol_kv_w,
+                                  tags="devre")
+                    # "VEYA" etiketi sol kavşakta (fork)
+                    c.create_text(sol_kavsak_x - 4, y_merkez,
+                                  text="∨", fill="#37474F",
+                                  font=("Segoe UI", 12, "bold"),
+                                  anchor="e", tags="devre")
 
                     def _dal_ciz(yy, gs2, gm2, dur, sag_n, ger_n,
                                   detayli, ga_ad):
@@ -2782,7 +3321,8 @@ class AylikReceteSorguGUI:
                                 self._devre_ampul_at(c, mini_x, yi, mini_obj,
                                                       MINI_R, veya_grubu=True,
                                                       font_sembol=("Segoe UI", 9, "bold"),
-                                                      font_etiket=("Segoe UI", 7))
+                                                      font_etiket=("Segoe UI", 7),
+                                                      kutu_boyut="mini")
                                 self._devre_kablo(c,
                                                    mini_x + MINI_KUTU_W, yi,
                                                    mini_sag_x, yi,
@@ -2810,7 +3350,8 @@ class AylikReceteSorguGUI:
                                 self._devre_ampul_at(c, x_mini, yy, mini_obj,
                                                       MINI_R, veya_grubu=False,
                                                       font_sembol=("Segoe UI", 9, "bold"),
-                                                      font_etiket=("Segoe UI", 7))
+                                                      font_etiket=("Segoe UI", 7),
+                                                      kutu_boyut="mini")
                                 # Bu ampul VAR mı? Akım o noktaya kadar geçer
                                 ampul_akim = yol_akim and (s.get('durum') == 'var')
                                 if i < len(gs2) - 1:
@@ -2864,15 +3405,38 @@ class AylikReceteSorguGUI:
                     _dal_ciz(y_b, b_gs, b_gm, b_dur, b_sag, b_ger,
                               b_detay, b_grup_ad)
 
-                    # Sağ dikey kavşak — birleşik akım çıkışı
+                    # Sağ dikey kavşak — birleşik akım çıkışı (merge)
                     cikis_akim = (cift_baslangic_akim
                                    if cift_baslangic_akim is not None
                                    else True) and cift_tam
-                    self._devre_kablo(c, sag_kavsak_x, y_a,
-                                       sag_kavsak_x, y_b,
+                    sag_kv_renk = (self._DEVRE_AKIM_RENK if cikis_akim
+                                    else self._DEVRE_KABLO_RENK)
+                    sag_kv_w = 4 if cikis_akim else 3
+                    c.create_line(sag_kavsak_x, y_a, sag_kavsak_x, y_b,
+                                  fill=sag_kv_renk, width=sag_kv_w,
+                                  tags="devre")
+                    # "VEYA" etiketi sağ kavşakta (merge)
+                    c.create_text(sag_kavsak_x + 4, y_merkez,
+                                  text="∨", fill="#37474F",
+                                  font=("Segoe UI", 12, "bold"),
+                                  anchor="w", tags="devre")
+                    # MERGE NODE (dolu daire) — çift bitti anchor'ı
+                    merge_renk_aktif = ('#1B5E20' if cikis_akim
+                                          else '#37474F')
+                    merge_x_aktif = sag_kavsak_x + 18
+                    c.create_oval(merge_x_aktif - 7, y_merkez - 7,
+                                  merge_x_aktif + 7, y_merkez + 7,
+                                  fill=merge_renk_aktif,
+                                  outline=merge_renk_aktif,
+                                  tags="devre")
+                    self._devre_kablo(c, sag_kavsak_x, y_merkez,
+                                       merge_x_aktif - 7, y_merkez,
                                        akim=cikis_akim)
-                    son_x = sag_kavsak_x
-                    x = sag_kavsak_x + 25
+                    son_x = merge_x_aktif + 7
+                    # Bitişik üst-VEYA çiftleri arasında geniş boşluk
+                    # (eski 25px → merge→tek-çizgi→fork görsel ayrımı için
+                    # 60px) — pasif yoldaki 80px ile simetrik
+                    x = sag_kavsak_x + 60
                     akim_aktif = cikis_akim
                     cift_baslangic_akim = None
                     continue  # normal render bloğuna girme
@@ -3256,7 +3820,10 @@ class AylikReceteSorguGUI:
                         if b_ps_list:
                             pasif_atlanacak.add(cift_b)
                             # 2 dal: a (üst) yatay seri, b (alt) yatay seri
-                            DAL_GAP = 70
+                            # DAL_GAP 70→110: üst-VEYA çiftleri arasındaki
+                            # paralel rows artık net ayırt edilir, "seri
+                            # akış" izlenimi kaybolur.
+                            DAL_GAP = 110
                             y_a_p = y_pasif - DAL_GAP
                             y_b_p = y_pasif + DAL_GAP
                             sol_kvs = pasif_x
@@ -3265,12 +3832,37 @@ class AylikReceteSorguGUI:
                             b_w = len(b_ps_list) * AMPUL_X_GAP + 30
                             blok_w = max(a_w, b_w) + 30
                             sag_kvs = sol_kvs + blok_w
+                            # ── ÜST-VEYA başlığı (pair üstünde) ──────────
+                            # Mevzuat madde sırasını gösteren etiket: (a)∨(b)
+                            # veya 'Varfarin∨İstisna' gibi. cift_b grup adı
+                            # yerine birleşik (ust_veya_ciftleri'nden) kullan.
+                            birlesik_baslik = self._ust_veya_baslik_bul(
+                                ga, cift_b, ust_veya_ciftleri)
+                            c.create_rectangle(
+                                sol_kvs - 5, y_a_p - 38,
+                                sag_kvs + 5, y_a_p - 18,
+                                fill='#E3F2FD', outline='#546E7A',
+                                width=1, tags='devre')
+                            c.create_text((sol_kvs + sag_kvs) // 2,
+                                          y_a_p - 28,
+                                          text=f'⫷ ÜST-VEYA: {birlesik_baslik} ⫸',
+                                          fill='#1565C0',
+                                          font=('Segoe UI', 8, 'bold'),
+                                          tags='devre')
                             # Ana hat → sol kavşak
                             self._devre_kablo(c, pasif_son_x, y_pasif,
                                                sol_kvs, y_pasif, akim=False)
-                            # Sol dikey kavşak
-                            self._devre_kablo(c, sol_kvs, y_a_p,
-                                               sol_kvs, y_b_p, akim=False)
+                            # Sol dikey kavşak — kalın çizgi, üst-VEYA fork
+                            # işaretle
+                            c.create_line(sol_kvs, y_a_p, sol_kvs, y_b_p,
+                                          fill=self._DEVRE_KABLO_RENK,
+                                          width=3, tags="devre")
+                            # "VEYA" etiketi sol kavşakta (fork noktası)
+                            c.create_text(sol_kvs - 4, y_pasif,
+                                          text="∨",
+                                          fill="#546E7A",
+                                          font=("Segoe UI", 11, "bold"),
+                                          anchor="e", tags="devre")
                             # a dalı yatay seri
                             xi = sol_kvs + 30
                             for p in ps_list:
@@ -3301,14 +3893,31 @@ class AylikReceteSorguGUI:
                                 xi = ax + KUTU_YARI_W + 30
                             self._devre_kablo(c, xi - 30, y_b_p,
                                                sag_kvs, y_b_p, akim=False)
-                            # Sağ dikey kavşak
-                            self._devre_kablo(c, sag_kvs, y_a_p,
-                                               sag_kvs, y_b_p, akim=False)
-                            # Çıkış: sağ kavşak → ana hat
+                            # Sağ dikey kavşak — kalın çizgi, merge noktası
+                            c.create_line(sag_kvs, y_a_p, sag_kvs, y_b_p,
+                                          fill=self._DEVRE_KABLO_RENK,
+                                          width=3, tags="devre")
+                            # "VEYA" etiketi sağ kavşakta (merge noktası)
+                            c.create_text(sag_kvs + 4, y_pasif,
+                                          text="∨",
+                                          fill="#546E7A",
+                                          font=("Segoe UI", 11, "bold"),
+                                          anchor="w", tags="devre")
+                            # ── MERGE NODE (dolu daire) — çift bitti anchor'ı
+                            # Bitişik iki üst-VEYA çiftinin "seri akış" gibi
+                            # görünmesini engelleyen kritik görsel marker.
+                            merge_x = sag_kvs + 18
+                            c.create_oval(merge_x - 6, y_pasif - 6,
+                                          merge_x + 6, y_pasif + 6,
+                                          fill='#37474F',
+                                          outline='#37474F',
+                                          tags='devre')
                             self._devre_kablo(c, sag_kvs, y_pasif,
-                                               sag_kvs, y_pasif, akim=False)
-                            pasif_son_x = sag_kvs
-                            pasif_x = pasif_son_x + 30
+                                               merge_x - 6, y_pasif,
+                                               akim=False)
+                            pasif_son_x = merge_x + 6
+                            # Çiftler arası geniş boşluk (100px)
+                            pasif_x = pasif_son_x + 100
                             continue
 
                     veya_g = any(p.get('veya_grubu') for p in ps_list)
@@ -3389,37 +3998,46 @@ class AylikReceteSorguGUI:
                 self._devre_kablo(c, ozet_ampul_x + 50, y_pasif,
                                    kavsak_sag_x, y_pasif, akim=False)
 
-            # Sağ kavşak dikey: üst dal → ⊖
-            self._devre_kablo(c, kavsak_sag_x, y_pasif,
-                               kavsak_sag_x, y_merkez, akim=False)
+            # Pasif yolak burada bağımsızca biter — aktif y_merkez hattıyla
+            # birleşmez (kullanıcı geri bildirimi: pasif merge aktif hattı
+            # ÇIKIŞ'a giderken karıştırıyordu). Pasif satırın sağ ucunu
+            # küçük bir dikey terminator (kısa çizgi) ile kapat.
+            self._devre_kablo(c, kavsak_sag_x, y_pasif - 8,
+                               kavsak_sag_x, y_pasif + 8, akim=False)
 
-        # ⊖ Pil — SAĞ (akım çıkışı varsa yeşil kablo)
-        x += 25
-        self._devre_kablo(c, son_x, y_merkez, x - 14, y_merkez,
-                           akim=akim_aktif)
-        cikis_renk = "#1B5E20" if akim_aktif else "#37474F"
-        c.create_text(x, y_merkez, text="⊖", fill=cikis_renk,
-                      font=PIL_FONT, tags="devre")
-        c.create_text(x, y_merkez + 28, text="ÇIKIŞ", fill="#37474F",
-                      font=("Segoe UI", 8, "bold"), tags="devre")
-
-        # ── Devre çıkışı: VERDICT etiketi EN SAĞDA ─────────────────────
-        # Alt/üst yolaktaki tüm çizimlerin sağ kenarını bul, ⊖ pilden
-        # oraya kadar akım hattını uzat, etiketi tam o noktaya koy.
+        # ── Devre çıkışı: ⊖ ve VERDICT etiketi BİRLİKTE EN SAĞDA ──────
+        # Eski yapı: ⊖ aktif yolun hemen sağında, sonra uzun akım hattı,
+        # sonra UYGUN badge'i — bu pasif vertical merge ile karışıyordu.
+        # Yeni yapı: bbox'ı önce hesapla, ⊖ ve UYGUN'u yan yana çiz; aktif
+        # akım hattı son_x'ten direkt ⊖ pozisyonuna gider (karışmadan).
         c.update_idletasks()
         bbox_devre = c.bbox("devre")
         if bbox_devre:
             max_x_pre = bbox_devre[2]
         else:
-            max_x_pre = x + 14
-        # ⊖ pilden devrenin en sağına kadar uzun akım hattı
-        if max_x_pre > x + 40:
-            self._devre_kablo(c, x + 14, y_merkez,
-                               max_x_pre + 20, y_merkez,
-                               akim=akim_aktif)
-            etiket_x = max_x_pre + 60
-        else:
-            etiket_x = x + 50
+            max_x_pre = son_x + 50
+
+        # ⊖ pozisyonu: pasif/aktif tüm çizimlerin SAĞINDA
+        cikis_x = max_x_pre + 40
+        etiket_x = cikis_x + 30
+
+        # Aktif yolaktaki son_x'ten ⊖'ye DOĞRUDAN akım hattı (karışmadan)
+        self._devre_kablo(c, son_x, y_merkez,
+                           cikis_x - 14, y_merkez,
+                           akim=akim_aktif)
+
+        # ⊖ Pil + ÇIKIŞ etiketi (verdict ile yan yana)
+        cikis_renk = "#1B5E20" if akim_aktif else "#37474F"
+        c.create_text(cikis_x, y_merkez, text="⊖", fill=cikis_renk,
+                      font=PIL_FONT, tags="devre")
+        c.create_text(cikis_x, y_merkez + 28, text="ÇIKIŞ", fill="#37474F",
+                      font=("Segoe UI", 8, "bold"), tags="devre")
+
+        # ⊖ → UYGUN badge kısa akım hattı
+        self._devre_kablo(c, cikis_x + 14, y_merkez,
+                           etiket_x - 8, y_merkez,
+                           akim=akim_aktif)
+        x = etiket_x
 
         v_up = (verdict or "").strip().upper()
         if v_up:
@@ -3518,14 +4136,869 @@ class AylikReceteSorguGUI:
                                         max(toplam_w, c.winfo_width()),
                                         canvas_h))
 
+    # ═════════════════════════════════════════════════════════════════
+    # FTA (Fault Tree Analysis, IEC 61025) — Tab B
+    # Top-down hiyerarşik ağaç: top event > AND/OR gate > intermediate >
+    # basic event. Bilimsel güvenlik analizi standardı; SUT uygunluk
+    # kaybı = "top failure event" metaforu ile çalışır.
+    # ═════════════════════════════════════════════════════════════════
+
+    _FTA_RENK = {
+        'var': ('#1B5E20', '#A5D6A7'),           # koyu yeşil / açık yeşil
+        'yok': ('#B71C1C', '#EF9A9A'),           # koyu kırmızı / açık kırmızı
+        'kontrol_edilemedi': ('#E65100', '#FFCC80'),  # turuncu
+        'na': ('#546E7A', '#CFD8DC'),            # gri
+    }
+    _FTA_KENAR_RENK = "#90A4AE"
+    _FTA_USTOR_PAIRS = (
+        ('Varfarin yolu (a)', 'Varfarin yolu (b)',
+         'Varfarin yolu [(a) ∨ (b)]'),
+        ('Varfarin yolu — ', 'İstisna grubu',
+         'Varfarin ∨ İstisna [(1)(b) ∨ (2)]'),
+        ('SK raporu — ilk 24 ay [(2)', '24 ay sonrası alt yol [(2)',
+         'Rapor + Reçete (D-1) [E ∨ F]'),
+        ('SK raporu — ilk 24 ay [(3)', '24 ay sonrası alt yol [(3)',
+         'Rapor + Reçete (D-2) [E2 ∨ F2]'),
+    )
+
+    def _fta_durum_normalize(self, d):
+        """SartSonuc dict 'durum' alanını standart string'e indir."""
+        if hasattr(d, 'value'):
+            return d.value
+        return str(d) if d else 'na'
+
+    def _fta_grup_durum_hesapla(self, statuses, veya: bool) -> str:
+        """Grup içi şart durumlarından grup durumu hesapla.
+
+        veya=True (OR≥1): ≥1 var → var; yoksa KE varsa KE; hepsi yok → yok
+        veya=False (AND): yok varsa → yok; KE varsa → KE; hepsi var → var
+        """
+        if veya:
+            if 'var' in statuses:
+                return 'var'
+            if 'kontrol_edilemedi' in statuses:
+                return 'kontrol_edilemedi'
+            return 'yok'
+        # AND
+        if 'yok' in statuses:
+            return 'yok'
+        if 'kontrol_edilemedi' in statuses:
+            return 'kontrol_edilemedi'
+        return 'var'
+
+    def _fta_tree_kur(self, sartlar: list, verdict: str = '') -> dict:
+        """SartSonuc dict listesinden FTA ağacı oluştur.
+
+        Yapı:
+          root = {type:'top', label, status, children:[and_root]}
+            and_root = {type:'and', label, status, children:[grup, ...]}
+              grup = {type:'and'|'or', label, status, children:[basic, ...]}
+                basic = {type:'basic', label, status, neden}
+          Üst-VEYA çiftleri (Varfarin a/b, Varfarin ∨ İstisna, E ∨ F) explicit
+          OR-gate altında birleştirilir.
+        """
+        # Grupla — pasif + bilgi hariç
+        gruplar = {}
+        for s in sartlar:
+            g_ad = s.get('grup', '') or ''
+            if not g_ad or '(bilgi)' in g_ad or '[pasif]' in g_ad:
+                continue
+            gruplar.setdefault(g_ad, []).append(s)
+
+        # SUT lafzı sırasına göre sırala (devre şeması ile aynı)
+        def _sira_oncelik(g_ad: str) -> int:
+            ga = g_ad or ''
+            if 'Endikasyon' in ga or 'Elektif kalça' in ga:
+                return 0
+            if 'Yetişkin' in ga:
+                return 1
+            if 'Kontrendikasyon' in ga:
+                return 2
+            if 'Risk faktörü' in ga:
+                return 3
+            if 'Varfarin yolu' in ga or 'İstisna grubu' in ga:
+                return 4
+            if 'SK raporu' in ga or '24 ay sonrası' in ga:
+                return 5
+            if 'DVT profilaksisi' in ga:
+                return 4
+            if 'Ortopedi uzman' in ga:
+                return 5
+            if 'Miktar limiti' in ga:
+                return 6
+            if 'Kombi' in ga or '2. YOAK' in ga:
+                return 99
+            return 50
+        sirali_gruplar = sorted(gruplar.keys(), key=_sira_oncelik)
+
+        # Her grup için intermediate node oluştur
+        intermediates = []
+        for g_ad in sirali_gruplar:
+            gs = gruplar[g_ad]
+            any_veya = any(s.get('veya_grubu') for s in gs)
+            is_paralel = '[paralel]' in g_ad
+            # Gate tipi: VEYA grubu → OR; paralel (DeMorgan) → AND (görsel
+            # paralel ama mantıksal AND); diğer → AND
+            gate = 'or' if any_veya else 'and'
+            # Atomik basic event'ları üret
+            children = []
+            for s in gs:
+                durum = self._fta_durum_normalize(s.get('durum', 'na'))
+                children.append({
+                    'type': 'basic',
+                    'label': s.get('ad', '') or '',
+                    'status': durum,
+                    'neden': s.get('neden', '') or '',
+                })
+            # Grup durumu — AND/OR mantığıyla
+            statuses = [ch['status'] for ch in children]
+            grup_status = self._fta_grup_durum_hesapla(statuses, veya=any_veya)
+            # Grup etiketinden teknik suffix'leri ayıkla
+            label_clean = g_ad
+            for suffix in ('[paralel]', '[(bilgi)]', '(bilgi)'):
+                label_clean = label_clean.replace(suffix, '').strip()
+            intermediates.append({
+                'type': gate,
+                'label': label_clean,
+                'status': grup_status,
+                'children': children,
+                '_grup_ad': g_ad,
+            })
+
+        # Üst-VEYA çiftleri: iki intermediate'i bir OR gate altında birleştir
+        merged = []
+        consumed = set()
+        for prefix_a, prefix_b, birlesik_ad in self._FTA_USTOR_PAIRS:
+            idx_a = next((i for i, n in enumerate(intermediates)
+                          if i not in consumed
+                          and n['_grup_ad'].startswith(prefix_a)), None)
+            idx_b = next((i for i, n in enumerate(intermediates)
+                          if i not in consumed
+                          and n['_grup_ad'].startswith(prefix_b)), None)
+            if idx_a is not None and idx_b is not None:
+                a = intermediates[idx_a]
+                b = intermediates[idx_b]
+                or_status = self._fta_grup_durum_hesapla(
+                    [a['status'], b['status']], veya=True)
+                merged.append({
+                    'type': 'or',
+                    'label': birlesik_ad,
+                    'status': or_status,
+                    'children': [a, b],
+                    '_grup_ad': birlesik_ad,
+                })
+                consumed.add(idx_a)
+                consumed.add(idx_b)
+        # Eşleşmeyen grupları sırayla ekle
+        for i, n in enumerate(intermediates):
+            if i not in consumed:
+                merged.append(n)
+
+        # Top event: AND of all merged groups
+        top_statuses = [n['status'] for n in merged]
+        top_status = self._fta_grup_durum_hesapla(top_statuses, veya=False)
+        top_label_map = {
+            'var': 'UYGUN', 'yok': 'UYGUN DEĞİL',
+            'kontrol_edilemedi': 'ŞÜPHELİ',
+        }
+        top_label = top_label_map.get(top_status, '—')
+        # verdict override (caller's authoritative result)
+        if verdict:
+            v_lower = verdict.lower()
+            if 'uygun_degil' in v_lower or 'uygun değil' in v_lower:
+                top_status = 'yok'
+                top_label = 'UYGUN DEĞİL'
+            elif 'uygun' in v_lower and 'değil' not in v_lower:
+                top_status = 'var'
+                top_label = 'UYGUN'
+            elif 'kontrol' in v_lower or 'şüpheli' in v_lower:
+                top_status = 'kontrol_edilemedi'
+                top_label = 'ŞÜPHELİ'
+
+        return {
+            'type': 'top',
+            'label': top_label,
+            'status': top_status,
+            'children': [{
+                'type': 'and',
+                'label': 'Tüm zorunlu şartlar AND',
+                'status': top_status,
+                'children': merged,
+            }],
+        }
+
+    def _fta_ciz_canvas(self, sartlar: list, detaylar: dict = None,
+                         verdict: str = '') -> None:
+        """FTA (IEC 61025) top-down hiyerarşik ağaç çizimi.
+
+        Layout: leaf-count tabanlı genişlik hesabı, parent-merkezli x
+        konumlama. Her layer LAYER_H pixel aşağıda.
+        """
+        c = self._fta_canvas
+        c.delete('all')
+        self._fta_neden_map = {}
+
+        if not sartlar:
+            return
+
+        # ── 1) Tree kur ─────────────────────────────────────────────
+        tree = self._fta_tree_kur(sartlar, verdict)
+
+        # ── 2) Layout ölçüleri ──────────────────────────────────────
+        LEAF_W = 120
+        MIN_W = 110
+        LAYER_H = 130
+        TOP_MARGIN = 40
+        LEFT_MARGIN = 30
+
+        # ── 3) Width hesapla (post-order) ───────────────────────────
+        def calc_width(node):
+            if node['type'] == 'basic' or not node.get('children'):
+                node['_w'] = LEAF_W if node['type'] == 'basic' else MIN_W
+                return node['_w']
+            total = sum(calc_width(ch) for ch in node['children'])
+            node['_w'] = max(total, MIN_W)
+            return node['_w']
+        calc_width(tree)
+
+        # ── 4) Layout (top-down centered) ──────────────────────────
+        def layout(node, x_center, y):
+            node['_x'] = x_center
+            node['_y'] = y
+            children = node.get('children', [])
+            if not children:
+                return
+            total_w = sum(ch['_w'] for ch in children)
+            x_cursor = x_center - total_w / 2
+            for ch in children:
+                ch_center = x_cursor + ch['_w'] / 2
+                layout(ch, ch_center, y + LAYER_H)
+                x_cursor += ch['_w']
+
+        canvas_w = tree['_w'] + 2 * LEFT_MARGIN
+        layout(tree, canvas_w / 2, TOP_MARGIN)
+
+        # ── 5) Maksimum derinlik (canvas yükseklik için) ───────────
+        def max_depth(node):
+            children = node.get('children', [])
+            if not children:
+                return 1
+            return 1 + max(max_depth(ch) for ch in children)
+        derinlik = max_depth(tree)
+        canvas_h = TOP_MARGIN + LAYER_H * derinlik + 60
+
+        # ── 6) Çizim (pre-order: parent önce, sonra kenarlar+çocuklar)
+        def draw(node):
+            x, y = node['_x'], node['_y']
+            t = node['type']
+            # Kenarlar — çocuklara
+            for ch in node.get('children', []):
+                self._fta_draw_edge(c, x, y, t,
+                                     ch['_x'], ch['_y'])
+            if t == 'top':
+                self._fta_draw_top_event(c, x, y, node['label'],
+                                          node['status'])
+            elif t == 'and':
+                self._fta_draw_and_gate(c, x, y, node['label'],
+                                         node['status'])
+            elif t == 'or':
+                self._fta_draw_or_gate(c, x, y, node['label'],
+                                        node['status'])
+            elif t == 'basic':
+                self._fta_draw_basic_event(c, x, y, node['label'],
+                                            node['status'],
+                                            node.get('neden', ''))
+            for ch in node.get('children', []):
+                draw(ch)
+
+        draw(tree)
+
+        # ── 7) Legend (sol alt) ─────────────────────────────────────
+        self._fta_draw_legend(c, 10, canvas_h - 55)
+
+        # ── 8) Scroll region ────────────────────────────────────────
+        c.configure(scrollregion=(0, 0, canvas_w, canvas_h))
+
+    # ── FTA çizim yardımcıları ───────────────────────────────────
+
+    def _fta_draw_top_event(self, c, x, y, label, status):
+        """Top event: kalın dikdörtgen, koyu renkte sonuç etiketi."""
+        koyu, acik = self._FTA_RENK.get(status, self._FTA_RENK['na'])
+        w, h = 180, 54
+        c.create_rectangle(x - w/2, y - h/2, x + w/2, y + h/2,
+                           fill=acik, outline=koyu, width=3,
+                           tags=('fta', 'fta_top'))
+        c.create_text(x, y, text=label, fill=koyu,
+                      font=('Segoe UI', 13, 'bold'),
+                      tags=('fta', 'fta_top'))
+
+    def _fta_draw_and_gate(self, c, x, y, label, status):
+        """AND gate (IEC 61025): D-şekli (alt dikdörtgen + üst yarım daire).
+
+        FTA konvensiyonu: girişler ALTTAN, çıkış ÜSTTEN. Yarım daire üstte,
+        düz kenar altta. İçinde "AND" sembolü.
+        """
+        koyu, acik = self._FTA_RENK.get(status, self._FTA_RENK['na'])
+        gate_w, gate_h = 70, 50
+
+        # Etiket: gate'in üstünde (intermediate event rectangle)
+        self._fta_node_label(c, x, y - gate_h - 8, label, status, width=170)
+
+        # D-şekli — alt yarım dikdörtgen + üst yarım daire
+        # Alt kısım: dikdörtgen (y'den y+gate_h/2'ye)
+        c.create_rectangle(x - gate_w/2, y, x + gate_w/2, y + gate_h/2,
+                           fill=acik, outline=koyu, width=2,
+                           tags=('fta', 'fta_gate'))
+        # Üst kısım: yarım daire (chord style, dome)
+        c.create_arc(x - gate_w/2, y - gate_h/2,
+                     x + gate_w/2, y + gate_h/2,
+                     start=0, extent=180, style='chord',
+                     fill=acik, outline=koyu, width=2,
+                     tags=('fta', 'fta_gate'))
+        # AND sembolü
+        c.create_text(x, y + 3, text='AND', fill=koyu,
+                      font=('Segoe UI', 9, 'bold'),
+                      tags=('fta', 'fta_gate'))
+
+    def _fta_draw_or_gate(self, c, x, y, label, status):
+        """OR gate (IEC 61025): kalkan şekli (alt eğri giriş, üst sivri çıkış).
+
+        Polygon yaklaşımıyla çizilir; smooth=True ile yumuşak kenarlar.
+        İçinde "OR" sembolü.
+        """
+        koyu, acik = self._FTA_RENK.get(status, self._FTA_RENK['na'])
+        gate_w, gate_h = 70, 56
+
+        # Etiket: gate'in üstünde
+        self._fta_node_label(c, x, y - gate_h/2 - 30, label, status, width=170)
+
+        # Kalkan şekli (shield) — smooth polygon
+        pts = [
+            x, y - gate_h/2,                    # sivri tepe
+            x + gate_w/2 - 4, y - gate_h/2 + 14,  # sağ üst eğri
+            x + gate_w/2, y + gate_h/2 - 12,    # sağ orta
+            x + gate_w/2 - 8, y + gate_h/2 - 4, # sağ alt
+            x, y + gate_h/2 - 14,               # alt orta (eğri içe)
+            x - gate_w/2 + 8, y + gate_h/2 - 4, # sol alt
+            x - gate_w/2, y + gate_h/2 - 12,    # sol orta
+            x - gate_w/2 + 4, y - gate_h/2 + 14,  # sol üst eğri
+        ]
+        c.create_polygon(pts, fill=acik, outline=koyu, width=2,
+                         smooth=True, tags=('fta', 'fta_gate'))
+        c.create_text(x, y + 4, text='OR', fill=koyu,
+                      font=('Segoe UI', 9, 'bold'),
+                      tags=('fta', 'fta_gate'))
+
+    @staticmethod
+    def _fta_atom_negatif_mi(ad: str) -> bool:
+        """Atom SUT lafzında NOT(…) ifade mi — NOT-gate inverter dairesi için.
+
+        Kontrendikasyon ("mitral darlık YOK olmalı"), kombi yasağı
+        ("aynı reçetede 2. YOAK YOK"), EK-4/F apiks/edox kapsam dışı (NOT)
+        gibi atomlar IEC 61025 NOT-gate sembolü ile gösterilir.
+        """
+        if not ad:
+            return False
+        a = ad.lower()
+        if a.endswith(' yok'):
+            return True
+        for k in ('yok olm', 'olmayan', 'değil', 'yoktur',
+                   'kontrendike', 'yok)', 'kapsam dışı', 'kapsam disi',
+                   '(not)'):
+            if k in a:
+                return True
+        return False
+
+    def _fta_draw_basic_event(self, c, x, y, label, status, neden=''):
+        """Basic event (atomik şart): renkli daire + durum sembolü + alt etiket.
+
+        SUT lafzında NEGATİF (NOT) atom ise IEC 61025/60617 inverter
+        sembolü (sol-üst küçük daire) + label başına ¬ prefix eklenir.
+        """
+        koyu, acik = self._FTA_RENK.get(status, self._FTA_RENK['na'])
+        r = 18
+        sembol_map = {'var': '✓', 'yok': '✗',
+                       'kontrol_edilemedi': '?', 'na': '·'}
+        sembol = sembol_map.get(status, '·')
+        oval = c.create_oval(x - r, y - r, x + r, y + r,
+                              fill=acik, outline=koyu, width=2,
+                              tags=('fta', 'fta_basic'))
+        c.create_text(x, y, text=sembol, fill=koyu,
+                      font=('Segoe UI', 14, 'bold'),
+                      tags=('fta', 'fta_basic'))
+        # NOT inverter dairesi — IEC 60617-12 / IEEE 91 sembolü
+        is_neg = self._fta_atom_negatif_mi(label)
+        if is_neg:
+            inv_r = 5
+            ix = x - r - inv_r + 2
+            iy = y - r - inv_r + 2
+            c.create_oval(ix - inv_r, iy - inv_r, ix + inv_r, iy + inv_r,
+                          fill='white', outline='#37474F', width=2,
+                          tags=('fta', 'fta_not'))
+            c.create_text(ix, iy, text='¬', fill='#37474F',
+                          font=('Segoe UI', 8, 'bold'),
+                          tags=('fta', 'fta_not'))
+        # Alt etiket (SUT lafzı, max 2 satır) — NOT ise ¬ prefix
+        etiket = ('¬ ' + label) if is_neg else label
+        etiket_kisa = etiket if len(etiket) <= 38 else etiket[:35] + '…'
+        c.create_text(x, y + r + 14, text=etiket_kisa, fill='#37474F',
+                      font=('Segoe UI', 8), width=110, anchor='n',
+                      justify='center', tags=('fta', 'fta_basic'))
+        # Hover tooltip — neden
+        if neden:
+            self._fta_neden_map[oval] = f"{etiket}\n\n{neden}"
+
+    def _fta_node_label(self, c, x, y, label, status, width=160):
+        """Gate üstündeki intermediate event etiketi (gri arka, renkli kenar)."""
+        koyu, _ = self._FTA_RENK.get(status, self._FTA_RENK['na'])
+        h = 24
+        etiket_kisa = label if len(label) <= 42 else label[:40] + '…'
+        c.create_rectangle(x - width/2, y - h/2, x + width/2, y + h/2,
+                           fill='#ECEFF1', outline=koyu, width=1,
+                           tags=('fta', 'fta_label'))
+        c.create_text(x, y, text=etiket_kisa, fill='#37474F',
+                      font=('Segoe UI', 8, 'bold'),
+                      width=width - 8, tags=('fta', 'fta_label'))
+
+    def _fta_draw_edge(self, c, x1, y1, parent_type, x2, y2):
+        """Parent gate altından child node'un üstüne dikey-yatay-dikey kablo.
+
+        Top event'in altından gate başlar (y1+27). Gate'lerin altından
+        çocuklar 0 ofsetli (yarım daire/kalkan altı). Basic event'in üstüne
+        oval üstü (y2 - r = y2 - 18).
+        """
+        # Parent çıkış y'si — gate altı / top alt
+        if parent_type == 'top':
+            y1_cikis = y1 + 27   # top rect alt
+        elif parent_type == 'and':
+            y1_cikis = y1 + 25   # AND gate alt (gate_h/2)
+        elif parent_type == 'or':
+            y1_cikis = y1 + 28   # OR gate alt (gate_h/2)
+        else:
+            y1_cikis = y1
+        # Child giriş y'si — basic için oval üstü; gate için etiket üstü
+        # (gate'in label rect üstü)
+        y2_giris = y2 - 38  # gate'in label rect üstü (etiket boyu + ofset)
+        # Dikey kısa kablo + yatay + dikey kısa (3-segment elbow)
+        mid_y = (y1_cikis + y2_giris) // 2
+        c.create_line(x1, y1_cikis, x1, mid_y,
+                      fill=self._FTA_KENAR_RENK, width=2, tags=('fta',))
+        c.create_line(x1, mid_y, x2, mid_y,
+                      fill=self._FTA_KENAR_RENK, width=2, tags=('fta',))
+        c.create_line(x2, mid_y, x2, y2_giris,
+                      fill=self._FTA_KENAR_RENK, width=2, tags=('fta',))
+
+    def _fta_draw_legend(self, c, x0, y0):
+        """Sol alt köşeye küçük legend: AND / OR / VAR/YOK/KE sembolleri."""
+        c.create_text(x0, y0, text='FTA IEC 61025  ',
+                      fill='#546E7A', font=('Segoe UI', 8, 'bold'),
+                      anchor='w', tags=('fta',))
+        items = [
+            ('AND: hepsi sağlanmalı', '#1B5E20'),
+            ('OR: ≥1 yeterli', '#1B5E20'),
+            ('¬ NOT: olumsuz şart', '#37474F'),
+            ('✓ VAR  ✗ YOK  ? KE', '#37474F'),
+        ]
+        x = x0 + 110
+        for txt, renk in items:
+            c.create_text(x, y0, text=txt, fill=renk,
+                          font=('Segoe UI', 8), anchor='w', tags=('fta',))
+            x += 160
+
+    # ═════════════════════════════════════════════════════════════════
+    # SUT MADDE AKIŞ ÇİZELGESİ — Tab C
+    # Mevzuat madde sırasını (1)/(2)/(3)/(4)/EK-4/F birebir takip eden,
+    # blok blok şart sıralaması. Her blok bir SUT maddesi; içinde her
+    # grup bir satır (gate + atomlar + sonuç); bloklar arası ▼ AND oku.
+    # ═════════════════════════════════════════════════════════════════
+
+    def _sut_madde_extract(self, grup_ad: str):
+        """Grup adından SUT madde numarasını çıkar.
+
+        Örnekler:
+          'Risk faktörü ≥1 [(1)]' → '(1)'
+          'Varfarin yolu (a) — ... [(1)(a)]' → '(1)(a)'
+          'SK raporu — ilk 24 ay [(3)]' → '(3)'
+          'Kombi yasağı [(4)]' → '(4)'
+          'Elektif kalça [Madde 53–54]' → 'EK-4/F'
+          'Endikasyon (4.2.15.D-1)' → '(1)'
+          'Yetişkin [(1)]' → '(1)'
+        """
+        import re
+        m = re.search(r'\[\((\d+)\)(?:\(([a-z])\))?\]', grup_ad or '')
+        if m:
+            sub = m.group(2)
+            return f"({m.group(1)}){f'({sub})' if sub else ''}"
+        if '[Madde ' in (grup_ad or ''):
+            return 'EK-4/F'
+        if '(4.2.15.D-' in (grup_ad or ''):
+            return '(1)'
+        if 'Endikasyon ≥1' in (grup_ad or ''):
+            return '(1)(a)'
+        if 'Yetişkin' in (grup_ad or ''):
+            return '(1)'
+        return '?'
+
+    def _sut_madde_sort_key(self, m_no: str):
+        """Madde sıralama anahtarı: (1) < (1)(a) < (1)(b) < (2) < (4) < EK-4/F."""
+        if m_no.startswith('EK'):
+            return (100, '')
+        if m_no == '?':
+            return (999, '')
+        import re
+        m = re.match(r'\((\d+)\)(?:\(([a-z])\))?', m_no)
+        if m:
+            return (int(m.group(1)), m.group(2) or '')
+        return (998, m_no)
+
+    _SUT_MADDE_BASLIK = {
+        '(1)': 'MADDE (1) — Endikasyon + Risk + Kontrendikasyon',
+        '(1)(a)': 'MADDE (1)(a) — Varfarin başarısızlık zinciri (6 şart AND)',
+        '(1)(b)': 'MADDE (1)(b) — Varfarin altında SVO (2 şart AND)',
+        '(2)': 'MADDE (2) — Sağlık Kurulu raporu + Reçete yetkisi',
+        '(3)': 'MADDE (3) — Sağlık Kurulu raporu (D-2: kard/iç/göğüs/KVC)',
+        '(4)': 'MADDE (4) — Kombi yasağı + Rapor yenileme',
+        'EK-4/F': 'EK-4/F MADDE 53–54 — Elektif kalça/diz replasmanı DVT profilaksisi',
+        '?': '(Sınıflandırılmamış)',
+    }
+
+    @staticmethod
+    def _madde_ici_ustor(alt_dal: str, m_no: str) -> bool:
+        """Madde-içi grupların AND yerine üst-OR ile birleştiği maddeler.
+
+        SUT 4.2.15.D lafzına göre:
+          • D-1 madde (2): SK raporu ilk 24 ay E_YOL **VEYA** 24 ay sonrası F_YOL
+          • D-2 madde (3): SK raporu ilk 24 ay E2_YOL **VEYA** 24 ay sonrası F2_YOL
+        """
+        ad = alt_dal or ''
+        if '4.2.15.D-1' in ad and m_no == '(2)':
+            return True
+        if '4.2.15.D-2' in ad and m_no == '(3)':
+            return True
+        return False
+
+    @staticmethod
+    def _madde_arasi_baglac(alt_dal: str, m1: str, m2: str) -> str:
+        """İki ardışık madde arasındaki bağlaç: 'AND' varsayılan, 'OR' mevzuata göre.
+
+        SUT 4.2.15.D lafzına göre:
+          • D-1 (1)(a) ↔ (1)(b): varfarin yolu (a) **VEYA** (b)
+          • D-2 (1)(b) ↔ (2): varfarin yolu **VEYA** istisna grubu
+            ("...varfarin kullanımı koşulu aranmaz" — 2. madde)
+        """
+        ad = alt_dal or ''
+        if '4.2.15.D-1' in ad and m1 == '(1)(a)' and m2 == '(1)(b)':
+            return 'OR'
+        if '4.2.15.D-2' in ad and m1 == '(1)(b)' and m2 == '(2)':
+            return 'OR'
+        return 'AND'
+
+    def _sut_madde_grupla(self, sartlar: list, alt_dal: str = ''):
+        """Sartları SUT madde numarasına göre grupla.
+
+        Args:
+            sartlar: atomik şart listesi
+            alt_dal: '4.2.15.D-1' / '4.2.15.D-2' / 'EK-4/F' — madde-içi üst-OR
+                tespiti için (D-1(2) ve D-2(3) maddelerinde E∨F üst-OR).
+
+        Returns: ordered dict
+            { madde_no: {
+                'baslik': str,
+                'gruplar': [{'grup_ad', 'gate', 'status', 'atomlar': [...]}, ...],
+                'status': 'var'/'yok'/'kontrol_edilemedi'/'na',
+            }, ... }
+        """
+        # Önce gruba göre topla
+        g_dict = {}
+        for s in sartlar:
+            g_ad = s.get('grup', '') or ''
+            if not g_ad or '(bilgi)' in g_ad or '[pasif]' in g_ad:
+                continue
+            g_dict.setdefault(g_ad, []).append(s)
+
+        # Her grubu madde'ye eşle
+        madde_dict = {}
+        for g_ad, gs in g_dict.items():
+            m_no = self._sut_madde_extract(g_ad)
+            if m_no not in madde_dict:
+                madde_dict[m_no] = {
+                    'baslik': self._SUT_MADDE_BASLIK.get(m_no, f'MADDE {m_no}'),
+                    'gruplar': [],
+                    'status': 'na',
+                }
+            any_veya = any(s.get('veya_grubu') for s in gs)
+            statuses = [self._fta_durum_normalize(s.get('durum', 'na'))
+                         for s in gs]
+            grup_status = self._fta_grup_durum_hesapla(
+                statuses, veya=any_veya)
+            # Grup adından teknik suffix'i temizle (görüntü için)
+            label_clean = g_ad
+            for suf in ('[paralel]', '[(bilgi)]'):
+                label_clean = label_clean.replace(suf, '').strip()
+            # Madde numarasını parantezsuz hale getir
+            import re
+            label_clean = re.sub(r'\s*\[\([0-9a-z\(\)]+\)\]\s*$', '',
+                                  label_clean).strip()
+            label_clean = re.sub(r'\s*\[Madde\s+[^\]]+\]\s*$', '',
+                                  label_clean).strip()
+            madde_dict[m_no]['gruplar'].append({
+                'grup_ad': label_clean,
+                'gate': 'OR ≥1' if any_veya else 'AND',
+                'status': grup_status,
+                'atomlar': gs,
+            })
+
+        # Madde'nin genel statüsü: gruplar AND varsayılan;
+        # D-1(2) ve D-2(3) için E_YOL ∨ F_YOL üst-OR (mevzuat lafzı)
+        for m_no, info in madde_dict.items():
+            statuses = [g['status'] for g in info['gruplar']]
+            ustor = self._madde_ici_ustor(alt_dal, m_no)
+            info['status'] = self._fta_grup_durum_hesapla(
+                statuses, veya=ustor)
+
+        # Madde sırasına göre sırala
+        ordered = dict(sorted(madde_dict.items(),
+                               key=lambda kv: self._sut_madde_sort_key(kv[0])))
+        return ordered
+
+    def _sut_madde_ciz_canvas(self, sartlar: list, detaylar: dict = None,
+                                verdict: str = '') -> None:
+        """Tab C: SUT madde sırasıyla bloklar halinde şart akışı çizer.
+
+        Yeni 2-satır düzen: grup başlık satırı (gate + grup adı + → sonuç)
+        + atom grid satırı/satırları (3 atom/satır, tam etiket).
+        """
+        c = self._madde_canvas
+        c.delete('all')
+        self._madde_neden_map = {}
+
+        if not sartlar:
+            return
+
+        # alt_dal — madde-içi üst-OR ve madde-arası ok yönü tespiti için
+        alt_dal = (detaylar or {}).get('alt_dal', '') if detaylar else ''
+
+        # 1) Madde gruplama
+        madde_dict = self._sut_madde_grupla(sartlar, alt_dal=alt_dal)
+
+        # 2) Layout sabitleri
+        BLOCK_W = 860
+        LEFT_MARGIN = 30
+        TOP_MARGIN = 30
+        BLOCK_HEADER_H = 36
+        BLOCK_PAD = 12
+        GRUP_HEADER_H = 26
+        GRUP_PAD = 10
+        ATOM_ROW_H = 22
+        ATOMS_PER_ROW = 3
+        BLOCK_GAP = 50
+
+        # Her grup için yükseklik hesapla
+        def _grup_yuksekligi(g):
+            n = max(1, len(g['atomlar']))
+            n_rows = (n + ATOMS_PER_ROW - 1) // ATOMS_PER_ROW
+            return GRUP_HEADER_H + n_rows * ATOM_ROW_H + 6
+
+        # 3) Blokları çiz — madde-arası okları SUT lafzına göre AND/OR
+        y = TOP_MARGIN
+        madde_listesi = list(madde_dict.items())
+        for i, (m_no, info) in enumerate(madde_listesi):
+            # Blok yüksekliği = madde header + grup yükseklikleri toplamı
+            grup_yukseklikler = [_grup_yuksekligi(g) for g in info['gruplar']]
+            block_h = (BLOCK_HEADER_H + BLOCK_PAD
+                        + sum(grup_yukseklikler)
+                        + (len(grup_yukseklikler) - 1) * 6
+                        + BLOCK_PAD)
+            self._madde_draw_block(c, LEFT_MARGIN, y, BLOCK_W, block_h,
+                                    m_no, info, grup_yukseklikler,
+                                    BLOCK_HEADER_H, BLOCK_PAD,
+                                    GRUP_HEADER_H, ATOM_ROW_H, ATOMS_PER_ROW)
+            y += block_h
+            # ▼ AND ▼ vs ▼ O R ▼ — bir sonraki madde ile bağlaç
+            if i + 1 < len(madde_listesi):
+                m_next = madde_listesi[i + 1][0]
+                baglac = self._madde_arasi_baglac(alt_dal, m_no, m_next)
+                if baglac == 'OR':
+                    ok_metni = '▼  O R  ▼'
+                    ok_renk = '#1565C0'  # mavi = OR
+                else:
+                    ok_metni = '▼  A N D  ▼'
+                    ok_renk = '#546E7A'  # gri = AND
+                y_arrow = y + BLOCK_GAP // 2
+                c.create_text(LEFT_MARGIN + BLOCK_W // 2, y_arrow,
+                              text=ok_metni, fill=ok_renk,
+                              font=('Segoe UI', 9, 'bold'),
+                              tags='madde')
+                y += BLOCK_GAP
+
+        # 4) SONUÇ badge
+        self._madde_draw_sonuc(c, LEFT_MARGIN + BLOCK_W // 2, y, verdict)
+
+        # 5) Scroll region
+        canvas_h = y + 80
+        c.configure(scrollregion=(0, 0,
+                                   BLOCK_W + 2 * LEFT_MARGIN,
+                                   canvas_h))
+
+    def _madde_draw_block(self, c, x, y, w, h, m_no, info,
+                          grup_yukseklikler, BLOCK_HEADER_H, BLOCK_PAD,
+                          GRUP_HEADER_H, ATOM_ROW_H, ATOMS_PER_ROW):
+        """Tek bir SUT madde bloğunu çiz."""
+        koyu, acik = self._FTA_RENK.get(info['status'],
+                                          self._FTA_RENK['na'])
+
+        # Madde Header bar (koyu, beyaz yazılı)
+        c.create_rectangle(x, y, x + w, y + BLOCK_HEADER_H,
+                           fill=koyu, outline=koyu, tags='madde')
+        c.create_text(x + 14, y + BLOCK_HEADER_H // 2,
+                      text=info['baslik'], fill='white',
+                      font=('Segoe UI', 10, 'bold'),
+                      anchor='w', tags='madde')
+        sym_map = {'var': '✓', 'yok': '✗',
+                    'kontrol_edilemedi': '?', 'na': '·'}
+        sym = sym_map.get(info['status'], '·')
+        c.create_text(x + w - 18, y + BLOCK_HEADER_H // 2,
+                      text=sym, fill='white',
+                      font=('Segoe UI', 14, 'bold'),
+                      anchor='e', tags='madde')
+
+        # Body — beyaz arka plan
+        body_y = y + BLOCK_HEADER_H
+        c.create_rectangle(x, body_y, x + w, y + h,
+                           fill='#FFFFFF', outline=koyu, width=2,
+                           tags='madde')
+
+        # Her grup için: başlık satırı + atom grid
+        grup_y = body_y + BLOCK_PAD
+        for i, g in enumerate(info['gruplar']):
+            self._madde_draw_grup_satir(c, x + 14, grup_y, w - 28, g,
+                                          GRUP_HEADER_H, ATOM_ROW_H,
+                                          ATOMS_PER_ROW)
+            grup_y += grup_yukseklikler[i] + 6
+
+    def _madde_draw_grup_satir(self, c, x, y, w, g,
+                                GRUP_HEADER_H, ATOM_ROW_H,
+                                ATOMS_PER_ROW):
+        """Grup başlık satırı + atom grid (2-satır düzen).
+
+        Layout:
+          [GATE] Grup adı (italik)                            → ✓/✗/?
+          ──────────────────────────────────────────────────────────
+            ✓ Atom1 tam adı   ✗ Atom2 tam adı   ✓ Atom3 tam adı
+            ✓ Atom4 tam adı   ✗ Atom5 tam adı   ✓ Atom6 tam adı
+        """
+        sym_map = {'var': '✓', 'yok': '✗',
+                    'kontrol_edilemedi': '?', 'na': '·'}
+        renk_map = {'var': '#1B5E20', 'yok': '#B71C1C',
+                     'kontrol_edilemedi': '#E65100', 'na': '#546E7A'}
+
+        # ── HEADER ROW: gate + grup adı + sonuç ────────────────────
+        header_y = y + GRUP_HEADER_H // 2
+        gate_w = 64
+        gate_color = '#1565C0' if g['gate'].startswith('OR') else '#37474F'
+        c.create_rectangle(x, y + 2, x + gate_w, y + GRUP_HEADER_H - 2,
+                           fill=gate_color, outline=gate_color,
+                           tags='madde')
+        c.create_text(x + gate_w // 2, header_y, text=g['gate'],
+                      fill='white',
+                      font=('Segoe UI', 8, 'bold'),
+                      tags='madde')
+
+        # Grup adı (bold, koyu) — full name, 60 char limit
+        ad_x = x + gate_w + 12
+        ad = g['grup_ad']
+        # SUT lafzı uzun olabilir — 65 karakterden kesme
+        if len(ad) > 65:
+            ad = ad[:63] + '…'
+        c.create_text(ad_x, header_y, text=ad, fill='#263238',
+                      font=('Segoe UI', 9, 'bold'),
+                      anchor='w', tags='madde')
+
+        # Sonuç → status arrow (sağ)
+        sonuc_x = x + w - 10
+        sonuc_renk = renk_map.get(g['status'], '#546E7A')
+        sonuc_sym = sym_map.get(g['status'], '·')
+        c.create_text(sonuc_x, header_y,
+                      text=f'→ {sonuc_sym}',
+                      fill=sonuc_renk,
+                      font=('Segoe UI', 12, 'bold'),
+                      anchor='e', tags='madde')
+
+        # Hafif ayırıcı çizgi (header ile atom grid arası)
+        sep_y = y + GRUP_HEADER_H
+        c.create_line(x + 8, sep_y, x + w - 8, sep_y,
+                      fill='#ECEFF1', width=1, tags='madde')
+
+        # ── ATOM GRID: 3 atom per row, full label ──────────────────
+        atom_alan_w = w - 24
+        atom_col_w = atom_alan_w // ATOMS_PER_ROW
+        # Atom etiket char sınırı: kolon genişliği - sembol (15px) → ~6px/char
+        char_max = max(15, (atom_col_w - 30) // 6)
+        atom_y_start = sep_y + 6 + ATOM_ROW_H // 2
+        atom_x_start = x + 16
+
+        for i, s in enumerate(g['atomlar']):
+            col = i % ATOMS_PER_ROW
+            row = i // ATOMS_PER_ROW
+            ax = atom_x_start + col * atom_col_w
+            ay = atom_y_start + row * ATOM_ROW_H
+
+            durum = self._fta_durum_normalize(s.get('durum', 'na'))
+            sym = sym_map.get(durum, '·')
+            ad = s.get('ad', '') or ''
+            # Tam etiket (uzun ise truncate)
+            ad_g = ad if len(ad) <= char_max else ad[:char_max - 1] + '…'
+            renk = renk_map.get(durum, '#546E7A')
+
+            # Sembol (renkli, bold)
+            sym_id = c.create_text(ax, ay, text=sym, fill=renk,
+                                    font=('Segoe UI', 10, 'bold'),
+                                    anchor='w', tags='madde')
+            # Etiket (koyu gri, normal)
+            label_id = c.create_text(ax + 14, ay, text=ad_g,
+                                       fill='#263238',
+                                       font=('Segoe UI', 8),
+                                       anchor='w', tags='madde')
+            # Hover tooltip
+            neden = s.get('neden', '') or ''
+            if neden:
+                tip_text = f"{ad}\n\n{neden}"
+                self._madde_neden_map[sym_id] = tip_text
+                self._madde_neden_map[label_id] = tip_text
+
+    def _madde_draw_sonuc(self, c, x, y, verdict: str):
+        """En altta UYGUN/UYGUN DEĞİL/ŞÜPHELİ son badge."""
+        v = (verdict or '').lower()
+        if 'uygun_degil' in v or 'uygun değil' in v:
+            text, durum = 'UYGUN DEĞİL', 'yok'
+        elif 'kontrol' in v or 'şüpheli' in v:
+            text, durum = 'ŞÜPHELİ', 'kontrol_edilemedi'
+        elif 'uygun' in v and 'değil' not in v:
+            text, durum = 'UYGUN', 'var'
+        else:
+            text, durum = '—', 'na'
+        koyu, acik = self._FTA_RENK.get(durum, self._FTA_RENK['na'])
+        w, h = 200, 60
+        c.create_rectangle(x - w // 2, y - h // 2,
+                           x + w // 2, y + h // 2,
+                           fill=acik, outline=koyu, width=4,
+                           tags='madde')
+        c.create_text(x, y, text=text, fill=koyu,
+                      font=('Segoe UI', 14, 'bold'),
+                      tags='madde')
+
     def _devre_ampul_at(self, canvas: tk.Canvas, x: int, y: int,
                          sart: dict, r: int, veya_grubu: bool = False,
                          font_sembol=("Segoe UI", 14, "bold"),
-                         font_etiket=("Segoe UI", 9)) -> None:
+                         font_etiket=("Segoe UI", 9),
+                         kutu_boyut: str = "buyuk") -> None:
         """Tek bir ampul + ÜST etiket (SUT lafzı, gri) + ALT etiket (durum, renkli).
 
         Üst: SUT kuralı lafzı, açık gri (sart.ad)
         Alt: hastanın reçete/rapor durumu, duruma göre yeşil/kırmızı/sarı (sart.neden)
+
+        kutu_boyut: "buyuk" (default) | "mini" — mini boyutta kutu yüksekliği
+        yarıya iner → MINI_DAL_GAP=70 ile dikey paralel kavşakta çakışmaz.
         """
         d = sart.get("durum", "na")
         if d == "var":
@@ -3542,9 +5015,15 @@ class AylikReceteSorguGUI:
 
         # ── Çerçeve (ampul + üst + alt etiketleri kapsar) ─────────────
         # Boyutlar: ampul yarıçapı + üst etiket alanı + alt etiket alanı
-        kutu_w = 130   # genişlik (etiket için yeterli, ampul X_GAP'e sığar)
-        kutu_h_ust = 38  # ampul üzerinde alan (2 satır wrap için yer)
-        kutu_h_alt = 38  # ampul altında alan
+        if kutu_boyut == "mini":
+            # Mini kutu: dikey paralel kavşakta MINI_DAL_GAP=70 ile çakışmaz
+            kutu_w = 110
+            kutu_h_ust = 22
+            kutu_h_alt = 22
+        else:
+            kutu_w = 130   # genişlik (etiket için yeterli, ampul X_GAP'e sığar)
+            kutu_h_ust = 38  # ampul üzerinde alan (2 satır wrap için yer)
+            kutu_h_alt = 38  # ampul altında alan
         # Kutu kenar rengi: durum'a göre yumuşak ton (içerik hâlâ canlı renkli)
         kenar_renk = {
             "var":    "#A5D6A7",  # açık yeşil
@@ -3624,6 +5103,2299 @@ class AylikReceteSorguGUI:
                 pass
             self._sema_tip = None
             self._sema_tip_row = None
+
+    # =================================================================
+    # DMN KARAR MODELİ (Tab D) — OMG DMN 1.5 / HL7 FHIR CPG notasyonu
+    # DRD (üst) + Decision Table (orta) + Toulmin Rebuttal (alt)
+    # Pilot: YOAK SUT 4.2.15.D (D-1 AF / D-2 DVT-PE / EK-4/F ortopedi)
+    # =================================================================
+    @staticmethod
+    def _dmn_alt_karar_etiket(grup_ad: str):
+        """Grup adından kısa DRD alt-karar etiketi türet. None → DRD'de gizle."""
+        g = grup_ad or ""
+        if "[pasif]" in g:
+            return None
+        if "(bilgi)" in g:
+            return None
+        if g.startswith("Risk fakt"):
+            return "Risk Faktörü Alt"
+        if "Risk faktörü" in g and "≥1" in g:
+            return "Risk Faktörü (≥1)"
+        if "Kontrendikasyon" in g:
+            return "Kontrendikasyon (yok)"
+        if g.startswith("Endikasyon"):
+            return "Endikasyon"
+        if g.startswith("Varfarin yolu"):
+            if "VEYA" in g or "[(a) VEYA (b)]" in g:
+                return "Geçiş Yolu (a∨b)"
+            if "(a)" in g:
+                return "Geçiş — Varfarin (a)"
+            if "(b)" in g:
+                return "Geçiş — Varfarin (b)"
+            return "Geçiş Yolu"
+        if "Varfarin VEYA istisna" in g:
+            return "Varfarin ∨ Bypass"
+        if g.startswith("İstisna grubu"):
+            return "Bypass (İstisna)"
+        if "SK raporu" in g and "ilk 24 ay" in g:
+            return "SK Raporu / Heyet"
+        if "24 ay sonrası alt yol" in g:
+            return "24 Ay Sonrası"
+        if "Kombi yasağı" in g:
+            return "Kombi Yasağı"
+        if "Etken madde uygunluğu" in g:
+            return "Etken Madde"
+        if "Elektif kalça" in g or "replasman" in g.lower():
+            return "Endikasyon — Replasman"
+        if "DVT profilaksisi" in g and "Madde 53" in g:
+            return "DVT Profilaksi"
+        if "Ortopedi" in g:
+            return "Ortopedi Uzmanı"
+        if "Miktar" in g or "limit" in g.lower():
+            return "Miktar Limiti"
+        return g[:24]
+
+    def _dmn_ciz_canvas(self, sartlar: list, detaylar: dict = None,
+                         verdict: str = "", satir: dict = None) -> None:
+        """DMN DRD + Decision Table + Toulmin Rebuttal — pilot YOAK."""
+        c = self._dmn_canvas
+        c.delete("all")
+        self._dmn_neden_map = {}
+
+        detaylar = detaylar or {}
+        sartlar = sartlar or []
+
+        # Yolak tespit — sadece YOAK EK-4/F M.53-54 (ortopedi); diğer
+        # EK-4/F maddeleri (M.51 ARB vs.) bu şemanın kapsamında değil
+        alt_dal = (detaylar.get("alt_dal") or "").strip()
+        is_yoak_ek4f = (("EK-4/F" in alt_dal or "EK4F" in alt_dal)
+                        and ("M.53" in alt_dal or "M.54" in alt_dal
+                             or "Madde 53" in alt_dal or "Madde 54" in alt_dal))
+        is_yoak = ("4.2.15.D" in alt_dal) or is_yoak_ek4f
+
+        margin = 14
+        W = 920
+        y = margin
+
+        if not is_yoak or not sartlar:
+            c.create_text(
+                margin, margin, anchor="nw",
+                text=("🎯 DMN Karar Modeli (OMG DMN 1.5 / HL7 FHIR CPG)\n\n"
+                      "Bu sekme pilot kapsamda yalnızca YOAK SUT 4.2.15.D "
+                      "için aktiftir.\n"
+                      "  • D-1 · Atriyal Fibrilasyon\n"
+                      "  • D-2 · DVT / Pulmoner Emboli\n"
+                      "  • EK-4/F · Ortopedi profilaksi\n\n"
+                      "YOAK kontrolü yapılmış bir reçete seçildiğinde DRD + "
+                      "Decision Table + Rebuttal şeması burada görüntülenecek."),
+                fill="#546E7A", font=("Segoe UI", 10), width=720)
+            try:
+                c.configure(scrollregion=c.bbox("all"))
+            except Exception:
+                pass
+            return
+
+        # Aktif yolak
+        if "4.2.15.D-1" in alt_dal:
+            aktif = "D-1"
+            aktif_baslik = "D-1 · Atriyal Fibrilasyon"
+        elif "4.2.15.D-2" in alt_dal:
+            aktif = "D-2"
+            aktif_baslik = "D-2 · DVT / Pulmoner Emboli"
+        elif "EK-4/F" in alt_dal or "EK4F" in alt_dal:
+            aktif = "EK4F"
+            aktif_baslik = "EK-4/F · Ortopedi Profilaksi"
+        else:
+            aktif = "?"
+            aktif_baslik = "Tanımsız yolak"
+
+        gmat = self._sema_grup_matematigi(sartlar)
+        grup_mat = {gm["grup"]: gm for gm in gmat.get("gruplar", [])}
+
+        gruplar: dict = {}
+        sira = []
+        for s in sartlar:
+            g = s.get("grup", "") or "(grupsuz)"
+            if g not in gruplar:
+                gruplar[g] = []
+                sira.append(g)
+            gruplar[g].append(s)
+
+        v = (verdict or "").upper().strip()
+        if "UYGUN" in v and ("DEĞİL" in v or "DEGIL" in v):
+            verdict_kisa = "UYGUN DEĞİL"
+        elif "UYGUN" in v:
+            verdict_kisa = "UYGUN"
+        elif "ŞÜPH" in v or "SUPH" in v:
+            verdict_kisa = "ŞÜPHELİ"
+        else:
+            verdict_kisa = v or "—"
+        verdict_renk = {
+            "UYGUN":       ("#1B5E20", "#C8E6C9"),
+            "UYGUN DEĞİL": ("#B71C1C", "#FFCDD2"),
+            "ŞÜPHELİ":     ("#E65100", "#FFE0B2"),
+        }.get(verdict_kisa, ("#37474F", "#ECEFF1"))
+
+        # ─── Başlık ────────────────────────────────────────────
+        c.create_text(margin, y, anchor="nw",
+                       text="🎯 DMN Karar Modeli — SUT 4.2.15.D YOAK",
+                       fill="#1A237E", font=("Segoe UI", 11, "bold"))
+        y += 22
+        c.create_text(margin, y, anchor="nw",
+                       text="OMG DMN 1.5 · HL7 FHIR Clinical Practice "
+                            "Guidelines · Toulmin Rebuttal",
+                       fill="#90A4AE", font=("Segoe UI", 8, "italic"))
+        y += 22
+
+        # ─── BÖLGE 1: DRD üst düzey (dispatcher + 3 yolak) ────
+        c.create_text(margin, y, anchor="nw",
+                       text="▼ DRD — Decision Requirements Diagram",
+                       fill="#37474F", font=("Segoe UI", 9, "bold"))
+        y += 20
+
+        # Dispatcher düğümü (üstte)
+        disp_w, disp_h = 230, 32
+        disp_x = margin + (W - 2 * margin) / 2 - disp_w / 2
+        c.create_rectangle(disp_x, y, disp_x + disp_w, y + disp_h,
+                            fill="#1A237E", outline="#0D1657", width=2)
+        c.create_text(disp_x + disp_w / 2, y + disp_h / 2,
+                       text="SUT 4.2.15.D Dispatcher",
+                       fill="white", font=("Segoe UI", 9, "bold"))
+        disp_alt = y + disp_h
+        y = disp_alt + 28  # dispatcher altı + arrow boşluğu
+
+        # 3 yolak kutusu yan yana
+        yolak_kutu_w = 230
+        yolak_kutu_h = 56
+        yolak_gap = 20
+        yolak_total_w = 3 * yolak_kutu_w + 2 * yolak_gap
+        yolak_x_baslama = margin + (W - 2 * margin - yolak_total_w) / 2
+        yolak_y = y
+
+        yolaklar = [
+            ("D-1",  "D-1 · AF",
+             "4.2.15.D-1\nNon-valvüler AF"),
+            ("D-2",  "D-2 · DVT/PE",
+             "4.2.15.D-2\nDVT / Pulmoner Emboli"),
+            ("EK4F", "EK-4/F · Ortopedi",
+             "EK-4/F M.53–54\nKalça/diz replasmanı"),
+        ]
+        yolak_merkez_xler = []
+        for i, (kod, ad, alt) in enumerate(yolaklar):
+            xb = yolak_x_baslama + i * (yolak_kutu_w + yolak_gap)
+            yolak_merkez_xler.append(xb + yolak_kutu_w / 2)
+            is_aktif = (kod == aktif)
+            if is_aktif:
+                fill_ = "#E8F5E9"; outline_ = "#2E7D32"
+                outline_w = 3
+                fg_ad, fg_alt = "#1B5E20", "#33691E"
+            else:
+                fill_ = "#F5F5F5"; outline_ = "#BDBDBD"
+                outline_w = 1
+                fg_ad, fg_alt = "#9E9E9E", "#BDBDBD"
+            c.create_rectangle(xb, yolak_y, xb + yolak_kutu_w,
+                                yolak_y + yolak_kutu_h,
+                                fill=fill_, outline=outline_, width=outline_w)
+            c.create_text(xb + 8, yolak_y + 6, anchor="nw", text=ad,
+                           fill=fg_ad, font=("Segoe UI", 10, "bold"))
+            c.create_text(xb + 8, yolak_y + 26, anchor="nw", text=alt,
+                           fill=fg_alt, font=("Segoe UI", 8))
+            if is_aktif:
+                c.create_text(xb + yolak_kutu_w - 8, yolak_y + 8, anchor="ne",
+                               text="● AKTİF", fill="#2E7D32",
+                               font=("Segoe UI", 8, "bold"))
+        # Dispatcher → yolak okları
+        for mx in yolak_merkez_xler:
+            c.create_line(disp_x + disp_w / 2, disp_alt,
+                           mx, yolak_y,
+                           fill="#9E9E9E", width=1,
+                           arrow="last", arrowshape=(8, 10, 4))
+        y = yolak_y + yolak_kutu_h + 18
+
+        # ─── BÖLGE 2: Aktif yolağın alt-karar düğümleri ─────
+        c.create_text(margin, y, anchor="nw",
+                       text=f"▼ Aktif Alt-Kararlar — {aktif_baslik}",
+                       fill="#37474F", font=("Segoe UI", 9, "bold"))
+        y += 20
+
+        # Alt-kararları topla: birleşik üst-OR gruplarını öncele, alt
+        # bileşenleri DRD'de tekrar gösterme
+        alt_kararlar = []
+        seen = set()
+        for g in sira:
+            gm = grup_mat.get(g)
+            if gm is None:
+                continue
+            if gm.get("alt"):
+                continue
+            et = self._dmn_alt_karar_etiket(g)
+            if et is None:
+                continue
+            if g in seen:
+                continue
+            ke_say = sum(1 for s in gruplar.get(g, [])
+                           if s.get("durum") == "kontrol_edilemedi")
+            alt_kararlar.append({
+                "grup": g,
+                "etiket": et,
+                "gerekli": gm["gerekli"],
+                "saglanan": gm["saglanan"],
+                "ke": ke_say,
+                "veya": gm.get("veya", False),
+                "sartlar": gruplar.get(g, []),
+            })
+            seen.add(g)
+        # Birleşik üst-OR grupları (gmat sentetik) — DRD'ye dahil et
+        for gm in gmat.get("gruplar", []):
+            bg = gm["grup"]
+            if gm.get("alt"):
+                continue
+            if bg in seen:
+                continue
+            et = self._dmn_alt_karar_etiket(bg)
+            if et is None:
+                continue
+            alt_kararlar.append({
+                "grup": bg, "etiket": et,
+                "gerekli": gm["gerekli"], "saglanan": gm["saglanan"],
+                "ke": 0, "veya": True, "sartlar": [],
+            })
+            seen.add(bg)
+
+        ak_kutu_w = 215
+        ak_kutu_h = 50
+        ak_per_row = 4
+        ak_gap_x = 12
+        ak_gap_y = 10
+        for i, ak in enumerate(alt_kararlar):
+            r = i // ak_per_row
+            col = i % ak_per_row
+            xb = margin + col * (ak_kutu_w + ak_gap_x)
+            yb = y + r * (ak_kutu_h + ak_gap_y)
+            ger = ak["gerekli"]; sag = ak["saglanan"]; ke = ak["ke"]
+            if sag >= ger and ger > 0:
+                fill_ = "#E8F5E9"; outline_ = "#2E7D32"; fg_ = "#1B5E20"
+            elif ke > 0 and (sag + ke) >= ger:
+                fill_ = "#FFF3E0"; outline_ = "#E65100"; fg_ = "#BF360C"
+            elif ger == 0:
+                fill_ = "#ECEFF1"; outline_ = "#90A4AE"; fg_ = "#37474F"
+            else:
+                fill_ = "#FFEBEE"; outline_ = "#B71C1C"; fg_ = "#B71C1C"
+            c.create_rectangle(xb, yb, xb + ak_kutu_w, yb + ak_kutu_h,
+                                fill=fill_, outline=outline_, width=2)
+            c.create_text(xb + 8, yb + 6, anchor="nw", text=ak["etiket"],
+                           fill=fg_, font=("Segoe UI", 9, "bold"),
+                           width=ak_kutu_w - 60)
+            if ak["veya"]:
+                c.create_text(xb + 8, yb + ak_kutu_h - 16, anchor="nw",
+                               text="⊕ ≥1 yeterli", fill="#37474F",
+                               font=("Segoe UI", 7, "italic"))
+            sayim_str = f' {sag}/{ger} '
+            if ke > 0:
+                sayim_str = f' {sag}/{ger}·{ke}? '
+            item = c.create_text(xb + ak_kutu_w - 8, yb + ak_kutu_h - 6,
+                                  anchor="se", text=sayim_str,
+                                  fill=fg_, font=("Segoe UI", 11, "bold"))
+            # Hover ipucu — alt atomlar
+            ip = []
+            for s in ak["sartlar"][:8]:
+                d = s.get("durum")
+                ic = ("✓" if d == "var" else
+                      "✗" if d == "yok" else
+                      "?" if d == "kontrol_edilemedi" else "—")
+                ip.append(f"{ic} {(s.get('ad','') or '')[:60]}")
+            if ip:
+                self._dmn_neden_map[item] = "\n".join(ip)
+
+        if alt_kararlar:
+            satir_say = (len(alt_kararlar) + ak_per_row - 1) // ak_per_row
+            y += satir_say * (ak_kutu_h + ak_gap_y) + 16
+        else:
+            y += 16
+
+        # ─── BÖLGE 3: Decision Table ──────────────────────
+        c.create_text(margin, y, anchor="nw",
+                       text="▼ Decision Table — Atomik Şart Matrisi",
+                       fill="#37474F", font=("Segoe UI", 9, "bold"))
+        y += 18
+
+        col1_w = 175
+        col3_w = 95
+        col4_w = 200
+        col2_w = (W - 2 * margin) - col1_w - col3_w - col4_w
+        tablo_w = col1_w + col2_w + col3_w + col4_w
+        hdr_h = 22
+        c.create_rectangle(margin, y, margin + tablo_w, y + hdr_h,
+                            fill="#37474F", outline="#37474F")
+        cx_pos = margin
+        for w, t in [(col1_w, "ALT-KARAR"),
+                      (col2_w, "ATOM (SUT lafzı)"),
+                      (col3_w, "DURUM"),
+                      (col4_w, "NEDEN")]:
+            c.create_text(cx_pos + 6, y + hdr_h / 2, anchor="w", text=t,
+                           fill="white", font=("Segoe UI", 8, "bold"))
+            cx_pos += w
+            c.create_line(cx_pos, y, cx_pos, y + hdr_h, fill="#90A4AE")
+        y += hdr_h
+
+        row_h = 22
+        zebra = ["#FFFFFF", "#F5F7FA"]
+        row_idx = 0
+
+        for g in sira:
+            if "[pasif]" in g:
+                continue
+            et = self._dmn_alt_karar_etiket(g)
+            bilgi_grup = "(bilgi)" in g
+            if et is None:
+                et = "(bilgi)" if bilgi_grup else g[:24]
+            gs = gruplar[g]
+            gm = grup_mat.get(g, {"saglanan": 0, "gerekli": len(gs),
+                                    "veya": False})
+            ger = gm.get("gerekli", len(gs))
+            sag = gm.get("saglanan", 0)
+            for j, s in enumerate(gs):
+                ad = (s.get("ad", "") or "")[:90]
+                neden_full = s.get("neden", "") or ""
+                neden = neden_full[:160]
+                d = s.get("durum", "na")
+                veya_uye = bool(s.get("veya_grubu"))
+                if bilgi_grup or d == "na":
+                    bd_bg, bd_fg, bd_text = "#ECEFF1", "#9E9E9E", "— bilgi"
+                elif d == "var":
+                    bd_bg, bd_fg, bd_text = "#A5D6A7", "#1B5E20", "✓ VAR"
+                elif d == "yok":
+                    if veya_uye:
+                        bd_bg, bd_fg, bd_text = "#FFF59D", "#F57F17", "○ yok"
+                    else:
+                        bd_bg, bd_fg, bd_text = "#EF9A9A", "#B71C1C", "✗ YOK"
+                elif d == "kontrol_edilemedi":
+                    bd_bg, bd_fg, bd_text = "#FFCC80", "#E65100", "? KE"
+                else:
+                    bd_bg, bd_fg, bd_text = "#ECEFF1", "#9E9E9E", "—"
+                row_bg = zebra[row_idx % 2]
+                c.create_rectangle(margin, y, margin + tablo_w, y + row_h,
+                                    fill=row_bg, outline="#E0E0E0")
+                # Col1: alt-karar (sadece ilk satırda)
+                if j == 0:
+                    c.create_text(margin + 6, y + row_h / 2, anchor="w",
+                                   text=et, fill="#37474F",
+                                   font=("Segoe UI", 8, "bold"))
+                    if not bilgi_grup:
+                        c.create_text(margin + col1_w - 6, y + row_h / 2,
+                                       anchor="e",
+                                       text=f"{sag}/{ger}", fill="#546E7A",
+                                       font=("Segoe UI", 8))
+                # Col2: atom
+                cx2 = margin + col1_w
+                c.create_text(cx2 + 6, y + row_h / 2, anchor="w",
+                               text="• " + ad, fill="#455A64",
+                               font=("Segoe UI", 8))
+                # Col3: durum badge (kapsül)
+                cx3 = margin + col1_w + col2_w
+                pad = 6
+                bw = col3_w - 2 * pad
+                c.create_rectangle(cx3 + pad, y + 3,
+                                    cx3 + pad + bw, y + row_h - 3,
+                                    fill=bd_bg, outline=bd_bg)
+                bg_item = c.create_text(cx3 + col3_w / 2, y + row_h / 2,
+                                         anchor="center",
+                                         text=bd_text, fill=bd_fg,
+                                         font=("Segoe UI", 8, "bold"))
+                if neden_full:
+                    self._dmn_neden_map[bg_item] = neden_full
+                # Col4: neden (kısa)
+                cx4 = margin + col1_w + col2_w + col3_w
+                c.create_text(cx4 + 6, y + row_h / 2, anchor="w",
+                               text=neden, fill="#78909C",
+                               font=("Segoe UI", 7))
+                # Dikey ayırıcılar
+                for sep_x in (cx2, cx3, cx4):
+                    c.create_line(sep_x, y, sep_x, y + row_h,
+                                   fill="#E0E0E0")
+                y += row_h
+                row_idx += 1
+            # Grup ayırıcı (kalın)
+            c.create_line(margin, y, margin + tablo_w, y,
+                           fill="#90A4AE", width=1)
+
+        # Tablo footer — GENEL SONUÇ
+        y += 4
+        foot_h = 30
+        c.create_rectangle(margin, y, margin + tablo_w, y + foot_h,
+                            fill=verdict_renk[1], outline=verdict_renk[0],
+                            width=2)
+        c.create_text(margin + 8, y + foot_h / 2, anchor="w",
+                       text="GENEL SONUÇ",
+                       fill=verdict_renk[0], font=("Segoe UI", 10, "bold"))
+        sayim_total = (f'{gmat.get("saglanan_toplam", 0)} / '
+                       f'{gmat.get("gerekli_toplam", 0)} şart sağlanıyor')
+        c.create_text(margin + col1_w + 8, y + foot_h / 2, anchor="w",
+                       text=sayim_total, fill=verdict_renk[0],
+                       font=("Segoe UI", 9))
+        c.create_text(margin + tablo_w - 8, y + foot_h / 2, anchor="e",
+                       text=verdict_kisa, fill=verdict_renk[0],
+                       font=("Segoe UI", 11, "bold"))
+        y += foot_h + 16
+
+        # ─── BÖLGE 4: Toulmin Rebuttal (UYGUN_DEĞİL / ŞÜPHELİ) ─
+        if verdict_kisa in ("UYGUN DEĞİL", "ŞÜPHELİ"):
+            sebep_atomlari = []
+            for s in sartlar:
+                g = s.get("grup", "") or ""
+                if "(bilgi)" in g or "[pasif]" in g:
+                    continue
+                d = s.get("durum")
+                veya_uye = bool(s.get("veya_grubu"))
+                if veya_uye and d == "yok":
+                    continue
+                if d == "yok" or d == "kontrol_edilemedi":
+                    sebep_atomlari.append({
+                        "ad": s.get("ad", ""), "durum": d,
+                        "neden": s.get("neden", "") or "",
+                        "grup": g,
+                    })
+            if sebep_atomlari:
+                gosterilen = sebep_atomlari[:10]
+                kutu_w = W - 2 * margin
+                kutu_h = 32 + 18 * len(gosterilen) + (18 if len(sebep_atomlari) > 10 else 0) + 14
+                c.create_rectangle(margin, y, margin + kutu_w, y + kutu_h,
+                                    fill="#FFF8E1", outline="#FF8F00",
+                                    width=2)
+                c.create_text(margin + 10, y + 6, anchor="nw",
+                               text="⚖ REBUTTAL — Reddedilme / Şüphe "
+                                    "Gerekçeleri (Toulmin)",
+                               fill="#E65100", font=("Segoe UI", 10, "bold"))
+                yy = y + 28
+                for s in gosterilen:
+                    d = s["durum"]
+                    if d == "yok":
+                        ic, ic_fg = "✗", "#B71C1C"
+                    else:
+                        ic, ic_fg = "?", "#E65100"
+                    c.create_text(margin + 14, yy, anchor="nw",
+                                   text=ic, fill=ic_fg,
+                                   font=("Segoe UI", 10, "bold"))
+                    neden_str = s["neden"][:130] if s["neden"] else "(neden yok)"
+                    txt = f"{s['ad'][:70]}  →  {neden_str}"
+                    c.create_text(margin + 30, yy, anchor="nw",
+                                   text=txt, fill="#37474F",
+                                   font=("Segoe UI", 8),
+                                   width=kutu_w - 50)
+                    yy += 18
+                if len(sebep_atomlari) > 10:
+                    c.create_text(margin + 14, yy, anchor="nw",
+                                   text=f"... ve {len(sebep_atomlari) - 10} "
+                                        f"gerekçe daha",
+                                   fill="#9E9E9E",
+                                   font=("Segoe UI", 8, "italic"))
+                    yy += 18
+                y += kutu_h + 8
+
+        try:
+            c.configure(scrollregion=c.bbox("all"))
+        except Exception:
+            pass
+
+    # =================================================================
+    # MANTIK KAPISI ŞEMASI (Tab E) — IEC 60617-12 / IEEE Std 91-1984
+    # Boolean cebrinin mühendislik mantık kapısı gösterimi.
+    # AND (& kutusu), OR (≥1 kutusu), NOT (çıkışta küçük daire).
+    # Atomlar renkli input pin · akan yol yeşil kalın · alt boolean formül.
+    # Pilot: YOAK SUT 4.2.15.D
+    # =================================================================
+    @staticmethod
+    def _gates_kapi_tip_belirle(grup_ad: str, atomlar: list):
+        """Bir grup için kapı tipini ve negatiflik bilgisini belirle.
+
+        Returns: dict {
+            'tip': 'AND' | 'OR' | 'PASSTHROUGH',
+            'sembol': '&' | '≥1' | None,
+            'baslik': kısa grup başlığı,
+            'gizle': bool (bilgi/pasif grup ise true),
+        }
+        """
+        g = grup_ad or ""
+        if "[pasif]" in g:
+            return {"tip": "AND", "sembol": "&", "baslik": "(pasif)",
+                    "gizle": True}
+        if "(bilgi)" in g:
+            return {"tip": "AND", "sembol": "&", "baslik": "(bilgi)",
+                    "gizle": True}
+        # VEYA grubu: ≥1 atom veya_grubu=True ise OR
+        if any(s.get("veya_grubu") for s in atomlar):
+            sembol = "≥1"
+            tip = "OR"
+        elif len(atomlar) == 1:
+            sembol = None
+            tip = "PASSTHROUGH"
+        else:
+            sembol = "&"
+            tip = "AND"
+        # Kısa başlık
+        if "Risk fakt" in g:
+            baslik = "Risk Faktörü Alt"
+        elif "Risk faktörü" in g and "≥1" in g:
+            baslik = "Risk Faktörü ≥1"
+        elif "Kontrendikasyon" in g:
+            baslik = "Kontrend. (¬MD ∧ ¬MK)"
+        elif g.startswith("Endikasyon"):
+            baslik = "Endikasyon"
+        elif "Varfarin yolu" in g and ("VEYA" in g or "[(a) VEYA (b)]" in g):
+            baslik = "Geçiş (a∨b)"
+        elif "Varfarin yolu (a)" in g:
+            baslik = "Geçiş — Varfarin (a)"
+        elif "Varfarin yolu (b)" in g:
+            baslik = "Geçiş — Varfarin (b)"
+        elif "Varfarin yolu — " in g:
+            baslik = "Varfarin yolu"
+        elif "Varfarin VEYA istisna" in g.lower() or "Varfarin VEYA İstisna" in g:
+            baslik = "Varfarin ∨ Bypass"
+        elif "İstisna grubu" in g:
+            baslik = "Bypass ≥1"
+        elif "SK raporu" in g and "ilk 24 ay" in g:
+            baslik = "SK Raporu / Heyet"
+        elif "24 ay sonrası" in g:
+            baslik = "24 Ay Sonrası"
+        elif "Kombi" in g:
+            baslik = "Kombi Yasağı"
+        elif "Etken madde" in g:
+            baslik = "Etken Madde"
+        elif "Elektif kalça" in g or "replasman" in g.lower():
+            baslik = "Replasman"
+        elif "DVT profilaksisi" in g and "Madde 53" in g:
+            baslik = "DVT Profilaksi"
+        elif "Ortopedi uzman" in g:
+            baslik = "Ortopedi Uzm."
+        elif "Miktar" in g:
+            baslik = "Miktar Limiti"
+        elif "Yetişkin" in g:
+            baslik = "Yetişkin"
+        else:
+            baslik = g[:24]
+        return {"tip": tip, "sembol": sembol, "baslik": baslik,
+                "gizle": False}
+
+    @staticmethod
+    def _gates_grup_cikis_degeri(atomlar: list, tip: str):
+        """Kapı çıkış değerini hesapla: '1' (VAR) | '0' (YOK) | '?' (KE).
+
+        AND: tüm girdiler VAR -> 1, herhangi YOK -> 0, aksi KE
+        OR:  herhangi VAR -> 1, tümü YOK -> 0, aksi KE
+        """
+        var = sum(1 for s in atomlar if s.get("durum") == "var")
+        yok = sum(1 for s in atomlar if s.get("durum") == "yok")
+        ke = sum(1 for s in atomlar if s.get("durum") == "kontrol_edilemedi")
+        n = var + yok + ke
+        if n == 0:
+            return "?"
+        if tip == "OR":
+            if var >= 1:
+                return "1"
+            if yok == n:
+                return "0"
+            return "?"
+        # AND / PASSTHROUGH
+        if var == n:
+            return "1"
+        if yok >= 1:
+            return "0"
+        return "?"
+
+    @staticmethod
+    def _gates_atom_negatif_mi(ad: str) -> bool:
+        """Atom adında SUT NOT lafzı var mı? (kapı önünde inverter dairesi için)"""
+        if not ad:
+            return False
+        a = ad.lower()
+        neg_anahtarlar = ("yok olm", "olmayan", " yok ", " yok ", "değil",
+                           "yoktur", "yok)", "kontrendike", "olmama",
+                           "olmamış", "olmadığı")
+        if a.endswith(" yok") or " yok " in a:
+            return True
+        for k in neg_anahtarlar:
+            if k in a:
+                return True
+        return False
+
+    @staticmethod
+    def _gates_d_sekli_polygon(x0, y0, x1, y1, n_arc: int = 14):
+        """D-şekli AND kapı polygon nokta dizisi (IEEE 91-1984 distinctive).
+
+        Sol kenar düz dikey, sağ tarafta yarım daire (D harfi).
+        """
+        import math
+        cy = (y0 + y1) / 2
+        h2 = (y1 - y0) / 2
+        w = x1 - x0
+        # Sol dikdörtgen kısım w*0.45 (sol düz kenar), sağ %55 yarım daire
+        mid_x = x0 + w * 0.45
+        pts = [x0, y0, mid_x, y0]
+        # Sağ yarım daire — n_arc nokta
+        for i in range(n_arc + 1):
+            angle = -math.pi / 2 + math.pi * i / n_arc
+            px = mid_x + (x1 - mid_x) * math.cos(angle)
+            py = cy + h2 * math.sin(angle)
+            pts.extend([px, py])
+        pts.extend([mid_x, y1, x0, y1])
+        return pts
+
+    @staticmethod
+    def _gates_lens_polygon(x0, y0, x1, y1, n_arc: int = 14):
+        """Lens (OR) kapı polygon — IEEE 91-1984 distinctive shape.
+
+        Sol kenar konkav (içe yay), sağ kenar konveks uç (sivri/yuvarlak).
+        """
+        import math
+        cy = (y0 + y1) / 2
+        h2 = (y1 - y0) / 2
+        w = x1 - x0
+        # Sol konkav kenar — alttan üste 12 nokta
+        pts = []
+        n_sol = 12
+        for i in range(n_sol + 1):
+            t = i / n_sol  # 0=alt, 1=üst
+            y = y1 - h2 * 2 * t
+            # Sol kenar dışa konkav: w*0.18 max içe
+            xoff = w * 0.18 * math.sin(math.pi * t)
+            pts.extend([x0 + xoff, y])
+        # Üst sağ konveks → uç noktası → alt sağ konveks
+        # Sağda uç nokta tek bir keskin uç gibi
+        n_sag = 18
+        for i in range(n_sag + 1):
+            t = i / n_sag  # 0=üst, 1=alt
+            # Konveks parabolik dışa: orta uçta x1 noktasına ulaşır
+            angle = math.pi * t  # 0 → pi
+            xoff = w * 0.55 * math.sin(angle)
+            yoff = h2 * math.cos(angle)
+            pts.extend([x0 + w * 0.45 + xoff, cy - yoff])
+        return pts
+
+    def _gates_ciz_canvas(self, sartlar: list, detaylar: dict = None,
+                          verdict: str = "", satir: dict = None) -> None:
+        """IEC 60617-12 / IEEE 91-1984 Mantık Kapısı Şeması — pilot YOAK.
+
+        Distinctive shapes: AND=D-şekli polygon, OR=lens polygon,
+        NOT=kapı önünde küçük inverter dairesi (negatif atomlar için).
+        """
+        c = self._gates_canvas
+        c.delete("all")
+        self._gates_neden_map = {}
+
+        detaylar = detaylar or {}
+        sartlar = sartlar or []
+
+        alt_dal = (detaylar.get("alt_dal") or "").strip()
+        is_yoak_ek4f = (("EK-4/F" in alt_dal or "EK4F" in alt_dal)
+                        and ("M.53" in alt_dal or "M.54" in alt_dal
+                             or "Madde 53" in alt_dal or "Madde 54" in alt_dal))
+        is_yoak = ("4.2.15.D" in alt_dal) or is_yoak_ek4f
+
+        margin = 14
+        y = margin
+
+        if not is_yoak or not sartlar:
+            c.create_text(
+                margin, margin, anchor="nw",
+                text=("⚙ IEC 60617-12 Mantık Kapısı Şeması\n"
+                      "(IEEE Std 91-1984 boolean cebir gösterimi)\n\n"
+                      "Bu sekme pilot kapsamda yalnızca YOAK SUT 4.2.15.D "
+                      "için aktiftir.\n"
+                      "  • D-1 · Atriyal Fibrilasyon\n"
+                      "  • D-2 · DVT / Pulmoner Emboli\n"
+                      "  • EK-4/F · Ortopedi profilaksi\n\n"
+                      "Kapılar: & (AND) · ≥1 (OR) · ○ çıkışta (NOT)\n"
+                      "Akan yol: yeşil kalın hat = VAR; gri ince = YOK/KE."),
+                fill="#546E7A", font=("Segoe UI", 10), width=720)
+            try:
+                c.configure(scrollregion=c.bbox("all"))
+            except Exception:
+                pass
+            return
+
+        # Yolak ismi
+        if "4.2.15.D-1" in alt_dal:
+            yolak_baslik = "D-1 · Atriyal Fibrilasyon"
+        elif "4.2.15.D-2" in alt_dal:
+            yolak_baslik = "D-2 · DVT / Pulmoner Emboli"
+        elif is_yoak_ek4f:
+            yolak_baslik = "EK-4/F · Ortopedi Profilaksi"
+        else:
+            yolak_baslik = "(tanımsız)"
+
+        # Verdict
+        v = (verdict or "").upper().strip()
+        if "UYGUN" in v and ("DEĞİL" in v or "DEGIL" in v):
+            verdict_kisa = "UYGUN DEĞİL"
+            cikis_deger = "0"
+        elif "UYGUN" in v:
+            verdict_kisa = "UYGUN"
+            cikis_deger = "1"
+        elif "ŞÜPH" in v or "SUPH" in v:
+            verdict_kisa = "ŞÜPHELİ"
+            cikis_deger = "?"
+        else:
+            verdict_kisa = v or "—"
+            cikis_deger = "?"
+        cikis_renk = {
+            "1": ("#1B5E20", "#C8E6C9"),
+            "0": ("#B71C1C", "#FFCDD2"),
+            "?": ("#E65100", "#FFE0B2"),
+        }.get(cikis_deger, ("#37474F", "#ECEFF1"))
+
+        # Gruplara ayır, üst-VEYA çiftlerini birleşik kapıya dönüştür
+        gruplar: dict = {}
+        sira = []
+        for s in sartlar:
+            g = s.get("grup", "") or "(grupsuz)"
+            if "[pasif]" in g or "(bilgi)" in g:
+                continue
+            if g not in gruplar:
+                gruplar[g] = []
+                sira.append(g)
+            gruplar[g].append(s)
+
+        # Atomlar üzerinden değer hesabı için yardımcı
+        def deg_atom(s):
+            d = s.get("durum")
+            return ("1" if d == "var" else
+                    "0" if d == "yok" else
+                    "?")
+
+        def deg_renk(d):
+            return ("#43A047" if d == "1" else
+                    "#E53935" if d == "0" else
+                    "#FB8C00" if d == "?" else "#9E9E9E")
+
+        # ─── BAŞLIK ────────────────────────────────────────────
+        c.create_text(margin, y, anchor="nw",
+                       text=f"⚙ IEC 60617-12 Mantık Kapısı Şeması — {yolak_baslik}",
+                       fill="#1A237E", font=("Segoe UI", 11, "bold"))
+        y += 22
+        c.create_text(margin, y, anchor="nw",
+                       text="IEEE Std 91-1984 · AND (&) · OR (≥1) · "
+                            "NOT (○ çıkışta) · Akan yol yeşil",
+                       fill="#90A4AE", font=("Segoe UI", 8, "italic"))
+        y += 22
+
+        # ─── ATOM KISALTMA TABLOSU (sağda) ─────────────────────
+        # Atomlara A1, A2, ... harfli kısaltma ver, sağda mini tablo
+        atom_kisalt = {}  # (grup,ad) -> kısaltma
+        atom_label_say = 0
+        atom_label_harfleri = ["A", "B", "C", "D", "E", "F", "G", "H",
+                                "I", "J", "K", "L", "M", "N"]
+        grup_label = {}   # grup -> harf
+        for gi, g in enumerate(sira):
+            harf = atom_label_harfleri[gi % len(atom_label_harfleri)]
+            grup_label[g] = harf
+            for ai, s in enumerate(gruplar[g]):
+                key = (g, s.get("ad", ""))
+                atom_kisalt[key] = f"{harf}{ai+1}"
+                atom_label_say += 1
+
+        # ─── ANA LAYOUT ────────────────────────────────────────
+        # Sol: grup blokları (alt-kararlar) dikey dizilim
+        # Orta: alt-karar kapıları
+        # Sağ: top-level & kapısı + çıkış pin
+        # Alt: boolean formül + atom legend
+        BLOK_W = 360         # bir grup bloğunun yatay alanı
+        BLOK_X = margin
+        PIN_X = BLOK_X + 16  # atom pin nokta x
+        PIN_LBL_X = PIN_X + 12  # atom etiket x (sağına yazılır)
+        WIRE_BAS_X = BLOK_X + 200  # wire pin sağından başlar
+        KAPI_X = BLOK_X + 230      # kapı kutusu x sol kenarı
+        KAPI_W = 56
+        KAPI_CIKIS_X = KAPI_X + KAPI_W
+        BLOK_CIKIS_X = BLOK_CIKIS_PT = BLOK_X + 300
+
+        TOP_KAPI_X = BLOK_X + BLOK_W + 80
+        TOP_KAPI_W = 70
+        TOP_KAPI_CIKIS_X = TOP_KAPI_X + TOP_KAPI_W
+
+        # Her grup için yükseklik = atom_sayisi * 20 + padding
+        ATOM_Y_GAP = 22
+        BLOK_PAD = 14
+
+        # Top kapı için atomlar dahil tüm yükseklik takibi
+        blok_yukseklikler = []
+        blok_basliclar = []
+        blok_cikis_degerleri = []
+        blok_kapi_tip = []
+        for g in sira:
+            atomlar = gruplar[g]
+            kapi = self._gates_kapi_tip_belirle(g, atomlar)
+            if kapi["gizle"]:
+                blok_yukseklikler.append(0)
+                blok_basliclar.append(kapi)
+                blok_cikis_degerleri.append("?")
+                blok_kapi_tip.append(kapi)
+                continue
+            n = len(atomlar)
+            h = max(n * ATOM_Y_GAP + 26, 60)
+            blok_yukseklikler.append(h)
+            blok_basliclar.append(kapi)
+            blok_cikis_degerleri.append(
+                self._gates_grup_cikis_degeri(atomlar, kapi["tip"]))
+            blok_kapi_tip.append(kapi)
+
+        toplam_h = sum(blok_yukseklikler) + BLOK_PAD * len(sira)
+        toplam_h = max(toplam_h, 400)
+
+        # ─── Her grup blok render ─────────────────────────────
+        blok_y_baslama = y + 8
+        blok_y_cikis_listesi = []  # her bloğun çıkış pin y koordinatı
+
+        for gi, g in enumerate(sira):
+            kapi_info = blok_basliclar[gi]
+            if kapi_info["gizle"]:
+                blok_y_cikis_listesi.append(None)
+                continue
+            atomlar = gruplar[g]
+            n = len(atomlar)
+            h = blok_yukseklikler[gi]
+            y_b = blok_y_baslama
+            blok_y_baslama += h + BLOK_PAD
+
+            # Blok başlığı (üstte)
+            c.create_text(BLOK_X, y_b, anchor="nw",
+                           text=f"[{grup_label[g]}] {kapi_info['baslik']}",
+                           fill="#37474F", font=("Segoe UI", 9, "bold"))
+            y_atom_baslama = y_b + 18
+
+            # Kapı çıkış değerine göre kapı çıkış y koord (orta)
+            kapi_y_orta = y_atom_baslama + (n - 1) * ATOM_Y_GAP / 2
+            if n == 0:
+                kapi_y_orta = y_atom_baslama
+            kapi_y_top = kapi_y_orta - 18
+            kapi_y_bot = kapi_y_orta + 18
+
+            # Atom pinleri (sol kolon)
+            for ai, s in enumerate(atomlar):
+                ay = y_atom_baslama + ai * ATOM_Y_GAP
+                d = deg_atom(s)
+                renk = deg_renk(d)
+                # Pin nokta (dolu daire)
+                pin_id = c.create_oval(PIN_X - 5, ay - 5,
+                                        PIN_X + 5, ay + 5,
+                                        fill=renk, outline=renk)
+                # Pin etiketi: [A1] kısa atom adı + durum sembolü
+                kisaltma = atom_kisalt[(g, s.get("ad", ""))]
+                durum_sembol = ("✓" if d == "1" else
+                                "✗" if d == "0" else "?")
+                # NOT atomu mu? (SUT lafzında "YOK olmalı/olmayan/değil")
+                is_neg = self._gates_atom_negatif_mi(s.get("ad", "") or "")
+                ad_kisa = (s.get("ad", "") or "")[:32]
+                pin_prefix = "¬" + kisaltma if is_neg else kisaltma
+                lbl_id = c.create_text(
+                    PIN_LBL_X, ay, anchor="w",
+                    text=f"{pin_prefix} {durum_sembol} {ad_kisa}",
+                    fill=renk, font=("Segoe UI", 8, "bold"))
+                # Pin'den wire kapıya
+                wire_renk = "#43A047" if d == "1" else "#BDBDBD"
+                wire_w = 3 if d == "1" else 1
+                # Pin -> kapı sol giriş kenarı; NOT ise sağda küçük inverter
+                # dairesi (kapı girişinden hemen önce) — IEEE 91 distinctive
+                if is_neg:
+                    inv_r = 4
+                    inv_x = KAPI_X - inv_r - 2
+                    # Wire pin -> inverter girişi
+                    c.create_line(WIRE_BAS_X, ay, inv_x - inv_r, ay,
+                                   fill=wire_renk, width=wire_w)
+                    # Inverter dairesi (içi beyaz, kenar wire rengi)
+                    c.create_oval(inv_x - inv_r, ay - inv_r,
+                                   inv_x + inv_r, ay + inv_r,
+                                   fill="white", outline=wire_renk, width=2)
+                    # Inverter -> kapı
+                    c.create_line(inv_x + inv_r, ay, KAPI_X, ay,
+                                   fill=wire_renk, width=wire_w)
+                else:
+                    c.create_line(WIRE_BAS_X, ay, KAPI_X, ay,
+                                   fill=wire_renk, width=wire_w)
+                # Sol dikey hat (n>1 ise atomlar arası bridging)
+                if ai > 0:
+                    c.create_line(KAPI_X, y_atom_baslama + (ai - 1) * ATOM_Y_GAP,
+                                   KAPI_X, ay,
+                                   fill=wire_renk, width=max(wire_w, 1))
+                # Hover ipucu
+                neden = (s.get("neden", "") or "")[:200]
+                if neden:
+                    self._gates_neden_map[pin_id] = neden
+                    self._gates_neden_map[lbl_id] = neden
+
+            # Kapı şekli — IEEE 91-1984 distinctive shapes
+            # AND → D-şekli polygon, OR → lens polygon, PASSTHROUGH → trapez
+            kapi_y0 = kapi_y_orta - 22
+            kapi_y1 = kapi_y_orta + 22
+            cikis_d = blok_cikis_degerleri[gi]
+            kapi_kenar = ("#43A047" if cikis_d == "1"
+                           else "#E53935" if cikis_d == "0"
+                           else "#FB8C00")
+            kapi_fill = ("#E8F5E9" if cikis_d == "1"
+                          else "#FFEBEE" if cikis_d == "0"
+                          else "#FFF3E0")
+            tip = kapi_info["tip"]
+            if tip == "AND":
+                pts = self._gates_d_sekli_polygon(KAPI_X, kapi_y0,
+                                                    KAPI_X + KAPI_W, kapi_y1)
+                c.create_polygon(*pts, fill=kapi_fill,
+                                  outline=kapi_kenar, width=2,
+                                  smooth=False)
+                # Sembol için içeride küçük metin yok — D-şekli görsel yeterli
+                # ama erişilebilirlik için merkez harfi
+                c.create_text(KAPI_X + KAPI_W * 0.32, kapi_y_orta,
+                               text="&", fill=kapi_kenar,
+                               font=("Segoe UI", 11, "bold"))
+            elif tip == "OR":
+                pts = self._gates_lens_polygon(KAPI_X, kapi_y0,
+                                                 KAPI_X + KAPI_W, kapi_y1)
+                c.create_polygon(*pts, fill=kapi_fill,
+                                  outline=kapi_kenar, width=2,
+                                  smooth=True)
+                c.create_text(KAPI_X + KAPI_W * 0.34, kapi_y_orta,
+                               text="≥1", fill=kapi_kenar,
+                               font=("Segoe UI", 10, "bold"))
+            else:
+                # PASSTHROUGH (tek atom): trapezoid buffer kapı (= sembolü)
+                pts = [KAPI_X, kapi_y0 + 4,
+                       KAPI_X + KAPI_W - 6, kapi_y_orta,
+                       KAPI_X, kapi_y1 - 4]
+                c.create_polygon(*pts, fill=kapi_fill,
+                                  outline=kapi_kenar, width=2)
+                c.create_text(KAPI_X + KAPI_W * 0.3, kapi_y_orta,
+                               text="=", fill=kapi_kenar,
+                               font=("Segoe UI", 12, "bold"))
+            # Kapı çıkış değeri label (kapının sağ üst)
+            c.create_text(KAPI_X + KAPI_W + 4, kapi_y_orta - 12,
+                           anchor="w",
+                           text=cikis_d, fill=kapi_kenar,
+                           font=("Segoe UI", 9, "bold"))
+            # Kapıdan blok çıkış pinine wire
+            wire_cikis_renk = ("#43A047" if cikis_d == "1"
+                                else "#BDBDBD")
+            wire_cikis_w = 3 if cikis_d == "1" else 1
+            c.create_line(KAPI_CIKIS_X, kapi_y_orta,
+                           BLOK_CIKIS_X, kapi_y_orta,
+                           fill=wire_cikis_renk, width=wire_cikis_w)
+            # Blok çıkış pin (dolu daire)
+            c.create_oval(BLOK_CIKIS_X - 5, kapi_y_orta - 5,
+                           BLOK_CIKIS_X + 5, kapi_y_orta + 5,
+                           fill=wire_cikis_renk, outline=wire_cikis_renk)
+            blok_y_cikis_listesi.append(kapi_y_orta)
+
+        # ─── TOP-LEVEL AND KAPISI ────────────────────────────
+        # Görünür blok çıkış pinleri
+        gorunur_cikislar = [(i, y_) for i, y_ in enumerate(blok_y_cikis_listesi)
+                              if y_ is not None]
+        if gorunur_cikislar:
+            top_y_min = gorunur_cikislar[0][1]
+            top_y_max = gorunur_cikislar[-1][1]
+            top_y_orta = (top_y_min + top_y_max) / 2
+            top_kapi_h = max(top_y_max - top_y_min + 24, 60)
+            top_y0 = top_y_orta - top_kapi_h / 2
+            top_y1 = top_y_orta + top_kapi_h / 2
+
+            # Top-level AND kapısı — D-şekli (IEEE 91-1984)
+            top_kenar = ("#43A047" if cikis_deger == "1"
+                          else "#E53935" if cikis_deger == "0"
+                          else "#FB8C00")
+            top_fill = ("#E8F5E9" if cikis_deger == "1"
+                         else "#FFEBEE" if cikis_deger == "0"
+                         else "#FFF3E0")
+            top_pts = self._gates_d_sekli_polygon(
+                TOP_KAPI_X, top_y0,
+                TOP_KAPI_X + TOP_KAPI_W, top_y1, n_arc=18)
+            c.create_polygon(*top_pts, fill=top_fill,
+                              outline=top_kenar, width=3, smooth=False)
+            c.create_text(TOP_KAPI_X + TOP_KAPI_W * 0.32,
+                           top_y_orta - 4,
+                           text="&", fill=top_kenar,
+                           font=("Segoe UI", 18, "bold"))
+            c.create_text(TOP_KAPI_X + TOP_KAPI_W * 0.32,
+                           top_y_orta + 16,
+                           text="(zincir)", fill=top_kenar,
+                           font=("Segoe UI", 7, "italic"))
+            # Blok çıkışlarından top-level kapıya wire bağlantısı
+            for gi, y_pin in gorunur_cikislar:
+                wire_renk = ("#43A047" if blok_cikis_degerleri[gi] == "1"
+                              else "#BDBDBD")
+                wire_w = 3 if blok_cikis_degerleri[gi] == "1" else 1
+                c.create_line(BLOK_CIKIS_X, y_pin,
+                               TOP_KAPI_X, y_pin,
+                               fill=wire_renk, width=wire_w)
+                # Grup harfi etiketi wire üstünde
+                c.create_text((BLOK_CIKIS_X + TOP_KAPI_X) / 2, y_pin - 8,
+                               text=grup_label[sira[gi]],
+                               fill="#37474F",
+                               font=("Segoe UI", 8, "bold"))
+            # Top-level kapı çıkış wire
+            cikis_pin_x = TOP_KAPI_CIKIS_X + 80
+            wire_cikis_renk = ("#43A047" if cikis_deger == "1"
+                                else "#E53935" if cikis_deger == "0"
+                                else "#FB8C00")
+            c.create_line(TOP_KAPI_CIKIS_X, top_y_orta,
+                           cikis_pin_x, top_y_orta,
+                           fill=wire_cikis_renk, width=4)
+            # Çıkış pini (büyük renkli kutu)
+            c.create_rectangle(cikis_pin_x, top_y_orta - 20,
+                                cikis_pin_x + 130, top_y_orta + 20,
+                                fill=cikis_renk[1], outline=cikis_renk[0],
+                                width=2)
+            c.create_text(cikis_pin_x + 65, top_y_orta,
+                           text=verdict_kisa, fill=cikis_renk[0],
+                           font=("Segoe UI", 11, "bold"))
+            c.create_text(cikis_pin_x + 65, top_y_orta + 30,
+                           text=f"Çıkış: {cikis_deger}",
+                           fill=cikis_renk[0],
+                           font=("Segoe UI", 8, "italic"))
+
+            y_son_blok = blok_y_baslama + 20
+        else:
+            y_son_blok = y + 200
+
+        # ─── ALT BÖLGE: Boolean Formül + Atom Legend ────────
+        y = max(y_son_blok, top_y1 if gorunur_cikislar else y_son_blok) + 30
+        c.create_line(margin, y, margin + 1100, y, fill="#90A4AE", width=1)
+        y += 12
+        c.create_text(margin, y, anchor="nw",
+                       text="▼ Boolean Formül (SUT lafzı → cebirsel ifade)",
+                       fill="#37474F", font=("Segoe UI", 9, "bold"))
+        y += 20
+
+        # Formül parçaları (her grup için)
+        formul_parcalari = []
+        for gi, g in enumerate(sira):
+            kapi_info = blok_basliclar[gi]
+            if kapi_info["gizle"]:
+                continue
+            atomlar = gruplar[g]
+            harf = grup_label[g]
+            atom_simge = [atom_kisalt[(g, s.get("ad", ""))]
+                           for s in atomlar]
+            if kapi_info["tip"] == "OR":
+                parca = "(" + " ∨ ".join(atom_simge) + ")"
+            elif len(atomlar) == 1:
+                parca = atom_simge[0]
+            else:
+                parca = "(" + " ∧ ".join(atom_simge) + ")"
+            formul_parcalari.append(parca)
+        formul = " ∧ ".join(formul_parcalari) if formul_parcalari else "(boş)"
+        formul += " ⇔ UYGUN"
+        # Wrap formül
+        c.create_text(margin + 8, y, anchor="nw",
+                       text=formul, fill="#1A237E",
+                       font=("Consolas", 10), width=1080)
+        y += 18 + (len(formul) // 80) * 16
+
+        # Atom legend (kısaltma → açıklama)
+        y += 16
+        c.create_text(margin, y, anchor="nw",
+                       text="▼ Atom Kısaltma Sözlüğü",
+                       fill="#37474F", font=("Segoe UI", 9, "bold"))
+        y += 16
+        # 2 sütun
+        legend_col_w = 540
+        legend_y_baslama = y
+        legend_i = 0
+        for gi, g in enumerate(sira):
+            kapi_info = blok_basliclar[gi]
+            if kapi_info["gizle"]:
+                continue
+            for ai, s in enumerate(gruplar[g]):
+                kisalt = atom_kisalt[(g, s.get("ad", ""))]
+                ad = (s.get("ad", "") or "")[:60]
+                d = deg_atom(s)
+                renk = deg_renk(d)
+                col = legend_i % 2
+                row = legend_i // 2
+                lx = margin + 8 + col * legend_col_w
+                ly = legend_y_baslama + row * 16
+                c.create_text(lx, ly, anchor="nw",
+                               text=f"{kisalt}",
+                               fill=renk,
+                               font=("Consolas", 9, "bold"))
+                c.create_text(lx + 32, ly, anchor="nw",
+                               text=f"= {ad}",
+                               fill="#455A64",
+                               font=("Segoe UI", 8))
+                legend_i += 1
+
+        try:
+            c.configure(scrollregion=c.bbox("all"))
+        except Exception:
+            pass
+
+    # =================================================================
+    # RBD — RELIABILITY BLOCK DIAGRAM (Tab F) — IEC 61078
+    # Karar verici mantık formülasyonuna birebir eşlenik akım şeması.
+    # Sol ⊕ kaynak → bloklar → sağ ⊖ sink.
+    # Top-level AND = bloklar yatay seri.
+    # veya_grubu=True grup → dikey paralel kavşak (≥1 yeterli).
+    # Üst-VEYA çiftleri (Varfarin (a) ∨ Varfarin (b)) → 2-yol paralel.
+    # Negatif atomlar (¬X "X YOK olmalı") → blok başında "¬" sembolü.
+    # Akan yol: VAR ise yeşil 4px, YOK/KE ise gri 1px.
+    # Pilot: YOAK SUT 4.2.15.D
+    # =================================================================
+    _RBD_BLOK_RENK = {
+        "var":    ("#A5D6A7", "#2E7D32"),  # yeşil dolgu, koyu yeşil kenar
+        "yok":    ("#EF9A9A", "#B71C1C"),  # kırmızı dolgu, koyu kırmızı
+        "or_yok": ("#E0E0E0", "#9E9E9E"),  # gri (OR grubunda kritik değil)
+        "ke":     ("#FFE082", "#E65100"),  # sarı dolgu, turuncu kenar
+        "bilgi":  "#ECEFF1",
+    }
+    _RBD_AKIM_VAR_RENK = "#43A047"   # akan yol yeşil
+    _RBD_AKIM_VAR_W = 4
+    _RBD_AKIM_YOK_RENK = "#BDBDBD"   # akmayan yol gri
+    _RBD_AKIM_YOK_W = 1
+    _RBD_AKIM_KE_RENK = "#FB8C00"    # belirsiz yol turuncu kesik
+    _RBD_AKIM_KE_W = 2
+
+    @staticmethod
+    def _rbd_atom_negatif_mi(ad: str) -> bool:
+        """Atom SUT lafzında NOT(...) lafzı mı? '¬' sembolü için."""
+        if not ad:
+            return False
+        a = ad.lower()
+        if a.endswith(" yok"):
+            return True
+        for k in ("yok olm", "olmayan", "değil", "yoktur",
+                  "kontrendike", "yok)"):
+            if k in a:
+                return True
+        return False
+
+    @staticmethod
+    def _rbd_atom_renk_key(durum: str, veya_uye: bool) -> str:
+        """Atom durumundan blok renk anahtarı türet."""
+        if durum == "var":
+            return "var"
+        if durum == "yok":
+            return "or_yok" if veya_uye else "yok"
+        if durum == "kontrol_edilemedi":
+            return "ke"
+        return "bilgi"
+
+    @staticmethod
+    def _rbd_grup_durumu(atomlar: list, veya_grubu: bool):
+        """Grup için (akim, sebep) döndür: 'var'/'yok'/'ke'.
+
+        veya_grubu (OR): ≥1 atom VAR → var; tümü YOK → yok; aksi ke.
+        AND grubu: tüm atomlar VAR → var; ≥1 YOK → yok; aksi ke.
+        """
+        var = sum(1 for s in atomlar if s.get("durum") == "var")
+        yok = sum(1 for s in atomlar if s.get("durum") == "yok")
+        ke = sum(1 for s in atomlar if s.get("durum") == "kontrol_edilemedi")
+        n = var + yok + ke
+        if n == 0:
+            return "ke"
+        if veya_grubu:
+            if var >= 1:
+                return "var"
+            if yok == n:
+                return "yok"
+            return "ke"
+        # AND
+        if var == n:
+            return "var"
+        if yok >= 1:
+            return "yok"
+        return "ke"
+
+    def _rbd_ciz_canvas(self, sartlar: list, detaylar: dict = None,
+                        verdict: str = "", satir: dict = None) -> None:
+        """IEC 61078 Reliability Block Diagram — pilot YOAK.
+
+        Mantıksal formülün birebir akım şeması karşılığı:
+            SONUC = G1 ∧ G2 ∧ ... ∧ Gn (yatay seri bloklar)
+            Gi = (atom_i1 ∨ atom_i2 ∨ ...)   (dikey paralel)  veya_grubu
+            Gi = (atom_i1 ∧ atom_i2 ∧ ...)   (yatay seri)
+            ¬atom → blok başında "¬" + durum tersine yorumlanır
+                     (algoritma zaten doğru durum üretiyor; sadece görsel
+                      etiket için ¬)
+        Üst-VEYA çiftleri (Varfarin (a) ∨ (b), Varfarin ∨ İstisna):
+            iki yan yana grup ana hatta paralel iki yol gibi çizilir.
+        """
+        c = self._rbd_canvas
+        c.delete("all")
+        self._rbd_neden_map = {}
+
+        detaylar = detaylar or {}
+        sartlar = sartlar or []
+
+        alt_dal = (detaylar.get("alt_dal") or "").strip()
+        is_yoak_ek4f = (("EK-4/F" in alt_dal or "EK4F" in alt_dal)
+                        and ("M.53" in alt_dal or "M.54" in alt_dal
+                             or "Madde 53" in alt_dal
+                             or "Madde 54" in alt_dal))
+        is_yoak = ("4.2.15.D" in alt_dal) or is_yoak_ek4f
+
+        margin = 16
+        if not is_yoak or not sartlar:
+            c.create_text(
+                margin, margin, anchor="nw",
+                text=("🔗 IEC 61078 Reliability Block Diagram\n"
+                      "(Karar mantığına birebir eşlenik akım şeması)\n\n"
+                      "Pilot kapsamda yalnızca YOAK SUT 4.2.15.D için aktif.\n"
+                      "  • D-1 · Atriyal Fibrilasyon\n"
+                      "  • D-2 · DVT / Pulmoner Emboli\n"
+                      "  • EK-4/F · Ortopedi profilaksi\n\n"
+                      "Top-level AND zinciri: bloklar yatay seri.\n"
+                      "veya_grubu: dikey paralel kavşak (≥1 yeterli).\n"
+                      "Negatif atom (¬X): blok başında ¬ sembolü."),
+                fill="#546E7A", font=("Segoe UI", 10), width=720)
+            try:
+                c.configure(scrollregion=c.bbox("all"))
+            except Exception:
+                pass
+            return
+
+        # Yolak adı
+        if "4.2.15.D-1" in alt_dal:
+            yolak_baslik = "D-1 · Atriyal Fibrilasyon"
+        elif "4.2.15.D-2" in alt_dal:
+            yolak_baslik = "D-2 · DVT / Pulmoner Emboli"
+        elif is_yoak_ek4f:
+            yolak_baslik = "EK-4/F · Ortopedi Profilaksi"
+        else:
+            yolak_baslik = "(tanımsız)"
+
+        # Verdict normalize
+        v = (verdict or "").upper().strip()
+        if "UYGUN" in v and ("DEĞİL" in v or "DEGIL" in v):
+            verdict_kisa = "UYGUN DEĞİL"
+            son_renk_key = "yok"
+        elif "UYGUN" in v:
+            verdict_kisa = "UYGUN"
+            son_renk_key = "var"
+        elif "ŞÜPH" in v or "SUPH" in v:
+            verdict_kisa = "ŞÜPHELİ"
+            son_renk_key = "ke"
+        else:
+            verdict_kisa = v or "—"
+            son_renk_key = "ke"
+
+        # Gruplara ayır + [pasif]/(bilgi) hariç
+        gruplar: dict = {}
+        sira = []
+        for s in sartlar:
+            g = s.get("grup", "") or "(grupsuz)"
+            if "[pasif]" in g or "(bilgi)" in g:
+                continue
+            if g not in gruplar:
+                gruplar[g] = []
+                sira.append(g)
+            gruplar[g].append(s)
+
+        # Üst-VEYA çiftleri — iki grup paralel yol olarak gösterilecek
+        ust_or_listesi = [
+            ("Varfarin yolu (a)", "Varfarin yolu (b)",
+             "Geçiş Yolu (a ∨ b)"),
+            ("Varfarin yolu — ", "İstisna grubu",
+             "Varfarin ∨ Bypass"),
+            ("SK raporu — ilk 24 ay", "24 ay sonrası alt yol",
+             "Heyet (ilk 24 ay ∨ sonrası)"),
+        ]
+        # her grup -> (cift_baslangic=True/False, cift_partner_grup, baslik)
+        cift_eslesme = {}
+        for pa, pb, baslik in ust_or_listesi:
+            a_g = next((g for g in sira if g.startswith(pa)), None)
+            b_g = next((g for g in sira if g.startswith(pb)), None)
+            if a_g and b_g and a_g != b_g:
+                cift_eslesme[a_g] = ("a", b_g, baslik)
+                cift_eslesme[b_g] = ("b", a_g, baslik)
+
+        # ─── BAŞLIK ────────────────────────────────────────────
+        y = margin
+        c.create_text(margin, y, anchor="nw",
+                       text=f"🔗 RBD — IEC 61078 · {yolak_baslik}",
+                       fill="#1A237E", font=("Segoe UI", 11, "bold"))
+        y += 22
+        c.create_text(margin, y, anchor="nw",
+                       text="Karar mantığı: SONUC = G1 ∧ G2 ∧ … ∧ Gn   "
+                            "(seri=AND, paralel=OR, ¬ negatif atom)",
+                       fill="#90A4AE", font=("Segoe UI", 8, "italic"))
+        y += 24
+
+        # ─── LAYOUT KOORDINATLARI ─────────────────────────────
+        # Yatay ana akım hattı y_main, sol ⊕ → sağ ⊖
+        BLOK_W = 130
+        BLOK_H = 50
+        BLOK_GAP_X = 24           # ardışık gruplar arası yatay boşluk
+        ATOM_GAP_X = 14           # AND grubu içinde yatay atom arası
+        PARALEL_GAP_Y = 70        # dikey paralel atomlar arası
+        KAVSAK_X_PAD = 24         # kavşak öncesi/sonrası kablo boşluğu
+
+        # Önce her grubun yatay yer kaplaması — atom sayısı ve OR/AND yapısı
+        # ile hesaplanır. Üst-VEYA çift partneri varsa onunla beraber alan.
+        islenmis = set()
+        gruplar_layout = []   # her bloğun (g_ad, tip, atomlar, w) listesi
+        for g in sira:
+            if g in islenmis:
+                continue
+            atomlar = gruplar[g]
+            veya = any(s.get("veya_grubu") for s in atomlar)
+            cift = cift_eslesme.get(g)
+            if cift and cift[0] == "a":
+                # 2-yol paralel (üst-VEYA çift)
+                partner_g = cift[1]
+                partner_atomlar = gruplar.get(partner_g, [])
+                # Her yolun ihtiyacı = max(yol_w)
+                def _yol_w(ats):
+                    veya2 = any(s.get("veya_grubu") for s in ats)
+                    if veya2:
+                        return BLOK_W + 30  # paralel: tek blok genişliği
+                    # AND zinciri: atomlar yatay seri
+                    return max(1, len(ats)) * BLOK_W + max(0, len(ats) - 1) * ATOM_GAP_X
+                w = max(_yol_w(atomlar), _yol_w(partner_atomlar)) + 2 * KAVSAK_X_PAD
+                gruplar_layout.append({
+                    "tip": "ust_or_cift",
+                    "baslik": cift[2],
+                    "g_a": g, "g_b": partner_g,
+                    "atomlar_a": atomlar,
+                    "atomlar_b": partner_atomlar,
+                    "veya_a": veya,
+                    "veya_b": any(s.get("veya_grubu") for s in partner_atomlar),
+                    "w": w,
+                })
+                islenmis.add(g)
+                islenmis.add(partner_g)
+            elif cift and cift[0] == "b":
+                # Partner zaten "a" işaretiyle render edildi
+                islenmis.add(g)
+                continue
+            elif veya:
+                # Dikey paralel grup (≥1 yeterli)
+                w = BLOK_W + 2 * KAVSAK_X_PAD
+                gruplar_layout.append({
+                    "tip": "veya",
+                    "baslik": g,
+                    "g_ad": g,
+                    "atomlar": atomlar,
+                    "w": w,
+                })
+                islenmis.add(g)
+            else:
+                # AND grup: atomlar yatay seri (her atom 1 blok)
+                # Kavşak boşluğu (sol+sağ) eklenmeli, yoksa atomlar sağ
+                # kavşağı aşar ve sonraki grupla çakışır.
+                w = (len(atomlar) * BLOK_W
+                     + max(0, len(atomlar) - 1) * ATOM_GAP_X
+                     + 2 * KAVSAK_X_PAD)
+                gruplar_layout.append({
+                    "tip": "and",
+                    "baslik": g,
+                    "g_ad": g,
+                    "atomlar": atomlar,
+                    "w": w,
+                })
+                islenmis.add(g)
+
+        # ─── ANA HAT Y MERKEZİ ─────────────────────────────────
+        # Maksimum dikey yer = en kalabalık paralel grup
+        max_n_paralel = 1
+        for blk in gruplar_layout:
+            if blk["tip"] == "veya":
+                max_n_paralel = max(max_n_paralel, len(blk["atomlar"]))
+            elif blk["tip"] == "ust_or_cift":
+                # 2-yol paralel; her yol içeride yine paralel olabilir
+                n_a = (len(blk["atomlar_a"]) if blk["veya_a"] else 1)
+                n_b = (len(blk["atomlar_b"]) if blk["veya_b"] else 1)
+                max_n_paralel = max(max_n_paralel, 2, max(n_a, n_b))
+        # y_main = orta hat
+        ana_hat_y = y + max((max_n_paralel - 1) // 2 * PARALEL_GAP_Y, 0) + 60
+        ana_hat_y = max(ana_hat_y, y + 100)
+
+        # ─── ⊕ KAYNAK SEMBOLÜ ─────────────────────────────────
+        x = margin + 10
+        c.create_text(x, ana_hat_y, text="⊕", fill="#1B5E20",
+                       font=("Segoe UI", 22, "bold"))
+        c.create_text(x, ana_hat_y + 26, text="GİRİŞ", fill="#37474F",
+                       font=("Segoe UI", 8, "bold"))
+        son_x = x + 16
+
+        # ─── Akım takibi ───────────────────────────────────
+        akim_aktif = True   # Sol kaynaktan akım gelir; herhangi grup
+                            # YOK olunca akım kesilir, ŞÜPHELİ ise KE
+        akim_ke_flag = False
+
+        # Helper: tek bir bloğu çiz (atom için)
+        def _blok_ciz(bx, by, atom, veya_uye=False):
+            d = atom.get("durum", "na")
+            renk_key = self._rbd_atom_renk_key(d, veya_uye)
+            fill_, outline_ = self._RBD_BLOK_RENK[renk_key], \
+                self._RBD_BLOK_RENK[renk_key]
+            if isinstance(self._RBD_BLOK_RENK[renk_key], tuple):
+                fill_, outline_ = self._RBD_BLOK_RENK[renk_key]
+            else:
+                fill_ = "#FAFBFC"
+                outline_ = self._RBD_BLOK_RENK[renk_key]
+            rect_id = c.create_rectangle(
+                bx, by - BLOK_H / 2, bx + BLOK_W, by + BLOK_H / 2,
+                fill=fill_, outline=outline_, width=2)
+            ad = atom.get("ad", "") or ""
+            is_neg = self._rbd_atom_negatif_mi(ad)
+            # Atom başlığı 2 satır
+            sembol = ("✓" if d == "var" else
+                       "✗" if d == "yok" else
+                       "?" if d == "kontrol_edilemedi" else "·")
+            prefix = "¬ " if is_neg else ""
+            ad_kisa = ad if len(ad) <= 24 else ad[:22] + ".."
+            txt = f"{sembol}  {prefix}{ad_kisa}"
+            txt_id = c.create_text(
+                bx + BLOK_W / 2, by, anchor="center",
+                text=txt, fill=outline_,
+                font=("Segoe UI", 8, "bold"),
+                width=BLOK_W - 8)
+            neden = atom.get("neden", "") or ""
+            if neden:
+                self._rbd_neden_map[rect_id] = neden
+                self._rbd_neden_map[txt_id] = neden
+            return d == "var"
+
+        # Helper: kablo çiz (akan/akmayan)
+        def _kablo(x0, y0, x1, y1, akim_d):
+            if akim_d == "var":
+                c.create_line(x0, y0, x1, y1,
+                               fill=self._RBD_AKIM_VAR_RENK,
+                               width=self._RBD_AKIM_VAR_W)
+            elif akim_d == "ke":
+                c.create_line(x0, y0, x1, y1,
+                               fill=self._RBD_AKIM_KE_RENK,
+                               width=self._RBD_AKIM_KE_W,
+                               dash=(4, 3))
+            else:
+                c.create_line(x0, y0, x1, y1,
+                               fill=self._RBD_AKIM_YOK_RENK,
+                               width=self._RBD_AKIM_YOK_W)
+
+        # ─── HER GRUP BLOĞUNU ÇIZ ─────────────────────────
+        x = son_x + 20
+        for blk in gruplar_layout:
+            tip = blk["tip"]
+            # Grup başlığı (üstte)
+            baslik_y = ana_hat_y - max_n_paralel * PARALEL_GAP_Y // 2 - 18
+            baslik_y = min(baslik_y, ana_hat_y - 60)
+            grup_baslik = blk["baslik"]
+            # Grup başlığı kapsül
+            bg_baslik = "#E3F2FD"; fg_baslik = "#1565C0"
+            c.create_rectangle(x, baslik_y - 10, x + blk["w"], baslik_y + 8,
+                                fill=bg_baslik, outline=fg_baslik, width=1)
+            c.create_text(x + blk["w"] / 2, baslik_y - 1,
+                           text=grup_baslik[:60],
+                           fill=fg_baslik, font=("Segoe UI", 8, "bold"))
+
+            # Giriş kablosu (önceki noktadan sol kavşağa)
+            kavsak_sol_x = x + KAVSAK_X_PAD
+            kavsak_sag_x = x + blk["w"] - KAVSAK_X_PAD
+            akim_d_kablo = "var" if akim_aktif and not akim_ke_flag else (
+                "ke" if akim_ke_flag else "yok")
+            _kablo(son_x, ana_hat_y, kavsak_sol_x, ana_hat_y, akim_d_kablo)
+
+            # Grup içi render
+            if tip == "and":
+                # AND zinciri: atomlar yatay seri, ana hatta dizilir
+                bx = kavsak_sol_x + 8
+                grup_durum = self._rbd_grup_durumu(blk["atomlar"], False)
+                for s in blk["atomlar"]:
+                    _blok_ciz(bx, ana_hat_y, s, veya_uye=False)
+                    bx_son = bx + BLOK_W
+                    # Sonraki bloğa kablo
+                    if s is not blk["atomlar"][-1]:
+                        d_kablo = ("var" if s.get("durum") == "var"
+                                    else "ke" if s.get("durum") == "kontrol_edilemedi"
+                                    else "yok")
+                        _kablo(bx_son, ana_hat_y,
+                                bx_son + ATOM_GAP_X, ana_hat_y, d_kablo)
+                    bx = bx_son + ATOM_GAP_X
+                _kablo(bx - ATOM_GAP_X, ana_hat_y,
+                        kavsak_sag_x, ana_hat_y,
+                        "var" if grup_durum == "var" else
+                        "ke" if grup_durum == "ke" else "yok")
+                # Akım durumu güncelle
+                if grup_durum == "yok":
+                    akim_aktif = False
+                elif grup_durum == "ke":
+                    akim_ke_flag = True
+
+            elif tip == "veya":
+                # Dikey paralel kavşak: n atom alt alta
+                atomlar = blk["atomlar"]
+                n = len(atomlar)
+                top_y = ana_hat_y - (n - 1) * PARALEL_GAP_Y // 2
+                bx = kavsak_sol_x + 12
+                # Sol dikey kavşak hattı
+                grup_durum = self._rbd_grup_durumu(atomlar, True)
+                kavsak_d = ("var" if grup_durum == "var" else
+                             "ke" if grup_durum == "ke" else "yok")
+                _kablo(kavsak_sol_x, top_y,
+                        kavsak_sol_x, top_y + (n - 1) * PARALEL_GAP_Y,
+                        kavsak_d)
+                # Her atom dikey paralel
+                for i, s in enumerate(atomlar):
+                    yi = top_y + i * PARALEL_GAP_Y
+                    d_kablo = ("var" if s.get("durum") == "var"
+                                else "ke" if s.get("durum") == "kontrol_edilemedi"
+                                else "yok")
+                    # Sol kavşak → blok
+                    _kablo(kavsak_sol_x, yi, bx, yi, d_kablo)
+                    _blok_ciz(bx, yi, s, veya_uye=True)
+                    # Blok → sağ kavşak
+                    _kablo(bx + BLOK_W, yi, kavsak_sag_x, yi, d_kablo)
+                # Sağ dikey kavşak hattı
+                _kablo(kavsak_sag_x, top_y,
+                        kavsak_sag_x, top_y + (n - 1) * PARALEL_GAP_Y,
+                        kavsak_d)
+                # "VEYA" sembolleri kavşak ortasında
+                c.create_text(kavsak_sol_x - 8, ana_hat_y,
+                               text="∨", fill="#37474F",
+                               font=("Segoe UI", 12, "bold"))
+                c.create_text(kavsak_sag_x + 8, ana_hat_y,
+                               text="∨", fill="#37474F",
+                               font=("Segoe UI", 12, "bold"))
+                # Akım durumu güncelle
+                if grup_durum == "yok":
+                    akim_aktif = False
+                elif grup_durum == "ke":
+                    akim_ke_flag = True
+
+            else:  # tip == "ust_or_cift"
+                # 2 yol paralel: yol A (üst) ve yol B (alt)
+                y_a = ana_hat_y - 70
+                y_b = ana_hat_y + 70
+                grup_durum_a = self._rbd_grup_durumu(blk["atomlar_a"],
+                                                       blk["veya_a"])
+                grup_durum_b = self._rbd_grup_durumu(blk["atomlar_b"],
+                                                       blk["veya_b"])
+                # En az 1 yol VAR ise grup var; tümü yok ise yok
+                if grup_durum_a == "var" or grup_durum_b == "var":
+                    grup_durum = "var"
+                elif grup_durum_a == "yok" and grup_durum_b == "yok":
+                    grup_durum = "yok"
+                else:
+                    grup_durum = "ke"
+                kavsak_d = ("var" if grup_durum == "var" else
+                             "ke" if grup_durum == "ke" else "yok")
+                # Sol dikey kavşak
+                _kablo(kavsak_sol_x, y_a, kavsak_sol_x, y_b, kavsak_d)
+                # Yol A — alt yol rendering helper
+                def _yol_ciz(yy, atomlar_y, veya_y, grup_dur):
+                    bx_y = kavsak_sol_x + 12
+                    if veya_y:
+                        # Yolun kendisi dikey paralel — basitleştir: 1 özet
+                        # blok + gerçek atomları paralel altında göster
+                        n2 = len(atomlar_y)
+                        top_yy = yy - (n2 - 1) * (PARALEL_GAP_Y - 20) // 2
+                        # Sol dikey kavşak (yol içi)
+                        for i, s in enumerate(atomlar_y):
+                            yi = top_yy + i * (PARALEL_GAP_Y - 20)
+                            d_k = ("var" if s.get("durum") == "var"
+                                    else "ke" if s.get("durum") == "kontrol_edilemedi"
+                                    else "yok")
+                            _kablo(kavsak_sol_x, yi, bx_y, yi, d_k)
+                            _blok_ciz(bx_y, yi, s, veya_uye=True)
+                            _kablo(bx_y + BLOK_W, yi,
+                                    kavsak_sag_x, yi, d_k)
+                    else:
+                        # AND zinciri (yol için tek satır)
+                        bx_y2 = bx_y
+                        for s in atomlar_y:
+                            d_k = ("var" if s.get("durum") == "var"
+                                    else "ke" if s.get("durum") == "kontrol_edilemedi"
+                                    else "yok")
+                            _kablo(bx_y2 - ATOM_GAP_X if s is not atomlar_y[0]
+                                    else kavsak_sol_x,
+                                    yy, bx_y2, yy, d_k)
+                            _blok_ciz(bx_y2, yy, s, veya_uye=False)
+                            bx_y2 = bx_y2 + BLOK_W + ATOM_GAP_X
+                        _kablo(bx_y2 - ATOM_GAP_X, yy,
+                                kavsak_sag_x, yy,
+                                "var" if grup_dur == "var" else
+                                "ke" if grup_dur == "ke" else "yok")
+                if blk["atomlar_a"]:
+                    _yol_ciz(y_a, blk["atomlar_a"], blk["veya_a"],
+                              grup_durum_a)
+                if blk["atomlar_b"]:
+                    _yol_ciz(y_b, blk["atomlar_b"], blk["veya_b"],
+                              grup_durum_b)
+                # Sağ dikey kavşak
+                _kablo(kavsak_sag_x, y_a, kavsak_sag_x, y_b, kavsak_d)
+                # "∨" sembolleri
+                c.create_text(kavsak_sol_x - 8, ana_hat_y,
+                               text="∨", fill="#37474F",
+                               font=("Segoe UI", 12, "bold"))
+                c.create_text(kavsak_sag_x + 8, ana_hat_y,
+                               text="∨", fill="#37474F",
+                               font=("Segoe UI", 12, "bold"))
+                # Akım durumu güncelle
+                if grup_durum == "yok":
+                    akim_aktif = False
+                elif grup_durum == "ke":
+                    akim_ke_flag = True
+
+            son_x = kavsak_sag_x
+            x = son_x + BLOK_GAP_X
+
+        # ─── ⊖ SINK ───────────────────────────────────────
+        sink_x = son_x + 20
+        akim_d_son = ("var" if akim_aktif and not akim_ke_flag else
+                       "ke" if akim_ke_flag else "yok")
+        _kablo(son_x, ana_hat_y, sink_x, ana_hat_y, akim_d_son)
+        c.create_text(sink_x + 4, ana_hat_y, anchor="w",
+                       text="⊖", fill="#B71C1C",
+                       font=("Segoe UI", 22, "bold"))
+        c.create_text(sink_x + 14, ana_hat_y + 26, anchor="w",
+                       text="ÇIKIŞ", fill="#37474F",
+                       font=("Segoe UI", 8, "bold"))
+
+        # ─── SONUÇ ROZETİ ─────────────────────────────────
+        rozet_x = sink_x + 56
+        rozet_renk_map = {
+            "UYGUN":       ("#C8E6C9", "#1B5E20"),
+            "UYGUN DEĞİL": ("#FFCDD2", "#B71C1C"),
+            "ŞÜPHELİ":     ("#FFE0B2", "#E65100"),
+        }
+        rb_fill, rb_outline = rozet_renk_map.get(
+            verdict_kisa, ("#ECEFF1", "#37474F"))
+        c.create_rectangle(rozet_x, ana_hat_y - 22,
+                            rozet_x + 150, ana_hat_y + 22,
+                            fill=rb_fill, outline=rb_outline, width=2)
+        c.create_text(rozet_x + 75, ana_hat_y, text=verdict_kisa,
+                       fill=rb_outline, font=("Segoe UI", 11, "bold"))
+
+        # ─── ALT BANT: BOOLEAN FORMÜL ─────────────────────
+        y_alt = ana_hat_y + max_n_paralel * PARALEL_GAP_Y // 2 + 50
+        y_alt = max(y_alt, ana_hat_y + 100)
+        c.create_line(margin, y_alt, sink_x + 200, y_alt,
+                       fill="#90A4AE", width=1)
+        y_alt += 12
+        c.create_text(margin, y_alt, anchor="nw",
+                       text="▼ Boolean Formül (algoritmaya eşlenik)",
+                       fill="#37474F", font=("Segoe UI", 9, "bold"))
+        y_alt += 18
+        # Formül parçalarını blok layout'undan üret
+        formul_parcalari = []
+        for blk in gruplar_layout:
+            if blk["tip"] == "and":
+                isimler = [self._rbd_atom_kis(s) for s in blk["atomlar"]]
+                if len(isimler) == 1:
+                    formul_parcalari.append(isimler[0])
+                else:
+                    formul_parcalari.append("(" + " ∧ ".join(isimler) + ")")
+            elif blk["tip"] == "veya":
+                isimler = [self._rbd_atom_kis(s) for s in blk["atomlar"]]
+                formul_parcalari.append("(" + " ∨ ".join(isimler) + ")")
+            else:  # ust_or_cift
+                def _yol_str(ats, veya):
+                    isimler = [self._rbd_atom_kis(s) for s in ats]
+                    if veya:
+                        return "(" + " ∨ ".join(isimler) + ")"
+                    if len(isimler) == 1:
+                        return isimler[0]
+                    return "(" + " ∧ ".join(isimler) + ")"
+                a_str = _yol_str(blk["atomlar_a"], blk["veya_a"])
+                b_str = _yol_str(blk["atomlar_b"], blk["veya_b"])
+                formul_parcalari.append(f"({a_str} ∨ {b_str})")
+        formul = " ∧ ".join(formul_parcalari) if formul_parcalari else "(boş)"
+        formul += "  ⇔  UYGUN"
+        c.create_text(margin + 8, y_alt, anchor="nw",
+                       text=formul, fill="#1A237E",
+                       font=("Consolas", 10), width=sink_x + 150)
+
+        try:
+            c.configure(scrollregion=c.bbox("all"))
+        except Exception:
+            pass
+
+    @staticmethod
+    def _rbd_atom_kis(s: dict) -> str:
+        """Atom için kısa sembol (¬X notation dahil)."""
+        ad = (s.get("ad", "") or "").split()
+        if not ad:
+            return "?"
+        # İlk birkaç kelime + negatif prefix
+        is_neg = False
+        ad_full = s.get("ad", "") or ""
+        a = ad_full.lower()
+        if (a.endswith(" yok") or "yok olm" in a or "olmayan" in a
+                or "değil" in a or "yoktur" in a or "kontrendike" in a):
+            is_neg = True
+        # 2-3 kelime kısaltma
+        kisa = " ".join(ad[:2])
+        if len(kisa) > 18:
+            kisa = kisa[:16] + ".."
+        return ("¬" + kisa) if is_neg else kisa
+
+    # ═════════════════════════════════════════════════════════════════
+    # TAB G — KLASİK AKIM ŞEMASI (dikdörtgen kutu + dikey paralel)
+    # Mantıksal formülasyon ile görsel BİREBİR tutarlı:
+    #   VEYA grupları → DİKEY paralel kollar (düz raylar, V-kavşak yok)
+    #   VE grupları   → YATAY seri ana hat, atomlar arası ∧ sembolü
+    #   Gruplar arası → ana hatta ∧ sembolü (VE bağlantısı)
+    #   Üst-OR çiftleri → 2 yatay paralel yol, arada ∨
+    #   Risk faktörü 4 alt-grup → tek mega-OR (6 atom dikey paralel)
+    #   ⊕ pil sol, ⊖ pil sağ; akan yol kalın yeşil
+    # ═════════════════════════════════════════════════════════════════
+
+    # Dikdörtgen kutu renkleri (durum → fill, outline)
+    _KLASIK_BLOK_RENK = {
+        'var':    ('#A5D6A7', '#1B5E20'),  # parlak yeşil
+        'yok':    ('#EF9A9A', '#B71C1C'),  # AND-içi YOK → kırmızı (kontrendike)
+        'or_yok': ('#F5F5F5', '#9E9E9E'),  # OR-içi YOK → soluk gri (bu kol pasif)
+        'ke':     ('#FFE082', '#E65100'),  # sarı şüpheli
+        'bilgi':  ('#ECEFF1', '#90A4AE'),  # bilgi
+    }
+    _KLASIK_KABLO_VAR = '#2E7D32'    # akan yol — kalın yeşil
+    _KLASIK_KABLO_YOK = '#BDBDBD'    # akmayan — ince gri
+    _KLASIK_KABLO_KE = '#E65100'     # şüpheli — sarı kesik
+    _KLASIK_KABLO_VAR_W = 4
+    _KLASIK_KABLO_YOK_W = 2
+    _KLASIK_KABLO_KE_W = 3
+
+    def _klasik_blok_ciz(self, c, x, y, w, h, atom, veya_uye=False):
+        """Dikdörtgen kutu çiz — durum rengi + sembol + etiket (içeride).
+
+        veya_uye=True ise OR grubu içindeki atom — YOK durumu soluk gri
+        (bu kol pasif anlamında, kontrendikasyon kırmızısı değil).
+        Returns: atom durumu str.
+        """
+        d = atom.get("durum", "na")
+        if d == "var":
+            key = "var"
+        elif d == "yok":
+            key = "or_yok" if veya_uye else "yok"
+        elif d == "kontrol_edilemedi":
+            key = "ke"
+        else:
+            key = "bilgi"
+        fill_, outline_ = self._KLASIK_BLOK_RENK[key]
+        rect_id = c.create_rectangle(x, y, x + w, y + h,
+                                       fill=fill_, outline=outline_,
+                                       width=2, tags=('klasik',))
+        sembol = ("✓" if d == "var" else
+                   "✗" if d == "yok" else
+                   "?" if d == "kontrol_edilemedi" else "·")
+        ad = atom.get("ad", "") or ""
+        is_neg = self._rbd_atom_negatif_mi(ad)
+        prefix = "¬ " if is_neg else ""
+        # max 22 karakter — w=160 ile sığar
+        ad_kisa = ad if len(ad) <= 22 else ad[:20] + ".."
+        txt = f"{sembol}  {prefix}{ad_kisa}"
+        txt_id = c.create_text(x + w / 2, y + h / 2, text=txt,
+                                 fill=outline_,
+                                 font=("Segoe UI", 8, "bold"),
+                                 width=w - 8, tags=('klasik',))
+        neden = atom.get("neden", "") or ""
+        if neden:
+            tip_text = f"{prefix}{ad}\n\n{neden}"
+            self._klasik_neden_map[rect_id] = tip_text
+            self._klasik_neden_map[txt_id] = tip_text
+        return d
+
+    def _klasik_kablo(self, c, x0, y0, x1, y1, durum):
+        """Kablo çiz — akıyor (VAR=kalın yeşil) / akmıyor (YOK=ince gri) /
+        şüpheli (KE=sarı kesik)."""
+        if durum == "var":
+            c.create_line(x0, y0, x1, y1,
+                          fill=self._KLASIK_KABLO_VAR,
+                          width=self._KLASIK_KABLO_VAR_W,
+                          tags=('klasik',))
+        elif durum == "ke":
+            c.create_line(x0, y0, x1, y1,
+                          fill=self._KLASIK_KABLO_KE,
+                          width=self._KLASIK_KABLO_KE_W,
+                          dash=(5, 3), tags=('klasik',))
+        else:
+            c.create_line(x0, y0, x1, y1,
+                          fill=self._KLASIK_KABLO_YOK,
+                          width=self._KLASIK_KABLO_YOK_W,
+                          tags=('klasik',))
+
+    @staticmethod
+    def _klasik_durum_anahtari(durum_str: str) -> str:
+        """SartDurumu str → kablo durumu (var/ke/yok)."""
+        if durum_str == "var":
+            return "var"
+        if durum_str == "kontrol_edilemedi":
+            return "ke"
+        return "yok"
+
+    def _klasik_ciz_canvas(self, sartlar: list, detaylar: dict = None,
+                            verdict: str = "", satir: dict = None) -> None:
+        """Klasik Akım Şeması — dikdörtgen kutu + dikey paralel + yatay seri.
+
+        Mantıksal formülasyon ile görsel bire bir tutarlı:
+          • Atom → dikdörtgen kutu (✓/✗/? sembol + ¬ prefix + etiket içeride)
+          • VEYA grup → DİKEY paralel kollar; sol/sağ düz dikey raylar
+          • VE grup → yatay seri kutular ana hatta, atom arası ∧ sembolü
+          • Gruplar arası ana hatta ∧ sembolü (mantıksal AND bağlantısı)
+          • Üst-OR çiftleri → 2 yatay paralel yol, arada ∨
+          • **Risk faktörü 4 alt-grup → tek mega-OR (6 atom dikey paralel)**
+            SUT 4.2.15.D-1(1) lafzı: "bir ya da daha fazlasına sahip olan"
+          • Akan yol kalın yeşil; akmayan ince gri; KE sarı kesik
+          • ⊕ pil sol, ⊖ pil sağ
+        """
+        c = self._klasik_canvas
+        c.delete("all")
+        self._klasik_neden_map = {}
+
+        detaylar = detaylar or {}
+        sartlar = sartlar or []
+        alt_dal = (detaylar.get("alt_dal") or "").strip()
+        is_yoak_ek4f = (("EK-4/F" in alt_dal or "EK4F" in alt_dal)
+                        and ("M.53" in alt_dal or "M.54" in alt_dal
+                             or "Madde 53" in alt_dal
+                             or "Madde 54" in alt_dal))
+
+        margin = 16
+        if not sartlar:
+            c.create_text(margin, margin, anchor="nw",
+                           text="🔆 Klasik Akım Şeması — bir reçete seçin",
+                           fill="#546E7A", font=("Segoe UI", 10))
+            return
+
+        # Yolak adı
+        if "4.2.15.D-1" in alt_dal:
+            yolak_baslik = "D-1 · Atriyal Fibrilasyon"
+        elif "4.2.15.D-2" in alt_dal:
+            yolak_baslik = "D-2 · DVT / Pulmoner Emboli"
+        elif is_yoak_ek4f:
+            yolak_baslik = "EK-4/F · Ortopedi Profilaksi"
+        else:
+            yolak_baslik = alt_dal or "(genel)"
+
+        # Verdict normalize
+        v = (verdict or "").upper().strip()
+        if "UYGUN" in v and ("DEĞİL" in v or "DEGIL" in v):
+            verdict_kisa = "UYGUN DEĞİL"
+        elif "UYGUN" in v:
+            verdict_kisa = "UYGUN"
+        elif "ŞÜPH" in v or "SUPH" in v:
+            verdict_kisa = "ŞÜPHELİ"
+        else:
+            verdict_kisa = v or "—"
+
+        # Gruplara ayır + [pasif]/(bilgi) hariç
+        gruplar: dict = {}
+        sira = []
+        for s in sartlar:
+            g = s.get("grup", "") or "(grupsuz)"
+            if "[pasif]" in g or "(bilgi)" in g:
+                continue
+            if g not in gruplar:
+                gruplar[g] = []
+                sira.append(g)
+            gruplar[g].append(s)
+
+        # ─── RİSK FAKTÖRÜ FLATTEN: 4 alt-OR → tek mega-OR (6 atom) ───
+        # SUT 4.2.15.D-1(1) lafzı: "...durumlarından bir ya da daha fazlasına
+        # sahip olan..." — yani 6 atom flat üst-OR. Görsel olarak tek mega
+        # grup içinde dikey paralel 6 kol.
+        risk_keys = [g for g in sira if g.startswith('Risk fakt.')]
+        if risk_keys:
+            risk_atoms = []
+            for k in risk_keys:
+                for s in gruplar[k]:
+                    s_kopya = dict(s)
+                    # mega-OR üyesi → tüm atomlar veya_grubu=True
+                    s_kopya['veya_grubu'] = True
+                    risk_atoms.append(s_kopya)
+            ilk_idx = sira.index(risk_keys[0])
+            for k in risk_keys:
+                sira.remove(k)
+                del gruplar[k]
+            mega_ad = 'Risk faktörü ≥1 [(1)] (6-OR)'
+            gruplar[mega_ad] = risk_atoms
+            sira.insert(ilk_idx, mega_ad)
+
+        # Üst-VEYA çiftleri
+        ust_or_listesi = [
+            ("Varfarin yolu (a)", "Varfarin yolu (b)", "Varfarin (a) ∨ (b)"),
+            ("Varfarin yolu — ", "İstisna grubu", "Varfarin ∨ İstisna"),
+            ("SK raporu — ilk 24 ay", "24 ay sonrası alt yol",
+             "Heyet raporu (ilk ∨ sonrası)"),
+        ]
+        cift_eslesme = {}
+        for pa, pb, baslik in ust_or_listesi:
+            a_g = next((g for g in sira if g.startswith(pa)), None)
+            b_g = next((g for g in sira if g.startswith(pb)), None)
+            if a_g and b_g and a_g != b_g:
+                cift_eslesme[a_g] = ("a", b_g, baslik)
+                cift_eslesme[b_g] = ("b", a_g, baslik)
+
+        # ─── BAŞLIK ────────────────────────────────────────────
+        y = margin
+        c.create_text(margin, y, anchor="nw",
+                       text=f"🔆 Klasik Akım Şeması · {yolak_baslik}",
+                       fill="#1A237E", font=("Segoe UI", 11, "bold"))
+        y += 22
+        c.create_text(margin, y, anchor="nw",
+                       text="VEYA → dikey paralel · VE → yatay seri ∧ · "
+                            "Risk faktörü 6-atom mega-OR · ⊕→⊖ akım yolu",
+                       fill="#90A4AE", font=("Segoe UI", 8, "italic"))
+        y += 22
+
+        # ─── LAYOUT SABİTLERİ ─────────────────────────────
+        BLOK_W = 160                       # dikdörtgen genişliği
+        BLOK_H = 44                        # dikdörtgen yüksekliği
+        ATOM_GAP_X = 30                    # AND içinde atom arası kablo
+        BLOK_GAP_X = 50                    # gruplar arası ana hat boşluğu (∧ için)
+        PARALEL_GAP_Y = 58                 # VEYA atomları dikey aralık
+        KAVSAK_X_PAD = 28                  # kavşak öncesi/sonrası kablo
+
+        # Grup layout hesabı
+        islenmis = set()
+        gruplar_layout = []
+        for g in sira:
+            if g in islenmis:
+                continue
+            atomlar = gruplar[g]
+            veya = any(s.get("veya_grubu") for s in atomlar)
+            cift = cift_eslesme.get(g)
+            if cift and cift[0] == "a":
+                partner_g = cift[1]
+                partner_atomlar = gruplar.get(partner_g, [])
+
+                def _yol_w(ats):
+                    veya2 = any(s.get("veya_grubu") for s in ats)
+                    if veya2:
+                        return BLOK_W
+                    return (len(ats) * BLOK_W
+                            + max(0, len(ats) - 1) * ATOM_GAP_X)
+                w = (max(_yol_w(atomlar), _yol_w(partner_atomlar))
+                     + 2 * KAVSAK_X_PAD)
+                gruplar_layout.append({
+                    "tip": "ust_or_cift",
+                    "baslik": cift[2],
+                    "g_a": g, "g_b": partner_g,
+                    "atomlar_a": atomlar,
+                    "atomlar_b": partner_atomlar,
+                    "veya_a": veya,
+                    "veya_b": any(s.get("veya_grubu") for s in partner_atomlar),
+                    "w": w,
+                })
+                islenmis.add(g); islenmis.add(partner_g)
+            elif cift and cift[0] == "b":
+                islenmis.add(g)
+                continue
+            elif veya:
+                w = BLOK_W + 2 * KAVSAK_X_PAD
+                gruplar_layout.append({
+                    "tip": "veya", "baslik": g, "g_ad": g,
+                    "atomlar": atomlar, "w": w,
+                })
+                islenmis.add(g)
+            else:
+                w = (len(atomlar) * BLOK_W
+                     + max(0, len(atomlar) - 1) * ATOM_GAP_X
+                     + 2 * KAVSAK_X_PAD)
+                gruplar_layout.append({
+                    "tip": "and", "baslik": g, "g_ad": g,
+                    "atomlar": atomlar, "w": w,
+                })
+                islenmis.add(g)
+
+        # Ana hat y koordinatı — dikey alana sığma
+        max_n_paralel = 1
+        for blk in gruplar_layout:
+            if blk["tip"] == "veya":
+                max_n_paralel = max(max_n_paralel, len(blk["atomlar"]))
+            elif blk["tip"] == "ust_or_cift":
+                max_n_paralel = max(max_n_paralel, 2)
+        ana_hat_y = (y + max(80, (max_n_paralel - 1) * PARALEL_GAP_Y // 2
+                              + BLOK_H + 30))
+
+        # ⊕ kaynak (pil)
+        x = margin + 14
+        c.create_text(x, ana_hat_y, text="⊕", fill="#1B5E20",
+                       font=("Segoe UI", 24, "bold"), tags=('klasik',))
+        c.create_text(x, ana_hat_y + 26, text="PİL+", fill="#37474F",
+                       font=("Segoe UI", 8, "bold"), tags=('klasik',))
+        son_x = x + 18
+
+        # Akım takibi
+        akim_aktif = True
+        akim_ke_flag = False
+
+        x = son_x + 14
+        for idx, blk in enumerate(gruplar_layout):
+            tip = blk["tip"]
+            kavsak_sol_x = x + KAVSAK_X_PAD
+            kavsak_sag_x = x + blk["w"] - KAVSAK_X_PAD
+
+            # Giriş kablosu — son_x → kavsak_sol_x; gruplar arası ∧ sembolü
+            giris_d = ("var" if akim_aktif and not akim_ke_flag else
+                        "ke" if akim_ke_flag else "yok")
+            if idx > 0:
+                ax = (son_x + kavsak_sol_x) // 2
+                self._klasik_kablo(c, son_x, ana_hat_y,
+                                     ax - 10, ana_hat_y, giris_d)
+                c.create_text(ax, ana_hat_y - 1, text="∧", fill="#37474F",
+                               font=("Segoe UI", 13, "bold"),
+                               tags=('klasik',))
+                self._klasik_kablo(c, ax + 10, ana_hat_y,
+                                     kavsak_sol_x, ana_hat_y, giris_d)
+            else:
+                self._klasik_kablo(c, son_x, ana_hat_y,
+                                     kavsak_sol_x, ana_hat_y, giris_d)
+
+            if tip == "and":
+                # AND zinciri — yatay seri, atom arası ∧
+                atomlar = blk["atomlar"]
+                n = len(atomlar)
+                grup_d = self._rbd_grup_durumu(atomlar, False)
+                for i, s in enumerate(atomlar):
+                    bx = kavsak_sol_x + i * (BLOK_W + ATOM_GAP_X)
+                    self._klasik_blok_ciz(c, bx, ana_hat_y - BLOK_H / 2,
+                                           BLOK_W, BLOK_H, s, False)
+                    if i < n - 1:
+                        d_k = self._klasik_durum_anahtari(
+                            s.get("durum", "na"))
+                        cx = bx + BLOK_W
+                        ax = cx + ATOM_GAP_X // 2
+                        self._klasik_kablo(c, cx, ana_hat_y,
+                                             ax - 6, ana_hat_y, d_k)
+                        c.create_text(ax, ana_hat_y - 1, text="∧",
+                                       fill="#546E7A",
+                                       font=("Segoe UI", 11, "bold"),
+                                       tags=('klasik',))
+                        self._klasik_kablo(c, ax + 6, ana_hat_y,
+                                             cx + ATOM_GAP_X, ana_hat_y,
+                                             d_k)
+                # Son atom sağı → sağ kavşak
+                son_sag = (kavsak_sol_x + (n - 1) * (BLOK_W + ATOM_GAP_X)
+                            + BLOK_W)
+                self._klasik_kablo(c, son_sag, ana_hat_y,
+                                     kavsak_sag_x, ana_hat_y,
+                                     "var" if grup_d == "var" else
+                                     "ke" if grup_d == "ke" else "yok")
+                if grup_d == "yok":
+                    akim_aktif = False
+                elif grup_d == "ke":
+                    akim_ke_flag = True
+
+            elif tip == "veya":
+                # Dikey paralel — düz raylar (Y-kavşak yok)
+                atomlar = blk["atomlar"]
+                n = len(atomlar)
+                top_y = ana_hat_y - (n - 1) * PARALEL_GAP_Y // 2
+                bot_y = top_y + (n - 1) * PARALEL_GAP_Y
+                grup_d = self._rbd_grup_durumu(atomlar, True)
+                kavsak_d = ("var" if grup_d == "var" else
+                             "ke" if grup_d == "ke" else "yok")
+                # Sol/sağ dikey düz raylar
+                self._klasik_kablo(c, kavsak_sol_x, top_y,
+                                     kavsak_sol_x, bot_y, kavsak_d)
+                self._klasik_kablo(c, kavsak_sag_x, top_y,
+                                     kavsak_sag_x, bot_y, kavsak_d)
+                # Her atom kendi yatay kolunda
+                bx_left = kavsak_sol_x + 10
+                for i, s in enumerate(atomlar):
+                    yi = top_y + i * PARALEL_GAP_Y
+                    d_k = self._klasik_durum_anahtari(
+                        s.get("durum", "na"))
+                    # Sol ray → blok
+                    self._klasik_kablo(c, kavsak_sol_x, yi,
+                                         bx_left, yi, d_k)
+                    self._klasik_blok_ciz(c, bx_left, yi - BLOK_H / 2,
+                                            BLOK_W, BLOK_H, s, True)
+                    # Blok → sağ ray
+                    self._klasik_kablo(c, bx_left + BLOK_W, yi,
+                                         kavsak_sag_x, yi, d_k)
+                    # Aşağı komşuyla arasında ∨ sembolü (solun solunda)
+                    if i < n - 1:
+                        mid_y = yi + PARALEL_GAP_Y // 2
+                        c.create_text(kavsak_sol_x - 14, mid_y, text="∨",
+                                       fill="#1565C0",
+                                       font=("Segoe UI", 11, "bold"),
+                                       tags=('klasik',))
+                if grup_d == "yok":
+                    akim_aktif = False
+                elif grup_d == "ke":
+                    akim_ke_flag = True
+
+            else:  # ust_or_cift — 2 yol paralel
+                ats_a = blk["atomlar_a"]
+                ats_b = blk["atomlar_b"]
+                veya_a = blk["veya_a"]
+                veya_b = blk["veya_b"]
+                gd_a = self._rbd_grup_durumu(ats_a, veya_a)
+                gd_b = self._rbd_grup_durumu(ats_b, veya_b)
+                if gd_a == "var" or gd_b == "var":
+                    grup_d = "var"
+                elif gd_a == "yok" and gd_b == "yok":
+                    grup_d = "yok"
+                else:
+                    grup_d = "ke"
+                kavsak_d = ("var" if grup_d == "var" else
+                             "ke" if grup_d == "ke" else "yok")
+                y_a = ana_hat_y - 55
+                y_b = ana_hat_y + 55
+                # Sol/sağ dikey raylar
+                self._klasik_kablo(c, kavsak_sol_x, y_a,
+                                     kavsak_sol_x, y_b, kavsak_d)
+                self._klasik_kablo(c, kavsak_sag_x, y_a,
+                                     kavsak_sag_x, y_b, kavsak_d)
+                # Ortada ∨ sembolü (üst-OR çift)
+                c.create_text(kavsak_sol_x - 14, ana_hat_y, text="∨",
+                               fill="#1565C0",
+                               font=("Segoe UI", 11, "bold"),
+                               tags=('klasik',))
+
+                def _yol_ciz(yy, ats, veya_y, gd_y):
+                    yol_d = ("var" if gd_y == "var" else
+                              "ke" if gd_y == "ke" else "yok")
+                    if veya_y or len(ats) == 1:
+                        # Yol içinde tek seri (1 blok) veya alt-OR → seri çiz
+                        n_y = len(ats)
+                        for i, s in enumerate(ats):
+                            bx_y = kavsak_sol_x + i * (BLOK_W + ATOM_GAP_X)
+                            self._klasik_blok_ciz(c, bx_y,
+                                                    yy - BLOK_H / 2,
+                                                    BLOK_W, BLOK_H, s,
+                                                    veya_y)
+                            if i < n_y - 1:
+                                d_k = self._klasik_durum_anahtari(
+                                    s.get("durum", "na"))
+                                cx2 = bx_y + BLOK_W
+                                ax2 = cx2 + ATOM_GAP_X // 2
+                                self._klasik_kablo(c, cx2, yy,
+                                                     ax2 - 6, yy, d_k)
+                                op = "∨" if veya_y else "∧"
+                                op_col = "#1565C0" if veya_y else "#546E7A"
+                                c.create_text(ax2, yy - 1, text=op,
+                                               fill=op_col,
+                                               font=("Segoe UI", 10, "bold"),
+                                               tags=('klasik',))
+                                self._klasik_kablo(c, ax2 + 6, yy,
+                                                     cx2 + ATOM_GAP_X,
+                                                     yy, d_k)
+                        son_sag2 = (kavsak_sol_x
+                                     + (n_y - 1) * (BLOK_W + ATOM_GAP_X)
+                                     + BLOK_W)
+                        self._klasik_kablo(c, son_sag2, yy,
+                                             kavsak_sag_x, yy, yol_d)
+                        # Sol kavşaktan ilk bloğa giriş kablosu
+                        self._klasik_kablo(c, kavsak_sol_x, yy,
+                                             kavsak_sol_x, yy, yol_d)
+                    else:
+                        # AND zinciri — yatay seri ∧
+                        n_y = len(ats)
+                        for i, s in enumerate(ats):
+                            bx_y = kavsak_sol_x + i * (BLOK_W + ATOM_GAP_X)
+                            self._klasik_blok_ciz(c, bx_y,
+                                                    yy - BLOK_H / 2,
+                                                    BLOK_W, BLOK_H, s,
+                                                    False)
+                            if i < n_y - 1:
+                                d_k = self._klasik_durum_anahtari(
+                                    s.get("durum", "na"))
+                                cx2 = bx_y + BLOK_W
+                                ax2 = cx2 + ATOM_GAP_X // 2
+                                self._klasik_kablo(c, cx2, yy,
+                                                     ax2 - 6, yy, d_k)
+                                c.create_text(ax2, yy - 1, text="∧",
+                                               fill="#546E7A",
+                                               font=("Segoe UI", 10, "bold"),
+                                               tags=('klasik',))
+                                self._klasik_kablo(c, ax2 + 6, yy,
+                                                     cx2 + ATOM_GAP_X,
+                                                     yy, d_k)
+                        son_sag2 = (kavsak_sol_x
+                                     + (n_y - 1) * (BLOK_W + ATOM_GAP_X)
+                                     + BLOK_W)
+                        self._klasik_kablo(c, son_sag2, yy,
+                                             kavsak_sag_x, yy, yol_d)
+
+                if ats_a:
+                    _yol_ciz(y_a, ats_a, veya_a, gd_a)
+                if ats_b:
+                    _yol_ciz(y_b, ats_b, veya_b, gd_b)
+                if grup_d == "yok":
+                    akim_aktif = False
+                elif grup_d == "ke":
+                    akim_ke_flag = True
+
+            son_x = kavsak_sag_x
+            x = son_x + BLOK_GAP_X
+
+        # ⊖ sink (son grup → sink arasında da ∧ olmadı çünkü "akım çıkışı")
+        sink_x = son_x + 28
+        son_d = ("var" if akim_aktif and not akim_ke_flag else
+                  "ke" if akim_ke_flag else "yok")
+        self._klasik_kablo(c, son_x, ana_hat_y, sink_x, ana_hat_y, son_d)
+        c.create_text(sink_x + 6, ana_hat_y, anchor="w", text="⊖",
+                       fill="#B71C1C", font=("Segoe UI", 24, "bold"),
+                       tags=('klasik',))
+        c.create_text(sink_x + 18, ana_hat_y + 26, anchor="w", text="PİL−",
+                       fill="#37474F", font=("Segoe UI", 8, "bold"),
+                       tags=('klasik',))
+
+        # Verdict rozeti
+        rozet_x = sink_x + 58
+        rozet_renk = {
+            "UYGUN":       ("#C8E6C9", "#1B5E20"),
+            "UYGUN DEĞİL": ("#FFCDD2", "#B71C1C"),
+            "ŞÜPHELİ":     ("#FFE0B2", "#E65100"),
+        }.get(verdict_kisa, ("#ECEFF1", "#37474F"))
+        c.create_rectangle(rozet_x, ana_hat_y - 22,
+                            rozet_x + 150, ana_hat_y + 22,
+                            fill=rozet_renk[0], outline=rozet_renk[1],
+                            width=2, tags=('klasik',))
+        c.create_text(rozet_x + 75, ana_hat_y, text=verdict_kisa,
+                       fill=rozet_renk[1], font=("Segoe UI", 11, "bold"),
+                       tags=('klasik',))
+
+        # ─── BOOLEAN FORMÜL (mevzuata sadık, görselle birebir) ───
+        y_alt = ana_hat_y + max(80, (max_n_paralel - 1) * PARALEL_GAP_Y // 2
+                                  + BLOK_H + 30)
+        c.create_line(margin, y_alt, sink_x + 200, y_alt,
+                       fill="#90A4AE", width=1, tags=('klasik',))
+        y_alt += 12
+        c.create_text(margin, y_alt, anchor="nw",
+                       text="▼ Boolean Formül (mevzuata sadık · görselle birebir)",
+                       fill="#37474F", font=("Segoe UI", 9, "bold"),
+                       tags=('klasik',))
+        y_alt += 18
+        formul_parcalari = []
+        for blk in gruplar_layout:
+            if blk["tip"] == "and":
+                isimler = [self._rbd_atom_kis(s) for s in blk["atomlar"]]
+                if len(isimler) == 1:
+                    formul_parcalari.append(isimler[0])
+                else:
+                    formul_parcalari.append("(" + " ∧ ".join(isimler) + ")")
+            elif blk["tip"] == "veya":
+                isimler = [self._rbd_atom_kis(s) for s in blk["atomlar"]]
+                formul_parcalari.append("(" + " ∨ ".join(isimler) + ")")
+            else:  # ust_or_cift
+                def _yol_s(ats, veya_y):
+                    isimler = [self._rbd_atom_kis(s) for s in ats]
+                    if veya_y:
+                        return "(" + " ∨ ".join(isimler) + ")"
+                    if len(isimler) == 1:
+                        return isimler[0]
+                    return "(" + " ∧ ".join(isimler) + ")"
+                a_s = _yol_s(blk["atomlar_a"], blk["veya_a"])
+                b_s = _yol_s(blk["atomlar_b"], blk["veya_b"])
+                formul_parcalari.append(f"({a_s} ∨ {b_s})")
+        formul = " ∧ ".join(formul_parcalari) if formul_parcalari else "(boş)"
+        formul += "  ⇔  UYGUN"
+        c.create_text(margin + 8, y_alt, anchor="nw", text=formul,
+                       fill="#1A237E", font=("Consolas", 10),
+                       width=sink_x + 150, tags=('klasik',))
+
+        # Legend
+        y_leg = y_alt + 40
+        c.create_text(margin, y_leg, anchor="nw",
+                       text="🔆 Kutu: ✓ VAR (yeşil) · ✗ YOK (kırmızı/gri) · "
+                            "? KE (sarı) · ¬ = NEGATİF · "
+                            "∧ AND yatay seri · ∨ OR dikey paralel",
+                       fill="#546E7A", font=("Segoe UI", 8),
+                       tags=('klasik',))
+
+        try:
+            c.configure(scrollregion=c.bbox("all"))
+        except Exception:
+            pass
 
     # ----------------------------------------------------------- AY/YIL
     def _ay_listesini_yukle(self):
