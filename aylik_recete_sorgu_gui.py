@@ -617,7 +617,7 @@ class AylikReceteSorguGUI:
             self.root.after(0, self._durum_yaz, f"DB hatası: {e}")
             self.root.after(0, lambda: messagebox.showerror(
                 "Bağlantı Hatası",
-                f"Botanik EOS veritabanına bağlanılamadı:\n{e}"))
+                f"Botanik EOS veritabanına bağlanılamadı:\n{e}"), parent=self.root)
 
     def _lookup_yukle(self):
         if not self.db:
@@ -1722,7 +1722,7 @@ class AylikReceteSorguGUI:
             try:
                 from tkinter import messagebox
                 messagebox.showinfo("Kontrol Butonları",
-                                     "Henüz buton yüklenmemiş.")
+                                     "Henüz buton yüklenmemiş.", parent=self.root)
             except Exception:
                 pass
             return
@@ -3706,7 +3706,7 @@ class AylikReceteSorguGUI:
             try:
                 yil = int(yil_str)
             except ValueError:
-                messagebox.showwarning("Uyarı", "Geçersiz yıl")
+                messagebox.showwarning("Uyarı", "Geçersiz yıl", parent=self.root)
                 return
         if ay_str == "" or ay_str == "Tümü":
             ay = None
@@ -3721,7 +3721,8 @@ class AylikReceteSorguGUI:
                 "Tüm Reçeteler",
                 "Yıl ve ay 'Tümü' — TÜM reçeteler yüklenecek.\n"
                 "Bu uzun sürebilir ve çok bellek kullanabilir.\n\n"
-                "Devam edilsin mi?"):
+                "Devam edilsin mi?",
+                parent=self.root):
                 return
 
         # Önce mevcut state kaydet
@@ -3905,7 +3906,7 @@ class AylikReceteSorguGUI:
                 # Hata kullanıcıya göster
                 hata_msg = str(e_sql)
                 self.root.after(0, lambda: messagebox.showerror(
-                    "SQL Hatası", f"Sorgu fail:\n{hata_msg[:300]}"))
+                    "SQL Hatası", f"Sorgu fail:\n{hata_msg[:300]}"), parent=self.root)
                 self.root.after(0, lambda: self.lbl_sayim.config(text=f"SQL Hata"))
                 self.root.after(0, self._durum_yaz, f"SQL Hata: {hata_msg[:120]}")
                 return
@@ -4853,7 +4854,7 @@ class AylikReceteSorguGUI:
         except Exception as e:
             from tkinter import messagebox
             messagebox.showerror("Hata",
-                                  f"Filtre ayar modülü yüklenemedi:\n{e}")
+                                  f"Filtre ayar modülü yüklenemedi:\n{e}", parent=self.root)
             return
 
         def _on_save(yeni_ayarlar):
@@ -5007,7 +5008,7 @@ class AylikReceteSorguGUI:
         İşlem sonrası seçim seti TEMİZLENİR. Renk RENK_GRI ise ilaç adı
         otomatik olarak dışlama listesine eklenir."""
         if not self.secili_iidler:
-            messagebox.showinfo("Bilgi", "Önce satırları seç (☐ kutucukları)")
+            messagebox.showinfo("Bilgi", "Önce satırları seç (☐ kutucukları)", parent=self.root)
             return
         n = len(self.secili_iidler)
         # Gri ise dışlama listesine ekle (boyamadan önce — iidler üzerinden)
@@ -5058,7 +5059,7 @@ class AylikReceteSorguGUI:
                 "Filtreli Satırları Boya",
                 f"Filtreden geçen {n} satır '{RENK_ETIKET[renk]}' rengine "
                 f"boyanacak.\n(Listedeki tüm satırlar — scroll dışındakiler "
-                f"dahil){ek_uyari}\n\nEmin misin?"):
+                f"dahil){ek_uyari}\n\nEmin misin?", parent=self.root):
             return
         eklendi = 0
         if renk == RENK_GRI:
@@ -5108,7 +5109,7 @@ class AylikReceteSorguGUI:
 
     def _tum_renkleri_sifirla(self):
         if not messagebox.askyesno("Tüm Renkleri Sıfırla",
-                                     "Tüm satırlar BEYAZ olacak. Emin misin?"):
+                                     "Tüm satırlar BEYAZ olacak. Emin misin?", parent=self.root):
             return
         for iid in self.satir_renkleri:
             self.satir_renkleri[iid] = RENK_BEYAZ
@@ -5152,7 +5153,7 @@ class AylikReceteSorguGUI:
             n = len(self.gosterilen_iids)
             if messagebox.askyesno(
                     "Hızlı Filtre + Boya",
-                    f"{n} satır filtreden geçti. Yeşile boyansın mı?"):
+                    f"{n} satır filtreden geçti. Yeşile boyansın mı?", parent=self.root):
                 self._gorunenleri_boya(RENK_YESIL)
 
     # ----------------------------------------------------------- SOL TIK (CHECKBOX TOGGLE)
@@ -5776,7 +5777,7 @@ class AylikReceteSorguGUI:
             return
         tc = (s.get("tc") or "").strip()
         if not tc:
-            messagebox.showwarning("Uyarı", "Bu satırda hasta TC bilgisi yok.")
+            messagebox.showwarning("Uyarı", "Bu satırda hasta TC bilgisi yok.", parent=self.root)
             return
         self._panoya_yaz(tc)
         logger.info(f"Hasta TC panoya kopyalandı: {tc}")
@@ -5787,7 +5788,7 @@ class AylikReceteSorguGUI:
             return
         rec_no = (s.get("rec_no") or "").strip()
         if not rec_no:
-            messagebox.showwarning("Uyarı", "Bu satırda E-reçete numarası yok.")
+            messagebox.showwarning("Uyarı", "Bu satırda E-reçete numarası yok.", parent=self.root)
             return
         self._panoya_yaz(rec_no)
         logger.info(f"E-Reçete no panoya kopyalandı: {rec_no}")
@@ -5801,7 +5802,7 @@ class AylikReceteSorguGUI:
             messagebox.showwarning(
                 "Uyarı",
                 "Bu satırda sistem reçete no (SGK İşlem No) yok.\n"
-                "Eski/farklı tipte bir reçete olabilir.")
+                "Eski/farklı tipte bir reçete olabilir.", parent=self.root)
             return
         self._panoya_yaz(sistem_no)
         logger.info(f"Sistem reçete no panoya kopyalandı: {sistem_no}")
@@ -5872,7 +5873,7 @@ class AylikReceteSorguGUI:
         sistem_no = (s.get("sistem_recete_no") or "").strip()
         rec_no = sistem_no or (s.get("rec_no") or "").strip()
         if not rec_no:
-            messagebox.showwarning("Uyarı", "Bu satırda reçete numarası yok.")
+            messagebox.showwarning("Uyarı", "Bu satırda reçete numarası yok.", parent=self.root)
             return
         threading.Thread(
             target=self._medulada_ac_worker,
@@ -5889,7 +5890,7 @@ class AylikReceteSorguGUI:
             self.root.after(
                 0,
                 lambda: messagebox.showerror(
-                    "Hata", f"Medula otomasyon modülü yüklenemedi:\n{e}"),
+                    "Hata", f"Medula otomasyon modülü yüklenemedi:\n{e}", parent=self.root),
             )
             return
 
@@ -5901,7 +5902,7 @@ class AylikReceteSorguGUI:
                     lambda: messagebox.showwarning(
                         "Medula bulunamadı",
                         "Medula penceresi açık değil veya bulunamadı.\n"
-                        "Önce Medula'yı açıp giriş yapın."),
+                        "Önce Medula'yı açıp giriş yapın.", parent=self.root),
                 )
                 return
 
@@ -5930,7 +5931,7 @@ class AylikReceteSorguGUI:
                     0,
                     lambda: messagebox.showerror(
                         "Hata",
-                        "Reçete Sorgu menüsü açılamadı. Medula ana sayfada mı?"),
+                        "Reçete Sorgu menüsü açılamadı. Medula ana sayfada mı?", parent=self.root),
                 )
                 return
 
@@ -5942,7 +5943,7 @@ class AylikReceteSorguGUI:
                 self.root.after(
                     0,
                     lambda: messagebox.showerror(
-                        "Hata", f"Reçete numarası yazılamadı: {recete_no}"),
+                        "Hata", f"Reçete numarası yazılamadı: {recete_no}", parent=self.root),
                 )
                 return
 
@@ -5951,7 +5952,7 @@ class AylikReceteSorguGUI:
                 self.root.after(
                     0,
                     lambda: messagebox.showerror(
-                        "Hata", "Sorgula butonu tıklanamadı."),
+                        "Hata", "Sorgula butonu tıklanamadı.", parent=self.root),
                 )
                 return
 
@@ -5961,7 +5962,7 @@ class AylikReceteSorguGUI:
             self.root.after(
                 0,
                 lambda err=e: messagebox.showerror(
-                    "Hata", f"Medula'da açma sırasında hata:\n{err}"),
+                    "Hata", f"Medula'da açma sırasında hata:\n{err}", parent=self.root),
             )
 
     def _satir_detay(self, event=None):
@@ -7064,13 +7065,13 @@ class AylikReceteSorguGUI:
     # ----------------------------------------------------------- EXCEL EXPORT
     def _excel_export(self):
         if not self.tum_satirlar:
-            messagebox.showwarning("Uyarı", "Aktarılacak veri yok")
+            messagebox.showwarning("Uyarı", "Aktarılacak veri yok", parent=self.root)
             return
         try:
             import openpyxl
             from openpyxl.styles import PatternFill, Font, Alignment
         except ImportError:
-            messagebox.showerror("Hata", "openpyxl yüklü değil")
+            messagebox.showerror("Hata", "openpyxl yüklü değil", parent=self.root)
             return
 
         donem = self.aktif_donem or "tum"
@@ -7122,10 +7123,10 @@ class AylikReceteSorguGUI:
             wb.save(path)
             self._durum_yaz(f"Excel kaydedildi: {path}")
             if messagebox.askyesno("Tamamlandı",
-                                     f"Excel kaydedildi:\n{path}\n\nAçılsın mı?"):
+                                     f"Excel kaydedildi:\n{path}\n\nAçılsın mı?", parent=self.root):
                 os.startfile(path)
         except Exception as e:
-            messagebox.showerror("Hata", f"Excel kaydedilemedi: {e}")
+            messagebox.showerror("Hata", f"Excel kaydedilemedi: {e}", parent=self.root)
 
     # ───────────────────────────────────────────────────────────────────
     # STATİN / LİPİD SUT KONTROLÜ
