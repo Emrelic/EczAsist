@@ -534,7 +534,8 @@ class DepoEkstreModul:
             if kaynak and kaynak in df.columns:
                 yeni[hedef_kolon] = df[kaynak]
             else:
-                yeni[hedef_kolon] = ''
+                # Kaynak tanımsız → NaN bırak; '' verirsek pd.notna True döner ve float('') patlar
+                yeni[hedef_kolon] = float('nan')
 
         # Fatura Tutarı öncelikli; yoksa Borç kullan (eşleştirme tek alan üzerinden gider)
         def _bos_mu(seri):
@@ -1108,8 +1109,15 @@ class DepoEkstreModul:
                 f"✅ Çözüm: Excel dosyasını kapatın ve tekrar deneyin"
             )
         except Exception as e:
+            # Sonuç penceresi yarı yolda kaldıysa kapat — yoksa altında messagebox saklanır, GUI donmuş görünür
+            if getattr(self, '_sonuc_pencere', None) is not None:
+                try:
+                    self._sonuc_pencere.destroy()
+                except Exception:
+                    pass
+                self._sonuc_pencere = None
             messagebox.showerror("Hata", f"Dosya okuma hatası: {str(e)}")
-            logger.error(f"Ekstre dosya okuma hatası: {e}")
+            logger.error(f"Ekstre dosya okuma hatası: {e}", exc_info=True)
 
     def _ekstre_sonuc_penceresi_olustur(self, df_depo, df_eczane, dosya1_yol, dosya2_yol):
         """Büyük karşılaştırma sonuç penceresi - ACCORDION PANELLER İLE"""
@@ -3172,15 +3180,20 @@ class DepoEkstreModul:
         return f"{tutar:,.2f} ₺"
 
     def _bul_sutun(self, df, alternatifler):
-        """DataFrame'de sütun bul"""
+        """DataFrame'de sütun bul — tamamen boş kolonu atla (şablon kaynağı tanımsız bırakılmış olabilir)"""
+        def _kolon_bos_mu(col_name):
+            try:
+                return df[col_name].astype(str).str.strip().replace('nan', '').eq('').all()
+            except Exception:
+                return False
         for alt in alternatifler:
-            if alt in df.columns:
+            if alt in df.columns and not _kolon_bos_mu(alt):
                 return alt
         for alt in alternatifler:
             alt_lower = alt.lower().replace(" ", "").replace("_", "").replace("/", "")
             for col in df.columns:
                 col_lower = col.lower().replace(" ", "").replace("_", "").replace("/", "")
-                if alt_lower in col_lower or col_lower in alt_lower:
+                if (alt_lower in col_lower or col_lower in alt_lower) and not _kolon_bos_mu(col):
                     return col
         return None
 

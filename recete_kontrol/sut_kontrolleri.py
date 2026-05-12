@@ -8618,7 +8618,11 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         'Rapor süresi parse edilemiyor — manuel doğrulama',
         'rapor_metni', grup=g_e_bilgi))
 
-    # ── GRUP F: 24 ay sonrası alt yol [(2) son cümle] [AND, 2+1 atomik] ─
+    # ── GRUP F: 24 ay sonrası alt yol [(2) son cümle] [AND, 2 atomik] ──
+    # SUT D-1(2) son cümle: "Bu raporun süresi en fazla 24 ay olup, bu süre
+    # dolduktan sonra, aile hekimi veya uzman hekim tarafından reçete
+    # edilebilir." Yani rapor metninde uzman branş İBARESİ aramaya gerek
+    # YOK — reçete eden doktorun branşı (aile hk veya uzman) yeterli.
     g_f = '24 ay sonrası alt yol [(2)]'
     # F1: ilk 24 ay tamamlandı — hasta DB sorgusundan tespit
     f1_durum, f1_neden = _yoak_atom_f1_24ay_doldu(ilac_sonuc)
@@ -8626,15 +8630,7 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         'İlk 2 rapor süresi (24 ay) tamamlanmış',
         f1_durum, f1_neden,
         'hasta_yoak_gecmisi', grup=g_f))
-    # F2: uzman hekim raporu (kard/iç/göğüs/KVC/nöro)
-    # SUT lafzında "uzman hekim raporu" — SK gerekmez ama uzman dalları aynı
-    # Burada kontrol: rapor metninde uzman dallarından biri var mı (E3 ile aynı)
-    sartlar.append(SartSonuc(
-        'Uzman hekim raporu (kard/iç/göğüs/KVC/nöro)',
-        SartDurumu.VAR if bulunan_brans_sayisi >= 1 else SartDurumu.YOK,
-        f'{bulunan_brans_sayisi}/5 uzman branş ibaresi var' if bulunan_brans_sayisi >= 1
-        else 'uzman branş ibaresi yok',
-        'rapor_metni', grup=g_f))
+    # F2 (eski "rapor metninde uzman ibare" şartı KALDIRILDI — SUT'ta yok)
     # F3: aile hekimi VEYA uzman reçete edebilir
     # Aile hekimi tespiti: branş + ASM kurum + tesis kodu (3 yol)
     aile_hk, aile_neden = _yoak_atom_f_aile_hekimi(ilac_sonuc)
@@ -8906,9 +8902,10 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         'Rapor süresi parse edilemiyor — manuel doğrulama',
         'rapor_metni', grup=g_e2_bilgi))
 
-    # ── GRUP F2: 24 ay sonrası alt yol [(3)] [AND, 2+1 atomik] ────────
-    # NOT: D-2(3) son cümle: "...VE NÖROLOJİ uzman hekimlerince düzenlenen..."
-    # Yani 24 ay sonrası NÖROLOJİ EKLENİR.
+    # ── GRUP F2: 24 ay sonrası alt yol [(3)] [AND, 2 atomik] ──────────
+    # SUT D-2(3) son cümle: 24 ay sonrası nöroloji eklenir (uzman dalları
+    # genişler) ama rapor metninde uzman branş İBARESİ aramaya gerek YOK
+    # — reçete eden doktorun branşı (aile hk veya uzman+nöro) yeterli.
     g_f2 = '24 ay sonrası alt yol [(3)]'
     # F2-1: ilk 24 ay tamamlandı — hasta DB sorgusundan tespit
     f21_durum, f21_neden = _yoak_atom_f1_24ay_doldu(ilac_sonuc)
@@ -8916,17 +8913,7 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         'İlk 2 rapor süresi (24 ay) tamamlanmış',
         f21_durum, f21_neden,
         'hasta_yoak_gecmisi', grup=g_f2))
-    # F2-2: uzman hekim raporu (kard/iç/göğüs/KVC + NÖROLOJİ)
-    # Nöroloji eklenir — D-1 listesi ile aynı 5 branş
-    nor_var = _yoak_atom_brans_var(metin_lower,
-                                    ('noroloji', 'nöroloji', 'noroloj'))
-    bulunan_brans_f2 = bulunan_brans + (1 if nor_var else 0)
-    sartlar.append(SartSonuc(
-        'Uzman hekim raporu (kard/iç/göğüs/KVC/NÖRO — 24 ay sonrası eklenir)',
-        SartDurumu.VAR if bulunan_brans_f2 >= 1 else SartDurumu.YOK,
-        f'{bulunan_brans_f2}/5 uzman branş tespit (24ay sonrası nöroloji+)'
-        if bulunan_brans_f2 >= 1 else 'uzman branş ibaresi yok',
-        'rapor_metni', grup=g_f2))
+    # F2-2 (eski "rapor metninde uzman ibare" şartı KALDIRILDI — SUT'ta yok)
     # F2-3: aile hekimi reçete (branş + ASM kurum + tesis kodu)
     aile_hk, aile_neden = _yoak_atom_f_aile_hekimi(ilac_sonuc)
     if aile_hk:
