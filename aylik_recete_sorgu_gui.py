@@ -3282,6 +3282,12 @@ class AylikReceteSorguGUI:
         PARALEL_GAP_Y = max(40, int(100 * z))  # VEYA atomları dikey aralık (kutu 2x büyüdü)
         KAVSAK_X_PAD = 28                  # kavşak öncesi/sonrası kablo
 
+        # Helper: yol içinde TÜM atomlar veya_grubu=True mi?
+        # _yol_w ve _yol_ciz tarafından kullanılır → grup layout
+        # hesabından ÖNCE tanımlanır (Python closure free-var bind sırası).
+        def _atomlar_all_or(ats):
+            return len(ats) > 1 and all(s.get("veya_grubu") for s in ats)
+
         # Grup layout hesabı
         islenmis = set()
         gruplar_layout = []
@@ -3296,11 +3302,12 @@ class AylikReceteSorguGUI:
                 partner_atomlar = gruplar.get(partner_g, [])
 
                 def _yol_w(ats):
-                    # _yol_ciz render YATAY SERİ çiziyor (atomlar arası ∧/∨
-                    # operatör), veya_grubu üyesi olsa bile width hesabı
-                    # n*BLOK_W + (n-1)*ATOM_GAP_X. Eski versiyon veya2=True
-                    # için sadece BLOK_W döndürüyordu → MUHARREM DAĞLI
-                    # 3KP3UIJ D-2 E2 grup çakışma bug'ı (2026-05-12).
+                    # Render mantığı (Bug B sonrası):
+                    # - TÜM atomlar veya_grubu=True → DİKEY PARALEL (aynı x,
+                    #   width = BLOK_W)
+                    # - Aksi durumda → YATAY SERİ (n*BLOK_W + (n-1)*ATOM_GAP_X)
+                    if _atomlar_all_or(ats):
+                        return BLOK_W
                     n = len(ats) or 1
                     return n * BLOK_W + max(0, n - 1) * ATOM_GAP_X
                 w = (max(_yol_w(atomlar), _yol_w(partner_atomlar))
@@ -3337,12 +3344,19 @@ class AylikReceteSorguGUI:
                 islenmis.add(g)
 
         # Ana hat y koordinatı — dikey alana sığma
+        # OR yolu içeren block'lar için atom sayısı kadar dikey alan
         max_n_paralel = 1
         for blk in gruplar_layout:
             if blk["tip"] == "veya":
                 max_n_paralel = max(max_n_paralel, len(blk["atomlar"]))
             elif blk["tip"] == "ust_or_cift":
-                max_n_paralel = max(max_n_paralel, 2)
+                # 2 yol + her yolun kendi OR atom sayısı
+                n_block = 2
+                if _atomlar_all_or(blk["atomlar_a"]):
+                    n_block = max(n_block, len(blk["atomlar_a"]) + 1)
+                if _atomlar_all_or(blk["atomlar_b"]):
+                    n_block = max(n_block, len(blk["atomlar_b"]) + 1)
+                max_n_paralel = max(max_n_paralel, n_block)
         ana_hat_y = (y + max(80, (max_n_paralel - 1) * PARALEL_GAP_Y // 2
                               + BLOK_H + 30))
 
@@ -3475,8 +3489,16 @@ class AylikReceteSorguGUI:
                     grup_d = "ke"
                 kavsak_d = ("var" if grup_d == "var" else
                              "ke" if grup_d == "ke" else "yok")
-                y_a = ana_hat_y - 55
-                y_b = ana_hat_y + 55
+                # y_a/y_b mesafesi — OR yolu varsa atom sayısına göre genişlet
+                a_or = _atomlar_all_or(ats_a)
+                b_or = _atomlar_all_or(ats_b)
+                # Her yol için yarım yükseklik gerek
+                yol_yari_a = (len(ats_a) - 1) * PARALEL_GAP_Y // 2 if a_or else BLOK_H // 2
+                yol_yari_b = (len(ats_b) - 1) * PARALEL_GAP_Y // 2 if b_or else BLOK_H // 2
+                # İki yol arası min boşluk 110 (eski sabit) veya yol yarıları toplamı + 30
+                y_offset = max(55, max(yol_yari_a, yol_yari_b) + 30)
+                y_a = ana_hat_y - y_offset
+                y_b = ana_hat_y + y_offset
                 # Sol/sağ dikey raylar
                 self._klasik_kablo(c, kavsak_sol_x, y_a,
                                      kavsak_sol_x, y_b, kavsak_d)
@@ -3496,6 +3518,47 @@ class AylikReceteSorguGUI:
                 def _yol_ciz(yy, ats, veya_y, gd_y):
                     yol_d = ("var" if gd_y == "var" else
                               "ke" if gd_y == "ke" else "yok")
+                    # ───── A) TÜM ATOMLAR OR → DİKEY PARALEL ─────
+                    # (SUT lafzında "X VEYA Y VEYA Z" — gerçek paralel kollar)
+                    if _atomlar_all_or(ats) and len(ats) > 1:
+                        n_y = len(ats)
+                        bx_y = kavsak_sol_x  # atom x sabit (sol kavşağa yakın)
+                        # Y aralığı: yy etrafında simetrik dağıt
+                        atomlar_y = [yy + (i - (n_y - 1) / 2) * PARALEL_GAP_Y
+                                       for i in range(n_y)]
+                        # Sol dikey ray (kavsak_sol_x)
+                        self._klasik_kablo(c, kavsak_sol_x, atomlar_y[0],
+                                             kavsak_sol_x, atomlar_y[-1], yol_d)
+                        # Sağ dikey ray (kavsak_sag_x)
+                        self._klasik_kablo(c, kavsak_sag_x, atomlar_y[0],
+                                             kavsak_sag_x, atomlar_y[-1], yol_d)
+                        for i, s in enumerate(ats):
+                            sub_y = atomlar_y[i]
+                            d_atom = self._klasik_durum_anahtari(
+                                s.get("durum", "na"))
+                            # Sol ray → atom sol kenarı
+                            self._klasik_kablo(c, kavsak_sol_x, sub_y,
+                                                 bx_y, sub_y, d_atom)
+                            # Atom kutusu (veya_uye=True ile çiz, soluk renk)
+                            self._klasik_blok_ciz(c, bx_y, sub_y - BLOK_H / 2,
+                                                    BLOK_W, BLOK_H, s, True)
+                            # Atom sağ kenarı → sağ ray
+                            self._klasik_kablo(c, bx_y + BLOK_W, sub_y,
+                                                 kavsak_sag_x, sub_y, d_atom)
+                            # ∨ sembolü atomlar arası (sol rayda)
+                            if i < n_y - 1:
+                                mid_y = (sub_y + atomlar_y[i + 1]) / 2
+                                c.create_rectangle(kavsak_sol_x - 9,
+                                                     mid_y - 9,
+                                                     kavsak_sol_x + 9,
+                                                     mid_y + 9,
+                                                     fill="white", outline="",
+                                                     tags=('klasik',))
+                                c.create_text(kavsak_sol_x, mid_y, text="∨",
+                                               fill="#1565C0",
+                                               font=("Segoe UI", 12, "bold"),
+                                               tags=('klasik',))
+                        return
                     if veya_y or len(ats) == 1:
                         # Yol içinde tek seri (1 blok) veya alt-OR → seri çiz
                         # Atom arası operatör İKİ ARDIŞIK ATOMUN veya_grubu
