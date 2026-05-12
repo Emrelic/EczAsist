@@ -4645,7 +4645,14 @@ class AylikReceteSorguGUI:
             "cins": cinsiyet_etiket(r.get("MusteriCinsiyet")),
             "hasta_tip": hasta_tip,
             "doktor": r.get("DoktorAdiSoyadi") or "",
-            "brans": doktor_brans.get(r.get("RxDoktorId"), ""),
+            # Doktor branşı tespiti — 2 kaynak:
+            # 1. DoktorBrans tablosu (doktorun ana+sertifikalı branş listesi)
+            # 2. Fallback: ReceteAna.RxBransId (reçeteyi yazarken seçilen
+            #    branş — DoktorBrans boşsa veya eksikse)
+            # HATUN SARIGUL 2KG1CX0 pilot (2026-05-12): Dr. ALİ UĞUR SOYSAL
+            # DoktorBrans tablosunda kaydı yok, ama RxBransId=3 Kardiyoloji.
+            "brans": (doktor_brans.get(r.get("RxDoktorId"), "")
+                      or self._lookup_brans.get(r.get("RxBransId"), "")),
             "kurum_adi": self._lookup_kurum.get(r.get("RxKurumId"), ""),
             "tesis_kodu": self._lookup_hastane_kodu.get(
                 r.get("RxHastaneId"), ""),
