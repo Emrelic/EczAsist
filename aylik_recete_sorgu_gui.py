@@ -4142,23 +4142,58 @@ class AylikReceteSorguGUI:
             self.root.after(0, lambda: self.lbl_sayim.config(text="Hata"))
 
     def _doktor_branslarini_getir(self, doktor_idleri: list) -> dict:
+        """Doktor branş tespiti — 2 katmanlı:
+        1. DoktorBrans tablosu (ana+sertifikalı branş listesi)
+        2. Fallback: ReceteAna geçmişi — doktor için en sık görülen
+           RxBransId (DoktorBrans tablosu boş olan eski/Medula entegrasyon
+           eksik doktorlar için kritik — ~264 doktor son yıl)
+        """
         if not doktor_idleri:
             return {}
+        result: dict = {}
         try:
             ph = ",".join("?" * len(doktor_idleri))
+            # 1. KATMAN: DoktorBrans tablosu
             rows = self.db.sorgu_calistir(
                 f"""SELECT DoktorBransDoktorId, DoktorBransBransId
                     FROM DoktorBrans WHERE DoktorBransDoktorId IN ({ph})""",
                 tuple(doktor_idleri))
-            result = {}
+            tmp = {}
             for r in rows:
                 did = r["DoktorBransDoktorId"]
                 ad = self._lookup_brans.get(r["DoktorBransBransId"], "")
                 if ad:
-                    result.setdefault(did, []).append(ad)
-            return {k: ", ".join(v) for k, v in result.items()}
-        except Exception:
-            return {}
+                    tmp.setdefault(did, []).append(ad)
+            result = {k: ", ".join(v) for k, v in tmp.items()}
+
+            # 2. KATMAN: DoktorBrans boş olan doktorlar için ReceteAna
+            # geçmişinden en sık RxBransId fallback
+            eksik = [d for d in doktor_idleri if d and d not in result]
+            if eksik:
+                ph2 = ",".join("?" * len(eksik))
+                rows2 = self.db.sorgu_calistir(
+                    f"""SELECT ra.RxDoktorId, ra.RxBransId,
+                               COUNT(*) AS say
+                        FROM ReceteAna ra
+                        WHERE ra.RxDoktorId IN ({ph2})
+                          AND ra.RxBransId IS NOT NULL
+                          AND ra.RxBransId > 0
+                          AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)
+                        GROUP BY ra.RxDoktorId, ra.RxBransId
+                        ORDER BY ra.RxDoktorId, COUNT(*) DESC""",
+                    tuple(eksik))
+                en_sik = {}  # doktor_id -> ilk gelen (en sık) BransAdi
+                for r in rows2:
+                    did = r["RxDoktorId"]
+                    if did in en_sik:
+                        continue  # zaten en sık alındı
+                    ad = self._lookup_brans.get(r["RxBransId"], "")
+                    if ad:
+                        en_sik[did] = ad
+                result.update(en_sik)
+        except Exception as e:
+            logger.debug(f"_doktor_branslarini_getir fail: {e}")
+        return result
 
     def _toplu_recete_teshis_getir(self, rx_idler: list) -> dict:
         """Reçete teşhislerini RxId bazında topla.
