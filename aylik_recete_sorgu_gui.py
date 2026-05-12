@@ -1562,6 +1562,7 @@ class AylikReceteSorguGUI:
         "UYGUN": ("#1B5E20", "#C8E6C9"),
         "UYGUN DEĞİL": ("#B71C1C", "#FFCDD2"),
         "ŞÜPHELİ": ("#E65100", "#FFE0B2"),
+        "MANUEL KONTROL": ("#0D47A1", "#BBDEFB"),
         "ATLANDI": ("#616161", "#ECEFF1"),
     }
 
@@ -2492,14 +2493,17 @@ class AylikReceteSorguGUI:
             verdict_kisa = "UYGUN DEĞİL"
         elif "UYGUN" in v:
             verdict_kisa = "UYGUN"
+        elif "MANUEL" in v:
+            verdict_kisa = "MANUEL KONTROL"
         elif "ŞÜPH" in v or "SUPH" in v:
             verdict_kisa = "ŞÜPHELİ"
         else:
             verdict_kisa = v or "—"
         verdict_renk = {
-            "UYGUN":       ("#1B5E20", "#C8E6C9"),
-            "UYGUN DEĞİL": ("#B71C1C", "#FFCDD2"),
-            "ŞÜPHELİ":     ("#E65100", "#FFE0B2"),
+            "UYGUN":          ("#1B5E20", "#C8E6C9"),
+            "UYGUN DEĞİL":    ("#B71C1C", "#FFCDD2"),
+            "ŞÜPHELİ":        ("#E65100", "#FFE0B2"),
+            "MANUEL KONTROL": ("#0D47A1", "#BBDEFB"),
         }.get(verdict_kisa, ("#37474F", "#ECEFF1"))
 
         # ─── Başlık ────────────────────────────────────────────
@@ -2804,8 +2808,8 @@ class AylikReceteSorguGUI:
                        font=("Segoe UI", 11, "bold"))
         y += foot_h + 16
 
-        # ─── BÖLGE 4: Toulmin Rebuttal (UYGUN_DEĞİL / ŞÜPHELİ) ─
-        if verdict_kisa in ("UYGUN DEĞİL", "ŞÜPHELİ"):
+        # ─── BÖLGE 4: Toulmin Rebuttal (UYGUN_DEĞİL / ŞÜPHELİ / MANUEL KONTROL) ─
+        if verdict_kisa in ("UYGUN DEĞİL", "ŞÜPHELİ", "MANUEL KONTROL"):
             sebep_atomlari = []
             for s in sartlar:
                 g = s.get("grup", "") or ""
@@ -3143,6 +3147,8 @@ class AylikReceteSorguGUI:
             verdict_kisa = "UYGUN DEĞİL"
         elif "UYGUN" in v:
             verdict_kisa = "UYGUN"
+        elif "MANUEL" in v:
+            verdict_kisa = "MANUEL KONTROL"
         elif "ŞÜPH" in v or "SUPH" in v:
             verdict_kisa = "ŞÜPHELİ"
         else:
@@ -3507,9 +3513,10 @@ class AylikReceteSorguGUI:
         # Verdict rozeti
         rozet_x = sink_x + 58
         rozet_renk = {
-            "UYGUN":       ("#C8E6C9", "#1B5E20"),
-            "UYGUN DEĞİL": ("#FFCDD2", "#B71C1C"),
-            "ŞÜPHELİ":     ("#FFE0B2", "#E65100"),
+            "UYGUN":          ("#C8E6C9", "#1B5E20"),
+            "UYGUN DEĞİL":    ("#FFCDD2", "#B71C1C"),
+            "ŞÜPHELİ":        ("#FFE0B2", "#E65100"),
+            "MANUEL KONTROL": ("#BBDEFB", "#0D47A1"),
         }.get(verdict_kisa, ("#ECEFF1", "#37474F"))
         c.create_rectangle(rozet_x, ana_hat_y - 22,
                             rozet_x + 150, ana_hat_y + 22,
@@ -4669,6 +4676,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN: "UYGUN",
             KontrolSonucu.UYGUN_DEGIL: "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI: "ATLANDI",
         }
         s["verdict"] = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
@@ -9595,6 +9603,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -9749,6 +9758,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -9917,6 +9927,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -10084,6 +10095,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -10244,6 +10256,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -10388,6 +10401,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -10547,6 +10561,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         DISPATCH = {
@@ -10712,6 +10727,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -10914,6 +10930,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -11107,6 +11124,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -11291,6 +11309,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -12591,6 +12610,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -12787,6 +12807,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -16192,6 +16213,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -16651,6 +16673,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -17158,6 +17181,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -17706,6 +17730,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -18160,6 +18185,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.UYGUN:             "UYGUN",
             KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,

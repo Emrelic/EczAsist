@@ -18,7 +18,8 @@ class KontrolSonucu(Enum):
     """Kontrol sonuç durumları"""
     UYGUN = "uygun"           # SUT'a uygun
     UYGUN_DEGIL = "uygun_degil"  # SUT'a uygun değil
-    KONTROL_EDILEMEDI = "kontrol_edilemedi"  # Kontrol yapılamadı (eksik veri vb.)
+    KONTROL_EDILEMEDI = "kontrol_edilemedi"  # Kontrol yapılamadı (eksik veri vb.) — UI'da ŞÜPHELİ
+    MANUEL_KONTROL = "manuel_kontrol"  # Sistem otomatik karar veremiyor, insan göz atmalı (örn. aile hekimi + 24 ay belirsiz)
     ATLANDI = "atlandi"       # Bu reçete için kontrol gerekmiyor
 
 

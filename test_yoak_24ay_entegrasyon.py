@@ -96,8 +96,8 @@ kontrol(
 # Senaryo C: Hasta YOAK gecmisi yok (DB'de kayit yok)
 # Beklenen: SUPHELI (F1 KE -> 24 ay durumu belirsiz, manuel dogrulama)
 kontrol(
-    "C1 hasta_yoak_ilk=None, aile hekimi, SK yok",
-    "kontrol_edilemedi",
+    "C1 hasta_yoak_ilk=None, aile hekimi, SK yok -> MANUEL_KONTROL",
+    "manuel_kontrol",
     yap(hasta_yoak_ilk_recete_tarihi=None))
 
 # Senaryo D: 24 ay TAMAM ama doktor branşı yetkisiz (ne aile ne uzman)
@@ -115,6 +115,15 @@ kontrol(
     "uygun",
     yap(hasta_yoak_ilk_recete_tarihi="2026-02-01",
         rapor_kodu="04.03",
+        doktor_uzmanligi="KARDIYOLOJI",
+        kurum_adi="", tesis_kodu=""))
+
+# Senaryo F: Hasta_yoak_ilk=None + uzman doktor (aile hk DEGIL) + SK yok
+# Beklenen: SUPHELI (KE — MANUEL_KONTROL'e cevrilmez, cunku uzman yazmis)
+kontrol(
+    "F1 hasta_yoak_ilk=None, KARDIYOLOJI doktor (aile hk degil) -> SUPHELI",
+    "kontrol_edilemedi",
+    yap(hasta_yoak_ilk_recete_tarihi=None,
         doktor_uzmanligi="KARDIYOLOJI",
         kurum_adi="", tesis_kodu=""))
 

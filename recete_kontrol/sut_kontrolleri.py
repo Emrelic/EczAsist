@@ -9265,6 +9265,36 @@ def _yoak_sonuc_uret(sartlar: List[SartSonuc], detaylar: Dict,
         aranan_ibare=aranan, bulunan_metin=eslesen)
 
 
+def _yoak_post_process_manuel_kontrol(
+        rapor: KontrolRaporu, ilac_sonuc: Dict) -> KontrolRaporu:
+    """Post-process: F1 (24 ay) atomu KE + doktor aile hekimi ise verdict
+    KONTROL_EDILEMEDI → MANUEL_KONTROL.
+
+    SUT 4.2.15.D-1(2) son cümle yorumu: 24 ay belirsizse aile hekimi
+    yetkisi sorgulanabilir → eczacı manuel kontrol etmeli, sistem
+    otomatik karar vermesin.
+    """
+    if rapor.sonuc != KontrolSonucu.KONTROL_EDILEMEDI:
+        return rapor
+    f1_adi = 'İlk 2 rapor süresi (24 ay) tamamlanmış'
+    f1_ke = any(
+        getattr(s, 'ad', '') == f1_adi
+        and getattr(s, 'durum', None) == SartDurumu.KONTROL_EDILEMEDI
+        for s in (rapor.sartlar or [])
+    )
+    if not f1_ke:
+        return rapor
+    aile_hk, aile_neden = _yoak_atom_f_aile_hekimi(ilac_sonuc)
+    if not aile_hk:
+        return rapor
+    rapor.sonuc = KontrolSonucu.MANUEL_KONTROL
+    rapor.mesaj = (
+        (rapor.mesaj or '').rstrip('. ')
+        + ' — Aile hekimi reçetesi + 24 ay durumu belirsiz: MANUEL KONTROL gerekli'
+    ).strip()
+    return rapor
+
+
 def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
     """SUT 4.2.15.D + EK-4/F M.53-54 — YOAK
     (Rivaroksaban/Apiksaban/Edoksaban/Dabigatran)
@@ -9357,8 +9387,9 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
     ek4f_ortopedi = _yoak_ek4f_atom_ortopedi_rapor(doktor_brans_main)
     if ek4f_etken_uygun and ek4f_ortopedi:
         # EK-4/F yoluna düş — D-1/D-2'den önce
-        return _yoak_ek4f_kontrol(metin_lower, birlesik, ilac_sonuc,
-                                   sartlar, detaylar)
+        rapor = _yoak_ek4f_kontrol(metin_lower, birlesik, ilac_sonuc,
+                                    sartlar, detaylar)
+        return _yoak_post_process_manuel_kontrol(rapor, ilac_sonuc)
 
     # ── 3) Endikasyon tespiti ─────────────────────────────────────────
     end = _yoak_endikasyonlari_tespit(metin_lower, teshis_metin)
@@ -9402,7 +9433,7 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
         rapor.detaylar = rapor.detaylar or {}
         rapor.detaylar['aktif_yolak'] = 'D-1'
         rapor.detaylar['pasif_yolak'] = 'D-2'
-        return rapor
+        return _yoak_post_process_manuel_kontrol(rapor, ilac_sonuc)
 
     if aktif_yolak == 'D-2':
         # Aktif: D-2, Pasif: D-1
@@ -9425,7 +9456,7 @@ def kontrol_yoak(ilac_sonuc: Dict) -> KontrolRaporu:
         rapor.detaylar = rapor.detaylar or {}
         rapor.detaylar['aktif_yolak'] = 'D-2'
         rapor.detaylar['pasif_yolak'] = 'D-1'
-        return rapor
+        return _yoak_post_process_manuel_kontrol(rapor, ilac_sonuc)
 
     # ── 5) Endikasyon yok ─────────────────────────────────────────────
     sartlar.append(SartSonuc(
