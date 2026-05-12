@@ -8824,6 +8824,11 @@ class AylikReceteSorguGUI:
             "hasta_yasi": s.get("yas") or "",
             "recete_dozu": s.get("rec_doz") or "",
             "recete_ilaclari": [{"ad": x} for x in (diger_ilac_adlari or []) if x],
+            # SUT 4.2.15.D-1(2) 24 ay kontrolü için (batch tarafından doldurulur):
+            "recete_tarihi": s.get("rec_tar") or "",
+            "hasta_yoak_ilk_recete_tarihi": None,
+            "kurum_adi": s.get("kurum_adi") or "",
+            "tesis_kodu": s.get("tesis_kodu") or "",
         }
 
     # ───────────────────────────────────────────────────────────────────
@@ -9468,6 +9473,54 @@ class AylikReceteSorguGUI:
             logger.warning("Hasta ICD toplu sorgu fail: %s", e)
         # Tekrarsız + temiz
         return {k: list(dict.fromkeys(v)) for k, v in result.items()}
+
+    def _hasta_yoak_ilk_tarih_topla(
+            self, musteri_idler: List[int]) -> Dict[int, str]:
+        """SUT 4.2.15.D-1(2) son cümle (24 ay) kontrolü için her hastanın
+        en eski YOAK reçete tarihini toplu sorgula.
+
+        YOAK ATC kapsamı:
+          • B01AF01 Rivaroksaban (XARELTO)
+          • B01AF02 Apiksaban     (ELIQUIS)
+          • B01AF03 Edoksaban     (LIXIANA)
+          • B01AE07 Dabigatran    (PRADAXA)
+
+        Returns:
+            {musteri_id: 'YYYY-MM-DD' / datetime} (en eski RxKayitTarihi)
+            Hastanın hiç YOAK reçetesi yoksa dict'te yer almaz.
+        """
+        if not musteri_idler or not self.db:
+            return {}
+        result: Dict[int, str] = {}
+        try:
+            for i in range(0, len(musteri_idler), 500):
+                chunk = [m for m in musteri_idler[i:i + 500] if m]
+                if not chunk:
+                    continue
+                ph = ",".join("?" * len(chunk))
+                rows = self.db.sorgu_calistir(
+                    f"""SELECT ra.RxMusteriId AS musteri_id,
+                               MIN(ra.RxKayitTarihi) AS ilk_tarih
+                        FROM ReceteAna ra
+                        INNER JOIN ReceteIlaclari ri
+                                ON ri.RIRxId = ra.RxId
+                               AND (ri.RISilme IS NULL OR ri.RISilme = 0)
+                        INNER JOIN Urun u ON u.UrunId = ri.RIUrunId
+                        LEFT JOIN ATC atc ON atc.ATCId = u.UrunATCId
+                        WHERE ra.RxMusteriId IN ({ph})
+                          AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)
+                          AND (atc.ATCKodu LIKE 'B01AF%'
+                               OR atc.ATCKodu = 'B01AE07')
+                        GROUP BY ra.RxMusteriId""",
+                    tuple(chunk))
+                for r in rows:
+                    mid = r.get("musteri_id")
+                    tarih = r.get("ilk_tarih")
+                    if mid and tarih:
+                        result[mid] = tarih
+        except Exception as e:
+            logger.warning("YOAK ilk tarih toplu sorgu fail: %s", e)
+        return result
 
     def _arb_kontrol_baslat(self):
         """ARB KONTROL butonu — yüklenen satırlardan ARB veya ARB-kombinasyonu
@@ -17103,6 +17156,9 @@ class AylikReceteSorguGUI:
             "diğer raporları taranıyor…")
         self.root.update_idletasks()
         hasta_tum_icd = self._hasta_tum_icd_kodlarini_topla(musteri_idler)
+        # SUT 4.2.15.D-1(2) son cümle — 24 ay kontrolü için her hastanın
+        # en eski YOAK reçete tarihi (Botanik EOS, salt-okur).
+        hasta_yoak_ilk = self._hasta_yoak_ilk_tarih_topla(musteri_idler)
 
         for s in self.tum_satirlar:
             kategori = self._yoak_kategori(
@@ -17173,6 +17229,11 @@ class AylikReceteSorguGUI:
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
             ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
+            # SUT 4.2.15.D-1(2) — hastanın en eski YOAK reçete tarihi
+            # (varsa, 24 ay kontrolü _yoak_atom_f1_24ay_doldu'ya gider)
+            if mid and mid in hasta_yoak_ilk:
+                ilac_sonuc["hasta_yoak_ilk_recete_tarihi"] = (
+                    hasta_yoak_ilk[mid])
 
             try:
                 rapor = kontrol_yoak(ilac_sonuc)

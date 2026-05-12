@@ -7905,6 +7905,76 @@ def _yoak_atom_e_uzman_recete(doktor_brans: str,
 
 # ─── F grubu atomik (24 ay sonrası alt yol) ────────────────────────────
 
+def _yoak_atom_f1_24ay_doldu(ilac_sonuc: Dict) -> Tuple['SartDurumu', str]:
+    """SUT 4.2.15.D-1(2) son cümle: 'Bu raporun süresi en fazla 24 ay olup,
+    bu süre dolduktan sonra, aile hekimi veya uzman hekim tarafından reçete
+    edilebilir.'
+
+    Hastanın en eski YOAK reçete tarihinden aktif reçete tarihine kadar
+    geçen takvim ayı farkı ≥24 ise 24 ay tamamlanmış sayılır.
+
+    `ilac_sonuc` beklenen alanlar (GUI tarafından doldurulur):
+      - hasta_yoak_ilk_recete_tarihi: en eski YOAK RxKayitTarihi
+        (datetime / 'YYYY-MM-DD' / 'DD.MM.YYYY' kabul eder)
+      - recete_tarihi: aktif reçete tarihi (aynı formatlar)
+
+    Returns:
+        (SartDurumu, neden_string)
+        VAR: ≥24 ay geçmiş → aile hekimi/uzman yetkili
+        YOK: <24 ay → SK raporu zorunlu, aile hekimi yetkisiz
+        KONTROL_EDILEMEDI: hasta DB geçmişi yok / tarih parse edilemedi
+    """
+    from datetime import datetime
+    ilk_t = ilac_sonuc.get('hasta_yoak_ilk_recete_tarihi')
+    aktif_t = ilac_sonuc.get('recete_tarihi')
+
+    def _parse(t):
+        if t is None:
+            return None
+        if isinstance(t, datetime):
+            return t
+        if hasattr(t, 'year') and hasattr(t, 'month'):  # date
+            return datetime(t.year, t.month, getattr(t, 'day', 1))
+        s = str(t).strip()
+        if not s:
+            return None
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M:%S.%f',
+                     '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d',
+                     '%d.%m.%Y %H:%M:%S', '%d.%m.%Y'):
+            try:
+                return datetime.strptime(s[:len(fmt) + 4], fmt)
+            except (ValueError, TypeError):
+                continue
+        return None
+
+    if not ilk_t:
+        return (SartDurumu.KONTROL_EDILEMEDI,
+                'Hasta YOAK geçmişi DB\'de bulunamadı '
+                '— manuel doğrulama gerekli')
+    if not aktif_t:
+        return (SartDurumu.KONTROL_EDILEMEDI,
+                'Aktif reçete tarihi okunamadı — manuel doğrulama')
+
+    ilk_dt = _parse(ilk_t)
+    aktif_dt = _parse(aktif_t)
+    if not ilk_dt or not aktif_dt:
+        return (SartDurumu.KONTROL_EDILEMEDI,
+                f'Tarih parse hatası (ilk={ilk_t!r}, aktif={aktif_t!r})')
+
+    ay_farki = ((aktif_dt.year - ilk_dt.year) * 12
+                 + (aktif_dt.month - ilk_dt.month))
+    # gün eşiği: ilk_dt.day > aktif_dt.day ise ay henüz tam dolmamış
+    if aktif_dt.day < ilk_dt.day:
+        ay_farki -= 1
+    ilk_str = ilk_dt.strftime('%d.%m.%Y')
+    if ay_farki >= 24:
+        return (SartDurumu.VAR,
+                f'İlk YOAK reçetesi: {ilk_str} → {ay_farki} ay geçmiş (≥24)')
+    return (SartDurumu.YOK,
+            f'İlk YOAK reçetesi: {ilk_str} → sadece {ay_farki} ay '
+            '(24 ay tamamlanmadı, SK raporu zorunlu)')
+
+
 def _yoak_atom_f_aile_hekimi(ilac_sonuc: Dict) -> Tuple[bool, str]:
     """24 ay sonrası: aile hekimi de reçete edebilir.
 
@@ -8550,13 +8620,12 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
 
     # ── GRUP F: 24 ay sonrası alt yol [(2) son cümle] [AND, 2+1 atomik] ─
     g_f = '24 ay sonrası alt yol [(2)]'
-    g_f_bilgi = '24 ay sonrası (D-1) — manuel doğrulama (bilgi)'
-    # F1 BİLGİ (parser zayıf): ilk 24 ay tamamlandı — KE
+    # F1: ilk 24 ay tamamlandı — hasta DB sorgusundan tespit
+    f1_durum, f1_neden = _yoak_atom_f1_24ay_doldu(ilac_sonuc)
     sartlar.append(SartSonuc(
         'İlk 2 rapor süresi (24 ay) tamamlanmış',
-        SartDurumu.KONTROL_EDILEMEDI,
-        'Hasta\'nın geçmiş YOAK rapor sayısı bilinmiyor — manuel doğrulama',
-        'hasta_gecmisi', grup=g_f_bilgi))
+        f1_durum, f1_neden,
+        'hasta_yoak_gecmisi', grup=g_f))
     # F2: uzman hekim raporu (kard/iç/göğüs/KVC/nöro)
     # SUT lafzında "uzman hekim raporu" — SK gerekmez ama uzman dalları aynı
     # Burada kontrol: rapor metninde uzman dallarından biri var mı (E3 ile aynı)
@@ -8841,13 +8910,12 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
     # NOT: D-2(3) son cümle: "...VE NÖROLOJİ uzman hekimlerince düzenlenen..."
     # Yani 24 ay sonrası NÖROLOJİ EKLENİR.
     g_f2 = '24 ay sonrası alt yol [(3)]'
-    g_f2_bilgi = '24 ay sonrası (D-2) — manuel doğrulama (bilgi)'
-    # F2-1 BİLGİ: ilk 24 ay tamamlandı
+    # F2-1: ilk 24 ay tamamlandı — hasta DB sorgusundan tespit
+    f21_durum, f21_neden = _yoak_atom_f1_24ay_doldu(ilac_sonuc)
     sartlar.append(SartSonuc(
         'İlk 2 rapor süresi (24 ay) tamamlanmış',
-        SartDurumu.KONTROL_EDILEMEDI,
-        'Hasta\'nın geçmiş YOAK rapor sayısı bilinmiyor — manuel doğrulama',
-        'hasta_gecmisi', grup=g_f2_bilgi))
+        f21_durum, f21_neden,
+        'hasta_yoak_gecmisi', grup=g_f2))
     # F2-2: uzman hekim raporu (kard/iç/göğüs/KVC + NÖROLOJİ)
     # Nöroloji eklenir — D-1 listesi ile aynı 5 branş
     nor_var = _yoak_atom_brans_var(metin_lower,
