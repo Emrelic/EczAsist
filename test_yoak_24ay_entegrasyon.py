@@ -127,6 +127,19 @@ kontrol(
         doktor_uzmanligi="KARDIYOLOJI",
         kurum_adi="", tesis_kodu=""))
 
+# Senaryo G: SABIRE YILDIZ pilot — Edoksaban, aile hekimi, hasta DB'de yok
+# Rapor metni D-1 AF tibbi sartlari TAMAM, ama doktor aile hekimi.
+# 24 ay tespit edilemiyor (hasta_yoak_ilk=None — ilk YOAK recetesi).
+# Beklenen: MANUEL_KONTROL (sistem otomatik karar veremiyor)
+kontrol(
+    "G1 SABIRE-pilot: ilk=None, aile hekimi, SK yok -> MANUEL_KONTROL",
+    "manuel_kontrol",
+    yap(ilac_adi="LIXIANA 60 MG",
+        etkin_madde="EDOKSABAN",
+        atc_kodu="B01AF03",
+        hasta_yoak_ilk_recete_tarihi=None,
+        recete_tarihi="24.03.2026"))
+
 print()
 print("=" * 70)
 print(f"Sonuc: {basari}/{toplam} entegrasyon testi gecti")
