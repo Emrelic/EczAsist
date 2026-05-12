@@ -152,6 +152,20 @@ class AnaMenu:
             "aciklama": "Yazdırma günü gelen hastalara WhatsApp mesaj",
             "renk": "#25D366",  # WhatsApp yeşili
             "hover": "#128C7E"
+        },
+        "fatih_siparisci": {
+            "baslik": "Fatih Siparişçi",
+            "icon": "🛍️",
+            "aciklama": "Botanik Sipariş Yardımcısı (müstakil)",
+            "renk": "#FF6F00",  # Turuncu
+            "hover": "#E65100"
+        },
+        "hibrit_siparisci": {
+            "baslik": "Hibrit Siparişçi",
+            "icon": "🔀",
+            "aciklama": "Sipariş listesi + Fatih'in depo motoru",
+            "renk": "#00897B",  # Teal koyu
+            "hover": "#00695C"
         }
     }
 
@@ -195,7 +209,8 @@ class AnaMenu:
         self._tema_uygula()
 
         # Medula Canlı Tut state (idle-tabanlı MedulaOturumCanli servisine bağlı)
-        self.var_medula_canli = tk.BooleanVar(value=False)
+        # Varsayılan: AÇIK (kullanıcı isteği 2026-05-12)
+        self.var_medula_canli = tk.BooleanVar(value=True)
         self.lbl_canli_durum = None
 
         # Açık modül pencerelerini takip et: aynı modüle ikinci kez tıklanınca
@@ -418,7 +433,8 @@ class AnaMenu:
         modul_listesi = [
             "ilac_takip", "depo_ekstre", "kasa_takip", "rapor_kontrol",
             "aylik_recete_sorgu", "t_cetvel", "ek_raporlar", "mf_analiz",
-            "mf_hizli", "siparis_verme", "min_stok_analiz", "stok_maliyet_analiz",
+            "mf_hizli", "siparis_verme", "fatih_siparisci", "hibrit_siparisci",
+            "min_stok_analiz", "stok_maliyet_analiz",
             "prim_raporlama", "hasta_takip", "kullanici_yonetimi"
         ]
 
@@ -588,6 +604,10 @@ class AnaMenu:
             self.mf_hizli_ac()
         elif modul_key == "siparis_verme":
             self.siparis_verme_ac()
+        elif modul_key == "fatih_siparisci":
+            self.fatih_siparisci_ac()
+        elif modul_key == "hibrit_siparisci":
+            self.hibrit_siparisci_ac()
         elif modul_key == "min_stok_analiz":
             self.min_stok_analiz_ac()
         elif modul_key == "stok_maliyet_analiz":
@@ -841,6 +861,49 @@ class AnaMenu:
             messagebox.showerror("Hata", f"Sipariş Verme modülü açılamadı:\n{e}")
             if siparis_root is not None:
                 try: siparis_root.destroy()
+                except Exception: pass
+
+    def fatih_siparisci_ac(self):
+        """Fatih Siparişçi (müstakil) — ayrı process olarak başlatır"""
+        try:
+            self._yeniden_yukle("fatih_siparisci_launcher")
+            from fatih_siparisci_launcher import fatih_siparisci_baslat
+            fatih_siparisci_baslat(parent=self.root)
+        except ImportError as e:
+            logger.error(f"Fatih Siparişçi launcher import hatası: {e}")
+            messagebox.showerror("Hata", "Fatih Siparişçi launcher yüklenemedi.")
+        except Exception as e:
+            logger.error(f"Fatih Siparişçi başlatma hatası: {e}")
+            messagebox.showerror("Hata", f"Fatih Siparişçi başlatılamadı:\n{e}")
+
+    def hibrit_siparisci_ac(self):
+        """Hibrit Siparişçi — bizim sipariş listesi + Fatih'in depo motoru"""
+        hibrit_root = None
+        try:
+            hibrit_root = self._modul_pencere_al(
+                "hibrit_siparisci",
+                title="Hibrit Siparişçi (Sipariş Listesi + Fatih Depo Motoru)",
+                zoomed=True,
+            )
+            if hibrit_root is None:
+                return
+
+            self._yeniden_yukle("hibrit_siparisci_gui")
+            from hibrit_siparisci_gui import HibritSiparisciGUI
+
+            HibritSiparisciGUI(hibrit_root)
+
+        except ImportError as e:
+            logger.error(f"Hibrit Siparişçi import hatası: {e}")
+            messagebox.showerror("Hata", f"Hibrit Siparişçi modülü yüklenemedi:\n{e}")
+            if hibrit_root is not None:
+                try: hibrit_root.destroy()
+                except Exception: pass
+        except Exception as e:
+            logger.error(f"Hibrit Siparişçi açma hatası: {e}")
+            messagebox.showerror("Hata", f"Hibrit Siparişçi açılamadı:\n{e}")
+            if hibrit_root is not None:
+                try: hibrit_root.destroy()
                 except Exception: pass
 
     def min_stok_analiz_ac(self):
