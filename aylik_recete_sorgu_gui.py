@@ -3498,13 +3498,17 @@ class AylikReceteSorguGUI:
                               "ke" if gd_y == "ke" else "yok")
                     if veya_y or len(ats) == 1:
                         # Yol içinde tek seri (1 blok) veya alt-OR → seri çiz
+                        # Atom arası operatör İKİ ARDIŞIK ATOMUN veya_grubu
+                        # değerine göre belirlenir: ikisi de True ise ∨
+                        # (alt-OR çifti), aksi durumda ∧ (AND sınır).
                         n_y = len(ats)
                         for i, s in enumerate(ats):
                             bx_y = kavsak_sol_x + i * (BLOK_W + ATOM_GAP_X)
+                            atom_veya = bool(s.get("veya_grubu"))
                             self._klasik_blok_ciz(c, bx_y,
                                                     yy - BLOK_H / 2,
                                                     BLOK_W, BLOK_H, s,
-                                                    veya_y)
+                                                    atom_veya)
                             if i < n_y - 1:
                                 d_k = self._klasik_durum_anahtari(
                                     s.get("durum", "na"))
@@ -3512,11 +3516,22 @@ class AylikReceteSorguGUI:
                                 ax2 = cx2 + ATOM_GAP_X // 2
                                 self._klasik_kablo(c, cx2, yy,
                                                      ax2 - 6, yy, d_k)
-                                op = "∨" if veya_y else "∧"
-                                op_col = "#1565C0" if veya_y else "#546E7A"
+                                # Operatör: iki ardışık atom da alt-OR ise ∨,
+                                # değilse ∧
+                                s_next = ats[i + 1]
+                                next_veya = bool(s_next.get("veya_grubu"))
+                                if atom_veya and next_veya:
+                                    op, op_col = "∨", "#1565C0"
+                                else:
+                                    op, op_col = "∧", "#546E7A"
+                                # Beyaz arka plan + sembol (görsel netlik)
+                                c.create_rectangle(ax2 - 7, yy - 8,
+                                                    ax2 + 7, yy + 8,
+                                                    fill="white", outline="",
+                                                    tags=('klasik',))
                                 c.create_text(ax2, yy - 1, text=op,
                                                fill=op_col,
-                                               font=("Segoe UI", 10, "bold"),
+                                               font=("Segoe UI", 11, "bold"),
                                                tags=('klasik',))
                                 self._klasik_kablo(c, ax2 + 6, yy,
                                                      cx2 + ATOM_GAP_X,
