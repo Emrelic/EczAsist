@@ -9075,6 +9075,9 @@ class AylikReceteSorguGUI:
             "hasta_yoak_ilk_recete_tarihi": None,
             "kurum_adi": s.get("kurum_adi") or "",
             "tesis_kodu": s.get("tesis_kodu") or "",
+            # SUT 4.2.15.D E grubu parametrik — RaporDoktor heyet listesi
+            # (batch tarafından doldurulur)
+            "heyet_doktorlari": [],
         }
 
     # ───────────────────────────────────────────────────────────────────
@@ -9719,6 +9722,49 @@ class AylikReceteSorguGUI:
             logger.warning("Hasta ICD toplu sorgu fail: %s", e)
         # Tekrarsız + temiz
         return {k: list(dict.fromkeys(v)) for k, v in result.items()}
+
+    def _rapor_heyet_doktor_topla(
+            self, rapor_ana_idler: List[int]) -> Dict[int, List[Dict]]:
+        """Verilen rapor_ana_id listesi için RaporDoktor heyetini toplu çek.
+
+        Returns:
+            {rapor_ana_id: [{'ad', 'brans', 'tckn'}, ...]}
+        SUT 4.2.15.D E grubu PARAMETRİK kontrolü için (rapor metninde
+        branş ibare aramayı bırakır, RaporDoktor tablosu parametrik kaynak).
+        """
+        if not rapor_ana_idler or not self.db:
+            return {}
+        result: Dict[int, List[Dict]] = {}
+        try:
+            for i in range(0, len(rapor_ana_idler), 500):
+                chunk = [r for r in rapor_ana_idler[i:i + 500] if r]
+                if not chunk:
+                    continue
+                ph = ",".join("?" * len(chunk))
+                rows = self.db.sorgu_calistir(
+                    f"""SELECT rd.RaporDoktorRaporAnaId AS rapor_ana_id,
+                               d.DoktorAdiSoyadi AS ad,
+                               b.BransAdi AS brans,
+                               d.DoktorTCKN AS tckn
+                        FROM RaporDoktor rd
+                        LEFT JOIN Doktor d ON d.DoktorId = rd.RaporDoktorDoktorId
+                        LEFT JOIN Brans b ON b.BransId = rd.RaporDoktorBransId
+                        WHERE rd.RaporDoktorRaporAnaId IN ({ph})
+                          AND (rd.RaporDoktorSilme IS NULL
+                               OR rd.RaporDoktorSilme = 0)""",
+                    tuple(chunk))
+                for r in rows:
+                    rid = r.get("rapor_ana_id")
+                    if not rid:
+                        continue
+                    result.setdefault(rid, []).append({
+                        "ad": (r.get("ad") or "").strip(),
+                        "brans": (r.get("brans") or "").strip(),
+                        "tckn": (r.get("tckn") or "").strip(),
+                    })
+        except Exception as e:
+            logger.warning(f"RaporDoktor toplu sorgu fail: {e}")
+        return result
 
     def _hasta_yoak_ilk_tarih_topla(
             self, musteri_idler: List[int]) -> Dict[int, str]:
@@ -17421,6 +17467,12 @@ class AylikReceteSorguGUI:
         # SUT 4.2.15.D-1(2) son cümle — 24 ay kontrolü için her hastanın
         # en eski YOAK reçete tarihi (Botanik EOS, salt-okur).
         hasta_yoak_ilk = self._hasta_yoak_ilk_tarih_topla(musteri_idler)
+        # SUT 4.2.15.D E grubu PARAMETRİK kontrol — RaporDoktor heyetini
+        # toplu çek (rapor_ana_id bazlı, satır başına 1 rapor).
+        rapor_ana_idler = list({s.get("rapor_ana_id")
+                                 for s in self.tum_satirlar
+                                 if s.get("rapor_ana_id")})
+        rapor_heyet_map = self._rapor_heyet_doktor_topla(rapor_ana_idler)
 
         for s in self.tum_satirlar:
             kategori = self._yoak_kategori(
@@ -17496,6 +17548,11 @@ class AylikReceteSorguGUI:
             if mid and mid in hasta_yoak_ilk:
                 ilac_sonuc["hasta_yoak_ilk_recete_tarihi"] = (
                     hasta_yoak_ilk[mid])
+            # SUT 4.2.15.D E grubu PARAMETRİK — RaporDoktor heyet listesi
+            rapor_id = s.get("rapor_ana_id")
+            if rapor_id and rapor_id in rapor_heyet_map:
+                ilac_sonuc["heyet_doktorlari"] = list(
+                    rapor_heyet_map[rapor_id])
 
             try:
                 rapor = kontrol_yoak(ilac_sonuc)

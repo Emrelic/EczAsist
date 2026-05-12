@@ -7827,6 +7827,134 @@ def _yoak_atom_brans_var(metin_lower: str, anahtarlar: Tuple[str, ...]) -> bool:
     return any(a in metin_lower for a in anahtarlar)
 
 
+# ─── Parametrik heyet doktorları kontrolü ─────────────────────────────
+# Botanik EOS RaporDoktor tablosundan ilac_sonuc['heyet_doktorlari']
+# alanına yüklenir (GUI batch tarafından).
+# Liste şekli: [{'ad': '...', 'brans': '...', 'tckn': '...'}, ...]
+
+# YOAK yetkili branş anahtar listeleri (normalize edilmiş key formu)
+_YOAK_HEYET_KEYS_D1 = ('kardiyoloji', 'ic_hastaliklari', 'gogus_hastaliklari',
+                       'kalp_damar_cerrahisi', 'noroloji')
+_YOAK_HEYET_KEYS_D2_ILK24 = ('kardiyoloji', 'ic_hastaliklari',
+                              'gogus_hastaliklari', 'kalp_damar_cerrahisi')
+
+
+def _yoak_brans_normalize(brans: str) -> str:
+    """Bir BransAdi'yi normalize edilmiş anahtara eşle.
+
+    Yetkili olmayan branşlar boş string döner.
+    """
+    if not brans:
+        return ''
+    bl = _tr_lower(brans)
+    if 'kardiyoloj' in bl:
+        return 'kardiyoloji'
+    if ('dahiliye' in bl or 'ic hastalik' in bl or 'iç hastalık' in bl
+            or 'i̇ç hastalık' in bl):
+        return 'ic_hastaliklari'
+    if 'gogus' in bl or 'göğüs' in bl:
+        return 'gogus_hastaliklari'
+    if 'kalp' in bl and ('damar' in bl or 'kvc' in bl):
+        return 'kalp_damar_cerrahisi'
+    if bl.strip() == 'kvc':
+        return 'kalp_damar_cerrahisi'
+    if 'noroloj' in bl or 'nöroloj' in bl:
+        return 'noroloji'
+    return ''
+
+
+def _yoak_heyet_brans_dagilimi(ilac_sonuc: Dict,
+                                 izinli_keys: Tuple[str, ...]) -> Dict:
+    """RaporDoktor heyetinden yetkili branş dağılımını çıkar.
+
+    Returns:
+        {
+            'toplam_yetkili': N (yetkili branştaki doktor sayısı),
+            'farkli_brans_sayisi': M (kaç farklı yetkili dal),
+            'brans_doktor_sayisi': {'kardiyoloji': 2, ...},
+            'max_ayni_dal': max sayim,
+            'doktor_listesi': [(ad, brans_norm), ...],
+            'yetersiz_kaynak': True (heyet_doktorlari yoksa),
+        }
+    """
+    heyet = ilac_sonuc.get('heyet_doktorlari') or []
+    if not heyet:
+        return {
+            'toplam_yetkili': 0, 'farkli_brans_sayisi': 0,
+            'brans_doktor_sayisi': {}, 'max_ayni_dal': 0,
+            'doktor_listesi': [], 'yetersiz_kaynak': True,
+        }
+    sayim: Dict[str, int] = {}
+    yetkili = []
+    for d in heyet:
+        bn = _yoak_brans_normalize(d.get('brans', ''))
+        if bn and bn in izinli_keys:
+            sayim[bn] = sayim.get(bn, 0) + 1
+            yetkili.append((d.get('ad', ''), bn))
+    return {
+        'toplam_yetkili': sum(sayim.values()),
+        'farkli_brans_sayisi': len(sayim),
+        'brans_doktor_sayisi': sayim,
+        'max_ayni_dal': max(sayim.values()) if sayim else 0,
+        'doktor_listesi': yetkili,
+        'yetersiz_kaynak': False,
+    }
+
+
+def _yoak_atom_heyet_sk_var(ilac_sonuc: Dict,
+                             rapor_kodu: str) -> Tuple['SartDurumu', str]:
+    """SK raporu var mı — heyet doktor sayısı ≥3 + rapor_kodu kontrolü."""
+    heyet = ilac_sonuc.get('heyet_doktorlari') or []
+    rk = (rapor_kodu or '').strip()
+    if rk.startswith('04.03'):
+        return (SartDurumu.VAR,
+                f'rapor_kodu=04.03 (Medula SK) + heyet {len(heyet)} doktor')
+    if heyet and len(heyet) >= 3:
+        return (SartDurumu.VAR,
+                f'heyet {len(heyet)} doktor (SK ≥3 doktor şartı sağlandı)')
+    if heyet:
+        return (SartDurumu.YOK,
+                f'heyet sadece {len(heyet)} doktor (SK ≥3 doktor gerekli)')
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            "RaporDoktor DB'de bulunamadı — manuel doğrulama")
+
+
+def _yoak_atom_heyet_yeterli_brans(
+        ilac_sonuc: Dict,
+        izinli_keys: Tuple[str, ...]) -> Tuple['SartDurumu', str]:
+    """Heyette ≥3 FARKLI yetkili uzm dalı var mı (D-1 / D-2 farklı 3)."""
+    dag = _yoak_heyet_brans_dagilimi(ilac_sonuc, izinli_keys)
+    if dag['yetersiz_kaynak']:
+        return (SartDurumu.KONTROL_EDILEMEDI,
+                "RaporDoktor DB'de bulunamadı — manuel doğrulama")
+    n = dag['farkli_brans_sayisi']
+    brans_str = ', '.join(
+        sorted(dag['brans_doktor_sayisi'].keys())) or '(yetkili dal yok)'
+    if n >= 3:
+        return (SartDurumu.VAR,
+                f'{n} farklı yetkili branş: {brans_str}')
+    return (SartDurumu.YOK,
+            f'sadece {n} farklı yetkili branş: {brans_str}')
+
+
+def _yoak_atom_heyet_ayni_dalda_3(
+        ilac_sonuc: Dict,
+        izinli_keys: Tuple[str, ...]) -> Tuple['SartDurumu', str]:
+    """Heyette aynı yetkili uzm dalda ≥3 doktor var mı (D-2 alt-OR a)."""
+    dag = _yoak_heyet_brans_dagilimi(ilac_sonuc, izinli_keys)
+    if dag['yetersiz_kaynak']:
+        return (SartDurumu.KONTROL_EDILEMEDI,
+                "RaporDoktor DB'de bulunamadı — manuel doğrulama")
+    max_ayni = dag['max_ayni_dal']
+    if max_ayni >= 3:
+        en_buyuk = max(dag['brans_doktor_sayisi'].items(),
+                        key=lambda x: x[1])
+        return (SartDurumu.VAR,
+                f'aynı dalda {max_ayni} doktor: {en_buyuk[0]}')
+    return (SartDurumu.YOK,
+            f'aynı dalda max {max_ayni} doktor (3 gerekli)')
+
+
 # ─── D-a yolu atomik ibareler (4.2.15.D-1(1)(a) / D-2(1)(b)) ───────────
 
 def _yoak_atom_da_son_5_olcum(metin_lower: str) -> bool:
@@ -8507,101 +8635,80 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
         else 'SVO/inme/TIA ibaresi yok',
         'rapor_metni/teshis', grup=g_varfa_b))
 
-    # ── GRUP E: SK raporu — ilk 24 ay [(2)] [AND, 5 atomik] ───────────
-    # NOT: rapor_kodu 04.03 (YOAK Medula kodu) varsa Medula SK formalitesini
-    # zaten onaylamış demektir. Bu durumda E1, E2, E3 otomatik VAR varsayılır
-    # (Medula otoritesi). E5 (reçete eden hekim) ayrı kontrol edilir.
+    # ── GRUP E: SK raporu — ilk 24 ay [(2)] [AND, 3 atomik] ───────────
+    # PARAMETRİK kontrol: RaporDoktor tablosundan heyet doktorlarını çek,
+    # branş listesi ve farklı dal sayısı üzerinden SUT şartlarını doğrula.
+    # rapor_kodu 04.03 (YOAK Medula kodu) Medula otoritesi — fallback.
+    # feedback_rapor_metni_uzman_ibare_yasak memory'sinde belirtilen
+    # "rapor metninde branş ibare arama" kaldırıldı (2026-05-12).
     g_e = 'SK raporu — ilk 24 ay [(2)]'
     medula_sk_var = bool(rapor_kodu and rapor_kodu.startswith('04.03'))
-    sk_ib_lafzen = _yoak_atom_sk_ibaresi(metin_lower)
-    # E1: SK ibaresi (lafzen veya rapor_kodu üzerinden)
-    if sk_ib_lafzen:
+    dag_e = _yoak_heyet_brans_dagilimi(ilac_sonuc, _YOAK_HEYET_KEYS_D1)
+
+    # E1: SK raporu var (heyet ≥3 doktor veya Medula 04.03)
+    e1_durum, e1_neden = _yoak_atom_heyet_sk_var(ilac_sonuc, rapor_kodu)
+    sartlar.append(SartSonuc(
+        'SK raporu (heyet ≥3 doktor)',
+        e1_durum, e1_neden,
+        'RaporDoktor/rapor_kodu', grup=g_e))
+
+    # E2: kard VEYA nöro zorunlu (D-1 SUT lafzı — heyet branş listesi)
+    has_kard = dag_e['brans_doktor_sayisi'].get('kardiyoloji', 0) > 0
+    has_noro = dag_e['brans_doktor_sayisi'].get('noroloji', 0) > 0
+    if has_kard or has_noro:
         sartlar.append(SartSonuc(
-            '"Sağlık kurulu raporu" ibaresi',
+            'Kardiyoloji VEYA Nöroloji uzmanı (zorunlu)',
             SartDurumu.VAR,
-            '"sağlık kurulu" lafzen rapor metninde geçiyor',
-            'rapor_metni', grup=g_e))
+            f'Heyette {"kardiyoloji" if has_kard else ""}'
+            f'{" + " if has_kard and has_noro else ""}'
+            f'{"nöroloji" if has_noro else ""} uzman var',
+            'RaporDoktor', grup=g_e))
     elif medula_sk_var:
         sartlar.append(SartSonuc(
-            '"Sağlık kurulu raporu" ibaresi',
+            'Kardiyoloji VEYA Nöroloji uzmanı (zorunlu)',
             SartDurumu.VAR,
-            f'Medula rapor kodu {rapor_kodu} = SK zorunlu (Medula otoritesi)',
+            'Medula 04.03 = kard/nöro zorunlu (otorite — heyet DB boş)',
             'rapor_kodu', grup=g_e))
+    elif dag_e['yetersiz_kaynak']:
+        sartlar.append(SartSonuc(
+            'Kardiyoloji VEYA Nöroloji uzmanı (zorunlu)',
+            SartDurumu.KONTROL_EDILEMEDI,
+            "RaporDoktor DB'de bulunamadı — manuel doğrulama",
+            'RaporDoktor', grup=g_e))
     else:
         sartlar.append(SartSonuc(
-            '"Sağlık kurulu raporu" ibaresi',
+            'Kardiyoloji VEYA Nöroloji uzmanı (zorunlu)',
             SartDurumu.YOK,
-            'rapor metninde SK ibaresi yok ve rapor kodu da yok',
-            'rapor_metni/rapor_kodu', grup=g_e))
+            'Heyette kardiyoloji veya nöroloji uzmanı yok',
+            'RaporDoktor', grup=g_e))
 
-    # Branş tespiti (D-1: kard/iç/göğüs/KVC/nöroloji 5 branş)
-    brans_kategoriler_d1 = [
-        ('Kardiyoloji uzmanı', ('kardiyolog', 'kardiyoloj'), True),
-        ('İç hastalıkları uzmanı',
-         ('ic hastalik', 'iç hastalık', 'dahiliye'), False),
-        ('Göğüs hastalıkları uzmanı', ('gogus hast', 'göğüs hast'), False),
-        ('Kalp damar cerrahisi uzmanı',
-         ('kalp damar', 'kvc', 'kalp ve damar'), False),
-        ('Nöroloji uzmanı', ('noroloji', 'nöroloji', 'noroloj'), True),
-    ]
-    g_sk_brans = 'SK — branş ibareleri (bilgi)'
-    bulunan_brans_sayisi = 0
-    kard_veya_noro = False
-    for ad, anahtarlar, zorunlu_alt in brans_kategoriler_d1:
-        var = _yoak_atom_brans_var(metin_lower, anahtarlar)
-        if var:
-            bulunan_brans_sayisi += 1
-            if zorunlu_alt:
-                kard_veya_noro = True
-        # Branş ibareleri bilgi grubu (hesap dışı, sadece görüntüleme)
-        sartlar.append(SartSonuc(
-            ad, SartDurumu.VAR if var else SartDurumu.YOK,
-            f'"{ad.lower()}" tespit' if var
-            else f'"{ad.lower()}" yok',
-            'rapor_metni', grup=g_sk_brans))
+    # E3: 5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro) — D-1 SUT lafzı
+    e3_durum, e3_neden = _yoak_atom_heyet_yeterli_brans(
+        ilac_sonuc, _YOAK_HEYET_KEYS_D1)
+    if e3_durum == SartDurumu.KONTROL_EDILEMEDI and medula_sk_var:
+        # Heyet boş ama Medula otoritesi → VAR varsay
+        e3_durum, e3_neden = (
+            SartDurumu.VAR,
+            'Medula 04.03 = ≥3 uzman onayı zorunlu (otorite — heyet DB boş)')
+    sartlar.append(SartSonuc(
+        '5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro)',
+        e3_durum, e3_neden,
+        'RaporDoktor', grup=g_e))
+
+    # Bilgi grup: Heyet branş listesi (hesap dışı, görüntüleme)
+    g_sk_brans = 'SK — heyet branşları (bilgi)'
+    if dag_e['doktor_listesi']:
+        for ad, brans_norm in dag_e['doktor_listesi']:
+            sartlar.append(SartSonuc(
+                f'{brans_norm}: {ad[:30]}',
+                SartDurumu.VAR,
+                f'Heyet: {ad} ({brans_norm})',
+                'RaporDoktor', grup=g_sk_brans))
+    # Eski 'bulunan_brans_sayisi' uyumluluk (F2 ve sonraki kod kullanıyor)
+    bulunan_brans_sayisi = dag_e['farkli_brans_sayisi']
+    kard_veya_noro = has_kard or has_noro
 
     g_e_bilgi = 'SK raporu (D-1) — manuel doğrulama (bilgi)'
-    # E KRİTİK (4 atomik AND): SK ibaresi + kard/nöro + ≥3 branş + uzman reçete
-    # E2: kard VEYA nöro zorunlu — lafzen veya Medula otoritesi
-    if kard_veya_noro:
-        sartlar.append(SartSonuc(
-            'Kardiyoloji VEYA Nöroloji uzmanı (zorunlu)',
-            SartDurumu.VAR,
-            'kard/nöro uzman lafzen SK\'da var',
-            'rapor_metni', grup=g_e))
-    elif medula_sk_var:
-        sartlar.append(SartSonuc(
-            'Kardiyoloji VEYA Nöroloji uzmanı (zorunlu)',
-            SartDurumu.VAR,
-            f'Medula 04.03 = kard/nöro zorunlu uzman onayı (otorite)',
-            'rapor_kodu', grup=g_e))
-    else:
-        sartlar.append(SartSonuc(
-            'Kardiyoloji VEYA Nöroloji uzmanı (zorunlu)',
-            SartDurumu.YOK,
-            'kard/nöro uzman ibaresi rapor metninde yok',
-            'rapor_metni', grup=g_e))
-    # E3: 5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro) — tek koşul, alt-VEYA yok
-    # SUT D-1(2) lafzı: "...uzman hekimlerinden en az üçünün bulunduğu..."
-    # NOT: "aynı dal VEYA farklı dal" alt-VEYA SUT D-2(3)'e özgü, D-1'de YOK.
-    if bulunan_brans_sayisi >= 3:
-        sartlar.append(SartSonuc(
-            '5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro)',
-            SartDurumu.VAR,
-            f'{bulunan_brans_sayisi}/5 farklı branş lafzen tespit',
-            'rapor_metni', grup=g_e))
-    elif medula_sk_var:
-        sartlar.append(SartSonuc(
-            '5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro)',
-            SartDurumu.VAR,
-            f'Medula 04.03 = ≥3 uzman onayı zorunlu (otorite)',
-            'rapor_kodu', grup=g_e))
-    else:
-        sartlar.append(SartSonuc(
-            '5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro)',
-            SartDurumu.YOK,
-            f'{bulunan_brans_sayisi}/5 lafzen tespit, rapor kodu yok',
-            'rapor_metni', grup=g_e))
     # E5: bu uzman hekimlerce reçete edildi
     e_uzman_recete = _yoak_atom_e_uzman_recete(
         doktor_brans, _YOAK_AF_SK_BRANSLAR)
@@ -8842,50 +8949,54 @@ def _yoak_d2_dvtpe_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
 
     # ── GRUP E2: SK raporu — ilk 24 ay [(3)] [AND, 4 atomik] ──────────
     # NÖROLOJİ YOK! D-2(3) ilk 24 ay için sadece kard/iç/göğüs/KVC.
+    # PARAMETRİK kontrol: RaporDoktor tablosundan heyet doktorları.
+    # feedback_rapor_metni_uzman_ibare_yasak (2026-05-12) — rapor metninde
+    # branş ibare aramaktan vazgeçildi.
     g_e2 = 'SK raporu — ilk 24 ay [(3)]'
-    sk_ib = _yoak_atom_sk_ibaresi(metin_lower)
-    # E2-1
-    sartlar.append(SartSonuc(
-        '"Sağlık kurulu raporu" ibaresi',
-        SartDurumu.VAR if sk_ib else SartDurumu.YOK,
-        '"sağlık kurulu" geçiyor' if sk_ib
-        else '"sağlık kurulu" ibaresi yok',
-        'rapor_metni', grup=g_e2))
+    medula_sk_var_d2 = bool(rapor_kodu and rapor_kodu.startswith('04.03'))
+    dag_e2 = _yoak_heyet_brans_dagilimi(ilac_sonuc, _YOAK_HEYET_KEYS_D2_ILK24)
 
-    # D-2 branş listesi (NÖROLOJİ YOK)
-    brans_kategoriler_d2 = [
-        ('Kardiyoloji uzmanı', ('kardiyolog', 'kardiyoloj')),
-        ('İç hastalıkları uzmanı',
-         ('ic hastalik', 'iç hastalık', 'dahiliye')),
-        ('Göğüs hastalıkları uzmanı', ('gogus hast', 'göğüs hast')),
-        ('Kalp damar cerrahisi uzmanı',
-         ('kalp damar', 'kvc', 'kalp ve damar')),
-    ]
-    g_sk_brans = 'SK D-2 — branş ibareleri (bilgi)'
-    bulunan_brans = 0
-    for ad, anahtarlar in brans_kategoriler_d2:
-        v = _yoak_atom_brans_var(metin_lower, anahtarlar)
-        if v:
-            bulunan_brans += 1
-        sartlar.append(SartSonuc(
-            ad, SartDurumu.VAR if v else SartDurumu.YOK,
-            f'"{ad.lower()}" tespit' if v else f'"{ad.lower()}" yok',
-            'rapor_metni', grup=g_sk_brans))
+    # E2-1: SK raporu var (heyet ≥3 doktor veya Medula 04.03)
+    e21_durum, e21_neden = _yoak_atom_heyet_sk_var(ilac_sonuc, rapor_kodu)
+    sartlar.append(SartSonuc(
+        'SK raporu (heyet ≥3 doktor)',
+        e21_durum, e21_neden,
+        'RaporDoktor/rapor_kodu', grup=g_e2))
+
+    g_sk_brans = 'SK D-2 — heyet branşları (bilgi)'
+    # Bilgi grup: heyet branş listesi
+    if dag_e2['doktor_listesi']:
+        for ad, brans_norm in dag_e2['doktor_listesi']:
+            sartlar.append(SartSonuc(
+                f'{brans_norm}: {ad[:30]}',
+                SartDurumu.VAR,
+                f'Heyet: {ad} ({brans_norm})',
+                'RaporDoktor', grup=g_sk_brans))
+    bulunan_brans = dag_e2['farkli_brans_sayisi']
+
     g_e2_bilgi = 'SK raporu (D-2) — manuel doğrulama (bilgi)'
+
     # E2-2a: Herhangi ≥3 farklı uzmanlık dalı (kard/iç/göğüs/KVC)
     # SUT D-2(3): "...uzman hekimlerinden aynı uzmanlık dalından üçünün
     # VEYA herhangi üçünün bulunduğu..." → alt-VEYA grubu
+    e2a_durum, e2a_neden = _yoak_atom_heyet_yeterli_brans(
+        ilac_sonuc, _YOAK_HEYET_KEYS_D2_ILK24)
+    if e2a_durum == SartDurumu.KONTROL_EDILEMEDI and medula_sk_var_d2:
+        e2a_durum, e2a_neden = (
+            SartDurumu.VAR,
+            'Medula 04.03 = ≥3 uzman onayı zorunlu (otorite — heyet DB boş)')
     sartlar.append(SartSonuc(
         'Herhangi ≥3 farklı uzmanlık dalı (kard/iç/göğüs/KVC)',
-        SartDurumu.VAR if bulunan_brans >= 3 else SartDurumu.YOK,
-        f'{bulunan_brans}/4 farklı branş tespit',
-        'rapor_metni', grup=g_e2, veya_grubu=True))
-    # E2-2b: Aynı uzmanlık dalından ≥3 uzman (parser zayıf, KE)
+        e2a_durum, e2a_neden,
+        'RaporDoktor', grup=g_e2, veya_grubu=True))
+
+    # E2-2b: Aynı uzmanlık dalından ≥3 uzman (parametrik — heyet sayım)
+    e2b_durum, e2b_neden = _yoak_atom_heyet_ayni_dalda_3(
+        ilac_sonuc, _YOAK_HEYET_KEYS_D2_ILK24)
     sartlar.append(SartSonuc(
         'Aynı uzmanlık dalından ≥3 uzman',
-        SartDurumu.KONTROL_EDILEMEDI,
-        'Aynı daldan uzman sayısı parse edilemiyor — manuel doğrulama',
-        'rapor_metni', grup=g_e2, veya_grubu=True))
+        e2b_durum, e2b_neden,
+        'RaporDoktor', grup=g_e2, veya_grubu=True))
     # E2-4 — bu uzmanlarca reçete
     e2_uzman_recete = _yoak_atom_e_uzman_recete(
         doktor_brans, _YOAK_DVTPE_SK_BRANSLAR)
