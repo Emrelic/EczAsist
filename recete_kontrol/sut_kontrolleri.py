@@ -7371,16 +7371,21 @@ def _yoak_varfarin_2ay_var(metin_lower: str) -> bool:
 
     NOT: metin_lower zaten `_tr_lower` ile normalize edilmiş olduğundan
     "süre"→"sure" dönüşmüş. Regex'leri ASCII karşılığa göre yaz.
+
+    Pilot: SULTANPERİ ÇETİN 3LJG1EJ — "en az 2 (iki) ay süreyle" lafzında
+    parantezli açıklama parser'ı bozuyordu. (?:\(...\))? eklendi.
     """
     if not metin_lower:
         return False
+    # Sayı + ay arası parantezli açıklama opsiyonel: "2 (iki) ay"
+    paren_opt = r'(?:\s*\([^)]*\))?'
     patterns = [
         # "en az 2 ay süre ile varfarin", "iki ay varfarin", "2 ay süreyle varfarin"
-        r'(?:en az\s*)?(?:2|iki)\s*ay[^.]{0,30}'
+        rf'(?:en az\s*)?(?:2|iki){paren_opt}\s*ay[^.]{{0,30}}'
         r'(?:varfa|warfarin|coumadin|kumadin|comadin)',
         # ters yön: "varfarin ... 2 ay"
         r'(?:varfa|warfarin|coumadin|kumadin|comadin)[^.]{0,80}'
-        r'(?:en az\s*)?(?:2|iki)\s*ay',
+        rf'(?:en az\s*)?(?:2|iki){paren_opt}\s*ay',
     ]
     return any(re.search(p, metin_lower) for p in patterns)
 
@@ -8049,21 +8054,58 @@ def _yoak_atom_heyet_ayni_dalda_3(
 # ─── D-a yolu atomik ibareler (4.2.15.D-1(1)(a) / D-2(1)(b)) ───────────
 
 def _yoak_atom_da_son_5_olcum(metin_lower: str) -> bool:
-    """SUT D-a/(b) ibare: 'son 5 ölçüm'."""
+    """SUT D-a/(b) ibare: 'son 5 ölçüm'.
+
+    Sözel rakam (beş) + parantezli açıklama desteği:
+      - SULTANPERİ ÇETİN 3LJG1EJ: 'son 5 (beş) ölçüm'
+      - NERMİN İNAL 3JR4RSX: 'son BEŞ ölçüm'
+    """
     if not metin_lower:
         return False
-    return bool(re.search(r'son\s*5\s*[oö]l[cç][uü]m', metin_lower)) or \
-           bool(re.search(r'5\s*[oö]l[cç][uü]m', metin_lower))
+    paren_opt = r'(?:\s*\([^)]*\))?'
+    # 5 rakam VEYA "beş" sözel
+    sayi_5 = r'(?:5|be[sş])'
+    return bool(re.search(
+        rf'son\s*{sayi_5}{paren_opt}\s*[oö]l[cç][uü]m',
+        metin_lower)) or \
+           bool(re.search(
+        rf'{sayi_5}{paren_opt}\s*[oö]l[cç][uü]m', metin_lower))
 
 
 def _yoak_atom_da_3unde_tutulamadi(metin_lower: str) -> bool:
-    """SUT: 'en az 3'ünde ... tutulamadığı'."""
+    """SUT: 'en az 3'ünde ... tutulamadığı'.
+
+    Sözel rakam (üç) ve parantezli açıklama desteği:
+      - SULTANPERİ ÇETİN 3LJG1EJ: 'en az üçünde'
+      - NERMİN İNAL 3JR4RSX: 'son BEŞ ölçümün en az ÜÇÜNDE ... TUTULMADIĞINDAN'
+
+    Türkçe çekim: "tutulamadı"/"tutulmadı"/"tutulmadığından"/"sağlanamadı" —
+    'tutul' kökü + esnek ek (opsiyonel 'a' + 'm' + sonraki ek).
+    """
     if not metin_lower:
         return False
-    return bool(re.search(
-        r'(?:en az\s*)?3.{0,4}(?:nde|de|sinde|.+nde)?[^.]{0,30}'
-        r'(?:tutulam|saglanam|sa[gğ]lanam)', metin_lower)) or \
-           bool(re.search(r'5.{0,4}3', metin_lower))
+    paren_opt = r'(?:\s*\([^)]*\))?'
+    # Sayı (3) veya sözel (üç/uc) + opsiyonel parantezli açıklama
+    sayi_3 = rf'(?:3{paren_opt}|[uü][cç])'
+    sayi_5 = r'(?:5|be[sş])'
+    # Türkçe çekim: tutul(a)m(a)dı/tutul(a)m(a)dığından/sağlan(a)m(a)dı
+    tutul_pat = r'(?:tutul(?:a)?m|sa[gğ]?lan(?:a)?m)'
+    # Klasik: "en az 3/üç ... tutulam/tutulm"
+    if bool(re.search(
+            rf'(?:en az\s*)?{sayi_3}.{{0,4}}(?:nde|de|sinde|[uü]nde|.+nde)?'
+            rf'[^.]{{0,30}}{tutul_pat}',
+            metin_lower)):
+        return True
+    # "5/3" şeklinde kompakt yazım
+    if bool(re.search(r'5.{0,4}3', metin_lower)):
+        return True
+    # "5/beş ölçümün ... üçünde/3'ünde tutulm/tutulam"
+    if bool(re.search(
+            rf'{sayi_5}{paren_opt}[^.]{{0,25}}'
+            rf'(?:[uü][cç][uü]?nde|3.?[uü]?nde)[^.]{{0,40}}{tutul_pat}',
+            metin_lower)):
+        return True
+    return False
 
 
 def _yoak_atom_da_inr_2_3_hedef(metin_lower: str) -> bool:
@@ -8076,12 +8118,38 @@ def _yoak_atom_da_inr_2_3_hedef(metin_lower: str) -> bool:
 
 
 def _yoak_atom_da_varfarin_kesildi(metin_lower: str) -> bool:
-    """SUT: 'varfarin kesilerek ... tedavisine geçilebilir'."""
+    """SUT: 'varfarin kesilerek ... tedavisine geçilebilir'.
+
+    İmplicit kesim varyantları (SABİRE YILDIZ 3LZBFYY/3HOJQSM pilot):
+      "tutulamamıştır. Bu nedenle ... [YOAK ilac] kullanılması uygundur."
+    SUT lafzı tam değil ama klinik durum aynı (INR fail sonrası YOAK
+    reçete → varfarin örtük olarak kesilmiş).
+    """
     if not metin_lower:
         return False
-    return bool(re.search(
-        r'(?:varfa|warfarin|coumadin|kumadin)[^.]{0,40}'
-        r'(?:kes(?:il|ip|erek)|dur(?:dur|duruld|uld))', metin_lower))
+    # Klasik: "varfarin ... kesilerek/durduruldu"
+    if bool(re.search(
+            r'(?:varfa|warfarin|coumadin|kumadin)[^.]{0,40}'
+            r'(?:kes(?:il|ip|erek)|dur(?:dur|duruld|uld))', metin_lower)):
+        return True
+    # İmplicit: "tutulam/tutulm ... bu nedenle ... [yoak ilac]"
+    # YOAK ilaçları: rivaroksaban/edoksaban/apiksaban/dabigatran
+    # NOT: cümle aşmasına izin (`.` kullan) — SABİRE pilotunda
+    # "tutulamamıştır.Bu nedenle..." nokta ile bitiyor.
+    yoak_ilac = (r'(?:rivaroks?aban|edoks?aban|apiks?aban|dabigatran|'
+                 r'xarelto|eliquis|lixiana|pradaxa)')
+    if bool(re.search(
+            rf'(?:tutul(?:a)?m|sa[gğ]?lan(?:a)?m).{{0,80}}'
+            rf'(?:bu nedenle|bu sebeple).{{0,60}}{yoak_ilac}',
+            metin_lower)):
+        return True
+    # Alternatif: "INR tutulamadığından ... [yoak] tedavisine geçildi"
+    if bool(re.search(
+            rf'(?:tutul(?:a)?m|sa[gğ]?lan(?:a)?m).{{0,120}}'
+            rf'{yoak_ilac}.{{0,30}}(?:tedavi|kullan|gec)',
+            metin_lower)):
+        return True
+    return False
 
 
 # ─── D-b yolu atomik ibareler (4.2.15.D-1(1)(b)) ───────────────────────
