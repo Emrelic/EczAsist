@@ -6490,6 +6490,29 @@ class AylikReceteSorguGUI:
         except Exception as e:
             logger.debug(f"RaporRaporKodlariICD okunamadı: {e}")
 
+        # Heyet doktorları (raporu düzenleyen — SK raporu için 3 uzman)
+        heyet_doktorlari = []
+        try:
+            rows_d = self.db.sorgu_calistir(
+                """SELECT d.DoktorAdiSoyadi, d.DoktorTCKN,
+                          b.BransAdi
+                   FROM RaporDoktor rd
+                   LEFT JOIN Doktor d ON d.DoktorId = rd.RaporDoktorDoktorId
+                   LEFT JOIN Brans b ON b.BransId = rd.RaporDoktorBransId
+                   WHERE rd.RaporDoktorRaporAnaId = ?
+                     AND (rd.RaporDoktorSilme IS NULL
+                          OR rd.RaporDoktorSilme = 0)
+                   ORDER BY b.BransAdi, d.DoktorAdiSoyadi""",
+                (rapor_ana_id,))
+            for r in rows_d:
+                heyet_doktorlari.append({
+                    "ad": (r.get("DoktorAdiSoyadi") or "").strip(),
+                    "tckn": (r.get("DoktorTCKN") or "").strip(),
+                    "brans": (r.get("BransAdi") or "").strip(),
+                })
+        except Exception as e:
+            logger.debug(f"RaporDoktor okunamadı: {e}")
+
         # Ek bilgiler
         ek_bilgiler = []
         try:
@@ -6540,6 +6563,7 @@ class AylikReceteSorguGUI:
             "icdler": icdler,
             "ek_bilgiler": ek_bilgiler,
             "etkin_maddeler": etkin_maddeler,
+            "heyet_doktorlari": heyet_doktorlari,
         }
 
     def _recete_detay_pencere_olustur(self, rec_no, data):
@@ -6718,6 +6742,32 @@ class AylikReceteSorguGUI:
                     yaz(f"      ICD: {ic}\n")
         else:
             yaz("  (Rapor kodu/ICD kaydı yok)\n")
+
+        yaz("\nHeyet Doktorları (raporu düzenleyen)\n", "h2")
+        heyet = data.get("heyet_doktorlari") or []
+        if heyet:
+            # Branşa göre özet (SK heyet kontrolü için)
+            brans_sayisi = {}
+            for d in heyet:
+                b = d.get("brans") or "(branş yok)"
+                brans_sayisi[b] = brans_sayisi.get(b, 0) + 1
+            yaz(f"  Toplam doktor: {len(heyet)}  ·  "
+                f"Farklı branş: {len(brans_sayisi)}\n", "k")
+            for d in heyet:
+                ad = d.get("ad") or "-"
+                br = d.get("brans") or "(branş yok)"
+                tckn = d.get("tckn") or ""
+                yaz(f"  • {ad}", "k")
+                yaz(f"  [{br}]")
+                if tckn:
+                    yaz(f"  TC: {tckn}", "muted")
+                yaz("\n")
+            # Branş özetini sayım ile göster
+            yaz("\n  Branş dağılımı:\n", "muted")
+            for b, n in sorted(brans_sayisi.items()):
+                yaz(f"    - {b}: {n} doktor\n", "muted")
+        else:
+            yaz("  (RaporDoktor kaydı yok — heyet bilgisi DB'de bulunamadı)\n")
 
         yaz("\nRapor Etkin Maddeleri (tedavi)\n", "h2")
         if data["etkin_maddeler"]:
