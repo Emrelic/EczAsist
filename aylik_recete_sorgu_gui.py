@@ -1617,100 +1617,11 @@ class AylikReceteSorguGUI:
         self._sema_ozet.pack(side="top", fill="x", padx=4, pady=(4, 0))
         self._sema_ozet.pack_propagate(False)
 
-        # Notebook: 2 sekme — (A) Devre Şeması, (B) FTA Ağacı (IEC 61025)
+        # Notebook: 2 sekme — (D) DMN Karar Modeli, (G) Klasik Akım Şeması
+        # Tab A/B/C/E/F kullanıcı tarafından kaldırıldı (snapshot: 3cd6b33).
         nb = ttk.Notebook(parent)
         nb.pack(side="top", fill="both", expand=True, padx=4, pady=4)
         self._sema_notebook = nb
-
-        # ── TAB A: Devre Şeması (elektrik devresi metaforu) ───────────
-        tab_devre = tk.Frame(nb, bg="#FAFBFC")
-        nb.add(tab_devre, text="🔌 Devre Şeması")
-
-        self._sema_canvas = tk.Canvas(tab_devre, bg="white",
-                                       highlightthickness=0)
-        xsb = ttk.Scrollbar(tab_devre, orient="horizontal",
-                             command=self._sema_canvas.xview)
-        xsb.pack(side="bottom", fill="x")
-        ysb = ttk.Scrollbar(tab_devre, orient="vertical",
-                             command=self._sema_canvas.yview)
-        ysb.pack(side="right", fill="y")
-        self._sema_canvas.pack(side="left", fill="both", expand=True)
-        self._sema_canvas.configure(xscrollcommand=xsb.set,
-                                     yscrollcommand=ysb.set)
-
-        # _sema_inner kart-modu için yedek
-        self._sema_inner = tk.Frame(self._sema_canvas, bg="#FAFBFC")
-
-        self._sema_neden_map = {}
-        self._sema_canvas.bind("<Motion>", self._sema_canvas_hover)
-        self._sema_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
-
-        def _on_wheel(event):
-            self._sema_canvas.yview_scroll(int(-1 * (event.delta / 120)),
-                                             "units")
-        def _on_shift_wheel(event):
-            self._sema_canvas.xview_scroll(int(-1 * (event.delta / 120)),
-                                             "units")
-        self._sema_canvas.bind("<MouseWheel>", _on_wheel)
-        self._sema_canvas.bind("<Shift-MouseWheel>", _on_shift_wheel)
-
-        # ── TAB B: FTA Ağacı (Fault Tree Analysis, IEC 61025) ─────────
-        tab_fta = tk.Frame(nb, bg="#FAFBFC")
-        nb.add(tab_fta, text="🌳 FTA Ağacı")
-
-        self._fta_canvas = tk.Canvas(tab_fta, bg="white",
-                                      highlightthickness=0)
-        fta_xsb = ttk.Scrollbar(tab_fta, orient="horizontal",
-                                 command=self._fta_canvas.xview)
-        fta_xsb.pack(side="bottom", fill="x")
-        fta_ysb = ttk.Scrollbar(tab_fta, orient="vertical",
-                                 command=self._fta_canvas.yview)
-        fta_ysb.pack(side="right", fill="y")
-        self._fta_canvas.pack(side="left", fill="both", expand=True)
-        self._fta_canvas.configure(xscrollcommand=fta_xsb.set,
-                                    yscrollcommand=fta_ysb.set)
-
-        self._fta_neden_map = {}
-        self._fta_canvas.bind("<Motion>", self._fta_canvas_hover)
-        self._fta_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
-
-        def _fta_on_wheel(event):
-            self._fta_canvas.yview_scroll(int(-1 * (event.delta / 120)),
-                                           "units")
-        def _fta_on_shift_wheel(event):
-            self._fta_canvas.xview_scroll(int(-1 * (event.delta / 120)),
-                                           "units")
-        self._fta_canvas.bind("<MouseWheel>", _fta_on_wheel)
-        self._fta_canvas.bind("<Shift-MouseWheel>", _fta_on_shift_wheel)
-
-        # ── TAB C: SUT Madde Akış Çizelgesi (mevzuat sırası bire bir) ──
-        tab_madde = tk.Frame(nb, bg="#FAFBFC")
-        nb.add(tab_madde, text="📜 SUT Madde Akışı")
-
-        self._madde_canvas = tk.Canvas(tab_madde, bg="white",
-                                        highlightthickness=0)
-        madde_xsb = ttk.Scrollbar(tab_madde, orient="horizontal",
-                                   command=self._madde_canvas.xview)
-        madde_xsb.pack(side="bottom", fill="x")
-        madde_ysb = ttk.Scrollbar(tab_madde, orient="vertical",
-                                   command=self._madde_canvas.yview)
-        madde_ysb.pack(side="right", fill="y")
-        self._madde_canvas.pack(side="left", fill="both", expand=True)
-        self._madde_canvas.configure(xscrollcommand=madde_xsb.set,
-                                      yscrollcommand=madde_ysb.set)
-
-        self._madde_neden_map = {}
-        self._madde_canvas.bind("<Motion>", self._madde_canvas_hover)
-        self._madde_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
-
-        def _madde_on_wheel(event):
-            self._madde_canvas.yview_scroll(int(-1 * (event.delta / 120)),
-                                             "units")
-        def _madde_on_shift_wheel(event):
-            self._madde_canvas.xview_scroll(int(-1 * (event.delta / 120)),
-                                             "units")
-        self._madde_canvas.bind("<MouseWheel>", _madde_on_wheel)
-        self._madde_canvas.bind("<Shift-MouseWheel>", _madde_on_shift_wheel)
 
         # ── TAB D: DMN Karar Modeli (OMG/HL7 FHIR CPG standardı) ──────
         # Decision Requirements Diagram (üst) + Decision Table (alt) +
@@ -1743,70 +1654,6 @@ class AylikReceteSorguGUI:
                                            "units")
         self._dmn_canvas.bind("<MouseWheel>", _dmn_on_wheel)
         self._dmn_canvas.bind("<Shift-MouseWheel>", _dmn_on_shift_wheel)
-
-        # ── TAB E: IEC 60617-12 Mantık Kapısı Şeması ──────────────────
-        # Boolean cebrinin resmi mühendislik gösterimi (IEEE Std 91-1984).
-        # AND (& kutusu), OR (≥1 kutusu), NOT (çıkışta küçük daire).
-        # Atomlar renkli input pin · akan yol yeşil kalın · alt boolean formül
-        tab_gates = tk.Frame(nb, bg="#FAFBFC")
-        nb.add(tab_gates, text="⚙ Mantık Kapısı")
-
-        self._gates_canvas = tk.Canvas(tab_gates, bg="white",
-                                        highlightthickness=0)
-        gt_xsb = ttk.Scrollbar(tab_gates, orient="horizontal",
-                                command=self._gates_canvas.xview)
-        gt_xsb.pack(side="bottom", fill="x")
-        gt_ysb = ttk.Scrollbar(tab_gates, orient="vertical",
-                                command=self._gates_canvas.yview)
-        gt_ysb.pack(side="right", fill="y")
-        self._gates_canvas.pack(side="left", fill="both", expand=True)
-        self._gates_canvas.configure(xscrollcommand=gt_xsb.set,
-                                      yscrollcommand=gt_ysb.set)
-
-        self._gates_neden_map = {}
-        self._gates_canvas.bind("<Motion>", self._gates_canvas_hover)
-        self._gates_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
-
-        def _gates_on_wheel(event):
-            self._gates_canvas.yview_scroll(int(-1 * (event.delta / 120)),
-                                             "units")
-        def _gates_on_shift_wheel(event):
-            self._gates_canvas.xview_scroll(int(-1 * (event.delta / 120)),
-                                             "units")
-        self._gates_canvas.bind("<MouseWheel>", _gates_on_wheel)
-        self._gates_canvas.bind("<Shift-MouseWheel>", _gates_on_shift_wheel)
-
-        # ── TAB F: RBD — Reliability Block Diagram (IEC 61078) ────────
-        # Karar verici mantık formülasyonuna birebir eşlenik akım şeması.
-        # Top-level AND = bloklar yatay seri; veya_grubu = dikey paralel.
-        # NOT atom = blok başında "¬"; akan yol yeşil kalın.
-        tab_rbd = tk.Frame(nb, bg="#FAFBFC")
-        nb.add(tab_rbd, text="🔗 RBD (IEC 61078)")
-
-        self._rbd_canvas = tk.Canvas(tab_rbd, bg="white",
-                                      highlightthickness=0)
-        rbd_xsb = ttk.Scrollbar(tab_rbd, orient="horizontal",
-                                 command=self._rbd_canvas.xview)
-        rbd_xsb.pack(side="bottom", fill="x")
-        rbd_ysb = ttk.Scrollbar(tab_rbd, orient="vertical",
-                                 command=self._rbd_canvas.yview)
-        rbd_ysb.pack(side="right", fill="y")
-        self._rbd_canvas.pack(side="left", fill="both", expand=True)
-        self._rbd_canvas.configure(xscrollcommand=rbd_xsb.set,
-                                    yscrollcommand=rbd_ysb.set)
-
-        self._rbd_neden_map = {}
-        self._rbd_canvas.bind("<Motion>", self._rbd_canvas_hover)
-        self._rbd_canvas.bind("<Leave>", lambda _e: self._sema_hide_tip())
-
-        def _rbd_on_wheel(event):
-            self._rbd_canvas.yview_scroll(int(-1 * (event.delta / 120)),
-                                           "units")
-        def _rbd_on_shift_wheel(event):
-            self._rbd_canvas.xview_scroll(int(-1 * (event.delta / 120)),
-                                           "units")
-        self._rbd_canvas.bind("<MouseWheel>", _rbd_on_wheel)
-        self._rbd_canvas.bind("<Shift-MouseWheel>", _rbd_on_shift_wheel)
 
         # ── TAB G: Klasik Akım Şeması (ampul + sade dikey paralel) ────
         # Tab F (RBD) ile aynı topoloji (dikey paralel + yatay seri) ama
@@ -2053,44 +1900,27 @@ class AylikReceteSorguGUI:
             pass
 
     def _sema_temizle(self, mesaj: str = "") -> None:
-        """Şema panelini temizle, opsiyonel placeholder mesaj."""
+        """Şema panelini temizle, opsiyonel placeholder mesaj.
+
+        Aktif sekmeler: Tab D (DMN) + Tab G (Klasik Akım).
+        Tab A/B/C/E/F kaldırıldığı için ilgili canvas'lar yoktur;
+        hasattr ile kontrol edilir.
+        """
         for w in self._sema_ozet.winfo_children():
             w.destroy()
-        try:
-            for w in self._sema_inner.winfo_children():
-                w.destroy()
-        except Exception:
-            pass
-        # Her iki canvas'ı da temizle
-        try:
-            self._sema_canvas.delete("all")
-        except Exception:
-            pass
-        try:
-            self._fta_canvas.delete("all")
-            self._fta_neden_map = {}
-        except Exception:
-            pass
-        try:
-            self._madde_canvas.delete("all")
-            self._madde_neden_map = {}
-        except Exception:
-            pass
-        try:
-            self._dmn_canvas.delete("all")
-            self._dmn_neden_map = {}
-        except Exception:
-            pass
-        try:
-            self._gates_canvas.delete("all")
-            self._gates_neden_map = {}
-        except Exception:
-            pass
-        try:
-            self._rbd_canvas.delete("all")
-            self._rbd_neden_map = {}
-        except Exception:
-            pass
+        # Aktif canvas'ları temizle (D + G)
+        if hasattr(self, '_dmn_canvas'):
+            try:
+                self._dmn_canvas.delete("all")
+                self._dmn_neden_map = {}
+            except Exception:
+                pass
+        if hasattr(self, '_klasik_canvas'):
+            try:
+                self._klasik_canvas.delete("all")
+                self._klasik_neden_map = {}
+            except Exception:
+                pass
         if mesaj:
             tk.Label(self._sema_ozet, text=mesaj, bg="#FAFBFC",
                      fg="#90A4AE",
@@ -2740,25 +2570,9 @@ class AylikReceteSorguGUI:
         if not sartlar:
             return
 
-        # Canvas üzerinde devre şeması (Tab A)
+        # Aktif sekmeler: Tab D (DMN Karar Modeli) + Tab G (Klasik Akım).
+        # Tab A/B/C/E/F kullanıcı tarafından kaldırıldı (snapshot: 3cd6b33).
         self.root.update_idletasks()  # canvas genişliğini al
-        self._devre_ciz_canvas(sartlar, gmat, detaylar=detaylar,
-                                 verdict=verdict)
-        # FTA Ağacı (Tab B, IEC 61025 standart hiyerarşik gösterim)
-        try:
-            self._fta_ciz_canvas(sartlar, detaylar=detaylar,
-                                  verdict=verdict)
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception('FTA renderer hatası')
-        # SUT Madde Akış Çizelgesi (Tab C, mevzuat sırasına bire bir)
-        try:
-            self._sut_madde_ciz_canvas(sartlar, detaylar=detaylar,
-                                        verdict=verdict)
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception(
-                'SUT Madde Akış renderer hatası')
         # DMN Karar Modeli (Tab D, OMG/HL7 FHIR CPG standardı, pilot: YOAK)
         try:
             self._dmn_ciz_canvas(sartlar, detaylar=detaylar,
@@ -2767,22 +2581,6 @@ class AylikReceteSorguGUI:
             import logging
             logging.getLogger(__name__).exception(
                 'DMN Karar Modeli renderer hatası')
-        # Mantık Kapısı Şeması (Tab E, IEC 60617-12 / IEEE 91, pilot: YOAK)
-        try:
-            self._gates_ciz_canvas(sartlar, detaylar=detaylar,
-                                    verdict=verdict, satir=satir)
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception(
-                'Mantık Kapısı renderer hatası')
-        # RBD — Reliability Block Diagram (Tab F, IEC 61078, pilot: YOAK)
-        try:
-            self._rbd_ciz_canvas(sartlar, detaylar=detaylar,
-                                  verdict=verdict, satir=satir)
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception(
-                'RBD renderer hatası')
         # Klasik Akım Şeması — ampul + dikey paralel (Tab G, sade görsel)
         try:
             self._klasik_ciz_canvas(sartlar, detaylar=detaylar,
