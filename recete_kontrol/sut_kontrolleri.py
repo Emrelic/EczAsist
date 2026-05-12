@@ -7704,20 +7704,49 @@ def _yoak_atom_mitral_darlik_yok_ibaresi(metin_lower: str) -> bool:
     (örtük kabul yasağı).
 
     'Non-valvüler AF' lafzen geçiyorsa (hekim AF tipini valve-dışı olarak
-    direkt deklare etmiş) bu da geçerli bir negatif ikrar sayılır."""
+    direkt deklare etmiş) bu da geçerli bir negatif ikrar sayılır.
+
+    SABİRE YILDIZ 3LZBFYY pilot (2026-05-12): "ciddi mitral kapak
+    hastalığı yoktur" + "romatizmal kapak hastalığı yoktur" lafzı da
+    geçerli negatif ikrar sayılır (mitral darlık sınıfında)."""
     if not metin_lower:
         return False
     # 'non-valvüler' lafzen direkt → açık negatif ikrar
     if _yoak_atom_nonvalvuler_lafzen(metin_lower):
         return True
-    # Negatif ek varyantları (Türkçe çekim)
-    neg_pat = (r'(?:olmay|olmadi|olmadı|yoktur|yok\b|'
+    # Negatif ek varyantları (Türkçe çekim) — pilot tetikleyiciler:
+    # SABİRE YILDIZ 3LZBFYY: "yoktur"
+    # GÜLŞEN BULUT 3LRGDMM: "bulunmamaktadır"
+    neg_pat = (r'(?:olmay|olmadi|olmadı|yoktur|yok\b|bulunma|'
                r'saptanm|tespit\s+edilmem|gozlenmem|gözlenmem)')
-    return bool(re.search(
-        rf'mitral[^.]{{0,40}}(?:darl[ıi]k|stenos)[^.]{{0,40}}{neg_pat}',
-        metin_lower)) or bool(re.search(
-        rf'{neg_pat}[^.]{{0,40}}mitral[^.]{{0,40}}(?:darl[ıi]k|stenos)',
-        metin_lower))
+    # "kapak" Türkçe çekim (kapak/kapağı/kapağa/kapağın/kapaktan) — yumuşak
+    # g/k varyasyonu için kapa[gk] kabul edilir
+    kapak_pat = r'kapa[gkğ]\w*'
+    # Klasik: "mitral darlık/stenoz ... yok"
+    if bool(re.search(
+            rf'mitral[^.]{{0,40}}(?:darl[ıi]k|stenos)[^.]{{0,40}}{neg_pat}',
+            metin_lower)):
+        return True
+    if bool(re.search(
+            rf'{neg_pat}[^.]{{0,40}}mitral[^.]{{0,40}}(?:darl[ıi]k|stenos)',
+            metin_lower)):
+        return True
+    # SABİRE-pilot: "(ciddi/orta/romatizmal) mitral kapak hastalığı ... yok"
+    # Mitral darlık = "ciddi mitral kapak hastalığı"nın bir kategorisidir;
+    # hekim "ciddi mitral kapak hastalığı yoktur" diyorsa mitral darlık da
+    # YOK demek lafzen.
+    if bool(re.search(
+            rf'mitral\s+{kapak_pat}[^.]{{0,40}}{neg_pat}',
+            metin_lower)):
+        return True
+    # "Romatizmal kapak hastalığı yoktur" → mitral darlık romatizmal
+    # sebepli olabilir; hekim romatizmal kapak hastalığı yok diyorsa
+    # mitral darlık dışlanmış sayılır
+    if bool(re.search(
+            rf'romatizmal\s+{kapak_pat}[^.]{{0,40}}{neg_pat}',
+            metin_lower)):
+        return True
+    return False
 
 
 def _yoak_atom_mekanik_kapak(metin_lower: str) -> bool:
@@ -7758,19 +7787,46 @@ def _yoak_atom_mekanik_kapak_yok_ibaresi(metin_lower: str) -> bool:
     lafzen ibaresi var mı (örtük kabul yasağı).
 
     'Non-valvüler AF' lafzen geçiyorsa (hekim AF tipini valve-dışı olarak
-    direkt deklare etmiş) bu da geçerli bir negatif ikrar sayılır."""
+    direkt deklare etmiş) bu da geçerli bir negatif ikrar sayılır.
+
+    Pilot tetikleyiciler:
+      SABİRE YILDIZ 3LZBFYY: "protez kapak hastalığı yoktur"
+      GÜLŞEN BULUT 3LRGDMM: "mekanik protez kapağı yoktur" (Türkçe ek)
+    """
     if not metin_lower:
         return False
     # 'non-valvüler' lafzen direkt → açık negatif ikrar (valve hastalığı yok)
     if _yoak_atom_nonvalvuler_lafzen(metin_lower):
         return True
-    return bool(re.search(
-        r'mekanik[^.]{0,30}(?:kapak|protez|valve)[^.]{0,30}'
-        r'(?:olmay|yoktur|yok\b|saptanm|tespit\s+edilmem)',
-        metin_lower)) or bool(re.search(
-        r'(?:olmay|yoktur|yok)[^.]{0,30}mekanik[^.]{0,30}(?:kapak|protez)',
-        metin_lower)) or 'mekanik protez kapağı olmayan' in metin_lower or \
-        'mekanik protez kapagi olmayan' in metin_lower
+    neg_pat = (r'(?:olmay|olmadi|olmadı|yoktur|yok\b|bulunma|'
+               r'saptanm|tespit\s+edilmem|gozlenmem|gözlenmem)')
+    # kapak/protez Türkçe ek çekimi (kapağı/protezi)
+    kapak_pat = r'(?:kapa[gkğ]|protez)\w*'
+    # Klasik: "mekanik (kapak|protez|valve) ... yok"
+    if bool(re.search(
+            rf'mekanik[^.]{{0,30}}{kapak_pat}[^.]{{0,30}}{neg_pat}',
+            metin_lower)):
+        return True
+    if bool(re.search(
+            rf'{neg_pat}[^.]{{0,30}}mekanik[^.]{{0,30}}{kapak_pat}',
+            metin_lower)):
+        return True
+    # SABİRE-pilot: "protez kapak ... yok" (mekanik kelimesi olmasa bile —
+    # hekim "protez kapak hastalığı yoktur" derken mekanik dahil tüm
+    # protez kapaklarını dışlamış sayılır)
+    if bool(re.search(
+            rf'protez\s+{kapak_pat}[^.]{{0,40}}{neg_pat}',
+            metin_lower)):
+        return True
+    if bool(re.search(
+            rf'protez\s+(?:kapa[gkğ]|valve)\w*[^.]{{0,40}}{neg_pat}',
+            metin_lower)):
+        return True
+    # Eski uyumluluk
+    if ('mekanik protez kapağı olmayan' in metin_lower
+            or 'mekanik protez kapagi olmayan' in metin_lower):
+        return True
+    return False
 
 
 def _yoak_atom_biyoprotez(metin_lower: str) -> bool:
