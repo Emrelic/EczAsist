@@ -4059,6 +4059,16 @@ class AylikReceteSorguGUI:
                               (i_t.ICDKodu LIKE 'E10%' OR i_t.ICDKodu LIKE 'E11%'
                             OR i_t.ICDKodu LIKE 'E12%' OR i_t.ICDKodu LIKE 'E13%'
                             OR i_t.ICDKodu LIKE 'E14%'))
+                          -- YOAK (Riva/Apiks/Edoks/Dabi) — DURSUN ÜREYEN
+                          -- 2ONC7XX pilot tetikleyici (2026-05-12)
+                          OR (atc.ATCKodu LIKE 'B01A%' AND
+                              (i_t.ICDKodu LIKE 'I48%'  -- AF
+                            OR i_t.ICDKodu LIKE 'I26%'  -- PE
+                            OR i_t.ICDKodu LIKE 'I80%'  -- DVT yüzeyel
+                            OR i_t.ICDKodu LIKE 'I82%'  -- DVT derin
+                            OR i_t.ICDKodu LIKE 'I63%'  -- inme (risk fakt)
+                            OR i_t.ICDKodu LIKE 'G45%'  -- TIA (risk fakt)
+                            ))
                         )
                       )
                     ORDER BY
@@ -4085,6 +4095,10 @@ class AylikReceteSorguGUI:
                                     (i2.ICDKodu LIKE 'E10%' OR i2.ICDKodu LIKE 'E11%'
                                   OR i2.ICDKodu LIKE 'E12%' OR i2.ICDKodu LIKE 'E13%'
                                   OR i2.ICDKodu LIKE 'E14%'))
+                                OR (atc.ATCKodu LIKE 'B01A%' AND
+                                    (i2.ICDKodu LIKE 'I48%' OR i2.ICDKodu LIKE 'I26%'
+                                  OR i2.ICDKodu LIKE 'I80%' OR i2.ICDKodu LIKE 'I82%'
+                                  OR i2.ICDKodu LIKE 'I63%' OR i2.ICDKodu LIKE 'G45%'))
                               )
                         ) THEN 0 ELSE 1 END,
                         rap.RaporAnaRaporTarihi DESC
