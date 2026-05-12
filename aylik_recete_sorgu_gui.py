@@ -7383,12 +7383,131 @@ class AylikReceteSorguGUI:
                        fill="#1A237E", font=("Consolas", 10),
                        width=sink_x + 150, tags=('klasik',))
 
+        # ─── KODLU MANTIK ŞEMASI (Tab E stili — atom kısaltma harfli) ───
+        # Grup → harf (A,B,C..) · atom → harf+numara (A1,A2..) kodla.
+        # Üst-OR çiftlerinde A1.1/A2.1 ile (a)/(b) yolu ayrılır.
+        y_kodlu = y_alt + 44
+        c.create_line(margin, y_kodlu, sink_x + 200, y_kodlu,
+                       fill="#90A4AE", width=1, tags=('klasik',))
+        y_kodlu += 12
+        c.create_text(margin, y_kodlu, anchor="nw",
+                       text="▼ Kodlu Mantık Şeması "
+                            "(atom kısaltma harfli · cebirsel ifade)",
+                       fill="#37474F", font=("Segoe UI", 9, "bold"),
+                       tags=('klasik',))
+        y_kodlu += 20
+
+        # 1) Atom kısaltma haritası inşa et
+        HARFLER = ["A", "B", "C", "D", "E", "F", "G", "H",
+                    "I", "J", "K", "L", "M", "N", "O", "P"]
+        atom_kod_map = {}     # id(atom) -> "A1"
+        for bi, blk in enumerate(gruplar_layout):
+            harf = HARFLER[bi % len(HARFLER)]
+            if blk["tip"] == "ust_or_cift":
+                for ai, s in enumerate(blk["atomlar_a"]):
+                    atom_kod_map[id(s)] = f"{harf}1.{ai+1}"
+                for ai, s in enumerate(blk["atomlar_b"]):
+                    atom_kod_map[id(s)] = f"{harf}2.{ai+1}"
+            else:
+                for ai, s in enumerate(blk["atomlar"]):
+                    atom_kod_map[id(s)] = f"{harf}{ai+1}"
+
+        def _kod_neg(s):
+            k = atom_kod_map.get(id(s), "?")
+            ad = s.get("ad", "") or ""
+            return ("¬" + k) if self._rbd_atom_negatif_mi(ad) else k
+
+        # 2) Kodlu formül parçaları
+        kodlu_parcalari = []
+        for blk in gruplar_layout:
+            if blk["tip"] == "and":
+                kodlar = [_kod_neg(s) for s in blk["atomlar"]]
+                if len(kodlar) == 1:
+                    kodlu_parcalari.append(kodlar[0])
+                else:
+                    kodlu_parcalari.append("(" + " ∧ ".join(kodlar) + ")")
+            elif blk["tip"] == "veya":
+                kodlar = [_kod_neg(s) for s in blk["atomlar"]]
+                kodlu_parcalari.append("(" + " ∨ ".join(kodlar) + ")")
+            else:  # ust_or_cift
+                def _yol_kod(ats, veya_y):
+                    kodlar = [_kod_neg(s) for s in ats]
+                    if veya_y:
+                        return "(" + " ∨ ".join(kodlar) + ")"
+                    if len(kodlar) == 1:
+                        return kodlar[0]
+                    return "(" + " ∧ ".join(kodlar) + ")"
+                a_k = _yol_kod(blk["atomlar_a"], blk["veya_a"])
+                b_k = _yol_kod(blk["atomlar_b"], blk["veya_b"])
+                kodlu_parcalari.append(f"({a_k} ∨ {b_k})")
+        kodlu_formul = (" ∧ ".join(kodlu_parcalari)
+                          if kodlu_parcalari else "(boş)")
+        kodlu_formul += "  ⇔  UYGUN"
+        c.create_text(margin + 8, y_kodlu, anchor="nw",
+                       text=kodlu_formul, fill="#0D47A1",
+                       font=("Consolas", 11, "bold"),
+                       width=sink_x + 160, tags=('klasik',))
+        y_kodlu += 22 + (len(kodlu_formul) // 90) * 18
+
+        # 3) Atom Kısaltma Sözlüğü — 2 sütun
+        y_kodlu += 12
+        c.create_text(margin, y_kodlu, anchor="nw",
+                       text="▼ Atom Kısaltma Sözlüğü "
+                            "(kod = SUT şartı · ✓/✗/? = durum)",
+                       fill="#37474F", font=("Segoe UI", 9, "bold"),
+                       tags=('klasik',))
+        y_kodlu += 18
+
+        def _kod_durum_renk(durum):
+            return ("#2E7D32" if durum == "var" else
+                    "#C62828" if durum == "yok" else
+                    "#E65100" if durum == "kontrol_edilemedi"
+                    else "#9E9E9E")
+
+        sozluk_atomlar = []
+        for blk in gruplar_layout:
+            if blk["tip"] == "ust_or_cift":
+                sozluk_atomlar.extend(blk["atomlar_a"])
+                sozluk_atomlar.extend(blk["atomlar_b"])
+            else:
+                sozluk_atomlar.extend(blk["atomlar"])
+
+        legend_col_w = 540
+        legend_basla_y = y_kodlu
+        for li, s in enumerate(sozluk_atomlar):
+            kod = atom_kod_map.get(id(s), "?")
+            ad_tam = s.get("ad", "") or ""
+            ad = ad_tam if len(ad_tam) <= 64 else ad_tam[:62] + ".."
+            is_neg = self._rbd_atom_negatif_mi(ad_tam)
+            prefix = "¬ " if is_neg else ""
+            durum = s.get("durum", "na")
+            renk = _kod_durum_renk(durum)
+            sembol = ("✓" if durum == "var" else
+                       "✗" if durum == "yok" else
+                       "?" if durum == "kontrol_edilemedi" else "·")
+            col = li % 2
+            row = li // 2
+            lx = margin + 8 + col * legend_col_w
+            ly = legend_basla_y + row * 16
+            c.create_text(lx, ly, anchor="nw",
+                           text=f"{kod}", fill=renk,
+                           font=("Consolas", 9, "bold"),
+                           tags=('klasik',))
+            c.create_text(lx + 48, ly, anchor="nw",
+                           text=f"{sembol} {prefix}{ad}",
+                           fill="#37474F",
+                           font=("Segoe UI", 8),
+                           tags=('klasik',))
+        sozluk_satir_sayisi = (len(sozluk_atomlar) + 1) // 2
+        y_kodlu = legend_basla_y + sozluk_satir_sayisi * 16
+
         # Legend
-        y_leg = y_alt + 40
+        y_leg = y_kodlu + 22
         c.create_text(margin, y_leg, anchor="nw",
                        text="🔆 Kutu: ✓ VAR (yeşil) · ✗ YOK (kırmızı/gri) · "
                             "? KE (sarı) · ¬ = NEGATİF · "
-                            "∧ AND yatay seri · ∨ OR dikey paralel",
+                            "∧ AND yatay seri · ∨ OR dikey paralel · "
+                            "Kodlu formül: SUT lafzı → cebirsel ifade",
                        fill="#546E7A", font=("Segoe UI", 8),
                        tags=('klasik',))
 
