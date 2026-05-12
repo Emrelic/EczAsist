@@ -3296,11 +3296,13 @@ class AylikReceteSorguGUI:
                 partner_atomlar = gruplar.get(partner_g, [])
 
                 def _yol_w(ats):
-                    veya2 = any(s.get("veya_grubu") for s in ats)
-                    if veya2:
-                        return BLOK_W
-                    return (len(ats) * BLOK_W
-                            + max(0, len(ats) - 1) * ATOM_GAP_X)
+                    # _yol_ciz render YATAY SERİ çiziyor (atomlar arası ∧/∨
+                    # operatör), veya_grubu üyesi olsa bile width hesabı
+                    # n*BLOK_W + (n-1)*ATOM_GAP_X. Eski versiyon veya2=True
+                    # için sadece BLOK_W döndürüyordu → MUHARREM DAĞLI
+                    # 3KP3UIJ D-2 E2 grup çakışma bug'ı (2026-05-12).
+                    n = len(ats) or 1
+                    return n * BLOK_W + max(0, n - 1) * ATOM_GAP_X
                 w = (max(_yol_w(atomlar), _yol_w(partner_atomlar))
                      + 2 * KAVSAK_X_PAD)
                 gruplar_layout.append({
