@@ -2973,13 +2973,21 @@ class AylikReceteSorguGUI:
     #   ⊕ pil sol, ⊖ pil sağ; akan yol kalın yeşil
     # ═════════════════════════════════════════════════════════════════
 
-    # Dikdörtgen kutu renkleri (durum → fill, outline)
+    # Dikdörtgen kutu renkleri — ÜST kutu (durum → fill, outline)
     _KLASIK_BLOK_RENK = {
         'var':    ('#A5D6A7', '#1B5E20'),  # parlak yeşil
         'yok':    ('#EF9A9A', '#B71C1C'),  # AND-içi YOK → kırmızı (kontrendike)
         'or_yok': ('#F5F5F5', '#9E9E9E'),  # OR-içi YOK → soluk gri (bu kol pasif)
         'ke':     ('#FFE082', '#E65100'),  # sarı şüpheli
         'bilgi':  ('#ECEFF1', '#90A4AE'),  # bilgi
+    }
+    # ALT kutu fill — daha açık ton (veri katmanı, görsel ayrım için)
+    _KLASIK_ALT_FILL = {
+        'var':    '#E8F5E9',  # çok açık yeşil
+        'yok':    '#FFEBEE',  # çok açık pembe
+        'or_yok': '#FAFAFA',  # neredeyse beyaz
+        'ke':     '#FFF8E1',  # çok açık sarı
+        'bilgi':  '#F5F5F5',
     }
     _KLASIK_KABLO_VAR = '#2E7D32'    # akan yol — kalın yeşil
     _KLASIK_KABLO_YOK = '#BDBDBD'    # akmayan — ince gri
@@ -2989,7 +2997,11 @@ class AylikReceteSorguGUI:
     _KLASIK_KABLO_KE_W = 3
 
     def _klasik_blok_ciz(self, c, x, y, w, h, atom, veya_uye=False):
-        """Dikdörtgen kutu çiz — durum rengi + sembol + etiket (içeride).
+        """2 ayrı kutu üstüste çiz — ÜST kutu: SUT şartı + sembol,
+        ALT kutu: rapor/reçete'den parse edilen veri (neden alanı).
+
+        Her iki kutu kendi çerçevesine sahip, aralarındaki kenar
+        bitişik (paylaşılan tek çizgi gibi görünür). Toplam yükseklik h.
 
         veya_uye=True ise OR grubu içindeki atom — YOK durumu soluk gri
         (bu kol pasif anlamında, kontrendikasyon kırmızısı değil).
@@ -3005,27 +3017,52 @@ class AylikReceteSorguGUI:
         else:
             key = "bilgi"
         fill_, outline_ = self._KLASIK_BLOK_RENK[key]
-        rect_id = c.create_rectangle(x, y, x + w, y + h,
-                                       fill=fill_, outline=outline_,
-                                       width=2, tags=('klasik',))
+        h_yari = h / 2
+        # ── ÜST KUTU: SUT şartı + durum sembolü ──
+        ust_rect = c.create_rectangle(x, y, x + w, y + h_yari,
+                                        fill=fill_, outline=outline_,
+                                        width=2, tags=('klasik',))
+        # ── ALT KUTU: rapor/reçete verisi (neden) ──
+        # Alt kutu fill biraz daha açık (veri katmanı vurgusu için)
+        alt_fill = self._KLASIK_ALT_FILL.get(key, fill_)
+        alt_rect = c.create_rectangle(x, y + h_yari, x + w, y + h,
+                                        fill=alt_fill, outline=outline_,
+                                        width=2, tags=('klasik',))
         sembol = ("✓" if d == "var" else
                    "✗" if d == "yok" else
                    "?" if d == "kontrol_edilemedi" else "·")
         ad = atom.get("ad", "") or ""
         is_neg = self._rbd_atom_negatif_mi(ad)
         prefix = "¬ " if is_neg else ""
-        # max 22 karakter — w=160 ile sığar
-        ad_kisa = ad if len(ad) <= 22 else ad[:20] + ".."
-        txt = f"{sembol}  {prefix}{ad_kisa}"
-        txt_id = c.create_text(x + w / 2, y + h / 2, text=txt,
+        # ── ÜST KUTU içeriği: sembol + SUT lafzı (kısa) ──
+        ad_kisa = ad if len(ad) <= 28 else ad[:26] + ".."
+        ust_txt = f"{sembol}  {prefix}{ad_kisa}"
+        ust_id = c.create_text(x + w / 2, y + h_yari / 2, text=ust_txt,
                                  fill=outline_,
                                  font=("Segoe UI", 8, "bold"),
                                  width=w - 8, tags=('klasik',))
+        # ── ALT KUTU içeriği: rapor/reçete'den parse edilen veri ──
         neden = atom.get("neden", "") or ""
+        neden_kisa = neden if len(neden) <= 70 else neden[:68] + ".."
+        if neden_kisa:
+            alt_id = c.create_text(x + w / 2, y + h_yari + h_yari / 2,
+                                    text=neden_kisa,
+                                    fill=outline_,
+                                    font=("Segoe UI", 7),
+                                    width=w - 8, tags=('klasik',))
+        else:
+            alt_id = c.create_text(x + w / 2, y + h_yari + h_yari / 2,
+                                    text="(veri yok)",
+                                    fill="#9E9E9E",
+                                    font=("Segoe UI", 7, "italic"),
+                                    width=w - 8, tags=('klasik',))
+        # Hover tooltip — tam neden (kısaltma değil)
         if neden:
             tip_text = f"{prefix}{ad}\n\n{neden}"
-            self._klasik_neden_map[rect_id] = tip_text
-            self._klasik_neden_map[txt_id] = tip_text
+            self._klasik_neden_map[ust_rect] = tip_text
+            self._klasik_neden_map[alt_rect] = tip_text
+            self._klasik_neden_map[ust_id] = tip_text
+            self._klasik_neden_map[alt_id] = tip_text
         return d
 
     def _klasik_kablo(self, c, x0, y0, x1, y1, durum):
@@ -3172,11 +3209,11 @@ class AylikReceteSorguGUI:
         y += 22
 
         # ─── LAYOUT SABİTLERİ ─────────────────────────────
-        BLOK_W = 160                       # dikdörtgen genişliği
-        BLOK_H = 44                        # dikdörtgen yüksekliği
+        BLOK_W = 180                       # dikdörtgen genişliği (2 katman için biraz geniş)
+        BLOK_H = 88                        # dikdörtgen yüksekliği — 2 katmanlı (üst: SUT, alt: veri)
         ATOM_GAP_X = 30                    # AND içinde atom arası kablo
         BLOK_GAP_X = 50                    # gruplar arası ana hat boşluğu (∧ için)
-        PARALEL_GAP_Y = 58                 # VEYA atomları dikey aralık
+        PARALEL_GAP_Y = 100                # VEYA atomları dikey aralık (kutu 2x büyüdü)
         KAVSAK_X_PAD = 28                  # kavşak öncesi/sonrası kablo
 
         # Grup layout hesabı
