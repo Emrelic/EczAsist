@@ -83,31 +83,50 @@ print("=" * 70)
 print("PARAMETRİK heyet testleri (D-1 5 dal listesi)")
 print("=" * 70)
 
-# T1 — 3 farklı dal: kard + iç + göğüs → VAR
+# T1 — D-1 toplam 3 uzman (3 farklı dal): VAR
 kontrol_atom(
-    "T1 D-1: kard+iç+göğüs (3 farklı) -> VAR",
+    "T1 D-1 toplam: kard+iç+göğüs (3 farklı) -> VAR",
     SD.VAR,
-    sk._yoak_atom_heyet_yeterli_brans,
+    sk._yoak_atom_heyet_3_uzman_toplam,
     yap_d1(heyet(("Dr A", "Kardiyoloji"),
                   ("Dr B", "İç Hastalıkları"),
                   ("Dr C", "Göğüs Hastalıkları"))),
     sk._YOAK_HEYET_KEYS_D1)
 
-# T2 — 2 farklı dal: kard + iç → YOK
+# T2 — D-1 toplam 3 uzman (2 kard + 1 iç): VAR (SUT D-1'de farklı dal zorunlu DEĞİL!)
 kontrol_atom(
-    "T2 D-1: kard+iç (2 farklı) -> YOK",
-    SD.YOK,
-    sk._yoak_atom_heyet_yeterli_brans,
+    "T2 D-1 toplam: kard*2+iç (3 toplam, 2 farklı dal) -> VAR",
+    SD.VAR,
+    sk._yoak_atom_heyet_3_uzman_toplam,
     yap_d1(heyet(("Dr A", "Kardiyoloji"),
                   ("Dr B", "Kardiyoloji"),
                   ("Dr C", "İç Hastalıkları"))),
     sk._YOAK_HEYET_KEYS_D1)
 
+# T2b — D-1 toplam 3 uzman (aynı dalda 3 kard): VAR
+kontrol_atom(
+    "T2b D-1 toplam: 3 kardiyolog (aynı dal) -> VAR (SUT D-1'de geçer)",
+    SD.VAR,
+    sk._yoak_atom_heyet_3_uzman_toplam,
+    yap_d1(heyet(("Dr A", "Kardiyoloji"),
+                  ("Dr B", "Kardiyoloji"),
+                  ("Dr C", "Kardiyoloji"))),
+    sk._YOAK_HEYET_KEYS_D1)
+
+# T2c — D-1 toplam: sadece 2 uzman (kard+iç): YOK
+kontrol_atom(
+    "T2c D-1 toplam: 2 uzman (kard+iç) -> YOK",
+    SD.YOK,
+    sk._yoak_atom_heyet_3_uzman_toplam,
+    yap_d1(heyet(("Dr A", "Kardiyoloji"),
+                  ("Dr B", "İç Hastalıkları"))),
+    sk._YOAK_HEYET_KEYS_D1)
+
 # T3 — Heyet boş, RaporDoktor DB'de yok → KE
 kontrol_atom(
-    "T3 D-1: heyet boş -> KE",
+    "T3 D-1 toplam: heyet boş -> KE",
     SD.KONTROL_EDILEMEDI,
-    sk._yoak_atom_heyet_yeterli_brans,
+    sk._yoak_atom_heyet_3_uzman_toplam,
     yap_d1([]),
     sk._YOAK_HEYET_KEYS_D1)
 
@@ -131,21 +150,31 @@ kontrol_atom(
                   ("Dr C", "İç Hastalıkları"))),
     sk._YOAK_HEYET_KEYS_D2_ILK24)
 
-# T6 — D-2 listesi NÖRO yok: heyette nöro var, sayılmasın
+# T6 — D-2 farklı 3 dal: kard+iç+göğüs (nöro D-2'de YOK)
 kontrol_atom(
-    "T6 D-2: kard+iç+nöro -> yetkili branş 2 (nöro hariç) -> YOK",
+    "T6 D-2 farklı 3 dal: kard+iç+göğüs -> VAR",
+    SD.VAR,
+    sk._yoak_atom_heyet_farkli_3_dal,
+    yap_d1(heyet(("Dr A", "Kardiyoloji"),
+                  ("Dr B", "İç Hastalıkları"),
+                  ("Dr C", "Göğüs Hastalıkları"))),
+    sk._YOAK_HEYET_KEYS_D2_ILK24)
+
+# T6b — D-2 heyette nöro var ama D-2 listesinde nöro yok → sayılmaz
+kontrol_atom(
+    "T6b D-2 farklı: kard+iç+nöro (nöro sayılmaz D-2'de) -> YOK (2 farklı)",
     SD.YOK,
-    sk._yoak_atom_heyet_yeterli_brans,
+    sk._yoak_atom_heyet_farkli_3_dal,
     yap_d1(heyet(("Dr A", "Kardiyoloji"),
                   ("Dr B", "İç Hastalıkları"),
                   ("Dr C", "Nöroloji"))),
     sk._YOAK_HEYET_KEYS_D2_ILK24)
 
-# T7 — D-1: nöro sayılır
+# T7 — D-1 toplam 3 (nöro sayılır D-1'de): VAR
 kontrol_atom(
-    "T7 D-1: kard+iç+nöro -> yetkili branş 3 -> VAR",
+    "T7 D-1 toplam: kard+iç+nöro (D-1'de 3 yetkili uzman) -> VAR",
     SD.VAR,
-    sk._yoak_atom_heyet_yeterli_brans,
+    sk._yoak_atom_heyet_3_uzman_toplam,
     yap_d1(heyet(("Dr A", "Kardiyoloji"),
                   ("Dr B", "İç Hastalıkları"),
                   ("Dr C", "Nöroloji"))),
@@ -208,14 +237,13 @@ kontrol_full(
                   ("Dr C", "Göğüs Hastalıkları")),
             hasta_yoak_ilk_recete_tarihi="2023-06-15"))
 
-# T12: heyet 2 farklı dal + 24 ay YOK + aile hk değil (uzman) → UYGUN_DEGIL
-# (E3 heyet 2 dal YOK, F1 24 ay YOK, F3 uzman VAR ama F1 fail → F YOK,
-#  E YOK + F YOK → toplam UYGUN_DEGIL)
+# T12: heyet 3 uzman ama HEPSI iç hast (kard/nöro YOK) + 24 ay YOK
+# → E2 (kard veya nöro zorunlu) YOK → E YOK → F YOK → UYGUN_DEGIL
 kontrol_full(
-    "T12 D-1 heyet 2 farklı dal + 24ay YOK + uzman -> UYGUN_DEGIL",
+    "T12 D-1 heyet 3 iç hast (kard/nöro YOK) + 24ay YOK -> UYGUN_DEGIL",
     "uygun_degil",
-    yap_d1(heyet(("Dr A", "Kardiyoloji"),
-                  ("Dr B", "Kardiyoloji"),
+    yap_d1(heyet(("Dr A", "İç Hastalıkları"),
+                  ("Dr B", "İç Hastalıkları"),
                   ("Dr C", "İç Hastalıkları")),
             hasta_yoak_ilk_recete_tarihi="2026-02-01"))  # 3 ay → YOK
 

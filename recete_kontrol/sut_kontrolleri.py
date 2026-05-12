@@ -7919,10 +7919,40 @@ def _yoak_atom_heyet_sk_var(ilac_sonuc: Dict,
             "RaporDoktor DB'de bulunamadı — manuel doğrulama")
 
 
-def _yoak_atom_heyet_yeterli_brans(
+def _yoak_atom_heyet_3_uzman_toplam(
         ilac_sonuc: Dict,
         izinli_keys: Tuple[str, ...]) -> Tuple['SartDurumu', str]:
-    """Heyette ≥3 FARKLI yetkili uzm dalı var mı (D-1 / D-2 farklı 3)."""
+    """SUT D-1(2): "5 daldan en az ÜÇÜNÜN bulunduğu" — TOPLAM yetkili
+    doktor sayısı ≥3 (aynı dal veya farklı dal fark etmez).
+
+    SUT lafzı yorumu: heyette toplamda ≥3 uzman olmalı, bunlar yetkili
+    5 daldan herhangi biri/birkaçından gelebilir. "3 kardiyolog" veya
+    "2 kard + 1 iç hast" veya "1 kard + 1 iç + 1 göğüs" hepsi geçerli.
+
+    NOT: D-2(3) farklı — "aynı dal 3 VEYA farklı 3" alt-OR (bkz.
+    _yoak_atom_heyet_ayni_dalda_3 + _yoak_atom_heyet_farkli_3_dal).
+    """
+    dag = _yoak_heyet_brans_dagilimi(ilac_sonuc, izinli_keys)
+    if dag['yetersiz_kaynak']:
+        return (SartDurumu.KONTROL_EDILEMEDI,
+                "RaporDoktor DB'de bulunamadı — manuel doğrulama")
+    toplam = dag['toplam_yetkili']
+    brans_str = ', '.join(
+        sorted([f"{k}({v})"
+                for k, v in dag['brans_doktor_sayisi'].items()])) or \
+        '(yetkili dal yok)'
+    if toplam >= 3:
+        return (SartDurumu.VAR,
+                f'toplam {toplam} yetkili uzman: {brans_str}')
+    return (SartDurumu.YOK,
+            f'sadece {toplam} yetkili uzman (3 gerekli): {brans_str}')
+
+
+def _yoak_atom_heyet_farkli_3_dal(
+        ilac_sonuc: Dict,
+        izinli_keys: Tuple[str, ...]) -> Tuple['SartDurumu', str]:
+    """SUT D-2(3) alt-OR (b): "herhangi 3 farklı uzmanlık dalından" —
+    yani 3 FARKLI yetkili dalda en az 1'er uzman."""
     dag = _yoak_heyet_brans_dagilimi(ilac_sonuc, izinli_keys)
     if dag['yetersiz_kaynak']:
         return (SartDurumu.KONTROL_EDILEMEDI,
@@ -7935,6 +7965,11 @@ def _yoak_atom_heyet_yeterli_brans(
                 f'{n} farklı yetkili branş: {brans_str}')
     return (SartDurumu.YOK,
             f'sadece {n} farklı yetkili branş: {brans_str}')
+
+
+# Geriye uyumluluk için eski isim (deprecated, _yoak_atom_heyet_farkli_3_dal
+# kullan)
+_yoak_atom_heyet_yeterli_brans = _yoak_atom_heyet_farkli_3_dal
 
 
 def _yoak_atom_heyet_ayni_dalda_3(
@@ -8682,8 +8717,12 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
             'Heyette kardiyoloji veya nöroloji uzmanı yok',
             'RaporDoktor', grup=g_e))
 
-    # E3: 5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro) — D-1 SUT lafzı
-    e3_durum, e3_neden = _yoak_atom_heyet_yeterli_brans(
+    # E3: 5 daldan TOPLAM ≥3 uzman (D-1 SUT lafzı)
+    # "kardiyoloji, iç hastalıkları, göğüs hastalıkları, kalp damar
+    # cerrahisi ve nöroloji uzman hekimlerinden en az ÜÇÜNÜN bulunduğu"
+    # → toplam ≥3 uzman; aynı dal/farklı dal kompozisyonu önemsiz.
+    # NOT: D-2(3) farklı (aynı 3 VEYA farklı 3 alt-OR) — bkz _yoak_d2.
+    e3_durum, e3_neden = _yoak_atom_heyet_3_uzman_toplam(
         ilac_sonuc, _YOAK_HEYET_KEYS_D1)
     if e3_durum == SartDurumu.KONTROL_EDILEMEDI and medula_sk_var:
         # Heyet boş ama Medula otoritesi → VAR varsay
@@ -8691,7 +8730,7 @@ def _yoak_d1_af_kontrol(metin_lower: str, teshis_metin: str, birlesik: str,
             SartDurumu.VAR,
             'Medula 04.03 = ≥3 uzman onayı zorunlu (otorite — heyet DB boş)')
     sartlar.append(SartSonuc(
-        '5 daldan ≥3 uzman (kard/iç/göğüs/KVC/nöro)',
+        'Toplam ≥3 uzman (kard/iç/göğüs/KVC/nöro)',
         e3_durum, e3_neden,
         'RaporDoktor', grup=g_e))
 
