@@ -1663,6 +1663,24 @@ class AylikReceteSorguGUI:
         tab_klasik = tk.Frame(nb, bg="#FAFBFC")
         nb.add(tab_klasik, text="🔆 Klasik Akım")
 
+        # Zoom toolbar (üst) — Sığdır + 1:1
+        self._klasik_zoom = 1.0
+        zoom_bar = tk.Frame(tab_klasik, bg="#FAFBFC")
+        zoom_bar.pack(side="top", fill="x", padx=4, pady=2)
+        tk.Button(zoom_bar, text="🔍 Sığdır", relief="flat",
+                   bg="#E3F2FD", fg="#0D47A1",
+                   font=("Segoe UI", 8, "bold"),
+                   command=self._klasik_zoom_sigdir).pack(side="left",
+                                                            padx=(0, 4))
+        tk.Button(zoom_bar, text="1:1 Yakınlaştır", relief="flat",
+                   bg="#FFF3E0", fg="#E65100",
+                   font=("Segoe UI", 8, "bold"),
+                   command=self._klasik_zoom_birebir).pack(side="left")
+        self._klasik_zoom_lbl = tk.Label(zoom_bar, text="(1.0x)",
+                                          bg="#FAFBFC", fg="#90A4AE",
+                                          font=("Segoe UI", 8))
+        self._klasik_zoom_lbl.pack(side="left", padx=8)
+
         self._klasik_canvas = tk.Canvas(tab_klasik, bg="white",
                                           highlightthickness=0)
         klasik_xsb = ttk.Scrollbar(tab_klasik, orient="horizontal",
@@ -1852,6 +1870,43 @@ class AylikReceteSorguGUI:
         """Manuel doğrulama listesi aç-kapa (varsayılan: kapalı)."""
         self._sema_bilgi_acik = not getattr(self, "_sema_bilgi_acik", False)
         self.root.after(80, self._sema_secim_guncelle)
+
+    def _klasik_zoom_sigdir(self) -> None:
+        """Tab G canvas içeriğini görüntü alanına sığacak şekilde küçült.
+        Mevcut bbox'ı canvas widget boyutuna göre orantıla, yeni zoom
+        faktörünü hesapla, re-render et."""
+        c = getattr(self, '_klasik_canvas', None)
+        if c is None:
+            return
+        bbox = c.bbox("klasik")
+        if not bbox:
+            return
+        c.update_idletasks()
+        cw = max(c.winfo_width(), 100)
+        ch = max(c.winfo_height(), 100)
+        icerik_w = max(bbox[2] - bbox[0], 10)
+        icerik_h = max(bbox[3] - bbox[1], 10)
+        # Mevcut zoom ile birlikte hesapla — sığdırma absolute zoom verir
+        sx = (cw - 30) / icerik_w
+        sy = (ch - 30) / icerik_h
+        yeni_zoom = max(0.25, min(1.0, self._klasik_zoom * min(sx, sy)))
+        self._klasik_zoom = yeni_zoom
+        self._klasik_zoom_lbl.config(text=f"({yeni_zoom:.2f}x)")
+        # Re-render
+        satir = self._aktif_satir() if callable(getattr(self, '_aktif_satir',
+                                                          None)) else None
+        if satir:
+            self._sema_render(satir)
+
+    def _klasik_zoom_birebir(self) -> None:
+        """Tab G zoom'u 1.0x'e döndür (varsayılan boyut)."""
+        self._klasik_zoom = 1.0
+        if hasattr(self, '_klasik_zoom_lbl'):
+            self._klasik_zoom_lbl.config(text="(1.0x)")
+        satir = self._aktif_satir() if callable(getattr(self, '_aktif_satir',
+                                                          None)) else None
+        if satir:
+            self._sema_render(satir)
 
     def _sema_boyut_degistir(self, durum: str) -> None:
         """Şema panelinin yüksekliğini değiştir (kucuk/normal/buyuk).
@@ -3021,6 +3076,10 @@ class AylikReceteSorguGUI:
         else:
             key = "bilgi"
         fill_, outline_ = self._KLASIK_BLOK_RENK[key]
+        # Zoom-aware font boyutu (6-14 arası clamp)
+        z = max(0.25, min(2.0, getattr(self, '_klasik_zoom', 1.0)))
+        f_ust = max(6, min(14, int(8 * z)))
+        f_alt = max(5, min(12, int(7 * z)))
         h_yari = h / 2
         # ── ÜST KUTU: SUT şartı + durum sembolü ──
         ust_rect = c.create_rectangle(x, y, x + w, y + h_yari,
@@ -3043,7 +3102,7 @@ class AylikReceteSorguGUI:
         ust_txt = f"{sembol}  {prefix}{ad_kisa}"
         ust_id = c.create_text(x + w / 2, y + h_yari / 2, text=ust_txt,
                                  fill=outline_,
-                                 font=("Segoe UI", 8, "bold"),
+                                 font=("Segoe UI", f_ust, "bold"),
                                  width=w - 8, tags=('klasik',))
         # ── ALT KUTU içeriği: rapor/reçete'den parse edilen veri ──
         neden = atom.get("neden", "") or ""
@@ -3052,13 +3111,13 @@ class AylikReceteSorguGUI:
             alt_id = c.create_text(x + w / 2, y + h_yari + h_yari / 2,
                                     text=neden_kisa,
                                     fill=outline_,
-                                    font=("Segoe UI", 7),
+                                    font=("Segoe UI", f_alt),
                                     width=w - 8, tags=('klasik',))
         else:
             alt_id = c.create_text(x + w / 2, y + h_yari + h_yari / 2,
                                     text="(veri yok)",
                                     fill="#9E9E9E",
-                                    font=("Segoe UI", 7, "italic"),
+                                    font=("Segoe UI", f_alt, "italic"),
                                     width=w - 8, tags=('klasik',))
         # Hover tooltip — tam neden (kısaltma değil)
         if neden:
@@ -3214,12 +3273,13 @@ class AylikReceteSorguGUI:
                        fill="#90A4AE", font=("Segoe UI", 8, "italic"))
         y += 22
 
-        # ─── LAYOUT SABİTLERİ ─────────────────────────────
-        BLOK_W = 180                       # dikdörtgen genişliği (2 katman için biraz geniş)
-        BLOK_H = 88                        # dikdörtgen yüksekliği — 2 katmanlı (üst: SUT, alt: veri)
-        ATOM_GAP_X = 30                    # AND içinde atom arası kablo
-        BLOK_GAP_X = 50                    # gruplar arası ana hat boşluğu (∧ için)
-        PARALEL_GAP_Y = 100                # VEYA atomları dikey aralık (kutu 2x büyüdü)
+        # ─── LAYOUT SABİTLERİ (zoom faktörü ile çarpılır) ─────
+        z = max(0.25, min(2.0, getattr(self, '_klasik_zoom', 1.0)))
+        BLOK_W = max(60, int(180 * z))     # dikdörtgen genişliği (2 katman için biraz geniş)
+        BLOK_H = max(36, int(88 * z))      # dikdörtgen yüksekliği — 2 katmanlı (üst: SUT, alt: veri)
+        ATOM_GAP_X = max(12, int(30 * z))  # AND içinde atom arası kablo
+        BLOK_GAP_X = max(18, int(50 * z))  # gruplar arası ana hat boşluğu (∧ için)
+        PARALEL_GAP_Y = max(40, int(100 * z))  # VEYA atomları dikey aralık (kutu 2x büyüdü)
         KAVSAK_X_PAD = 28                  # kavşak öncesi/sonrası kablo
 
         # Grup layout hesabı
