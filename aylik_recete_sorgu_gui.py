@@ -3443,12 +3443,17 @@ class AylikReceteSorguGUI:
                     # Blok → sağ ray
                     self._klasik_kablo(c, bx_left + BLOK_W, yi,
                                          kavsak_sag_x, yi, d_k)
-                    # Aşağı komşuyla arasında ∨ sembolü (solun solunda)
+                    # Aşağı komşuyla arasında ∨ sembolü — sol kablonun
+                    # üzerinde, beyaz arka plan ile (görsel netlik)
                     if i < n - 1:
                         mid_y = yi + PARALEL_GAP_Y // 2
-                        c.create_text(kavsak_sol_x - 14, mid_y, text="∨",
+                        sx, sy = kavsak_sol_x, mid_y
+                        c.create_rectangle(sx - 9, sy - 9, sx + 9, sy + 9,
+                                            fill="white", outline="",
+                                            tags=('klasik',))
+                        c.create_text(sx, sy, text="∨",
                                        fill="#1565C0",
-                                       font=("Segoe UI", 11, "bold"),
+                                       font=("Segoe UI", 12, "bold"),
                                        tags=('klasik',))
                 if grup_d == "yok":
                     akim_aktif = False
@@ -3477,10 +3482,15 @@ class AylikReceteSorguGUI:
                                      kavsak_sol_x, y_b, kavsak_d)
                 self._klasik_kablo(c, kavsak_sag_x, y_a,
                                      kavsak_sag_x, y_b, kavsak_d)
-                # Ortada ∨ sembolü (üst-OR çift)
-                c.create_text(kavsak_sol_x - 14, ana_hat_y, text="∨",
+                # Ortada ∨ sembolü (üst-OR çift) — sol rayın üzerinde,
+                # beyaz arka plan ile (görsel netlik)
+                sx, sy = kavsak_sol_x, ana_hat_y
+                c.create_rectangle(sx - 9, sy - 9, sx + 9, sy + 9,
+                                    fill="white", outline="",
+                                    tags=('klasik',))
+                c.create_text(sx, sy, text="∨",
                                fill="#1565C0",
-                               font=("Segoe UI", 11, "bold"),
+                               font=("Segoe UI", 12, "bold"),
                                tags=('klasik',))
 
                 def _yol_ciz(yy, ats, veya_y, gd_y):
