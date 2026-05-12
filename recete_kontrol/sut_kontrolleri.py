@@ -9541,30 +9541,51 @@ def _yoak_sonuc_uret(sartlar: List[SartSonuc], detaylar: Dict,
 
 def _yoak_post_process_manuel_kontrol(
         rapor: KontrolRaporu, ilac_sonuc: Dict) -> KontrolRaporu:
-    """Post-process: F1 (24 ay) atomu KE + doktor aile hekimi ise verdict
-    KONTROL_EDILEMEDI → MANUEL_KONTROL.
+    """Post-process: doktor aile hekimi + F1 (24 ay) atomu YOK/KE ise
+    verdict → MANUEL_KONTROL.
 
-    SUT 4.2.15.D-1(2) son cümle yorumu: 24 ay belirsizse aile hekimi
-    yetkisi sorgulanabilir → eczacı manuel kontrol etmeli, sistem
-    otomatik karar vermesin.
+    SUT 4.2.15.D-1(2) son cümle yorumu: Aile hekimi yazdığında 24 ay
+    şartının sağlandığını sistem net göremezse (Medula geçmişi belirsiz,
+    hasta başka eczane vs.) eczacı manuel kontrol etmeli.
+
+    Kural matrisi:
+      F1=VAR + aile hk → UYGUN (24 ay tamam, aile hekimi yetkili)
+      F1=KE + aile hk → MANUEL_KONTROL (DB'de geçmiş yok, belirsiz)
+      F1=YOK + aile hk → MANUEL_KONTROL (sistem yeni başlangıç görüyor
+        ama Medula/başka eczane geçmişi olabilir — VETHA KAHRAMAN
+        2VNPNWC pilot, 2026-05-12)
+      F1 = VAR/YOK/KE + uzman doktor → mevcut sonuç (post-process YOK)
+
+    VETHA KAHRAMAN 2VNPNWC tetikleyicisi: tek YOAK reçetesi = mevcut
+    reçete (ilk_yoak == recete_tarihi), F1=YOK, doktor aile hekimi
+    → eskiden UYGUN_DEGIL, şimdi MANUEL_KONTROL.
     """
-    if rapor.sonuc != KontrolSonucu.KONTROL_EDILEMEDI:
+    if rapor.sonuc == KontrolSonucu.UYGUN:
         return rapor
     f1_adi = 'İlk 2 rapor süresi (24 ay) tamamlanmış'
-    f1_ke = any(
-        getattr(s, 'ad', '') == f1_adi
-        and getattr(s, 'durum', None) == SartDurumu.KONTROL_EDILEMEDI
-        for s in (rapor.sartlar or [])
-    )
-    if not f1_ke:
+    f1_durumu = next(
+        (getattr(s, 'durum', None)
+         for s in (rapor.sartlar or [])
+         if getattr(s, 'ad', '') == f1_adi),
+        None)
+    # F1 VAR ise (24 ay tamam) zaten F yolu açık, dokunma
+    if f1_durumu == SartDurumu.VAR:
+        return rapor
+    # F1 atomu YOK veya KE değilse (örn. atom hiç eklenmemiş) dokunma
+    if f1_durumu not in (SartDurumu.KONTROL_EDILEMEDI, SartDurumu.YOK):
         return rapor
     aile_hk, aile_neden = _yoak_atom_f_aile_hekimi(ilac_sonuc)
     if not aile_hk:
         return rapor
+    # Aile hk + F1 belirsiz/YOK → MANUEL_KONTROL
+    durum_str = ('belirsiz (DB geçmiş yok)'
+                 if f1_durumu == SartDurumu.KONTROL_EDILEMEDI
+                 else 'tamamlanmadı (sistem geçmişi)')
     rapor.sonuc = KontrolSonucu.MANUEL_KONTROL
     rapor.mesaj = (
         (rapor.mesaj or '').rstrip('. ')
-        + ' — Aile hekimi reçetesi + 24 ay durumu belirsiz: MANUEL KONTROL gerekli'
+        + f' — Aile hekimi reçetesi + 24 ay durumu {durum_str}:'
+        ' MANUEL KONTROL (Medula/başka eczane geçmişi olabilir)'
     ).strip()
     return rapor
 

@@ -87,10 +87,12 @@ kontrol(
     yap(hasta_yoak_ilk_recete_tarihi="2023-06-15"))
 
 # Senaryo B: Hasta yeni baslama (3 ay), aile hekimi reçetesi, SK yok
-# Beklenen: UYGUN_DEGIL (F1 YOK + SK yok -> her iki yol da kapali)
+# Beklenen: MANUEL_KONTROL (yeni post-process kuralı 2026-05-12):
+# Aile hekimi + F1=YOK → Medula/başka eczane geçmişi olabilir, manuel
+# bakılsın. Eski beklenti UYGUN_DEGIL'di — VETHA pilot ile değişti.
 kontrol(
-    "B1 ilk=2026-02-01 (3 ay), aile hekimi, SK yok",
-    "uygun_degil",
+    "B1 ilk=2026-02-01 (3 ay), aile hekimi, SK yok -> MANUEL_KONTROL",
+    "manuel_kontrol",
     yap(hasta_yoak_ilk_recete_tarihi="2026-02-01"))
 
 # Senaryo C: Hasta YOAK gecmisi yok (DB'de kayit yok)
@@ -139,6 +141,20 @@ kontrol(
         atc_kodu="B01AF03",
         hasta_yoak_ilk_recete_tarihi=None,
         recete_tarihi="24.03.2026"))
+
+# Senaryo H: VETHA KAHRAMAN pilot — Xarelto, aile hekimi, ilk YOAK
+# reçetesi = mevcut reçete (sistem yeni başlangıç görüyor).
+# F1 = YOK (24 ay tamamlanmadı, sistem bilgisi). Doktor aile hekimi.
+# Beklenen: MANUEL_KONTROL (Medula/başka eczane geçmişi olabilir,
+# eczacı bakmalı — yeni post-process kuralı 2026-05-12).
+kontrol(
+    "H1 VETHA-pilot: ilk_yoak=recete_tarihi (yeni başlangıç), aile hk -> MANUEL",
+    "manuel_kontrol",
+    yap(ilac_adi="XARELTO 20 MG",
+        etkin_madde="RIVAROKSABAN",
+        atc_kodu="B01AF01",
+        hasta_yoak_ilk_recete_tarihi="24.04.2023",  # mevcut reçete tarihi
+        recete_tarihi="24.04.2023"))
 
 print()
 print("=" * 70)
