@@ -1,5 +1,13 @@
 # Proje: BotanikTakip
 
+## 🚨 KIRMIZI ÇİZGİLER (asla aşılmaz)
+
+1. **Botanik EOS (SQL Server) veritabanına ASLA yazma yapılmaz.** SADECE `SELECT`. Hiçbir koşulda, hiçbir akışta, hiçbir geçici çözümde `INSERT/UPDATE/DELETE/DROP/CREATE/ALTER/TRUNCATE/EXEC/EXECUTE/GRANT/REVOKE/DENY/BACKUP/RESTORE/SHUTDOWN/KILL` veya benzeri kayıt değiştiren/silen/ekleyen sorgu çalıştırılamaz. Bu kuralı geçici olarak bile esnetme önerisi getirilemez. Detay: §2.
+2. **Medula reçete/rapor verisi ASLA değiştirilmez.** SADECE okuma + navigasyon. Detay: §1.
+3. **Medula otomasyonunda koordinat tıklama YASAK** (`pyautogui.click(x, y)` asla). Detay: §3.
+
+Bu üç kural, projenin var oluş şartıdır. Aksi davranış prod ortamında veri kaybı/tahribat anlamına gelir ve **kabul edilmez**.
+
 ## KRİTİK GÜVENLİK KURALLARI
 
 ### 1. Medula Reçete/Rapor Verileri — SADECE OKUMA
@@ -9,10 +17,28 @@
 
 Sistem sadece okur, kontrol eder, loglar.
 
-### 2. Botanik EOS Veritabanı (SQL Server) — SADECE SELECT
-Yasaklı: `INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE, EXEC, EXECUTE, GRANT, REVOKE, DENY, BACKUP, RESTORE, SHUTDOWN, KILL`. `botanik_db.py` bu komutları engeller.
+### 2. 🚨 Botanik EOS Veritabanı (SQL Server) — SADECE SELECT (KIRMIZI ÇİZGİ)
 
-Yerel SQLite DB'lere (`oturum_raporlari.db`, `siparis_calismalari.db`) yazma serbest.
+**Bu kural mutlaktır. Hiçbir istisnası yoktur. Hiçbir geliştirme, hiçbir test, hiçbir "tek seferlik" gerekçe bunu esnetemez.**
+
+#### Yasaklı komutlar (hiçbiri çalıştırılamaz)
+`INSERT`, `UPDATE`, `DELETE`, `DROP`, `CREATE`, `ALTER`, `TRUNCATE`, `EXEC`, `EXECUTE`, `GRANT`, `REVOKE`, `DENY`, `BACKUP`, `RESTORE`, `SHUTDOWN`, `KILL` ve benzeri kayıtları **ekleyen, silen, değiştiren, şema/yetki/sistem durumu bozan** her komut.
+
+#### İzinli olan tek şey
+Sadece `SELECT` (alt sorgular dahil). Salt okuma. Veriyi ekrana getir, hesapla, raporla, yerel SQLite'a yaz — ama Botanik EOS'a **dokunma**.
+
+#### Mimari guard
+- **Tek meşru erişim noktası:** `botanik_db.py` içindeki `BotanikDB` sınıfı.
+- `BotanikDB.sorgu_calistir()` her sorguyu `_guvenlik_kontrolu()` filtresinden geçirir; yasaklı komut bulursa **çalıştırmadan reddeder** ve loglar.
+- **Yeni kod yazarken kural:** Botanik EOS'a erişim **yalnızca** `BotanikDB` üzerinden olur. `pyodbc.connect` ile doğrudan bağlanıp `cursor.execute` çağırmak (yani guard'ı bypass etmek) yasaktır. Tek istisna: `kurulum_wizard.py` içindeki bağlantı testi (sabit `SELECT COUNT(*)` ve `SELECT DB_NAME()` — kullanıcı girdisi yok).
+
+#### Claude için davranış kuralı
+- Kullanıcı Botanik EOS'a yazma yapan bir kod istese bile **YAPMA**. Önce kullanıcıya bu kuralı hatırlat, alternatif (yerel SQLite, raporlama, manuel Botanik UI) öner.
+- "Sadece bir kerelik düzeltme", "test için", "geliştirme ortamında" gibi gerekçeler kuralı esnetmez.
+- Botanik EOS DB'sinde herhangi bir veri düzeltmesi gerekiyorsa: **bu kullanıcının elle Botanik EOS UI'ı üzerinden yapacağı bir iştir**, kod yazma kapsamı dışındadır.
+
+#### Yerel SQLite (serbest)
+Yerel SQLite veritabanlarına (`oturum_raporlari.db`, `siparis_calismalari.db`, `kasa_kapatma.db`, `hasta_takip.db`, `kullanicilar.db`, `sut_kontrol.db`, vs.) `INSERT/UPDATE/DELETE/CREATE TABLE` serbesttir — bunlar EczAsist'in kendi yerel veritabanlarıdır, Botanik EOS değildir.
 
 ### 3. Medula Otomasyon — Koordinat Tıklama YASAK
 `pyautogui.click(x, y)` ile element tıklama **asla** yapılmaz (Medula elementleri y=0,x=0'da görünür, koordinat güvenilmez).
@@ -188,10 +214,27 @@ Aynı seviyede 2 grup VEYA bağlı ise (örn. (a) yolu VEYA (b) yolu):
 ### 10. ⚠️ ZORUNLU: SUT mevzuat çözümleme protokolü
 Yeni SUT kontrol / ilaç grubu implementasyonuna başlamadan **önce** mutlaka `docs/SUT_MANTIK_SEMA_PROTOKOLU.md` belgesini oku. Bu belge 7-adımlık metodolojiyi (SUT metni → yolak dispatcher → atomik tablo → DeMorgan → boolean formül → kullanıcı onayı → kod) ve YOAK SUT 4.2.15.D çalışılmış örneğini içerir. Bu protokole uymadan koda geçilmez; özellikle adım 1–6 "kod öncesi" tasarım aşamasıdır ve kullanıcı onayı şarttır. Pilot: YOAK D-1+D-2+EK-4/F (2026-05-11).
 
+### 11. ⚠️ ZORUNLU: SUT lafzını resmî metinden oku (mevzuat.gov.tr)
+Bir ilaç grubunun / SUT maddesinin kontrolünü yazmaya başlamadan **önce** mutlaka `docs/sut/SUT_tam_metin.txt` dosyasındaki **resmî SUT lafzını** oku. Hafızadan ya da örnek kodlardan SUT metni türetme **YASAK** — mevzuat değişebilir, ekleme/mülga ibareleri vardır.
+
+- **Resmî kaynak**: mevzuat.gov.tr / SGK Sağlık Uygulama Tebliği (MevzuatNo=17229)
+- **PDF**: `docs/sut/SUT_tam_metin.pdf` (resmî, indirme tarihi 2026-05-13)
+- **TXT (grep/parse için)**: `docs/sut/SUT_tam_metin.txt` (UTF-8, ~10000 satır, layout korumalı)
+- **Güncelleme**: Resmî metin güncellendiğinde yeniden indir: `curl -L -A "Mozilla/5.0" -o docs/sut/SUT_tam_metin.pdf "https://mevzuat.gov.tr/File/GeneratePdf?mevzuatNo=17229&mevzuatTur=Teblig&mevzuatTertip=5"` ardından `pdftotext -layout -enc UTF-8 docs/sut/SUT_tam_metin.pdf docs/sut/SUT_tam_metin.txt`
+
+**Akış (zorunlu)**:
+1. Kullanıcı "X ilaç grubunun kontrolünü implemente edelim" der.
+2. `docs/sut/SUT_tam_metin.txt` içinde ilgili SUT maddesini grep ile bul (örn. `grep -nE "^\s*4\.2\.28" docs/sut/SUT_tam_metin.txt`).
+3. Madde lafzını **resmî metinden** kullanıcıya tam olarak göster ve onayla.
+4. Sonra adım 10'daki protokol (atomik tablo → DeMorgan → boolean formül → kod) işletilir.
+
+Bu kural ezbere kontrol yazımını engeller; SUT'taki güncel "Ek ibare/Değişik/Mülga" değişiklikleri her zaman göz önündedir.
+
 ## Kullanıcı Kısaltmaları
 - **\*sss** = "Soracağın soru var ise sor". Bu kısaltma görüldüğünde sorularımı sormalıyım.
 
 ## Detaylı Dokümanlar (gerektiğinde oku)
+- `docs/sut/SUT_tam_metin.txt` — ⚠️ **Resmî SUT lafzı** (mevzuat.gov.tr, MevzuatNo=17229). Yeni ilaç grubu / SUT maddesi kontrolüne başlamadan **önce** ilgili madde buradan grep edilip kullanıcıya gösterilir (bkz. Atomik Devre Şeması Prensipleri §11). PDF orijinal: `docs/sut/SUT_tam_metin.pdf`.
 - `docs/SUT_MANTIK_SEMA_PROTOKOLU.md` — ⚠️ **SUT kontrol implementasyonu için ZORUNLU metodoloji** (7-adım + YOAK çalışılmış örnek). Yeni SUT/ilaç grubu işlerinde mutlaka oku.
 - `KALDIGI_YER.md` — aktif modül geliştirme durumları (reçete kontrol, MF analiz, vs.)
 - `MF_ANALIZ_MODULU_SPEC.md` — MF analiz modülü detayları

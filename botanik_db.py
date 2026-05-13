@@ -1,6 +1,23 @@
 """
 Botanik EOS Veritabanı Bağlantı Modülü
-SQL Server üzerinden Botanik veritabanına erişim sağlar
+SQL Server üzerinden Botanik veritabanına erişim sağlar.
+
+============================================================================
+  KIRMIZI ÇİZGİ — BU MODÜL SADECE OKUMAYA İZİN VERİR
+============================================================================
+  Botanik EOS (SQL Server) veritabanına ASLA yazma yapılmaz.
+  Sadece SELECT sorguları çalıştırılabilir.
+
+  YASAKLI: INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE,
+           EXEC, EXECUTE, GRANT, REVOKE, DENY, BACKUP, RESTORE,
+           SHUTDOWN, KILL ve benzeri kayıt değiştiren her komut.
+
+  Guard: BotanikDB.sorgu_calistir() -> _guvenlik_kontrolu()
+         Yasaklı komut tespit edilirse sorgu çalıştırılmadan reddedilir.
+
+  Bu kuralı geçici olarak bile esnetme. Hiçbir istisnası yoktur.
+  Ayrıntı: CLAUDE.md §2 (KIRMIZI ÇİZGİLER bölümü).
+============================================================================
 """
 
 import pyodbc
