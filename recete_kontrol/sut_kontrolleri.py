@@ -4233,6 +4233,122 @@ AILE_HEKIMLIGI_TESIS_KODLARI = frozenset({
 })
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# ARB ATOMİK ŞEMA (YOAK kalıbı, 2026-05-13 göç)
+# ═══════════════════════════════════════════════════════════════════════
+# SUT lafzı (kullanıcı verdi 2026-05-13):
+#   ARB ve kombinasyonları için raporda doz/uygulama/süre belirtme şartı YOK.
+#   Diğer antihipertansiflerle kombide: "monoterapi ile yeterli kontrol
+#   sağlanamadığı" raporda belirtilmelidir.
+#   Raporsuz: ayda en fazla 1 kutu, aile hekimlerince reçete edilebilir.
+#
+# 17.10.2016 SGK duyurusu: ARB+HCT (diüretik) kombi → 1300/51 kapsamı DIŞINDA;
+# rapor yeterli, monoterapi ibaresi aranmaz. CCB/ACE varsa istisna YOK.
+
+_ARB_KOMBI_TICARI = (
+    'EXFORGE', 'SEVIKAR', 'TWYNSTA', 'MICARDISPLUS', 'MICARDIS PLUS',
+    'CO-DIOVAN', 'CO-APROVEL', 'CO-OLMETEC', 'HYZAAR', 'KARVEZIDE',
+    'COSAAR PLUS', 'FORZATEN', 'TRIVERAM', 'AVALOX',
+)
+_ARB_HCT_KEYS = (
+    'HIDROKLOROTIAZID', 'HİDROKLOROTİAZİD', 'HIDROKLORTIAZID',
+    'HYDROCHLOROTHIAZID', 'HCTZ',
+)
+_ARB_CCB_KEYS = (
+    'AMLODIPIN', 'AMLODIPINE', 'LERKANIDIPIN', 'LERKANIDIPINE',
+    'FELODIPIN', 'FELODIPINE', 'NIFEDIPIN', 'NIFEDIPINE',
+    'NITRENDIPIN', 'BARNIDIPIN', 'NIKARDIPIN', 'ISRADIPIN',
+)
+_ARB_ACE_KEYS = (
+    'PERINDOPRIL', 'ENALAPRIL', 'LISINOPRIL', 'RAMIPRIL',
+    'KAPTOPRIL', 'KAPTOPRİL', 'BENAZEPRIL', 'KILAZAPRIL', 'KİLAZAPRİL',
+    'TRANDOLAPRIL', 'KINAPRIL', 'KİNAPRİL', 'FOSINOPRIL', 'FOSİNOPRİL',
+    'DELAPRIL', 'MOEKSIPRIL', 'MOEKSİPRİL', 'SPIRAPRIL', 'SPİRAPRİL',
+    'IMIDAPRIL', 'İMİDAPRİL', 'ZOFENOPRIL',
+)
+
+
+def _arb_atom_kombi_tipi(ilac_adi: str, etkin_madde: str
+                          ) -> Tuple[bool, bool, bool, bool]:
+    """ARB ilaç tipi tespiti.
+
+    Returns: (is_kombi, hct_var, ccb_var, ace_var)
+    """
+    aday = (etkin_madde + ' ' + ilac_adi).upper()
+    is_kombi = ('/' in etkin_madde.upper()) or (' VE ' in f' {etkin_madde.upper()} ')
+    if not is_kombi and any(t in ilac_adi.upper() for t in _ARB_KOMBI_TICARI):
+        is_kombi = True
+    hct_var = (
+        any(k in aday for k in _ARB_HCT_KEYS)
+        or ' HCT' in (' ' + aday + ' ')
+        or '/HCT' in aday
+    )
+    ccb_var = any(k in aday for k in _ARB_CCB_KEYS)
+    ace_var = any(k in aday for k in _ARB_ACE_KEYS)
+    return is_kombi, hct_var, ccb_var, ace_var
+
+
+def _arb_atom_aile_hekimi(doktor_brans: str, kurum_adi: str,
+                           tesis_kodu: str) -> Tuple[bool, str]:
+    """Aile hekimi yetkisi 3 yoldan (branş/kurum/tesis kodu).
+
+    Returns: (yetkili_mi, neden_metni)
+    """
+    du = doktor_brans.upper()
+    ku = kurum_adi.upper()
+    nedenler = []
+    if ('AILE HEK' in du or 'AİLE HEK' in du):
+        nedenler.append('branşta aile hekimliği sertifikası')
+    if ku and (
+            'AILE SAGLIGI' in ku or 'AİLE SAĞLIĞI' in ku
+            or 'AILE SAĞLIĞI' in ku or 'AİLE SAGLIGI' in ku
+            or 'AILE HEKIMLIGI' in ku or 'AİLE HEKİMLİĞİ' in ku
+            or any(tok in ku.split() for tok in ('ASM', 'AHM'))):
+        nedenler.append(f'kurum: {kurum_adi[:50]}')
+    if tesis_kodu and tesis_kodu in AILE_HEKIMLIGI_TESIS_KODLARI:
+        nedenler.append(f'tesis kodu: {tesis_kodu}')
+    return (bool(nedenler), ' + '.join(nedenler))
+
+
+def _arb_atom_monoterapi_ibaresi(metin_lower_i: str) -> Tuple[bool, str]:
+    """Raporda 'monoterapi yetersiz' ibaresi var mı.
+
+    metin_lower_i: i/ı/I/İ → 'i' normalize edilmiş metin.
+    Returns: (var_mi, eslesen_ibare).
+    """
+    # 1) Tek-anahtar yetersizlik ifadeleri
+    for ibare in (
+        'monoterapiye dirençli', 'monoterapiye direncli',
+        'monoterapiye yanit',
+        'kombine terapi endikasyon', 'kombine tedavi endikasyon',
+        'kombine tedavi gerek', 'kombine tedavi şart', 'kombine tedavi sart',
+        'kombine tedavi endike', 'kombinasyon tedavi gerek',
+        'ikili tedavi gerek', 'üçlü tedavi gerek', 'uclu tedavi gerek',
+    ):
+        if ibare in metin_lower_i:
+            return True, ibare
+    if 'monoterapi' in metin_lower_i:
+        return True, 'monoterapi'
+    kompozitler = (
+        (('tek ilaç', 'tek ilac', 'tek antihipertansif'),
+         ('yeter', 'kontrol', 'sağlanama', 'saglanama',
+          'yanit', 'alinama')),
+        (('kan basinci', 'tansiyon'),
+         ('kontrol altina alinama',
+          'yeterli kontrol sağlanama', 'yeterli kontrol saglanama',
+          'kontrol edilemem')),
+        (('kombinasyon',),
+         ('gerek', 'şart', 'sart', 'endike')),
+        (('yeterli',),
+         ('kontrol sağlanama', 'kontrol saglanama')),
+    )
+    for anchors, helpers in kompozitler:
+        if (any(a in metin_lower_i for a in anchors)
+                and any(h in metin_lower_i for h in helpers)):
+            return True, next(a for a in anchors if a in metin_lower_i)
+    return False, ''
+
+
 def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
     """
     SUT EK-4/F Madde 51 (1300/51) — Anjiotensin Reseptör Blokerleri ve Kombinasyonları
@@ -4275,7 +4391,7 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
     kurum_adi = (ilac_sonuc.get('kurum_adi') or '').upper()
     tesis_kodu = str(ilac_sonuc.get('tesis_kodu') or '').strip()
 
-    # Kutu sayısı parse — string/float/int gelebilir, virgül/nokta normalize
+    # Kutu sayısı parse
     kutu_raw = ilac_sonuc.get('kutu_sayisi')
     if kutu_raw is None:
         kutu_raw = ilac_sonuc.get('miktar', '')
@@ -4285,146 +4401,126 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
         kutu = 0.0
 
     tum_metin = _tum_metinleri_birlesir(ilac_sonuc) or ''
-
     sut_kurali = 'SUT EK-4/F Madde 51 (1300/51) — ARB ve kombinasyonları'
 
-    # Mono mu kombi mi? Etkin maddede "/" varsa kombinasyon
-    is_kombi = ('/' in etkin_madde) or (' VE ' in f' {etkin_madde} ')
-    # İlaç adında bilinen kombi ticari isimler de kombi kabul edilir
-    KOMBI_TICARI = (
-        'EXFORGE', 'SEVIKAR', 'TWYNSTA', 'MICARDISPLUS', 'MICARDIS PLUS',
-        'CO-DIOVAN', 'CO-APROVEL', 'CO-OLMETEC', 'HYZAAR', 'KARVEZIDE',
-        'COSAAR PLUS', 'FORZATEN', 'TRIVERAM', 'AVALOX',
-    )
-    if not is_kombi and any(t in ilac_adi for t in KOMBI_TICARI):
-        is_kombi = True
-
-    # SGK 17.10.2016 istisnası — ARB + HCT (diüretik) sabit kombinasyonu
-    # 1300/51 kapsamı DIŞINDA. Etken madde + ilaç adı tek metin olarak taranır.
-    # CCB veya ACE-i de varsa (3'lü) istisna geçerli değil — monoterapi
-    # ibaresi aranmaya devam edilir.
-    arama = (etkin_madde + ' ' + ilac_adi).upper()
-    hct_var = (
-        'HIDROKLOROTIAZID' in arama
-        or 'HİDROKLOROTİAZİD' in arama
-        or 'HIDROKLORTIAZID' in arama
-        or 'HYDROCHLOROTHIAZID' in arama
-        or 'HCTZ' in arama
-        or ' HCT' in (' ' + arama + ' ')
-        or '/HCT' in arama
-    )
-    ccb_var = any(k in arama for k in (
-        'AMLODIPIN', 'AMLODIPINE', 'LERKANIDIPIN', 'LERKANIDIPINE',
-        'FELODIPIN', 'FELODIPINE', 'NIFEDIPIN', 'NIFEDIPINE',
-        'NITRENDIPIN', 'BARNIDIPIN', 'NIKARDIPIN', 'ISRADIPIN',
-    ))
-    ace_var = any(k in arama for k in (
-        'PERINDOPRIL', 'ENALAPRIL', 'LISINOPRIL', 'RAMIPRIL',
-        'KAPTOPRIL', 'KAPTOPRİL', 'BENAZEPRIL', 'KILAZAPRIL', 'KİLAZAPRİL',
-        'TRANDOLAPRIL', 'KINAPRIL', 'KİNAPRİL', 'FOSINOPRIL', 'FOSİNOPRİL',
-        'DELAPRIL', 'MOEKSIPRIL', 'MOEKSİPRİL', 'SPIRAPRIL', 'SPİRAPRİL',
-        'IMIDAPRIL', 'İMİDAPRİL', 'ZOFENOPRIL',
-    ))
+    # Atomik analizler
+    is_kombi, hct_var, ccb_var, ace_var = _arb_atom_kombi_tipi(ilac_adi, etkin_madde)
     is_hct_only_kombi = is_kombi and hct_var and not ccb_var and not ace_var
+    is_mono = not is_kombi
+    is_raporlu = bool(rapor_kodu)
+    aile_hekimi, yetki_kaynagi = _arb_atom_aile_hekimi(
+        doktor_brans, kurum_adi, tesis_kodu)
+    brans_pratisyen = ('PRATISYEN' in doktor_brans or 'PRATİSYEN' in doktor_brans)
+    kutu_asildi = kutu > 1
 
     detaylar = {
-        'ilac_adi': ilac_adi,
-        'etkin_madde': etkin_madde,
-        'rapor_kodu': rapor_kodu,
-        'doktor_brans': doktor_brans,
+        'ilac_adi': ilac_adi, 'etkin_madde': etkin_madde,
+        'rapor_kodu': rapor_kodu, 'doktor_brans': doktor_brans,
         'kutu': kutu,
         'tip': ('KOMBI_HCT' if is_hct_only_kombi
                 else ('KOMBI' if is_kombi else 'MONO')),
-        'hct_var': hct_var,
-        'ccb_var': ccb_var,
-        'ace_var': ace_var,
+        'hct_var': hct_var, 'ccb_var': ccb_var, 'ace_var': ace_var,
+        'kurum_adi': kurum_adi, 'tesis_kodu': tesis_kodu,
+        'aile_hekimi': aile_hekimi,
     }
 
-    # ── RAPORLU SENARYO ──
-    if rapor_kodu:
-        if not is_kombi:
+    # SartSonuc listesi — atomik şema sekmeleri için
+    sartlar: List[SartSonuc] = []
+
+    # Grup-A: İlaç tipi tespiti (bilgi grubu)
+    g_tip = 'İlaç tipi (bilgi)'
+    sartlar.append(SartSonuc(
+        'ARB etken madde',
+        SartDurumu.VAR,  # bu fonksiyona girildiyse ARB kapsamında
+        f'Etken madde: {etkin_madde or ilac_adi}',
+        'etkin_madde/ilac_adi', grup=g_tip))
+    sartlar.append(SartSonuc(
+        'Kombinasyon (ARB + diğer antihipertansif)',
+        SartDurumu.VAR if is_kombi else SartDurumu.YOK,
+        ('Kombi tespit edildi' if is_kombi else 'Mono ARB'),
+        'etkin_madde', grup=g_tip))
+    if is_kombi:
+        kombi_turu = ('HCT (diüretik)' if is_hct_only_kombi
+                       else ('CCB+HCT 3\'lü' if (ccb_var and hct_var)
+                             else ('ACE+HCT 3\'lü' if (ace_var and hct_var)
+                                   else ('CCB' if ccb_var
+                                         else ('ACE-i' if ace_var
+                                               else 'belirsiz')))))
+        sartlar.append(SartSonuc(
+            'Kombi türü',
+            SartDurumu.VAR,
+            kombi_turu, 'etkin_madde', grup=g_tip))
+
+    # Grup-R: Rapor durumu (bilgi)
+    g_rap = 'Rapor durumu (bilgi)'
+    sartlar.append(SartSonuc(
+        'Rapor kodu',
+        SartDurumu.VAR if is_raporlu else SartDurumu.YOK,
+        (f'rapor_kodu={rapor_kodu}' if is_raporlu
+         else 'Raporsuz reçete'),
+        'rap_kod', grup=g_rap))
+
+    # ── Grup-Y: Yetki/aile hekimi (bilgi grubu) ────────────────────
+    g_yetki = 'Yetki — aile hekimi (bilgi)'
+    sartlar.append(SartSonuc(
+        'Aile hekimi yetkisi (branş/kurum/tesis ≥1)',
+        SartDurumu.VAR if aile_hekimi else SartDurumu.YOK,
+        (f'Yetki kaynağı: {yetki_kaynagi}' if aile_hekimi
+         else f'Doktor: {doktor_brans or "bilinmiyor"}, kurum: '
+              f'{kurum_adi or "bilinmiyor"}'),
+        'doktor_uzmanligi/kurum/tesis', grup=g_yetki))
+    detaylar['yetki_kaynagi'] = yetki_kaynagi
+
+    # ── RAPORLU SENARYO ────────────────────────────────────────────
+    if is_raporlu:
+        if is_mono:
+            # Mono ARB raporlu → her durumda UYGUN
+            g_mono_rap = 'Mono ARB raporlu yolu'
+            sartlar.append(SartSonuc(
+                'Mono ARB + rapor varlığı', SartDurumu.VAR,
+                f'rapor_kodu={rapor_kodu}, mono ARB',
+                'rap_kod/etkin_madde', grup=g_mono_rap))
             return KontrolRaporu(
                 sonuc=KontrolSonucu.UYGUN,
                 mesaj=(f'Mono ARB raporlu (rap.kod {rapor_kodu}) — '
                        'doz/uygulama planı/süre belirtme zorunluluğu yok'),
-                detaylar=detaylar,
-                sut_kurali=sut_kurali,
-                aranan_ibare='Mono ARB + rapor varlığı',
-            )
+                detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
+                aranan_ibare='Mono ARB + rapor varlığı')
 
         # SGK 17.10.2016 ISTISNASI — ARB + HCT (diüretik) raporlu kombi
-        # Diüretikli kombinasyonlar 1300/51 kapsamı dışında; rapor yeterli,
-        # monoterapi yetersizliği ibaresi aranmaz.
         if is_hct_only_kombi:
+            g_hct = 'Kombi ARB+HCT (SGK 17.10.2016 istisnası)'
+            sartlar.append(SartSonuc(
+                'ARB+HCT diüretik kombi (1300/51 kapsam DIŞINDA)',
+                SartDurumu.VAR,
+                'SGK 17.10.2016 duyurusu — monoterapi ibaresi aranmaz',
+                'etkin_madde', grup=g_hct))
             return KontrolRaporu(
                 sonuc=KontrolSonucu.UYGUN,
-                mesaj=(f'ARB+HCT (diüretik) kombi raporlu (rap.kod {rapor_kodu}) — '
-                       'SGK 17.10.2016 duyurusu: diüretikli kombinasyonlar '
-                       '1300/51 kapsamı dışında, monoterapi ibaresi aranmaz'),
-                detaylar={**detaylar, 'istisna': 'SGK 17.10.2016 — diüretik kombi'},
-                sut_kurali=sut_kurali,
-                aranan_ibare='ARB + HCT kombi (SGK 17.10.2016 diüretik istisnası)',
+                mesaj=(f'ARB+HCT (diüretik) kombi raporlu '
+                       f'(rap.kod {rapor_kodu}) — SGK 17.10.2016: diüretikli '
+                       'kombinasyonlar 1300/51 kapsamı dışında'),
+                detaylar={**detaylar,
+                           'istisna': 'SGK 17.10.2016 — diüretik kombi'},
+                sut_kurali=sut_kurali, sartlar=sartlar,
+                aranan_ibare=('ARB + HCT kombi (SGK 17.10.2016 diüretik '
+                              'istisnası)'),
                 uyari=('Bilgi: bazı SGK il müdürlükleri istisnayı uygulamayıp '
-                       'kesinti yapabilir — bölgesel uygulama farklılığı vardır'),
-            )
+                       'kesinti yapabilir — bölgesel uygulama farklılığı'))
 
-        # Kombi ARB raporlu (CCB / ACE-i / 3'lü) — monoterapi yetersizliği ibaresi aranır
-        # I/İ/ı → i tek-noktaya indirgeme. Üç ayrı yazım sorununu birden çözer:
-        #   1. "MONOTERAPIYE" (büyük ASCII I) — eski replace('I','ı') 'monoterapı'
-        #      üretip 'monoterapi' eşleşmesini kaybettiriyordu
-        #      (memory: project_tg_lab_parse_genislet — aynı kalıp)
-        #   2. "monoterapı" (Türkçe imla, sondaki -ı) — küçük ı 'i'ye çevrilmediği
-        #      için 'monoterapi' aramasıyla yakalanmıyordu (vaka MUSTAFA BEHREM
-        #      3HSM4JG, 2026-05-07)
-        #   3. "MONOTERAPİ" (Türkçe büyük İ) — replace('İ','i') ile zaten OK
+        # Kombi ARB raporlu (CCB / ACE-i / 3'lü) — monoterapi yetersizliği aranır
+        # I/İ/ı → i tek-noktaya indirgeme
         ml = (tum_metin.replace('İ', 'i').replace('I', 'i')
                        .replace('ı', 'i').lower())
-        mono_ibare_var = False
-        eslesen_kelime = ''
+        mono_ibare_var, eslesen_kelime = _arb_atom_monoterapi_ibaresi(ml)
 
-        # NOT: Tüm pattern'ler 'i' formunda yazılır; metin de i/ı/I/İ → i
-        # normalize'dan geçtiği için "monoterapı" / "MONOTERAPI" / "monoterapi"
-        # / "MONOTERAPİ" varyantları hepsi tek pattern ile yakalanır.
-
-        # 1) Tek-anahtar yetersizlik/endikasyon ifadeleri (varlığı yeterli)
-        for ibare in (
-            'monoterapiye dirençli', 'monoterapiye direncli',
-            'monoterapiye yanit',
-            'kombine terapi endikasyon', 'kombine tedavi endikasyon',
-            'kombine tedavi gerek', 'kombine tedavi şart', 'kombine tedavi sart',
-            'kombine tedavi endike', 'kombinasyon tedavi gerek',
-            'ikili tedavi gerek', 'üçlü tedavi gerek', 'uclu tedavi gerek',
-        ):
-            if ibare in ml:
-                mono_ibare_var = True
-                eslesen_kelime = ibare
-                break
-
-        # 2) "monoterapi" kelimesi (SUT lafzında ve hekim raporlarında en sık form)
-        if not mono_ibare_var and 'monoterapi' in ml:
-            mono_ibare_var = True
-            eslesen_kelime = 'monoterapi'
-
-        # 3) Kompozit ifadeler (anchor + yardımcı kelime birlikte)
-        if not mono_ibare_var:
-            kompozitler = (
-                (('tek ilaç', 'tek ilac', 'tek antihipertansif'),
-                 ('yeter', 'kontrol', 'sağlanama', 'saglanama',
-                  'yanit', 'alinama')),
-                (('kan basinci', 'tansiyon'),
-                 ('kontrol altina alinama',
-                  'yeterli kontrol sağlanama', 'yeterli kontrol saglanama',
-                  'kontrol edilemem')),
-                (('kombinasyon',),
-                 ('gerek', 'şart', 'sart', 'endike')),
-                (('yeterli',),
-                 ('kontrol sağlanama', 'kontrol saglanama')),
-            )
-            for anchors, helpers in kompozitler:
-                if any(a in ml for a in anchors) and any(h in ml for h in helpers):
-                    mono_ibare_var = True
-                    eslesen_kelime = next(a for a in anchors if a in ml)
-                    break
+        g_kombi_diger = 'Kombi ARB (CCB/ACE/3\'lü) — monoterapi yetersizliği'
+        sartlar.append(SartSonuc(
+            'Monoterapi yetersizliği ibaresi raporda',
+            SartDurumu.VAR if mono_ibare_var else SartDurumu.YOK,
+            (f'İbare tespit: "{eslesen_kelime}"' if mono_ibare_var
+             else 'Ibare bulunamadı — SUT EK-4/F m.51 raporda belirtilmeli'),
+            'rapor_metni', grup=g_kombi_diger))
 
         if mono_ibare_var:
             return KontrolRaporu(
@@ -4432,81 +4528,40 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
                 mesaj=(f'Kombi ARB raporlu (rap.kod {rapor_kodu}) — '
                        'monoterapi yetersizliği ibaresi raporda mevcut'),
                 detaylar={**detaylar, 'eslesen_ibare': eslesen_kelime},
-                sut_kurali=sut_kurali,
+                sut_kurali=sut_kurali, sartlar=sartlar,
                 aranan_ibare='Monoterapi yetersizliği ibaresi (raporda)',
-                bulunan_metin=_eslesen_parcayi_bul(tum_metin, eslesen_kelime),
-            )
-
-        # İbare yok — kullanıcı kuralı (2026-05-07): kombi raporlu + ibare yok =
-        # UYGUN_DEĞİL (eski davranış KONTROL_EDILEMEDI/ŞÜPHELİ idi). SUT EK-4/F
-        # m.51 lafzı "raporda belirtilmelidir" der; ibare yoksa şart sağlanmıyor
-        # demektir. ARB+HCT (HCT-only kombi) zaten yukarıda istisnaya girip UYGUN
-        # döner — buraya gelen yalnızca CCB/ACE-i/3'lü kombilerdir.
+                bulunan_metin=_eslesen_parcayi_bul(tum_metin, eslesen_kelime))
         return KontrolRaporu(
             sonuc=KontrolSonucu.UYGUN_DEGIL,
             mesaj=(f'Kombi ARB raporlu (rap.kod {rapor_kodu}) — '
                    'monoterapi yetersizliği ibaresi raporda bulunamadı'),
-            detaylar=detaylar,
+            detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
             uyari=('SUT EK-4/F m.51: ARB+CCB/ACE-i/3\'lü kombi için raporda '
                    '"monoterapi ile kan basıncı yeterli oranda kontrol altına '
                    'alınamadığı" ibaresi BULUNMALIDIR — yoksa şart sağlanmıyor'),
-            sut_kurali=sut_kurali,
-            aranan_ibare='monoterapi / tek ilaç yetersiz / kombinasyon endikasyonu',
-        )
+            aranan_ibare='monoterapi / tek ilaç yetersiz / kombinasyon endikasyonu')
 
-    # ── RAPORSUZ SENARYO ──
-    # Aile hekimi tespiti — 3 yol (herhangi biri yeterli):
-    #   1. Doktorun branş listesinde "AİLE HEK..." geçiyor
-    #      (DoktorBrans tablosu doktorun TÜM branşlarını döndürür; Pratisyen
-    #       hekim Aile Hekimliği Sertifikası almışsa bu listede ek branş
-    #       olarak görülür)
-    #   2. Reçetenin yazıldığı kurum bir Aile Sağlığı Merkezi (ASM/AHM)
-    #      → kurum bazlı yetki, branşı pratisyen olsa bile yeterli
-    #   3. Tesis kodu (Hastane.HastaneKodu) bilinen aile hekimliği
-    #      kodları listesinde — kurum adı / branş bilinmese bile kesin yetki
-    brans_aile_hek = (
-        'AILE HEK' in doktor_brans
-        or 'AİLE HEK' in doktor_brans
-        or 'AİLE HEKİMLİĞİ' in doktor_brans
-        or 'AILE HEKIMLIGI' in doktor_brans
-    )
-    kurum_asm = bool(kurum_adi) and (
-        'AILE SAGLIGI' in kurum_adi
-        or 'AİLE SAĞLIĞI' in kurum_adi
-        or 'AILE SAĞLIĞI' in kurum_adi  # karışık encoding
-        or 'AİLE SAGLIGI' in kurum_adi
-        or 'AILE HEKIMLIGI' in kurum_adi  # AHM
-        or 'AİLE HEKİMLİĞİ' in kurum_adi
-        # Tek başına kelime olarak ASM/AHM (yan kelime ile karışmasın)
-        or any(tok in kurum_adi.split() for tok in ('ASM', 'AHM'))
-    )
-    tesis_aile_hek = bool(tesis_kodu) and (
-        tesis_kodu in AILE_HEKIMLIGI_TESIS_KODLARI
-    )
-    aile_hekimi = brans_aile_hek or kurum_asm or tesis_aile_hek
+    # ── RAPORSUZ SENARYO ───────────────────────────────────────────
+    brans_pratisyen = ('PRATISYEN' in doktor_brans
+                       or 'PRATİSYEN' in doktor_brans)
 
-    brans_pratisyen = ('PRATISYEN' in doktor_brans or 'PRATİSYEN' in doktor_brans)
-
-    kutu_asildi = kutu > 1
-
-    detaylar.update({
-        'kurum_adi': kurum_adi,
-        'tesis_kodu': tesis_kodu,
-        'brans_aile_hek': brans_aile_hek,
-        'kurum_asm': kurum_asm,
-        'tesis_aile_hek': tesis_aile_hek,
-        'aile_hekimi': aile_hekimi,
-    })
-
-    # Yetkilendirmenin nedenini insan-okur formda topla (mesaj/aranan_ibare için)
-    nedenler = []
-    if brans_aile_hek:
-        nedenler.append('branşta aile hekimliği sertifikası')
-    if kurum_asm:
-        nedenler.append(f'kurum: {kurum_adi[:50]}')
-    if tesis_aile_hek:
-        nedenler.append(f'tesis kodu: {tesis_kodu}')
-    yetki_kaynagi = ' + '.join(nedenler) if nedenler else ''
+    g_raporsuz = 'Raporsuz ARB yolu — aile hekimi + ≤1 kutu'
+    sartlar.append(SartSonuc(
+        'Aylık kutu sayısı ≤ 1',
+        SartDurumu.YOK if kutu_asildi else SartDurumu.VAR,
+        f'Kutu: {kutu:g}', 'kutu_sayisi', grup=g_raporsuz))
+    # aile hekimi şartı zaten g_yetki grubunda; burada referans şart ekleyelim
+    sartlar.append(SartSonuc(
+        'Reçete yazma yetkisi: aile hekimi',
+        SartDurumu.VAR if aile_hekimi
+        else (SartDurumu.KONTROL_EDILEMEDI if brans_pratisyen
+              else SartDurumu.YOK),
+        (f'Aile hekimi yetkisi: {yetki_kaynagi}' if aile_hekimi
+         else (f'Pratisyen hekim — sertifika/ASM kaydı tespit edilemedi'
+               if brans_pratisyen
+               else f'Branş: {doktor_brans or "bilinmiyor"}, '
+                    f'kurum: {kurum_adi or "bilinmiyor"}')),
+        'doktor_uzmanligi/kurum/tesis', grup=g_raporsuz))
 
     # ── Karar ──
     if aile_hekimi and not kutu_asildi:
@@ -4515,65 +4570,51 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
             sonuc=KontrolSonucu.UYGUN,
             mesaj=(f'Raporsuz ARB — aile hekimi yetkisi ({yetki_kaynagi}) '
                    f'+ {kutu_str} kutu (SUT: aile hekimi raporsuz ayda 1 kutu)'),
-            detaylar=detaylar,
-            sut_kurali=sut_kurali,
-            aranan_ibare=('Aile hekimliği sertifikası VEYA ASM kurumu '
-                          '+ ayda ≤1 kutu'),
-            bulunan_metin=yetki_kaynagi,
-        )
+            detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
+            aranan_ibare='Aile hekimliği sertifikası VEYA ASM kurumu + ayda ≤1 kutu',
+            bulunan_metin=yetki_kaynagi)
 
     if aile_hekimi and kutu_asildi:
         return KontrolRaporu(
             sonuc=KontrolSonucu.UYGUN_DEGIL,
             mesaj=(f'Raporsuz ARB — aile hekimi yetkisi var ({yetki_kaynagi}) '
                    f'ama {kutu:g} kutu (SUT sınırı: ayda 1 kutu)'),
-            detaylar=detaylar,
+            detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
             uyari='Raporsuz ARB ayda en fazla 1 kutu — fazlası için rapor şart',
-            sut_kurali=sut_kurali,
             aranan_ibare='Raporsuz ayda 1 kutu sınırı',
-            bulunan_metin=yetki_kaynagi,
-        )
+            bulunan_metin=yetki_kaynagi)
 
     if kutu_asildi:
-        # Aile hekimi değil + kutu > 1 → kesin uygunsuz
         return KontrolRaporu(
             sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=(f'Raporsuz ARB — yazan branş "{doktor_brans or "bilinmiyor"}", '
-                   f'kurum "{kurum_adi or "bilinmiyor"}", {kutu:g} kutu '
+            mesaj=(f'Raporsuz ARB — yazan branş '
+                   f'"{doktor_brans or "bilinmiyor"}", kurum '
+                   f'"{kurum_adi or "bilinmiyor"}", {kutu:g} kutu '
                    '(SUT: raporsuz sadece aile hekimi + ayda 1 kutu)'),
-            detaylar=detaylar,
+            detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
             uyari='Raporsuz ARB sadece aile hekimi tarafından ve ayda 1 kutu',
-            sut_kurali=sut_kurali,
-            aranan_ibare='Aile hekimi yetkisi + 1 kutu sınırı',
-        )
+            aranan_ibare='Aile hekimi yetkisi + 1 kutu sınırı')
 
-    # Raporsuz + aile hekimi değil + kutu ≤ 1
-    # Pratisyen hekim, sertifikası/ASM kaydı görünmüyor → manuel doğrulama
     if brans_pratisyen:
         return KontrolRaporu(
             sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
             mesaj=(f'Raporsuz ARB — pratisyen hekim '
                    f'(kurum: {kurum_adi or "bilinmiyor"}) — '
                    'aile hekimi sertifikası/ASM kaydı tespit edilemedi'),
-            detaylar=detaylar,
+            detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
             uyari=('Pratisyen hekim aile hekimliği sertifikalı veya ASM\'de '
                    'çalışıyor olabilir — manuel kontrol gerekli'),
-            sut_kurali=sut_kurali,
-            aranan_ibare='Aile hekimi sertifikası VEYA ASM kurumu',
-        )
+            aranan_ibare='Aile hekimi sertifikası VEYA ASM kurumu')
 
-    # Bilinmeyen branş + raporsuz + 1 kutu — şüpheli
     return KontrolRaporu(
         sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
         mesaj=(f'Raporsuz ARB — yazan branş "{doktor_brans or "bilinmiyor"}", '
                f'kurum "{kurum_adi or "bilinmiyor"}" '
                '(SUT: raporsuz reçete sadece aile hekimlerince)'),
-        detaylar=detaylar,
+        detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
         uyari=('SUT EK-4/F M.51: Raporsuz ARB için aile hekimi yetkisi '
                '(branşta sertifika veya ASM kurumu) gerekli'),
-        sut_kurali=sut_kurali,
-        aranan_ibare='Aile hekimi (sertifika veya ASM kurumu)',
-    )
+        aranan_ibare='Aile hekimi (sertifika veya ASM kurumu)')
 
 
 # Hastanın "diğer aktif raporlarında" hangi tanı kategorilerine bakılacağını
@@ -6646,401 +6687,870 @@ def _iki_olcum_kuralini_dogrula(olcumler: List[Dict], esik: int = 190) -> Dict:
             'degerler': degerler}
 
 
-def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
-    """
-    SUT 4.2.28.A - Statin Kontrol
+# ═══════════════════════════════════════════════════════════════════════
+# SUT 4.2.28.A — STATİN ATOMİK ŞEMA (YOAK kalıbı, 2026-05-13 göç)
+# ═══════════════════════════════════════════════════════════════════════
+# SUT lafzı (kullanıcı verdi):
+#   4.2.28.A-1 Yetişkin: (1)(a)/(b)/(c)/(ç) üst-VEYA dalları
+#   (2) Ek risk faktörleri: HT / aile erken KV / ≥65 yaş
+#   (3) 2 ölçüm: (a)(b)(c) için zorunlu, (ç) için GEREKMEZ
+#   (4) Yüksek doz: Kardiyo/KVC/Endokrin/Geriatri/Nöro/İç hast.
+#   4.2.28.A-2 Çocuk: yaş<10 / yaş≥10 yolakları, farklı eşik+risk
 
-    SUT kuralları:
-    1. LDL eşik değerleri (risk kategorisine göre):
-       - LDL > 190: Ek risk faktörü gerekmez
-       - LDL > 160: 2 ek risk faktörü gerekli
-       - LDL > 130: 3 ek risk faktörü gerekli
-       - LDL > 70 : DM, AKS, MI, inme, KAH, PAH, AAA, karotid arter hastalığı
-    2. İlk başlangıçta 6 ay içinde en az 1 hafta arayla 2 lipid ölçümü
-       (yüksek KV riskli hastalarda tek ölçüm yeterli olabilir — ana akım uygulama)
-    3. Yüksek doz statin: Kardiyoloji/KDC/Endokrinoloji/Geriatri raporu gerekli
-    4. Rapor süresi: max 2 yıl
+_STATIN_YUKSEK_DOZ_ESIK = {
+    'ROSUVASTATIN': 20, 'ATORVASTATIN': 40, 'SIMVASTATIN': 40,
+    'PRAVASTATIN': 40, 'FLUVASTATIN': 80,
+}
+_STATIN_UZMAN_DALLARI_KEYS = (
+    'KARDIYOLOJI', 'KARDİYOLOJİ', 'KARDIO',
+    'KALP VE DAMAR CERRAHISI', 'KALP VE DAMAR CERRAHİSİ',
+    'KALP DAMAR', 'KDC', 'KVC',
+    'ENDOKRINOLOJI', 'ENDOKRİNOLOJİ', 'ENDOKRIN',
+    'GERIATRI', 'GERİATRİ',
+    'NOROLOJI', 'NÖROLOJİ', 'NORO',
+    'IC HASTALIKLARI', 'İÇ HASTALIKLARI', 'DAHILIYE', 'DAHİLİYE',
+    'INTERNAL MEDICINE',
+)
+_STATIN_COCUK_UZMAN_KEYS = (
+    'COCUK METABOLIZMA', 'ÇOCUK METABOLİZMA',
+    'COCUK ENDOKRIN', 'ÇOCUK ENDOKRİN',
+    'COCUK KARDIYOLOJI', 'ÇOCUK KARDİYOLOJİ',
+    'PEDIATRIK ENDOKRIN', 'PEDİATRİK ENDOKRİN',
+    'PEDIATRIK KARDIYOLOJI', 'PEDİATRİK KARDİYOLOJİ',
+)
+
+
+def _statin_atom_ldl_olcumler(metin: str) -> Tuple[Optional[int], List[Dict]]:
+    """LDL ölçümlerini metinden çek (zaten var olan parser kullanır)."""
+    olcumler = _tum_ldl_olcumlerini_bul(metin)
+    if not olcumler:
+        return None, []
+    return max(o['deger'] for o in olcumler), olcumler
+
+
+def _statin_olcum_durum_cevir(durum_str: str) -> SartDurumu:
+    """_iki_olcum_kuralini_dogrula durumundan SartDurumu üret."""
+    if durum_str == 'uygun':
+        return SartDurumu.VAR
+    if durum_str in ('tarih_yok', 'esik_alti'):
+        return SartDurumu.KONTROL_EDILEMEDI
+    return SartDurumu.YOK
+
+
+def _statin_atom_ht(metin_lower: str, teshis_metin: str) -> bool:
+    """SUT 4.2.28.A(2)(a) — Hipertansiyon."""
+    if any(k in teshis_metin for k in ['I10', 'I11', 'I12', 'I13', 'I15']):
+        return True
+    return bool(re.search(
+        r'\bhipertansiyon|\bht\b|yüksek\s*tansiyon|kan\s*basınc.{0,20}yüksek',
+        metin_lower))
+
+
+def _statin_atom_aile_erken_kv(metin_lower: str) -> bool:
+    """SUT 4.2.28.A(2)(b) — Ailede erken kardiyovasküler hastalık öyküsü."""
+    patterns = [
+        r'aile.{0,40}erken\s*(?:kv|kvh|kardiyovask|koroner)',
+        r'erken\s*kardiyovask.{0,40}aile',
+        r'ailede.{0,40}erken\s*(?:mi|miyokard|kah|inme|stroke)',
+        r'aile\s*öyküs.{0,30}(?:erken|kv|kah|mi)',
+        r'\bailesel\s*hiperkol',
+    ]
+    return any(re.search(p, metin_lower) for p in patterns)
+
+
+def _statin_atom_yas_65(yas: Optional[int]) -> SartDurumu:
+    """SUT 4.2.28.A(2)(c) — 65 yaş ve üstü."""
+    if yas is None:
+        return SartDurumu.KONTROL_EDILEMEDI
+    return SartDurumu.VAR if yas >= 65 else SartDurumu.YOK
+
+
+def _statin_atom_dm(metin_lower: str, teshis_metin: str) -> bool:
+    """SUT 4.2.28.A(1)(ç) — Diabetes mellitus."""
+    if any(k in teshis_metin for k in ['E10', 'E11', 'E12', 'E13', 'E14']):
+        return True
+    patterns = [r'\bdiyabet', r'\bdiabet', r'\bdm\b', r'\bt[12]dm\b',
+                r'\bniddm\b', r'\biddm\b',
+                r'tip\s*[12]\s*(?:dm|diyabet|diabet)',
+                r'şeker\s*hastal', r'seker\s*hastal']
+    return any(re.search(p, metin_lower) for p in patterns)
+
+
+def _statin_atom_aks(metin_lower: str, teshis_metin: str) -> bool:
+    """SUT 4.2.28.A(1)(ç) — Akut koroner sendrom."""
+    if any(k in teshis_metin for k in ['I20', 'I21', 'I22', 'I23', 'I24']):
+        return True
+    return bool(re.search(r'akut\s*koroner|\baks\b', metin_lower))
+
+
+def _statin_atom_mi(metin_lower: str, teshis_metin: str) -> bool:
+    """SUT 4.2.28.A(1)(ç) — Geçirilmiş Mİ."""
+    if any(k in teshis_metin for k in ['I21', 'I22', 'I25.2']):
+        return True
+    return bool(re.search(
+        r'miyokard\s*infar|miyokard\s*enfark|geçirilmiş\s*mi\b|\bstemi\b|\bnstemi\b',
+        metin_lower))
+
+
+def _statin_atom_inme(metin_lower: str, teshis_metin: str) -> bool:
+    """SUT 4.2.28.A(1)(ç) — Geçirilmiş inme."""
+    if any(k in teshis_metin for k in
+           ['I60', 'I61', 'I62', 'I63', 'I64', 'I65', 'I66', 'I69']):
+        return True
+    return bool(re.search(
+        r'\binme\b|\bstroke\b|serebrovask|\bsvo\b|geçirilmiş\s*inme',
+        metin_lower))
+
+
+def _statin_atom_kah(metin_lower: str, teshis_metin: str,
+                     rapor_kodu: str) -> bool:
+    """SUT 4.2.28.A(1)(ç) — Koroner arter hastalığı (hastanın kendisinde).
+
+    rapor_kodu 04.02 / 04.04 KAH örtük endikasyon (rec_rap_kod otoritesi).
+    'ailede/aile öyküsünde koroner arter' → hasta'da KAH değil, aile öyküsü.
+    """
+    rk = (rapor_kodu or '').strip()
+    if rk.startswith(('04.02', '04.04')):
+        return True
+    if any(k in teshis_metin for k in
+           ['I20', 'I21', 'I22', 'I23', 'I24', 'I25']):
+        return True
+    # 'koroner arter' her oluşumunu kontrol et — öncesinde aile/öykü/ailesel
+    # varsa AKIL hastanın kendisinde değil
+    for m in re.finditer(r'koroner\s*arter', metin_lower):
+        on40 = metin_lower[max(0, m.start() - 40):m.start()]
+        if any(k in on40 for k in ('aile', 'ailesel', 'öykü', 'oyku')):
+            continue
+        return True
+    # KAH/iskemik kalp/stent/bypass — bunlar hasta'da var demek
+    return bool(re.search(
+        r'\bkah\b|iskemik\s*kalp|\bkabg\b|by[-\s]?pass|\bstent\b',
+        metin_lower))
+
+
+def _statin_atom_pah(metin_lower: str, teshis_metin: str) -> bool:
+    """SUT 4.2.28.A(1)(ç) — Periferik arter hastalığı."""
+    if any(k in teshis_metin for k in ['I70', 'I73', 'I74']):
+        return True
+    return bool(re.search(r'periferik\s*arter|\bpah\b|\bpaod\b', metin_lower))
+
+
+def _statin_atom_aaa(metin_lower: str) -> bool:
+    """SUT 4.2.28.A(1)(ç) — Abdominal aort anevrizması."""
+    return bool(re.search(
+        r'abdominal\s*aort\s*anevrizm|\baaa\b|aort\s*diseks', metin_lower))
+
+
+def _statin_atom_karotid(metin_lower: str) -> bool:
+    """SUT 4.2.28.A(1)(ç) — Karotid arter hastalığı."""
+    return bool(re.search(r'karotid|karotis', metin_lower))
+
+
+def _statin_atom_yuksek_doz(ilac_adi: str, etkin_madde: str
+                             ) -> Tuple[bool, Optional[str], Optional[int]]:
+    """SUT 4.2.28.A(4) — Yüksek doz statin tespiti.
+
+    Returns: (yuksek_doz, etken, mg).
+    """
+    aday = (ilac_adi or '').upper() + ' ' + (etkin_madde or '').upper()
+    doz_match = re.search(r'(\d+)\s*MG', aday)
+    mg = int(doz_match.group(1)) if doz_match else None
+    if mg is None:
+        return False, None, None
+    for etken, esik in _STATIN_YUKSEK_DOZ_ESIK.items():
+        if etken in aday and mg >= esik:
+            return True, etken, mg
+    return False, None, mg
+
+
+def _statin_atom_uzman_rapor(doktor_uzmanligi: str,
+                              rapor_kodu: str) -> SartDurumu:
+    """SUT 4.2.28.A(4) — Yüksek doz uzman raporu.
+
+    Kabul edilen: Kardiyo/KVC/Endokrin/Geriatri/Nöro/İç hast.
+    Rapor kodu 04.02 / 04.04 / 06.x medula otoritesi olarak kabul edilir.
+    Aile hekimi VEYA başka branş → YOK; doktor branşı yok → KE.
+    """
+    du = (doktor_uzmanligi or '').upper().strip()
+    rk = (rapor_kodu or '').strip()
+    if rk.startswith(('04.02', '04.04', '06')):
+        return SartDurumu.VAR
+    if not du:
+        return SartDurumu.KONTROL_EDILEMEDI
+    if any(d in du for d in _STATIN_UZMAN_DALLARI_KEYS):
+        return SartDurumu.VAR
+    return SartDurumu.YOK
+
+
+def _statin_atom_aile_hekimi(doktor_uzmanligi: str) -> bool:
+    """SUT 4.2.28.A(4) son cümle — 24 ay sonrası aile hekimi devam raporu."""
+    du = (doktor_uzmanligi or '').upper().strip()
+    return 'AILE HEK' in du or 'AİLE HEK' in du
+
+
+def _statin_atom_24ay_sonrasi(ilac_sonuc: Dict) -> SartDurumu:
+    """SUT 4.2.28.A(4) — İlk uzman raporu üzerinden 24 ay geçti mi?
+
+    Hasta YOAK/statin geçmişi DB'de yoksa KE (manuel doğrulama).
+    """
+    # Mevcut: ilac_sonuc['ilk_statin_tarihi'] varsa hesapla
+    ilk = ilac_sonuc.get('ilk_statin_tarihi') or ilac_sonuc.get('ilk_rapor_tarihi')
+    if not ilk:
+        return SartDurumu.KONTROL_EDILEMEDI
+    try:
+        from datetime import datetime
+        if isinstance(ilk, str):
+            ilk_dt = datetime.fromisoformat(ilk[:10])
+        else:
+            ilk_dt = ilk
+        gecen_ay = (datetime.now() - ilk_dt).days / 30.4
+        return SartDurumu.VAR if gecen_ay >= 24 else SartDurumu.YOK
+    except Exception:
+        return SartDurumu.KONTROL_EDILEMEDI
+
+
+def _statin_atom_cocuk_kalp_transplant(metin_lower: str) -> bool:
+    """4.2.28.A-2(1)(a)(1) — Kalp transplantasyonu öyküsü."""
+    return bool(re.search(
+        r'kalp\s*(?:nakli|transplant)|kardiyak\s*transplant', metin_lower))
+
+
+def _statin_atom_cocuk_homozigot_aile(metin_lower: str) -> bool:
+    """4.2.28.A-2(1)(a)(1) — Homozigot ailesel hiperkolesterolemi."""
+    return bool(re.search(
+        r'homozigot.{0,30}(?:aile|hiperkol)|homozigot\s*fh', metin_lower))
+
+
+def _statin_atom_cocuk_vki95(metin_lower: str) -> bool:
+    """4.2.28.A-2(2) — VKİ persentil ≥%95."""
+    return bool(re.search(
+        r'vki.{0,15}(?:persentil|p).{0,10}(?:95|≥\s*95)|bmi.{0,15}p\s*95',
+        metin_lower))
+
+
+def _statin_atom_cocuk_hdl_dusuk(metin_lower: str) -> bool:
+    """4.2.28.A-2(2) — HDL-C < 40 mg/dL."""
+    m = re.search(r'hdl[^0-9]{0,15}(\d{1,3})', metin_lower)
+    if m:
+        try:
+            return int(m.group(1)) < 40
+        except ValueError:
+            return False
+    return False
+
+
+def _statin_atom_cocuk_kbh(metin_lower: str, teshis_metin: str) -> bool:
+    """4.2.28.A-2(2) — Kronik böbrek yetmezliği / son dönem böbrek hast."""
+    if any(k in teshis_metin for k in ['N18', 'N19']):
+        return True
+    return bool(re.search(
+        r'kronik\s*böbrek|kbh\b|kby\b|son\s*dönem\s*böbrek|\besrd\b',
+        metin_lower))
+
+
+def _statin_atom_cocuk_kawasaki(metin_lower: str) -> bool:
+    """4.2.28.A-2(2) — Kawasaki hastalığı."""
+    return 'kawasaki' in metin_lower
+
+
+def _statin_atom_cocuk_kronik_inflamatuar(metin_lower: str) -> bool:
+    """4.2.28.A-2(2) — Kronik inflamatuvar hastalık."""
+    return bool(re.search(r'kronik\s*inflamatuar|kronik\s*inflamatuv',
+                          metin_lower))
+
+
+def _statin_atom_cocuk_hiv(metin_lower: str, teshis_metin: str) -> bool:
+    """4.2.28.A-2(2) — HIV enfeksiyonu."""
+    if any(k in teshis_metin for k in ['B20', 'B21', 'B22', 'B23', 'B24', 'Z21']):
+        return True
+    return bool(re.search(r'\bhiv\b|hıv\b|aids', metin_lower))
+
+
+def _statin_atom_cocuk_nefrotik(metin_lower: str) -> bool:
+    """4.2.28.A-2(2) — Nefrotik sendrom."""
+    return 'nefrotik' in metin_lower
+
+
+# ── Üst-VEYA matematiği (YOAK _yoak_genel_sonuc_atomik kalıbı) ────────
+
+def _statin_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,
+                                 sut_kurali: str, birlesik: str,
+                                 anahtar: str) -> KontrolRaporu:
+    """Atomik şart listesinden üst-VEYA dallarıyla genel sonuç üret.
+
+    Üst-VEYA çiftleri (yetişkin yolaklar):
+      Yol-a / Yol-b / Yol-c / Yol-ç → ≥1 tam VAR ise UYGUN
+    Yüksek doz [(4)] grubu varsa o da AND zorunlu (yüksek doz aktifse).
+    """
+    gruplar: Dict[str, List[SartSonuc]] = {}
+    for s in sartlar:
+        gruplar.setdefault(s.grup, []).append(s)
+
+    grup_durumlari: Dict[str, SartDurumu] = {}
+    for ad, gs in gruplar.items():
+        if not ad or '(bilgi)' in ad or '[paralel]' in ad:
+            # (bilgi)/paralel grupları matematik dışı, sadece raporda
+            continue
+        veya_flag = any(s.veya_grubu for s in gs)
+        grup_durumlari[ad] = _yoak_grup_durumu(gs, veya=veya_flag)
+
+    # Üst-VEYA dalları — Yol-a/b/c/ç prefix bazlı
+    yol_prefixleri = [
+        ('Yol-a — LDL>190',
+         'Yol-b — LDL>160',
+         'Yol-c — LDL>130',
+         'Yol-ç — LDL>70'),
+    ]
+    for prefixler in yol_prefixleri:
+        keys = [next((k for k in grup_durumlari if k.startswith(p)), None)
+                for p in prefixler]
+        keys = [k for k in keys if k]
+        if not keys:
+            continue
+        durumlar = [grup_durumlari[k] for k in keys]
+        if any(d == SartDurumu.VAR for d in durumlar):
+            sonuc = SartDurumu.VAR
+        elif any(d == SartDurumu.KONTROL_EDILEMEDI for d in durumlar):
+            sonuc = SartDurumu.KONTROL_EDILEMEDI
+        else:
+            sonuc = SartDurumu.YOK
+        grup_durumlari['Başlama yolu [(a)∨(b)∨(c)∨(ç)]'] = sonuc
+        for k in keys:
+            grup_durumlari.pop(k, None)
+
+    # Çocuk yolakları üst-VEYA — yaş<10 (a)(1)/(2), yaş≥10 (b)(1)/(2)/(3)
+    cocuk_yol_grupları = [
+        # yaş<10: (a)(1) ∨ (a)(2)
+        (('Çocuk yaş<10 (a)(1)', 'Çocuk yaş<10 (a)(2)'),
+         'Çocuk yaş<10 yolu [(a)(1) ∨ (a)(2)]'),
+        # yaş≥10: (b)(1) ∨ (b)(2) ∨ (b)(3)
+        (('Çocuk yaş≥10 (b)(1)',
+          'Çocuk yaş≥10 (b)(2)',
+          'Çocuk yaş≥10 (b)(3)'),
+         'Çocuk yaş≥10 yolu [(b)(1) ∨ (b)(2) ∨ (b)(3)]'),
+    ]
+    for prefixler, birlesik_ad in cocuk_yol_grupları:
+        keys = [next((k for k in grup_durumlari if k.startswith(p)), None)
+                for p in prefixler]
+        keys = [k for k in keys if k]
+        if not keys:
+            continue
+        durumlar = [grup_durumlari[k] for k in keys]
+        if any(d == SartDurumu.VAR for d in durumlar):
+            sonuc = SartDurumu.VAR
+        elif any(d == SartDurumu.KONTROL_EDILEMEDI for d in durumlar):
+            sonuc = SartDurumu.KONTROL_EDILEMEDI
+        else:
+            sonuc = SartDurumu.YOK
+        grup_durumlari[birlesik_ad] = sonuc
+        for k in keys:
+            grup_durumlari.pop(k, None)
+
+    yok_gruplar = [g for g, d in grup_durumlari.items() if d == SartDurumu.YOK]
+    ke_gruplar = [g for g, d in grup_durumlari.items()
+                  if d == SartDurumu.KONTROL_EDILEMEDI]
+
+    detaylar['grup_durumlari'] = {g: d.value for g, d in grup_durumlari.items()}
+    eslesen = _eslesen_parcayi_bul(birlesik, anahtar) if birlesik else ''
+
+    if yok_gruplar:
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN_DEGIL,
+            mesaj=f'Statin SUT 4.2.28.A şartları sağlanmıyor — eksik: '
+                  f'{", ".join(yok_gruplar)}',
+            sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
+            aranan_ibare='LDL eşik + risk + 2 ölçüm + uzman raporu',
+            bulunan_metin=eslesen)
+    if ke_gruplar:
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+            mesaj=f'Statin ŞÜPHELİ — manuel doğrulanmalı: '
+                  f'{", ".join(ke_gruplar)}',
+            sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
+            uyari='Bazı şartlar metinden tespit edilemedi',
+            aranan_ibare='LDL eşik + risk + 2 ölçüm + uzman raporu',
+            bulunan_metin=eslesen)
+    return KontrolRaporu(
+        sonuc=KontrolSonucu.UYGUN,
+        mesaj=f'Statin SUT 4.2.28.A şartları sağlanıyor '
+              f'({len(grup_durumlari)} grup VAR)',
+        sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
+        aranan_ibare='LDL eşik + risk + 2 ölçüm + uzman raporu',
+        bulunan_metin=eslesen)
+
+
+# ── Yetişkin dispatcher: SUT 4.2.28.A-1 ────────────────────────────────
+
+def _statin_yetiskin_kontrol(
+        ilac_sonuc: Dict, metin_lower: str, teshis_metin: str,
+        rapor_kodu: str, yas: Optional[int], birlesik: str,
+        sartlar: List[SartSonuc], detaylar: Dict) -> KontrolRaporu:
+    """SUT 4.2.28.A-1 — Yetişkin statin başlangıç kriterleri (4 üst-VEYA dalı)."""
+    max_ldl, olcumler = _statin_atom_ldl_olcumler(birlesik)
+    detaylar['ldl_degeri'] = max_ldl
+    detaylar['ldl_olcum_sayisi'] = len(olcumler)
+    detaylar['ldl_olcumler'] = [
+        {'deger': o['deger'],
+         'tarih': o['tarih'].isoformat() if o['tarih'] else None}
+        for o in olcumler]
+
+    # ── A: Endikasyon önkoşulu (LDL değeri raporda var mı) ─────────
+    g_endik = 'Endikasyon önkoşul [(1)]'
+    if max_ldl is None:
+        sartlar.append(SartSonuc(
+            'LDL sayısal değer raporda VAR', SartDurumu.YOK,
+            'LDL değeri (mg/dL) rapor metninde bulunamadı', 'rapor_metni',
+            grup=g_endik))
+    else:
+        sartlar.append(SartSonuc(
+            'LDL sayısal değer raporda VAR', SartDurumu.VAR,
+            f'LDL = {max_ldl} mg/dL (max ölçüm, toplam {len(olcumler)} ölçüm)',
+            'rapor_metni', grup=g_endik))
+
+    # ── R: Ek risk faktörleri (Madde 2) — bilgi grubu ──────────────
+    ht_var = _statin_atom_ht(metin_lower, teshis_metin)
+    aile_kv_var = _statin_atom_aile_erken_kv(metin_lower)
+    yas_65_durum = _statin_atom_yas_65(yas)
+    ek_risk_sayisi = sum([ht_var, aile_kv_var, yas_65_durum == SartDurumu.VAR])
+    detaylar['ek_risk_sayisi'] = ek_risk_sayisi
+    detaylar['ek_riskler'] = {
+        'HT': ht_var, 'aile_erken_kv': aile_kv_var,
+        'yas_65_ustu': yas_65_durum.value}
+
+    g_ek_risk = 'Ek risk faktörleri (bilgi)'
+    sartlar.append(SartSonuc(
+        'Hipertansiyon (HT)',
+        SartDurumu.VAR if ht_var else SartDurumu.YOK,
+        'HT/I10-15 tespit' if ht_var else 'HT ibaresi/ICD yok',
+        'rapor_metni/teshis', grup=g_ek_risk, veya_grubu=True))
+    sartlar.append(SartSonuc(
+        'Aile öyküsü (erken KV)',
+        SartDurumu.VAR if aile_kv_var else SartDurumu.YOK,
+        'Ailede erken KV/hiperkol tespit' if aile_kv_var
+        else 'Aile öyküsü ibaresi yok',
+        'rapor_metni', grup=g_ek_risk, veya_grubu=True))
+    sartlar.append(SartSonuc(
+        '≥65 yaş', yas_65_durum,
+        f'Hasta yaşı: {yas}' if yas is not None else 'Hasta yaşı bilinmiyor',
+        'hasta_yasi', grup=g_ek_risk, veya_grubu=True))
+
+    # ── K: Yüksek KV hastalık (Madde 1ç) ──────────────────────────
+    dm_var = _statin_atom_dm(metin_lower, teshis_metin)
+    aks_var = _statin_atom_aks(metin_lower, teshis_metin)
+    mi_var = _statin_atom_mi(metin_lower, teshis_metin)
+    inme_var = _statin_atom_inme(metin_lower, teshis_metin)
+    kah_var = _statin_atom_kah(metin_lower, teshis_metin, rapor_kodu)
+    pah_var = _statin_atom_pah(metin_lower, teshis_metin)
+    aaa_var = _statin_atom_aaa(metin_lower)
+    karotid_var = _statin_atom_karotid(metin_lower)
+    yuksek_kv_bulunanlar = []
+    if dm_var:      yuksek_kv_bulunanlar.append('DM')
+    if aks_var:     yuksek_kv_bulunanlar.append('AKS')
+    if mi_var:      yuksek_kv_bulunanlar.append('Mİ')
+    if inme_var:    yuksek_kv_bulunanlar.append('İnme')
+    if kah_var:     yuksek_kv_bulunanlar.append('KAH')
+    if pah_var:     yuksek_kv_bulunanlar.append('PAH')
+    if aaa_var:     yuksek_kv_bulunanlar.append('AAA')
+    if karotid_var: yuksek_kv_bulunanlar.append('Karotid')
+    detaylar['yuksek_kv_bulunanlar'] = yuksek_kv_bulunanlar
+
+    # ── ÜST-VEYA Yol-a/b/c/ç ──────────────────────────────────────
+    # Yol-a: LDL > 190 (ek koşul yok) + 2 ölçüm > 190
+    g_a = 'Yol-a — LDL>190 [(1)(a)]'
+    if max_ldl is not None and max_ldl > 190:
+        sartlar.append(SartSonuc(
+            'LDL > 190 mg/dL', SartDurumu.VAR,
+            f'LDL {max_ldl} > 190', 'rapor_metni', grup=g_a))
+        ko = _iki_olcum_kuralini_dogrula(olcumler, esik=190)
+        sartlar.append(SartSonuc(
+            '2 ölçüm > 190 (1 hafta-6 ay aralık)',
+            _statin_olcum_durum_cevir(ko['durum']),
+            ko['detay'], 'rapor_metni', grup=g_a))
+    else:
+        sartlar.append(SartSonuc(
+            'LDL > 190 mg/dL',
+            SartDurumu.YOK if max_ldl is not None
+            else SartDurumu.KONTROL_EDILEMEDI,
+            (f'LDL {max_ldl} ≤ 190' if max_ldl is not None
+             else 'LDL değeri yok'),
+            'rapor_metni', grup=g_a))
+
+    # Yol-b: LDL > 160 + ≥2 ek risk + 2 ölçüm > 160
+    g_b = 'Yol-b — LDL>160 + ≥2 ek risk [(1)(b)]'
+    if max_ldl is not None and max_ldl > 160:
+        sartlar.append(SartSonuc(
+            'LDL > 160 mg/dL', SartDurumu.VAR,
+            f'LDL {max_ldl} > 160', 'rapor_metni', grup=g_b))
+        # ≥2 ek risk — yas KE ise potansiyel +1 belirsiz
+        ek_risk_durum = (SartDurumu.VAR if ek_risk_sayisi >= 2
+                         else (SartDurumu.KONTROL_EDILEMEDI
+                               if (yas is None and ek_risk_sayisi + 1 >= 2)
+                               else SartDurumu.YOK))
+        sartlar.append(SartSonuc(
+            '≥2 ek risk faktörü',
+            ek_risk_durum,
+            f'Ek risk: {ek_risk_sayisi}/3 (HT={ht_var}, '
+            f'aile={aile_kv_var}, 65yaş={yas_65_durum.value})',
+            'rapor_metni/hasta_yasi', grup=g_b))
+        ko = _iki_olcum_kuralini_dogrula(olcumler, esik=160)
+        sartlar.append(SartSonuc(
+            '2 ölçüm > 160 (1 hafta-6 ay aralık)',
+            _statin_olcum_durum_cevir(ko['durum']),
+            ko['detay'], 'rapor_metni', grup=g_b))
+    else:
+        sartlar.append(SartSonuc(
+            'LDL > 160 mg/dL',
+            SartDurumu.YOK if max_ldl is not None
+            else SartDurumu.KONTROL_EDILEMEDI,
+            (f'LDL {max_ldl} ≤ 160' if max_ldl is not None
+             else 'LDL değeri yok'),
+            'rapor_metni', grup=g_b))
+
+    # Yol-c: LDL > 130 + ≥3 ek risk + 2 ölçüm > 130
+    g_c = 'Yol-c — LDL>130 + ≥3 ek risk [(1)(c)]'
+    if max_ldl is not None and max_ldl > 130:
+        sartlar.append(SartSonuc(
+            'LDL > 130 mg/dL', SartDurumu.VAR,
+            f'LDL {max_ldl} > 130', 'rapor_metni', grup=g_c))
+        ek3_durum = (SartDurumu.VAR if ek_risk_sayisi >= 3
+                     else (SartDurumu.KONTROL_EDILEMEDI
+                           if yas is None and ek_risk_sayisi + 1 >= 3
+                           else SartDurumu.YOK))
+        sartlar.append(SartSonuc(
+            '≥3 ek risk faktörü (HT+aile+65yaş)',
+            ek3_durum,
+            f'Ek risk: {ek_risk_sayisi}/3', 'rapor_metni/hasta_yasi',
+            grup=g_c))
+        ko = _iki_olcum_kuralini_dogrula(olcumler, esik=130)
+        sartlar.append(SartSonuc(
+            '2 ölçüm > 130 (1 hafta-6 ay aralık)',
+            _statin_olcum_durum_cevir(ko['durum']),
+            ko['detay'], 'rapor_metni', grup=g_c))
+    else:
+        sartlar.append(SartSonuc(
+            'LDL > 130 mg/dL',
+            SartDurumu.YOK if max_ldl is not None
+            else SartDurumu.KONTROL_EDILEMEDI,
+            (f'LDL {max_ldl} ≤ 130' if max_ldl is not None
+             else 'LDL değeri yok'),
+            'rapor_metni', grup=g_c))
+
+    # Yol-ç: LDL > 70 + ≥1 yüksek KV hastalık (2 ölçüm GEREKMEZ)
+    # Ana grup AND mantığı: 2 atom (LDL>70 ∧ ≥1 yüksek KV).
+    # Detay KV atomları ayrı bilgi grubunda (matematik dışı, görsel paralel).
+    g_c2 = 'Yol-ç — LDL>70 + Yüksek KV hastalık [(1)(ç)]'
+    g_c2_detay = 'Yol-ç yüksek KV detay (bilgi)'
+    yuksek_kv_var = bool(yuksek_kv_bulunanlar)
+    if max_ldl is not None and max_ldl > 70:
+        sartlar.append(SartSonuc(
+            'LDL > 70 mg/dL', SartDurumu.VAR,
+            f'LDL {max_ldl} > 70', 'rapor_metni', grup=g_c2))
+        sartlar.append(SartSonuc(
+            '≥1 yüksek KV hastalık (DM/AKS/Mİ/inme/KAH/PAH/AAA/karotid)',
+            SartDurumu.VAR if yuksek_kv_var else SartDurumu.YOK,
+            (f'Bulunan: {", ".join(yuksek_kv_bulunanlar)}'
+             if yuksek_kv_bulunanlar
+             else 'DM/AKS/Mİ/inme/KAH/PAH/AAA/karotid ibaresi yok'),
+            'rapor_metni/teshis', grup=g_c2))
+    else:
+        sartlar.append(SartSonuc(
+            'LDL > 70 mg/dL',
+            SartDurumu.YOK if max_ldl is not None
+            else SartDurumu.KONTROL_EDILEMEDI,
+            (f'LDL {max_ldl} ≤ 70' if max_ldl is not None
+             else 'LDL değeri yok'),
+            'rapor_metni', grup=g_c2))
+    # Yüksek KV detay (bilgi grubu — şema panelinde görünür, matematik dışı)
+    for ad, var in [
+        ('Diabetes mellitus', dm_var),
+        ('Akut koroner sendrom', aks_var),
+        ('Geçirilmiş Mİ', mi_var),
+        ('Geçirilmiş inme', inme_var),
+        ('Koroner arter hastalığı (KAH)', kah_var),
+        ('Periferik arter hastalığı (PAH)', pah_var),
+        ('Abdominal aort anevrizması (AAA)', aaa_var),
+        ('Karotid arter hastalığı', karotid_var),
+    ]:
+        sartlar.append(SartSonuc(
+            ad,
+            SartDurumu.VAR if var else SartDurumu.YOK,
+            f'{ad} tespit' if var else f'{ad} ibaresi yok',
+            'rapor_metni/teshis', grup=g_c2_detay, veya_grubu=True))
+
+    # ── H: Yüksek doz uzman raporu (Madde 4) ──────────────────────
+    ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
+    etkin_madde = (ilac_sonuc.get('etkin_madde') or '').upper()
+    doktor_uzm = (ilac_sonuc.get('doktor_uzmanligi') or '').strip()
+
+    yd, etken_yd, mg = _statin_atom_yuksek_doz(ilac_adi, etkin_madde)
+    detaylar['yuksek_doz'] = yd
+    detaylar['ilac_mg'] = mg
+    detaylar['etken_yd'] = etken_yd
+
+    if yd:
+        g_yd = 'Yüksek doz uzman raporu [(4)]'
+        sartlar.append(SartSonuc(
+            'Yüksek doz statin VAR', SartDurumu.VAR,
+            f'{etken_yd} {mg} mg ≥ SUT yüksek doz eşiği',
+            'recete_ilaci', grup=g_yd))
+        uzman_durum = _statin_atom_uzman_rapor(doktor_uzm, rapor_kodu)
+        # 24 ay sonrası aile hekimi alt yolu
+        if uzman_durum == SartDurumu.YOK and _statin_atom_aile_hekimi(doktor_uzm):
+            ay24 = _statin_atom_24ay_sonrasi(ilac_sonuc)
+            if ay24 == SartDurumu.VAR:
+                uzman_durum = SartDurumu.VAR
+                ek_neden = ' (24 ay sonrası aile hekimi devam raporu)'
+            elif ay24 == SartDurumu.KONTROL_EDILEMEDI:
+                uzman_durum = SartDurumu.KONTROL_EDILEMEDI
+                ek_neden = ' (aile hekimi; 24 ay geçmişi DB\'de yok — manuel)'
+            else:
+                ek_neden = ' (aile hekimi; 24 ay henüz dolmamış)'
+        else:
+            ek_neden = ''
+        sartlar.append(SartSonuc(
+            'Uzman raporu (Kardiyo/KVC/Endokrin/Geriatri/Nöro/İç hast.)',
+            uzman_durum,
+            f'Doktor uzmanlığı: {doktor_uzm or "bilinmiyor"}; '
+            f'rapor_kodu={rapor_kodu or "yok"}{ek_neden}',
+            'doktor_uzmanligi/rapor_kodu', grup=g_yd))
+
+    sut_kurali = 'SUT 4.2.28.A-1 — Statin (Yetişkin)'
+    return _statin_genel_sonuc_atomik(
+        sartlar, detaylar, sut_kurali, birlesik=birlesik, anahtar='ldl')
+
+
+# ── Çocuk dispatcher: SUT 4.2.28.A-2 ───────────────────────────────────
+
+def _statin_cocuk_kontrol(
+        ilac_sonuc: Dict, metin_lower: str, teshis_metin: str,
+        rapor_kodu: str, yas: Optional[int], birlesik: str,
+        sartlar: List[SartSonuc], detaylar: Dict) -> KontrolRaporu:
+    """SUT 4.2.28.A-2 — Çocuk statin (yaş <10 ve ≥10 alt yolakları)."""
+    max_ldl, olcumler = _statin_atom_ldl_olcumler(birlesik)
+    detaylar['ldl_degeri'] = max_ldl
+
+    g_endik = 'Endikasyon önkoşul [(çocuk)]'
+    if max_ldl is None:
+        sartlar.append(SartSonuc(
+            'LDL sayısal değer raporda VAR', SartDurumu.YOK,
+            'LDL değeri yok', 'rapor_metni', grup=g_endik))
+    else:
+        sartlar.append(SartSonuc(
+            'LDL sayısal değer raporda VAR', SartDurumu.VAR,
+            f'LDL = {max_ldl} mg/dL', 'rapor_metni', grup=g_endik))
+
+    # Çocuk ek risk faktörleri (4.2.28.A-2 madde 2)
+    ht_var = _statin_atom_ht(metin_lower, teshis_metin)
+    vki95 = _statin_atom_cocuk_vki95(metin_lower)
+    hdl_d = _statin_atom_cocuk_hdl_dusuk(metin_lower)
+    dm_var = _statin_atom_dm(metin_lower, teshis_metin)
+    kbh_var = _statin_atom_cocuk_kbh(metin_lower, teshis_metin)
+    bobrek_nakli = bool(re.search(r'böbrek\s*nakli|renal\s*transplant',
+                                    metin_lower))
+    kawasaki = _statin_atom_cocuk_kawasaki(metin_lower)
+    kronik_inf = _statin_atom_cocuk_kronik_inflamatuar(metin_lower)
+    hiv = _statin_atom_cocuk_hiv(metin_lower, teshis_metin)
+    nefrotik = _statin_atom_cocuk_nefrotik(metin_lower)
+
+    cocuk_riskler = [
+        ('HT', ht_var), ('VKİ persentil ≥95', vki95),
+        ('HDL-C < 40', hdl_d), ('Diyabet', dm_var),
+        ('Kronik böbrek hast.', kbh_var),
+        ('Geçirilmiş böbrek nakli', bobrek_nakli),
+        ('Kawasaki', kawasaki),
+        ('Kronik inflamatuvar hastalık', kronik_inf),
+        ('HIV', hiv), ('Nefrotik sendrom', nefrotik),
+    ]
+    cocuk_risk_sayisi = sum(1 for _, v in cocuk_riskler if v)
+    detaylar['cocuk_risk_sayisi'] = cocuk_risk_sayisi
+    detaylar['cocuk_riskler'] = [ad for ad, v in cocuk_riskler if v]
+
+    # Ek risk bilgi grubu
+    g_cek = 'Çocuk ek risk faktörleri (bilgi)'
+    for ad, v in cocuk_riskler:
+        sartlar.append(SartSonuc(
+            ad, SartDurumu.VAR if v else SartDurumu.YOK,
+            f'{ad} tespit' if v else f'{ad} yok',
+            'rapor_metni/teshis', grup=g_cek, veya_grubu=True))
+
+    kalp_tx = _statin_atom_cocuk_kalp_transplant(metin_lower)
+    homoz_aile = _statin_atom_cocuk_homozigot_aile(metin_lower)
+    aile_kv = _statin_atom_aile_erken_kv(metin_lower)
+
+    if yas is not None and yas < 10:
+        # 10 yaşından küçük (a) bendi
+        # (1): KVH/kalp tx VEYA homozigot aile + LDL≥400
+        g_kuc_1 = 'Çocuk yaş<10 (a)(1) — KVH/tx/homozigot+LDL≥400'
+        kvh_var = (kalp_tx or any([dm_var, aks_var := False, mi_var := False])
+                   or homoz_aile)
+        sartlar.append(SartSonuc(
+            'KVH/kalp transplant/homozigot ailesel hiperkol',
+            SartDurumu.VAR if (kalp_tx or homoz_aile) else SartDurumu.YOK,
+            f'kalp_tx={kalp_tx}, homozigot_aile={homoz_aile}',
+            'rapor_metni', grup=g_kuc_1, veya_grubu=True))
+        sartlar.append(SartSonuc(
+            'LDL ≥ 400 mg/dL',
+            SartDurumu.VAR if (max_ldl is not None and max_ldl >= 400)
+            else (SartDurumu.KONTROL_EDILEMEDI if max_ldl is None
+                  else SartDurumu.YOK),
+            f'LDL: {max_ldl}', 'rapor_metni', grup=g_kuc_1))
+
+        # (2): LDL≥190 + (aile öyküsü VEYA en az 1 risk)
+        g_kuc_2 = 'Çocuk yaş<10 (a)(2) — LDL≥190 + aile/risk'
+        sartlar.append(SartSonuc(
+            'LDL ≥ 190 mg/dL',
+            SartDurumu.VAR if (max_ldl is not None and max_ldl >= 190)
+            else (SartDurumu.KONTROL_EDILEMEDI if max_ldl is None
+                  else SartDurumu.YOK),
+            f'LDL: {max_ldl}', 'rapor_metni', grup=g_kuc_2))
+        sartlar.append(SartSonuc(
+            'Aile öyküsü VEYA ≥1 risk faktörü',
+            SartDurumu.VAR if (aile_kv or cocuk_risk_sayisi >= 1)
+            else SartDurumu.YOK,
+            f'aile_kv={aile_kv}, çocuk_risk={cocuk_risk_sayisi}',
+            'rapor_metni/teshis', grup=g_kuc_2))
+
+    elif yas is not None and yas >= 10:
+        # 10 yaş ve üzeri (b) bendi
+        g_buy_1 = 'Çocuk yaş≥10 (b)(1) — LDL>190'
+        sartlar.append(SartSonuc(
+            'LDL > 190 mg/dL',
+            SartDurumu.VAR if (max_ldl is not None and max_ldl > 190)
+            else (SartDurumu.KONTROL_EDILEMEDI if max_ldl is None
+                  else SartDurumu.YOK),
+            f'LDL: {max_ldl}', 'rapor_metni', grup=g_buy_1))
+
+        g_buy_2 = 'Çocuk yaş≥10 (b)(2) — LDL>160 + aile/≥2 risk'
+        sartlar.append(SartSonuc(
+            'LDL > 160 mg/dL',
+            SartDurumu.VAR if (max_ldl is not None and max_ldl > 160)
+            else (SartDurumu.KONTROL_EDILEMEDI if max_ldl is None
+                  else SartDurumu.YOK),
+            f'LDL: {max_ldl}', 'rapor_metni', grup=g_buy_2))
+        sartlar.append(SartSonuc(
+            'Aile öyküsü VEYA ≥2 ek risk',
+            SartDurumu.VAR if (aile_kv or cocuk_risk_sayisi >= 2)
+            else SartDurumu.YOK,
+            f'aile_kv={aile_kv}, risk={cocuk_risk_sayisi}',
+            'rapor_metni/teshis', grup=g_buy_2))
+
+        g_buy_3 = 'Çocuk yaş≥10 (b)(3) — LDL>130 + KVH/≥3 risk'
+        sartlar.append(SartSonuc(
+            'LDL > 130 mg/dL',
+            SartDurumu.VAR if (max_ldl is not None and max_ldl > 130)
+            else (SartDurumu.KONTROL_EDILEMEDI if max_ldl is None
+                  else SartDurumu.YOK),
+            f'LDL: {max_ldl}', 'rapor_metni', grup=g_buy_3))
+        sartlar.append(SartSonuc(
+            'Klinik KVH VEYA ≥3 ek risk',
+            SartDurumu.VAR if (kalp_tx or cocuk_risk_sayisi >= 3)
+            else SartDurumu.YOK,
+            f'kalp_tx={kalp_tx}, risk={cocuk_risk_sayisi}',
+            'rapor_metni/teshis', grup=g_buy_3))
+    else:
+        # Yaş bilinmiyor — KE
+        sartlar.append(SartSonuc(
+            'Yaş tespit edilebilirliği', SartDurumu.KONTROL_EDILEMEDI,
+            'Hasta yaşı bilinmiyor — çocuk yolağı belirlenemedi',
+            'hasta_yasi', grup='Çocuk yaş tespiti (bilgi)'))
+
+    # Çocuk uzman raporu (4.2.28.A-2(1)): çocuk metabolizma/endokrin/kardiyo
+    doktor_uzm = (ilac_sonuc.get('doktor_uzmanligi') or '').upper().strip()
+    cocuk_uzman_var = any(d in doktor_uzm for d in _STATIN_COCUK_UZMAN_KEYS)
+    g_cuz = 'Çocuk uzman raporu (1)'
+    if doktor_uzm:
+        sartlar.append(SartSonuc(
+            'Çocuk metabolizma/endokrin/kardiyoloji uzmanı',
+            SartDurumu.VAR if cocuk_uzman_var else SartDurumu.YOK,
+            f'Doktor: {doktor_uzm}', 'doktor_uzmanligi', grup=g_cuz))
+    else:
+        sartlar.append(SartSonuc(
+            'Çocuk metabolizma/endokrin/kardiyoloji uzmanı',
+            SartDurumu.KONTROL_EDILEMEDI,
+            'Doktor branşı bilinmiyor',
+            'doktor_uzmanligi', grup=g_cuz))
+
+    sut_kurali = 'SUT 4.2.28.A-2 — Statin (Çocuk)'
+    return _statin_genel_sonuc_atomik(
+        sartlar, detaylar, sut_kurali, birlesik=birlesik, anahtar='ldl')
+
+
+def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
+    """SUT 4.2.28.A — Statin atomik üst dispatcher.
+
+    YOAK kalıbı (2026-05-13): yaş'a göre yetişkin (4.2.28.A-1) veya
+    çocuk (4.2.28.A-2) yolağına dispatch eder. Atomik SartSonuc listesi
+    grup/veya_grubu ile şema sekmelerine otomatik render olur.
+
+    SUT lafzı (kullanıcı verdi):
+      4.2.28.A-1 Yetişkin: 4 üst-VEYA dalı (a/b/c/ç) — LDL eşik tablosu
+        (1)(a): LDL>190 (ek koşul yok) + 2 ölçüm
+        (1)(b): LDL>160 + ≥2 ek risk + 2 ölçüm
+        (1)(c): LDL>130 + ≥3 ek risk + 2 ölçüm
+        (1)(ç): LDL>70 + ≥1 yüksek KV hastalık (2 ölçüm GEREKMEZ)
+        (2): Ek risk = HT / aile erken KV / ≥65 yaş
+        (3): 2 ölçüm (a)(b)(c) için, 1 hafta ara, 6 ay içinde
+        (4): Yüksek doz → uzman raporu (Kardiyo/KVC/Endokrin/Geriatri/Nöro/İç)
+      4.2.28.A-2 Çocuk: yaş<10 / yaş≥10 alt yolakları, farklı eşik+risk
     """
     tum_metin = _tum_metinleri_birlesir(ilac_sonuc)
     ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
-    rapor_kodu = ilac_sonuc.get('rapor_kodu', '')
-    recete_teshisleri = ilac_sonuc.get('recete_teshisleri', [])
-    teshis_metin = ' '.join(recete_teshisleri).upper() if recete_teshisleri else ''
-
-    # Tüm metinleri birleştir (rapor + reçete teşhis)
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
+    recete_teshisleri = ilac_sonuc.get('recete_teshisleri', []) or []
+    teshis_metin = (' '.join(recete_teshisleri).upper()
+                    if recete_teshisleri else '')
     birlesik_metin = (tum_metin or '') + ' ' + teshis_metin
+    metin_lower = _tr_lower(birlesik_metin) if birlesik_metin else ''
+    yas = _osteo_yas_oku(ilac_sonuc, birlesik_metin)
 
-    detaylar = {
+    sartlar: List[SartSonuc] = []
+    detaylar: Dict = {
         'ilac_adi': ilac_adi,
         'rapor_kodu': rapor_kodu,
-        'ldl_degeri': None,
-        'risk_kategorisi': None,
-        'yuksek_doz': False,
+        'hasta_yasi': yas,
+        'sut_maddesi': '4.2.28.A',
     }
+    sut_kurali_genel = 'SUT 4.2.28.A — Statin (atomik şema)'
 
-    metin_lower = birlesik_metin.replace('İ', 'i').replace('I', 'ı').lower() if birlesik_metin else ''
-    # Türkçe "I" → "ı" normalizasyonu kelime aramada problem çıkarır
-    # ("TIP 2" → "tıp 2", aranan "tip 2" eşleşmez). DM/risk faktörü
-    # taraması için ek bir varyant tut: 'I' → 'i' (dotted i'ye çevir)
-    metin_alt = (birlesik_metin.replace('İ', 'i').replace('I', 'i').lower()
-                  if birlesik_metin else '')
-
-    # ── 1. LDL değeri ara ──
-    ldl_degeri = None
-    ldl_eslesen = ""
-
-    # ÖNCE _tum_ldl_olcumlerini_bul'un sonucundan al — bu fonksiyon false-
-    # positive eleme yapıyor (15.11.2024'teki "15", E78.5'teki "78", saat
-    # "11:39"daki "39", Ekleme= timestamp'leri vb.). En yüksek değeri SUT
-    # eşik dallaması için kullan; iki-ölçüm kontrolü ayrıca yapılacak.
-    _on_olcumler = _tum_ldl_olcumlerini_bul(birlesik_metin)
-    if _on_olcumler:
-        # En yüksek LDL = en kritik durumun temsilcisi
-        ldl_degeri = max(o['deger'] for o in _on_olcumler)
-        ldl_eslesen = _eslesen_parcayi_bul(birlesik_metin, 'ldl')
-    else:
-        # Fallback: regex pattern'ları (tum_olcumler boşsa — örn metin
-        # serbest formatta, parser yakalayamadı)
-        ldl_patterns = [
-            r'ldl[- ]*c?\s*[:=]?\s*(\d{2,3})(?![/.\-:\d])',
-            r'ldl[^0-9\n]{0,50}?(\d{2,3})(?![/.\-:\d])',
-        ]
-        for pattern in ldl_patterns:
-            ldl_match = re.findall(pattern, metin_lower)
-            for cand in ldl_match:
-                try:
-                    cand_int = int(float(cand.replace(',', '.')))
-                except ValueError:
-                    continue
-                # Fizyolojik aralık (≥32: gün 1-31, saat HH, ICD 2-haneli
-                # eleme; ≤600: ailesel hiperkolesterolemi tavanı)
-                if 32 <= cand_int <= 600:
-                    ldl_degeri = cand_int
-                    ldl_eslesen = _eslesen_parcayi_bul(birlesik_metin, 'ldl')
-                    break
-            if ldl_degeri is not None:
-                break
-
-    # Kolesterol genel ibare (LDL bulunamazsa)
-    ldl_var = ldl_degeri is not None
-    kolesterol_var = 'kolesterol' in metin_lower or 'kolestrol' in metin_lower
-    lipid_var = 'lipid' in metin_lower or 'hiperlipidemi' in metin_lower
-    dislipidemi_var = 'dislipidemi' in metin_lower or 'hiperlipidemi' in metin_lower
-
-    detaylar['ldl_degeri'] = ldl_degeri
-
-    # ── 2. Risk faktörleri ara ──
-    risk_faktorleri = []
-
-    # Yüksek risk grubu (LDL > 70 yeterli) — kelime sınırı + Türkçe varyantlar
-    # Hem metin_lower (I→ı) hem metin_alt (I→i) varyantını tara: "TIP 2" yazımı
-    # Türkçe normalizasyondan dolayı kaçmasın.
-    def _eslesir_mi(patternler) -> bool:
-        for desen in patternler:
-            if re.search(desen, metin_lower) or re.search(desen, metin_alt):
-                return True
-        return False
-
-    dm_var = _eslesir_mi([
-        r'\bdiyabet', r'\bdiabet', r'\bdm\b', r'\bt[12]dm\b',
-        r'\bnıdde\b', r'\bniddm\b', r'\biddm\b',
-        r'tip\s*[12]\s*(?:dm|diyabet|diabet)',
-        r'şeker\s*hastal',     # şeker hastalığı / şeker hastası
-        r'\bdiabetik\b', r'\bdiyabetik\b',
-        r'\bhiperglisem',      # hiperglisemi
-    ])
-    aks_var = _eslesir_mi([
-        r'akut\s*koroner', r'\baks\b', r'\bakut\s*mi\b',
-    ])
-    mi_var = _eslesir_mi([
-        r'miyokard', r'infarkt', r'\bmi\b',
-        r'\bstemi\b', r'\bnstemi\b',
-    ])
-    inme_var = _eslesir_mi([
-        r'\binme\b', r'\bstroke\b', r'serebrovasküler', r'serebro\s*vask',
-        r'\bsva\b',
-    ])
-    # KAH (Koroner Arter Hastalığı) ≠ KOAH (Kronik Akciğer). \bkah\b kelime
-    # sınırı yeterli — "koah" içindeki "kah" sol sınırı başarısız (O harfi var).
-    kah_var = _eslesir_mi([
-        r'koroner\s*arter', r'\bkah\b', r'iskemik\s*kalp',
-    ])
-    pah_var = _eslesir_mi([
-        r'periferik\s*arter', r'\bpah\b', r'\bpaod\b',
-    ])
-    aaa_var = _eslesir_mi([
-        r'aort\s*anevrizma', r'\baaa\b', r'aort\s*disseks',
-    ])
-    karotid_var = _eslesir_mi([r'karotid', r'karotis'])
-    stent_var = _eslesir_mi([r'\bstent\b'])
-    bypass_var = _eslesir_mi([r'bypass', r'\bkabg\b', r'koroner\s*by[-\s]?pass'])
-
-    # ICD kodları ile de kontrol et
-    icd_dm = any(k in teshis_metin for k in ['E10', 'E11', 'E12', 'E13', 'E14'])
-    icd_kah = any(k in teshis_metin for k in ['I20', 'I21', 'I22', 'I23', 'I24', 'I25'])
-    icd_inme = any(k in teshis_metin for k in ['I60', 'I61', 'I62', 'I63', 'I64', 'I65', 'I66'])
-    icd_pah = any(k in teshis_metin for k in ['I70', 'I73', 'I74'])
-    icd_lipid = any(k in teshis_metin for k in ['E78', 'E78.0', 'E78.1', 'E78.2', 'E78.5'])
-
-    if dm_var or icd_dm:
-        risk_faktorleri.append('DM')
-    if aks_var or mi_var or stent_var or bypass_var:
-        risk_faktorleri.append('AKS/MI')
-    if kah_var or icd_kah:
-        risk_faktorleri.append('KAH')
-    if inme_var or icd_inme:
-        risk_faktorleri.append('İnme')
-    if pah_var or icd_pah:
-        risk_faktorleri.append('PAH')
-    if aaa_var:
-        risk_faktorleri.append('AAA')
-    if karotid_var:
-        risk_faktorleri.append('Karotid')
-
-    # Rapor kodu KV/KAH ise risk faktörü olarak ekle
-    # 04.02 = Kardiyovasküler (KAH/iskemik kalp hastalığı raporu)
-    # 04.02.1 = Antiplatelet (klopidogrel) — KAH benzeri
-    if rapor_kodu and (rapor_kodu.startswith('04.02') or rapor_kodu.startswith('04.04')):
-        if 'KAH' not in risk_faktorleri:
-            risk_faktorleri.append(f'KAH (rapor {rapor_kodu})')
-
-    cok_yuksek_risk = len(risk_faktorleri) > 0  # DM/AKS/MI/inme/KAH/PAH/AAA/karotid
-    detaylar['risk_kategorisi'] = ', '.join(risk_faktorleri) if risk_faktorleri else 'Genel'
-    detaylar['risk_faktorleri'] = risk_faktorleri
-
-    # ── 3. Yüksek doz statin kontrolü ──
-    yuksek_doz_ilaclar = {
-        'ROSUVASTATIN': 20, 'CRESTOR': 20, 'ROZACT': 20, 'ROSUVA': 20,
-        'ATORVASTATIN': 40, 'LIPITOR': 40, 'ATOR': 40,
-        'SIMVASTATIN': 40, 'PRAVASTATIN': 40, 'FLUVASTATIN': 80,
-    }
-    ilac_dozaj = _ilac_adından_dozaj_cikar(ilac_adi) if '_ilac_adından_dozaj_cikar' in dir() else None
-    # Basit dozaj çıkarma
-    doz_match = re.search(r'(\d+)\s*MG', ilac_adi)
-    ilac_mg = int(doz_match.group(1)) if doz_match else None
-
-    for ilac_kisa, esik_doz in yuksek_doz_ilaclar.items():
-        if ilac_kisa in ilac_adi and ilac_mg and ilac_mg >= esik_doz:
-            detaylar['yuksek_doz'] = True
-            break
-
-    # ── 4. Sonuç değerlendirme ──
-    sut_kurali = 'SUT 4.2.28.A — Statin kullanım kuralları'
-
-    # LDL değeri bulundu
-    if ldl_var and ldl_degeri:
-        # Tüm LDL ölçümlerini çıkar (iki ölçüm kuralı için)
-        # Yüksek KV riskli hastalarda bu kontrol sıkı uygulanmaz
-        # (DM/KAH/AKS varsa tek değer yeterli kabul edilir).
-        tum_olcumler = _tum_ldl_olcumlerini_bul(birlesik_metin)
-        detaylar['ldl_olcum_sayisi'] = len(tum_olcumler)
-        detaylar['ldl_olcumler'] = [
-            {'deger': o['deger'],
-             'tarih': o['tarih'].isoformat() if o['tarih'] else None}
-            for o in tum_olcumler
-        ]
-
-        # Risk bazlı eşik kontrolü
-        if cok_yuksek_risk and ldl_degeri > 70:
-            # Yüksek KV risk → tek ölçüm yeterli
-            uygunluk = "UYGUN"
-            aciklama = f"LDL {ldl_degeri} > 70 mg/dL (risk: {', '.join(risk_faktorleri)})"
-        # Tüm LDL ölçümlerini özet string'e çevir (parametre gösterimi için)
-        olcum_ozet = ""
-        if tum_olcumler:
-            parcalar = []
-            for o in tum_olcumler[:5]:  # max 5 göster
-                t = o.get('tarih')
-                t_str = t.strftime('%d.%m.%Y') if t else '?'
-                parcalar.append(f"LDL={o['deger']} ({t_str})")
-            olcum_ozet = " | Ölçümler: " + ", ".join(parcalar)
-            if len(tum_olcumler) > 5:
-                olcum_ozet += f" (+{len(tum_olcumler) - 5} adet daha)"
-
-        risk_ozet = (f" | Risk: {', '.join(risk_faktorleri)}"
-                      if risk_faktorleri else " | Risk: yok")
-
-        # YÜKSEK KV RİSK ÖNCELİĞİ — DM/KAH/AKS/MI/inme/PAH/AAA/karotid varsa
-        # SUT 4.2.28.A "yüksek KV riskli" sınıf: LDL>70 yeterli, ek risk
-        # gerekmez, tek ölçüm bile kabul edilir. Kademeli eşikler (130/160/190)
-        # SADECE risk faktörü olmayan genel popülasyon için.
-        if cok_yuksek_risk and ldl_degeri > 70:
-            uygunluk = "UYGUN"
-            aciklama = (f"UYGUN | LDL {ldl_degeri} > 70 mg/dL | "
-                        f"Yüksek KV risk: {', '.join(risk_faktorleri)}"
-                        f"{olcum_ozet} | "
-                        f"Kural: SUT 4.2.28.A — yüksek KV riskli hastalar "
-                        f"için LDL>70 yeterli")
-        elif ldl_degeri > 190:
-            # EK RİSK FAKTÖRÜ YOK — 2 ölçüm > 190 gerekli
-            kontrol2 = _iki_olcum_kuralini_dogrula(tum_olcumler, esik=190)
-            detaylar['iki_olcum_kontrolu'] = kontrol2
-            durum2 = kontrol2['durum']
-            kural = ("SUT 4.2.28.A: LDL>190 + 2 ölçüm "
-                      "(1 hafta arayla, 6 ay içinde) — ek risk faktörü gerekmez")
-            if durum2 == 'uygun':
-                uygunluk = "UYGUN"
-                aciklama = (f"UYGUN | LDL {ldl_degeri} > 190 mg/dL | "
-                            f"{kontrol2['detay']}{olcum_ozet} | "
-                            f"Kural: {kural}")
-            elif durum2 == 'tarih_yok':
-                # 2+ ölçüm var, tarih doğrulanamadı → varsayılan UYGUN
-                uygunluk = "UYGUN"
-                aciklama = (f"UYGUN (tarihler doğrulanamadı) | "
-                            f"LDL {ldl_degeri} > 190 mg/dL | "
-                            f"{kontrol2['detay']}{olcum_ozet}")
-            elif durum2 == 'tek_olcum':
-                # KESİN BİLGİ: tek ölçüm var, SUT 2 ölçüm istiyor → UYGUN DEĞİL
-                uygunluk = "UYGUN_DEGIL"
-                aciklama = (f"UYGUN DEĞİL | Sebep: TEK ÖLÇÜM | "
-                            f"LDL {ldl_degeri} > 190 mg/dL{olcum_ozet} | "
-                            f"Kural: {kural}")
-            elif durum2 == 'kisa_aralik':
-                uygunluk = "UYGUN_DEGIL"
-                aciklama = (f"UYGUN DEĞİL | Sebep: ölçüm aralığı çok kısa | "
-                            f"LDL {ldl_degeri} > 190 | "
-                            f"{kontrol2['detay']}{olcum_ozet} | "
-                            f"Kural: {kural}")
-            elif durum2 == 'uzun_aralik':
-                # KESİN BİLGİ: aralık 6 aydan uzun → UYGUN DEĞİL
-                uygunluk = "UYGUN_DEGIL"
-                aciklama = (f"UYGUN DEĞİL | Sebep: ölçümler 6 aydan uzun "
-                            f"aralıkla | LDL {ldl_degeri} > 190 | "
-                            f"{kontrol2['detay']}{olcum_ozet} | "
-                            f"Kural: {kural}")
-            else:
-                # GERÇEK BELİRSİZLİK: ölçüm sayısı/tarihi çıkarılamadı → ŞÜPHELİ
-                uygunluk = "ŞÜPHELI"
-                aciklama = (f"ŞÜPHELİ | Sebep: 2 ölçüm doğrulanamadı | "
-                            f"LDL {ldl_degeri} > 190{olcum_ozet} | "
-                            f"Detay: {kontrol2['detay']} | "
-                            f"Kural: {kural}")
-        elif ldl_degeri > 160:
-            # 2 risk faktörü + 2 ölçüm > 160 gerekli
-            kontrol2 = _iki_olcum_kuralini_dogrula(tum_olcumler, esik=160)
-            detaylar['iki_olcum_kontrolu'] = kontrol2
-            kural = "SUT 4.2.28.A: LDL>160 + 2 ek risk + 2 ölçüm gerekli"
-            if kontrol2['durum'] == 'tek_olcum':
-                uygunluk = "UYGUN_DEGIL"
-                aciklama = (f"UYGUN DEĞİL | Sebep: TEK ÖLÇÜM | "
-                            f"LDL {ldl_degeri} > 160 mg/dL{olcum_ozet}"
-                            f"{risk_ozet} | Kural: {kural}")
-            elif kontrol2['durum'] == 'kisa_aralik':
-                uygunluk = "UYGUN_DEGIL"
-                aciklama = (f"UYGUN DEĞİL | Sebep: ölçüm aralığı çok kısa | "
-                            f"LDL {ldl_degeri} > 160 | "
-                            f"{kontrol2['detay']}{olcum_ozet}")
-            else:
-                uygunluk = "UYGUN"
-                aciklama = (f"UYGUN | LDL {ldl_degeri} > 160 mg/dL | "
-                            f"{kontrol2['detay']}{olcum_ozet}{risk_ozet}")
-        elif ldl_degeri > 130:
-            # 3 risk faktörü + 2 ölçüm > 130 gerekli
-            kontrol2 = _iki_olcum_kuralini_dogrula(tum_olcumler, esik=130)
-            detaylar['iki_olcum_kontrolu'] = kontrol2
-            kural = "SUT 4.2.28.A: LDL>130 + 3 ek risk + 2 ölçüm gerekli"
-            if kontrol2['durum'] == 'tek_olcum':
-                uygunluk = "UYGUN_DEGIL"
-                aciklama = (f"UYGUN DEĞİL | Sebep: TEK ÖLÇÜM | "
-                            f"LDL {ldl_degeri} > 130 mg/dL{olcum_ozet}"
-                            f"{risk_ozet} | Kural: {kural}")
-            elif kontrol2['durum'] == 'kisa_aralik':
-                uygunluk = "UYGUN_DEGIL"
-                aciklama = (f"UYGUN DEĞİL | Sebep: ölçüm aralığı çok kısa | "
-                            f"LDL {ldl_degeri} > 130 | "
-                            f"{kontrol2['detay']}{olcum_ozet}")
-            else:
-                uygunluk = "UYGUN"
-                aciklama = (f"UYGUN | LDL {ldl_degeri} > 130 mg/dL | "
-                            f"{kontrol2['detay']}{olcum_ozet}{risk_ozet}")
-        elif ldl_degeri > 70 and cok_yuksek_risk:
-            uygunluk = "UYGUN"
-            aciklama = (f"UYGUN | LDL {ldl_degeri} > 70 mg/dL | "
-                        f"Yüksek KV risk: {', '.join(risk_faktorleri)}"
-                        f"{olcum_ozet}")
-        elif ldl_degeri <= 70:
-            # KESİN BİLGİ: LDL düşük + yüksek risk yok → statin endikasyonu yok
-            uygunluk = "UYGUN_DEGIL"
-            aciklama = (f"UYGUN DEĞİL | Sebep: LDL ≤ 70 mg/dL ve "
-                        f"yüksek KV risk faktörü yok | "
-                        f"LDL {ldl_degeri}{olcum_ozet}{risk_ozet} | "
-                        f"Kural: SUT statin endikasyonu için LDL>70 + risk "
-                        f"VEYA LDL>130/160/190 ölçütü")
-        else:
-            uygunluk = "UYGUN"
-            aciklama = f"UYGUN | LDL {ldl_degeri} mg/dL raporda mevcut"
-
-        # Yüksek doz uyarısı
-        uyari_mesaj = ""
-        if detaylar['yuksek_doz']:
-            uyari_mesaj = "YÜKSEK DOZ — Kardiyoloji/KDC/Endokrinoloji/Geriatri raporu gerekli"
-
-        # Sonuç kodlama
-        sonuc_map = {
-            "UYGUN":       KontrolSonucu.UYGUN,
-            "UYGUN_DEGIL": KontrolSonucu.UYGUN_DEGIL,
-            "ŞÜPHELI":     KontrolSonucu.KONTROL_EDILEMEDI,
-        }
-        return KontrolRaporu(
-            sonuc=sonuc_map.get(uygunluk, KontrolSonucu.KONTROL_EDILEMEDI),
-            mesaj=aciklama,
-            detaylar=detaylar,
-            uyari=uyari_mesaj if uyari_mesaj else None,
-            sut_kurali=sut_kurali,
-            aranan_ibare=(
-                f"LDL değeri + risk faktörleri "
-                f"({', '.join(risk_faktorleri) if risk_faktorleri else 'yok'}) "
-                f"+ 2 ölçüm/tarih kontrolü"
-            ),
-            bulunan_metin=ldl_eslesen
-        )
-
-    # LDL değeri yok ama kolesterol/lipid/dislipidemi ibaresi var
-    if kolesterol_var or lipid_var or dislipidemi_var or icd_lipid:
-        eslesen_k = 'kolesterol' if kolesterol_var else ('lipid' if lipid_var else 'dislipidemi')
-        eslesen = _eslesen_parcayi_bul(birlesik_metin, eslesen_k)
-        risk_bilgi = f" | Risk: {', '.join(risk_faktorleri)}" if risk_faktorleri else ""
+    # ── 0) Boş metin + raporsuz koruması ────────────────────────────
+    if not metin_lower.strip():
+        if not rapor_kodu:
+            sartlar.append(SartSonuc(
+                'Rapor kodu', SartDurumu.YOK,
+                'Reçete satırında rap_kod boş', 'rap_kod'))
+            sartlar.append(SartSonuc(
+                'Rapor/mesaj metni', SartDurumu.YOK,
+                'Metin boş ve rapor da yok', 'tum_metin'))
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN_DEGIL,
+                mesaj='Raporsuz statin — uzman raporu zorunlu (4.2.28.A)',
+                sut_kurali=sut_kurali_genel,
+                detaylar=detaylar, sartlar=sartlar,
+                aranan_ibare='rapor / LDL / risk faktörleri')
+        # Rapor kodu var ama metni okunamadı
+        sartlar.append(SartSonuc(
+            'Rapor kodu', SartDurumu.VAR,
+            rapor_kodu, 'rap_kod'))
+        sartlar.append(SartSonuc(
+            'Rapor/mesaj metni', SartDurumu.KONTROL_EDILEMEDI,
+            'Rapor kodu var ancak metni okunamadı', 'tum_metin'))
         return KontrolRaporu(
             sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-            mesaj=f'Kolesterol/lipid ibaresi var ama LDL sayısal değeri bulunamadı{risk_bilgi}',
-            detaylar=detaylar,
-            uyari='LDL sayısal değeri raporda belirtilmeli (ör: LDL: 142 mg/dL)',
-            sut_kurali=sut_kurali,
-            aranan_ibare='LDL sayısal değeri (mg/dL)',
-            bulunan_metin=eslesen
-        )
+            mesaj=(f'Rapor kodu var ({rapor_kodu}) ama metni okunamadı — '
+                   'manuel doğrulama gerekli'),
+            sut_kurali=sut_kurali_genel, detaylar=detaylar, sartlar=sartlar,
+            aranan_ibare='LDL / risk faktörleri / uzman raporu')
 
-    # Hiçbir lipid ibaresi yok — rapor kodundan kontrol
-    if rapor_kodu and rapor_kodu.startswith('04.08'):
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-            mesaj=f'Rapor kodu {rapor_kodu} (lipid düşürücü) ama LDL/kolesterol ibaresi bulunamadı',
-            detaylar=detaylar,
-            uyari='Raporda LDL değeri olmalı — manuel kontrol gerekli',
-            sut_kurali=sut_kurali,
-            aranan_ibare='LDL değeri / kolesterol / lipid / dislipidemi'
-        )
-
-    # KV ana rapor kodları (04.02/04.04) — KAH riski örtük olarak var,
-    # statin tedavisi mantıklı; Medula şart kontrolünü yapmıştır.
-    if rapor_kodu and (rapor_kodu.startswith('04.02') or rapor_kodu.startswith('04.04')):
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN,
-            mesaj=f'Statin — KV rapor kodu {rapor_kodu} (KAH/AKS riski örtük), Medula şart kontrolünü yapar',
-            detaylar=detaylar,
-            uyari='LDL değerinin raporda yer aldığı varsayılır (Medula reddetmemiş ise uygun)',
-            sut_kurali=sut_kurali,
-            aranan_ibare=f'KV rapor kodu ({rapor_kodu}) — KAH endikasyonu örtük',
-        )
-
-    return KontrolRaporu(
-        sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-        mesaj='LDL/kolesterol ibaresi mesaj metninde bulunamadı',
-        detaylar=detaylar,
-        uyari='RAPOR KONTROLÜ GEREKLİ: LDL düzeyi raporda olmalı',
-        sut_kurali=sut_kurali,
-        aranan_ibare='LDL değeri / kolesterol / hiperlipidemi / dislipidemi'
-    )
+    # ── 1) Yaş'a göre yetişkin/çocuk dispatcher ────────────────────
+    # Yaş <18 → çocuk yolağı (4.2.28.A-2); diğer durumda yetişkin (4.2.28.A-1).
+    # Yaş yoksa yetişkin varsayılır (Medula default).
+    if yas is not None and yas < 18:
+        return _statin_cocuk_kontrol(
+            ilac_sonuc, metin_lower, teshis_metin, rapor_kodu,
+            yas, birlesik_metin, sartlar, detaylar)
+    return _statin_yetiskin_kontrol(
+        ilac_sonuc, metin_lower, teshis_metin, rapor_kodu,
+        yas, birlesik_metin, sartlar, detaylar)
 
 
 def kontrol_fibrat(ilac_sonuc: Dict) -> KontrolRaporu:
@@ -7653,9 +8163,11 @@ def _yoak_atom_ht(metin_lower: str, teshis_metin: str) -> bool:
 def _yoak_atom_mitral_darlik(metin_lower: str) -> bool:
     """SUT 4.2.15.D-1(1): 'orta-ciddi mitral darlık' VAR mı (kontrendikasyon).
 
-    DİKKAT: ibareden sonra 50 karakter içinde 'olmayan/olmadığı/yok/yoktur'
-    varsa NEGATİF ek tespit edilir → ibare aslında YOK demek olur (False).
+    DİKKAT: ibareden sonra 50 karakter içinde 'olmayan/olmadığı/yok/yoktur/
+    bulunmamaktadır/bulunmadığı' varsa NEGATİF ek tespit edilir → ibare
+    aslında YOK demek olur (False).
     Örn: "ORTA CİDDİ MİTRAL DARLIK KAPAK OLMADIĞI" → False (mitral YOK).
+    Örn: "ORTA-CİDDİ MİTRAL DARLIK BULUNMAMAKTADIR" → False (mitral YOK).
     """
     if not metin_lower:
         return False
@@ -7666,9 +8178,14 @@ def _yoak_atom_mitral_darlik(metin_lower: str) -> bool:
         'romatizmal mitral darlık', 'romatizmal mitral darlik',
         'orta-ciddi mitral', 'orta-ağır mitral', 'orta-agir mitral',
     ]
+    # 'bulunmam/bulunmad/bulunmaz' — Türkçe negatif ek varyantları
+    # (bulunmamaktadır, bulunmamış, bulunmadı, bulunmadığı, bulunmaz);
+    # 'bulunma' bare olarak EKLEMEK YASAK — pozitif "bulunmaktadır" da
+    # bu substring'i içerir, false-negation üretir.
     negatif_ekler = ('olmay', 'yoktur', 'olmadi', 'olmadı',
                      'saptanma', 'tespit edilmem', 'gozlenmem',
-                     'gözlenmem')
+                     'gözlenmem',
+                     'bulunmam', 'bulunmad', 'bulunmaz')
     for k in pozitif_anahtarlar:
         idx = metin_lower.find(k)
         if idx < 0:
@@ -7721,8 +8238,10 @@ def _yoak_atom_mitral_darlik_yok_ibaresi(metin_lower: str) -> bool:
         return True
     # Negatif ek varyantları (Türkçe çekim) — pilot tetikleyiciler:
     # SABİRE YILDIZ 3LZBFYY: "yoktur"
-    # GÜLŞEN BULUT 3LRGDMM: "bulunmamaktadır"
-    neg_pat = (r'(?:olmay|olmadi|olmadı|yoktur|yok\b|bulunma|'
+    # GÜLŞEN BULUT 3LRGDMM / NEZİRE CEYLAN 3LSEVTN / CEMAL ŞAHBUDAK 3K5WDQQ:
+    #   "bulunmamaktadır" — bulunma(?:m|d|z) ile sadece negatif çekim
+    #   yakalanır; pozitif "bulunmaktadır" false-eşleşmez.
+    neg_pat = (r'(?:olmay|olmadi|olmadı|yoktur|yok\b|bulunma(?:m|d|z)|'
                r'saptanm|tespit\s+edilmem|gozlenmem|gözlenmem)')
     # "kapak" Türkçe çekim (kapak/kapağı/kapağa/kapağın/kapaktan) — yumuşak
     # g/k varyasyonu için kapa[gk] kabul edilir
@@ -7770,9 +8289,12 @@ def _yoak_atom_mekanik_kapak(metin_lower: str) -> bool:
         'mekanik mitral', 'mekanik aort',
         'mechanical valve',
     ]
+    # 'bulunmam/bulunmad/bulunmaz' — Türkçe negatif ek varyantları
+    # ("mekanik protez kapak bulunmamaktadır" gibi).
     negatif_ekler = ('olmay', 'yoktur', 'olmadi', 'olmadı',
                      'saptanma', 'tespit edilmem', 'gozlenmem',
-                     'gözlenmem')
+                     'gözlenmem',
+                     'bulunmam', 'bulunmad', 'bulunmaz')
     for k in pozitif_anahtarlar:
         idx = metin_lower.find(k)
         if idx < 0:
@@ -7803,7 +8325,9 @@ def _yoak_atom_mekanik_kapak_yok_ibaresi(metin_lower: str) -> bool:
     # 'non-valvüler' lafzen direkt → açık negatif ikrar (valve hastalığı yok)
     if _yoak_atom_nonvalvuler_lafzen(metin_lower):
         return True
-    neg_pat = (r'(?:olmay|olmadi|olmadı|yoktur|yok\b|bulunma|'
+    # bulunma(?:m|d|z) — sadece negatif çekim ("bulunmamaktadır",
+    # "bulunmadı", "bulunmaz"); pozitif "bulunmaktadır" hariç tutulur.
+    neg_pat = (r'(?:olmay|olmadi|olmadı|yoktur|yok\b|bulunma(?:m|d|z)|'
                r'saptanm|tespit\s+edilmem|gozlenmem|gözlenmem)')
     # kapak/protez Türkçe ek çekimi (kapağı/protezi)
     kapak_pat = r'(?:kapa[gkğ]|protez)\w*'
@@ -11686,97 +12210,197 @@ def kontrol_ivabradin(ilac_sonuc: Dict) -> KontrolRaporu:
 
 
 def kontrol_ranolazin(ilac_sonuc: Dict) -> KontrolRaporu:
-    """Ranolazin (SUT 4.2.15.F)
+    """Ranolazin SUT 4.2.15.F (atomik şema, YOAK kalıbı 2026-05-13).
 
-    Kronik stabil angina pektorisli hastaların semptomatik tedavisinde:
-    - Beta blokör ve/veya verapamil-diltiazem tedavisine rağmen anjinası
-      devam eden hastalarda, VEYA
-    - Bu ilaçlara intoleransı ve/veya kontrendikasyonu olan hastalarda
-    - Kardiyoloji uzmanı tarafından düzenlenen 1 yıl süreli uzman hekim raporu
-    - Kardiyoloji veya iç hastalıkları uzmanı reçete edebilir
+    SUT lafzı (kullanıcı verdi 2026-05-13):
+      Kronik stabil angina pektorisli hastaların semptomatik tedavisinde
+      beta blokör ve/veya verapamil-diltiazem tedavisine rağmen anjinası
+      devam eden VEYA bu ilaçlara intoleransı ve/veya kontrendikasyonu
+      olan hastalarda; kardiyoloji uzmanlarınca düzenlenen 2 YIL süreli
+      uzman hekim raporuna istinaden kardiyoloji VEYA iç hastalıkları
+      uzmanı tarafından reçete edilebilir.
+
+    Atomik formül:
+      RANOLAZIN_UYGUN ⇔ A1 ∧ (B1 ∨ B2) ∧ C1 ∧ D1
+        A1: Kronik stabil angina pektoris (rapor metni/teşhis)
+        B1: BB/KKB tedavisine rağmen anjina devam (yetersiz yanıt)
+        B2: BB/KKB intolerans VEYA kontrendikasyon
+        C1: Kardiyoloji uzman raporu (2 yıl)
+        D1: Reçete eden: kardiyoloji VEYA iç hastalıkları
     """
     metin = _tum_metinleri_birlesir(ilac_sonuc)
-    rapor_kodu = ilac_sonuc.get('rapor_kodu', '')
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
+    doktor_uzm = (ilac_sonuc.get('doktor_uzmanligi') or '').upper().strip()
+    recete_teshisleri = ilac_sonuc.get('recete_teshisleri', []) or []
+    teshis_metin = (' '.join(recete_teshisleri).upper()
+                    if recete_teshisleri else '')
+    birlesik = (metin or '') + ' ' + teshis_metin
+    metin_lower = _tr_lower(birlesik) if birlesik else ''
 
-    if not metin and not rapor_kodu:
-        return KontrolRaporu(KontrolSonucu.KONTROL_EDILEMEDI,
-                             "Rapor/mesaj metni yok")
+    sartlar: List[SartSonuc] = []
+    detaylar: Dict = {
+        'rapor_kodu': rapor_kodu,
+        'doktor_uzmanligi': doktor_uzm,
+        'sut_maddesi': '4.2.15.F',
+    }
+    sut_kurali = 'SUT 4.2.15.F — Ranolazin'
 
-    detaylar = {}
-
-    # ── Angina tanısı ──
-    angina = _turkce_ara(metin, 'angina') or _turkce_ara(metin, 'anjina')
-    stabil = _turkce_ara(metin, 'stabil') or _turkce_ara(metin, 'kronik')
-    semptomatik = _turkce_ara(metin, 'semptomatik')
-
-    # ── Beta blokör / Kalsiyum kanal blokörü durumu ──
-    bb_kullanim = _turkce_ara(metin, 'beta blok')
-    kkb_kullanim = _turkce_ara(metin, 'verapamil') or _turkce_ara(metin, 'diltiazem')
-    onceki_tedavi = bb_kullanim or kkb_kullanim
-
-    # İntolerans / kontrendikasyon
-    intolerans = _turkce_ara(metin, 'intolerans') or _turkce_ara(metin, 'tolerans')
-    kontrendikasyon = _turkce_ara(metin, 'kontrendik') or _turkce_ara(metin, 'kontraendik')
-    yetersiz = (_turkce_ara(metin, 'yetersiz') or _turkce_ara(metin, 'cevaps')
-                or _turkce_ara(metin, 'devam eden') or _turkce_ara(metin, 'ragmen'))
-
-    detaylar['angina'] = angina
-    detaylar['onceki_tedavi'] = onceki_tedavi
-    detaylar['intolerans'] = intolerans or kontrendikasyon
-    detaylar['yetersiz_yanit'] = yetersiz
-
-    # ── Karar mantığı ──
-
-    # Durum 1: BB/KKB intoleransı veya kontrendikasyonu
-    if onceki_tedavi and (intolerans or kontrendikasyon):
+    # ── 0) Boş metin + raporsuz ───────────────────────────────────
+    if not metin_lower.strip():
+        if not rapor_kodu:
+            sartlar.append(SartSonuc(
+                'Rapor/mesaj metni', SartDurumu.YOK,
+                'Metin boş ve rapor da yok', 'tum_metin'))
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.UYGUN_DEGIL,
+                mesaj='Raporsuz ranolazin — uzman raporu zorunlu (4.2.15.F)',
+                sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
+                aranan_ibare='kardiyoloji raporu + angina')
+        sartlar.append(SartSonuc(
+            'Rapor/mesaj metni', SartDurumu.KONTROL_EDILEMEDI,
+            'Rapor kodu var ancak metni okunamadı', 'tum_metin'))
         return KontrolRaporu(
-            KontrolSonucu.UYGUN,
-            "Beta blokör/KKB intoleransı veya kontrendikasyonu raporda mevcut",
-            detaylar=detaylar)
+            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+            mesaj=f'Rapor kodu var ({rapor_kodu}) ama metni okunamadı',
+            sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar)
 
-    # Durum 2: BB/KKB altında anjina devam ediyor
-    if onceki_tedavi and yetersiz:
+    # ── Grup A: Endikasyon — Kronik stabil angina ────────────────
+    g_end = 'Endikasyon — kronik stabil angina pektoris'
+    angina_var = ('angina' in metin_lower or 'anjina' in metin_lower
+                  or 'I20' in teshis_metin or 'I25' in teshis_metin)
+    stabil_var = ('stabil' in metin_lower or 'kronik' in metin_lower)
+    sartlar.append(SartSonuc(
+        'Angina/anjina tanısı', SartDurumu.VAR if angina_var
+        else SartDurumu.YOK,
+        ('Angina ibaresi/ICD tespit' if angina_var
+         else 'Angina ibaresi/ICD bulunamadı'),
+        'rapor_metni/teshis', grup=g_end))
+    sartlar.append(SartSonuc(
+        'Kronik/stabil ibaresi', SartDurumu.VAR if stabil_var
+        else SartDurumu.KONTROL_EDILEMEDI,
+        ('Kronik/stabil tespit' if stabil_var
+         else 'Stabil/kronik ibaresi yok — manuel doğrulama'),
+        'rapor_metni', grup=g_end))
+
+    # ── Grup B: BB/KKB tedavi öyküsü (üst-VEYA) ─────────────────
+    bb_var = 'beta blok' in metin_lower
+    verapamil_var = 'verapamil' in metin_lower
+    diltiazem_var = 'diltiazem' in metin_lower
+    kkb_var = verapamil_var or diltiazem_var
+    yetersiz_var = ('yetersiz' in metin_lower or 'cevaps' in metin_lower
+                    or 'devam eden' in metin_lower or 'ragmen' in metin_lower
+                    or 'rağmen' in metin_lower or 'devam ediyor' in metin_lower)
+    intolerans_var = ('intolerans' in metin_lower or 'tolere edemed' in metin_lower)
+    kontrendike_var = ('kontrendik' in metin_lower or 'kontraendik' in metin_lower)
+
+    # B1 yolu: BB/KKB altında anjina devam
+    g_b1 = 'BB/KKB altında anjina devam [(yetersiz yanıt)]'
+    bb_kkb_kullanim = bb_var or kkb_var
+    b1_ok = bb_kkb_kullanim and yetersiz_var
+    sartlar.append(SartSonuc(
+        'BB veya KKB tedavi öyküsü',
+        SartDurumu.VAR if bb_kkb_kullanim else SartDurumu.YOK,
+        (f'Tespit: BB={bb_var}, verapamil={verapamil_var}, '
+         f'diltiazem={diltiazem_var}'),
+        'rapor_metni', grup=g_b1))
+    sartlar.append(SartSonuc(
+        'Yetersiz yanıt (anjina devam) ibaresi',
+        SartDurumu.VAR if yetersiz_var else SartDurumu.YOK,
+        ('"yetersiz/devam/rağmen" tespit' if yetersiz_var
+         else 'Yetersiz yanıt ibaresi yok'),
+        'rapor_metni', grup=g_b1))
+
+    # B2 yolu: BB/KKB intolerans/kontrendikasyon
+    g_b2 = 'BB/KKB intolerans/kontrendikasyon [(intolerans)]'
+    b2_ok = intolerans_var or kontrendike_var
+    sartlar.append(SartSonuc(
+        'İntolerans VEYA kontrendikasyon ibaresi',
+        SartDurumu.VAR if b2_ok else SartDurumu.YOK,
+        (f'intolerans={intolerans_var}, kontrendike={kontrendike_var}'
+         if b2_ok else 'İntolerans/kontrendikasyon ibaresi yok'),
+        'rapor_metni', grup=g_b2))
+
+    detaylar['b1_yetersiz_yanit'] = b1_ok
+    detaylar['b2_intolerans'] = b2_ok
+
+    # ── Grup C: Kardiyoloji uzman raporu ──────────────────────
+    g_c = 'Rapor — kardiyoloji uzmanı (2 yıl)'
+    kardiyo_rapor = (rapor_kodu.startswith('04.02')
+                     or 'kardiyoloji' in metin_lower)
+    sartlar.append(SartSonuc(
+        'Kardiyoloji uzman raporu (rap.kod 04.02 veya rapor metni)',
+        SartDurumu.VAR if kardiyo_rapor else (
+            SartDurumu.YOK if rapor_kodu else SartDurumu.KONTROL_EDILEMEDI),
+        (f'rapor_kodu={rapor_kodu}' if kardiyo_rapor
+         else (f'rapor_kodu={rapor_kodu} (kardiyoloji değil)'
+               if rapor_kodu else 'Rapor kodu yok')),
+        'rap_kod/rapor_metni', grup=g_c))
+    # 2 yıl süre kontrolü — parser yok, bilgi
+    sartlar.append(SartSonuc(
+        'Rapor süresi 2 yıl',
+        SartDurumu.KONTROL_EDILEMEDI,
+        'Rapor süresi parse edilemiyor — manuel doğrulama',
+        'rap_kod', grup='Rapor süresi (bilgi)'))
+
+    # ── Grup D: Reçete eden uzman ───────────────────────────
+    g_d = 'Reçete yetkisi — kardiyoloji VEYA iç hastalıkları'
+    kardiyo_dr = ('KARDIYOLOJI' in doktor_uzm or 'KARDİYOLOJİ' in doktor_uzm)
+    ic_dr = ('IC HASTALIK' in doktor_uzm or 'İÇ HASTALIK' in doktor_uzm
+             or 'DAHILIYE' in doktor_uzm or 'DAHİLİYE' in doktor_uzm)
+    yetkili_dr = kardiyo_dr or ic_dr
+    if not doktor_uzm:
+        d_durum = SartDurumu.KONTROL_EDILEMEDI
+        d_neden = 'Doktor branşı bilinmiyor'
+    elif yetkili_dr:
+        d_durum = SartDurumu.VAR
+        d_neden = f'Doktor: {doktor_uzm} (yetkili)'
+    else:
+        d_durum = SartDurumu.YOK
+        d_neden = f'Doktor: {doktor_uzm} (yetkili değil)'
+    sartlar.append(SartSonuc(
+        'Reçete eden: kardiyoloji VEYA iç hastalıkları',
+        d_durum, d_neden, 'doktor_uzmanligi', grup=g_d))
+
+    # ── Üst-VEYA matematiği: (B1 ∨ B2) ───────────────────────
+    # Grup A AND, Grup B1 VEYA B2 (üst-OR), Grup C AND, Grup D AND
+    a_durum = (SartDurumu.VAR if (angina_var and stabil_var)
+               else (SartDurumu.KONTROL_EDILEMEDI
+                     if angina_var else SartDurumu.YOK))
+    b_durum = (SartDurumu.VAR if (b1_ok or b2_ok)
+               else SartDurumu.YOK)
+    c_durum = (SartDurumu.VAR if kardiyo_rapor
+               else (SartDurumu.KONTROL_EDILEMEDI if not rapor_kodu
+                     else SartDurumu.YOK))
+
+    detaylar['grup_durumlari'] = {
+        g_end: a_durum.value,
+        'BB/KKB yolu (B1∨B2)': b_durum.value,
+        g_c: c_durum.value,
+        g_d: d_durum.value,
+    }
+
+    # Karar
+    if (a_durum == SartDurumu.YOK or b_durum == SartDurumu.YOK
+            or c_durum == SartDurumu.YOK or d_durum == SartDurumu.YOK):
         return KontrolRaporu(
-            KontrolSonucu.UYGUN,
-            "Önceki tedaviye rağmen anjina devam ettiği raporda belirtilmiş",
-            detaylar=detaylar)
-
-    # Durum 3: İntolerans/kontrendikasyon tek başına
-    if intolerans or kontrendikasyon:
+            sonuc=KontrolSonucu.UYGUN_DEGIL,
+            mesaj=('Ranolazin SUT 4.2.15.F şartı sağlanmıyor — '
+                   f'(angina={a_durum.value}, BB/KKB={b_durum.value}, '
+                   f'rapor={c_durum.value}, doktor={d_durum.value})'),
+            sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
+            aranan_ibare='angina + BB/KKB yetersiz/intolerans + kardiyoloji raporu')
+    if (SartDurumu.KONTROL_EDILEMEDI in (a_durum, b_durum, c_durum, d_durum)):
         return KontrolRaporu(
-            KontrolSonucu.UYGUN,
-            "İntolerans/kontrendikasyon raporda mevcut",
-            detaylar=detaylar,
-            uyari="Beta blokör veya verapamil/diltiazem belirtilmemiş, doğrulanmalı")
-
-    # Durum 4: Kronik stabil angina + semptomatik
-    if angina and (stabil or semptomatik):
-        return KontrolRaporu(
-            KontrolSonucu.UYGUN,
-            "Kronik stabil angina pektoris tanısı raporda mevcut",
-            detaylar=detaylar,
-            uyari="BB/KKB intoleransı veya yetersizliği ayrıca doğrulanmalı")
-
-    # Durum 5: Sadece angina tanısı var
-    if angina:
-        return KontrolRaporu(
-            KontrolSonucu.UYGUN,
-            "Angina tanısı raporda mevcut",
-            detaylar=detaylar,
-            uyari="Stabil angina ve BB/KKB durumu kontrol edilmeli")
-
-    # Durum 6: Rapor kodu 04.02 var ama metin yetersiz
-    if rapor_kodu and rapor_kodu.startswith('04.02'):
-        return KontrolRaporu(
-            KontrolSonucu.KONTROL_EDILEMEDI,
-            "Kardiyoloji raporu mevcut ancak angina/intolerans ibaresi bulunamadı",
-            detaylar=detaylar,
-            uyari="Rapor içeriği manuel kontrol edilmeli")
-
+            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+            mesaj='Ranolazin ŞÜPHELİ — bazı şartlar manuel doğrulanmalı',
+            sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
+            uyari='Bazı şartlar metinden tespit edilemedi',
+            aranan_ibare='angina + BB/KKB yetersiz/intolerans + kardiyoloji raporu')
     return KontrolRaporu(
-        KontrolSonucu.KONTROL_EDILEMEDI,
-        "Ranolazin endikasyon koşulları tespit edilemedi (angina, BB/KKB intoleransı)",
-        detaylar=detaylar)
+        sonuc=KontrolSonucu.UYGUN,
+        mesaj='Ranolazin SUT 4.2.15.F şartları sağlanıyor',
+        sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
+        aranan_ibare='angina + BB/KKB yetersiz/intolerans + kardiyoloji raporu')
 
 
 def kontrol_psikiyatri(ilac_sonuc: Dict) -> KontrolRaporu:
@@ -17135,22 +17759,26 @@ _CESITLI_BPH_TICARI = (
     'COMBODART', 'DUPROST PLUS',                         # α-bloker içeren kombi
 )
 
+# Ranolazin (SUT 4.2.15.F) — Çeşitli menüsüne eklendi 2026-05-13.
+# Kronik stabil angina pektoris + BB/KKB yetersiz/intolerans, kardiyoloji
+# 2 yıl uzman raporu, kardiyo veya iç hast. reçete.
+_CESITLI_RANOLAZIN_ETKEN = ('RANOLAZIN', 'RANOLAZINE')
+_CESITLI_RANOLAZIN_TICARI = ('RANEXA',)
+
 
 def _cesitli_alt_grup_tespit(ilac_adi: str, etkin_madde: str,
                               atc_kodu: str) -> str:
     """Satırın ÇEŞİTLİ kapsamına girip girmediğini ve hangi alt gruba ait
     olduğunu tespit eder.
 
-    Dönüş: 'URINER' / 'GOZYASI' / 'BPH' / 'NONE'
+    Dönüş: 'URINER' / 'GOZYASI' / 'BPH' / 'RANOLAZIN' / 'NONE'
 
     ATC önceliği:
       - G04BD*  → URINER (üriner antispazmotik / Mirabegron)
       - G04CA*  → BPH (α-bloker — BPH'da kullanılan)
       - S01XA / S01KA / S01X  → GOZYASI (oftalmoloji)
       - N06AX21 → URINER (Duloksetin — üriner endikasyonu için)
-        NOT: Duloksetin ATC bu olsa da depresyon endikasyonunda da yazılır;
-        bu fonksiyon kapsamı SUT M.45 olduğu için yine de URINER döndürür,
-        nihai endikasyon kontrolü kontrol_cesitli_madde_45_uriner içinde yapılır.
+      - C01EB18 → RANOLAZIN (SUT 4.2.15.F — kronik stabil angina)
     """
     ad = (ilac_adi or '').upper()
     et = (etkin_madde or '').upper()
@@ -17164,6 +17792,8 @@ def _cesitli_alt_grup_tespit(ilac_adi: str, etkin_madde: str,
         return 'GOZYASI'
     if a.startswith('N06AX21'):
         return 'URINER'
+    if a.startswith('C01EB18'):
+        return 'RANOLAZIN'
 
     arama = ad + ' ' + et
 
@@ -17181,6 +17811,9 @@ def _cesitli_alt_grup_tespit(ilac_adi: str, etkin_madde: str,
     if (any(e in arama for e in _CESITLI_BPH_ALFA_ETKEN)
             or any(t in ad for t in _CESITLI_BPH_TICARI)):
         return 'BPH'
+    if (any(e in arama for e in _CESITLI_RANOLAZIN_ETKEN)
+            or any(t in ad for t in _CESITLI_RANOLAZIN_TICARI)):
+        return 'RANOLAZIN'
     return 'NONE'
 
 
@@ -17647,10 +18280,11 @@ def kontrol_cesitli_bph_alfa_bloker(ilac_sonuc: Dict) -> KontrolRaporu:
 
 def kontrol_cesitli(ilac_sonuc: Dict) -> KontrolRaporu:
     """ÇEŞİTLİ İLAÇLAR dispatcher — alt grubu tespit edip ilgili kontrole
-    yönlendirir. 3 alt grup:
-      URINER  → kontrol_cesitli_madde_45_uriner
-      GOZYASI → kontrol_cesitli_suni_gozyasi
-      BPH     → kontrol_cesitli_bph_alfa_bloker
+    yönlendirir. 4 alt grup:
+      URINER    → kontrol_cesitli_madde_45_uriner
+      GOZYASI   → kontrol_cesitli_suni_gozyasi
+      BPH       → kontrol_cesitli_bph_alfa_bloker
+      RANOLAZIN → kontrol_ranolazin (SUT 4.2.15.F, 2026-05-13 eklendi)
     """
     alt_grup = _cesitli_alt_grup_tespit(
         ilac_sonuc.get('ilac_adi', '') or '',
@@ -17663,9 +18297,11 @@ def kontrol_cesitli(ilac_sonuc: Dict) -> KontrolRaporu:
         return kontrol_cesitli_suni_gozyasi(ilac_sonuc)
     if alt_grup == 'BPH':
         return kontrol_cesitli_bph_alfa_bloker(ilac_sonuc)
+    if alt_grup == 'RANOLAZIN':
+        return kontrol_ranolazin(ilac_sonuc)
     return KontrolRaporu(
         sonuc=KontrolSonucu.ATLANDI,
         mesaj='ÇEŞİTLİ kapsamında olmayan ilaç',
         detaylar={'alt_grup': 'NONE'},
-        sut_kurali='ÇEŞİTLİ İLAÇLAR (M.45 / M.2 / BPH α-bloker)',
+        sut_kurali='ÇEŞİTLİ İLAÇLAR (M.45 / M.2 / BPH α-bloker / Ranolazin)',
     )
