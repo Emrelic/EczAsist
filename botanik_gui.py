@@ -33,6 +33,10 @@ from timing_settings import get_timing_settings
 from database import get_database
 from session_logger import SessionLogger
 from medula_settings import get_medula_settings
+from yedek_temizlik_modul import (
+    yedek_temizlik_modulu_ac,
+    gunluk_otomatik_temizlik_calistir,
+)
 
 # Tema yönetimi
 try:
@@ -2557,11 +2561,48 @@ class BotanikGUI:
         insan_tab = tk.Frame(settings_notebook, bg='#FFF3E0')
         settings_notebook.add(insan_tab, text="  İnsan Davranışı  ")
 
+        # Yedek Temizlik sekmesi (harici disk yedek klasörü bakımı)
+        yedek_tab = tk.Frame(settings_notebook, bg='#E8EAF6')
+        settings_notebook.add(yedek_tab, text="  🗑 Yedek  ")
+
         # İçerikleri oluştur
         self.create_fonksiyon_ayarlari_tab(fonksiyon_tab)
         self.create_giris_ayarlari_tab(giris_tab)
         self.create_timing_ayarlari_tab(timing_tab)
         self.create_insan_davranisi_tab(insan_tab)
+        self.create_yedek_temizlik_tab(yedek_tab)
+
+    def create_yedek_temizlik_tab(self, parent):
+        """Yedek Klasörü Boşaltma Modülü kısayolu."""
+        frame = tk.Frame(parent, bg='#E8EAF6', padx=14, pady=14)
+        frame.pack(fill="both", expand=True)
+
+        tk.Label(
+            frame, text="🗑 Yedek Klasörü Boşaltma",
+            font=("Arial", 12, "bold"), bg='#E8EAF6', fg='#1A237E',
+        ).pack(anchor="w")
+        tk.Label(
+            frame,
+            text="Harici diskteki eski yedek dosyalarını otomatik temizler.\n"
+                 "Program her açıldığında günde 1 kez sessiz çalışır + log tutar.",
+            font=("Arial", 9), bg='#E8EAF6', fg='#37474F',
+            justify="left",
+        ).pack(anchor="w", pady=(4, 12))
+
+        tk.Button(
+            frame, text="🗑 Yedek Temizlik Modülünü Aç",
+            command=lambda: yedek_temizlik_modulu_ac(self.root),
+            bg='#3949AB', fg='white', font=("Arial", 10, "bold"),
+            padx=16, pady=8, cursor="hand2",
+        ).pack(anchor="w")
+
+        tk.Label(
+            frame,
+            text="Modülde: klasör seçimi · X günden eski sil / en yeni N kopya kalsın ·\n"
+                 "güvenlik (yeni yedek yoksa silme) · dosya listesi · log görüntüleyici.",
+            font=("Arial", 8, "italic"), bg='#E8EAF6', fg='#607D8B',
+            justify="left",
+        ).pack(anchor="w", pady=(14, 0))
 
     def create_fonksiyon_ayarlari_tab(self, parent):
         """Fonksiyon Ayarları sekmesi - İlaç Takip, Rapor Toplama, Rapor Kontrol"""
@@ -7730,6 +7771,9 @@ def main():
         console_pencereyi_ayarla()
     except Exception as e:
         logger.debug(f"İlk konsol yerleştirme hatası (normal): {e}")
+
+    # Yedek temizlik: program açılışında günde 1 kez sessiz tetik (3 sn gecikme)
+    root.after(3000, lambda: gunluk_otomatik_temizlik_calistir(root))
 
     root.mainloop()
 
