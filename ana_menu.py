@@ -166,6 +166,13 @@ class AnaMenu:
             "aciklama": "Sipariş listesi + Fatih'in depo motoru",
             "renk": "#00897B",  # Teal koyu
             "hover": "#00695C"
+        },
+        "yedek_temizlik": {
+            "baslik": "Yedek Klasörü Boşaltma",
+            "icon": "🗑",
+            "aciklama": "Harici disk yedek klasörlerini otomatik temizler (çoklu profil)",
+            "renk": "#5E35B1",  # Mor
+            "hover": "#4527A0"
         }
     }
 
@@ -221,6 +228,12 @@ class AnaMenu:
         self.root.protocol("WM_DELETE_WINDOW", self.cikis_yap)
 
         self.arayuz_olustur()
+
+        # Checkbox varsayılan AÇIK; Tk command callback'i sadece kullanıcı
+        # tıklamasında çalıştığı için servisi açılışta otomatik başlatmak
+        # üzere toggle'ı bir kez programatik tetikle.
+        if self.var_medula_canli.get():
+            self.root.after(200, self._medula_canli_toggle)
 
     def _tema_uygula(self):
         """Aktif temayı uygula"""
@@ -435,7 +448,7 @@ class AnaMenu:
             "aylik_recete_sorgu", "t_cetvel", "ek_raporlar", "mf_analiz",
             "mf_hizli", "siparis_verme", "fatih_siparisci", "hibrit_siparisci",
             "min_stok_analiz", "stok_maliyet_analiz",
-            "prim_raporlama", "hasta_takip", "kullanici_yonetimi"
+            "prim_raporlama", "hasta_takip", "yedek_temizlik", "kullanici_yonetimi"
         ]
 
         # Grid ayarları: uniform parametresi ile tum hucreler ayni boyut.
@@ -616,8 +629,19 @@ class AnaMenu:
             self.prim_raporlama_ac()
         elif modul_key == "hasta_takip":
             self.hasta_takip_ac()
+        elif modul_key == "yedek_temizlik":
+            self.yedek_temizlik_ac()
         elif modul_key == "kullanici_yonetimi":
             self.kullanici_yonetimi_ac()
+
+    def yedek_temizlik_ac(self):
+        """Yedek Klasörü Boşaltma modülünü aç"""
+        try:
+            from yedek_temizlik_modul import yedek_temizlik_modulu_ac
+            yedek_temizlik_modulu_ac(self.root)
+        except Exception as exc:
+            logger.error(f"Yedek temizlik modülü açılamadı: {exc}", exc_info=True)
+            messagebox.showerror("Hata", f"Modül açılamadı:\n{exc}")
 
     def ilac_takip_ac(self):
         """İlaç Takip modülünü aç"""
@@ -1154,7 +1178,17 @@ class AnaMenu:
 
     def calistir(self):
         """Pencereyi çalıştır"""
+        # Yedek temizlik: program açılışında günde 1 kez sessiz tetik (3 sn gecikme)
+        self.root.after(3000, self._yedek_temizlik_gunluk_tetik)
         self.root.mainloop()
+
+    def _yedek_temizlik_gunluk_tetik(self):
+        """Yedek Klasörü Boşaltma — günlük otomatik tetik (no-op aynı günde)."""
+        try:
+            from yedek_temizlik_modul import gunluk_otomatik_temizlik_calistir
+            gunluk_otomatik_temizlik_calistir(self.root)
+        except Exception as exc:
+            logger.debug(f"Yedek temizlik günlük tetik atlandı: {exc}")
 
 
 def ana_menu_goster(kullanici):
