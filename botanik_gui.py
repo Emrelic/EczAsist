@@ -1339,6 +1339,25 @@ class BotanikGUI:
         )
         self.report_button.pack()
 
+        # Yedek Temizlik Modülü Butonu
+        yedek_btn_frame = tk.Frame(main_frame, bg=self.bg_color)
+        yedek_btn_frame.pack(fill="x", pady=(0, 5))
+
+        self.yedek_temizlik_button = tk.Button(
+            yedek_btn_frame,
+            text="🗑 Yedek Klasörü Boşaltma",
+            font=("Arial", 9),
+            bg="#5E35B1",
+            fg="white",
+            activebackground="#4527A0",
+            width=30,
+            height=1,
+            relief="raised",
+            bd=1,
+            command=lambda: yedek_temizlik_modulu_ac(self.root),
+        )
+        self.yedek_temizlik_button.pack()
+
         # İstatistikler
         stats_frame = tk.Frame(main_frame, bg=self.bg_color)
         stats_frame.pack(fill="x", pady=(0, 10))
@@ -2561,48 +2580,11 @@ class BotanikGUI:
         insan_tab = tk.Frame(settings_notebook, bg='#FFF3E0')
         settings_notebook.add(insan_tab, text="  İnsan Davranışı  ")
 
-        # Yedek Temizlik sekmesi (harici disk yedek klasörü bakımı)
-        yedek_tab = tk.Frame(settings_notebook, bg='#E8EAF6')
-        settings_notebook.add(yedek_tab, text="  🗑 Yedek  ")
-
         # İçerikleri oluştur
         self.create_fonksiyon_ayarlari_tab(fonksiyon_tab)
         self.create_giris_ayarlari_tab(giris_tab)
         self.create_timing_ayarlari_tab(timing_tab)
         self.create_insan_davranisi_tab(insan_tab)
-        self.create_yedek_temizlik_tab(yedek_tab)
-
-    def create_yedek_temizlik_tab(self, parent):
-        """Yedek Klasörü Boşaltma Modülü kısayolu."""
-        frame = tk.Frame(parent, bg='#E8EAF6', padx=14, pady=14)
-        frame.pack(fill="both", expand=True)
-
-        tk.Label(
-            frame, text="🗑 Yedek Klasörü Boşaltma",
-            font=("Arial", 12, "bold"), bg='#E8EAF6', fg='#1A237E',
-        ).pack(anchor="w")
-        tk.Label(
-            frame,
-            text="Harici diskteki eski yedek dosyalarını otomatik temizler.\n"
-                 "Program her açıldığında günde 1 kez sessiz çalışır + log tutar.",
-            font=("Arial", 9), bg='#E8EAF6', fg='#37474F',
-            justify="left",
-        ).pack(anchor="w", pady=(4, 12))
-
-        tk.Button(
-            frame, text="🗑 Yedek Temizlik Modülünü Aç",
-            command=lambda: yedek_temizlik_modulu_ac(self.root),
-            bg='#3949AB', fg='white', font=("Arial", 10, "bold"),
-            padx=16, pady=8, cursor="hand2",
-        ).pack(anchor="w")
-
-        tk.Label(
-            frame,
-            text="Modülde: klasör seçimi · X günden eski sil / en yeni N kopya kalsın ·\n"
-                 "güvenlik (yeni yedek yoksa silme) · dosya listesi · log görüntüleyici.",
-            font=("Arial", 8, "italic"), bg='#E8EAF6', fg='#607D8B',
-            justify="left",
-        ).pack(anchor="w", pady=(14, 0))
 
     def create_fonksiyon_ayarlari_tab(self, parent):
         """Fonksiyon Ayarları sekmesi - İlaç Takip, Rapor Toplama, Rapor Kontrol"""
