@@ -935,6 +935,23 @@ class BotanikGUI:
             )
             ana_sayfa_btn.pack(side="left")
 
+        # Yedek Temizlik butonu (top bar, her zaman görünür)
+        yedek_top_btn = tk.Button(
+            top_bar,
+            text="🗑 Yedek",
+            font=("Arial", 9, "bold"),
+            bg="#5E35B1",
+            fg="white",
+            activebackground="#4527A0",
+            activeforeground="white",
+            cursor="hand2",
+            bd=0,
+            padx=8,
+            pady=5,
+            command=lambda: yedek_temizlik_modulu_ac(self.root),
+        )
+        yedek_top_btn.pack(side="left", padx=(8, 0))
+
         # Tema değiştir butonu (sağda)
         self._tema_butonu_olustur(top_bar)
 
