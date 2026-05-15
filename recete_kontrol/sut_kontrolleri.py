@@ -6398,6 +6398,10 @@ def _ldl_tarihlerini_eslestir(metin: str, olcumler: List[Dict],
         onceki = metin[max(0, dpos - 5):dpos]
         if sonraki.startswith('tarihli') or sonraki.startswith('tarihinde'):
             yon[dpos] = 'next'   # tarih sonraki LDL'ye ait
+        elif sonraki.startswith('ldl'):
+            # Tarihten hemen sonra LDL prefiksi → bitişik format,
+            # tarih SONRAKİ LDL'ye ait (örn: "30-07-2020 LDL:206").
+            yon[dpos] = 'next'
         elif '(' in onceki:
             yon[dpos] = 'prev'   # tarih önceki LDL'ye (parens) ait
         else:
@@ -6615,6 +6619,18 @@ def _tum_ldl_olcumlerini_bul(metin: str) -> List[Dict]:
         _ekle(m.group(1), m.start(1),
               prefix_var=True, tarih_bitisik_kabul=True)
 
+    # 2a2) LDL+DEĞER+BİTİŞİK_YENİ_TARİH formatı — separator'sız değer + yeni tarih:
+    # "LDL:20130-07-2020 LDL:206" → LDL=201 + sonra başka bir LDL ölçüm bloğu
+    # SIKI pattern (?!\d) lookahead'ı yüzünden "201" yakalanamıyor; özel pattern.
+    # Bitişik kısım: 2-3 haneli LDL + 1-2 haneli gün + [./-] + tarih devamı.
+    ldl_deger_sonra_yeni_tarih = re.compile(
+        r'ldl[- ]*c?\s*[:=]?\s*(\d{2,3})'
+        r'(?=\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4})'
+    )
+    for m in ldl_deger_sonra_yeni_tarih.finditer(metin_lower):
+        _ekle(m.group(1), m.start(1),
+              prefix_var=True, tarih_bitisik_kabul=True)
+
     # 2b) TARIH-SONRASI pattern — "LDL ... TARIH ... NN" formatı
     # Örn: "HASTANIN LDL-KOLESTROL DEGERI 21.12.2025 TARIHINDE 146 MG/DL"
     # Standart GEVŞEK ilk digit (tarih bileşeni) yakalayıp tarih bileşeni
@@ -6783,9 +6799,78 @@ _STATIN_COCUK_UZMAN_KEYS = (
 )
 
 
+def _statin_ldl_kelimesizler_bul(metin: str) -> List[Dict]:
+    """Statin bağlamı fallback: 'LDL' kelimesi yok, sadece tarih + değer + MG/DL.
+
+    Örnek: '29.04.2024:149 MG/DL' (AHMET YEŞİLBUDAK).
+    Statin raporlarında bazı eski yazımlarda LDL etiketi yok; tek satırdaki
+    'TARIH:NNN MG/DL' formatı muhtemelen LDL ölçümüdür. MG/DL zorunlu —
+    yanlış pozitifleri (kan şekeri, A1c vb.) ele.
+    """
+    if not metin:
+        return []
+    metin = re.sub(
+        r'\(?\s*ekleme\s*[=:]\s*\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}'
+        r'(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?\)?',
+        ' ', metin, flags=re.IGNORECASE,
+    )
+    olcumler: List[Dict] = []
+    pat = re.compile(
+        r'(?<![/.\d\-])(\d{1,2})[./\-](\d{1,2})[./\-](\d{2,4})'
+        r'\s*[:=]?\s*(\d{2,3})(?![./\d\-])\s*mg\s*/?\s*dl',
+        re.IGNORECASE,
+    )
+    # LDL OLMAYAN ölçüm adları — bunlardan biri yakındaki önceki bağlamda
+    # geçiyorsa eşleşmeyi reddet (kan şekeri, A1c, HDL, trigliserit vb.).
+    NEGATIF_BAGLAMLAR = (
+        'kan sekeri', 'kan şekeri', 'aclik', 'açlık', 'glikoz', 'glucose',
+        'hba1c', 'a1c', 'hbalc',
+        'hdl', 'kolesterol toplam', 'total kolesterol', 'totalkol',
+        'trigliser', 'trigiliser', 'triglyceri',
+        'kreatinin', 'tsh', 'üre', 'ure ', 'na+', 'k+', 'sodyum', 'potasyum',
+    )
+    from datetime import date as _date
+    for m in pat.finditer(metin):
+        try:
+            deg = int(m.group(4))
+        except ValueError:
+            continue
+        if not (10 <= deg <= 600):
+            continue
+        # Önceki 50 karakterde başka bir ölçüm adı varsa eşleşmeyi reddet.
+        onceki = (metin[max(0, m.start() - 50):m.start()]
+                  .replace('İ', 'i').replace('I', 'ı').lower())
+        if any(k in onceki for k in NEGATIF_BAGLAMLAR):
+            continue
+        try:
+            g, a, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if y < 100:
+                y = 2000 + y if y < 50 else 1900 + y
+            if not (1 <= g <= 31 and 1 <= a <= 12 and 2015 <= y <= 2100):
+                continue
+            tarih_obj = _date(y, a, g)
+        except (ValueError, OverflowError):
+            continue
+        bas = max(0, m.start() - 60)
+        son = min(len(metin), m.end() + 60)
+        olcumler.append({
+            'deger': deg,
+            'pos': m.start(4),
+            'tarih': tarih_obj,
+            'cevre': metin[bas:son].strip(),
+        })
+    return olcumler
+
+
 def _statin_atom_ldl_olcumler(metin: str) -> Tuple[Optional[int], List[Dict]]:
-    """LDL ölçümlerini metinden çek (zaten var olan parser kullanır)."""
+    """LDL ölçümlerini metinden çek.
+
+    Önce standart parser (LDL prefix'li yazımlar). Hiç bulunamazsa statin
+    bağlamı fallback: 'TARIH:NNN MG/DL' formatı LDL kabul edilir.
+    """
     olcumler = _tum_ldl_olcumlerini_bul(metin)
+    if not olcumler:
+        olcumler = _statin_ldl_kelimesizler_bul(metin)
     if not olcumler:
         return None, []
     return max(o['deger'] for o in olcumler), olcumler
@@ -6866,6 +6951,48 @@ def _statin_gecmis_icd_var(diger_icd: Optional[List[str]],
     return (False, '')
 
 
+def _statin_gecmis_metin_ara(diger_rapor_metinleri: Optional[List[str]],
+                              pattern: str,
+                              *,
+                              aile_oykusu_redder: bool = False
+                              ) -> Tuple[bool, str]:
+    """Hastanın geçmiş rapor metinlerinde verilen regex'i ara.
+
+    Statin SUT 4.2.28.A için sekonder koruma şartları (KAH/MI/inme/AKS/PAH/AAA/
+    karotid) hastanın geçmiş raporlarında metinsel kanıt olarak da kabul edilir
+    — örn: "KAG yapıldı", "stent uygulandı", "geçirilmiş MI". Aktif rapor
+    metnindeki kanıt + geçmiş rapor ICD'leri yetersiz kaldığında fallback.
+
+    Args:
+        diger_rapor_metinleri: reçete tarihinden ÖNCEKİ tüm rapor açıklamaları.
+        pattern: regex (IGNORECASE çalıştırılır).
+        aile_oykusu_redder: True ise eşleşmenin öncesindeki 40 karakterde
+            'aile/ailesel/öykü/oyku' geçiyorsa REDDET (KAH/MI/inme gibi hastanın
+            kendisinde olması gereken şartlar için — aile öyküsü hasta'da
+            hastalık değildir).
+
+    Returns: (var_mi, eşleşen_kısa_parça)
+    """
+    if not diger_rapor_metinleri:
+        return (False, '')
+    pat = re.compile(pattern, re.IGNORECASE)
+    for rm in diger_rapor_metinleri:
+        if not rm:
+            continue
+        rm_lower = rm.replace('İ', 'i').replace('I', 'ı').lower()
+        for m in pat.finditer(rm_lower):
+            if aile_oykusu_redder:
+                on40 = rm_lower[max(0, m.start() - 40):m.start()]
+                if any(k in on40 for k in
+                       ('aile', 'ailesel', 'öykü', 'oyku')):
+                    continue
+            bas = max(0, m.start() - 30)
+            son = min(len(rm), m.end() + 30)
+            parca = rm[bas:son].strip().replace('\n', ' ').replace('\r', ' ')
+            return (True, f'gecmis_rapor: ...{parca}...')
+    return (False, '')
+
+
 def _statin_atom_dm(metin_lower: str, teshis_metin: str,
                     diger_icd: Optional[List[str]] = None
                     ) -> Tuple[bool, str]:
@@ -6890,7 +7017,8 @@ def _statin_atom_dm(metin_lower: str, teshis_metin: str,
 
 
 def _statin_atom_aks(metin_lower: str, teshis_metin: str,
-                     diger_icd: Optional[List[str]] = None
+                     diger_icd: Optional[List[str]] = None,
+                     diger_rapor_metinleri: Optional[List[str]] = None,
                      ) -> Tuple[bool, str]:
     """SUT 4.2.28.A(1)(ç) — Akut koroner sendrom."""
     if any(k in teshis_metin for k in ['I20', 'I21', 'I22', 'I23', 'I24']):
@@ -6901,11 +7029,19 @@ def _statin_atom_aks(metin_lower: str, teshis_metin: str,
         diger_icd, ('I20', 'I21', 'I22', 'I23', 'I24'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _statin_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'akut\s*koroner|\baks\b',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
     return (False, '')
 
 
 def _statin_atom_mi(metin_lower: str, teshis_metin: str,
-                    diger_icd: Optional[List[str]] = None
+                    diger_icd: Optional[List[str]] = None,
+                    diger_rapor_metinleri: Optional[List[str]] = None,
                     ) -> Tuple[bool, str]:
     """SUT 4.2.28.A(1)(ç) — Geçirilmiş Mİ."""
     if any(k in teshis_metin for k in ['I21', 'I22', 'I25.2']):
@@ -6917,11 +7053,20 @@ def _statin_atom_mi(metin_lower: str, teshis_metin: str,
     gv, gs = _statin_gecmis_icd_var(diger_icd, ('I21', 'I22', 'I25.2'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _statin_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'miyokard\s*infar|miyokard\s*enfark|geçirilmiş\s*mi\b|'
+        r'\bstemi\b|\bnstemi\b',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
     return (False, '')
 
 
 def _statin_atom_inme(metin_lower: str, teshis_metin: str,
-                      diger_icd: Optional[List[str]] = None
+                      diger_icd: Optional[List[str]] = None,
+                      diger_rapor_metinleri: Optional[List[str]] = None,
                       ) -> Tuple[bool, str]:
     """SUT 4.2.28.A(1)(ç) — Geçirilmiş inme."""
     if any(k in teshis_metin for k in
@@ -6935,17 +7080,32 @@ def _statin_atom_inme(metin_lower: str, teshis_metin: str,
         diger_icd, ('I60', 'I61', 'I62', 'I63', 'I64', 'I65', 'I66', 'I69'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _statin_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'\binme\b|\bstroke\b|serebrovask|\bsvo\b|geçirilmiş\s*inme',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
     return (False, '')
 
 
 def _statin_atom_kah(metin_lower: str, teshis_metin: str,
                      rapor_kodu: str,
-                     diger_icd: Optional[List[str]] = None
+                     diger_icd: Optional[List[str]] = None,
+                     diger_rapor_metinleri: Optional[List[str]] = None,
                      ) -> Tuple[bool, str]:
     """SUT 4.2.28.A(1)(ç) — Koroner arter hastalığı (hastanın kendisinde).
 
     rapor_kodu 04.02 / 04.04 KAH örtük endikasyon (rec_rap_kod otoritesi).
     'ailede/aile öyküsünde koroner arter' → hasta'da KAH değil, aile öyküsü.
+
+    Kaynaklar (öncelik sırası):
+      1) aktif rapor kodu (04.02/04.04)
+      2) aktif reçete teşhisleri (ICD I20-25)
+      3) aktif rapor metni (koroner arter / KAH / stent / bypass / iskemik kalp)
+      4) geçmiş raporların ICD'leri (diger_icd)
+      5) geçmiş raporların METİNLERİ (diger_rapor_metinleri) — KAG/anjio dahil
     """
     rk = (rapor_kodu or '').strip()
     if rk.startswith(('04.02', '04.04')):
@@ -6969,11 +7129,21 @@ def _statin_atom_kah(metin_lower: str, teshis_metin: str,
         diger_icd, ('I20', 'I21', 'I22', 'I23', 'I24', 'I25'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
+    # Geçmiş rapor metinleri — KAG/anjiyo dahil sekonder koruma kanıtları
+    gv2, gs2 = _statin_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'\bkah\b|koroner\s*arter|iskemik\s*kalp|\bkabg\b|by[-\s]?pass|'
+        r'\bstent\b|\bkag\b|anjio(?:graf|plast)',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
     return (False, '')
 
 
 def _statin_atom_pah(metin_lower: str, teshis_metin: str,
-                     diger_icd: Optional[List[str]] = None
+                     diger_icd: Optional[List[str]] = None,
+                     diger_rapor_metinleri: Optional[List[str]] = None,
                      ) -> Tuple[bool, str]:
     """SUT 4.2.28.A(1)(ç) — Periferik arter hastalığı."""
     if any(k in teshis_metin for k in ['I70', 'I73', 'I74']):
@@ -6983,11 +7153,19 @@ def _statin_atom_pah(metin_lower: str, teshis_metin: str,
     gv, gs = _statin_gecmis_icd_var(diger_icd, ('I70', 'I73', 'I74'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _statin_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'periferik\s*arter|\bpah\b|\bpaod\b',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
     return (False, '')
 
 
 def _statin_atom_aaa(metin_lower: str, teshis_metin: str = '',
-                     diger_icd: Optional[List[str]] = None
+                     diger_icd: Optional[List[str]] = None,
+                     diger_rapor_metinleri: Optional[List[str]] = None,
                      ) -> Tuple[bool, str]:
     """SUT 4.2.28.A(1)(ç) — Abdominal aort anevrizması."""
     if teshis_metin and any(k in teshis_metin for k in ['I71']):
@@ -6999,11 +7177,19 @@ def _statin_atom_aaa(metin_lower: str, teshis_metin: str = '',
     gv, gs = _statin_gecmis_icd_var(diger_icd, ('I71',))
     if gv:
         return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _statin_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'abdominal\s*aort\s*anevrizm|\baaa\b|aort\s*diseks',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
     return (False, '')
 
 
 def _statin_atom_karotid(metin_lower: str, teshis_metin: str = '',
-                          diger_icd: Optional[List[str]] = None
+                          diger_icd: Optional[List[str]] = None,
+                          diger_rapor_metinleri: Optional[List[str]] = None,
                           ) -> Tuple[bool, str]:
     """SUT 4.2.28.A(1)(ç) — Karotid arter hastalığı."""
     if teshis_metin and any(k in teshis_metin for k in ['I65', 'I63.2']):
@@ -7013,6 +7199,13 @@ def _statin_atom_karotid(metin_lower: str, teshis_metin: str = '',
     gv, gs = _statin_gecmis_icd_var(diger_icd, ('I65', 'I63.2'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _statin_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'karotid|karotis',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
     return (False, '')
 
 
@@ -7609,21 +7802,33 @@ def _statin_yetiskin_kontrol(
     # Geçmiş raporların ICD'leri (süresi dolmuş raporlar dahil) — YOAK kalıbı
     diger_icd = (ilac_sonuc.get('diger_raporlar_icd_tum_zamanlar') or
                  ilac_sonuc.get('diger_raporlar_icd') or [])
+    # Reçete tarihinden önceki tüm rapor metinleri (KAH/MI/inme/AKS/PAH/AAA/
+    # karotid için sekonder koruma kanıtı — örn "KAG yapıldı" / "stent" gibi
+    # ifadeler aktif raporda olmasa bile geçmiş raporda olabilir).
+    diger_rapor_metinleri = (
+        ilac_sonuc.get('diger_rapor_metinleri') or [])
     dm_var, dm_kynk = _statin_atom_dm(metin_lower, teshis_metin, diger_icd)
     aks_var, aks_kynk = _statin_atom_aks(
-        metin_lower, teshis_metin, diger_icd)
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
     mi_var, mi_kynk = _statin_atom_mi(
-        metin_lower, teshis_metin, diger_icd)
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
     inme_var, inme_kynk = _statin_atom_inme(
-        metin_lower, teshis_metin, diger_icd)
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
     kah_var, kah_kynk = _statin_atom_kah(
-        metin_lower, teshis_metin, rapor_kodu, diger_icd)
+        metin_lower, teshis_metin, rapor_kodu, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
     pah_var, pah_kynk = _statin_atom_pah(
-        metin_lower, teshis_metin, diger_icd)
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
     aaa_var, aaa_kynk = _statin_atom_aaa(
-        metin_lower, teshis_metin, diger_icd)
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
     karotid_var, karotid_kynk = _statin_atom_karotid(
-        metin_lower, teshis_metin, diger_icd)
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
 
     def _kaynak_etiketi(kynk: str) -> str:
         """Atom kaynağını okunabilir kısa etikete çevir."""
@@ -8039,17 +8244,32 @@ def _statin_cocuk_kontrol(
 
     # Klinik KVS hastalığı genişletilmiş liste (CO2 düzeltmesi —
     # b-3 için yetişkin KV listesi kabul edilir, kullanıcı onayı 2026-05-14)
-    # Geçmiş ICD'lerden de tarama yapılır (YOAK kalıbı)
+    # Geçmiş ICD'lerden ve reçete tarihinden önceki rapor metinlerinden
+    # de tarama yapılır.
+    diger_rapor_metinleri = (
+        ilac_sonuc.get('diger_rapor_metinleri') or [])
     dm_var_c, _ = _statin_atom_dm(metin_lower, teshis_metin, diger_icd)
-    aks_var_c, _ = _statin_atom_aks(metin_lower, teshis_metin, diger_icd)
-    mi_var_c, _ = _statin_atom_mi(metin_lower, teshis_metin, diger_icd)
-    inme_var_c, _ = _statin_atom_inme(metin_lower, teshis_metin, diger_icd)
+    aks_var_c, _ = _statin_atom_aks(
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
+    mi_var_c, _ = _statin_atom_mi(
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
+    inme_var_c, _ = _statin_atom_inme(
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
     kah_var_c, _ = _statin_atom_kah(
-        metin_lower, teshis_metin, rapor_kodu, diger_icd)
-    pah_var_c, _ = _statin_atom_pah(metin_lower, teshis_metin, diger_icd)
-    aaa_var_c, _ = _statin_atom_aaa(metin_lower, teshis_metin, diger_icd)
+        metin_lower, teshis_metin, rapor_kodu, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
+    pah_var_c, _ = _statin_atom_pah(
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
+    aaa_var_c, _ = _statin_atom_aaa(
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
     karotid_var_c, _ = _statin_atom_karotid(
-        metin_lower, teshis_metin, diger_icd)
+        metin_lower, teshis_metin, diger_icd,
+        diger_rapor_metinleri=diger_rapor_metinleri)
     klinik_kvs_var, klinik_kvs_bulunan = _statin_atom_klinik_kvs_cocuk(
         kalp_tx, dm_var_c, aks_var_c, mi_var_c, inme_var_c,
         kah_var_c, pah_var_c, aaa_var_c, karotid_var_c)
@@ -8337,7 +8557,8 @@ def _fibrat_atom_tg_olcum(metin: str) -> Tuple[Optional[int], str]:
     """SUT 4.2.28.B — TG sayısal değer parse (statin LDL kalıbına paralel).
 
     Yazım çeşitliliği: TG / Trig / Trigliserid / Trigliserit / Triglyceride /
-    T.G. / TGs. I→ı normalize yapılmaz (TRIG bozulmasın).
+    Trigiliserid (typo: fazladan i) / T.G. / TGs. I→ı normalize yapılmaz
+    (TRIG bozulmasın).
 
     Returns: (en_yuksek_tg_mg_dl, eslesen_kisa_parca).
     """
@@ -8347,7 +8568,7 @@ def _fibrat_atom_tg_olcum(metin: str) -> Tuple[Optional[int], str]:
     bulunanlar: List[int] = []
     eslesen = ''
     tg_patterns = [
-        r'(?:trigliserid|trigliserit|triglyceri)e?[^0-9]{0,20}(\d{2,4})',
+        r'(?:trig[ai]?l?i?seri[dt]|triglyceri)e?[^0-9]{0,20}(\d{2,4})',
         r'\btrig(?![a-z])\.?\s*[:=]?\s*(\d{2,4})',
         r'\btgs?(?![a-z])\.?\s*[:=]?\s*(\d{2,4})',
         r'\bt\.g\.?\s*[:=]?\s*(\d{2,4})',

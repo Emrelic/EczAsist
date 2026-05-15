@@ -751,7 +751,14 @@ class AnaMenu:
             if sorgu_root is None:
                 return
 
-            self._yeniden_yukle("aylik_recete_sorgu_gui")
+            # Reload sırası önemli: aylik_recete_sorgu_gui sut_kontrolleri'yi
+            # import ettiği için ÖNCE sut_kontrolleri'ni reload et, sonra GUI'yi.
+            # Yoksa GUI eski sut_kontrolleri'ni referans olarak tutar.
+            self._yeniden_yukle(
+                "recete_kontrol.sut_kontrolleri",
+                "recete_kontrol.eski_rapor_kontrol",
+                "aylik_recete_sorgu_gui",
+            )
             from aylik_recete_sorgu_gui import AylikReceteSorguGUI
 
             AylikReceteSorguGUI(sorgu_root, ana_menu_callback=lambda: None)

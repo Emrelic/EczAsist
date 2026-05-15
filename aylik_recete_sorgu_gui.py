@@ -26,7 +26,7 @@ import threading
 import tkinter as tk
 from datetime import date
 from tkinter import filedialog, messagebox, ttk
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from botanik_db import BotanikDB
 from recete_kontrol.sut_kontrolleri import _tr_lower
@@ -68,6 +68,13 @@ RENK_ETIKET = {
     RENK_TURUNCU: "Şüpheli",
     RENK_KIRMIZI: "Uygunsuz",
     RENK_GRI:     "Kontrol Gerekmez (dışla)",
+}
+
+# Manuel teyit sonucu → satır arka plan rengi
+TEYIT_RENK = {
+    "UYGUN":       RENK_YESIL,
+    "SUPHELI":     RENK_SARI,
+    "UYGUN_DEGIL": RENK_KIRMIZI,
 }
 
 
@@ -585,6 +592,14 @@ class AylikReceteSorguGUI:
             "MANUEL KONTROL":  tk.BooleanVar(value=True),
             "":                tk.BooleanVar(value=True),  # henüz kontrol edilmemiş
         }
+        # Manuel teyit filtresi — recete_teyit_db sabitleri (UYGUN/SUPHELI/UYGUN_DEGIL)
+        # "":True → teyit edilmemiş satırlar görünür.
+        self.var_teyit_filtre = {
+            "UYGUN":       tk.BooleanVar(value=True),
+            "SUPHELI":     tk.BooleanVar(value=True),
+            "UYGUN_DEGIL": tk.BooleanVar(value=True),
+            "":            tk.BooleanVar(value=True),  # teyit edilmemiş
+        }
 
         # Detaylı filtre ayarları (⚙ butonundan açılan pencere ile yönetilir)
         try:
@@ -817,6 +832,10 @@ class AylikReceteSorguGUI:
         row_verdict = tk.Frame(sol_kol, bg="#FAFAFA")
         row_verdict.pack(fill="x", pady=(0, 2))
 
+        # Manuel teyit filtre satırı — verdict satırının ALTINDA, aynı tarzda.
+        row_teyit = tk.Frame(sol_kol, bg="#FAFAFA")
+        row_teyit.pack(fill="x", pady=(0, 2))
+
         row3 = tk.Frame(sol_kol, bg="#FAFAFA")
         row3.pack(fill="x", pady=(0, 0))
 
@@ -1030,6 +1049,55 @@ class AylikReceteSorguGUI:
                  "Kontrol sonrası tabloda hangi sonuç etiketleri görünsün?\n"
                  "Sadece işaretli etiketlere sahip satırlar gösterilir.\n"
                  "'Boş' = henüz kontrol edilmemiş satırlar.")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PANEL: MANUEL TEYIT FİLTRESİ — Sonuç filtresinin ALTINDAKİ satırda
+        # Eczacının teyit ettiği reçeteleri (yeşil/sarı/kırmızı) filtreler.
+        # ═══════════════════════════════════════════════════════════════════
+        P_TYT_BG = "#F5F5F5"
+        p_teyit = tk.Frame(row_teyit, bg=P_TYT_BG, bd=1, relief="solid")
+        p_teyit.pack(side="left", padx=2, pady=1, fill="y")
+        tk.Label(p_teyit, text="🖉 Teyit:",
+                 bg=P_TYT_BG, fg="#1A237E",
+                 font=FONT_GROUP).pack(side="left", padx=(6, 4), pady=2)
+
+        _TYT_RENKLERI = [
+            ("UYGUN",       "#2E7D32", "✓ UYGUN"),
+            ("UYGUN_DEGIL", "#C62828", "✗ UYGUN DEĞİL"),
+            ("SUPHELI",     "#EF6C00", "? ŞÜPHELİ"),
+            ("",            "#546E7A", "○ Teyitsiz"),
+        ]
+        for sonuc, renk, gosterim in _TYT_RENKLERI:
+            cb = tk.Checkbutton(
+                p_teyit, text=gosterim,
+                variable=self.var_teyit_filtre[sonuc],
+                bg=P_TYT_BG, fg=renk,
+                activeforeground=renk,
+                selectcolor="#FFFFFF",
+                font=("Segoe UI", 8, "bold"),
+                bd=0, padx=2,
+                command=self._tabloyu_yenile)
+            cb.pack(side="left", padx=2, pady=2)
+        # Tümü / Hiçbiri kısayolları
+        def _teyit_filtre_topluset(deger: bool):
+            for v in self.var_teyit_filtre.values():
+                v.set(deger)
+            self._tabloyu_yenile()
+        tk.Frame(p_teyit, bg=P_TYT_BG, width=8).pack(side="left")
+        b_tyt_hep = tk.Button(p_teyit, text="Tümü",
+                                bg="#E8EAF6", bd=1,
+                                command=lambda: _teyit_filtre_topluset(True),
+                                padx=6, pady=1, font=("Segoe UI", 8))
+        b_tyt_hep.pack(side="left", padx=1, pady=2)
+        b_tyt_hic = tk.Button(p_teyit, text="Hiçbiri",
+                                bg="#E8EAF6", bd=1,
+                                command=lambda: _teyit_filtre_topluset(False),
+                                padx=6, pady=1, font=("Segoe UI", 8))
+        b_tyt_hic.pack(side="left", padx=1, pady=2)
+        _Tooltip(p_teyit,
+                 "Manuel teyit sonucuna göre filtre:\n"
+                 "✓ UYGUN = teyitli yeşil, ✗ UYGUN DEĞİL = teyitli kırmızı,\n"
+                 "? ŞÜPHELİ = teyitli sarı, ○ Teyitsiz = henüz teyit edilmemiş.")
 
         # ─── PANEL: KONTROL BUTONLARI — Filtrelemeler'in YANINDA, sağ tarafta ───
         # İçinde: ▢ Sadece seçilenler checkbox + 🎯 Kontrol Butonları butonu
@@ -2462,11 +2530,34 @@ class AylikReceteSorguGUI:
             except Exception:
                 pass
 
+    def _recetenin_tum_iidleri(self, kaynak_iid: str) -> list:
+        """Verilen iid'nin ait olduğu reçetenin tüm ilaç satırı iid'lerini döndür.
+
+        Grup anahtarı: rec_no (RxSgkIslemNo) öncelikli, fallback sistem_recete_no.
+        Reçete numarası belirlenemezse sadece kaynak iid döner.
+        """
+        kaynak = self.satir_indeks.get(str(kaynak_iid))
+        if not kaynak:
+            return [str(kaynak_iid)]
+        rec_no = str(kaynak.get("rec_no") or "").strip()
+        sis_no = str(kaynak.get("sistem_recete_no") or "").strip()
+        if not rec_no and not sis_no:
+            return [str(kaynak_iid)]
+        iids = []
+        for s in self.tum_satirlar:
+            s_rec = str(s.get("rec_no") or "").strip()
+            s_sis = str(s.get("sistem_recete_no") or "").strip()
+            if (rec_no and s_rec == rec_no) or (sis_no and s_sis == sis_no):
+                iids.append(str(s["ri_id"]))
+        return iids or [str(kaynak_iid)]
+
     def _sema_teyit_kaydet(self, teyit_sonucu: str) -> None:
         """Aktif reçete için teyiti DB'ye yaz, tabloyu güncelle.
 
         Kullanıcı ayarı: aynı reçetede kal (oto-ilerleme yok),
-        son teyit geçerli (üzerine yaz).
+        son teyit geçerli (üzerine yaz). Teyit sonucuna karşılık gelen renk
+        (UYGUN=yeşil / ŞÜPHELİ=sarı / UYGUN DEĞİL=kırmızı) reçetenin
+        TÜM ilaç satırlarına uygulanır.
         """
         satir = self._aktif_satir()
         if not satir:
@@ -2481,17 +2572,38 @@ class AylikReceteSorguGUI:
             return
         ri_id = str(satir.get("ri_id") or "")
         kullanici = self._aktif_kullanici_adi()
-        ok = recete_teyit_db.teyit_kaydet(
-            ri_id,
-            teyit_sonucu,
-            hasta_tc=str(satir.get("tc") or ""),
-            recete_no=str(satir.get("rec_no") or ""),
-            ilac_adi=str(satir.get("ilac") or ""),
-            sut_kategorisi=str(satir.get("sut") or ""),
-            kullanici=kullanici,
-            otomatik_sonuc=str(satir.get("verdict") or ""),
-        )
-        if not ok:
+        yeni_renk = TEYIT_RENK.get(teyit_sonucu, RENK_BEYAZ)
+        grup_iidler = self._recetenin_tum_iidleri(ri_id)
+        if not hasattr(self, "_teyit_map") or self._teyit_map is None:
+            self._teyit_map = {}
+        basarili = 0
+        for g_iid in grup_iidler:
+            g_satir = self.satir_indeks.get(g_iid)
+            if not g_satir:
+                continue
+            ok = recete_teyit_db.teyit_kaydet(
+                g_iid,
+                teyit_sonucu,
+                hasta_tc=str(g_satir.get("tc") or ""),
+                recete_no=str(g_satir.get("rec_no") or ""),
+                ilac_adi=str(g_satir.get("ilac") or ""),
+                sut_kategorisi=str(g_satir.get("sut") or ""),
+                kullanici=kullanici,
+                otomatik_sonuc=str(g_satir.get("verdict") or ""),
+            )
+            if not ok:
+                continue
+            self._teyit_map[g_iid] = teyit_sonucu
+            g_satir["teyit"] = recete_teyit_db.rozet(teyit_sonucu)
+            self.satir_renkleri[g_iid] = yeni_renk
+            try:
+                values = tuple(str(g_satir.get(k, "")) for k in SUTUN_KOD)
+                self.tv.item(g_iid, values=values,
+                             tags=(yeni_renk, "teyit_bold"))
+            except Exception:
+                pass
+            basarili += 1
+        if not basarili:
             try:
                 messagebox.showerror(
                     "Teyit",
@@ -2501,18 +2613,7 @@ class AylikReceteSorguGUI:
             except Exception:
                 pass
             return
-        # Cache'i güncelle, satırı yeniden render et
-        if not hasattr(self, "_teyit_map") or self._teyit_map is None:
-            self._teyit_map = {}
-        self._teyit_map[ri_id] = teyit_sonucu
-        satir["teyit"] = recete_teyit_db.rozet(teyit_sonucu)
-        try:
-            renk = self.satir_renkleri.get(ri_id, RENK_BEYAZ)
-            values = tuple(str(satir.get(k, "")) for k in SUTUN_KOD)
-            tags = [renk, "teyit_bold"]
-            self.tv.item(ri_id, values=values, tags=tuple(tags))
-        except Exception:
-            pass
+        self._state_kaydet()
         # Header'daki teyit etiketini güncelle
         self._sema_teyit_lbl_guncelle(satir)
 
@@ -2524,14 +2625,17 @@ class AylikReceteSorguGUI:
             return ""
 
     def _ana_teyit_kaydet(self, teyit_sonucu: str) -> None:
-        """Ana ekran toolbar'ındaki teyit butonları — seçili satırlara uygula.
+        """Ana ekran toolbar'ındaki teyit butonları — seçili satırların REÇETESİNE uygula.
 
         Hedef belirleme önceliği:
             1) Treeview multi-selection (Ctrl+Click ile seçilenler)
             2) ☑ ile işaretli satırlar (self.secili_iidler) — boşsa
             3) Hiçbiri yoksa uyarı.
 
-        Çoklu satır (>=2) için onay diyaloğu. Üzerine yazar (son teyit geçerli).
+        Seçilen her satır için aynı reçeteye ait tüm ilaç satırları
+        teyit edilir ve teyit sonucuna karşılık gelen renge boyanır
+        (UYGUN=yeşil, ŞÜPHELİ=sarı, UYGUN DEĞİL=kırmızı). Çoklu reçete
+        (>=2) için onay diyaloğu. Üzerine yazar (son teyit geçerli).
         """
         # 1) Hedef ri_idleri belirle
         try:
@@ -2551,12 +2655,26 @@ class AylikReceteSorguGUI:
                 pass
             return
 
+        # Reçete bazlı genişlet: her hedef iid'in reçetesindeki tüm satırlar dahil
+        genis_iidler: set = set()
+        recete_sayisi: set = set()
+        for iid in hedef_iidler:
+            grup = self._recetenin_tum_iidleri(iid)
+            genis_iidler.update(grup)
+            satir = self.satir_indeks.get(iid)
+            if satir:
+                anahtar = (str(satir.get("rec_no") or "").strip()
+                           or str(satir.get("sistem_recete_no") or "").strip()
+                           or iid)
+                recete_sayisi.add(anahtar)
+        hedef_iidler = list(genis_iidler)
+
         etiket = recete_teyit_db.ETIKET.get(teyit_sonucu, teyit_sonucu)
-        if len(hedef_iidler) >= 2:
+        if len(recete_sayisi) >= 2:
             if not messagebox.askyesno(
                 "Manuel Teyit",
-                f"{len(hedef_iidler)} reçete '{etiket}' olarak teyit "
-                f"edilecek. Devam edilsin mi?\n\n"
+                f"{len(recete_sayisi)} reçete ({len(hedef_iidler)} ilaç satırı) "
+                f"'{etiket}' olarak teyit edilecek. Devam edilsin mi?\n\n"
                 f"(Mevcut teyitlerin üzerine yazılır.)",
                 parent=self.root,
             ):
@@ -2566,8 +2684,9 @@ class AylikReceteSorguGUI:
         if not hasattr(self, "_teyit_map") or self._teyit_map is None:
             self._teyit_map = {}
         kullanici = self._aktif_kullanici_adi()
+        yeni_renk = TEYIT_RENK.get(teyit_sonucu, RENK_BEYAZ)
 
-        # 3) Her hedef için DB'ye yaz + tabloyu update et
+        # 3) Her hedef için DB'ye yaz + tabloyu update et + rengi uygula
         basarili = 0
         basarisiz = 0
         for iid in hedef_iidler:
@@ -2590,16 +2709,19 @@ class AylikReceteSorguGUI:
                 continue
             self._teyit_map[iid] = teyit_sonucu
             satir["teyit"] = recete_teyit_db.rozet(teyit_sonucu)
+            self.satir_renkleri[iid] = yeni_renk
             try:
-                renk = self.satir_renkleri.get(iid, RENK_BEYAZ)
                 values = tuple(str(satir.get(k, "")) for k in SUTUN_KOD)
                 self.tv.item(iid, values=values,
-                             tags=(renk, "teyit_bold"))
+                             tags=(yeni_renk, "teyit_bold"))
             except Exception:
                 pass
             basarili += 1
 
-        # 4) Tam ekran şema açıksa header teyit etiketi de güncellensin
+        # 4) Renk state'ini kalıcı kaydet
+        self._state_kaydet()
+
+        # 5) Tam ekran şema açıksa header teyit etiketi de güncellensin
         try:
             sema_satir = self._aktif_satir()
             if sema_satir:
@@ -2607,8 +2729,9 @@ class AylikReceteSorguGUI:
         except Exception:
             pass
 
-        # 5) Durum mesajı
-        mesaj = f"Teyit: {basarili} satır {etiket}"
+        # 6) Durum mesajı
+        mesaj = (f"Teyit: {len(recete_sayisi)} reçete / {basarili} satır "
+                 f"{etiket}")
         if basarisiz:
             mesaj += f"  ({basarisiz} başarısız)"
         try:
@@ -2617,9 +2740,10 @@ class AylikReceteSorguGUI:
             pass
 
     def _ana_teyit_kaldir(self) -> None:
-        """Sağ tık menüsünden çağrılır — seçili satırların teyitlerini sil.
+        """Sağ tık menüsünden çağrılır — seçili satırların REÇETELERİNİN teyitini sil.
 
-        Tabloda rozet ve bold tag temizlenir, DB'den kayıt silinir.
+        Aynı reçeteye ait tüm ilaç satırlarının rozeti, bold tag'i ve arka
+        plan rengi (manuel teyit ile boyanan) temizlenir; DB'den kayıt silinir.
         """
         try:
             sec = list(self.tv.selection())
@@ -2629,11 +2753,24 @@ class AylikReceteSorguGUI:
         if not hedef_iidler:
             return
 
-        if len(hedef_iidler) >= 2:
+        # Reçete bazlı genişlet
+        genis_iidler: set = set()
+        recete_sayisi: set = set()
+        for iid in hedef_iidler:
+            genis_iidler.update(self._recetenin_tum_iidleri(iid))
+            satir = self.satir_indeks.get(iid)
+            if satir:
+                anahtar = (str(satir.get("rec_no") or "").strip()
+                           or str(satir.get("sistem_recete_no") or "").strip()
+                           or iid)
+                recete_sayisi.add(anahtar)
+        hedef_iidler = list(genis_iidler)
+
+        if len(recete_sayisi) >= 2:
             if not messagebox.askyesno(
                 "Teyit Kaldır",
-                f"{len(hedef_iidler)} reçetenin teyiti silinecek. "
-                f"Devam edilsin mi?",
+                f"{len(recete_sayisi)} reçete ({len(hedef_iidler)} ilaç satırı) "
+                f"teyiti silinecek. Devam edilsin mi?",
                 parent=self.root,
             ):
                 return
@@ -2649,14 +2786,17 @@ class AylikReceteSorguGUI:
             recete_teyit_db.teyit_sil(iid)
             self._teyit_map.pop(iid, None)
             satir["teyit"] = ""
+            # Manuel teyit ile boyanan rengi sıfırla (yeşil/sarı/kırmızı → beyaz)
+            self.satir_renkleri[iid] = RENK_BEYAZ
             try:
-                renk = self.satir_renkleri.get(iid, RENK_BEYAZ)
                 values = tuple(str(satir.get(k, "")) for k in SUTUN_KOD)
-                # teyit_bold tag'i kaldır (sadece renk tag'i kalır)
-                self.tv.item(iid, values=values, tags=(renk,))
+                self.tv.item(iid, values=values, tags=(RENK_BEYAZ,))
             except Exception:
                 pass
             silinen += 1
+
+        # Renk state'ini kalıcı kaydet
+        self._state_kaydet()
 
         try:
             sema_satir = self._aktif_satir()
@@ -6290,6 +6430,23 @@ class AylikReceteSorguGUI:
                 # Bilinmeyen etiket (ATLANDI vb.) → "" (boş) bucket'ına eşitle
                 if bvar is None:
                     bvar = v_filtre.get("")
+                if bvar is not None and not bvar.get():
+                    return False
+        except Exception:
+            pass
+        # 0b) Manuel teyit filtresi — recete_teyit_db sonucu (UYGUN/SUPHELI/UYGUN_DEGIL).
+        # Teyit edilmemiş satırlar "" bucket'ında.
+        try:
+            t_filtre = getattr(self, "var_teyit_filtre", None)
+            if t_filtre:
+                iid = str(s.get("ri_id") or "")
+                tyt = ""
+                tmap = getattr(self, "_teyit_map", None)
+                if tmap:
+                    tyt = str(tmap.get(iid) or "")
+                bvar = t_filtre.get(tyt)
+                if bvar is None:
+                    bvar = t_filtre.get("")
                 if bvar is not None and not bvar.get():
                     return False
         except Exception:
@@ -11114,6 +11271,50 @@ class AylikReceteSorguGUI:
             "hasta_yasi": s.get("yas") or "",
         }
 
+    def _hasta_tum_rapor_metinleri_topla(self,
+                                          musteri_idler: List[int]
+                                          ) -> Dict[int, List[Tuple]]:
+        """Hastaların TÜM rapor açıklamalarını (rapor tarihi ile birlikte)
+        topla. Statin sekonder koruma şartları (KAH/MI/inme/AKS/PAH/AAA/
+        karotid) için hastanın AKTİF reçete tarihinden önceki herhangi bir
+        raporundaki "KAG yapıldı", "stent uygulandı" gibi metinsel kanıtları
+        yakalamak için kullanılır (kullanıcı kuralı 2026-05-15).
+
+        Returns: {musteri_id: [(rapor_tarihi: date, aciklama_metni: str), ...]}
+        """
+        if not musteri_idler or not self.db:
+            return {}
+        result: Dict[int, List[Tuple]] = {}
+        try:
+            for i in range(0, len(musteri_idler), 500):
+                chunk = [m for m in musteri_idler[i:i + 500] if m]
+                if not chunk:
+                    continue
+                ph = ",".join("?" * len(chunk))
+                rows = self.db.sorgu_calistir(
+                    f"""SELECT
+                            rap.RaporAnaMusteriId AS musteri_id,
+                            rap.RaporAnaRaporTarihi AS rapor_tarihi,
+                            rap.RaporAnaAciklamalar AS aciklama
+                        FROM RaporAna rap
+                        WHERE rap.RaporAnaMusteriId IN ({ph})
+                          AND (rap.RaporAnaSilme IS NULL OR rap.RaporAnaSilme = 0)
+                          AND rap.RaporAnaAciklamalar IS NOT NULL
+                          AND LEN(rap.RaporAnaAciklamalar) > 0""",
+                    tuple(chunk))
+                for r in rows:
+                    mid = r.get("musteri_id")
+                    if not mid:
+                        continue
+                    tarih = r.get("rapor_tarihi")
+                    ack = (r.get("aciklama") or "").strip()
+                    if not ack:
+                        continue
+                    result.setdefault(mid, []).append((tarih, ack))
+        except Exception as e:
+            logger.warning("_hasta_tum_rapor_metinleri_topla hata: %s", e)
+        return result
+
     def _hasta_tum_icd_kodlarini_topla(self, musteri_idler: List[int],
                                          kontrol_tarihi=None,
                                          gecmis_dahil: bool = False
@@ -14519,6 +14720,26 @@ class AylikReceteSorguGUI:
         ÖNEMLİ: Hasta'nın bu reçetede sadece statinin kendi raporu değil, TÜM
         aktif raporlarındaki ICD kodları da risk faktörü tespiti için
         kullanılır (DM/KAH/inme ayrı bir raporda olabilir)."""
+        try:
+            self._statin_kontrol_baslat_impl()
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            logger.error("Statin kontrol handler hatası: %s\n%s", e, tb)
+            try:
+                self._durum_yaz(f"Statin kontrol HATA: {e}")
+            except Exception:
+                pass
+            messagebox.showerror(
+                "Statin Kontrol — Hata",
+                f"Statin kontrol akışı çalışırken hata oluştu:\n\n{type(e).__name__}: {e}\n\n"
+                f"Detaylı traceback log'a yazıldı.\n\n"
+                f"Hatanın ilk 800 karakteri:\n{tb[:800]}",
+                parent=self.root,
+            )
+
+    def _statin_kontrol_baslat_impl(self):
+        """Statin kontrol asıl gövdesi (handler yukarıdaki yönelimden sarmalanır)."""
         if not self.tum_satirlar:
             messagebox.showinfo(
                 "Statin Kontrol",
@@ -14557,6 +14778,12 @@ class AylikReceteSorguGUI:
             "diğer raporları taranıyor…")
         self.root.update_idletasks()
         hasta_tum_icd = self._hasta_tum_icd_kodlarini_topla(musteri_idler)
+        # Reçete tarihinden önceki rapor METİNLERİ — KAH/MI/inme/AKS/PAH/AAA/
+        # karotid için sekonder koruma kanıtı (ör. "KAG yapıldı" / "stent
+        # uygulandı" gibi metinsel kanıtlar aktif rapor yerine geçmiş raporda
+        # olabilir; AHMET YESILBUDAK 3GC4X31 — 2026-05-15).
+        hasta_tum_rapor_metinleri = (
+            self._hasta_tum_rapor_metinleri_topla(musteri_idler))
 
         # Eski rapor (istinaden) sayaçları
         eski_rapor_istatistik = {
@@ -14611,6 +14838,38 @@ class AylikReceteSorguGUI:
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
             ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
+            # Reçete tarihinden ÖNCEKİ tüm rapor metinleri — KAH/sekonder
+            # koruma sekonder kanıtı (geçmiş "KAG/stent/bypass" ibareleri).
+            try:
+                from datetime import datetime as _dt
+                rec_tar_str = (s.get("rec_tar") or "").strip()
+                rec_tar_obj = (_dt.strptime(rec_tar_str, "%d.%m.%Y").date()
+                                if rec_tar_str else None)
+            except Exception:
+                rec_tar_obj = None
+            gecmis_metinler: List[str] = []
+            if mid:
+                for tar, ack in hasta_tum_rapor_metinleri.get(mid, []):
+                    # tar: ODBC sürücü versiyonuna göre datetime / date / str
+                    # olabilir. rec_tar_obj: date veya None.
+                    if rec_tar_obj is None or tar is None:
+                        gecmis_metinler.append(ack)
+                        continue
+                    try:
+                        if hasattr(tar, 'date'):  # datetime → date
+                            tar_d = tar.date()
+                        elif hasattr(tar, 'year'):  # date
+                            tar_d = tar
+                        else:  # string (ODBC bazı sürümler)
+                            t_str = str(tar)[:10]  # 'YYYY-MM-DD'
+                            tar_d = _dt.strptime(t_str, "%Y-%m-%d").date()
+                    except Exception:
+                        # Tarih anlaşılamadı — güvenli yön: dahil et (filtreleme)
+                        gecmis_metinler.append(ack)
+                        continue
+                    if tar_d <= rec_tar_obj:
+                        gecmis_metinler.append(ack)
+            ilac_sonuc["diger_rapor_metinleri"] = gecmis_metinler
             try:
                 if kategori == "FIBRAT":
                     if motor_aktif_mi("FIBRAT"):
