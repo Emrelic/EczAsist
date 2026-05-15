@@ -1,0 +1,193 @@
+
+--- faulthandler aktif [2026-04-19T02:33:50] ---
+======================================================================
+[2026-04-19T02:33:50] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['-c']
+
+
+--- faulthandler aktif [2026-04-21T13:48:45] ---
+======================================================================
+[2026-04-21T13:48:45] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+
+Windows fatal exception: access violation
+
+Thread 0x00003774 (most recent call first):
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\botanik_db.py", line 166 in sorgu_calistir
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_db.py", line 275 in _recete_ilaclari_sorgula
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_db.py", line 163 in yazdirma_gunu_gelen_ilaclar
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_gui.py", line 992 in _calis
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1023 in run
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1081 in _bootstrap_inner
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1043 in _bootstrap
+
+Thread 0x0000358c (most recent call first):
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\botanik_db.py", line 166 in sorgu_calistir
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_db.py", line 275 in _recete_ilaclari_sorgula
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_db.py", line 163 in yazdirma_gunu_gelen_ilaclar
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_gui.py", line 992 in _calis
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1023 in run
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1081 in _bootstrap_inner
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1043 in _bootstrap
+
+Thread 0x00000ec8 (most recent call first):
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\botanik_db.py", line 166 in sorgu_calistir
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_db.py", line 275 in _recete_ilaclari_sorgula
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_db.py", line 163 in yazdirma_gunu_gelen_ilaclar
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_gui.py", line 992 in _calis
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1023 in run
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1081 in _bootstrap_inner
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1043 in _bootstrap
+
+Current thread 0x00001ed4 (most recent call first):
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\botanik_db.py", line 166 in sorgu_calistir
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_db.py", line 275 in _recete_ilaclari_sorgula
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_db.py", line 163 in yazdirma_gunu_gelen_ilaclar
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_gui.py", line 992 in _calis
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1023 in run
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1081 in _bootstrap_inner
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1043 in _bootstrap
+
+Thread 0x000015b0 (most recent call first):
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\botanik_db.py", line 166 in sorgu_calistir
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_db.py", line 326 in _medula_hasta_ilaclari_sorgula
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_db.py", line 171 in yazdirma_gunu_gelen_ilaclar
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\hasta_takip_gui.py", line 992 in _calis
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1023 in run
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1081 in _bootstrap_inner
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1043 in _bootstrap
+
+Thread 0x00000850 (most recent call first):
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\medula_oturum_canli.py", line 377 in _dongu
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1023 in run
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1081 in _bootstrap_inner
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1043 in _bootstrap
+
+Thread 0x00001ad8 (most recent call first):
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pynput\_util\win32.py", line 190 in __iter__
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pynput\_util\win32.py", line 357 in _run
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pynput\_util\__init__.py", line 212 in run
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1081 in _bootstrap_inner
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1043 in _bootstrap
+
+Thread 0x00001b64 (most recent call first):
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\tkinter\__init__.py", line 1613 in mainloop
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\ana_menu.py", line 936 in calistir
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\main.py", line 44 in giris_basarili
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\giris_penceresi.py", line 36 in __init__
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\main.py", line 47 in uygulama_baslat
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\main.py", line 103 in <module>
+
+Current thread's C stack trace (most recent call first):
+  <cannot get C stack on this system>
+
+--- faulthandler aktif [2026-04-21T13:49:42] ---
+======================================================================
+[2026-04-21T13:49:42] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+
+
+--- faulthandler aktif [2026-04-21T14:02:17] ---
+======================================================================
+[2026-04-21T14:02:17] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+
+
+--- faulthandler aktif [2026-04-21T14:36:50] ---
+======================================================================
+[2026-04-21T14:36:50] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+
+
+--- faulthandler aktif [2026-04-21T14:46:17] ---
+======================================================================
+[2026-04-21T14:46:17] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+
+
+--- faulthandler aktif [2026-04-21T16:04:17] ---
+======================================================================
+[2026-04-21T16:04:17] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+
+
+--- faulthandler aktif [2026-04-21T16:15:57] ---
+======================================================================
+[2026-04-21T16:15:57] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+
+
+--- faulthandler aktif [2026-04-22T10:25:59] ---
+======================================================================
+[2026-04-22T10:25:59] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+
+Windows fatal exception: code 0x8001010d
+
+Current thread 0x00002a58 (most recent call first):
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pywinauto\uia_element_info.py", line 269 in _get_elements
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pywinauto\uia_element_info.py", line 283 in children
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pywinauto\findwindows.py", line 194 in find_elements
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pywinauto\__init__.py", line 138 in windows
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\botanik_gui.py", line 637 in medula_pencere_ayarla
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\tkinter\__init__.py", line 876 in callit
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\tkinter\__init__.py", line 2082 in __call__
+  File "C:\Users\ana\AppData\Local\Python\pythoncore-3.14-64\Lib\tkinter\__init__.py", line 1613 in mainloop
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\ana_menu.py", line 936 in calistir
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\main.py", line 44 in giris_basarili
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\giris_penceresi.py", line 36 in __init__
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\main.py", line 47 in uygulama_baslat
+  File "C:\Users\ana\OneDrive\Desktop\BOT takip 20\main.py", line 103 in <module>
+
+Current thread's C stack trace (most recent call first):
+  <cannot get C stack on this system>
+
+--- faulthandler aktif [2026-04-24T10:26:40] ---
+======================================================================
+[2026-04-24T10:26:40] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+
+
+--- faulthandler aktif [2026-04-24T11:07:36] ---
+======================================================================
+[2026-04-24T11:07:36] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+
+
+--- faulthandler aktif [2026-04-24T11:10:52] ---
+======================================================================
+[2026-04-24T11:10:52] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+
+
+--- faulthandler aktif [2026-04-24T11:11:00] ---
+======================================================================
+[2026-04-24T11:11:00] PROGRAM BAŞLATILDI
+======================================================================
+Python: 3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]
+Args: ['C:\\Users\\ana\\OneDrive\\Desktop\\BOT takip 20\\main.py']
+

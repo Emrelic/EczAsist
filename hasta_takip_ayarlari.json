@@ -26,7 +26,7 @@
   "eczane_adi": "İKİZLER ECZANESİ",
   "eczane_tel": "0542 515 74 40",
   "toplu_gonderim_gunu": 0,
-  "oturum_canli_tut": true,
+  "oturum_canli_tut": false,
   "sutun_gorunurlugu": {
     "planli_tarih": true,
     "hasta": true,
