@@ -87,6 +87,9 @@ oturum_loglari/
 .claude/settings.local.json
 kasa_ayarlari.json
 medula_settings.json
+
+# DB connection credentials (each setup has its own; never push real passwords)
+db_config.json
 timing_stats.json
 ekstre_filtre_ayarlari.json
 

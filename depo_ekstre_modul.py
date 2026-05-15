@@ -262,7 +262,7 @@ class DepoEkstreModul:
             activeforeground='white',
             relief="raised",
             bd=3,
-            command=self.ekstre_karsilastir_pencere_ac
+            command=self._karsilastir_btn_tikla
         )
         self.karsilastir_btn.pack(side="left", padx=10)
 
@@ -377,8 +377,10 @@ class DepoEkstreModul:
                     "header_satir": 0,
                     "veri_baslangic_offset": 0,
                     "sutunlar": {
-                        "fatura_no": "Fatura No", "tarih": "Tarih",
-                        "borc": "Fatura Tutarı", "alacak": "İade", "tip": "Tip"
+                        "fatura_no": "Fatura No", "tarih": "Fatura Tarihi",
+                        "fatura_tutari": "Fatura Tutarı", "borc": "",
+                        "alacak": "İade/Çık Tut", "tip": "Tipi",
+                        "aciklama": "İlgili Adı"
                     },
                     "fatura_no_regex": "",
                     "duzenlenebilir": False
@@ -540,7 +542,10 @@ class DepoEkstreModul:
         # Fatura Tutarı öncelikli; yoksa Borç kullan (eşleştirme tek alan üzerinden gider)
         def _bos_mu(seri):
             try:
-                return seri.astype(str).str.strip().replace('nan', '').eq('').all()
+                # NaN-only float kolonları: astype(str) NaN'leri string yapmaz, isna() ile yakala
+                if seri.isna().all():
+                    return True
+                return seri.fillna('').astype(str).str.strip().replace('nan', '').eq('').all()
             except Exception:
                 return True
         if _bos_mu(yeni['Fatura Tutarı']) and not _bos_mu(yeni['Borç']):
@@ -1021,9 +1026,20 @@ class DepoEkstreModul:
                     return False
                 return True
 
+            def _lift_self():
+                # Drop sonrası Windows focus'u Explorer/ana_menu'ye veriyor — modül penceresini geri öne al
+                try:
+                    self.root.lift()
+                    self.root.focus_force()
+                    self.root.attributes('-topmost', True)
+                    self.root.after(200, lambda: self.root.attributes('-topmost', False))
+                except Exception:
+                    pass
+
             # DEPO alanı için drop handler
             def handle_drop_depo(files):
                 if not files:
+                    _lift_self()
                     return
                 try:
                     file_path = decode_file_path(files[0])
@@ -1032,10 +1048,13 @@ class DepoEkstreModul:
                         self.drop_area1.config(text="✅ Dosya yüklendi", bg='#C8E6C9')
                 except Exception as e:
                     logger.error(f"Depo drop hatası: {e}")
+                finally:
+                    _lift_self()
 
             # ECZANE alanı için drop handler
             def handle_drop_eczane(files):
                 if not files:
+                    _lift_self()
                     return
                 try:
                     file_path = decode_file_path(files[0])
@@ -1044,6 +1063,8 @@ class DepoEkstreModul:
                         self.drop_area2.config(text="✅ Dosya yüklendi", bg='#C8E6C9')
                 except Exception as e:
                     logger.error(f"Eczane drop hatası: {e}")
+                finally:
+                    _lift_self()
 
             # Her alan için ayrı hook
             windnd.hook_dropfiles(self.drop_area1, func=handle_drop_depo)
@@ -1071,14 +1092,39 @@ class DepoEkstreModul:
                 self.ekstre_dosya2_path.set(dosya_yolu)
                 self.drop_area2.config(text="✅ Dosya yüklendi", bg='#C8E6C9')
 
+    def _diag_log(self, mesaj):
+        """Her durumda depo_ekstre_hata.log'a yaz — tanı için"""
+        try:
+            log_yolu = os.path.join(os.path.dirname(__file__), "depo_ekstre_hata.log")
+            with open(log_yolu, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now().isoformat()} {mesaj}\n")
+        except Exception:
+            pass
+
+    def _karsilastir_btn_tikla(self):
+        """KARŞILAŞTIR butonu wrapper — basıldığında görsel + log onayı verir, sonra normal akışı başlatır"""
+        self._diag_log("[BUTON] KARŞILAŞTIR tıklandı ✓")
+        try:
+            self.ekstre_karsilastir_pencere_ac()
+        except Exception as e:
+            import traceback
+            self._diag_log(f"[BUTON] wrapper-dışı HATA: {e}\n{traceback.format_exc()}")
+            messagebox.showerror("Hata", f"Karşılaştırma çağrısı patladı:\n{e}")
+
     def ekstre_karsilastir_pencere_ac(self):
         """Büyük karşılaştırma penceresini aç"""
         import pandas as pd
 
+        self._diag_log("="*60)
+        self._diag_log("[karsilastir] GİRİŞ")
+
         dosya1 = self.ekstre_dosya1_path.get()
         dosya2 = self.ekstre_dosya2_path.get()
+        self._diag_log(f"[karsilastir] dosya1='{dosya1}'")
+        self._diag_log(f"[karsilastir] dosya2='{dosya2}'")
 
         if not dosya1 or not dosya2:
+            self._diag_log("[karsilastir] DOSYA EKSİK — uyarı gösteriliyor")
             messagebox.showwarning("Uyarı", "Lütfen her iki Excel dosyasını da seçin!")
             return
 
@@ -1087,15 +1133,29 @@ class DepoEkstreModul:
             sablon_adi = self.aktif_depo_sablon.get()
             sablon = self.depo_sablonlari_data.get('sablonlar', {}).get(sablon_adi, {})
             header_satir = sablon.get('header_satir', 0)
+            self._diag_log(f"[karsilastir] aktif_sablon='{sablon_adi}' header_satir={header_satir}")
+            self._diag_log(f"[karsilastir] sablon.sutunlar={sablon.get('sutunlar', {})}")
+
             df_depo_raw = self._excel_oku_guvenli(dosya1, header_satir=header_satir)
+            self._diag_log(f"[karsilastir] DEPO ham kolonlar: {list(df_depo_raw.columns)}")
+            self._diag_log(f"[karsilastir] DEPO ham satır: {len(df_depo_raw)}")
+
             if sablon and sablon.get('sutunlar'):
                 df_depo = self._depo_sablon_uygula(df_depo_raw, sablon)
                 logger.info(f"Depo şablonu uygulandı: '{sablon_adi}' (header={header_satir})")
+                self._diag_log(f"[karsilastir] DEPO şablon-sonrası kolonlar: {list(df_depo.columns)}")
+                self._diag_log(f"[karsilastir] DEPO şablon-sonrası satır: {len(df_depo)}")
             else:
                 df_depo = df_depo_raw
+                self._diag_log("[karsilastir] DEPO şablonsuz (sutunlar tanımsız)")
 
             df_eczane = pd.read_excel(dosya2)
+            self._diag_log(f"[karsilastir] ECZANE kolonlar: {list(df_eczane.columns)}")
+            self._diag_log(f"[karsilastir] ECZANE satır: {len(df_eczane)}")
+
+            self._diag_log("[karsilastir] _ekstre_sonuc_penceresi_olustur çağrılıyor")
             self._ekstre_sonuc_penceresi_olustur(df_depo, df_eczane, dosya1, dosya2)
+            self._diag_log("[karsilastir] BAŞARILI — sonuç penceresi açıldı")
 
         except PermissionError as e:
             dosya_adi = dosya1 if 'DEPO' in str(e).upper() else dosya2
@@ -1109,6 +1169,10 @@ class DepoEkstreModul:
                 f"✅ Çözüm: Excel dosyasını kapatın ve tekrar deneyin"
             )
         except Exception as e:
+            import traceback
+            tb_str = traceback.format_exc()
+            self._diag_log(f"[karsilastir] HATA: {e}")
+            self._diag_log(f"[karsilastir] traceback:\n{tb_str}")
             # Sonuç penceresi yarı yolda kaldıysa kapat — yoksa altında messagebox saklanır, GUI donmuş görünür
             if getattr(self, '_sonuc_pencere', None) is not None:
                 try:
@@ -1116,7 +1180,7 @@ class DepoEkstreModul:
                 except Exception:
                     pass
                 self._sonuc_pencere = None
-            messagebox.showerror("Hata", f"Dosya okuma hatası: {str(e)}")
+            messagebox.showerror("Hata", f"Dosya okuma hatası:\n\n{str(e)}\n\nDetay: depo_ekstre_hata.log")
             logger.error(f"Ekstre dosya okuma hatası: {e}", exc_info=True)
 
     def _ekstre_sonuc_penceresi_olustur(self, df_depo, df_eczane, dosya1_yol, dosya2_yol):
@@ -1208,6 +1272,8 @@ class DepoEkstreModul:
         # Sütun kontrolü ve bilgi
         logger.info(f"DEPO sütunları: Fatura={depo_fatura_col}, Borç={depo_borc_col}, Alacak={depo_alacak_col}")
         logger.info(f"ECZANE sütunları: Fatura={eczane_fatura_col}, Borç={eczane_borc_col}, Alacak={eczane_alacak_col}")
+        self._diag_log(f"[sonuc_pencere] DEPO eşleme: Fatura={depo_fatura_col} Borç={depo_borc_col} Alacak={depo_alacak_col} Tarih={depo_tarih_col} Tip={depo_tip_col}")
+        self._diag_log(f"[sonuc_pencere] ECZANE eşleme: Fatura={eczane_fatura_col} Borç={eczane_borc_col} Alacak={eczane_alacak_col} Tarih={eczane_tarih_col} Tip={eczane_tip_col}")
 
         hatalar = []
         if not depo_fatura_col:
@@ -1226,9 +1292,11 @@ class DepoEkstreModul:
             logger.warning(f"ECZANE'de Alacak/Çıkış sütunu bulunamadı. Çıkış faturaları 0 tutar gösterebilir. Mevcut sütunlar: {list(df_eczane.columns)}")
 
         if hatalar:
+            self._diag_log(f"[sonuc_pencere] SÜTUN HATALARI: {hatalar}")
             messagebox.showerror("Sütun Bulunamadı", "\n\n".join(hatalar))
             if not depo_fatura_col or not eczane_fatura_col:
                 pencere.destroy()
+                self._sonuc_pencere = None
                 return
 
         # Filtre fonksiyonu
@@ -3183,7 +3251,11 @@ class DepoEkstreModul:
         """DataFrame'de sütun bul — tamamen boş kolonu atla (şablon kaynağı tanımsız bırakılmış olabilir)"""
         def _kolon_bos_mu(col_name):
             try:
-                return df[col_name].astype(str).str.strip().replace('nan', '').eq('').all()
+                seri = df[col_name]
+                # NaN-only float kolonları: astype(str) NaN'leri string yapmaz, isna() ile yakala
+                if seri.isna().all():
+                    return True
+                return seri.fillna('').astype(str).str.strip().replace('nan', '').eq('').all()
             except Exception:
                 return False
         for alt in alternatifler:

@@ -59,12 +59,15 @@ class BotanikDB:
     }
 
     # PRODUCTION ortamı - db_config.json varsa oradan okunur, yoksa fallback
+    # 2026-05-14: sa/123 -> calede (db_datareader + DENY'li salt-okuma).
+    # SQL Server motoru calede icin INSERT/UPDATE/DELETE/DDL/EXEC DENY etti;
+    # bu sayede config silinse bile EczAsist asla yazma yapamaz.
     _FALLBACK_CONFIG = {
-        'server': '192.168.1.120\BOTANIKSQL',
+        'server': r'192.168.1.120\BOTANIKSQL',
         'database': 'eczane',
         'trusted_connection': False,
-        'user': 'sa',
-        'password': '123',
+        'user': 'calede',
+        'password': '152634485967',
         'trust_server_certificate': True
     }
 
@@ -75,11 +78,13 @@ class BotanikDB:
     # Varsayılan olarak PRODUCTION kullan
     DEFAULT_CONFIG = PRODUCTION_CONFIG
 
-    # YASAKLI SQL KOMUTLARI - GÜVENLİK
-    YASAKLI_KOMUTLAR = [
+    # Referans: kirmizi cizgi listesi (CLAUDE.md §2).
+    # 2026-05-14'ten beri guard allow-list mantigi kullaniyor (sadece SELECT/WITH);
+    # bu liste artik aktif kontrolde kullanilmiyor, sadece dokuman amacli kaldi.
+    YASAKLI_KOMUTLAR_REFERANS = [
         'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER',
         'TRUNCATE', 'EXEC', 'EXECUTE', 'GRANT', 'REVOKE', 'DENY',
-        'BACKUP', 'RESTORE', 'SHUTDOWN', 'KILL'
+        'BACKUP', 'RESTORE', 'SHUTDOWN', 'KILL', 'MERGE',
     ]
 
     def __init__(self, config: Optional[Dict] = None, production: bool = True):
@@ -141,29 +146,78 @@ class BotanikDB:
 
     def _guvenlik_kontrolu(self, sql: str) -> bool:
         """
-        SQL sorgusunun güvenli olup olmadığını kontrol et.
-        Sadece SELECT sorgularına izin verilir.
+        ALLOW-LIST guard: sorgu mutlaka SELECT veya WITH (CTE) ile baslamali.
+
+        - Lider yorumlar (-- ve /* */) atlanir
+        - Lider noktali virgul tolere edilir (;WITH kalibi icin)
+        - Bos / sadece-yorum / SELECT|WITH disi tum sorgular reddedilir
+
+        Defense-in-depth: SQL Server motoru calede icin INSERT/UPDATE/DELETE/
+        ALTER/CREATE/EXECUTE vb.'yi DENY etti — bu guard ek bir kullanici-hatasi
+        ve yanlislikla yazma denemesi yakalayicisi.
 
         Returns:
-            True: Sorgu güvenli
-            False: Sorgu tehlikeli komut içeriyor
+            True: SELECT/WITH ile basliyor, calistirilabilir
+            False: Reddedildi (yazma niyeti veya bozuk sorgu)
         """
-        sql_upper = sql.upper().strip()
+        if not sql or not sql.strip():
+            logger.error("GUVENLIK: Bos sorgu reddedildi")
+            return False
 
-        # Yasaklı komutları kontrol et
-        for komut in self.YASAKLI_KOMUTLAR:
-            # Kelimenin başında veya boşluktan sonra gelen komutları kontrol et
-            if sql_upper.startswith(komut + ' ') or sql_upper.startswith(komut + '('):
-                logger.error(f"GÜVENLİK UYARISI: Yasaklı komut tespit edildi: {komut}")
-                return False
-            # Sorgu içinde de kontrol et (alt sorgular hariç SELECT)
-            if f' {komut} ' in f' {sql_upper} ' or f';{komut} ' in sql_upper:
-                # WITH ... AS yapısında INSERT vb. olmamalı
-                if komut != 'AS':  # AS keyword'ü WITH için gerekli
-                    logger.error(f"GÜVENLİK UYARISI: Yasaklı komut tespit edildi: {komut}")
+        kalan = sql.strip()
+        guvenlik_sayaci = 0  # Sonsuz dongu koruma
+        while kalan and guvenlik_sayaci < 100:
+            guvenlik_sayaci += 1
+            # Lider noktali virgul (;WITH kalibi icin)
+            if kalan.startswith(';'):
+                kalan = kalan[1:].lstrip()
+                continue
+            # Tek satir yorum
+            if kalan.startswith('--'):
+                nl = kalan.find('\n')
+                if nl < 0:
+                    logger.error("GUVENLIK: Sorgu tamamen yorumdan ibaret")
                     return False
+                kalan = kalan[nl + 1:].lstrip()
+                continue
+            # Blok yorum
+            if kalan.startswith('/*'):
+                kapanis = kalan.find('*/')
+                if kapanis < 0:
+                    logger.error("GUVENLIK: Kapanmamis blok yorum")
+                    return False
+                kalan = kalan[kapanis + 2:].lstrip()
+                continue
+            break
 
-        return True
+        if not kalan:
+            logger.error("GUVENLIK: Yorumlar sonrasi bos sorgu")
+            return False
+
+        # Ilk kelimeyi izole et
+        kalan_uc = kalan.upper()
+        for izinli in ('SELECT', 'WITH'):
+            if kalan_uc.startswith(izinli):
+                sonraki_idx = len(izinli)
+                if len(kalan_uc) == sonraki_idx:
+                    return True  # cikis token: sadece SELECT/WITH
+                sonraki_kar = kalan_uc[sonraki_idx]
+                # Whitespace veya parantez OK; harf/rakam ise SELECTOR/WITHIN gibi yanlis match
+                if sonraki_kar in ' \t\n\r\f\v(':
+                    return True
+                # Devam: yanlis match, izinli liste icinde olmayan token'a dustuk
+                break
+
+        # Reddedildi — ilk token'i logla
+        try:
+            ilk_token = kalan_uc.split(None, 1)[0][:20]
+        except Exception:
+            ilk_token = '???'
+        logger.error(
+            "GUVENLIK: Sadece SELECT/WITH izinli; reddedilen ilk token: %s",
+            ilk_token,
+        )
+        return False
 
     def sorgu_calistir(self, sql: str, params: tuple = None) -> List[Dict]:
         """

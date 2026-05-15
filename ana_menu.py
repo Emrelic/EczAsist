@@ -638,7 +638,9 @@ class AnaMenu:
         """Yedek Klasörü Boşaltma modülünü aç"""
         try:
             from yedek_temizlik_modul import yedek_temizlik_modulu_ac
-            yedek_temizlik_modulu_ac(self.root)
+            yedek_pencere = yedek_temizlik_modulu_ac(self.root)
+            if yedek_pencere is not None:
+                self._ana_pencere_gizle_modul_acikken(yedek_pencere)
         except Exception as exc:
             logger.error(f"Yedek temizlik modülü açılamadı: {exc}", exc_info=True)
             messagebox.showerror("Hata", f"Modül açılamadı:\n{exc}")
@@ -892,13 +894,40 @@ class AnaMenu:
         try:
             self._yeniden_yukle("fatih_siparisci_launcher")
             from fatih_siparisci_launcher import fatih_siparisci_baslat
-            fatih_siparisci_baslat(parent=self.root)
+            proc = fatih_siparisci_baslat(parent=self.root)
+            if proc is not None:
+                self._ana_pencereyi_subprocess_icin_gizle(proc)
         except ImportError as e:
             logger.error(f"Fatih Siparişçi launcher import hatası: {e}")
             messagebox.showerror("Hata", "Fatih Siparişçi launcher yüklenemedi.")
         except Exception as e:
             logger.error(f"Fatih Siparişçi başlatma hatası: {e}")
             messagebox.showerror("Hata", f"Fatih Siparişçi başlatılamadı:\n{e}")
+
+    def _ana_pencereyi_subprocess_icin_gizle(self, proc):
+        """Detached subprocess (örn. Fatih Siparişçi) için iconify + 1sn'de bir poll ile geri getir."""
+        try:
+            self.root.iconify()
+        except Exception:
+            pass
+
+        def _poll():
+            try:
+                if proc.poll() is not None:
+                    # Process bitti — başka açık modül yoksa ana menüyü göster
+                    kalan = [p for p in self.acik_moduller.values() if p.winfo_exists()]
+                    if not kalan:
+                        try:
+                            self.root.deiconify()
+                            self.root.lift()
+                            self.root.focus_force()
+                        except Exception:
+                            pass
+                    return
+                self.root.after(1000, _poll)
+            except Exception:
+                pass
+        self.root.after(1000, _poll)
 
     def hibrit_siparisci_ac(self):
         """Hibrit Siparişçi — bizim sipariş listesi + Fatih'in depo motoru"""
@@ -1047,6 +1076,8 @@ class AnaMenu:
             from kullanici_yonetimi_gui import KullaniciYonetimiPenceresi
 
             yonetim_pencere = KullaniciYonetimiPenceresi(self.root, self.kullanici)
+            if getattr(yonetim_pencere, 'pencere', None) is not None:
+                self._ana_pencere_gizle_modul_acikken(yonetim_pencere.pencere)
 
         except ImportError:
             messagebox.showerror("Hata", "Kullanıcı yönetimi modülü bulunamadı.")
@@ -1089,6 +1120,10 @@ class AnaMenu:
                         pass
                     eski.lift()
                     eski.focus_force()
+                    try:
+                        self.root.iconify()
+                    except Exception:
+                        pass
                     return None
             except tk.TclError:
                 pass
@@ -1109,7 +1144,31 @@ class AnaMenu:
         yeni.bind('<Destroy>', _on_destroy)
 
         self.acik_moduller[modul_key] = yeni
+        self._ana_pencere_gizle_modul_acikken(yeni)
         return yeni
+
+    def _ana_pencere_gizle_modul_acikken(self, modul_pencere):
+        """Modül penceresi açıkken ana menüyü görev çubuğuna in; modül kapanınca geri getir."""
+        try:
+            self.root.iconify()
+        except Exception:
+            pass
+
+        def _geri_getir(event, w=modul_pencere):
+            if event.widget is not w:
+                return
+            # Başka açık modül yoksa ana menüyü geri getir
+            kalan = [p for p in self.acik_moduller.values()
+                     if p is not w and p.winfo_exists()]
+            if kalan:
+                return
+            try:
+                self.root.deiconify()
+                self.root.lift()
+                self.root.focus_force()
+            except Exception:
+                pass
+        modul_pencere.bind('<Destroy>', _geri_getir, add='+')
 
     # ---------------- Medula Canlı Tut ----------------
     def _medula_canli_toggle(self):

@@ -25,11 +25,16 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_YOLU = os.path.join(_SCRIPT_DIR, "pencere_yerlesim.json")
 
 
-def _medula_hwnd_bul() -> Optional[int]:
+def _medula_hwnd_bul(strict: bool = False) -> Optional[int]:
     """MEDULA / BotanikEOS ana penceresinin HWND'sini döndürür.
 
     Title'da "MEDULA" geçen ilk görünür pencere; bulunamazsa
     "BotanikEOS" + "(T)" içeren pencere aranır.
+
+    strict=True ise BotanikEOS fallback'i devre dışı — sadece title'da
+    "MEDULA" geçen pencere döndürülür. Medula-spesifik işlemlerde
+    (keepalive, F5, Giriş butonu tıklama) Botanik EOS'a yanlışlıkla
+    tıklama yapılmaması için kullanılır.
     """
     if not _WIN32_VAR:
         return None
@@ -63,6 +68,8 @@ def _medula_hwnd_bul() -> Optional[int]:
 
     if adaylar_medula:
         return adaylar_medula[0]
+    if strict:
+        return None
     if adaylar_eos:
         return adaylar_eos[0]
     return None

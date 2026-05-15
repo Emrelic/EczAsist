@@ -41,6 +41,9 @@ class KullaniciYonetimi:
         "stok_maliyet_analiz": "Stok Maliyet Analizi",
         "prim_raporlama": "Prim Raporlama",
         "hasta_takip": "Hasta Takip & WhatsApp",
+        "fatih_siparisci": "Fatih Siparişçi (Müstakil)",
+        "hibrit_siparisci": "Hibrit Siparişçi",
+        "yedek_temizlik": "Yedek Klasörü Boşaltma",
         "kullanici_yonetimi": "Kullanıcı Yönetimi"
     }
 

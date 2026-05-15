@@ -4,9 +4,13 @@ MEDULA Oturum Canlı Tutucu
 MEDULA penceresine yapılan tıklamaları dinler.
 Belirli süre (varsayılan 110 sn = 1 dk 50 sn) boyunca MEDULA içinde
 tıklama olmazsa:
-  1) MEDULA'ya F5 gönder (sayfa yenile)
-  2) Açılan popup'taki "Tamam" / "OK" / "Evet" butonuna bas
-  3) 300 ms sonra Enter gönder
+  - MEDULA penceresindeki "Giriş" butonuna pywinauto invoke ile
+    sessizce tıklar (foreground'a alınmaz, kullanıcının çalışması
+    kesintiye uğramaz).
+
+ÖNEMLİ: Pencere tarama strict=True yapılır — Medula yoksa hiçbir şey
+yapılmaz. Botanik EOS ana penceresine yanlışlıkla F5/tıklama gönderme
+bug'ı (fallback yoluyla) bu sayede engellenir.
 """
 
 import logging
@@ -18,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 IDLE_ESIK_SN = 110           # 1 dakika 50 saniye
 TARAMA_ARALIK_SN = 2
-POPUP_ENTER_GECIKME_SN = 0.3
-POPUP_BEKLEME_SN = 3.0       # F5 sonrası popup kaç saniye beklensin
 
 
 class MedulaOturumCanli:
@@ -38,7 +40,7 @@ class MedulaOturumCanli:
         try:
             import win32gui
             from pencere_yerlesim import _medula_hwnd_bul
-            hwnd = _medula_hwnd_bul()
+            hwnd = _medula_hwnd_bul(strict=True)
             if not hwnd:
                 return None
             return win32gui.GetWindowRect(hwnd)  # (L, T, R, B)
@@ -68,313 +70,85 @@ class MedulaOturumCanli:
 
     # ---------------------------------------------------------------- refresh
 
-    def _popup_tamam_tikla(self) -> bool:
-        """F5 sonrası açılan popup'taki 'Yeniden Dene' / 'Tamam' butonuna bas.
-
-        Native #32770 Windows dialog'u BM_CLICK'i yoksayar — gerçek mouse
-        click simülasyonu (click_input) gerekir.
-
-        SALT NAVİGASYON — veri değiştirmez.
-        """
-        # Yeniden Dene öncelikli (IE "retry" popup'ı)
-        hedef_captions = ("Yeniden Dene", "Tamam", "OK", "Evet", "Yes")
-
-        # 1) win32gui ile popup HWND'sini hızlıca bul
-        try:
-            import win32gui
-        except Exception:
-            win32gui = None
-
-        popup_hwnd = None
-        if win32gui is not None:
-            hedef_dialog = [None]
-
-            def _enum_top(top_hwnd, _):
-                try:
-                    if not win32gui.IsWindowVisible(top_hwnd):
-                        return True
-                    title = (win32gui.GetWindowText(top_hwnd) or "").strip()
-                    if len(title) > 100:
-                        return True
-                    # #32770 (standart dialog) veya sahte dialog adayları
-                    try:
-                        cls = win32gui.GetClassName(top_hwnd) or ""
-                    except Exception:
-                        cls = ""
-                    if cls != "#32770":
-                        return True
-                    # Çocuk butonlarını kontrol et — hedef caption var mı?
-                    bulundu = [False]
-
-                    def _enum_child(c_hwnd, __):
-                        try:
-                            ccls = win32gui.GetClassName(c_hwnd) or ""
-                            if ccls != "Button":
-                                return True
-                            cap = (win32gui.GetWindowText(c_hwnd) or "").strip()
-                            cap_tmz = cap.replace("&", "")
-                            if cap_tmz in hedef_captions:
-                                bulundu[0] = True
-                                return False
-                        except Exception:
-                            pass
-                        return True
-
-                    try:
-                        win32gui.EnumChildWindows(top_hwnd, _enum_child, None)
-                    except Exception:
-                        pass
-                    if bulundu[0]:
-                        hedef_dialog[0] = (top_hwnd, title)
-                        return False
-                except Exception:
-                    pass
-                return True
-
-            try:
-                win32gui.EnumWindows(_enum_top, None)
-            except Exception:
-                pass
-            if hedef_dialog[0]:
-                popup_hwnd, popup_title = hedef_dialog[0]
-                logger.debug(f"[OTURUM] Popup HWND bulundu: {popup_hwnd:x} '{popup_title}'")
-
-        # 2) Popup yoksa None dön
-        if popup_hwnd is None:
-            return False
-
-        # 3) ÖNCE: WM_COMMAND IDRETRY (4) — #32770 dialog'a native komut
-        # IDRETRY=4, IDOK=1, IDCANCEL=2, IDYES=6
-        # Popup'ta Yeniden Dene butonu varsa IDRETRY yeterli olur
-        try:
-            import win32con
-            # IDRETRY önce dene (Yeniden Dene için)
-            for idx in (4, 1, 6):  # IDRETRY, IDOK, IDYES
-                try:
-                    win32gui.PostMessage(
-                        popup_hwnd, win32con.WM_COMMAND, idx, 0,
-                    )
-                    logger.info(
-                        f"[OTURUM] Popup '{popup_title}' → WM_COMMAND "
-                        f"id={idx} gönderildi"
-                    )
-                    # Popup'un kapanmasını bekle (max 1 sn)
-                    import time as _t
-                    for _ in range(10):
-                        _t.sleep(0.1)
-                        if not win32gui.IsWindow(popup_hwnd):
-                            return True
-                        if not win32gui.IsWindowVisible(popup_hwnd):
-                            return True
-                    # Hala duruyorsa bir sonraki id'yi dene
-                except Exception as e:
-                    logger.debug(f"WM_COMMAND {idx} hatası: {e}")
-        except Exception as e:
-            logger.debug(f"WM_COMMAND yolu hatası: {e}")
-
-        # 4) FALLBACK: pywinauto UIA ile click_input (gerçek mouse)
-        try:
-            from pywinauto import Application
-            app = Application(backend="uia").connect(handle=popup_hwnd)
-            w = app.window(handle=popup_hwnd)
-            hedef_btn = None
-            secilen_cap = None
-            for hc in hedef_captions:
-                if hedef_btn is not None:
-                    break
-                try:
-                    for b in w.descendants(control_type="Button"):
-                        try:
-                            cap = (b.window_text() or "").strip().replace("&", "")
-                            if cap == hc:
-                                hedef_btn = b
-                                secilen_cap = cap
-                                break
-                        except Exception:
-                            continue
-                except Exception:
-                    continue
-            if hedef_btn is None:
-                logger.debug("[OTURUM] Popup içinde hedef buton bulunamadı")
-                return False
-            try:
-                hedef_btn.click_input()
-                logger.info(
-                    f"[OTURUM] Popup '{popup_title}' → '{secilen_cap}' (click_input)"
-                )
-                return True
-            except Exception as e:
-                logger.debug(f"click_input hatası: {e}")
-                try:
-                    hedef_btn.invoke()
-                    logger.info(
-                        f"[OTURUM] Popup '{popup_title}' → '{secilen_cap}' (invoke)"
-                    )
-                    return True
-                except Exception as e2:
-                    logger.debug(f"invoke hatası: {e2}")
-        except Exception as e:
-            logger.debug(f"UIA connect hatası: {e}")
-        return False
-
     def _medula_hwnd(self):
-        """MEDULA ana HWND'sini bul (is_visible takıntısı olmadan)."""
+        """MEDULA ana HWND'sini bul — strict (Botanik EOS fallback YOK)."""
         try:
             from pencere_yerlesim import _medula_hwnd_bul
-            return _medula_hwnd_bul()
+            return _medula_hwnd_bul(strict=True)
         except Exception:
             return None
 
-    def _ie_server_hwnd(self, parent_hwnd):
-        """MEDULA içindeki Internet Explorer_Server child HWND'sini bul."""
+    def _giris_butonu_tikla(self, hwnd) -> bool:
+        """Medula penceresindeki 'Giriş' butonuna pywinauto invoke ile tıkla.
+
+        SALT NAVİGASYON — veri değiştirmez. Foreground'a alınmaz,
+        kullanıcı başka modülde çalışıyor olabilir (sessiz).
+        """
         try:
-            import win32gui
-            bulunan = [None]
-
-            def _enum(h, _):
-                try:
-                    cls = win32gui.GetClassName(h) or ""
-                    if "Internet Explorer_Server" in cls:
-                        bulunan[0] = h
-                        return False
-                except Exception:
-                    pass
-                return True
-
-            try:
-                win32gui.EnumChildWindows(parent_hwnd, _enum, None)
-            except Exception:
-                pass
-            return bulunan[0]
+            from pywinauto import Application
         except Exception as e:
-            logger.debug(f"IE server bul hatası: {e}")
-            return None
-
-    def _medulayi_one_getir(self, hwnd) -> bool:
-        """SetForegroundWindow Windows foreground lock'u aşsın diye
-        önce ALT-down/ALT-up göndererek 'input state'i sıfırla."""
-        try:
-            import ctypes
-            user32 = ctypes.windll.user32
-            # ALT basıp bırak (foreground lock geçici olarak açılır)
-            user32.keybd_event(0x12, 0, 0, 0)       # ALT down
-            user32.keybd_event(0x12, 0, 0x0002, 0)  # ALT up
-            time.sleep(0.02)
-            try:
-                import win32gui
-                import win32con
-                # Maximize/Restore isimlemeyelim — sadece öne getir
-                try:
-                    if win32gui.IsIconic(hwnd):
-                        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-                except Exception:
-                    pass
-                user32.BringWindowToTop(hwnd)
-                user32.SetForegroundWindow(hwnd)
-                return True
-            except Exception as e:
-                logger.debug(f"SetForegroundWindow hatası: {e}")
-                return False
-        except Exception as e:
-            logger.debug(f"_medulayi_one_getir hatası: {e}")
+            logger.error(f"[OTURUM] pywinauto yok: {e}")
             return False
 
-    def _tus_gonder_vk(self, vk: int, hwnd: int = None):
-        """Tuş gönder. Sıra:
-           1. pyautogui (aktif pencereye)
-           2. PostMessage (arkaplandayken)
-        """
-        basarili = False
-        # 1. pyautogui (aktif pencereye gider)
         try:
-            import pyautogui
-            isim = {0x74: "f5", 0x0D: "enter"}.get(vk, str(vk))
-            pyautogui.press(isim)
-            basarili = True
-            logger.debug(f"[OTURUM] Tuş pyautogui ile gönderildi: {isim}")
+            app = Application(backend="uia").connect(handle=hwnd)
+            w = app.window(handle=hwnd)
         except Exception as e:
-            logger.debug(f"pyautogui.press hatası: {e}")
+            logger.debug(f"[OTURUM] UIA connect hatası: {e}")
+            return False
 
-        # 2. PostMessage — IE_Server varsa oraya, yoksa ana HWND'ye
-        if hwnd:
-            try:
-                import win32api
-                import win32con
-                hedef = self._ie_server_hwnd(hwnd) or hwnd
-                win32api.PostMessage(hedef, win32con.WM_KEYDOWN, vk, 0)
-                time.sleep(0.03)
-                win32api.PostMessage(hedef, win32con.WM_KEYUP, vk, 0)
-                basarili = True
-                logger.debug(
-                    f"[OTURUM] Tuş PostMessage ile gönderildi: vk={vk:x} hwnd={hedef}"
-                )
-            except Exception as e:
-                logger.debug(f"PostMessage hatası: {e}")
-        return basarili
+        try:
+            for b in w.descendants(control_type="Button"):
+                try:
+                    cap = (b.window_text() or "").strip().replace("&", "")
+                    # WinForms accelerator '&' temizlendi; Türkçe büyük/küçük tolere
+                    if cap == "Giriş" or cap.lower() == "giriş":
+                        try:
+                            b.invoke()
+                            logger.info("[OTURUM] ✓ Medula 'Giriş' invoke edildi")
+                            return True
+                        except Exception as e:
+                            logger.debug(f"[OTURUM] invoke hatası: {e}")
+                            # invoke desteklenmiyorsa click_input (gerçek mouse)
+                            try:
+                                b.click_input()
+                                logger.info(
+                                    "[OTURUM] ✓ Medula 'Giriş' click_input edildi"
+                                )
+                                return True
+                            except Exception as e2:
+                                logger.debug(f"[OTURUM] click_input hatası: {e2}")
+                                return False
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug(f"[OTURUM] Buton tarama hatası: {e}")
+            return False
+
+        logger.warning("[OTURUM] Medula penceresinde 'Giriş' butonu bulunamadı")
+        return False
 
     def _oturumu_yenile(self):
-        """F5 → popup 'Yeniden Dene' butonuna bas.
+        """Medula 'Giriş' butonuna sessizce tıklayarak oturumu canlı tutar.
 
-        Enter işe yaramadığı için kaldırıldı. Popup 'Yeniden Dene' / 'Tamam'
-        butonu native Win32 Button — BM_CLICK ile tıklanır.
-
-        İş bittiğinde odak, yenileme öncesindeki pencereye geri verilir
-        (kullanıcı başka modülde çalışıyorsa kesintiye uğramasın).
+        Botanik EOS fallback'i kapatıldığı için Medula penceresi yoksa
+        hiçbir şey yapılmaz (bu, daha önce Botanik EOS'a F5/tıklama
+        gönderilen bug'ı engeller).
         """
-        logger.info(f"[OTURUM] {IDLE_ESIK_SN}s idle — oturum yenileniyor")
-
-        # Yenileme öncesi foreground'u sakla
-        prev_hwnd = None
-        try:
-            import win32gui as _wg
-            prev_hwnd = _wg.GetForegroundWindow()
-        except Exception:
-            pass
-
+        logger.info(f"[OTURUM] {IDLE_ESIK_SN}s idle — Medula Giriş'e tıklanıyor")
         try:
             hwnd = self._medula_hwnd()
             if not hwnd:
-                logger.warning("[OTURUM] MEDULA HWND bulunamadı")
+                logger.warning(
+                    "[OTURUM] Medula penceresi bulunamadı — atlanıyor "
+                    "(Botanik EOS'a tıklanmaz)"
+                )
                 return
 
-            # 1) MEDULA'yı öne getir
-            one_alindi = self._medulayi_one_getir(hwnd)
-            time.sleep(0.15 if one_alindi else 0.05)
-
-            # 2) F5 gönder (çifte yol: pyautogui + PostMessage)
-            logger.info("[OTURUM] → F5 gönderiliyor")
-            self._tus_gonder_vk(0x74, hwnd)  # VK_F5
-
-            # 3) Popup görünene kadar inatçı tara — her 150 ms,
-            #    toplam POPUP_BEKLEME_SN süresince
-            tiklandi = False
-            son = time.monotonic() + POPUP_BEKLEME_SN
-            while time.monotonic() < son:
-                time.sleep(0.15)
-                if self._popup_tamam_tikla():
-                    tiklandi = True
-                    break
-
-            if tiklandi:
-                logger.info("[OTURUM] ✓ F5 + Yeniden Dene tamamlandı")
-            else:
-                logger.debug("[OTURUM] Popup bulunamadı — sadece F5 yeterli")
-            self._son_yenileme_ts = time.monotonic()
+            if self._giris_butonu_tikla(hwnd):
+                self._son_yenileme_ts = time.monotonic()
         except Exception as e:
             logger.error(f"[OTURUM] Yenileme hatası: {e}", exc_info=True)
-        finally:
-            # Odağı kullanıcının çalıştığı pencereye geri ver
-            if prev_hwnd:
-                try:
-                    import ctypes as _c
-                    user32 = _c.windll.user32
-                    # Foreground lock'u aşmak için ALT trick
-                    user32.keybd_event(0x12, 0, 0, 0)        # ALT down
-                    user32.keybd_event(0x12, 0, 0x0002, 0)   # ALT up
-                    time.sleep(0.02)
-                    user32.SetForegroundWindow(prev_hwnd)
-                except Exception as e:
-                    logger.debug(f"[OTURUM] Önceki pencereye dönüş: {e}")
 
     # ---------------------------------------------------------------- loop
 
@@ -468,148 +242,64 @@ def get_servis() -> MedulaOturumCanli:
 # Arka plan (foreground'a almadan) keepalive — ana_menu checkbox için
 # =====================================================================
 
-def _ie_server_hwnd_bul(parent_hwnd):
-    """Medula içindeki Internet Explorer_Server child HWND'sini döndürür."""
-    try:
-        import win32gui
-    except Exception:
-        return None
-    bulunan = [None]
-
-    def _enum(h, _):
-        try:
-            cls = win32gui.GetClassName(h) or ""
-            if "Internet Explorer_Server" in cls:
-                bulunan[0] = h
-                return False
-        except Exception:
-            pass
-        return True
-
-    try:
-        win32gui.EnumChildWindows(parent_hwnd, _enum, None)
-    except Exception:
-        pass
-    return bulunan[0]
-
-
-def _popup_arka_plandan_kapat() -> bool:
-    """F5 sonrası açılan #32770 popup'ı bul, WM_COMMAND IDOK/IDRETRY/IDYES
-    postalayarak arka plandan kapat. Foreground'a almaz, mouse oynatmaz."""
-    hedef_captions = ("Yeniden Dene", "Tamam", "OK", "Evet", "Yes")
-    try:
-        import win32con
-        import win32gui
-    except Exception:
-        return False
-
-    hedef = [None]
-
-    def _enum_top(top_hwnd, _):
-        try:
-            if not win32gui.IsWindowVisible(top_hwnd):
-                return True
-            try:
-                cls = win32gui.GetClassName(top_hwnd) or ""
-            except Exception:
-                cls = ""
-            if cls != "#32770":
-                return True
-            bulundu = [False]
-
-            def _enum_child(c_hwnd, __):
-                try:
-                    ccls = win32gui.GetClassName(c_hwnd) or ""
-                    if ccls != "Button":
-                        return True
-                    cap = (win32gui.GetWindowText(c_hwnd) or "").strip()
-                    cap_tmz = cap.replace("&", "")
-                    if cap_tmz in hedef_captions:
-                        bulundu[0] = True
-                        return False
-                except Exception:
-                    pass
-                return True
-
-            try:
-                win32gui.EnumChildWindows(top_hwnd, _enum_child, None)
-            except Exception:
-                pass
-            if bulundu[0]:
-                hedef[0] = top_hwnd
-                return False
-        except Exception:
-            pass
-        return True
-
-    try:
-        win32gui.EnumWindows(_enum_top, None)
-    except Exception:
-        pass
-
-    popup_hwnd = hedef[0]
-    if popup_hwnd is None:
-        return False
-
-    # IDRETRY=4, IDOK=1, IDYES=6
-    for idx in (4, 1, 6):
-        try:
-            win32gui.PostMessage(popup_hwnd, win32con.WM_COMMAND, idx, 0)
-            for _ in range(10):
-                time.sleep(0.1)
-                if not win32gui.IsWindow(popup_hwnd):
-                    return True
-                if not win32gui.IsWindowVisible(popup_hwnd):
-                    return True
-        except Exception:
-            continue
-    return False
-
-
 def arkaplan_yenile() -> bool:
-    """Medula'ya foreground'a almadan F5 + popup kapama gönder.
+    """Medula 'Giriş' butonuna sessizce tıklayarak oturumu canlı tutar.
 
     Akış:
-      1. Medula HWND bul
-      2. IE_Server child HWND bul (yoksa ana HWND'ye)
-      3. WM_KEYDOWN/UP VK_F5 PostMessage (sessiz)
-      4. Popup için ~3 sn poll, bulunca WM_COMMAND IDOK ile kapat
+      1. Medula HWND bul (strict=True, Botanik EOS fallback YOK)
+      2. pywinauto UIA ile 'Giriş' butonunu bul → invoke()
+
+    Foreground'a alınmaz, kullanıcı kesintiye uğramaz.
 
     Returns:
-        True  : F5 gönderildi (popup olsa da olmasa da)
-        False : Medula penceresi yok
+        True  : Giriş butonuna başarıyla tıklandı
+        False : Medula penceresi yok ya da Giriş butonu bulunamadı
     """
-    # 1) Medula HWND
     try:
         from pencere_yerlesim import _medula_hwnd_bul
-        medula_hwnd = _medula_hwnd_bul()
+        medula_hwnd = _medula_hwnd_bul(strict=True)
     except Exception:
         medula_hwnd = None
     if not medula_hwnd:
-        logger.debug("[OTURUM-BG] Medula penceresi bulunamadı")
+        logger.debug(
+            "[OTURUM-BG] Medula penceresi bulunamadı — atlanıyor "
+            "(Botanik EOS'a tıklanmaz)"
+        )
         return False
 
-    # 2) IE_Server child (yoksa ana HWND'ye gönder)
-    hedef_hwnd = _ie_server_hwnd_bul(medula_hwnd) or medula_hwnd
-
-    # 3) F5 PostMessage (foreground değişmez)
     try:
-        import win32api
-        import win32con
-        win32api.PostMessage(hedef_hwnd, win32con.WM_KEYDOWN, 0x74, 0)
-        time.sleep(0.03)
-        win32api.PostMessage(hedef_hwnd, win32con.WM_KEYUP, 0x74, 0)
-        logger.info(f"[OTURUM-BG] F5 → hwnd={hedef_hwnd:x}")
+        from pywinauto import Application
     except Exception as e:
-        logger.error(f"[OTURUM-BG] F5 hatası: {e}")
+        logger.error(f"[OTURUM-BG] pywinauto yok: {e}")
         return False
 
-    # 4) Popup poll → WM_COMMAND ile kapat (sessiz)
-    son = time.monotonic() + POPUP_BEKLEME_SN
-    while time.monotonic() < son:
-        time.sleep(0.15)
-        if _popup_arka_plandan_kapat():
-            logger.info("[OTURUM-BG] Popup arka plandan kapatıldı")
-            return True
-    logger.debug("[OTURUM-BG] Popup yok — sadece F5 yeterli")
-    return True
+    try:
+        app = Application(backend="uia").connect(handle=medula_hwnd)
+        w = app.window(handle=medula_hwnd)
+    except Exception as e:
+        logger.debug(f"[OTURUM-BG] UIA connect hatası: {e}")
+        return False
+
+    try:
+        for b in w.descendants(control_type="Button"):
+            try:
+                cap = (b.window_text() or "").strip().replace("&", "")
+                if cap == "Giriş" or cap.lower() == "giriş":
+                    try:
+                        b.invoke()
+                        logger.info(
+                            f"[OTURUM-BG] ✓ Medula 'Giriş' invoke "
+                            f"→ hwnd={medula_hwnd:x}"
+                        )
+                        return True
+                    except Exception as e:
+                        logger.debug(f"[OTURUM-BG] invoke hatası: {e}")
+                        return False
+            except Exception:
+                continue
+    except Exception as e:
+        logger.debug(f"[OTURUM-BG] Buton tarama hatası: {e}")
+        return False
+
+    logger.warning("[OTURUM-BG] Medula penceresinde 'Giriş' butonu bulunamadı")
+    return False

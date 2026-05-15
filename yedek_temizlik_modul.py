@@ -474,13 +474,23 @@ class YedekTemizlikAnaPencere(tk.Toplevel):
 
         self.global_oto_var = tk.BooleanVar(value=self.depo.otomatik_calistir)
         tk.Checkbutton(
-            ust, text="Otomatik tetik (genel)",
+            ust,
+            text="Program açılışında günde 1 kez otomatik temizlik (tüm aktif profiller)",
             variable=self.global_oto_var, command=self._global_oto_degisti,
             bg="#E8EAF6", font=("Arial", 9),
         ).pack(side="right", padx=8)
         tk.Button(ust, text="🧹 Tümünü Şimdi Temizle", command=self._tumunu_temizle,
                  bg="#C62828", fg="white", font=("Arial", 10, "bold"),
                  padx=14, pady=4).pack(side="right", padx=4)
+
+        # 2. satır: son tetik özeti
+        oto_alt = tk.Frame(self, bg="#E8EAF6", padx=12)
+        oto_alt.pack(fill="x")
+        self.oto_durum_label = tk.Label(
+            oto_alt, text="", bg="#E8EAF6", fg="#37474F",
+            font=("Arial", 9, "italic"), anchor="e", justify="right",
+        )
+        self.oto_durum_label.pack(side="right")
 
         # Ana split
         gov = tk.Frame(self, bg="#E8EAF6")
@@ -577,6 +587,7 @@ class YedekTemizlikAnaPencere(tk.Toplevel):
 
     def _yenile(self) -> None:
         self._profilleri_doldur()
+        self._oto_durumu_yaz()
 
         for r in self.tree.get_children():
             self.tree.delete(r)
@@ -723,6 +734,24 @@ class YedekTemizlikAnaPencere(tk.Toplevel):
             self.depo.kaydet()
         except OSError:
             pass
+        self._oto_durumu_yaz()
+
+    def _oto_durumu_yaz(self) -> None:
+        if not hasattr(self, "oto_durum_label"):
+            return
+        toplam = len(self.depo.profiller)
+        aktif = sum(1 for p in self.depo.profiller if p.aktif and p.klasor_yolu)
+        son_tarihler = [p.son_calisma_tarihi for p in self.depo.profiller
+                       if p.son_calisma_tarihi]
+        son_str = max(son_tarihler) if son_tarihler else "—"
+        durum = "AÇIK" if self.depo.otomatik_calistir else "KAPALI"
+        bugun = date.today().isoformat()
+        bugun_isareti = " ✓ bugün çalıştı" if son_str == bugun else ""
+        self.oto_durum_label.configure(
+            text=(f"Otomatik tetik: {durum}   |   "
+                  f"Profil: {toplam} (aktif {aktif})   |   "
+                  f"Son tetik: {son_str}{bugun_isareti}")
+        )
 
     def _manuel_temizle(self) -> None:
         if not self.aktif_profil:

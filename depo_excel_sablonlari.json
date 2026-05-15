@@ -7,12 +7,12 @@
       "veri_baslangic_offset": 0,
       "sutunlar": {
         "fatura_no": "Fatura No",
-        "tarih": "Tarih",
+        "tarih": "Fatura Tarihi",
         "fatura_tutari": "Fatura Tutarı",
         "borc": "",
-        "alacak": "İade",
-        "tip": "Tip",
-        "aciklama": ""
+        "alacak": "İade/Çık Tut",
+        "tip": "Tipi",
+        "aciklama": "İlgili Adı"
       },
       "fatura_no_regex": "",
       "duzenlenebilir": false

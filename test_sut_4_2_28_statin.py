@@ -271,6 +271,167 @@ S17_yas_yok_yuksek_ldl = {
     }}
 
 
+# ── v2 EKLEMELER (2026-05-14): Yol-ç çift cümle, doz dispatcher, devam, kolestiramin
+
+S18_yol_c1_ldl110_dm = {
+    'ad': 'S18 — Yol-ç(1): LDL=110 (>100) + DM, 2 ölçüm GEREKMEZ',
+    'beklenen': 'uygun',
+    'data': {
+        'ilac_adi': 'CRESTOR 10 MG',
+        'etkin_madde': 'ROSUVASTATIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 55,
+        'doktor_uzmanligi': 'IC HASTALIKLARI',
+        'rapor_aciklamalari': ['LDL: 110 mg/dL 10.01.2026, Diabetes mellitus tip 2'],
+        'recete_teshisleri': ['E11'],
+    }}
+
+S19_yol_c2_ldl80_dm = {
+    'ad': 'S19 — Yol-ç(2): LDL=80 (>70, ≤100) + DM, sadece 2.cümle yeterli',
+    'beklenen': 'uygun',
+    'data': {
+        'ilac_adi': 'CRESTOR 10 MG',
+        'etkin_madde': 'ROSUVASTATIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 55,
+        'doktor_uzmanligi': 'IC HASTALIKLARI',
+        'rapor_aciklamalari': ['LDL: 80 mg/dL 10.01.2026, Diabetes mellitus tip 2'],
+        'recete_teshisleri': ['E11'],
+    }}
+
+S20_yol_c2_ldl68_dm = {
+    'ad': 'S20 — Yol-ç hiçbiri: LDL=68 (<70) + DM, statin endikasyonu YOK',
+    'beklenen': 'uygun_degil',
+    'data': {
+        'ilac_adi': 'CRESTOR 10 MG',
+        'etkin_madde': 'ROSUVASTATIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 55,
+        'doktor_uzmanligi': 'IC HASTALIKLARI',
+        'rapor_aciklamalari': ['LDL: 68 mg/dL 10.01.2026, Diabetes mellitus tip 2'],
+        'recete_teshisleri': ['E11'],
+    }}
+
+S21_yol_c1_kv_yok = {
+    'ad': 'S21 — Yol-ç(1) LDL=110 ama KV hastalık YOK (sadece HT) → RED',
+    'beklenen': 'uygun_degil',
+    'data': {
+        'ilac_adi': 'CRESTOR 10 MG',
+        'etkin_madde': 'ROSUVASTATIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 55,
+        'doktor_uzmanligi': 'IC HASTALIKLARI',
+        # HT ek risktir (madde 2), KV hastalık (madde 1ç) DEĞİL
+        'rapor_aciklamalari': ['LDL: 110 mg/dL 10.01.2026, Hipertansiyon mevcut'],
+    }}
+
+S22_2fikra_atorva40_aile_hek_recete = {
+    'ad': 'S22 — 2.fıkra: atorva 40mg + iç hast. RAPOR + aile hek. REÇETE → UYGUN',
+    'beklenen': 'uygun',
+    'data': {
+        'ilac_adi': 'LIPITOR 40 MG',
+        'etkin_madde': 'ATORVASTATIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 60,
+        'doktor_uzmanligi': 'IC HASTALIKLARI',     # rapor düzenleyen
+        'recete_hekim_uzmanligi': 'AILE HEKIMI',   # reçete eden (2.fıkra: tüm hekim OK)
+        'rapor_aciklamalari': ['LDL: 210 mg/dL 10.01.2026, LDL: 215 mg/dL 25.01.2026'],
+    }}
+
+S23_1fikra_pitava40_aile_hek_recete_RED = {
+    'ad': 'S23 — 1.fıkra: pitava 40mg + kardio RAPOR + aile hek. REÇETE → RED (aynı 3 dal şart)',
+    'beklenen': 'uygun_degil',
+    'data': {
+        'ilac_adi': 'LIVAZO 40 MG',  # pitavastatin 2.fıkrada listelenmiyor
+        'etkin_madde': 'PITAVASTATIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 60,
+        'doktor_uzmanligi': 'KARDIYOLOJI',         # rapor düzenleyen — 3 daldan biri OK
+        'recete_hekim_uzmanligi': 'AILE HEKIMI',   # reçete eden — 1.fıkra: 3 dal şart
+        'rapor_aciklamalari': ['LDL: 210 mg/dL 10.01.2026, LDL: 215 mg/dL 25.01.2026'],
+    }}
+
+S24_1fikra_pitava40_kardio_recete = {
+    'ad': 'S24 — 1.fıkra: pitava 40mg + kardio RAPOR + kardio REÇETE → UYGUN',
+    'beklenen': 'uygun',
+    'data': {
+        'ilac_adi': 'LIVAZO 40 MG',
+        'etkin_madde': 'PITAVASTATIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 60,
+        'doktor_uzmanligi': 'KARDIYOLOJI',
+        'recete_hekim_uzmanligi': 'KARDIYOLOJI',
+        'rapor_aciklamalari': ['LDL: 210 mg/dL 10.01.2026, LDL: 215 mg/dL 25.01.2026'],
+    }}
+
+S25_devam_raporu_olcumsuz = {
+    'ad': 'S25 — Devam raporu (istinaden): ölçüm gerekmez → UYGUN',
+    'beklenen': 'uygun',
+    'data': {
+        'ilac_adi': 'CRESTOR 10 MG',
+        'etkin_madde': 'ROSUVASTATIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 55,
+        'doktor_uzmanligi': 'IC HASTALIKLARI',
+        # Devam raporu — ölçüm tek bile olsa madde 3 son cümle gereği aranmaz
+        'rapor_aciklamalari': [
+            '15.06.2025 tarih ve 12345 sayılı rapora istinaden devam raporu. '
+            'Başlangıç LDL: 220 mg/dL'],
+    }}
+
+S26_devam_idame = {
+    'ad': 'S26 — Devam raporu (idame tedavisi): ölçüm yok bile UYGUN',
+    'beklenen': 'uygun',
+    'data': {
+        'ilac_adi': 'LIPITOR 20 MG',
+        'etkin_madde': 'ATORVASTATIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 50,
+        'doktor_uzmanligi': 'KARDIYOLOJI',
+        # LDL=200 (Yol-a) ama tek ölçüm; devam raporu olduğu için 2 ölçüm aranmaz
+        'rapor_aciklamalari': [
+            'İdame tedavisi. Başlama tarihi 01.03.2024. LDL: 200 mg/dL'],
+    }}
+
+S27_kolestiramin_geriatri_RED = {
+    'ad': 'S27 — Kolestiramin + GERİATRİ raporu → RED (madde 5: geriatri YOK)',
+    'beklenen': 'uygun_degil',
+    'data': {
+        'ilac_adi': 'QUESTRAN 4 G',
+        'etkin_madde': 'KOLESTIRAMIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 70,
+        'doktor_uzmanligi': 'GERIATRI',
+        'rapor_aciklamalari': ['LDL: 210 mg/dL 10.01.2026, LDL: 215 mg/dL 25.01.2026'],
+    }}
+
+S28_kolestiramin_ic_hast_UYGUN = {
+    'ad': 'S28 — Kolestiramin + İÇ HASTALIKLARI raporu → UYGUN (madde 5: 5 dal)',
+    'beklenen': 'uygun',
+    'data': {
+        'ilac_adi': 'QUESTRAN 4 G',
+        'etkin_madde': 'KOLESTIRAMIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 70,
+        'doktor_uzmanligi': 'IC HASTALIKLARI',
+        'recete_hekim_uzmanligi': 'AILE HEKIMI',  # tüm hekim reçete edebilir
+        'rapor_aciklamalari': ['LDL: 210 mg/dL 10.01.2026, LDL: 215 mg/dL 25.01.2026'],
+    }}
+
+S29_2fikra_rosuva20_noroloji = {
+    'ad': 'S29 — 2.fıkra: rosuva 20mg + NÖROLOJİ rapor + tüm hekim reçete → UYGUN',
+    'beklenen': 'uygun',
+    'data': {
+        'ilac_adi': 'CRESTOR 20 MG',
+        'etkin_madde': 'ROSUVASTATIN',
+        'rapor_kodu': '04.08',
+        'hasta_yasi': 60,
+        'doktor_uzmanligi': 'NOROLOJI',
+        'recete_hekim_uzmanligi': 'AILE HEKIMI',
+        'rapor_aciklamalari': ['LDL: 210 mg/dL 10.01.2026, LDL: 215 mg/dL 25.01.2026'],
+    }}
+
+
 def main():
     cases = [
         S01_yol_a_uygun, S02_yol_a_tek_olcum,
@@ -283,6 +444,15 @@ def main():
         S12_cocuk_kucuk_homoz, S13_cocuk_buyuk_ldl190,
         S14_bos_metin_raporsuz, S15_ldl_yok_ama_rapor_kv,
         S16_iki_olcum_kisa_aralik, S17_yas_yok_yuksek_ldl,
+        # v2 eklemeler — Yol-ç çift cümle, doz dispatcher, devam, kolestiramin
+        S18_yol_c1_ldl110_dm, S19_yol_c2_ldl80_dm,
+        S20_yol_c2_ldl68_dm, S21_yol_c1_kv_yok,
+        S22_2fikra_atorva40_aile_hek_recete,
+        S23_1fikra_pitava40_aile_hek_recete_RED,
+        S24_1fikra_pitava40_kardio_recete,
+        S25_devam_raporu_olcumsuz, S26_devam_idame,
+        S27_kolestiramin_geriatri_RED, S28_kolestiramin_ic_hast_UYGUN,
+        S29_2fikra_rosuva20_noroloji,
     ]
     ok = 0
     for c in cases:

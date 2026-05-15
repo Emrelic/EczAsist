@@ -38,10 +38,11 @@ AYAR_DOSYASI = os.path.join(
 
 
 # Liste tipleri
-# NOT: "kurum" sekmesindeki içerir/içermez kuralları "Boş Satırları Gizle"
-# toggle'ından BAĞIMSIZ her zaman uygulanır (eski Dışlamalar fonksiyonunun
-# yerine geçer). Diğer tipler toggle'a tabidir.
-LISTE_TIPLERI = ("ilac", "etken", "atc", "farma", "tesis", "esdeger", "kurum")
+# NOT: "kurum", "sgk" ve "doktor" sekmelerindeki içerir/içermez kuralları
+# "Boş Satırları Gizle" toggle'ından BAĞIMSIZ her zaman uygulanır
+# (eski Dışlamalar fonksiyonunun yerine geçer). Diğer tipler toggle'a tabidir.
+LISTE_TIPLERI = ("ilac", "etken", "atc", "farma", "tesis", "esdeger",
+                  "kurum", "sgk", "doktor", "brans")
 LISTE_ETIKETLERI = {
     "ilac":     "İlaç Adı",
     "etken":    "Etken Madde",
@@ -50,6 +51,9 @@ LISTE_ETIKETLERI = {
     "tesis":    "Tesis (Hastane Kodu / Adı)",
     "esdeger":  "Eşdeğer Grubu",
     "kurum":    "🚫 Kurum (Dışlamalar)",
+    "sgk":      "🔢 SGK İşlem No",
+    "doktor":   "👨‍⚕️ Doktor (Hekim)",
+    "brans":    "🏥 Branş (Hekim Uzmanlık)",
 }
 
 
@@ -59,6 +63,11 @@ VARSAYILAN = {
     "mesaj_getir":  True,       # Mesajı olan ilaçlar
     "uyari_getir":  True,       # Uyarı kodu olanlar
     "rapor_getir":  True,       # Rapor kodu olanlar
+
+    # ── SGK reçetesi olmayanları dışla (default AÇIK) ──
+    # RxSgkIslemNo NULL veya boş olan reçeteler = SGK olmayan (apra vb.)
+    # Toggle AÇIKsa bu reçeteler hiç gelmez. Kapatılırsa tümü gelir.
+    "sgk_bos_disla": True,
 
     # ── Liste bazlı filtreler ──
     # Her tip için liste: [{"deger": "...", "mod": "icerir"|"icermez"}, ...]
@@ -72,6 +81,9 @@ VARSAYILAN = {
     "tesis":    [],
     "esdeger":  [],
     "kurum":    [],
+    "sgk":      [],   # RxSgkIslemNo pattern dışlama (örn. "M0000*" prefix)
+    "doktor":   [],   # DoktorAdiSoyadi pattern dışlama (örn. kronik hekim)
+    "brans":    [],   # BransAdi pattern dışlama (örn. "AILE HEKIMI", "ACIL")
 }
 
 
@@ -111,6 +123,10 @@ def ayarlari_yukle() -> dict:
     for k in ("renkli_getir", "mesaj_getir", "uyari_getir", "rapor_getir"):
         if k in ay:
             sonuc[k] = bool(ay[k])
+
+    # SGK boş dışla toggle — JSON'da yoksa varsayılan AÇIK kalır
+    if "sgk_bos_disla" in ay:
+        sonuc["sgk_bos_disla"] = bool(ay["sgk_bos_disla"])
 
     # Liste bazlı filtreler — eski/yeni format desteği
     for tip in LISTE_TIPLERI:
@@ -406,6 +422,105 @@ def sql_kurum_kosullari(ay: dict) -> str:
     return _kategori_kosul(ay.get("kurum") or [], _kurum_kosul)
 
 
+def _pattern_like_kosul(kolon: str, deger: str) -> str:
+    """Pattern bazlı LIKE koşulu üret. NULL-safe.
+
+    Pattern kuralları:
+      • "M0000*"    → LIKE 'M0000%'   (suffix wildcard / prefix eşleme)
+      • "*XYZ"      → LIKE '%XYZ'     (prefix wildcard / suffix eşleme)
+      • "*XYZ*"     → LIKE '%XYZ%'    (her iki yan / contains)
+      • "ABC"       → LIKE 'ABC%'     (yıldız yoksa default prefix)
+      • "?ABC"      → LIKE '_ABC'     (? = tek karakter)
+
+    Case-insensitive (UPPER).
+    """
+    s = str(deger).strip()
+    if not s:
+        return "1 = 0"
+    if "*" in s:
+        sql_pat = s.replace("*", "%")
+    else:
+        sql_pat = s + "%"
+    sql_pat = sql_pat.replace("?", "_")
+    sql_pat = sql_pat.replace("'", "''")
+    return f"UPPER(ISNULL({kolon}, N'')) LIKE UPPER(N'{sql_pat}')"
+
+
+def sql_sgk_kosullari(ay: dict) -> str:
+    """SGK İşlem No sekmesi koşulu — toggle'dan bağımsız her zaman uygulanır.
+
+    İki bileşen birlikte uygulanır (AND):
+      1) sgk_bos_disla=True ise RxSgkIslemNo NULL/boş olan reçeteler elenir
+         (apra ile satış vb. SGK olmayan reçeteler).
+      2) "sgk" liste kuralları: pattern bazlı içerir/içermez
+         (örn. "M0000*" → bu prefix'li reçeteler dışlanabilir).
+
+    NOT: "icerir" modunda sadece pattern'e uyan SGK no'lar getirilir; bu
+    durumda boş SGK no'lu reçeteler de elenir (whitelist mantığı).
+    """
+    parcalar = []
+
+    if ay.get("sgk_bos_disla", True):
+        parcalar.append(
+            "(ra.RxSgkIslemNo IS NOT NULL "
+            "AND LEN(LTRIM(RTRIM(ra.RxSgkIslemNo))) > 0)")
+
+    pattern_kos = _kategori_kosul(
+        ay.get("sgk") or [],
+        lambda v: _pattern_like_kosul("ra.RxSgkIslemNo", v))
+    if pattern_kos:
+        parcalar.append(pattern_kos)
+
+    return " AND ".join(parcalar)
+
+
+def sql_doktor_kosullari(ay: dict) -> str:
+    """Doktor (Hekim) sekmesi koşulu — toggle'dan bağımsız her zaman uygulanır.
+
+    DoktorAdiSoyadi üstüne pattern eşleme:
+      • "MEHMET*"     → adı MEHMET ile başlayan doktorlar
+      • "*KARDIY*"    → adında KARDIY geçen doktorlar
+      • "MEHMET YIL*" → tam ad prefix'i
+
+    Kronik hasta reçetesi yazan belirli hekimleri dışlamak için.
+
+    Subquery yaklaşımı: Doktor tablosu JOIN olmasa da çalışır. `ra` alias'lı
+    ReceteAna referansı varsayılır (ra.RxDoktorId).
+    NULL-safe: RxDoktorId NULL olan reçeteler içermez kuralından etkilenmez.
+    """
+    def _doktor_kosul(v: str) -> str:
+        pat = _pattern_like_kosul("d.DoktorAdiSoyadi", v)
+        return (f"EXISTS (SELECT 1 FROM Doktor d "
+                f"WHERE d.DoktorId = ra.RxDoktorId AND {pat})")
+
+    return _kategori_kosul(ay.get("doktor") or [], _doktor_kosul)
+
+
+def sql_brans_kosullari(ay: dict) -> str:
+    """Branş (Hekim Uzmanlık) sekmesi koşulu — toggle'dan bağımsız her zaman
+    uygulanır.
+
+    ReceteAna.RxBransId → Brans tablosu BransAdi pattern eşleme:
+      • "AILE*"       → Aile Hekimi, Aile Hekimliği vs.
+      • "*ACIL*"      → adında ACIL geçen branşlar
+      • "KARDIY*"     → Kardiyoloji
+      • "*PRATISYEN*" → Pratisyen Hekim
+
+    Belirli branşların reçetelerini sistematik dışlamak için (örn. SUT
+    kontrolünde aile hekimi reçetelerini dahil etmek istemiyorsanız).
+    Subquery yaklaşımı: Brans tablosu JOIN olmasa da çalışır.
+    NULL-safe: RxBransId NULL olan reçeteler içermez kuralından etkilenmez.
+    """
+    def _brans_kosul(v: str) -> str:
+        pat = _pattern_like_kosul("b.BransAdi", v)
+        return (f"EXISTS (SELECT 1 FROM Brans b "
+                f"WHERE b.BransId = ra.RxBransId "
+                f"AND (b.BransSilme IS NULL OR b.BransSilme = 0) "
+                f"AND {pat})")
+
+    return _kategori_kosul(ay.get("brans") or [], _brans_kosul)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # AYAR PENCERESİ (Toplevel dialog)
 # ═══════════════════════════════════════════════════════════════════════
@@ -468,6 +583,36 @@ def _liste_secici_pencere_ac(parent, db, tip, on_select):
             "            AS NVARCHAR(20)) + N' reçete (1 yıl)' AS ek "
             "FROM Kurum k "
             "ORDER BY k.KurumAdi", "Kurum"),
+        # Doktor (Hekim) — son 365 gün reçete adediyle birlikte
+        "doktor": (
+            "SELECT d.DoktorAdiSoyadi AS deger, "
+            "       CAST(ISNULL((SELECT COUNT(DISTINCT ra.RxId) "
+            "                    FROM ReceteAna ra "
+            "                    WHERE ra.RxDoktorId = d.DoktorId "
+            "                      AND ra.RxSilme = 0 "
+            "                      AND ra.RxKayitTarihi >= "
+            "                          DATEADD(DAY, -365, GETDATE())), 0) "
+            "            AS NVARCHAR(20)) + N' reçete (1 yıl)' AS ek "
+            "FROM Doktor d "
+            "WHERE d.DoktorSilme = 0 "
+            "  AND d.DoktorAdiSoyadi IS NOT NULL "
+            "  AND LEN(LTRIM(RTRIM(d.DoktorAdiSoyadi))) > 0 "
+            "ORDER BY d.DoktorAdiSoyadi", "Doktor (Hekim)"),
+        # Branş — son 365 gün reçete adediyle birlikte (ReceteAna.RxBransId)
+        "brans": (
+            "SELECT b.BransAdi AS deger, "
+            "       CAST(ISNULL((SELECT COUNT(DISTINCT ra.RxId) "
+            "                    FROM ReceteAna ra "
+            "                    WHERE ra.RxBransId = b.BransId "
+            "                      AND ra.RxSilme = 0 "
+            "                      AND ra.RxKayitTarihi >= "
+            "                          DATEADD(DAY, -365, GETDATE())), 0) "
+            "            AS NVARCHAR(20)) + N' reçete (1 yıl)' AS ek "
+            "FROM Brans b "
+            "WHERE (b.BransSilme IS NULL OR b.BransSilme = 0) "
+            "  AND b.BransAdi IS NOT NULL "
+            "  AND LEN(LTRIM(RTRIM(b.BransAdi))) > 0 "
+            "ORDER BY b.BransAdi", "Branş (Hekim Uzmanlık)"),
         # Eşdeğer grubu — picker'da "EsdegerId — Örnek İlaç Adı" gösterir.
         # Aynı eşdeğer grubundaki tüm ilaçlar paylaşır, kullanıcı bir
         # tanesini seçince grup ID'si rule'a yazılır.
@@ -1036,7 +1181,45 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
                    "Satırları Gizle' toggle'ından BAĞIMSIZ HER ZAMAN "
                    "uygulanır. NULL kurumlu reçeteler (elden satış vb.) "
                    "içermez kuralında dahil kalır."),
+        "sgk": ("🔢 SGK İşlem No (RxSgkIslemNo) bazlı dışlama. "
+                 "ÜSTTEKİ TOGGLE: 'SGK işlem no boş olanları gizle' (default "
+                 "AÇIK) — sistem reçete no'su olmayan reçeteler (apra ile "
+                 "satılmış vb. SGK olmayan reçeteler) tablodan hiç gelmez. "
+                 "PATTERN LİSTESİ: belirli formatlardaki SGK no'larını "
+                 "dışla. Pattern kuralları: 'M0000*' (prefix), '*XYZ' "
+                 "(suffix), '*ABC*' (contains), 'ABC' (yıldızsız=prefix). "
+                 "Örn: 'M0000*' kuralı + İçermez modu → M0000... ile "
+                 "başlayan tüm reçeteler elenir. Bu sekmenin kuralları "
+                 "'Boş Satırları Gizle' toggle'ından BAĞIMSIZ her zaman "
+                 "uygulanır (Kurum sekmesi gibi)."),
+        "doktor": ("👨‍⚕️ Doktor (Hekim) adı bazlı dışlama "
+                    "(DoktorAdiSoyadi). Pattern eşleme: 'MEHMET*' (ile "
+                    "başlayan), '*YILMAZ' (ile biten), '*KARDIY*' (içeren). "
+                    "Yıldızsız değer prefix kabul edilir. Kullanım: kronik "
+                    "hasta reçetesi yazan belirli hekimleri sistematik "
+                    "dışlamak için. İçermez moduyla bu hekimlerin "
+                    "reçeteleri tüm sorgulardan ve SUT kontrollerinden "
+                    "çıkar. Bu sekmenin kuralları 'Boş Satırları Gizle' "
+                    "toggle'ından BAĞIMSIZ her zaman uygulanır."),
+        "brans": ("🏥 Branş (Hekim Uzmanlık) bazlı dışlama "
+                   "(ReceteAna.RxBransId → Brans.BransAdi). Pattern "
+                   "eşleme: 'AILE*' (Aile Hekimi/Hekimliği), '*ACIL*' "
+                   "(adında ACIL geçen), 'KARDIY*' (Kardiyoloji), "
+                   "'*PRATISYEN*'. Yıldızsız değer prefix kabul edilir. "
+                   "Kullanım: belirli branşların reçetelerini sistematik "
+                   "dışlamak (örn. Aile Hekimi'nin yazdığı tüm reçeteleri "
+                   "SUT kontrolünden çıkarmak). İçermez moduyla bu "
+                   "branşların reçeteleri tüm sorgulardan çıkar. "
+                   "DİKKAT: doktor sekmesindeki ad pattern'i ile karıştırma "
+                   "— bu sekme reçete üzerindeki RxBransId'yi kontrol "
+                   "eder (bir doktor birden fazla branşta reçete yazabilir, "
+                   "doğrudan o reçeteye yazılan branş esas alınır). Bu "
+                   "sekmenin kuralları 'Boş Satırları Gizle' toggle'ından "
+                   "BAĞIMSIZ her zaman uygulanır."),
     }
+
+    # SGK boş dışla toggle — sgk sekmesinin içine inject edilecek (aşağıda)
+    var_sgk_bos = tk.BooleanVar(value=ay.get("sgk_bos_disla", True))
 
     # Her tip için aynı arayüz — per-item içerir/içermez
     sekmeler = {}
@@ -1052,6 +1235,31 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
                   wraplength=800, anchor="w", padx=8, pady=4,
                   bd=1, relief="solid"
                   ).pack(fill="x", padx=8, pady=(8, 4))
+
+        # SGK sekmesi için özel toggle: SGK işlem no boş olanları dışla
+        if tip == "sgk":
+            toggle_frm = tk.LabelFrame(
+                sekme, text=" 🚫 Toggle ", bg="#FFF3E0", fg="#E65100",
+                font=("Segoe UI", 9, "bold"), padx=6, pady=4)
+            toggle_frm.pack(fill="x", padx=8, pady=(0, 4))
+            tk.Checkbutton(
+                toggle_frm,
+                text="SGK işlem no BOŞ olan reçeteleri dışla "
+                     "(apra/özel satış reçeteleri = SGK olmayan reçeteler)",
+                variable=var_sgk_bos, bg="#FFF3E0",
+                font=("Segoe UI", 10, "bold"), fg="#E65100",
+                padx=4, pady=2
+            ).pack(anchor="w")
+            tk.Label(
+                toggle_frm,
+                text="✓ AÇIK (önerilen): RxSgkIslemNo NULL/boş olan "
+                     "reçeteler tüm sorgulardan elenir; YOAK, statin, "
+                     "tüm SUT kontrolleri etkilenir.\n"
+                     "○ KAPALI: SGK olmayan reçeteler de listeye gelir.",
+                bg="#FFF3E0", fg="#6D4C41",
+                font=("Segoe UI", 8, "italic"),
+                anchor="w", justify="left", padx=24
+            ).pack(anchor="w")
 
         # Kural listesi (Treeview: Mod | Değer)
         tv_frm = tk.Frame(sekme, bg="#FAFAFA")
@@ -1211,10 +1419,11 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
 
     def _kaydet_kapat():
         yeni = {
-            "renkli_getir": var_renkli.get(),
-            "mesaj_getir":  var_mesaj.get(),
-            "uyari_getir":  var_uyari.get(),
-            "rapor_getir":  var_rapor.get(),
+            "renkli_getir":  var_renkli.get(),
+            "mesaj_getir":   var_mesaj.get(),
+            "uyari_getir":   var_uyari.get(),
+            "rapor_getir":   var_rapor.get(),
+            "sgk_bos_disla": var_sgk_bos.get(),
         }
         for tip, w in sekmeler.items():
             tv = w["tv"]
@@ -1243,6 +1452,7 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
         var_mesaj.set(True)
         var_uyari.set(True)
         var_rapor.set(True)
+        var_sgk_bos.set(True)
         for w in sekmeler.values():
             tv = w["tv"]
             for iid in list(tv.get_children()):

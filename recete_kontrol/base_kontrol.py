@@ -19,6 +19,9 @@ class KontrolSonucu(Enum):
     UYGUN = "uygun"           # SUT'a uygun
     UYGUN_DEGIL = "uygun_degil"  # SUT'a uygun değil
     KONTROL_EDILEMEDI = "kontrol_edilemedi"  # Kontrol yapılamadı (eksik veri vb.) — UI'da ŞÜPHELİ
+    SARTLI_UYGUN = "sartli_uygun"  # YENİ: tüm hesaplanabilir şartlar UYGUN, sadece
+                                    # 'şartlı atom'lar KE (örn. 6 ay ara, rapor süresi).
+                                    # "X şartıyla uygun" — pipeline verisi gelirse netleşir.
     MANUEL_KONTROL = "manuel_kontrol"  # Sistem otomatik karar veremiyor, insan göz atmalı (örn. aile hekimi + 24 ay belirsiz)
     ATLANDI = "atlandi"       # Bu reçete için kontrol gerekmiyor
 
@@ -59,6 +62,17 @@ class SartSonuc:
     kaynak: str = ""
     grup: str = ""
     veya_grubu: bool = False
+    # Atom kutusunun İÇİNDE mini liste olarak gösterilecek alt detaylar
+    # (render `_klasik_blok_ciz` tarafından ✓/✗ satırları olarak çizilir;
+    # matematik etkilenmez — yalnızca görsel zenginleştirme).
+    # Format: [(ad, "var"|"yok"|"kontrol_edilemedi"), ...]
+    alt_liste: Optional[List[Tuple[str, str]]] = None
+    # YENİ: 'şartlı atom' işareti. True ise: bu atomun durumu KE iken diğer
+    # tüm hesaplanabilir şartlar VAR olunca genel sonuç ŞARTLI_UYGUN olur
+    # ("[atom adı] sağlandığı varsayımıyla uygun"). Yetersiz pipeline verisi
+    # (örn. hasta satış geçmişi, rapor süresi metnine girmemiş) için
+    # kullanılır — eczacı manuel doğruladığında kesin UYGUN olur.
+    sartli_atom: bool = False
 
 
 @dataclass
