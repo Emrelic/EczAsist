@@ -1,0 +1,151 @@
+{
+  "_aciklama": "SUT 4.2.28.B — Fenofibrat / Gemfibrozil. Atomik şema deklaratif kural. Mevcut recete_kontrol.sut_kontrolleri.kontrol_fibrat() fonksiyonunun bire bir muadili (PILOT v1, motor karşılaştırma testi: test_motor_fibrat_pilot.py).",
+  "_kaynak": "docs/sut/SUT_tam_metin.txt:7793-7800",
+  "_boolean_formul": "FIBRAT_UYGUN ⇔ A1 (rapor) ∧ D1 (uzman branş) ∧ (Ca (TG>500) ∨ (Cb1 (TG>200) ∧ ⋁ᵢCb2.i (KV hast.)))",
+
+  "sut_kodu": "4.2.28.B",
+  "adi": "Fibrat",
+  "sut_kurali_etiketi": "SUT 4.2.28.B — Fibrat (atomik şema, motor)",
+  "aranan_ibare": "TG eşik + KV hastalık + uzman raporu",
+
+  "sut_metni": "4.2.28.B - Statin dışındaki lipid düşürücü ilaçlar (fenofibrat, gemfibrozil)\n\n(1) Statin dışındaki lipid düşürücü ilaçlar;\n  a) Trigliserid düzeyinin 500 mg/dL'nin üstünde olduğu durumlarda veya\n  b) Trigliserid düzeyinin 200 mg/dL üstünde olan; diabetes mellitus, akut koroner sendrom, geçirilmiş MI, geçirilmiş inme, koroner arter hastalığı, periferik arter hastalığı, abdominal aort anevrizması veya karotid arter hastalığı olanlarda,\n  kardiyoloji, kalp ve damar cerrahisi, endokrinoloji, iç hastalıkları, nöroloji uzman hekimlerince düzenlenecek uzman hekim raporuna dayanılarak tüm hekimlerce reçete edilir.\n\n(Ek cümle:RG-10/5/2018-30417 Mükerrer) Tedaviye 6 ay veya daha uzun süre ara veren hastalarda bu madde kapsamındaki başlangıç kriterleri yeniden aranır.\n\nKaynak: SUT 4.2.28.B (mevzuat.gov.tr — MevzuatNo=17229).",
+  "sut_metni_kaynak": "docs/sut/SUT_tam_metin.txt:7793-7800 (mevzuat.gov.tr SUT, indirme 2026-05-13)",
+
+  "on_kontrol": [
+    {
+      "ad": "Boş metin + raporsuz → UYGUN_DEGIL",
+      "kosul": {
+        "tip": "AND",
+        "alt": [
+          {"atom": "rapor_metni_var", "negatif": true},
+          {"atom": "rapor_kodu_var",  "negatif": true}
+        ]
+      },
+      "sonuc": "UYGUN_DEGIL",
+      "mesaj": "Raporsuz fibrat — uzman raporu zorunlu (4.2.28.B)",
+      "aranan_ibare": "rapor / TG / KV hastalık",
+      "sartlar_ekle": [
+        {"ad": "Rapor kodu",         "durum": "YOK", "neden": "Reçete satırında rap_kod boş", "kaynak": "rap_kod"},
+        {"ad": "Rapor/mesaj metni",  "durum": "YOK", "neden": "Metin boş ve rapor da yok",   "kaynak": "tum_metin"}
+      ]
+    },
+    {
+      "ad": "Boş metin + rapor kodu var → KE",
+      "kosul": {
+        "tip": "AND",
+        "alt": [
+          {"atom": "rapor_metni_var", "negatif": true},
+          {"atom": "rapor_kodu_var"}
+        ]
+      },
+      "sonuc": "KONTROL_EDILEMEDI",
+      "mesaj": "Rapor kodu var ama metni okunamadı — manuel doğrulama gerekli",
+      "aranan_ibare": "TG / KV hastalık / uzman raporu",
+      "sartlar_ekle": [
+        {"ad": "Rapor kodu",        "durum": "VAR", "neden": "Rapor kodu mevcut", "kaynak": "rap_kod"},
+        {"ad": "Rapor/mesaj metni", "durum": "KONTROL_EDILEMEDI", "neden": "Rapor kodu var ancak metni okunamadı", "kaynak": "tum_metin"}
+      ]
+    }
+  ],
+
+  "formul": {
+    "tip": "AND",
+    "alt": [
+      {
+        "_yorum": "Endikasyon önkoşul: TG sayısal değer raporda VAR olmalı (yoksa grup YOK → UYGUN_DEGIL)",
+        "tip": "AND",
+        "grup": "Endikasyon önkoşul [(1)]",
+        "alt": [
+          {
+            "ad": "TG sayısal değer raporda VAR",
+            "atom": "rapor_lab_var",
+            "params": {
+              "ibare": "trigliserid",
+              "alternatif_ibareler": ["trigliserit", "triglyceri", "trig", "tg", "t.g"]
+            },
+            "kaynak": "rapor_metni"
+          }
+        ]
+      },
+      {
+        "_yorum": "Üst-VEYA: Yol-a (tek atom: TG>500) VEYA Yol-b (TG>200 + ≥1 KV hastalık)",
+        "tip": "USTOR",
+        "ozet_grup": "Başlama yolu [(a)∨(b)]",
+        "yollar": [
+          {
+            "grup": "Yol-a — TG>500 [(1)(a)]",
+            "tip": "AND",
+            "alt": [
+              {
+                "ad": "TG > 500 mg/dL",
+                "atom": "rapor_lab_olcum",
+                "params": {
+                  "ibare": "trigliserid",
+                  "alternatif_ibareler": ["trigliserit", "triglyceri", "trig", "tg", "t.g"],
+                  "op": ">",
+                  "deger": 500
+                },
+                "kaynak": "rapor_metni"
+              }
+            ]
+          },
+          {
+            "grup": "Yol-b — TG>200 + KV hastalık [(1)(b)]",
+            "tip": "AND",
+            "alt": [
+              {
+                "ad": "TG > 200 mg/dL",
+                "atom": "rapor_lab_olcum",
+                "params": {
+                  "ibare": "trigliserid",
+                  "alternatif_ibareler": ["trigliserit", "triglyceri", "trig", "tg", "t.g"],
+                  "op": ">",
+                  "deger": 200
+                },
+                "kaynak": "rapor_metni"
+              },
+              {
+                "ad": "≥1 KV hastalık (DM/AKS/Mİ/inme/KAH/PAH/AAA/karotid)",
+                "tip": "OR",
+                "alt": [
+                  {"ad": "Diabetes mellitus",                   "atom": "kv_dm",      "kaynak": "rapor_metni/teshis"},
+                  {"ad": "Akut koroner sendrom",                "atom": "kv_aks",     "kaynak": "rapor_metni/teshis"},
+                  {"ad": "Geçirilmiş Mİ",                       "atom": "kv_mi",      "kaynak": "rapor_metni/teshis"},
+                  {"ad": "Geçirilmiş inme",                     "atom": "kv_inme",    "kaynak": "rapor_metni/teshis"},
+                  {"ad": "Koroner arter hastalığı (KAH)",       "atom": "kv_kah",     "kaynak": "rapor_metni/teshis"},
+                  {"ad": "Periferik arter hastalığı (PAH)",     "atom": "kv_pah",     "kaynak": "rapor_metni/teshis"},
+                  {"ad": "Abdominal aort anevrizması (AAA)",    "atom": "kv_aaa",     "kaynak": "rapor_metni/teshis"},
+                  {"ad": "Karotid arter hastalığı",             "atom": "kv_karotid", "kaynak": "rapor_metni/teshis"}
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "_yorum": "D1 — Uzman branşı (Kardiyo/KVC/Endokrin/İç hast./Nöro). Geriatri YOK (statinden farklı).",
+        "tip": "AND",
+        "grup": "Uzman branşı [(1) son cümle]",
+        "alt": [
+          {
+            "ad": "Uzman branşı (Kardiyo/KVC/Endokrin/İç hast./Nöro)",
+            "atom": "doktor_brans_in",
+            "params": {
+              "anahtarlar": [
+                "KARDIYOLOJI", "KARDİYOLOJİ", "KARDIO",
+                "KALP VE DAMAR CERRAHISI", "KALP VE DAMAR CERRAHİSİ",
+                "KALP DAMAR", "KDC", "KVC",
+                "ENDOKRINOLOJI", "ENDOKRİNOLOJİ", "ENDOKRIN",
+                "NOROLOJI", "NÖROLOJİ", "NORO",
+                "IC HASTALIKLARI", "İÇ HASTALIKLARI", "DAHILIYE", "DAHİLİYE",
+                "INTERNAL MEDICINE"
+              ],
+              "rapor_kodu_otoritesi": ["04.02", "04.04", "06"]
+            },
+            "kaynak": "doktor_uzmanligi/rapor_kodu"
+          }
+        ]
+      }
+    ]
+  }
+}
