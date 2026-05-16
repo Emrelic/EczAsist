@@ -504,6 +504,272 @@ def _tt(widget, text: str):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# ÇOKLU SEÇİM DROPDOWN
+# ═══════════════════════════════════════════════════════════════════════
+class MultiSelectDropdown(tk.Frame):
+    """Checkbox'lı popup açan çoklu seçim dropdown widget'ı.
+
+    Bir butona benzer; tıklandığında her seçeneğin yanında onay kutusu olan
+    popup açar. Seçili öğe sayısına göre buton etiketi:
+      - '<deger>  ▼'                (tek seçim)
+      - '<deger>  +N  ▼'            (çoklu seçim)
+    on_change(secilenler) callback'i değişimlerde tetiklenir.
+    'Tümü' seçeneği özel: işaretliyse diğerleri pasif görünür ve tek başına
+    seçili sayılır.
+    """
+
+    TUMU_ETIKETI = "Tümü"
+
+    def __init__(self, parent, ogeler, varsayilan=None, on_change=None,
+                 baslik="Seçim", **btn_kwargs):
+        try:
+            pbg = parent.cget("bg")
+        except Exception:
+            pbg = None
+        if pbg:
+            super().__init__(parent, bg=pbg)
+        else:
+            super().__init__(parent)
+
+        self.ogeler = list(ogeler)
+        self.on_change = on_change
+        self.baslik = baslik
+
+        if varsayilan is None:
+            self.secili = [self.ogeler[0]] if self.ogeler else []
+        elif isinstance(varsayilan, (list, tuple, set)):
+            self.secili = [d for d in self.ogeler if d in varsayilan]
+            if not self.secili and self.ogeler:
+                self.secili = [self.ogeler[0]]
+        else:
+            self.secili = ([varsayilan] if varsayilan in self.ogeler
+                           else ([self.ogeler[0]] if self.ogeler else []))
+
+        defaults = dict(font=("Segoe UI", 9), relief="sunken",
+                        bg="white", fg="black", bd=1, cursor="hand2")
+        defaults.update(btn_kwargs)
+        self._buton = tk.Button(self, text=self._etiket(),
+                                 command=self._popup_toggle, **defaults)
+        self._buton.pack(fill="both", expand=True)
+        self._popup = None
+        self._popup_varlari = {}
+        self._global_click_funcid = None
+
+    def _etiket(self):
+        if not self.secili:
+            return f"{self.baslik} seç... ▼"
+        # 'Tümü' seçeneği özel: sadece o gösterilir
+        if self.TUMU_ETIKETI in self.secili:
+            return f"{self.TUMU_ETIKETI}  ▼"
+        if len(self.secili) == 1:
+            return f"{self.secili[0]}  ▼"
+        return f"{self.secili[0]}  +{len(self.secili) - 1}  ▼"
+
+    def _popup_toggle(self):
+        if self._popup is not None and self._popup.winfo_exists():
+            self._popup_kapat()
+            return
+        self._popup_ac()
+
+    def _popup_ac(self):
+        """Çoklu seçim popup'ı.
+
+        Win10'da maximized (zoomed) parent + wm_overrideredirect Tk'nin
+        popup'ı render etmeyip 'kilitlenmiş gibi' davranmasına yol açabiliyor.
+        Bu yüzden popup normal title bar'lı bir Toplevel olarak açılır;
+        transient ile parent'a bağlanır ve grab_set ile modal yapılır.
+        """
+        root = self.winfo_toplevel()
+        popup = tk.Toplevel(root)
+        popup.title(f"{self.baslik} (çoklu seçim)")
+        popup.configure(bg="#FAFAFA")
+        popup.resizable(False, False)
+        try:
+            popup.transient(root)
+        except Exception:
+            pass
+
+        tk.Label(popup, text=f"☑ {self.baslik} — birden fazla seçebilirsiniz",
+                 font=("Segoe UI", 9, "bold"),
+                 fg="#FFFFFF", bg="#1976D2", anchor="w",
+                 padx=6, pady=2).pack(fill="x")
+
+        cb_frame = tk.Frame(popup, bg="#FAFAFA")
+        cb_frame.pack(fill="both", expand=True, padx=2, pady=2)
+
+        self._popup_varlari = {}
+        for d in self.ogeler:
+            var = tk.BooleanVar(value=(d in self.secili))
+            self._popup_varlari[d] = var
+            tk.Checkbutton(cb_frame, text=d, variable=var, anchor="w",
+                           bg="#FAFAFA", fg="#212121",
+                           selectcolor="#FFFFFF",
+                           activebackground="#E3F2FD",
+                           activeforeground="#0D47A1",
+                           font=("Segoe UI", 9), padx=4, pady=0,
+                           command=lambda dd=d, vv=var: self._toggle(dd, vv)
+                           ).pack(fill="x", padx=0, pady=0, anchor="w")
+
+        alt = tk.Frame(popup, bg="#E0E0E0")
+        alt.pack(fill="x")
+        tk.Button(alt, text="Tümünü Seç", font=("Segoe UI", 8),
+                  fg="white", bg="#1565C0", activebackground="#0D47A1",
+                  bd=0, padx=8, pady=2, command=self._tumunu_sec
+                  ).pack(side="left", padx=3, pady=2)
+        tk.Button(alt, text="Temizle", font=("Segoe UI", 8),
+                  fg="white", bg="#6A1B9A", activebackground="#4A148C",
+                  bd=0, padx=8, pady=2, command=self._temizle
+                  ).pack(side="left", padx=3, pady=2)
+        tk.Button(alt, text="✓ Tamam", font=("Segoe UI", 8, "bold"),
+                  fg="white", bg="#2E7D32", activebackground="#1B5E20",
+                  bd=0, padx=12, pady=2, command=self._popup_kapat
+                  ).pack(side="right", padx=3, pady=2)
+
+        popup.update_idletasks()
+        # Popup'ı butonun altına konumlandır
+        try:
+            x = self._buton.winfo_rootx()
+            y = self._buton.winfo_rooty() + self._buton.winfo_height()
+            sw = popup.winfo_screenwidth()
+            sh = popup.winfo_screenheight()
+            pw = popup.winfo_reqwidth()
+            ph = popup.winfo_reqheight()
+            if x + pw > sw:
+                x = max(0, sw - pw - 4)
+            if y + ph > sh:
+                y = max(0, self._buton.winfo_rooty() - ph)
+            popup.geometry(f"+{x}+{y}")
+        except Exception:
+            pass
+
+        self._popup = popup
+        popup.protocol("WM_DELETE_WINDOW", self._popup_kapat)
+        popup.bind("<Escape>", lambda e: self._popup_kapat())
+        try:
+            popup.lift()
+            popup.focus_force()
+        except Exception:
+            pass
+
+    def _global_click_bind(self):
+        try:
+            self._global_click_funcid = self.winfo_toplevel().bind(
+                "<Button-1>", self._on_global_click, add="+"
+            )
+        except Exception:
+            self._global_click_funcid = None
+
+    def _on_global_click(self, event):
+        if self._popup is None:
+            return
+        try:
+            x, y = event.x_root, event.y_root
+            px, py = self._popup.winfo_rootx(), self._popup.winfo_rooty()
+            pw, ph = self._popup.winfo_width(), self._popup.winfo_height()
+            if px <= x <= px + pw and py <= y <= py + ph:
+                return
+            bx, by = self._buton.winfo_rootx(), self._buton.winfo_rooty()
+            bw, bh = self._buton.winfo_width(), self._buton.winfo_height()
+            if bx <= x <= bx + bw and by <= y <= by + bh:
+                return
+        except Exception:
+            pass
+        self._popup_kapat()
+
+    def _popup_kapat(self, *args):
+        if self._global_click_funcid:
+            try:
+                self.winfo_toplevel().unbind("<Button-1>", self._global_click_funcid)
+            except Exception:
+                pass
+            self._global_click_funcid = None
+        if self._popup is not None:
+            try:
+                if self._popup.winfo_exists():
+                    self._popup.destroy()
+            except Exception:
+                pass
+            self._popup = None
+        self._popup_varlari = {}
+
+    def _toggle(self, oge, var):
+        if var.get():
+            # 'Tümü' işaretlendi → diğerlerini temizle
+            if oge == self.TUMU_ETIKETI:
+                self.secili = [self.TUMU_ETIKETI]
+                for d, v in self._popup_varlari.items():
+                    v.set(d == self.TUMU_ETIKETI)
+            else:
+                # Tümü işaretliydi ise kaldır (artık özel seçim var)
+                if self.TUMU_ETIKETI in self.secili:
+                    self.secili = [d for d in self.secili
+                                   if d != self.TUMU_ETIKETI]
+                    if self.TUMU_ETIKETI in self._popup_varlari:
+                        self._popup_varlari[self.TUMU_ETIKETI].set(False)
+                if oge not in self.secili:
+                    self.secili = [d for d in self.ogeler
+                                   if d in self.secili or d == oge]
+        else:
+            self.secili = [d for d in self.secili if d != oge]
+        if not self.secili and self.ogeler:
+            self.secili = [oge]
+            var.set(True)
+        self._buton.config(text=self._etiket())
+        if self.on_change:
+            try:
+                self.on_change(list(self.secili))
+            except Exception:
+                pass
+
+    def _tumunu_sec(self):
+        self.secili = list(self.ogeler)
+        for var in self._popup_varlari.values():
+            var.set(True)
+        self._buton.config(text=self._etiket())
+        if self.on_change:
+            try:
+                self.on_change(list(self.secili))
+            except Exception:
+                pass
+
+    def _temizle(self):
+        ilk = self.ogeler[0] if self.ogeler else None
+        self.secili = [ilk] if ilk else []
+        for d, var in self._popup_varlari.items():
+            var.set(d == ilk)
+        self._buton.config(text=self._etiket())
+        if self.on_change:
+            try:
+                self.on_change(list(self.secili))
+            except Exception:
+                pass
+
+    def get_secilenler(self):
+        return list(self.secili)
+
+    def set_secilenler(self, ogeler):
+        valid = [d for d in self.ogeler if d in ogeler]
+        if not valid and self.ogeler:
+            valid = [self.ogeler[0]]
+        self.secili = valid
+        self._buton.config(text=self._etiket())
+
+    def set_ogeler(self, ogeler, varsayilan=None):
+        """Öğeleri yeniden ayarla (örn. yıl listesi DB'den yüklendi)."""
+        self.ogeler = list(ogeler)
+        if varsayilan is None:
+            self.secili = [self.ogeler[0]] if self.ogeler else []
+        elif isinstance(varsayilan, (list, tuple, set)):
+            self.secili = [d for d in self.ogeler if d in varsayilan]
+            if not self.secili and self.ogeler:
+                self.secili = [self.ogeler[0]]
+        else:
+            self.secili = ([varsayilan] if varsayilan in self.ogeler
+                           else ([self.ogeler[0]] if self.ogeler else []))
+        self._buton.config(text=self._etiket())
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # ANA SINIF
 # ═══════════════════════════════════════════════════════════════════════
 class AylikReceteSorguGUI:
@@ -760,22 +1026,28 @@ class AylikReceteSorguGUI:
 
         tk.Label(sol, text="Yıl", bg=HEADER_BG, fg=HEADER_FG,
                  font=("Segoe UI", 9)).pack(side="left", padx=(0, 3))
-        self.var_yil = tk.StringVar()
-        self.cb_yil = ttk.Combobox(sol, textvariable=self.var_yil,
-                                    width=6, state="readonly")
+        # Yıl çoklu seçim — DB'den yüklenince set_ogeler ile doldurulur
+        self.var_yil = tk.StringVar()  # geri uyum (compat shim)
+        self.cb_yil = MultiSelectDropdown(
+            sol, ["Tümü"], varsayilan="Tümü", baslik="Yıl",
+            on_change=self._yil_degisti, width=10,
+        )
         self.cb_yil.pack(side="left", padx=2)
-        self.cb_yil.bind("<<ComboboxSelected>>", self._yil_degisti)
         _Tooltip(self.cb_yil,
-                  "Yıl seçimi.\n'Tümü' = tüm yıllar (büyük veri seti)")
+                  "Yıl seçimi (çoklu).\n'Tümü' = tüm yıllar (büyük veri seti)")
 
         tk.Label(sol, text="Ay", bg=HEADER_BG, fg=HEADER_FG,
                  font=("Segoe UI", 9)).pack(side="left", padx=(8, 3))
-        self.var_ay = tk.StringVar()
-        self.cb_ay = ttk.Combobox(sol, textvariable=self.var_ay,
-                                   width=12, state="readonly")
+        # Ay çoklu seçim — sabit 12 ay
+        self.var_ay = tk.StringVar()  # geri uyum (compat shim)
+        _ay_ogeleri = ["Tümü"] + [self._ay_etiketi(i) for i in range(1, 13)]
+        self.cb_ay = MultiSelectDropdown(
+            sol, _ay_ogeleri, varsayilan="Tümü", baslik="Ay",
+            width=16,
+        )
         self.cb_ay.pack(side="left", padx=2)
         _Tooltip(self.cb_ay,
-                  "Ay seçimi.\n'Tümü' = seçili yıldaki tüm aylar")
+                  "Ay seçimi (çoklu).\n'Tümü' = seçili yıldaki tüm aylar")
 
         btn = tk.Button(sol, text="🔍 SORGULA", bg="#1976D2", fg="white",
                          activebackground="#1565C0", bd=0,
@@ -1018,6 +1290,10 @@ class AylikReceteSorguGUI:
             ("MANUEL KONTROL", "#6A1B9A", "⚠ MANUEL"),
             ("",               "#546E7A", "○ Boş"),
         ]
+        # Checkbox referansları + temel etiket metni → _filtre_sayimlarini_guncelle
+        # her yenilemede butona "(N)" ekleyebilsin
+        self._verdict_filtre_cbs = {}
+        self._verdict_filtre_temel = {}
         for etiket, renk, gosterim in _VRD_RENKLERI:
             cb = tk.Checkbutton(
                 p_verdict, text=gosterim,
@@ -1029,6 +1305,8 @@ class AylikReceteSorguGUI:
                 bd=0, padx=2,
                 command=self._tabloyu_yenile)
             cb.pack(side="left", padx=2, pady=2)
+            self._verdict_filtre_cbs[etiket] = cb
+            self._verdict_filtre_temel[etiket] = gosterim
         # Tümü / Hiçbiri kısayolları
         def _verdict_filtre_topluset(deger: bool):
             for v in self.var_verdict_filtre.values():
@@ -1067,6 +1345,8 @@ class AylikReceteSorguGUI:
             ("SUPHELI",     "#EF6C00", "? ŞÜPHELİ"),
             ("",            "#546E7A", "○ Teyitsiz"),
         ]
+        self._teyit_filtre_cbs = {}
+        self._teyit_filtre_temel = {}
         for sonuc, renk, gosterim in _TYT_RENKLERI:
             cb = tk.Checkbutton(
                 p_teyit, text=gosterim,
@@ -1078,6 +1358,8 @@ class AylikReceteSorguGUI:
                 bd=0, padx=2,
                 command=self._tabloyu_yenile)
             cb.pack(side="left", padx=2, pady=2)
+            self._teyit_filtre_cbs[sonuc] = cb
+            self._teyit_filtre_temel[sonuc] = gosterim
         # Tümü / Hiçbiri kısayolları
         def _teyit_filtre_topluset(deger: bool):
             for v in self.var_teyit_filtre.values():
@@ -1655,6 +1937,12 @@ class AylikReceteSorguGUI:
         # Teyit edilmiş satır için kalın font (rozetli satır vurgusu)
         self.tv.tag_configure("teyit_bold", font=("Segoe UI", 9, "bold"))
 
+        # Kod+tarih fallback eşleşmesi — Rapor Kod ve Rap.Teşhis/Tak.No
+        # değerleri kırmızı yazılsın (ttk.Treeview hücre-bazlı renk
+        # desteklemediği için satır foreground'u kırmızıya çekilir; hücre
+        # değerine ayrıca ⚠ işareti eklenir).
+        self.tv.tag_configure("fallback_kirmizi", foreground="#C62828")
+
         # Olay bind'leri
         self.tv.bind("<Button-3>", self._sag_tik_dispatch)
         self.tv.bind("<Double-1>", self._satir_detay)
@@ -1699,11 +1987,14 @@ class AylikReceteSorguGUI:
     # ─────────────────────────────────────────────────────────────────
     # ATOMİK ŞART ŞEMASI PANELİ (sağ kolon, 1/3)
     # ─────────────────────────────────────────────────────────────────
-    # Renkler: VAR yeşil, YOK kırmızı, KE sarı, NA gri
+    # Renkler: VAR yeşil, YOK kırmızı, KE turkuaz (mavi-yeşil arası), NA gri
+    # KE rengi turkuaz (Teal 800/100) — eczacı kararı 2026-05-16: KE artık
+    # mavi-yeşil arası, turuncudan farklı (turuncu = ŞÜPHELİ'nin verdict
+    # rengiyle karışıyordu).
     _SEMA_DURUM_RENK = {
         "var": ("#1B5E20", "#E8F5E9", "✓"),
         "yok": ("#B71C1C", "#FFEBEE", "✗"),
-        "kontrol_edilemedi": ("#E65100", "#FFF3E0", "?"),
+        "kontrol_edilemedi": ("#00695C", "#B2DFDB", "?"),
         "na": ("#616161", "#ECEFF1", "—"),
     }
     _SEMA_SONUC_RENK = {
@@ -2232,6 +2523,12 @@ class AylikReceteSorguGUI:
         top.bind('<Alt-Left>', lambda e: self._sema_nav_recete(-1))
         top.bind('<Alt-Right>', lambda e: self._sema_nav_recete(+1))
 
+        # Sağ tık: tam ekran şemada da ana tablodaki context menüsü açılır.
+        # _sag_tik_menu zaten event.x_root/y_root kullandığı için ve aktif
+        # satırı self.tv.selection() üzerinden okuduğu için ekstra düzenleme
+        # gerekmez — şema açıkken zaten o satır seçilidir.
+        top.bind('<Button-3>', self._sag_tik_menu_tam_ekran)
+
         # ── TEYİT: ✓ UYGUN | ✗ UYGUN DEĞİL | ? ŞÜPHELİ ────────────────
         ayrac = tk.Label(header, text="│", bg="#1565C0", fg="#90CAF9",
                           font=("Segoe UI", 14))
@@ -2368,6 +2665,21 @@ class AylikReceteSorguGUI:
         # gizli olduğu için sorun değil).
         self._sema_tam_zoom_lbl = zoom_lbl_full
 
+        # ── Hasta/reçete bilgi şeridi (kullanıcı isteği 2026-05-16: tam
+        # ekranda kimin reçetesine baktığımızı her zaman görelim)
+        info_bar = tk.Frame(top, bg="#E3F2FD", height=28)
+        info_bar.pack(side="top", fill="x")
+        info_bar.pack_propagate(False)
+        self._sema_tam_info_lbl = tk.Label(
+            info_bar, text="(reçete seçilmedi)",
+            bg="#E3F2FD", fg="#0D47A1",
+            font=("Segoe UI", 10, "bold"), anchor="w")
+        self._sema_tam_info_lbl.pack(side="left", fill="x",
+                                       expand=True, padx=12, pady=2)
+        # Hasta info şeridinde de sağ tık menüsü — TC/künye kopyalama vb.
+        info_bar.bind("<Button-3>", self._sag_tik_menu_tam_ekran)
+        self._sema_tam_info_lbl.bind("<Button-3>", self._sag_tik_menu_tam_ekran)
+
         # Notebook — DMN + Klasik
         nb = ttk.Notebook(top)
         nb.pack(fill="both", expand=True, padx=6, pady=6)
@@ -2389,6 +2701,7 @@ class AylikReceteSorguGUI:
         big_dmn.pack(side="left", fill="both", expand=True)
         big_dmn.bind("<Motion>", self._dmn_canvas_hover)
         big_dmn.bind("<Leave>", lambda _e: self._sema_hide_tip())
+        big_dmn.bind("<Button-3>", self._sag_tik_menu_tam_ekran)
 
         # Klasik canvas + scrollbarlar
         tab_klasik = tk.Frame(nb, bg="#FAFBFC")
@@ -2407,6 +2720,7 @@ class AylikReceteSorguGUI:
         big_klasik.pack(side="left", fill="both", expand=True)
         big_klasik.bind("<Motion>", self._klasik_canvas_hover)
         big_klasik.bind("<Leave>", lambda _e: self._sema_hide_tip())
+        big_klasik.bind("<Button-3>", self._sag_tik_menu_tam_ekran)
 
         # Klasik akış için tab'a geç (kullanıcının bekleyeceği görünüm)
         nb.select(tab_klasik)
@@ -2921,8 +3235,56 @@ class AylikReceteSorguGUI:
             # Tam ekran açıksa nav sayaç + teyit etiket güncelle
             self._sema_nav_lbl_guncelle()
             self._sema_teyit_lbl_guncelle(satir)
+            # Tam ekran açıksa hasta/reçete bilgi şeridini ve pencere
+            # başlığını güncelle (kullanıcı tam ekranda kimi kontrol
+            # ettiğini her zaman görsün)
+            self._sema_tam_bilgi_guncelle(satir)
         except Exception as e:
             self._sema_temizle(f"Hata: {e}")
+
+    def _sema_tam_bilgi_guncelle(self, satir: dict) -> None:
+        """Tam ekran şema penceresinde info_bar + window title'ı güncelle."""
+        top = getattr(self, '_sema_tam_top', None)
+        if not top:
+            return
+        try:
+            hasta = (satir.get("hasta") or "—").strip()
+            tc = (satir.get("tc") or "").strip()
+            rec_tar = (satir.get("rec_tar") or "").strip()
+            rec_no = (satir.get("rec_no") or "").strip()
+            sis_no = (satir.get("sistem_recete_no") or "").strip()
+            ilac = (satir.get("ilac") or "").strip()
+            verdict = (satir.get("verdict") or "").strip()
+
+            parcalar = [hasta]
+            if tc:
+                parcalar.append(f"TC {tc}")
+            if rec_tar:
+                parcalar.append(f"Reç. Tar: {rec_tar}")
+            if rec_no:
+                parcalar.append(f"E-Reç: {rec_no}")
+            if sis_no and sis_no != rec_no:
+                parcalar.append(f"Sis.Reç: {sis_no}")
+            if ilac:
+                parcalar.append(f"İlaç: {ilac}")
+            if verdict:
+                parcalar.append(f"→ {verdict}")
+            metin = "  │  ".join(parcalar)
+
+            lbl = getattr(self, '_sema_tam_info_lbl', None)
+            if lbl is not None:
+                lbl.config(text=metin)
+
+            # Pencere title (taskbar'da da görünür)
+            title_kisa = f"📋 {hasta}"
+            if rec_no:
+                title_kisa += f" — {rec_no}"
+            if rec_tar:
+                title_kisa += f" ({rec_tar})"
+            title_kisa += "  —  Atomik SUT Devre Şeması (ESC kapat)"
+            top.title(title_kisa)
+        except Exception:
+            pass
 
     @staticmethod
     def _sema_grup_matematigi(sartlar: list) -> dict:
@@ -2985,6 +3347,14 @@ class AylikReceteSorguGUI:
              "Varfarin yolu [(a) VEYA (b)]"),
             ("Varfarin yolu (D-2", "İstisna grubu (D-2",
              "Varfarin VEYA istisna [(1)(b) VEYA (2)]"),
+            # Fibrat SUT 4.2.28.B: Yol-a (TG>500) ∨ Yol-b (TG>200 + ≥1 KV)
+            ("Yol-a — TG>500", "Yol-b — TG>200",
+             "Fibrat başlama [(a) VEYA (b)]"),
+            # Klopidogrel SUT 4.2.15.A(2) Y-2 alt-yol:
+            #   Yol-A: raporsuz akut akış (reçete yazan yetkili)
+            #   Yol-B: raporlu 12 ay (rapor mevcut ∧ rapor yazan yetkili AND)
+            ("Y-2: (a) Raporsuz akış", "Y-2: (b) Raporlu 12 ay",
+             "Y-2: Yetkili akış [(a) VEYA (b)]"),
         ]
         for pa, pb, birlesik in cift_prefix_listesi:
             ka = next((k for k in ham_gruplar if k.startswith(pa)), None)
@@ -3068,6 +3438,77 @@ class AylikReceteSorguGUI:
                 "secilen_yol": secilen["grup"],
             }
             for k in keys:
+                ham_gruplar[k]["alt"] = True
+
+        # ─── GENERIC ÇOKLU-YOLAK ÜST-VEYA ────────────────────────────────
+        # Herhangi bir SUT kontrolü atomik şartlarını "Y-<n>: ..." prefix'iyle
+        # yazmışsa, sema panel otomatik 4-yolak paralel şema (üst-OR) çıkarır.
+        # Klopidogrel SUT 4.2.15.A pilot (Y-1..Y-4); ileride herhangi bir
+        # ilaç grubu (Statin, YOAK, vs.) kendi yolaklarını "Y-1:/Y-2:/..."
+        # prefix'iyle işaretlerse aynı görsel matematiği kullanır.
+        # Adımlar:
+        #   1) sartlar'daki tüm "Y-<n>:" grupları regex ile tespit.
+        #   2) Her yolak içi gruplar AND'lenir → sanal yolak.
+        #   3) Tüm yolaklar arası ≥1 yeterli (üst-OR).
+        import re as _re
+        _yolak_pat = _re.compile(r'^(Y-(\d+)):')
+        _yolak_no_keys: dict = {}  # {"Y-1": ["Y-1: Koroner stent", ...]}
+        for k in list(ham_gruplar.keys()):
+            if ham_gruplar[k].get("alt") or ham_gruplar[k].get("sanal_yolak"):
+                continue
+            m = _yolak_pat.match(k)
+            if m:
+                yol_prefix = m.group(1)  # "Y-1", "Y-2", ...
+                _yolak_no_keys.setdefault(yol_prefix, []).append(k)
+        yolak_sanal_keys = []
+        # Yolaklar Y-1, Y-2, ... sırasında işlenir
+        for yol_prefix in sorted(_yolak_no_keys.keys(),
+                                  key=lambda p: int(p.split('-')[1])):
+            yolak_keys = _yolak_no_keys[yol_prefix]
+            gruplari = [ham_gruplar[k] for k in yolak_keys]
+            toplam_gerekli = sum(g["gerekli"] for g in gruplari)
+            toplam_saglanan = sum(g["saglanan"] for g in gruplari)
+            sanal_ad = f"Yolak {yol_prefix}"
+            ham_gruplar[sanal_ad] = {
+                "grup": sanal_ad,
+                "gerekli": toplam_gerekli,
+                "saglanan": toplam_saglanan,
+                "toplam": sum(g["toplam"] for g in gruplari),
+                "veya": False,  # yolak içi AND
+                "var_sayi": sum(g["var_sayi"] for g in gruplari),
+                "sanal_yolak": True,
+                "yolak_prefix": yol_prefix,
+                "alt_yolak_keys": yolak_keys,
+            }
+            yolak_sanal_keys.append(sanal_ad)
+            for k in yolak_keys:
+                ham_gruplar[k]["alt"] = True
+
+        # 2+ sanal yolak varsa üst-VEYA (≥1 yolak tam → VAR)
+        if len(yolak_sanal_keys) >= 2:
+            yolak_gruplari = [ham_gruplar[k] for k in yolak_sanal_keys]
+            tam_olanlar = [g for g in yolak_gruplari
+                           if g["saglanan"] >= g["gerekli"]
+                           and g["gerekli"] > 0]
+            if tam_olanlar:
+                secilen = min(tam_olanlar, key=lambda g: g["gerekli"])
+            else:
+                secilen = max(yolak_gruplari, key=lambda g: g["saglanan"])
+            prefix_listesi = [ham_gruplar[k]["yolak_prefix"]
+                              for k in yolak_sanal_keys]
+            yolak_birlesik = f"Yolaklar [{'∨'.join(prefix_listesi)}]"
+            ham_gruplar[yolak_birlesik] = {
+                "grup": yolak_birlesik,
+                "gerekli": 1,
+                "saglanan": 1 if tam_olanlar else 0,
+                "toplam": sum(g["toplam"] for g in yolak_gruplari),
+                "veya": True,
+                "var_sayi": sum(g["var_sayi"] for g in yolak_gruplari),
+                "secilen_yol": secilen["grup"],
+                "yolak_birlesik": True,
+                "alt_yolak_keys": yolak_sanal_keys,
+            }
+            for k in yolak_sanal_keys:
                 ham_gruplar[k]["alt"] = True
 
         sonuc_listesi = list(ham_gruplar.values())
@@ -3404,7 +3845,7 @@ class AylikReceteSorguGUI:
     _FTA_RENK = {
         'var': ('#1B5E20', '#A5D6A7'),           # koyu yeşil / açık yeşil
         'yok': ('#B71C1C', '#EF9A9A'),           # koyu kırmızı / açık kırmızı
-        'kontrol_edilemedi': ('#E65100', '#FFCC80'),  # turuncu
+        'kontrol_edilemedi': ('#00695C', '#80CBC4'),  # turkuaz (mavi-yeşil)
         'na': ('#546E7A', '#CFD8DC'),            # gri
     }
     _FTA_KENAR_RENK = "#90A4AE"
@@ -3536,15 +3977,319 @@ class AylikReceteSorguGUI:
             return "Miktar Limiti"
         return g[:24]
 
+    def _dmn_yolak_modu_ciz(self, c, sartlar: list,
+                               yolak_no_keys: dict,
+                               detaylar: dict, verdict: str,
+                               satir: dict) -> None:
+        """Generic çoklu-yolak DMN Karar Modeli (Klopidogrel 4.2.15.A pilot).
+
+        DRD (Decision Requirements Diagram) yapısı:
+          • N input-data block (yolak başına: rapor + reçete)
+          • N business knowledge model (her yolağın AND içerik kuralı)
+          • N decision diamond (her yolak için tam/eksik)
+          • 1 OR gateway (yolaklar arası ≥1)
+          • 1 final outcome (UYGUN/UYGUN_DEĞİL/ŞÜPHELİ)
+        """
+        import re as _re
+        self._dmn_neden_map = {}
+        z = max(0.25, min(2.0, getattr(self, '_klasik_zoom', 1.0)))
+        margin = 14
+
+        # Yolak başlıkları (Klopidogrel için; başkalarda Y-1.. fallback)
+        YOLAK_BASLIKLARI = {
+            1: "Y-1: Koroner stent\nöncesi (raporsuz)",
+            2: "Y-2: Akut Koroner\nSendrom (AKS)",
+            3: "Y-3: Kronik\n(12 ay rapor)",
+            4: "Y-4: Girişimsel\nintravasküler",
+        }
+
+        # Yolak başına durum hesapla
+        def _grup_durumu(atoms, veya):
+            var = sum(1 for s in atoms if s.get("durum") == "var")
+            yok = sum(1 for s in atoms if s.get("durum") == "yok")
+            ke = sum(1 for s in atoms if s.get("durum") == "kontrol_edilemedi")
+            if veya:
+                if var > 0:
+                    return "var"
+                if ke > 0:
+                    return "ke"
+                return "yok"
+            if yok > 0:
+                return "yok"
+            if ke > 0:
+                return "ke"
+            return "var"
+
+        yolak_durumu = {}
+        yolak_gruplari = {}
+        for n, atoms in yolak_no_keys.items():
+            g_dict, g_sira = {}, []
+            for s in atoms:
+                g = s.get("grup", "") or ""
+                if g not in g_dict:
+                    g_dict[g] = []
+                    g_sira.append(g)
+                g_dict[g].append(s)
+            yolak_gruplari[n] = (g_dict, g_sira)
+            durumlar = []
+            for g, ats in g_dict.items():
+                veya = any(s.get("veya_grubu") for s in ats)
+                durumlar.append(_grup_durumu(ats, veya))
+            if "yok" in durumlar:
+                yolak_durumu[n] = "yok"
+            elif "ke" in durumlar:
+                yolak_durumu[n] = "ke"
+            else:
+                yolak_durumu[n] = "var"
+
+        prefix_list = sorted(yolak_no_keys.keys())
+        n_yolak = len(prefix_list)
+
+        # Verdict
+        v = (verdict or "").upper().strip()
+        if "UYGUN" in v and ("DEĞİL" in v or "DEGIL" in v):
+            v_kisa, v_renk, v_bg = "UYGUN DEĞİL", "#B71C1C", "#FFCDD2"
+        elif "UYGUN" in v:
+            v_kisa, v_renk, v_bg = "UYGUN", "#1B5E20", "#C8E6C9"
+        elif "ŞÜPH" in v or "SUPH" in v:
+            v_kisa, v_renk, v_bg = "ŞÜPHELİ", "#E65100", "#FFE0B2"
+        else:
+            v_kisa, v_renk, v_bg = (v or "—"), "#37474F", "#ECEFF1"
+
+        # Başlık
+        y = margin
+        c.create_text(margin, y, anchor="nw",
+                       text="🎯 DMN Karar Modeli (DRD) — Çoklu-Yolak Üst-VEYA",
+                       fill="#1A237E", font=("Segoe UI", 11, "bold"),
+                       tags=('dmn',))
+        y += 20
+        formul = " ∨ ".join(f"Y-{n}" for n in prefix_list)
+        c.create_text(margin, y, anchor="nw",
+                       text=f"Karar formülü: ({formul}) → UYGUN  ⇔  ≥1 yolak tam",
+                       fill="#37474F", font=("Segoe UI", 9, "italic"),
+                       tags=('dmn',))
+        y += 28
+
+        # DRD layout: solda N input (paralel kollar), ortada decision diamond,
+        # sağda OR gateway, en sağda final outcome
+        INPUT_W = max(180, int(220 * z))
+        INPUT_H = max(50, int(60 * z))
+        DECISION_W = max(110, int(130 * z))
+        DECISION_H = max(50, int(60 * z))
+        GATEWAY_R = max(22, int(28 * z))
+        OUTCOME_W = max(140, int(170 * z))
+        OUTCOME_H = max(50, int(60 * z))
+        COL_GAP = max(50, int(70 * z))
+        ROW_GAP = max(28, int(40 * z))
+
+        col1_x = margin
+        col2_x = col1_x + INPUT_W + COL_GAP
+        col3_x = col2_x + DECISION_W + COL_GAP + GATEWAY_R + 12
+        col4_x = col3_x + GATEWAY_R + 12 + COL_GAP
+
+        yolak_y_meta = []
+        cy = y
+        for n in prefix_list:
+            yolak_y_meta.append((n, cy))
+            cy += INPUT_H + ROW_GAP
+
+        TOPLAM_H = cy + 30
+        TOPLAM_W = col4_x + OUTCOME_W + margin
+
+        durum_renk = {"var": ("#1B5E20", "#C8E6C9"),
+                       "yok": ("#B71C1C", "#FFCDD2"),
+                       "ke":  ("#E65100", "#FFE0B2")}
+        durum_sembol = {"var": "✓ TAM", "yok": "✗ EKSİK", "ke": "? ŞÜPHELİ"}
+
+        # ── N input data + decision diamond + gateway bağlantıları ──
+        for (n, yy) in yolak_y_meta:
+            d = yolak_durumu[n]
+            fg, bg = durum_renk[d]
+
+            # Input data (parallelogram-stili dikdörtgen)
+            c.create_rectangle(col1_x, yy, col1_x + INPUT_W, yy + INPUT_H,
+                                fill=bg, outline=fg, width=2,
+                                tags=('dmn',))
+            baslik = YOLAK_BASLIKLARI.get(n, f"Y-{n}: yolak {n}")
+            c.create_text(col1_x + INPUT_W/2, yy + INPUT_H/2,
+                           text=baslik, fill=fg,
+                           font=("Segoe UI", 9, "bold"),
+                           width=INPUT_W - 8, tags=('dmn',))
+
+            # Decision (diamond/rounded rect)
+            cx_d = col2_x + DECISION_W/2
+            cy_d = yy + INPUT_H/2
+            c.create_polygon(col2_x, cy_d,
+                              cx_d, yy,
+                              col2_x + DECISION_W, cy_d,
+                              cx_d, yy + INPUT_H,
+                              fill=bg, outline=fg, width=2,
+                              tags=('dmn',))
+            c.create_text(cx_d, cy_d, text=durum_sembol[d],
+                           fill=fg, font=("Segoe UI", 10, "bold"),
+                           tags=('dmn',))
+
+            # Input → Decision kablo
+            kablo_renk = fg if d == "var" else (
+                "#BDBDBD" if d == "yok" else "#00897B")
+            kablo_w = 4 if d == "var" else (2 if d == "yok" else 3)
+            c.create_line(col1_x + INPUT_W, yy + INPUT_H/2,
+                           col2_x, cy_d,
+                           fill=kablo_renk, width=kablo_w,
+                           arrow="last", tags=('dmn',))
+
+            # Decision → OR Gateway (tüm yolaklar ortak gateway'e gider)
+            gateway_cx = col2_x + DECISION_W + COL_GAP + GATEWAY_R
+            gateway_cy = y + ((n_yolak * (INPUT_H + ROW_GAP)) - ROW_GAP) / 2
+            c.create_line(col2_x + DECISION_W, cy_d,
+                           gateway_cx - GATEWAY_R, gateway_cy,
+                           fill=kablo_renk, width=kablo_w,
+                           tags=('dmn',))
+
+        # OR Gateway (diamond/circle)
+        gateway_cx = col2_x + DECISION_W + COL_GAP + GATEWAY_R
+        gateway_cy = y + ((n_yolak * (INPUT_H + ROW_GAP)) - ROW_GAP) / 2
+        tam_yolak_sayi = sum(1 for d in yolak_durumu.values() if d == "var")
+        ke_yolak_sayi = sum(1 for d in yolak_durumu.values() if d == "ke")
+        if tam_yolak_sayi >= 1:
+            gw_fg, gw_bg = "#1B5E20", "#C8E6C9"
+        elif ke_yolak_sayi >= 1:
+            gw_fg, gw_bg = "#E65100", "#FFE0B2"
+        else:
+            gw_fg, gw_bg = "#B71C1C", "#FFCDD2"
+        c.create_polygon(gateway_cx, gateway_cy - GATEWAY_R,
+                          gateway_cx + GATEWAY_R, gateway_cy,
+                          gateway_cx, gateway_cy + GATEWAY_R,
+                          gateway_cx - GATEWAY_R, gateway_cy,
+                          fill=gw_bg, outline=gw_fg, width=3,
+                          tags=('dmn',))
+        c.create_text(gateway_cx, gateway_cy, text="∨",
+                       fill=gw_fg, font=("Segoe UI", 16, "bold"),
+                       tags=('dmn',))
+        c.create_text(gateway_cx, gateway_cy + GATEWAY_R + 14,
+                       text=f"≥1 yolak\n{tam_yolak_sayi}/{n_yolak} tam",
+                       fill=gw_fg, font=("Segoe UI", 8, "italic"),
+                       justify="center", tags=('dmn',))
+
+        # Gateway → Outcome
+        outcome_x = col4_x
+        outcome_y = gateway_cy - OUTCOME_H/2
+        outcome_kablo_renk = gw_fg
+        outcome_kablo_w = 4 if tam_yolak_sayi >= 1 else (
+            2 if tam_yolak_sayi == 0 and ke_yolak_sayi == 0 else 3)
+        c.create_line(gateway_cx + GATEWAY_R, gateway_cy,
+                       outcome_x, gateway_cy,
+                       fill=outcome_kablo_renk, width=outcome_kablo_w,
+                       arrow="last", tags=('dmn',))
+
+        # Final outcome (rounded rectangle)
+        c.create_rectangle(outcome_x, outcome_y,
+                            outcome_x + OUTCOME_W, outcome_y + OUTCOME_H,
+                            fill=v_bg, outline=v_renk, width=3,
+                            tags=('dmn',))
+        c.create_text(outcome_x + OUTCOME_W/2, gateway_cy,
+                       text=v_kisa, fill=v_renk,
+                       font=("Segoe UI", 12, "bold"), tags=('dmn',))
+
+        # Decision Table (alt panel — her yolak satırı + grup şartları)
+        ty = TOPLAM_H + 8
+        c.create_text(margin, ty, anchor="nw",
+                       text="📋 Decision Table — yolak başına şart matriksi",
+                       fill="#0D47A1", font=("Segoe UI", 10, "bold"),
+                       tags=('dmn',))
+        ty += 22
+        # Tablo başlık satırı
+        col_genis = [60, 200, 90, 320]  # Yolak / Şart grubu / Durum / Açıklama
+        col_x = [margin]
+        for w in col_genis:
+            col_x.append(col_x[-1] + w)
+        row_h = 22
+        # Header
+        for i, baslik in enumerate(["Yolak", "Şart Grubu", "Durum", "Açıklama"]):
+            c.create_rectangle(col_x[i], ty, col_x[i+1], ty + row_h,
+                                fill="#ECEFF1", outline="#90A4AE",
+                                tags=('dmn',))
+            c.create_text(col_x[i] + 6, ty + row_h/2, anchor="w",
+                           text=baslik, fill="#0D47A1",
+                           font=("Segoe UI", 9, "bold"), tags=('dmn',))
+        ty += row_h
+
+        for n in prefix_list:
+            g_dict, g_sira = yolak_gruplari[n]
+            for gi, g in enumerate(g_sira):
+                ats = g_dict[g]
+                veya = any(s.get("veya_grubu") for s in ats)
+                d = _grup_durumu(ats, veya)
+                fg, bg = durum_renk[d]
+                # Yolak no
+                c.create_rectangle(col_x[0], ty, col_x[1], ty + row_h,
+                                    fill="white", outline="#CFD8DC",
+                                    tags=('dmn',))
+                if gi == 0:
+                    c.create_text(col_x[0] + 6, ty + row_h/2, anchor="w",
+                                   text=f"Y-{n}", fill="#1A237E",
+                                   font=("Segoe UI", 9, "bold"),
+                                   tags=('dmn',))
+                # Grup adı (kısalt)
+                g_kisa = g if len(g) <= 30 else g[:28] + ".."
+                c.create_rectangle(col_x[1], ty, col_x[2], ty + row_h,
+                                    fill="white", outline="#CFD8DC",
+                                    tags=('dmn',))
+                c.create_text(col_x[1] + 6, ty + row_h/2, anchor="w",
+                               text=g_kisa, fill="#37474F",
+                               font=("Segoe UI", 8), tags=('dmn',))
+                # Durum
+                c.create_rectangle(col_x[2], ty, col_x[3], ty + row_h,
+                                    fill=bg, outline=fg, tags=('dmn',))
+                c.create_text(col_x[2] + 6, ty + row_h/2, anchor="w",
+                               text=durum_sembol[d], fill=fg,
+                               font=("Segoe UI", 8, "bold"), tags=('dmn',))
+                # Açıklama (atom adları kısaca)
+                atom_ozet = " · ".join(
+                    (a.get("ad", "")[:18] + "..") if len(a.get("ad", "")) > 18
+                    else a.get("ad", "") for a in ats[:3])
+                if len(ats) > 3:
+                    atom_ozet += f" (+{len(ats)-3})"
+                c.create_rectangle(col_x[3], ty, col_x[4], ty + row_h,
+                                    fill="white", outline="#CFD8DC",
+                                    tags=('dmn',))
+                c.create_text(col_x[3] + 6, ty + row_h/2, anchor="w",
+                               text=atom_ozet, fill="#37474F",
+                               font=("Segoe UI", 8), tags=('dmn',))
+                ty += row_h
+
+        TOPLAM_H = ty + 16
+        c.configure(scrollregion=(0, 0, max(TOPLAM_W, col_x[4]), TOPLAM_H))
+
     def _dmn_ciz_canvas(self, sartlar: list, detaylar: dict = None,
                          verdict: str = "", satir: dict = None) -> None:
-        """DMN DRD + Decision Table + Toulmin Rebuttal — pilot YOAK."""
+        """DMN DRD + Decision Table + Toulmin Rebuttal — pilot YOAK.
+
+        GENERIC YOLAK MODU (2026-05-16): Sartlar içinde "Y-<n>:" prefix'li
+        gruplar varsa (Klopidogrel ve sonraki çoklu-yolak pilotları)
+        _dmn_yolak_modu_ciz'e branch eder. Aksi halde YOAK-only mantığı.
+        """
         c = self._dmn_canvas
         c.delete("all")
         self._dmn_neden_map = {}
 
         detaylar = detaylar or {}
         sartlar = sartlar or []
+
+        # ── GENERIC YOLAK MODU TESPİTİ ──
+        import re as _re
+        _yolak_pat = _re.compile(r'^Y-(\d+):')
+        yolak_no_keys: dict = {}
+        for s in sartlar:
+            g = s.get("grup", "") or ""
+            if "[pasif]" in g or "(bilgi)" in g:
+                continue
+            m = _yolak_pat.match(g)
+            if m:
+                yolak_no_keys.setdefault(int(m.group(1)), []).append(s)
+        if len(yolak_no_keys) >= 2:
+            return self._dmn_yolak_modu_ciz(
+                c, sartlar, yolak_no_keys, detaylar, verdict, satir)
 
         # Yolak tespit — sadece YOAK EK-4/F M.53-54 (ortopedi); diğer
         # EK-4/F maddeleri (M.51 ARB vs.) bu şemanın kapsamında değil
@@ -4012,7 +4757,7 @@ class AylikReceteSorguGUI:
         "var":    ("#A5D6A7", "#2E7D32"),  # yeşil dolgu, koyu yeşil kenar
         "yok":    ("#EF9A9A", "#B71C1C"),  # kırmızı dolgu, koyu kırmızı
         "or_yok": ("#E0E0E0", "#9E9E9E"),  # gri (OR grubunda kritik değil)
-        "ke":     ("#FFE082", "#E65100"),  # sarı dolgu, turuncu kenar
+        "ke":     ("#B2DFDB", "#00695C"),  # turkuaz dolgu, koyu turkuaz kenar
         "bilgi":  "#ECEFF1",
     }
     _RBD_AKIM_VAR_RENK = "#43A047"   # akan yol yeşil
@@ -4107,12 +4852,12 @@ class AylikReceteSorguGUI:
         'var':    '#E8F5E9',  # çok açık yeşil
         'yok':    '#FFEBEE',  # çok açık pembe
         'or_yok': '#FAFAFA',  # neredeyse beyaz
-        'ke':     '#FFF8E1',  # çok açık sarı
+        'ke':     '#E0F2F1',  # çok açık turkuaz
         'bilgi':  '#F5F5F5',
     }
     _KLASIK_KABLO_VAR = '#2E7D32'    # akan yol — kalın yeşil
     _KLASIK_KABLO_YOK = '#BDBDBD'    # akmayan — ince gri
-    _KLASIK_KABLO_KE = '#E65100'     # şüpheli — sarı kesik
+    _KLASIK_KABLO_KE = '#00897B'     # KE — turkuaz kesik (mavi-yeşil)
     _KLASIK_KABLO_VAR_W = 4
     _KLASIK_KABLO_YOK_W = 2
     _KLASIK_KABLO_KE_W = 3
@@ -4274,6 +5019,431 @@ class AylikReceteSorguGUI:
             return "ke"
         return "yok"
 
+    def _klasik_yolak_modu_ciz(self, c, sartlar: list,
+                                  yolak_no_keys: dict,
+                                  detaylar: dict, verdict: str,
+                                  satir: dict) -> None:
+        """Generic çoklu-yolak paralel render (Klopidogrel 4.2.15.A pilot).
+
+        Atomik şartlarda "Y-<n>:" prefix'li gruplar varsa bu metod devreye girer.
+        Sol pil → N paralel yolak kolu (dikey üst üste) → Sağ pil.
+
+        Her yolak içinde:
+          • Yolak başlığı + durum sembolü (✓ tam / ✗ eksik / ? KE)
+          • Atomlar yatay seri (AND); aynı grubunun OR atomları → dikey mini paralel
+          • Yolak içi gruplar arası ∧ sembolü
+        Yolaklar arası ∨ ile birleşir → üst-VEYA matematiği (≥1 yolak tam → UYGUN).
+
+        Bilgi atomları altta ayrı panelde (mevcut bilgi_atomlari_paneli formatı).
+        """
+        import re as _re
+        import json
+        self._klasik_neden_map = {}
+        z = max(0.25, min(2.0, getattr(self, '_klasik_zoom', 1.0)))
+        margin = 16
+        BLOK_W = max(95, int(132 * z))
+        BLOK_H = max(60, int(78 * z))
+        ATOM_GAP_X = max(20, int(28 * z))   # AND içi atom arası
+        GROUP_GAP_X = max(28, int(38 * z))  # gruplar arası ∧ kavşağı
+        YOLAK_GAP_Y = max(54, int(72 * z))  # yolaklar arası dikey (yolak ayrımı için artırıldı)
+        SUBPAR_GAP_Y = max(48, int(60 * z)) # OR alt-paralel atomlar arası
+        PIL_W = max(36, int(48 * z))
+        BANNER_PAD_Y = 8                    # banner yolağı dikeyde içerikten taşır
+
+        # Başlık alanı
+        y = margin
+        v = (verdict or "").upper().strip()
+        if "UYGUN" in v and ("DEĞİL" in v or "DEGIL" in v):
+            verdict_kisa = "UYGUN DEĞİL"
+            v_renk = "#B71C1C"
+        elif "UYGUN" in v:
+            verdict_kisa = "UYGUN"
+            v_renk = "#1B5E20"
+        elif "ŞÜPH" in v or "SUPH" in v:
+            verdict_kisa = "ŞÜPHELİ"
+            v_renk = "#E65100"
+        else:
+            verdict_kisa = v or "—"
+            v_renk = "#37474F"
+        n_yolak = len(yolak_no_keys)
+        prefix_list = sorted(yolak_no_keys.keys())
+        formul = ' ∨ '.join(f'Y-{n}' for n in prefix_list)
+        c.create_text(margin, y, anchor="nw",
+                       text=f"🔆 Çoklu-Yolak Paralel Şema — "
+                            f"{n_yolak} yolak (üst-VEYA: {formul})",
+                       fill="#1A237E", font=("Segoe UI", 11, "bold"))
+        y += 22
+        c.create_text(margin, y, anchor="nw",
+                       text="Sol pil ⊕ → N paralel yolak kolu → Sağ pil ⊖ · "
+                            "Her yolak içi AND · Yolaklar arası OR (≥1 yeterli)",
+                       fill="#90A4AE", font=("Segoe UI", 8, "italic"))
+        y += 16
+        c.create_text(margin, y, anchor="nw",
+                       text=f"Sonuç: {verdict_kisa}",
+                       fill=v_renk, font=("Segoe UI", 10, "bold"))
+        y += 24
+
+        # Her yolağın sartlarını al → grup-bazlı dağıt
+        # yolak_no_keys: {1: [sart, ...], 2: [...], ...}
+        # Her yolak için grup-bazlı dict: {grup_ad: [atom, ...]}
+        def _yolak_gruplari(yolak_atoms):
+            g_dict = {}
+            g_sira = []
+            for s in yolak_atoms:
+                g = s.get("grup", "") or "(grupsuz)"
+                if g not in g_dict:
+                    g_dict[g] = []
+                    g_sira.append(g)
+                g_dict[g].append(s)
+            return g_dict, g_sira
+
+        def _grup_durumu(atoms, veya):
+            var = sum(1 for s in atoms if s.get("durum") == "var")
+            yok = sum(1 for s in atoms if s.get("durum") == "yok")
+            ke = sum(1 for s in atoms if s.get("durum") == "kontrol_edilemedi")
+            if veya:
+                if var > 0:
+                    return "var"
+                if ke > 0:
+                    return "ke"
+                return "yok"
+            if yok > 0:
+                return "yok"
+            if ke > 0:
+                return "ke"
+            return "var"
+
+        # Yolak başına genel durum: tüm gruplarının AND'i
+        yolak_durumu = {}
+        for n, atoms in yolak_no_keys.items():
+            g_dict, _ = _yolak_gruplari(atoms)
+            durumlar = []
+            for g, ats in g_dict.items():
+                veya = any(s.get("veya_grubu") for s in ats)
+                durumlar.append(_grup_durumu(ats, veya))
+            if "yok" in durumlar:
+                yolak_durumu[n] = "yok"
+            elif "ke" in durumlar:
+                yolak_durumu[n] = "ke"
+            else:
+                yolak_durumu[n] = "var"
+
+        # Her yolak için yatay genişlik hesabı (önceden, layout için)
+        # Yolak = grup1 → ∧ → grup2 → ∧ → grup3
+        # Grup tipleri:
+        #   OR alt-paralel (≥2 atom, hepsi veya_grubu)    → BLOK_W (dikey)
+        #   AND yatay yan yana (≥2 atom, AND)             → n×BLOK_W + (n-1)×ATOM_GAP_X
+        #   Tek atom                                      → BLOK_W
+        def _yolak_genislik(g_dict, g_sira):
+            w = 0
+            for gi, g in enumerate(g_sira):
+                if gi > 0:
+                    w += GROUP_GAP_X
+                ats = g_dict[g]
+                veya = any(s.get("veya_grubu") for s in ats)
+                if veya and len(ats) > 1:
+                    w += BLOK_W  # OR alt-paralel → dikey, tek BLOK_W
+                else:
+                    n = max(1, len(ats))
+                    w += n * BLOK_W + (n - 1) * ATOM_GAP_X
+            return w
+
+        # Layout sabitleri
+        BASLIK_W = max(180, int(220 * z))    # yolak başlığı sütunu (sol)
+        DURUM_W = max(80, int(95 * z))       # yolak durumu sütunu (sağ)
+        # En uzun yolak içi genişlik
+        max_icerik_w = 0
+        yolak_icerik_meta = {}
+        for n in prefix_list:
+            g_dict, g_sira = _yolak_gruplari(yolak_no_keys[n])
+            # OR alt-paralel yüksekliği etkilemez, sadece genişlik
+            iw = _yolak_genislik(g_dict, g_sira)
+            yolak_icerik_meta[n] = (g_dict, g_sira, iw)
+            if iw > max_icerik_w:
+                max_icerik_w = iw
+
+        TOPLAM_W = margin + PIL_W + 24 + BASLIK_W + 16 + max_icerik_w + 16 + DURUM_W + 16 + PIL_W + margin
+        # Yolak yüksekliği — OR alt-paralel atom sayısına göre adaptif
+        # Bir grup içinde n OR atomu varsa, dikey yükseklik n * SUBPAR_GAP_Y olur
+        yolak_y_metalari = []
+        cy = y + 20  # üst boşluk
+        for n in prefix_list:
+            g_dict, g_sira, iw = yolak_icerik_meta[n]
+            # Max OR atom sayısı bu yolakta
+            max_or_n = 1
+            for g, ats in g_dict.items():
+                veya = any(s.get("veya_grubu") for s in ats)
+                if veya and len(ats) > 1:
+                    if len(ats) > max_or_n:
+                        max_or_n = len(ats)
+            # Yolak yüksekliği — OR alt-paralelse her atom için BLOK_H + ufak gap
+            yolak_h = BLOK_H if max_or_n == 1 else (
+                max_or_n * BLOK_H + (max_or_n - 1) * (SUBPAR_GAP_Y - BLOK_H + 8))
+            yolak_y_metalari.append((n, cy, yolak_h, max_or_n))
+            cy += yolak_h + YOLAK_GAP_Y
+        TOPLAM_H = cy - YOLAK_GAP_Y + margin
+
+        # ── Pillere yer aç (sol/sağ ortak) ──
+        pil_x_sol = margin
+        pil_x_sag = margin + PIL_W + 24 + BASLIK_W + 16 + max_icerik_w + 16 + DURUM_W + 16
+        pil_y_ust = y + 20
+        pil_y_alt = TOPLAM_H - margin
+        pil_y_orta = (pil_y_ust + pil_y_alt) / 2
+
+        # Sol pil ⊕ (yatay dikdörtgen)
+        c.create_rectangle(pil_x_sol, pil_y_orta - 16,
+                            pil_x_sol + PIL_W, pil_y_orta + 16,
+                            fill="#FFEB3B", outline="#F57F17", width=2,
+                            tags=('klasik',))
+        c.create_text(pil_x_sol + PIL_W/2, pil_y_orta, text="⊕ Pil",
+                       fill="#5D4037",
+                       font=("Segoe UI", 10, "bold"), tags=('klasik',))
+        # Sağ pil ⊖
+        c.create_rectangle(pil_x_sag, pil_y_orta - 16,
+                            pil_x_sag + PIL_W, pil_y_orta + 16,
+                            fill="#FFEB3B", outline="#F57F17", width=2,
+                            tags=('klasik',))
+        c.create_text(pil_x_sag + PIL_W/2, pil_y_orta, text="⊖ Sonuç",
+                       fill="#5D4037",
+                       font=("Segoe UI", 10, "bold"), tags=('klasik',))
+
+        # Sol pilden dikey ray (4 yolağa dağıtım için)
+        pil_ray_x_sol = pil_x_sol + PIL_W + 6
+        pil_ray_x_sag = pil_x_sag - 6
+        # Ray dikey çizgisi — sol
+        y_first = yolak_y_metalari[0][1] + yolak_y_metalari[0][2]/2
+        y_last = yolak_y_metalari[-1][1] + yolak_y_metalari[-1][2]/2
+        c.create_line(pil_x_sol + PIL_W, pil_y_orta,
+                       pil_ray_x_sol, pil_y_orta,
+                       fill="#37474F", width=3, tags=('klasik',))
+        c.create_line(pil_ray_x_sol, y_first,
+                       pil_ray_x_sol, y_last,
+                       fill="#37474F", width=3, tags=('klasik',))
+        # Sağ ray
+        c.create_line(pil_ray_x_sag, pil_y_orta,
+                       pil_x_sag, pil_y_orta,
+                       fill="#37474F", width=3, tags=('klasik',))
+        c.create_line(pil_ray_x_sag, y_first,
+                       pil_ray_x_sag, y_last,
+                       fill="#37474F", width=3, tags=('klasik',))
+
+        # ── Her yolak için render ──
+        baslik_x = pil_x_sol + PIL_W + 24
+        icerik_x_baslangic = baslik_x + BASLIK_W + 16
+        durum_x = icerik_x_baslangic + max_icerik_w + 16
+
+        # SUT lafzındaki yolak başlıkları (Klopidogrel 4.2.15.A için)
+        YOLAK_BASLIKLARI = {
+            1: "Y-1: Koroner stent öncesi\n(raporsuz, ≤4 hf)",
+            2: "Y-2: Akut Koroner Sendrom\n(NSTEMI/AA/STEMI)",
+            3: "Y-3: Kronik endikasyon\n(12 ay rapor zorunlu)",
+            4: "Y-4: Girişimsel intravasküler\n(raporsuz, ≤4 hf)",
+        }
+
+        # Yolak ayraç renkleri (her yolak için DİSTİNCT outline — görsel ayrım)
+        YOLAK_AYRAC_RENK = {
+            1: "#0D47A1",  # Y-1 koyu mavi
+            2: "#33691E",  # Y-2 koyu yeşil
+            3: "#E65100",  # Y-3 turuncu
+            4: "#6A1B9A",  # Y-4 mor
+        }
+        prev_yolak_alt = None
+
+        for (n, yolak_top, yolak_h, max_or_n) in yolak_y_metalari:
+            g_dict, g_sira, iw = yolak_icerik_meta[n]
+            yolak_mid_y = yolak_top + yolak_h / 2
+            durum = yolak_durumu[n]
+
+            # Yolak durumuna göre renkler (SATURATED — yolak kapsam belirgin)
+            if durum == "var":
+                kablo_renk, kablo_w = "#2E7D32", 4
+                bg_renk = "#C8E6C9"
+                durum_metin = "✓ TAM"
+                durum_renk = "#1B5E20"
+            elif durum == "yok":
+                kablo_renk, kablo_w = "#BDBDBD", 2
+                bg_renk = "#FFEBEE"
+                durum_metin = "✗ EKSİK"
+                durum_renk = "#B71C1C"
+            else:  # ke
+                kablo_renk, kablo_w = "#00897B", 3
+                bg_renk = "#FFE0B2"
+                durum_metin = "? ŞÜPHELİ"
+                durum_renk = "#E65100"
+            ayrac_renk = YOLAK_AYRAC_RENK.get(n, durum_renk)
+
+            # ── TAM-GENİŞLİK YOLAK BANNER ──
+            # Yolağın tüm yatay aralığını (başlık + içerik + durum) tek bir
+            # renkli kutuya alır → 2 yolağın atomları görsel olarak iç içe
+            # geçmez. Banner outline yolak rengiyle distinct (Y-1 mavi, Y-2
+            # yeşil, Y-3 turuncu, Y-4 mor) — kullanıcı 2026-05-16 görsel
+            # ayrım sorunu yakaladı: "iki yolak ortak tek yapıdan geçiyor
+            # gibi görünüyor" → yolak banner ile fix.
+            banner_x0 = baslik_x - 6
+            banner_x1 = durum_x + DURUM_W + 6
+            banner_y0 = yolak_top - BANNER_PAD_Y
+            banner_y1 = yolak_top + yolak_h + BANNER_PAD_Y
+            c.create_rectangle(banner_x0, banner_y0, banner_x1, banner_y1,
+                                fill=bg_renk, outline=ayrac_renk, width=3,
+                                tags=('klasik', 'yolak_banner'))
+
+            # ── Yolaklar arası YATAY AYRAÇ + ∨ sembolü (üst-VEYA görsel) ──
+            if prev_yolak_alt is not None:
+                ayrac_y = (prev_yolak_alt + banner_y0) / 2
+                c.create_line(banner_x0 - 12, ayrac_y,
+                               banner_x1 + 12, ayrac_y,
+                               fill="#37474F", width=2, dash=(8, 4),
+                               tags=('klasik', 'yolak_ayrac'))
+                mid_x = (banner_x0 + banner_x1) / 2
+                c.create_oval(mid_x - 14, ayrac_y - 11,
+                               mid_x + 14, ayrac_y + 11,
+                               fill='white', outline='#1565C0', width=2,
+                               tags=('klasik', 'yolak_ayrac'))
+                c.create_text(mid_x, ayrac_y, text="∨", fill='#1565C0',
+                               font=('Segoe UI', 13, 'bold'),
+                               tags=('klasik', 'yolak_ayrac'))
+            prev_yolak_alt = banner_y1
+
+            # Yolak başlığı (banner içinde beyaz kutu)
+            c.create_rectangle(baslik_x, yolak_top,
+                                baslik_x + BASLIK_W, yolak_top + yolak_h,
+                                fill='white', outline=durum_renk, width=2,
+                                tags=('klasik',))
+            baslik_txt = YOLAK_BASLIKLARI.get(n, f"Y-{n}: (yolak {n})")
+            c.create_text(baslik_x + BASLIK_W/2, yolak_mid_y,
+                           text=baslik_txt, fill=ayrac_renk,
+                           font=("Segoe UI", 10, "bold"),
+                           width=BASLIK_W - 12, tags=('klasik',))
+
+            # Sol ray → yolak başlığı bağlantısı
+            c.create_line(pil_ray_x_sol, yolak_mid_y,
+                           baslik_x, yolak_mid_y,
+                           fill=kablo_renk, width=kablo_w, tags=('klasik',))
+
+            # Yolak içeriği: gruplar yatay seri ∧ ile bağlı
+            cur_x = baslik_x + BASLIK_W + 16
+            # Önce başlık → ilk grup kablosu
+            c.create_line(baslik_x + BASLIK_W, yolak_mid_y,
+                           cur_x, yolak_mid_y,
+                           fill=kablo_renk, width=kablo_w, tags=('klasik',))
+
+            for gi, g in enumerate(g_sira):
+                ats = g_dict[g]
+                veya = any(s.get("veya_grubu") for s in ats)
+                grup_durum = _grup_durumu(ats, veya)
+
+                if veya and len(ats) > 1:
+                    # OR alt-paralel: atomlar dikey üst üste
+                    n_or = len(ats)
+                    ust_atom_y = yolak_top + (yolak_h - (n_or*BLOK_H + (n_or-1)*8))/2
+                    # Sol/sağ alt-paralel raylar (kısa)
+                    par_ray_left_x = cur_x
+                    par_ray_right_x = cur_x + BLOK_W
+                    par_y_top = ust_atom_y + BLOK_H/2
+                    par_y_bot = ust_atom_y + (n_or-1)*(BLOK_H+8) + BLOK_H/2
+                    # Sol giriş kablosu (yolak hat → paralel ray)
+                    c.create_line(cur_x - 8, yolak_mid_y,
+                                   cur_x, yolak_mid_y,
+                                   fill=kablo_renk, width=kablo_w,
+                                   tags=('klasik',))
+                    c.create_line(par_ray_left_x, par_y_top,
+                                   par_ray_left_x, par_y_bot,
+                                   fill="#455A64", width=3, tags=('klasik',))
+                    c.create_line(par_ray_right_x, par_y_top,
+                                   par_ray_right_x, par_y_bot,
+                                   fill="#455A64", width=3, tags=('klasik',))
+                    # Her OR atomu
+                    for ai, a in enumerate(ats):
+                        ax = cur_x
+                        ay = ust_atom_y + ai * (BLOK_H + 8)
+                        self._klasik_blok_ciz(c, ax, ay, BLOK_W, BLOK_H,
+                                                a, veya_uye=True)
+                    # OR sembolü
+                    self._klasik_sembol_at(c, cur_x + BLOK_W/2,
+                                            par_y_top - 12,
+                                            "∨", renk="#1565C0",
+                                            boyut=11, yari=10)
+                    cur_x += BLOK_W
+                else:
+                    # Tek atom veya AND atomları → yatay seri
+                    for ai, a in enumerate(ats):
+                        if ai > 0:
+                            # AND kablo + ∧ sembolü
+                            c.create_line(cur_x, yolak_mid_y,
+                                           cur_x + ATOM_GAP_X, yolak_mid_y,
+                                           fill=kablo_renk, width=kablo_w,
+                                           tags=('klasik',))
+                            self._klasik_sembol_at(
+                                c, cur_x + ATOM_GAP_X/2, yolak_mid_y,
+                                "∧", renk="#1565C0", boyut=10, yari=9)
+                            cur_x += ATOM_GAP_X
+                        ax = cur_x
+                        ay = yolak_mid_y - BLOK_H/2
+                        self._klasik_blok_ciz(c, ax, ay, BLOK_W, BLOK_H, a)
+                        cur_x += BLOK_W
+
+                # Gruplar arası ∧ kavşağı
+                if gi < len(g_sira) - 1:
+                    c.create_line(cur_x, yolak_mid_y,
+                                   cur_x + GROUP_GAP_X, yolak_mid_y,
+                                   fill=kablo_renk, width=kablo_w,
+                                   tags=('klasik',))
+                    self._klasik_sembol_at(
+                        c, cur_x + GROUP_GAP_X/2, yolak_mid_y,
+                        "∧", renk="#0D47A1", boyut=11, yari=10)
+                    cur_x += GROUP_GAP_X
+
+            # Yolak çıkışı → sağ ray
+            c.create_line(cur_x, yolak_mid_y, durum_x, yolak_mid_y,
+                           fill=kablo_renk, width=kablo_w, tags=('klasik',))
+
+            # Yolak durum etiketi (sağ sütun)
+            c.create_rectangle(durum_x, yolak_top + yolak_h/2 - 14,
+                                durum_x + DURUM_W, yolak_top + yolak_h/2 + 14,
+                                fill=bg_renk, outline=durum_renk, width=2,
+                                tags=('klasik',))
+            c.create_text(durum_x + DURUM_W/2, yolak_mid_y,
+                           text=durum_metin, fill=durum_renk,
+                           font=("Segoe UI", 9, "bold"), tags=('klasik',))
+            # Durum kutusu → sağ ray
+            c.create_line(durum_x + DURUM_W, yolak_mid_y,
+                           pil_ray_x_sag, yolak_mid_y,
+                           fill=kablo_renk, width=kablo_w, tags=('klasik',))
+
+        # Üst-VEYA notu (sağ pil yanı)
+        tam_yolak_sayi = sum(1 for d in yolak_durumu.values() if d == "var")
+        c.create_text(pil_x_sag + PIL_W/2, pil_y_alt - 14,
+                       text=f"≥1 yolak tam: {tam_yolak_sayi}/{n_yolak}",
+                       fill="#37474F", font=("Segoe UI", 8, "italic"),
+                       tags=('klasik',))
+
+        # Bilgi atomları paneli (varsa, altta)
+        bilgi_atoms = [s for s in sartlar
+                       if "(bilgi)" in (s.get("grup", "") or "")]
+        if bilgi_atoms:
+            by = TOPLAM_H + 8
+            c.create_text(margin, by, anchor="nw",
+                           text="ℹ Bilgi atomları (matematik dışı — eczacı görüşü):",
+                           fill="#5D4037",
+                           font=("Segoe UI", 9, "bold"), tags=('klasik',))
+            by += 18
+            for s in bilgi_atoms:
+                ad = s.get("ad", "")
+                durum = s.get("durum", "na")
+                neden = s.get("neden", "")
+                sembol = ("✓" if durum == "var" else
+                            "✗" if durum == "yok" else
+                            "?" if durum == "kontrol_edilemedi" else "·")
+                c.create_text(margin + 16, by, anchor="nw",
+                               text=f"{sembol} {ad} — {neden[:80]}",
+                               fill="#37474F", font=("Segoe UI", 8),
+                               tags=('klasik',))
+                by += 14
+            TOPLAM_H = by + 8
+
+        # Scroll region güncelle
+        c.configure(scrollregion=(0, 0, TOPLAM_W, TOPLAM_H))
+
     def _klasik_ciz_canvas(self, sartlar: list, detaylar: dict = None,
                             verdict: str = "", satir: dict = None) -> None:
         """Klasik Akım Şeması — dikdörtgen kutu + dikey paralel + yatay seri.
@@ -4288,6 +5458,11 @@ class AylikReceteSorguGUI:
             SUT 4.2.15.D-1(1) lafzı: "bir ya da daha fazlasına sahip olan"
           • Akan yol kalın yeşil; akmayan ince gri; KE sarı kesik
           • ⊕ pil sol, ⊖ pil sağ
+
+        GENERIC YOLAK MODU (2026-05-16): Sartlar içinde "Y-<n>:" prefix'li
+        gruplar varsa (Klopidogrel 4.2.15.A, ileride Statin/YOAK çoklu-yolak
+        pilotları), _klasik_yolak_modu_ciz'e branch eder — 4 paralel kol,
+        sol/sağ ortak pil. Aksi halde tek-yolak orijinal mantığı.
         """
         c = self._klasik_canvas
         c.delete("all")
@@ -4295,6 +5470,21 @@ class AylikReceteSorguGUI:
 
         detaylar = detaylar or {}
         sartlar = sartlar or []
+
+        # ── YOLAK MODU TESPİTİ (generic çoklu paralel yolak) ──
+        import re as _re
+        _yolak_pat = _re.compile(r'^Y-(\d+):')
+        yolak_no_keys: dict = {}
+        for s in sartlar:
+            g = s.get("grup", "") or ""
+            if "[pasif]" in g or "(bilgi)" in g:
+                continue
+            m = _yolak_pat.match(g)
+            if m:
+                yolak_no_keys.setdefault(int(m.group(1)), []).append(s)
+        if len(yolak_no_keys) >= 2:
+            return self._klasik_yolak_modu_ciz(
+                c, sartlar, yolak_no_keys, detaylar, verdict, satir)
         alt_dal = (detaylar.get("alt_dal") or "").strip()
         is_yoak_ek4f = (("EK-4/F" in alt_dal or "EK4F" in alt_dal)
                         and ("M.53" in alt_dal or "M.54" in alt_dal
@@ -4383,6 +5573,9 @@ class AylikReceteSorguGUI:
             ("Varfarin yolu — ", "İstisna grubu", "Varfarin ∨ İstisna"),
             ("SK raporu — ilk 24 ay", "24 ay sonrası alt yol",
              "Heyet raporu (ilk ∨ sonrası)"),
+            # Fibrat SUT 4.2.28.B: Yol-a (TG>500) ∨ Yol-b (TG>200 + ≥1 KV)
+            ("Yol-a — TG>500", "Yol-b — TG>200",
+             "Fibrat başlama (a) ∨ (b)"),
         ]
         cift_eslesme = {}
         for pa, pb, baslik in ust_or_listesi:
@@ -5136,10 +6329,30 @@ class AylikReceteSorguGUI:
                     formul_parcalari.append(
                         "(" + " ∨ ".join(yol_s_list) + ")")
         formul = " ∧ ".join(formul_parcalari) if formul_parcalari else "(boş)"
-        formul += "  ⇔  UYGUN"
-        c.create_text(margin + 8, y_alt, anchor="nw", text=formul,
+        # Mevzuat tanımı (formülün UYGUN'a denkliği) — bu reçetenin
+        # gerçek değerlendirmesi DEĞİL. Çelişki algılanmasın diye yanına
+        # bu reçetenin gerçek sonucunu eklemek üzere iki ayrı çağrı
+        # kullanıyoruz (renk farklı olsun).
+        formul_metni = formul + "  ⇔  UYGUN (mevzuat şartı)"
+        c.create_text(margin + 8, y_alt, anchor="nw", text=formul_metni,
                        fill="#1A237E", font=("Consolas", 10),
                        width=sink_x + 150, tags=('klasik',))
+        # Reçetenin gerçek değerlendirilmiş sonucu — formülün altına
+        # renkli rozet (kullanıcı şikayeti 2026-05-16: formüldeki "UYGUN"
+        # ile üst rozetteki "UYGUN DEĞİL" arasında çelişki görüntüsü
+        # oluşuyordu — formül mevzuat tanımı, rozet bu reçetenin durumu).
+        _vr_renk = {
+            "UYGUN":          "#2E7D32",
+            "UYGUN DEĞİL":    "#C62828",
+            "ŞÜPHELİ":        "#E65100",
+            "ŞARTLI UYGUN":   "#33691E",
+            "MANUEL KONTROL": "#0D47A1",
+        }.get(verdict_kisa, "#37474F")
+        c.create_text(margin + 8, y_alt + 18, anchor="nw",
+                       text=f"▸ Bu reçete: {verdict_kisa}",
+                       fill=_vr_renk, font=("Segoe UI", 10, "bold"),
+                       tags=('klasik',))
+        y_alt += 18  # ek satır için boşluk
 
         # ─── KODLU MANTIK ŞEMASI (Tab E stili — atom kısaltma harfli) ───
         # Grup → harf (A,B,C..) · atom → harf+numara (A1,A2..) kodla.
@@ -5213,12 +6426,19 @@ class AylikReceteSorguGUI:
                         "(" + " ∨ ".join(yol_k_list) + ")")
         kodlu_formul = (" ∧ ".join(kodlu_parcalari)
                           if kodlu_parcalari else "(boş)")
-        kodlu_formul += "  ⇔  UYGUN"
+        # Mevzuat tanımı + reçetenin gerçek sonucu (Boolean Formül ile
+        # aynı mantık — çelişki görüntüsü yok)
+        kodlu_formul_metni = kodlu_formul + "  ⇔  UYGUN (mevzuat)"
         c.create_text(margin + 8, y_kodlu, anchor="nw",
-                       text=kodlu_formul, fill="#0D47A1",
+                       text=kodlu_formul_metni, fill="#0D47A1",
                        font=("Consolas", 11, "bold"),
                        width=sink_x + 160, tags=('klasik',))
-        y_kodlu += 22 + (len(kodlu_formul) // 90) * 18
+        y_kodlu += 18
+        c.create_text(margin + 8, y_kodlu, anchor="nw",
+                       text=f"▸ Bu reçete: {verdict_kisa}",
+                       fill=_vr_renk, font=("Segoe UI", 10, "bold"),
+                       tags=('klasik',))
+        y_kodlu += 22 + (len(kodlu_formul_metni) // 90) * 18
 
         # 3) Atom Kısaltma Sözlüğü — 2 sütun
         y_kodlu += 12
@@ -5232,7 +6452,7 @@ class AylikReceteSorguGUI:
         def _kod_durum_renk(durum):
             return ("#2E7D32" if durum == "var" else
                     "#C62828" if durum == "yok" else
-                    "#E65100" if durum == "kontrol_edilemedi"
+                    "#00695C" if durum == "kontrol_edilemedi"
                     else "#9E9E9E")
 
         sozluk_atomlar = []
@@ -5299,20 +6519,39 @@ class AylikReceteSorguGUI:
                 "SELECT DISTINCT YEAR(RxKayitTarihi) AS Y FROM ReceteAna "
                 "WHERE RxSilme=0 ORDER BY Y DESC")
             yillar = [str(r["Y"]) for r in rows if r["Y"]]
-            self.cb_yil["values"] = ["Tümü"] + yillar
+            ogeler = ["Tümü"] + yillar
             if yillar:
                 bugun = date.today()
                 hedef = str(bugun.year)
-                self.var_yil.set(hedef if hedef in yillar else yillar[0])
-                self._yil_degisti()
+                varsayilan = hedef if hedef in yillar else yillar[0]
+            else:
+                varsayilan = "Tümü"
+            self.cb_yil.set_ogeler(ogeler, varsayilan=varsayilan)
+            self.var_yil.set(varsayilan)
+            self._yil_degisti()
         except Exception as e:
             logger.exception("Yıl listesi: %s", e)
 
     def _yil_degisti(self, *args):
-        self.cb_ay["values"] = ["Tümü"] + [self._ay_etiketi(i)
-                                              for i in range(1, 13)]
+        # Yıl widget'ından son seçim sonrası ay default'unu güncelle.
+        # Ay öğeleri zaten widget init'inde sabit (12 ay + Tümü); burada
+        # yalnızca varsayılan aktif aya işaret edilir.
+        try:
+            secili_yillar = self.cb_yil.get_secilenler() if hasattr(
+                self, "cb_yil") else []
+        except Exception:
+            secili_yillar = []
         bugun = date.today()
-        self.var_ay.set(self._ay_etiketi(bugun.month))
+        bu_ay_et = self._ay_etiketi(bugun.month)
+        # var_ay (compat shim) ilk ay seçimini gösterir
+        try:
+            mevcut_aylar = self.cb_ay.get_secilenler()
+            if not mevcut_aylar or mevcut_aylar == ["Tümü"]:
+                # İlk yüklemede bu ayı varsayılan olarak işaretle
+                self.cb_ay.set_secilenler([bu_ay_et])
+                self.var_ay.set(bu_ay_et)
+        except Exception:
+            self.var_ay.set(bu_ay_et)
 
     @staticmethod
     def _ay_etiketi(no: int) -> str:
@@ -5332,27 +6571,36 @@ class AylikReceteSorguGUI:
         if not self.db:
             self._durum_yaz("DB bağlı değil")
             return
-        yil_str = (self.var_yil.get() or "").strip()
-        ay_str = (self.var_ay.get() or "").strip()
 
-        # "Tümü" → None (filtre yok)
-        if yil_str == "" or yil_str == "Tümü":
-            yil = None
+        # Çoklu yıl/ay seçimini topla. "Tümü" işaretliyse → None (filtre yok).
+        try:
+            yil_secimleri = self.cb_yil.get_secilenler()
+        except Exception:
+            yil_secimleri = [self.var_yil.get()] if self.var_yil.get() else []
+        try:
+            ay_secimleri = self.cb_ay.get_secilenler()
+        except Exception:
+            ay_secimleri = [self.var_ay.get()] if self.var_ay.get() else []
+
+        if not yil_secimleri or "Tümü" in yil_secimleri:
+            yillar = None
         else:
             try:
-                yil = int(yil_str)
+                yillar = sorted({int(s) for s in yil_secimleri})
             except ValueError:
                 messagebox.showwarning("Uyarı", "Geçersiz yıl", parent=self.root)
                 return
-        if ay_str == "" or ay_str == "Tümü":
-            ay = None
+
+        if not ay_secimleri or "Tümü" in ay_secimleri:
+            aylar = None
         else:
-            ay = self._ay_no_cek(ay_str)
-            if ay == 0:
-                ay = None
+            aylar = sorted({self._ay_no_cek(s) for s in ay_secimleri
+                            if self._ay_no_cek(s) > 0})
+            if not aylar:
+                aylar = None
 
         # Hem yıl hem ay 'Tümü' ise kullanıcıyı uyar (büyük veri seti)
-        if yil is None and ay is None:
+        if yillar is None and aylar is None:
             if not messagebox.askyesno(
                 "Tüm Reçeteler",
                 "Yıl ve ay 'Tümü' — TÜM reçeteler yüklenecek.\n"
@@ -5361,6 +6609,16 @@ class AylikReceteSorguGUI:
                 parent=self.root):
                 return
 
+        # Compat shim'leri güncelle (eski kod yollarına ilk seçimi yansıt)
+        if yillar:
+            self.var_yil.set(str(yillar[0]))
+        elif yil_secimleri:
+            self.var_yil.set(yil_secimleri[0])
+        if aylar:
+            self.var_ay.set(self._ay_etiketi(aylar[0]))
+        elif ay_secimleri:
+            self.var_ay.set(ay_secimleri[0])
+
         # Önce mevcut state kaydet
         self._state_kaydet()
         # Tabloyu temizle
@@ -5368,22 +6626,32 @@ class AylikReceteSorguGUI:
         self.satir_indeks = {}
         self.satir_renkleri = {}
         self.tv.delete(*self.tv.get_children())
+
         # Dönem etiketi (renk state'i bu anahtara kaydedilir)
-        if yil is not None and ay is not None:
-            self.aktif_donem = f"{yil}-{ay:02d}"
-        elif yil is not None:
-            self.aktif_donem = f"{yil}-TUM"
-        elif ay is not None:
-            self.aktif_donem = f"TUM-{ay:02d}"
-        else:
-            self.aktif_donem = "TUM"
+        def _yil_etiketi(yl):
+            if yl is None:
+                return "TUM"
+            if len(yl) == 1:
+                return str(yl[0])
+            return "-".join(str(y) for y in yl)
+
+        def _ay_etiketi_kisa(ay):
+            if ay is None:
+                return "TUM"
+            if len(ay) == 1:
+                return f"{ay[0]:02d}"
+            return "-".join(f"{a:02d}" for a in ay)
+
+        self.aktif_donem = f"{_yil_etiketi(yillar)}-{_ay_etiketi_kisa(aylar)}"
         self.lbl_sayim.config(text="Sorgulanıyor…")
         self._durum_yaz(f"{self.aktif_donem} dönemi sorgulanıyor (ilaç bazlı)…")
-        threading.Thread(target=self._sorgu_threadi, args=(yil, ay),
+        threading.Thread(target=self._sorgu_threadi, args=(yillar, aylar),
                           daemon=True).start()
 
-    def _sorgu_threadi(self, yil, ay):
-        """yil/ay None ise o filtre uygulanmaz (Tümü).
+    def _sorgu_threadi(self, yillar, aylar):
+        """yillar/aylar: None → 'Tümü' (filtre yok); aksi halde int listesi.
+        Çoklu yıl/ay seçimi `YEAR(...) IN (?, ?, ...)` ve
+        `MONTH(...) IN (?, ?, ...)` olarak SQL'e yansır (kartezyen filtre).
         gizle_bos_satirlar AÇIKsa: SQL düzeyinde uyarı kodu / mesaj / rapor
         kodu hiçbiri olmayan satırlar baştan elenir → daha az veri, daha
         hızlı yükleme."""
@@ -5393,12 +6661,14 @@ class AylikReceteSorguGUI:
             # OUTER APPLY ile her ilaç için en uygun (en yeni) aktif raporu seç
             where_parts = ["ra.RxSilme = 0"]
             params = []
-            if yil is not None:
-                where_parts.append("YEAR(ra.RxKayitTarihi) = ?")
-                params.append(int(yil))
-            if ay is not None:
-                where_parts.append("MONTH(ra.RxKayitTarihi) = ?")
-                params.append(int(ay))
+            if yillar is not None and len(yillar) > 0:
+                placeholders = ",".join(["?"] * len(yillar))
+                where_parts.append(f"YEAR(ra.RxKayitTarihi) IN ({placeholders})")
+                params.extend(int(y) for y in yillar)
+            if aylar is not None and len(aylar) > 0:
+                placeholders = ",".join(["?"] * len(aylar))
+                where_parts.append(f"MONTH(ra.RxKayitTarihi) IN ({placeholders})")
+                params.extend(int(a) for a in aylar)
 
             # 🚫 Kurum dışlama (özel sigorta vb. — toggle'dan bağımsız her zaman)
             # Eski "Dışlamalar" butonu yerine: Filtre Ayarları > Kurum sekmesi.
@@ -5485,7 +6755,9 @@ class AylikReceteSorguGUI:
                     atc.ATCKodu, atc.ATCTurkce,
                     rapinfo.RaporAnaId, rapinfo.RaporAnaRaporNo,
                     rapinfo.RaporAnaRaporTarihi, rapinfo.RaporAnaAciklamalar,
-                    rapinfo.rapor_secim_kaynagi
+                    rapinfo.sr_rapor_kodu,
+                    rapinfo.rapor_secim_kaynagi,
+                    rapdok.RaporDoktorBrans
                 FROM ReceteAna ra
                 INNER JOIN ReceteIlaclari ri ON ri.RIRxId = ra.RxId
                                               AND ri.RISilme = 0
@@ -5497,24 +6769,100 @@ class AylikReceteSorguGUI:
                     -- Botanik EOS SecilenRapor cache (eczacının kaydettiği seçim).
                     -- Eczacı reçeteyi kaydederken her raporlu ilaca, etken
                     -- maddeyi içeren raporlar arasından birini elle atar.
-                    -- Bu atama SecilenRapor (SRRxId, SRUrunId) → SRRaporNo
-                    -- olarak kayıtlıdır ve mutlak gerçektir.
-                    -- ICD/ATC tahmini yapılmaz; kayıt yoksa raporsuz sayılır.
+                    --
+                    -- ESLESME STRATEJISI (kullanici karari, 2026-05-16):
+                    -- (A) SR.SRRaporNo ile RaporAna'da DIREKT eslesme dene —
+                    --     RaporNo OR TakipNo OR ProtokolNo. Eslesirse normal
+                    --     tier0_secilenrapor* kaynaklari.
+                    -- (B) Eslesmezse: ayni musteri + ayni rapor kodu +
+                    --     recete tarihinde GECERLI rapor-kod kaydi
+                    --     (RaporRaporKodlariICD.RRKIBaslamaTarihi/BitisTarihi)
+                    --     ile fallback. Bulunursa tier0_kod_tarih_fallback —
+                    --     UI'da kirmizi, kontrol motoru SUPHELI dondurur.
+                    -- (C) Hicbiri eslesmezse tier0_sr_no_rapana — UYGUN_DEGIL
+                    --     (mevcut davranis, HAYDAR ALI DASTAN 2W58MXQ vakasi).
                     SELECT TOP 1
-                        rap.RaporAnaId, rap.RaporAnaRaporNo,
-                        rap.RaporAnaRaporTarihi, rap.RaporAnaAciklamalar,
-                        'tier0_secilenrapor' AS rapor_secim_kaynagi
+                        COALESCE(direkt.RaporAnaId, fallback.RaporAnaId)
+                            AS RaporAnaId,
+                        COALESCE(direkt.RaporAnaRaporNo,
+                                 fallback.RaporAnaRaporNo,
+                                 sr.SRRaporNo) AS RaporAnaRaporNo,
+                        COALESCE(direkt.RaporAnaRaporTarihi,
+                                 fallback.RaporAnaRaporTarihi)
+                            AS RaporAnaRaporTarihi,
+                        COALESCE(direkt.RaporAnaAciklamalar,
+                                 fallback.RaporAnaAciklamalar)
+                            AS RaporAnaAciklamalar,
+                        sr.SRRaporKodu AS sr_rapor_kodu,
+                        CASE
+                            WHEN direkt.RaporAnaId IS NOT NULL
+                                 THEN direkt.eslesen_kaynak
+                            WHEN fallback.RaporAnaId IS NOT NULL
+                                 THEN 'tier0_kod_tarih_fallback'
+                            ELSE 'tier0_sr_no_rapana'
+                        END AS rapor_secim_kaynagi
                     FROM SecilenRapor sr
-                    INNER JOIN RaporAna rap
-                            ON rap.RaporAnaRaporNo = sr.SRRaporNo
-                           AND rap.RaporAnaMusteriId = ra.RxMusteriId
-                           AND (rap.RaporAnaSilme IS NULL OR rap.RaporAnaSilme = 0)
+                    -- (A) Direkt numara eslesmesi: RaporNo OR TakipNo OR ProtokolNo
+                    OUTER APPLY (
+                        SELECT TOP 1
+                            rap.RaporAnaId, rap.RaporAnaRaporNo,
+                            rap.RaporAnaRaporTarihi, rap.RaporAnaAciklamalar,
+                            CASE
+                                WHEN CAST(rap.RaporAnaRaporNo AS NVARCHAR(50))
+                                     = sr.SRRaporNo THEN 'tier0_secilenrapor'
+                                WHEN CAST(rap.RaporAnaRaporTakipNo AS NVARCHAR(50))
+                                     = sr.SRRaporNo THEN 'tier0_secilenrapor_takip'
+                                ELSE 'tier0_secilenrapor_protokol'
+                            END AS eslesen_kaynak
+                        FROM RaporAna rap
+                        WHERE rap.RaporAnaMusteriId = ra.RxMusteriId
+                          AND (rap.RaporAnaSilme IS NULL OR rap.RaporAnaSilme = 0)
+                          AND (CAST(rap.RaporAnaRaporNo    AS NVARCHAR(50)) = sr.SRRaporNo
+                            OR CAST(rap.RaporAnaRaporTakipNo AS NVARCHAR(50)) = sr.SRRaporNo
+                            OR CAST(rap.RaporAnaProtokolNo   AS NVARCHAR(50)) = sr.SRRaporNo)
+                    ) direkt
+                    -- (B) Kod + tarih fallback: ayni rapor kodu + recetede gecerli
+                    OUTER APPLY (
+                        SELECT TOP 1
+                            rap.RaporAnaId, rap.RaporAnaRaporNo,
+                            rap.RaporAnaRaporTarihi, rap.RaporAnaAciklamalar
+                        FROM RaporAna rap
+                        INNER JOIN RaporRaporKodlariICD rrk
+                                ON rrk.RRKIRaporAnaId = rap.RaporAnaId
+                        INNER JOIN RaporKodlari rk
+                                ON rk.RaporKodId = rrk.RRKIRaporKodId
+                        WHERE direkt.RaporAnaId IS NULL  -- sadece (A) bos ise dene
+                          AND rap.RaporAnaMusteriId = ra.RxMusteriId
+                          AND (rap.RaporAnaSilme IS NULL OR rap.RaporAnaSilme = 0)
+                          AND (rrk.RRKISilme IS NULL OR rrk.RRKISilme = 0)
+                          AND rk.RaporKodu = sr.SRRaporKodu
+                          AND sr.SRRaporKodu IS NOT NULL
+                          AND sr.SRRaporKodu <> ''
+                          AND (rrk.RRKIBaslamaTarihi IS NULL
+                               OR rrk.RRKIBaslamaTarihi <= ra.RxIslemTarihi)
+                          AND (rrk.RRKIBitisTarihi   IS NULL
+                               OR rrk.RRKIBitisTarihi   >= ra.RxIslemTarihi)
+                        ORDER BY rap.RaporAnaRaporTarihi DESC
+                    ) fallback
                     WHERE sr.SRRxId = ra.RxId
                       AND sr.SRUrunId = ri.RIUrunId
                       AND sr.SRRaporNo IS NOT NULL
                       AND sr.SRRaporNo <> ''
                     ORDER BY sr.SRId DESC
                 ) rapinfo
+                -- RAPOR DOKTORU branşı (SUT 4.2.28.A/B: "uzman hekimce
+                -- düzenlenecek rapora dayanılarak tüm hekimlerce reçete
+                -- edilir" — kontrol motoru REÇETE doktorunun değil, RAPOR
+                -- doktorunun branşına bakmalı). 2026-05-16: SELAHATTIN
+                -- ÜSTÜN vakası tetikleyici.
+                OUTER APPLY (
+                    SELECT TOP 1 b.BransAdi AS RaporDoktorBrans
+                    FROM RaporDoktor rd
+                    LEFT JOIN Brans b ON b.BransId = rd.RaporDoktorBransId
+                    WHERE rd.RaporDoktorRaporAnaId = rapinfo.RaporAnaId
+                      AND (rd.RaporDoktorSilme IS NULL
+                           OR rd.RaporDoktorSilme = 0)
+                ) rapdok
                 WHERE {where_sql}
                 ORDER BY ra.RxKayitTarihi DESC, ri.RIId
             """
@@ -6116,9 +7464,17 @@ class AylikReceteSorguGUI:
         return {
             "ri_id": riid, "rx_id": rxid,
             "rapor_ana_id": rapor_ana_id,
-            # tier1 = doktorun seçtiği RIRaporKodId ile eşleşen rapor
-            # tier2 = ATC bazlı ICD eşleşmesi (kod uyuşmadı, fallback)
+            # tier0_secilenrapor           : SR.SRRaporNo = RaporAna.RaporNo (normal)
+            # tier0_secilenrapor_takip     : SR.SRRaporNo = RaporAna.TakipNo (normal)
+            # tier0_secilenrapor_protokol  : SR.SRRaporNo = RaporAna.ProtokolNo (normal)
+            # tier0_kod_tarih_fallback     : numara eşleşmedi, hastanın aynı SUT
+            #                                kodlu + reçete tarihinde geçerli raporu
+            #                                ile fallback eşleşti (UI kırmızı, ŞÜPHELİ)
+            # tier0_sr_no_rapana           : SR var ama RaporAna'da hiç eşleşme yok
+            #                                (kağıt reçete sync sorunu, UYGUN_DEĞİL)
             "rapor_secim_kaynagi": (r.get("rapor_secim_kaynagi") or ""),
+            # SecilenRapor.SRRaporKodu — RaporAna sync olmasa bile SR'den gelir
+            "sr_rapor_kodu": (r.get("sr_rapor_kodu") or ""),
             "musteri_id": r.get("RxMusteriId"),
             "secim": "☐",  # tablo render sırasında secili_iidler'e göre güncellenir
             "grup": grup,
@@ -6144,6 +7500,12 @@ class AylikReceteSorguGUI:
             # DoktorBrans tablosunda kaydı yok, ama RxBransId=3 Kardiyoloji.
             "brans": (doktor_brans.get(r.get("RxDoktorId"), "")
                       or self._lookup_brans.get(r.get("RxBransId"), "")),
+            # RAPOR doktorunun branşı (SQL OUTER APPLY rapdok'tan gelir).
+            # SUT 4.2.28.A/B: "uzman hekimce düzenlenecek raporA
+            # DAYANILARAK tüm hekimlerce reçete edilir" — kontrol motoru
+            # 'doktor_uzmanligi' alanını RAPOR doktorunun branşıyla
+            # doldurmalı; reçeteyi pratisyen yazsa bile rapor uzmansa UYGUN.
+            "rapor_doktor_brans": (r.get("RaporDoktorBrans") or "").strip(),
             "kurum_adi": self._lookup_kurum.get(r.get("RxKurumId"), ""),
             "tesis_kodu": self._lookup_hastane_kodu.get(
                 r.get("RxHastaneId"), ""),
@@ -6398,10 +7760,24 @@ class AylikReceteSorguGUI:
             s["teyit"] = recete_teyit_db.rozet(teyit_sonucu)
             # Şart raporu sütunu: verdict_* alanlarından kompakt özet
             s["verdict_sart_raporu"] = self._sart_raporu_metni(s)
-            values = tuple(str(s.get(k, "")) for k in SUTUN_KOD)
+            # Kod+tarih fallback ise rapor kod/teşhis hücrelerini ⚠ ile işaretle
+            fallback_kod_tarih = (
+                s.get("rapor_secim_kaynagi") == "tier0_kod_tarih_fallback")
+            if fallback_kod_tarih:
+                values_list = []
+                for k in SUTUN_KOD:
+                    v = str(s.get(k, ""))
+                    if k in ("rap_kod", "rap_tesh_tak") and v:
+                        v = f"⚠ {v}"
+                    values_list.append(v)
+                values = tuple(values_list)
+            else:
+                values = tuple(str(s.get(k, "")) for k in SUTUN_KOD)
             tags = [renk]
             if teyit_sonucu:
                 tags.append("teyit_bold")
+            if fallback_kod_tarih:
+                tags.append("fallback_kirmizi")
             self.tv.insert("", "end", iid=iid, values=values, tags=tuple(tags))
             self.gosterilen_iids.add(iid)
 
@@ -6409,6 +7785,49 @@ class AylikReceteSorguGUI:
         # "sadece görünenleri boyuyorum" beklentisini garanti eder.
         if self.secili_iidler:
             self.secili_iidler &= self.gosterilen_iids
+
+        # Verdict ve teyit checkbox label'larına sayım yansıt
+        self._filtre_sayimlarini_guncelle()
+
+    def _filtre_sayimlarini_guncelle(self):
+        """Verdict ve teyit filtre checkbox'larının yanındaki '(N)' sayım
+        rozetini günceller. Sayımlar tum_satirlar üzerinden (filtresiz) yapılır
+        — kullanıcı 'bu etikette toplam kaç satır var' bilgisini görür."""
+        # ── Verdict sayımları ──
+        cbs = getattr(self, "_verdict_filtre_cbs", None)
+        temel = getattr(self, "_verdict_filtre_temel", None)
+        if cbs and temel:
+            sayim = {etk: 0 for etk in cbs.keys()}
+            for s in (self.tum_satirlar or []):
+                etk = (s.get("verdict") or "").strip()
+                if etk in sayim:
+                    sayim[etk] += 1
+                else:
+                    sayim[""] = sayim.get("", 0) + 1  # bilinmeyen → "boş" bucket
+            for etk, cb in cbs.items():
+                try:
+                    cb.config(text=f"{temel[etk]} ({sayim.get(etk, 0)})")
+                except Exception:
+                    pass
+
+        # ── Teyit sayımları ──
+        cbs_t = getattr(self, "_teyit_filtre_cbs", None)
+        temel_t = getattr(self, "_teyit_filtre_temel", None)
+        if cbs_t and temel_t:
+            tmap = getattr(self, "_teyit_map", {}) or {}
+            sayim_t = {k: 0 for k in cbs_t.keys()}
+            for s in (self.tum_satirlar or []):
+                iid = str(s.get("ri_id") or "")
+                tyt = str(tmap.get(iid) or "")
+                if tyt in sayim_t:
+                    sayim_t[tyt] += 1
+                else:
+                    sayim_t[""] = sayim_t.get("", 0) + 1
+            for k, cb in cbs_t.items():
+                try:
+                    cb.config(text=f"{temel_t[k]} ({sayim_t.get(k, 0)})")
+                except Exception:
+                    pass
 
     def _satir_filtreden_geciyor_mu(self, s: dict, haric_kod: str = None) -> bool:
         """Sütun arama kutuları + Excel-benzeri değer filtreleri ile filtre.
@@ -7449,6 +8868,20 @@ class AylikReceteSorguGUI:
         self._sutun_ayarlarini_kaydet()
         self._sutun_gorunumunu_uygula()
 
+    def _sag_tik_menu_tam_ekran(self, event):
+        """Tam ekran şema penceresinde sağ tık → ana tablo context menüsünü
+        aç. Tam ekran açıkken aktif satır zaten self.tv.selection() içinde;
+        _sag_tik_menu'nun identify_row çağrısı yanlış y koordinatına dayanıp
+        seçimi bozmasın diye burada koruyup geri yüklüyoruz."""
+        if not self.tv.selection():
+            return
+        mevcut = tuple(self.tv.selection())
+        self._sag_tik_menu(event)
+        try:
+            self.tv.selection_set(mevcut)
+        except Exception:
+            pass
+
     def _sag_tik_menu(self, event):
         iid = self.tv.identify_row(event.y)
         if iid and iid not in self.tv.selection():
@@ -7478,6 +8911,19 @@ class AylikReceteSorguGUI:
                           command=self._rapor_detay_goster)
         else:
             m.add_command(label="📄 Rapor Detayını Göster (rapor yok)",
+                          state="disabled")
+        # Hastanın reçete + rapor dökümü (Botanik EOS — tüm tarihler, tek pencere)
+        hasta_ad_aktif = (s_aktif.get("hasta") or "").strip()
+        musteri_id_aktif = s_aktif.get("musteri_id") or 0
+        tc_aktif = (s_aktif.get("tc") or "").strip()
+        hasta_etiket = hasta_ad_aktif or (f"TC: {tc_aktif}" if tc_aktif else "")
+        ek = f" — {hasta_etiket}" if hasta_etiket else ""
+        if musteri_id_aktif or tc_aktif:
+            m.add_command(
+                label=f"📚 Hastanın Reçete ve Rapor Dökümü{ek}",
+                command=self._hasta_dokum_goster)
+        else:
+            m.add_command(label="📚 Hastanın Reçete ve Rapor Dökümü (hasta kimliği yok)",
                           state="disabled")
         m.add_separator()
         # Üst grup: kopyala / Medula'da aç (tek satır işlemleri)
@@ -8213,6 +9659,21 @@ class AylikReceteSorguGUI:
         sb.pack(side="right", fill="y")
         txt.pack(side="left", fill="both", expand=True)
 
+        self._recete_detay_yaz(txt, rec_no, data)
+
+        alt = tk.Frame(win, bg="#1E3A5F")
+        alt.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Button(alt, text="Kapat", font=("Segoe UI", 10, "bold"),
+                  fg="white", bg="#455A64", activebackground="#37474F",
+                  bd=0, padx=14, pady=4, command=win.destroy).pack(side="right")
+        win.bind("<Escape>", lambda e: win.destroy())
+
+    def _recete_detay_yaz(self, txt: "tk.Text", rec_no, data):
+        """Reçete detayını verilen Text widget'a yaz. Hem standalone pencere
+        hem de hasta-dökümü altpaneli aynı renderingi kullanır."""
+        h = data["header"]
+        txt.configure(state="normal")
+        txt.delete("1.0", "end")
         txt.tag_configure("h1", font=("Segoe UI", 13, "bold"), foreground="#1E3A5F",
                           spacing3=6)
         txt.tag_configure("h2", font=("Segoe UI", 11, "bold"), foreground="#0D47A1",
@@ -8298,16 +9759,8 @@ class AylikReceteSorguGUI:
 
         txt.configure(state="disabled")
 
-        alt = tk.Frame(win, bg="#1E3A5F")
-        alt.pack(fill="x", padx=8, pady=(0, 8))
-        tk.Button(alt, text="Kapat", font=("Segoe UI", 10, "bold"),
-                  fg="white", bg="#455A64", activebackground="#37474F",
-                  bd=0, padx=14, pady=4, command=win.destroy).pack(side="right")
-        win.bind("<Escape>", lambda e: win.destroy())
-
     def _rapor_detay_pencere_olustur(self, satir, data):
         r = data["rapor"]
-        h = data["hasta"]
         win = tk.Toplevel(self.root)
         win.title(f"Rapor Detayı — {r.get('RaporAnaRaporNo') or '?'}")
         win.geometry("900x650")
@@ -8323,6 +9776,22 @@ class AylikReceteSorguGUI:
         sb.pack(side="right", fill="y")
         txt.pack(side="left", fill="both", expand=True)
 
+        self._rapor_detay_yaz(txt, satir, data)
+
+        alt = tk.Frame(win, bg="#1E3A5F")
+        alt.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Button(alt, text="Kapat", font=("Segoe UI", 10, "bold"),
+                  fg="white", bg="#455A64", activebackground="#37474F",
+                  bd=0, padx=14, pady=4, command=win.destroy).pack(side="right")
+        win.bind("<Escape>", lambda e: win.destroy())
+
+    def _rapor_detay_yaz(self, txt: "tk.Text", satir, data):
+        """Rapor detayını verilen Text widget'a yaz. Hem standalone pencere
+        hem de hasta-dökümü altpaneli aynı renderingi kullanır."""
+        r = data["rapor"]
+        h = data["hasta"]
+        txt.configure(state="normal")
+        txt.delete("1.0", "end")
         txt.tag_configure("h1", font=("Segoe UI", 13, "bold"), foreground="#1E3A5F",
                           spacing3=6)
         txt.tag_configure("h2", font=("Segoe UI", 11, "bold"), foreground="#0D47A1",
@@ -8429,12 +9898,385 @@ class AylikReceteSorguGUI:
 
         txt.configure(state="disabled")
 
+    # ───────────────────────── Hasta reçete + rapor dökümü (Botanik EOS, tek pencere) ─────────────────────────
+    def _hasta_musteri_id_coz(self, musteri_id, tc: str):
+        """musteri_id boşsa TC ile Musteri tablosundan çöz. Bulamazsa None."""
+        if musteri_id:
+            return musteri_id
+        if not tc:
+            return None
+        rows = self.db.sorgu_calistir(
+            "SELECT MusteriId FROM Musteri WHERE MusteriTCKN = ?", (tc,))
+        if rows:
+            return rows[0].get("MusteriId")
+        return None
+
+    def _hasta_dokum_goster(self):
+        """Sağ tık → aktif satırdaki hastanın TÜM reçete ve raporlarını Botanik
+        EOS'tan çek, tek pencerede master-detail olarak göster.
+        Üstte 2 tablo (Reçeteler / Raporlar), altta seçili satırın detayı."""
+        s = self._aktif_satir()
+        if not s:
+            return
+        tc = (s.get("tc") or "").strip()
+        if not s.get("musteri_id") and not tc:
+            messagebox.showwarning(
+                "Uyarı",
+                "Bu satırda hasta kimliği yok (musteri_id ve TC eksik).",
+                parent=self.root)
+            return
+        if not self.db:
+            messagebox.showerror("Hata", "Botanik EOS bağlantısı yok.",
+                                 parent=self.root)
+            return
+        try:
+            musteri_id = self._hasta_musteri_id_coz(s.get("musteri_id"), tc)
+            if not musteri_id:
+                messagebox.showinfo(
+                    "Bulunamadı",
+                    f"Bu TC ({tc}) Botanik EOS Musteri tablosunda bulunamadı.",
+                    parent=self.root)
+                return
+            receteler = self.db.sorgu_calistir(
+                """SELECT ra.RxId, ra.RxEReceteNo, ra.RxSgkIslemNo,
+                          ra.RxReceteTarihi, ra.RxIslemTarihi, ra.RxMusteriId,
+                          d.DoktorAdiSoyadi, b.BransAdi, h.HastaneAdi
+                   FROM ReceteAna ra
+                   LEFT JOIN Doktor d ON d.DoktorId = ra.RxDoktorId
+                   LEFT JOIN Brans b ON b.BransId = ra.RxBransId
+                   LEFT JOIN Hastane h ON h.HastaneId = ra.RxHastaneId
+                   WHERE ra.RxMusteriId = ?
+                     AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)
+                   ORDER BY ra.RxReceteTarihi DESC, ra.RxId DESC""",
+                (musteri_id,))
+            raporlar = self.db.sorgu_calistir(
+                """SELECT ra.RaporAnaId, ra.RaporAnaRaporNo,
+                          ra.RaporAnaRaporTakipNo, ra.RaporAnaRaporTarihi,
+                          ra.RaporAnaMusteriId, ra.RaporAnaAciklamalar,
+                          rt.RaporTuruAdi, h.HastaneAdi
+                   FROM RaporAna ra
+                   LEFT JOIN RaporTuru rt ON rt.RaporTuruId = ra.RaporAnaRaporTuruId
+                   LEFT JOIN Hastane h ON h.HastaneId = ra.RaporAnaHastaneId
+                   WHERE ra.RaporAnaMusteriId = ?
+                     AND (ra.RaporAnaSilme IS NULL OR ra.RaporAnaSilme = 0)
+                   ORDER BY ra.RaporAnaRaporTarihi DESC, ra.RaporAnaId DESC""",
+                (musteri_id,))
+            rapor_extra = self._hasta_dokum_rapor_kod_teshis_topla(
+                [r["RaporAnaId"] for r in raporlar if r.get("RaporAnaId")])
+        except Exception as e:
+            logger.exception("Hasta döküm sorgu hatası")
+            messagebox.showerror("Sorgu Hatası",
+                f"Hasta dökümü çekilemedi:\n{e}", parent=self.root)
+            return
+        self._hasta_dokum_pencere_olustur(
+            (s.get("hasta") or "").strip(), tc, receteler, raporlar, rapor_extra)
+
+    def _hasta_dokum_rapor_kod_teshis_topla(self, rapor_ana_idler: list) -> dict:
+        """RaporAnaId → {"kodlar": "4.2.15.D, 4.2.28.A", "teshisler": "I50 - ... | ..."}.
+        Tek toplu sorgu (IN clause, 1000'lik chunk)."""
+        result = {}
+        if not rapor_ana_idler:
+            return result
+        # Aynı rapor için kodlar tekrar etmesin diye set, teşhisler sıralı liste
+        ham = {rid: {"kodlar": set(), "teshisler": []} for rid in rapor_ana_idler}
+        try:
+            for i in range(0, len(rapor_ana_idler), 1000):
+                chunk = rapor_ana_idler[i:i + 1000]
+                ph = ",".join("?" * len(chunk))
+                rows = self.db.sorgu_calistir(
+                    f"""SELECT rrki.RRKIRaporAnaId,
+                               rk.RaporKodu,
+                               icd1.ICDKodu AS K1, icd1.ICDAciklamasi AS A1,
+                               icd2.ICDKodu AS K2, icd2.ICDAciklamasi AS A2,
+                               icd3.ICDKodu AS K3, icd3.ICDAciklamasi AS A3,
+                               icd4.ICDKodu AS K4, icd4.ICDAciklamasi AS A4,
+                               icd5.ICDKodu AS K5, icd5.ICDAciklamasi AS A5
+                        FROM RaporRaporKodlariICD rrki
+                        LEFT JOIN RaporKodlari rk ON rk.RaporKodId = rrki.RRKIRaporKodId
+                        LEFT JOIN ICD icd1 ON icd1.ICDId = rrki.RRKIICDId
+                        LEFT JOIN ICD icd2 ON icd2.ICDId = rrki.RRKIICDId2
+                        LEFT JOIN ICD icd3 ON icd3.ICDId = rrki.RRKIICDId3
+                        LEFT JOIN ICD icd4 ON icd4.ICDId = rrki.RRKIICDId4
+                        LEFT JOIN ICD icd5 ON icd5.ICDId = rrki.RRKIICDId5
+                        WHERE rrki.RRKIRaporAnaId IN ({ph})
+                          AND (rrki.RRKISilme IS NULL OR rrki.RRKISilme = 0)""",
+                    tuple(chunk))
+                for r in rows:
+                    rid = r["RRKIRaporAnaId"]
+                    if rid not in ham:
+                        ham[rid] = {"kodlar": set(), "teshisler": []}
+                    kod = (r.get("RaporKodu") or "").strip()
+                    if kod:
+                        ham[rid]["kodlar"].add(kod)
+                    for n in (1, 2, 3, 4, 5):
+                        ik = (r.get(f"K{n}") or "").strip()
+                        ia = (r.get(f"A{n}") or "").strip()
+                        if ik and ia:
+                            ham[rid]["teshisler"].append(f"{ik} {ia}")
+                        elif ik:
+                            ham[rid]["teshisler"].append(ik)
+        except Exception as e:
+            logger.warning("Hasta dökümü rapor kod/teşhis sorgu hatası: %s", e)
+        for rid, v in ham.items():
+            # Tekrar eden teşhisleri sırasını koruyarak teke indir
+            gorulen = set()
+            tekil_teshisler = []
+            for t in v["teshisler"]:
+                if t not in gorulen:
+                    gorulen.add(t)
+                    tekil_teshisler.append(t)
+            result[rid] = {
+                "kodlar": ", ".join(sorted(v["kodlar"])),
+                "teshisler": " | ".join(tekil_teshisler),
+            }
+        return result
+
+    def _hasta_dokum_pencere_olustur(self, hasta_ad, tc, receteler, raporlar,
+                                       rapor_extra=None):
+        """Master-detail pencere:
+        - üst PanedWindow (yatay): solda Reçete tablosu, sağda Rapor tablosu
+        - alt PanedWindow (dikey): seçilen satırın detayı (Text)
+        Tabloda satır seçimi (Treeview select event) → alt panel anında güncellenir.
+        """
+        win = tk.Toplevel(self.root)
+        baslik = hasta_ad or (f"TC: {tc}" if tc else "(hasta bilinmiyor)")
+        win.title(f"Hasta Reçete ve Rapor Dökümü — {baslik}")
+        win.geometry("1600x820")
+        win.minsize(1100, 600)
+        win.configure(bg="#1E3A5F")
+        win.transient(self.root)
+
+        # Üst başlık
+        ust = tk.Frame(win, bg="#1E3A5F")
+        ust.pack(fill="x", padx=8, pady=(8, 0))
+        tk.Label(ust,
+                 text=f"📚 {baslik}   (TC: {tc or '-'})   —   "
+                      f"{len(receteler)} reçete | {len(raporlar)} rapor",
+                 bg="#1E3A5F", fg="white",
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w")
+        tk.Label(ust,
+                 text="Bir reçete veya rapor satırına tıkla — detay aşağıda görüntülenir.",
+                 bg="#1E3A5F", fg="#B0BEC5",
+                 font=("Segoe UI", 8)).pack(anchor="w")
+
+        # Dikey paned: üstte tablolar, altta detay
+        v_paned = ttk.PanedWindow(win, orient="vertical")
+        v_paned.pack(fill="both", expand=True, padx=8, pady=8)
+
+        # Üst pane: yatay paned (Reçeteler | Raporlar) — rapor tarafına
+        # daha geniş başlangıç (yeni kolonlar rahat görünsün)
+        h_paned = ttk.PanedWindow(v_paned, orient="horizontal")
+        v_paned.add(h_paned, weight=2)
+
+        # --- Reçete tablosu (sol) ---
+        rec_frame = tk.LabelFrame(h_paned, text=f"📋 Reçeteler ({len(receteler)})",
+                                   bg="#FAFAFA", fg="#0D47A1",
+                                   font=("Segoe UI", 9, "bold"), bd=1, relief="solid")
+        h_paned.add(rec_frame, weight=1)
+        rec_kolonlar = ("tarih", "rec_no", "sgk_no", "doktor", "brans", "hastane")
+        rec_tv = ttk.Treeview(rec_frame, columns=rec_kolonlar, show="headings",
+                               selectmode="browse")
+        rec_baslik = {
+            "tarih":   ("Tarih",       90),
+            "rec_no":  ("E-Reçete No", 150),
+            "sgk_no":  ("SGK İşlem",   120),
+            "doktor":  ("Doktor",      160),
+            "brans":   ("Branş",       100),
+            "hastane": ("Hastane",     150),
+        }
+        for kod, (b, w) in rec_baslik.items():
+            rec_tv.heading(kod, text=b)
+            rec_tv.column(kod, width=w, anchor="w")
+        rec_sb = ttk.Scrollbar(rec_frame, orient="vertical", command=rec_tv.yview)
+        rec_tv.configure(yscrollcommand=rec_sb.set)
+        rec_sb.pack(side="right", fill="y")
+        rec_tv.pack(side="left", fill="both", expand=True)
+
+        rec_iid_to_row = {}
+        for r in receteler:
+            tarih = r.get("RxReceteTarihi") or r.get("RxIslemTarihi") or ""
+            tarih_str = str(tarih)[:10] if tarih else ""
+            iid = rec_tv.insert("", "end", values=(
+                tarih_str,
+                r.get("RxEReceteNo") or "",
+                r.get("RxSgkIslemNo") or "",
+                r.get("DoktorAdiSoyadi") or "",
+                r.get("BransAdi") or "",
+                r.get("HastaneAdi") or "",
+            ))
+            rec_iid_to_row[iid] = r
+
+        # --- Rapor tablosu (sağ) ---
+        rap_frame = tk.LabelFrame(h_paned, text=f"📄 Raporlar ({len(raporlar)})",
+                                   bg="#FAFAFA", fg="#0D47A1",
+                                   font=("Segoe UI", 9, "bold"), bd=1, relief="solid")
+        h_paned.add(rap_frame, weight=1)
+        rap_kolonlar = ("tarih", "rap_no", "takip_no", "tur", "hastane",
+                          "kodlar", "teshisler")
+        # Yatay scroll için container — Treeview + dikey + yatay scrollbar
+        rap_inner = tk.Frame(rap_frame, bg="#FAFAFA")
+        rap_inner.pack(fill="both", expand=True)
+        rap_tv = ttk.Treeview(rap_inner, columns=rap_kolonlar, show="headings",
+                               selectmode="browse")
+        rap_baslik = {
+            "tarih":     ("Tarih",        80),
+            "rap_no":    ("Rapor No",     95),
+            "takip_no":  ("Takip No",     75),
+            "tur":       ("Tür",          95),
+            "hastane":   ("Hastane",     120),
+            "kodlar":    ("Rapor Kodu",  110),
+            "teshisler": ("Teşhisler",   260),
+        }
+        for kod, (b, w) in rap_baslik.items():
+            rap_tv.heading(kod, text=b)
+            rap_tv.column(kod, width=w, anchor="w")
+        rap_sb = ttk.Scrollbar(rap_inner, orient="vertical", command=rap_tv.yview)
+        rap_xsb = ttk.Scrollbar(rap_inner, orient="horizontal",
+                                 command=rap_tv.xview)
+        rap_tv.configure(yscrollcommand=rap_sb.set, xscrollcommand=rap_xsb.set)
+        rap_sb.pack(side="right", fill="y")
+        rap_xsb.pack(side="bottom", fill="x")
+        rap_tv.pack(side="left", fill="both", expand=True)
+
+        rapor_extra = rapor_extra or {}
+        rap_iid_to_row = {}
+        for r in raporlar:
+            tarih = r.get("RaporAnaRaporTarihi") or ""
+            tarih_str = str(tarih)[:10] if tarih else ""
+            ekstra = rapor_extra.get(r.get("RaporAnaId")) or {}
+            iid = rap_tv.insert("", "end", values=(
+                tarih_str,
+                r.get("RaporAnaRaporNo") or "",
+                r.get("RaporAnaRaporTakipNo") or "",
+                r.get("RaporTuruAdi") or "",
+                r.get("HastaneAdi") or "",
+                ekstra.get("kodlar") or "",
+                ekstra.get("teshisler") or "",
+            ))
+            rap_iid_to_row[iid] = r
+
+        # --- Alt pane: detay paneli ---
+        detay_frame = tk.LabelFrame(v_paned, text="🔍 Detay",
+                                     bg="#FAFAFA", fg="#0D47A1",
+                                     font=("Segoe UI", 9, "bold"),
+                                     bd=1, relief="solid")
+        v_paned.add(detay_frame, weight=3)
+        detay_txt = tk.Text(detay_frame, wrap="word", bg="#FFFFFF", fg="#000000",
+                             font=("Segoe UI", 10), padx=10, pady=8,
+                             state="disabled")
+        detay_sb = ttk.Scrollbar(detay_frame, orient="vertical",
+                                  command=detay_txt.yview)
+        detay_txt.configure(yscrollcommand=detay_sb.set)
+        detay_sb.pack(side="right", fill="y")
+        detay_txt.pack(side="left", fill="both", expand=True)
+
+        # İlk açılışta yer tutucu
+        detay_txt.configure(state="normal")
+        detay_txt.tag_configure("placeholder", foreground="#9E9E9E",
+                                 font=("Segoe UI", 10, "italic"))
+        detay_txt.insert("end",
+                          "\n  Yukarıdaki Reçeteler veya Raporlar tablosundan bir "
+                          "satıra tıkla — detay burada görünecek.\n", "placeholder")
+        detay_txt.configure(state="disabled")
+
+        # --- Seçim event'leri: tabloya tıklayınca alt panel güncellenir ---
+        def _rec_secim(_event=None):
+            sec = rec_tv.selection()
+            if not sec:
+                return
+            r = rec_iid_to_row.get(sec[0])
+            if not r:
+                return
+            # Diğer tablonun seçimini kaldır (görsel netlik)
+            try:
+                rap_tv.selection_remove(rap_tv.selection())
+            except Exception:
+                pass
+            try:
+                data = self._recete_detay_verileri_cek(
+                    sistem_recete_no=(r.get("RxSgkIslemNo") or ""),
+                    rx_id=r.get("RxId"),
+                    rec_no=(r.get("RxEReceteNo") or ""))
+            except Exception as e:
+                logger.exception("Hasta dökümü → reçete detay sorgu hatası")
+                self._dokum_detay_hata_yaz(detay_txt,
+                    f"Reçete detayı çekilemedi:\n{e}")
+                return
+            if not data:
+                self._dokum_detay_hata_yaz(detay_txt,
+                    "Reçete detayı Botanik EOS'ta bulunamadı.")
+                return
+            self._recete_detay_yaz(detay_txt,
+                r.get("RxSgkIslemNo") or r.get("RxEReceteNo"), data)
+
+        def _rap_secim(_event=None):
+            sec = rap_tv.selection()
+            if not sec:
+                return
+            r = rap_iid_to_row.get(sec[0])
+            if not r:
+                return
+            try:
+                rec_tv.selection_remove(rec_tv.selection())
+            except Exception:
+                pass
+            rapor_ana_id = r.get("RaporAnaId")
+            if not rapor_ana_id:
+                return
+            try:
+                data = self._rapor_detay_verileri_cek(
+                    rapor_ana_id, r.get("RaporAnaMusteriId"))
+            except Exception as e:
+                logger.exception("Hasta dökümü → rapor detay sorgu hatası")
+                self._dokum_detay_hata_yaz(detay_txt,
+                    f"Rapor detayı çekilemedi:\n{e}")
+                return
+            if not data:
+                self._dokum_detay_hata_yaz(detay_txt,
+                    "Rapor detayı Botanik EOS'ta bulunamadı.")
+                return
+            sahte_satir = {
+                "rec_no": "-",
+                "rap_kod": "-",
+                "rapor_secim_kaynagi": "(hasta dökümü)",
+            }
+            self._rapor_detay_yaz(detay_txt, sahte_satir, data)
+
+        rec_tv.bind("<<TreeviewSelect>>", _rec_secim)
+        rap_tv.bind("<<TreeviewSelect>>", _rap_secim)
+
+        # Alt buton
         alt = tk.Frame(win, bg="#1E3A5F")
         alt.pack(fill="x", padx=8, pady=(0, 8))
         tk.Button(alt, text="Kapat", font=("Segoe UI", 10, "bold"),
                   fg="white", bg="#455A64", activebackground="#37474F",
                   bd=0, padx=14, pady=4, command=win.destroy).pack(side="right")
         win.bind("<Escape>", lambda e: win.destroy())
+
+        # Pencere çizildikten sonra sash pozisyonlarını ayarla:
+        # — yatay: reçete tarafı 640px, rapor tarafı kalan ~940px (kodlar+teşhisler rahat)
+        # — dikey: tabloların altında detay paneline ~440px ayır
+        def _sash_ayarla():
+            try:
+                h_paned.sashpos(0, 640)
+            except Exception:
+                pass
+            try:
+                toplam_y = v_paned.winfo_height()
+                if toplam_y > 400:
+                    v_paned.sashpos(0, max(280, toplam_y - 440))
+            except Exception:
+                pass
+        win.after(100, _sash_ayarla)
+
+    def _dokum_detay_hata_yaz(self, txt: "tk.Text", mesaj: str):
+        """Hasta dökümü detay paneline kırmızı hata mesajı yaz."""
+        txt.configure(state="normal")
+        txt.delete("1.0", "end")
+        txt.tag_configure("err", foreground="#C62828",
+                          font=("Segoe UI", 10, "bold"))
+        txt.insert("end", f"\n  ⚠ {mesaj}\n", "err")
+        txt.configure(state="disabled")
 
     def _sutuna_gore_sirala(self, kod: str):
         """Excel benzeri sütun başlığına tıklayarak sırala (asc/desc/reset toggle)."""
@@ -9027,7 +10869,37 @@ class AylikReceteSorguGUI:
           - C10AB                 → FIBRAT
           - C10AC / C10AD / C10AX → DIGER_LIPID (ezetimib tek başına dahil)
         ATC boşsa ticari isim/etken ipuçları kullanılır.
+
+        Negatif override: Botanik EOS'ta bazı kombinasyon ilaçların ATC kodu
+        yanlış girilmiş olabiliyor (örn. KLOGEL-A 75/75 klopidogrel+ASA olmasına
+        rağmen ATC C10 'lipid modifiye edici ajanlar' grubuna düşmüş — AHMET
+        KILIÇALP 3ETC553, 2026-05-16). Aşağıdaki isim/etken'ler NET antiagregan
+        (P2Y12 inhibitörü) olduğu için ATC ne derse desin NONE döner.
         """
+        ad = (ilac_adi or "").upper()
+        et = (etkin or "").upper()
+        # P2Y12 inhibitör (klopidogrel/prasugrel/tikagrelor) negatif listesi —
+        # ATC C10 olarak yanlış kodlanmış kombinasyon ürünlerini bypass eder.
+        non_lipid_isim = (
+            # Klopidogrel ve klopidogrel+ASA kombinasyonları
+            "KLOGEL", "PLAVIX", "KARUM", "PLAGREL", "PINGEL",
+            "LOPIGROL", "DILOXOL", "DIPOREL", "OPIREL", "DUOFLAGREL",
+            "DUOPLAVIN", "COPLAVIX", "DUOCOVER",
+            # Prasugrel
+            "EFFIENT",
+            # Tikagrelor
+            "BRILINTA",
+        )
+        non_lipid_etken = (
+            "KLOPIDOGREL", "CLOPIDOGREL",
+            "PRASUGREL",
+            "TIKAGRELOR", "TICAGRELOR",
+        )
+        if any(s in ad for s in non_lipid_isim):
+            return "NONE"
+        if any(s in et for s in non_lipid_etken):
+            return "NONE"
+
         a = (atc or "").upper().strip()
         if a.startswith("C10AA") or a.startswith("C10BA") or a.startswith("C10BX"):
             return "STATIN"
@@ -9035,8 +10907,6 @@ class AylikReceteSorguGUI:
             return "FIBRAT"
         if a.startswith("C10AC") or a.startswith("C10AD") or a.startswith("C10AX"):
             return "DIGER_LIPID"
-        ad = (ilac_adi or "").upper()
-        et = (etkin or "").upper()
         statin_ipuc = ("STATIN", "ATORVAS", "ROSUVAS", "SIMVAS", "PRAVAS",
                        "FLUVAS", "PITAVAS", "LIPITOR", "CRESTOR", "ROZACT",
                        "EZETIMIB", "EZETROL", "INEGY")
@@ -9069,12 +10939,25 @@ class AylikReceteSorguGUI:
 
         return {
             "ilac_adi": s.get("ilac") or "",
-            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            # rap_kod (RIRaporKodId metni) boşsa SecilenRapor.SRRaporKodu
+            # fallback — kağıt reçetelerde RIRaporKodId boş kalabiliyor.
+            "rapor_kodu": ((s.get("rap_kod") or "").strip()
+                            or (s.get("sr_rapor_kodu") or "").strip()),
             "rapor_kodu_aciklama": "",
             "recete_teshisleri": _bol(s.get("rec_tesh")),
             "rapor_aciklamalari": rapor_aciklamalari,
             "recete_aciklamalari": _bol(s.get("rec_ack")),
             "mesaj_metni": "",
+            "rapor_secim_kaynagi": s.get("rapor_secim_kaynagi") or "",
+            # Statin/Fibrat SUT 4.2.28.A/B "Uzman branşı" şartı:
+            # mevzuat lafzı "kardiyo/KVC/endokrin/iç hast./nöro uzman
+            # hekimlerince düzenlenecek uzman hekim raporuna dayanılarak
+            # TÜM hekimlerce reçete edilir." → kontrol motoru REÇETE
+            # doktorunu değil, RAPOR doktorunu görmeli. Pratisyen hekim
+            # reçete yazmış olsa bile rapor uzmansa şart sağlanır.
+            # (2026-05-16: SELAHATTIN ÜSTÜN 3E4ZTN1 — reçete doktoru
+            # Pratisyen, rapor doktoru ÖZGÜR YAZGAN İç Hast. → UYGUN.)
+            "doktor_uzmanligi": s.get("rapor_doktor_brans") or "",
         }
 
     # ───────────────────────────────────────────────────────────────────
@@ -10584,7 +12467,14 @@ class AylikReceteSorguGUI:
         """Satır dict'inden kontrol_klopidogrel'in beklediği ilac_sonuc dict'ini
         üret. diger_ilac_adlari aynı reçetedeki diğer ilaçların adları
         (kombinasyon yasağı tespiti için: klopidogrel+prasugrel+tikagrelor+YOAK
-        birlikte karşılanmaz)."""
+        birlikte karşılanmaz).
+
+        rapor_doktor_brans + heyet_doktorlari Y-3 (kronik) ve Y-2 (AKS 12 ay
+        rapor) C3 atomu için parametrik kaynak. rapor_doktor_brans satır
+        ana sorgudan TOP 1 olarak gelir (gui:7494); heyet_doktorlari batch
+        tarafından _yoak_heyet_doktorlari_topla ile doldurulur (3MQQQBQ /
+        29558199592 örneklerinde manuel doğrulama eski sorunundu).
+        """
         def _bol(metin):
             if not metin:
                 return []
@@ -10608,9 +12498,15 @@ class AylikReceteSorguGUI:
             "recete_aciklamalari": _bol(s.get("rec_ack")),
             "mesaj_metni": "",
             "doktor_uzmanligi": s.get("brans") or "",
+            "rapor_doktor_brans": s.get("rapor_doktor_brans") or "",
+            "rapor_dr_brans": s.get("rapor_doktor_brans") or "",  # alias
             "hasta_yasi": s.get("yas") or "",
             "recete_dozu": s.get("rec_doz") or "",
             "recete_ilaclari": [{"ad": x} for x in (diger_ilac_adlari or []) if x],
+            "recete_tarihi": s.get("rec_tar") or "",
+            # SUT 4.2.15.A (3) — rapor heyet listesi (Y-3 C3 atomu için)
+            # Batch tarafından _yoak_heyet_doktorlari_topla ile doldurulur.
+            "heyet_doktorlari": [],
         }
 
     # ───────────────────────────────────────────────────────────────────
@@ -14777,7 +16673,13 @@ class AylikReceteSorguGUI:
             f"Statin kontrol — {len(musteri_idler)} hastanın "
             "diğer raporları taranıyor…")
         self.root.update_idletasks()
-        hasta_tum_icd = self._hasta_tum_icd_kodlarini_topla(musteri_idler)
+        # gecmis_dahil=True (FAZİLE KULAN 36TFSME, FERİDE EGE 3KTNEKA —
+        # 2026-05-16): SUT 4.2.28.A/B mantığı "tanı bir kez konuldu mu" diye
+        # bakar. Süresi dolmuş raporlardaki DM/KAH/Mİ vs. ICD'leri de
+        # geçerli kanıttır. GETDATE() filtresi tarihsel reçeteleri yanlış
+        # değerlendiriyordu (YOAK D-1 ile aynı kalıp — bkz. line 19708).
+        hasta_tum_icd = self._hasta_tum_icd_kodlarini_topla(
+            musteri_idler, gecmis_dahil=True)
         # Reçete tarihinden önceki rapor METİNLERİ — KAH/MI/inme/AKS/PAH/AAA/
         # karotid için sekonder koruma kanıtı (ör. "KAG yapıldı" / "stent
         # uygulandı" gibi metinsel kanıtlar aktif rapor yerine geçmiş raporda
@@ -14909,6 +16811,20 @@ class AylikReceteSorguGUI:
                     "kullanıldı (manuel kontrol önerilir)"
                 )
                 uyari = (uyari + " | " if uyari else "") + tier2_uyari
+
+            # ── KOD+TARİH FALLBACK: reçetedeki rapor no RaporAna'da yok ama
+            # hastanın aynı SUT kodlu + tarih aralığında geçerli raporu
+            # eşleştirildi. Eşleşen rapor başka numarayla olabileceği için
+            # kontrol motoru ne döndürürse döndürsün sonuç ŞÜPHELİ — eczacı
+            # rapor metnini manuel doğrulasın (kullanıcı kararı, 2026-05-16).
+            if s.get("rapor_secim_kaynagi") == "tier0_kod_tarih_fallback":
+                fallback_uyari = (
+                    "Reçetedeki rapor numarası RaporAna'da bulunamadı — "
+                    "hastanın aynı SUT kodlu ve reçete tarihinde geçerli "
+                    "raporuyla fallback eşleştirildi (manuel doğrulama gerekli)"
+                )
+                uyari = (uyari + " | " if uyari else "") + fallback_uyari
+                etiket = "ŞÜPHELİ"
 
             # ── ESKİ RAPOR (İSTİNADEN) KONTROLÜ — sadece STATIN/DIGER_LIPID ──
             # FIBRAT bu kapsam dışında (kullanıcı: SADECE statin için).
@@ -18762,6 +20678,20 @@ class AylikReceteSorguGUI:
             "diğer raporları taranıyor…")
         self.root.update_idletasks()
         hasta_tum_icd = self._hasta_tum_icd_kodlarini_topla(musteri_idler)
+        # SUT 4.2.15.A(3) Y-3 rapor doktor branşı PARAMETRİK kontrol —
+        # RaporDoktor heyetini toplu çek (rapor_ana_id bazlı, satır başına 1
+        # rapor). Bu olmadan Y-3 C3 atomu hep KE oluyordu (3KFA8US, 3N6A9CT,
+        # 3MTHGE6, 3MQQQBQ örnekleri — 2026-05-16).
+        rapor_ana_idler = list({s.get("rapor_ana_id")
+                                 for s in self.tum_satirlar
+                                 if s.get("rapor_ana_id")})
+        rapor_heyet_map = self._rapor_heyet_doktor_topla(rapor_ana_idler)
+        # Y-3 anjio tarihi bypass — hastanın TÜM rapor metinlerini topla;
+        # aktif raporda anjio tarihi yoksa geçmiş raporlarda aranır
+        # (kullanıcı kararı 2026-05-16, klinik: anjio bir kez yapılmış ise
+        # belgesi kalıcıdır).
+        hasta_tum_rapor_metinleri = (
+            self._hasta_tum_rapor_metinleri_topla(musteri_idler))
 
         # Önceki çalıştırmadan kalan kendi verdict'lerimizi temizle
         for s in self.tum_satirlar:
@@ -18777,6 +20707,7 @@ class AylikReceteSorguGUI:
                     s["verdict_aranan"] = ""
                     s["verdict_bulunan"] = ""
                     s["verdict_detaylar"] = ""
+                    s["verdict_sartlar"] = ""
                 sayac["_klop_disi"] += 1
                 continue
 
@@ -18819,6 +20750,7 @@ class AylikReceteSorguGUI:
                      "yoak_var": yoak_var,
                      "cift_p2y12": cift_p2y12},
                     ensure_ascii=False)
+                s["verdict_sartlar"] = ""  # kombi yasağı — atomik sartlar üretilmedi
                 sayac["UYGUN DEĞİL"] += 1
                 denetlenen_satirlar.append(s)
                 continue
@@ -18829,6 +20761,13 @@ class AylikReceteSorguGUI:
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
             ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
+            # Reçeteye bağlı rapor heyeti (Y-3 C3 atomu için)
+            rap_id = s.get("rapor_ana_id")
+            if rap_id:
+                ilac_sonuc["heyet_doktorlari"] = rapor_heyet_map.get(rap_id, [])
+            # Y-3 anjio tarihi bypass — hastanın TÜM rapor metinleri
+            ilac_sonuc["gecmis_rapor_metinleri"] = (
+                hasta_tum_rapor_metinleri.get(mid, []) if mid else [])
 
             try:
                 rapor = kontrol_klopidogrel(ilac_sonuc)
@@ -18844,6 +20783,7 @@ class AylikReceteSorguGUI:
                 s["verdict_aranan"] = ""
                 s["verdict_bulunan"] = ""
                 s["verdict_detaylar"] = ""
+                s["verdict_sartlar"] = ""  # exception — atomik sartlar üretilmedi
                 sayac["ŞÜPHELİ"] += 1
                 denetlenen_satirlar.append(s)
                 continue
@@ -18864,6 +20804,25 @@ class AylikReceteSorguGUI:
                                                     ensure_ascii=False)
             except Exception:
                 s["verdict_detaylar"] = str(rapor.detaylar or {})
+            # Atomik şart listesi — atomik şema paneli için (2026-05-16)
+            # CLAUDE.md disiplini: grup + veya_grubu + alt_liste, sema_panel
+            # otomatik 4-yolak üst-VEYA çiziyor (gui:_sema_grup_matematigi).
+            sartlar_obj = getattr(rapor, "sartlar", None) or []
+            try:
+                s["verdict_sartlar"] = json.dumps([
+                    {"ad": p.ad,
+                     "durum": (p.durum.value if hasattr(p.durum, "value")
+                                else str(p.durum)),
+                     "neden": p.neden,
+                     "kaynak": getattr(p, "kaynak", ""),
+                     "grup": getattr(p, "grup", ""),
+                     "veya_grubu": bool(getattr(p, "veya_grubu", False)),
+                     "alt_liste": getattr(p, "alt_liste", None),
+                     "sartli_atom": bool(getattr(p, "sartli_atom", False))}
+                    for p in sartlar_obj
+                ], ensure_ascii=False)
+            except Exception:
+                s["verdict_sartlar"] = ""
             sayac[etiket] = sayac.get(etiket, 0) + 1
             denetlenen_satirlar.append(s)
 

@@ -44,6 +44,22 @@ SUT_MADDESI_KATEGORI = {
     '4.2.9': 'SOLUNUM',
     '4.2.24': 'SOLUNUM',
     '4.2.24.B': 'SOLUNUM',
+    # Hepatit (12 yolak atomik dispatcher — hepatit_kontrol.py)
+    '4.2.13': 'HEPATIT',
+    '4.2.13.1': 'HEPATIT',     # Kronik Hepatit B
+    '4.2.13.1.1': 'HEPATIT',   # B siroz
+    '4.2.13.1.2': 'HEPATIT',   # B + immünsupresif
+    '4.2.13.1.3': 'HEPATIT',   # B transplant
+    '4.2.13.1.4': 'HEPATIT',   # Biyopsi kontrendike
+    '4.2.13.2': 'HEPATIT',     # Kronik D / Delta
+    '4.2.13.3': 'HEPATIT',     # Hepatit C
+    '4.2.13.3.1': 'HEPATIT',   # Akut C
+    '4.2.13.3.2': 'HEPATIT',   # Kronik C
+    '4.2.13.3.2.A': 'HEPATIT', # Erişkin C
+    '4.2.13.3.2.A.1': 'HEPATIT',
+    '4.2.13.3.2.A.2': 'HEPATIT',
+    '4.2.13.3.2.B': 'HEPATIT', # Çocuk C
+    '4.2.13.3.2.B.1': 'HEPATIT',
 }
 
 # Rapor kodu -> kategori eşleştirme (Medula rapor kodları)
@@ -289,21 +305,42 @@ ETKIN_MADDE_KATEGORI = {
     'METOKSIPOLIETILENGLIKOL': 'GENEL_RAPORLU',
     'METOKSIPOLIETILENGLIKOL EPOETIN BETA': 'GENEL_RAPORLU',
 
-    # ANTIVIRAL - HIV/Hepatit B/C (SUT 4.2.13 - özel kontrol fonksiyonu yok, rapor bazlı)
-    # Bu ilaçlar listelendiğinde rapor kodu 06.01 bifosfonatla karışmasın diye ANTIVIRAL döner
-    'TENOFOVIR': 'ANTIVIRAL',
-    'TENOFOVIR DISOPROKSIL': 'ANTIVIRAL',
-    'TENOFOVIR DISOPROKSIL FUMARAT': 'ANTIVIRAL',
-    'TENOFOVIR ALAFENAMID': 'ANTIVIRAL',
-    'ENTEKAVIR': 'ANTIVIRAL',
-    'ADEFOVIR': 'ANTIVIRAL',
-    'LAMIVUDIN': 'ANTIVIRAL',
+    # Hepatit B/C/D — 12 yolak atomik dispatcher (SUT 4.2.13)
+    # 2026-05-16: ANTIVIRAL fallback'tan HEPATIT atomik motoruna taşındı.
+    # HIV ilaçları (dolutegravir/abacavir/efavirenz) ANTIVIRAL'da kalır.
+    'TENOFOVIR': 'HEPATIT',
+    'TENOFOVIR DISOPROKSIL': 'HEPATIT',
+    'TENOFOVIR DISOPROKSIL FUMARAT': 'HEPATIT',
+    'TENOFOVIR ALAFENAMID': 'HEPATIT',
+    'TENOFOVIR ALAFENAMID FUMARAT': 'HEPATIT',
+    'ENTEKAVIR': 'HEPATIT',
+    'ADEFOVIR': 'HEPATIT',
+    'ADEFOVIR DIPIVOKSIL': 'HEPATIT',
+    'LAMIVUDIN': 'HEPATIT',
+    'TELBIVUDIN': 'HEPATIT',
+    'SOFOSBUVIR': 'HEPATIT',
+    'LEDIPASVIR': 'HEPATIT',
+    'VELPATASVIR': 'HEPATIT',
+    'VOXILAPREVIR': 'HEPATIT',
+    'GLEKAPREVIR': 'HEPATIT',
+    'GLECAPREVIR': 'HEPATIT',
+    'PIBRENTASVIR': 'HEPATIT',
+    'OMBITASVIR': 'HEPATIT',
+    'PARITAPREVIR': 'HEPATIT',
+    'DASABUVIR': 'HEPATIT',
+    'DAKLATASVIR': 'HEPATIT',
+    'ELBASVIR': 'HEPATIT',
+    'GRAZOPREVIR': 'HEPATIT',
+    'PEGINTERFERON': 'HEPATIT',
+    'PEGINTERFERON ALFA': 'HEPATIT',
+    'PEGINTERFERON ALFA-2A': 'HEPATIT',
+    'PEGINTERFERON ALFA-2B': 'HEPATIT',
+    'INTERFERON ALFA': 'HEPATIT',
+    'INTERFERON ALFA-2A': 'HEPATIT',
+    'INTERFERON ALFA-2B': 'HEPATIT',
+    'RIBAVIRIN': 'HEPATIT',
+    # HIV ilaçları (Hepatit kapsamı dışı)
     'EMTRISITABIN': 'ANTIVIRAL',
-    'SOFOSBUVIR': 'ANTIVIRAL',
-    'LEDIPASVIR': 'ANTIVIRAL',
-    'VELPATASVIR': 'ANTIVIRAL',
-    'GLEKAPREVIR': 'ANTIVIRAL',
-    'PIBRENTASVIR': 'ANTIVIRAL',
     'DOLUTEGRAVIR': 'ANTIVIRAL',
     'ABACAVIR': 'ANTIVIRAL',
     'EFAVIRENZ': 'ANTIVIRAL',
@@ -868,18 +905,38 @@ ILAC_ADI_KATEGORI = {
     'PREGABEX': 'NOROPATIK_AGRI',
     # CYMBALTA ve DUXET → PSIKIYATRI (nöropatik endikasyon kontrol_psikiyatri içinde)
 
-    # Antiviral Hepatit/HIV ticari adlar
-    'BARACLUDE': 'ANTIVIRAL',        # Entekavir
-    'VIREAD': 'ANTIVIRAL',           # Tenofovir
-    'HEPATERA': 'ANTIVIRAL',
-    'LAMIVUDIN': 'ANTIVIRAL',
-    'EPIVIR': 'ANTIVIRAL',
-    'HEPSERA': 'ANTIVIRAL',          # Adefovir
+    # Hepatit ticari adlar — atomik 12 yolak dispatcher (4.2.13)
+    'BARACLUDE': 'HEPATIT',        # Entekavir
+    'VIREAD': 'HEPATIT',           # Tenofovir disoproksil
+    'VEMLIDY': 'HEPATIT',          # Tenofovir alafenamid
+    'TENOF': 'HEPATIT',
+    'HEPATERA': 'HEPATIT',
+    'LAMIVUDIN': 'HEPATIT',
+    'EPIVIR': 'HEPATIT',
+    'EPIVIR HBV': 'HEPATIT',
+    'ZEFFIX': 'HEPATIT',           # Lamivudin
+    'SEBIVO': 'HEPATIT',           # Telbivudin
+    'TYZEKA': 'HEPATIT',
+    'HEPSERA': 'HEPATIT',          # Adefovir
+    'PEGASYS': 'HEPATIT',          # Pegile IFN alfa-2a
+    'PEGINTRON': 'HEPATIT',        # Pegile IFN alfa-2b
+    'VIRAFERONPEG': 'HEPATIT',
+    'COPEGUS': 'HEPATIT',          # Ribavirin
+    'REBETOL': 'HEPATIT',
+    'VIRAZOLE': 'HEPATIT',
+    'SOVALDI': 'HEPATIT',          # Sofosbuvir
+    'EPCLUSA': 'HEPATIT',          # Sofosbuvir+Velpatasvir
+    'HARVONI': 'HEPATIT',          # Sofosbuvir+Ledipasvir
+    'VOSEVI': 'HEPATIT',           # SVV
+    'MAVIRET': 'HEPATIT',          # Glekaprevir+Pibrentasvir
+    'MAVYRET': 'HEPATIT',
+    'VIEKIRAX': 'HEPATIT',
+    'EXVIERA': 'HEPATIT',
+    'DAKLINZA': 'HEPATIT',
+    'ZEPATIER': 'HEPATIT',
+    # HIV (Hepatit dışı)
     'BEMFOLA': 'ANTIVIRAL',
-    'EPCLUSA': 'ANTIVIRAL',          # Sofosbuvir+Velpatasvir
-    'HARVONI': 'ANTIVIRAL',          # Sofosbuvir+Ledipasvir
-    'MAVIRET': 'ANTIVIRAL',          # Glekaprevir+Pibrentasvir
-    'TIVICAY': 'ANTIVIRAL',          # Dolutegravir
+    'TIVICAY': 'ANTIVIRAL',        # Dolutegravir
     'TRIUMEQ': 'ANTIVIRAL',
 
     # Enteral beslenme — ticari ad çok kelimeli; tüm anahtar kelimeler (aroma hariç)
@@ -6099,234 +6156,1265 @@ def _anjio_tarihi_yakin_bul(metin_orjinal: str, metin_lower: str,
     return '', False
 
 
-def kontrol_klopidogrel(ilac_sonuc: Dict) -> KontrolRaporu:
+# ═══════════════════════════════════════════════════════════════════════
+# SUT 4.2.15.A / Ç / E — Klopidogrel / Prasugrel / Tikagrelor (ATOMİK)
+# ═══════════════════════════════════════════════════════════════════════
+# Pilot mimari: YOAK 4.2.15.D (CLAUDE.md §1-9 + SUT_MANTIK_SEMA_PROTOKOLU.md).
+# Klopidogrel 4.2.15.A → 4 paralel yolak (üst-VEYA):
+#   Y1: Koroner stent öncesi (raporsuz, ≤4 hafta)
+#   Y2: Akut Koroner Sendrom (NSTEMI/anstabil angina/STEMI, raporsuz veya 12 ay rapor)
+#   Y3: Kronik (biyoprotez / anjio-KAH / tıkayıcı PAH / iskemik inme), 12 ay rapor
+#   Y4: Girişimsel intravasküler işlem (stent/stentgraft/koil/onyx vb., raporsuz)
+# Genel formül: Klop_UYGUN ⇔ Y1 ∨ Y2 ∨ Y3 ∨ Y4
+# Etken madde "PRASUGREL" ise → 4.2.15.Ç ek şartları (yaş<75, kilo>60, SVO yok)
+# Etken madde "TIKAGRELOR" ise → 4.2.15.E ek şartları (fibrinolitik 72sa yok, varfarin yok, EKG/troponin)
+# ─────────────────────────────────────────────────────────────────────────
+
+# Doktor branş anahtar listeleri (upper-case, kısmen-eşleşme)
+_KLOP_BRANS_KARD_KVC = ('KARDIYOLOJ', 'KALP DAMAR', 'KVC')
+_KLOP_BRANS_AKS_RAPORSUZ = (
+    'KARDIYOLOJ', 'KALP DAMAR', 'KVC',
+    'IC HASTALIK', 'İÇ HASTALIK', 'DAHILIYE', 'DAHİLİYE',
+    'ACIL TIP', 'ACİL TIP',
+)
+_KLOP_BRANS_KRONIK_RAPOR = (
+    'KARDIYOLOJ', 'IC HASTALIK', 'İÇ HASTALIK', 'DAHILIYE', 'DAHİLİYE',
+    'NOROLOJ', 'NÖROLOJ',
+    'KALP DAMAR', 'KVC', 'ACIL TIP', 'ACİL TIP',
+)
+_KLOP_BRANS_GIRISIMSEL = (
+    'KARDIYOLOJ', 'IC HASTALIK', 'İÇ HASTALIK', 'DAHILIYE', 'DAHİLİYE',
+    'NOROLOJ', 'NÖROLOJ',
+    'KALP DAMAR', 'KVC',
+    'BEYIN CERRAH', 'BEYİN CERRAH', 'NORO CERRAH', 'NÖRO CERRAH',
+    'RADYOLOJ',
+)
+# Aile hekimliği — 24 ay sonrası yetki
+_KLOP_BRANS_AILE = ('AILE HEK', 'AİLE HEK')
+
+
+def _klop_doktor_brans_in(doktor_brans: str,
+                            izinli: Tuple[str, ...]) -> Tuple[bool, str]:
+    """Doktor branşı izinli listede mi (kısmen-eşleşme, upper).
+
+    Normalize: "VE" / "-" / parantez temizleme — 3I4O6EC MÜRVET ÖZDURAN
+    örneği "KALP VE DAMAR CERRAHISI (ANA BRANS)" lafzında 'KALP DAMAR'
+    substring kaçırılıyordu.
     """
-    SUT 4.2.15 - Klopidogrel / Prasugrel / Tikagrelor Kontrol
+    db = (doktor_brans or '').upper().strip()
+    if not db:
+        return (False, '')
+    # Normalize edilmiş versiyon: "VE/İLE/-/parantez" temizleme
+    db_norm = re.sub(r'\s+VE\s+', ' ', db)
+    db_norm = re.sub(r'\s+İLE\s+', ' ', db_norm)
+    db_norm = db_norm.replace('-', ' ').replace('(', ' ').replace(')', ' ')
+    db_norm = re.sub(r'\s+', ' ', db_norm).strip()
+    for a in izinli:
+        au = a.upper()
+        if au in db or au in db_norm:
+            return (True, db)
+    return (False, db)
 
-    Endikasyonlar:
-    A) Koroner stent (max 12 ay)
-    B) AKS (STEMI/NSTEMI/unstabil angina)
-    C) Anjiografik koroner arter hastalığı (ASA intoleransı + anjio tarihi şart)
-    D) Tıkayıcı periferik arter hastalığı (ASA intoleransı şartıyla)
-    E) İskemik inme (ASA intoleransı şartıyla)
-    F) Kalp kapak biyoprotezi (ASA intoleransı şartıyla)
 
-    Anjio belgelenmiş KAH'ta anjiografi tarihi raporda belirtilmelidir; aksi
-    halde rapor eksiklik içerir → ŞÜPHELİ.
+def _klop_etken_tespit(ilac_sonuc: Dict) -> str:
+    """Hangi etken madde: KLOPIDOGREL / PRASUGREL / TIKAGRELOR (default KLOP)."""
+    et = (ilac_sonuc.get('etkin_madde') or '').upper()
+    ad = (ilac_sonuc.get('ilac_adi') or '').upper()
+    if 'PRASUGREL' in et or 'PRASUGREL' in ad or 'EFFIENT' in ad:
+        return 'PRASUGREL'
+    if 'TIKAGRELOR' in et or 'TIKAGRELOR' in ad or 'BRILINTA' in ad:
+        return 'TIKAGRELOR'
+    return 'KLOPIDOGREL'
 
-    Kombine kullanım yasağı: klopidogrel+prasugrel+tikagrelor+YOAK birlikte KARŞILANMAZ
+
+# ─── Atomik şart detektörleri ────────────────────────────────────────────
+
+# Y1: Koroner stent öncesi
+def _klop_atom_koroner_stent(metin_lower: str, teshis_metin: str,
+                                gecmis_icd: List[str]) -> Tuple[bool, str]:
+    """A1: Koroner artere stent uygulandı/uygulanacak.
+
+    Kaynaklar: aktif rapor metni, teşhis ICD (Z95.5 koroner stent öyküsü),
+    geçmiş raporlar.
+    """
+    if any(k in metin_lower for k in [
+        'koroner stent', 'koroner artere stent', 'stent implant',
+        'stent takil', 'stent takıl', 'pkg', 'pci',
+        'perkutan koroner girisim', 'perkütan koroner girişim',
+    ]):
+        return (True, 'aktif_metin')
+    # Tek başına "stent" + KAH bağlamı (I20-I25 ICD)
+    if 'stent' in metin_lower and any(
+            k in teshis_metin for k in ['I20', 'I21', 'I22', 'I23', 'I24', 'I25']):
+        return (True, 'aktif_metin+icd')
+    if 'Z95.5' in teshis_metin:
+        return (True, 'aktif_teshis')
+    var, satir = _yoak_gecmis_icd_var(gecmis_icd, ('Z95.5',))
+    if var:
+        return (True, f'gecmis_icd:{satir}')
+    return (False, '')
+
+
+# Y2: AKS varyantları
+def _klop_atom_nstemi(metin_lower: str, teshis_metin: str) -> Tuple[bool, str]:
+    """B1a: NSTEMI tanısı VAR."""
+    if any(k in metin_lower for k in [
+        'nstemi', 'n-stemi', 'st yukselmesiz', 'st yükselmesiz',
+        'st elevasyonsuz', 'non-stemi',
+    ]):
+        return (True, 'aktif_metin')
+    if 'I21.4' in teshis_metin:
+        return (True, 'aktif_teshis')
+    return (False, '')
+
+
+def _klop_atom_anstabil_angina(metin_lower: str,
+                                  teshis_metin: str) -> Tuple[bool, str]:
+    """B1b: Anstabil angina tanısı VAR."""
+    if any(k in metin_lower for k in [
+        'anstabil angina', 'unstabil angina', 'unstable angina',
+        'kararsiz angina', 'kararsız angina',
+    ]):
+        return (True, 'aktif_metin')
+    if 'I20.0' in teshis_metin:
+        return (True, 'aktif_teshis')
+    return (False, '')
+
+
+def _klop_atom_stemi(metin_lower: str, teshis_metin: str) -> Tuple[bool, str]:
+    """B1c: STEMI tanısı VAR.
+
+    "stemi" substring kontrolü "nstemi" lafzına yanlışlıkla VAR sayardı
+    (3HCB4FX/1WFII9U örnekleri 2026-05-16). Word-boundary regex ile
+    NSTEMI ayrıştırılır.
+    """
+    # STEMI sözcüğü — öncesinde 'n' yoksa (NSTEMI'den ayır)
+    if re.search(r'(?:^|[^a-z])stemi(?:[^a-z]|$)', metin_lower):
+        return (True, 'aktif_metin')
+    if any(k in metin_lower for k in [
+        'st yukselmeli miyokard', 'st yükselmeli miyokard',
+        'st elevasyonlu miyokard', 'st elevasyonlu enfarkt',
+        'st-elevasyonlu', 'akut st yukselm', 'akut st yükselm',
+    ]):
+        return (True, 'aktif_metin')
+    for kod in ('I21.0', 'I21.1', 'I21.2', 'I21.3'):
+        if kod in teshis_metin:
+            return (True, 'aktif_teshis')
+    return (False, '')
+
+
+def _klop_atom_ekg_troponin(metin_lower: str) -> Tuple[SartDurumu, str]:
+    """B3: EKG değişikliği VEYA troponin pozitif (3-durumlu).
+
+    Gevşek anchor yakınlığı (±80 karakter): "TROPONİN DEĞERİ ... POZİTİF" gibi
+    sözcükler arası ek kelimeler içeren SUT lafızlarını yakalar.
+    POZ: lafzen var → VAR
+    NEG: lafzen negatif → YOK
+    Sessiz → KE
+    """
+    # NEG önce — "troponin negatif" / "ekg normal" gibi açık ifadeler
+    neg = any(k in metin_lower for k in [
+        'troponin negatif', 'troponin (-)', 'troponin normal',
+        'ekg normal', 'ekg degisiklik yok', 'ekg değişiklik yok',
+    ])
+    if neg:
+        return (SartDurumu.YOK,
+                'EKG/troponin negatif/normal ibaresi — kanıt yok')
+    # POZ — direkt substring (eski sıkı) VEYA gevşek anchor yakınlığı
+    poz_sıkı = any(k in metin_lower for k in [
+        'troponin pozitif', 'troponin yuksek', 'troponin yüksek',
+        'troponin (+)', 'tn pozitif', 'tn (+)',
+        'ck-mb pozitif', 'ckmb pozitif', 'ck-mb yuksek', 'ck-mb yüksek',
+        'ekg degisik', 'ekg değişik', 'st deprese', 'st depres',
+        'st yukselm', 'st yükselm', 't negatif', 't negativit',
+    ])
+    if poz_sıkı:
+        return (SartDurumu.VAR, 'EKG değişikliği/troponin pozitif ibaresi tespit')
+    # Gevşek: troponin/CK-MB anchor ±80 char içinde pozitif/yüksek varsa
+    for anchor in ('troponin', 'ck-mb', 'ck mb', 'ckmb'):
+        idx = metin_lower.find(anchor)
+        while idx >= 0:
+            pencere = metin_lower[max(0, idx - 80):idx + len(anchor) + 80]
+            if any(k in pencere for k in ['pozitif', 'yuksek', 'yüksek',
+                                            '(+)', '+:']):
+                return (SartDurumu.VAR,
+                        f'{anchor} pozitif/yüksek ibaresi (gevşek anchor)')
+            idx = metin_lower.find(anchor, idx + 1)
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            'EKG değişikliği/troponin ibaresi yok — manuel doğrulama')
+
+
+# Y3: Kronik endikasyon atomları
+def _klop_atom_biyoprotez(metin_lower: str,
+                            teshis_metin: str) -> Tuple[bool, str]:
+    """C1a: Kalp kapak biyoprotezi VAR."""
+    if any(k in metin_lower for k in [
+        'biyoprotez', 'bioprotez', 'biyolojik kapak',
+        'biyoprotetik', 'doku kapak', 'doku protez',
+    ]):
+        return (True, 'aktif_metin')
+    if 'Z95.2' in teshis_metin or 'Z95.3' in teshis_metin or 'Z95.4' in teshis_metin:
+        return (True, 'aktif_teshis')
+    return (False, '')
+
+
+def _klop_atom_anjio_kah(metin_lower: str,
+                          teshis_metin: str) -> Tuple[bool, str]:
+    """C1b: Anjiografik belgelenmiş koroner arter hastalığı VAR.
+
+    Kullanıcı kararı (2026-05-16): anjio/angio/angyo/angiyo/anjiografi vs.
+    tüm yazım varyantları (eksik harfli "anjigrafik"/"anjıgrafik" yaygın TR
+    yazım hatası dahil) + KAH bağlamı (lafzen veya ICD I20-I25) →
+    sessizlik bile VAR sayılır. Klinik gerçek + 3KFA8US örneği (HAYRİ
+    MUSAOĞLU 2026-05-16): "KRONER ARTER HASTALIĞI ANJİGRAFİK OLARAK
+    BELGELENMİŞTİR" lafzı yakalandı.
+    """
+    anjio_varyantlari = [
+        'anjio', 'angio', 'anjiyo', 'angyo', 'angiyo',
+        'anjiografi', 'anjiografik', 'angiografi', 'angiografik',
+        # Türkçe yaygın yazım hataları (eksik 'o' / 'ı' yerine 'i'):
+        'anjigraf', 'anjıgraf', 'angigraf', 'angıgraf',
+        'anjiyograf', 'angyograf', 'angiyograf',
+        'koroner anjio', 'kah tarih', 'kor.anjio', 'kor anjio', 'kag',
+    ]
+    anjio_var = any(k in metin_lower for k in anjio_varyantlari)
+    kah_metin = any(k in metin_lower for k in [
+        'koroner arter hastalik', 'koroner arter hastalığı',
+        'kroner arter hastaligi', 'kroner arter hastaliği',  # 'koroner' → 'kroner' typo
+        'kah', 'iskemik kalp hast',
+    ])
+    kah_icd = any(k in teshis_metin for k in
+                  ['I20', 'I21', 'I22', 'I23', 'I24', 'I25'])
+    if anjio_var and (kah_metin or kah_icd):
+        return (True, 'anjio+KAH')
+    if anjio_var:
+        # Kullanıcı kararı: anjio lafzı + bypass/pkag/stent gibi yan ibareler
+        # → KAH bağlamı olsun olmasın VAR say (klinik makul)
+        return (True, 'anjio (KAH varsayımı)')
+    return (False, '')
+
+
+def _klop_atom_anjio_tarihi(birlesik: str, metin_lower: str,
+                              gecmis_rapor_metinleri: Optional[List] = None
+                              ) -> Tuple[SartDurumu, str]:
+    """C1b-detay: Anjiografi tarihi raporda var mı?
+
+    Kullanıcı kararı (2026-05-16): bu atom Y-3 endikasyon grubuna OR atomu
+    olarak eklenir — anjio belgelendirmesinin ek kanıtı. SUT lafzı tarihi
+    zorunlu kılmaz ama eczacı manuel kontrolünde önemli sinyal.
+
+    Geçmiş rapor bypass (2026-05-16): aktif raporda anjio tarihi yoksa
+    hastanın geçmiş raporlarında ara — bir kez anjio yapılmış ise belgesi
+    kalıcıdır (kullanıcı kararı). Geçmiş rapora bağlı VAR durumu da
+    klinik açıdan geçerli.
+
+    Mantık:
+      • Anjio/angio anchor + tarih → VAR (aktif)
+      • Aktif raporda yok ama geçmiş rapor metinlerinde anjio+tarih → VAR (bypass)
+      • Anjio lafzı var ama tarih yok → KE
+      • Anjio lafzı da yok → KE (NA-benzeri)
+    """
+    if not metin_lower or not metin_lower.strip():
+        # Aktif metin boş — yine de geçmiş raporlarda ara
+        anjio_anchor = False
+    else:
+        anjio_anchor = any(k in metin_lower for k in [
+            'anjio', 'angio', 'anjiyo', 'angyo', 'angiyo',
+            'anjigraf', 'anjıgraf', 'angigraf', 'angıgraf',
+            'anjiyograf', 'angyograf', 'angiyograf', 'kag',
+        ])
+
+    # 1) Aktif raporda anjio anchor + tarih
+    if anjio_anchor:
+        try:
+            tarih_str, malformed = _anjio_tarihi_yakin_bul(birlesik, metin_lower)
+        except Exception:
+            tarih_str, malformed = '', False
+        if tarih_str and not malformed:
+            return (SartDurumu.VAR,
+                    f'Aktif raporda anjio tarihi: {tarih_str}')
+        if tarih_str and malformed:
+            return (SartDurumu.KONTROL_EDILEMEDI,
+                    f'Aktif raporda anjio tarihi formatı hatalı: {tarih_str}')
+
+    # 2) Geçmiş raporlarda anjio tarihi bypass
+    if gecmis_rapor_metinleri:
+        for kayit in gecmis_rapor_metinleri:
+            try:
+                # Format: (rapor_tarihi: date, aciklama: str)
+                if isinstance(kayit, (tuple, list)) and len(kayit) >= 2:
+                    rap_tar, ack = kayit[0], kayit[1]
+                else:
+                    rap_tar, ack = None, str(kayit)
+            except Exception:
+                continue
+            if not ack:
+                continue
+            ack_lower = _tr_lower(str(ack))
+            gec_anchor = any(k in ack_lower for k in [
+                'anjio', 'angio', 'anjiyo', 'angyo', 'angiyo',
+                'anjigraf', 'anjıgraf', 'angigraf', 'angıgraf',
+                'anjiyograf', 'angyograf', 'angiyograf', 'kag',
+            ])
+            if not gec_anchor:
+                continue
+            try:
+                gec_tarih, gec_mal = _anjio_tarihi_yakin_bul(
+                    str(ack), ack_lower)
+            except Exception:
+                gec_tarih, gec_mal = '', False
+            if gec_tarih and not gec_mal:
+                rap_t_str = str(rap_tar) if rap_tar else 'tarih bilinmiyor'
+                return (SartDurumu.VAR,
+                        f'Geçmiş raporda anjio tarihi: {gec_tarih} '
+                        f'(rapor: {rap_t_str}) — bypass')
+            if gec_anchor and not gec_tarih:
+                # Geçmiş raporda anjio lafzı var ama tarih yok →
+                # devam et, bir sonraki kayıt belki tarih içerir.
+                continue
+
+    # 3) Karar
+    if anjio_anchor:
+        return (SartDurumu.KONTROL_EDILEMEDI,
+                'Anjio lafzı var ama tarih raporda/geçmişte belirtilmemiş — '
+                'manuel doğrulama')
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            'Anjio lafzı yok (aktif + geçmiş) — manuel doğrulama')
+
+
+def _klop_atom_pah(metin_lower: str, teshis_metin: str) -> Tuple[bool, str]:
+    """C1c: Tıkayıcı periferik arter hastalığı VAR."""
+    if any(k in metin_lower for k in [
+        'periferik arter hastalik', 'periferik arter hastalığı',
+        'tikayici periferik', 'tıkayıcı periferik',
+        'pah', 'p.a.h', 'klaudikasyo', 'kladikasyo',
+        'intermittan klaudikasyo', 'periferik vaskuler',
+    ]):
+        return (True, 'aktif_metin')
+    if 'I70.2' in teshis_metin or 'I70.9' in teshis_metin or 'I73' in teshis_metin:
+        return (True, 'aktif_teshis')
+    return (False, '')
+
+
+def _klop_atom_iskemik_inme(metin_lower: str, teshis_metin: str,
+                              gecmis_icd: List[str]) -> Tuple[bool, str]:
+    """C1d: Serebral iskemik olay / iskemik inme VAR."""
+    if any(k in metin_lower for k in [
+        'iskemik inme', 'iskemik svo', 'serebral iskemi',
+        'serebrovaskuler olay', 'serebrovasküler olay',
+        'serebral infarkt', 'beyin infarkt', 'iskemik beyin',
+    ]):
+        return (True, 'aktif_metin')
+    if any(k in teshis_metin for k in ['I63', 'I64', 'I65', 'I66']):
+        return (True, 'aktif_teshis')
+    var, satir = _yoak_gecmis_icd_var(gecmis_icd, ('I63', 'I64', 'I65', 'I66'))
+    if var:
+        return (True, f'gecmis_icd:{satir}')
+    return (False, '')
+
+
+# Y4: Girişimsel intravasküler işlem atomları
+def _klop_atom_girisimsel_islem(metin_lower: str) -> Tuple[bool, str]:
+    """D1: Girişimsel periferik VEYA serebral işlem yapılmış."""
+    if any(k in metin_lower for k in [
+        'girisimsel periferik', 'girişimsel periferik',
+        'girisimsel serebral', 'girişimsel serebral',
+        'girisimsel radyoloj', 'girişimsel radyoloj',
+        'endovaskuler', 'endovasküler',
+        'perkutan periferik', 'perkütan periferik',
+        'serebral anjio', 'periferik anjio',
+        'serebral girisim', 'serebral girişim',
+        'beyin damar girisim', 'beyin damar girişim',
+        'intrakraniyal girisim', 'intrakraniyal girişim',
+    ]):
+        return (True, 'aktif_metin')
+    return (False, '')
+
+
+def _klop_atom_intravaskuler_cihaz(metin_lower: str) -> Tuple[bool, str]:
+    """D2: İntravasküler cihaz yerleştirildi (stent/stentgraft/koil/onyx/...)"""
+    if any(k in metin_lower for k in [
+        'stentgraft', 'stent-graft', 'stent graft', 'kapli stent',
+        'kaplı stent', 'koil', 'coil', 'trispan', 'onyx',
+        'intravaskuler stent', 'intravasküler stent',
+        'intrakraniyal stent', 'intraarteriyel',
+        'flow diverter', 'kapali stent',
+    ]):
+        return (True, 'aktif_metin')
+    # "stent" + serebral/girişimsel bağlam
+    if 'stent' in metin_lower and any(k in metin_lower for k in [
+        'serebral', 'beyin', 'karotis', 'intrakraniyal', 'periferik',
+    ]):
+        return (True, 'aktif_metin+baglam')
+    return (False, '')
+
+
+# Genel: Uzman hekim raporu var mı (heyet veya rapor kodu)
+def _klop_atom_uzman_rapor_var(ilac_sonuc: Dict,
+                                  rapor_kodu: str) -> Tuple[SartDurumu, str]:
+    """C2: Uzman hekim raporu VAR mı?
+
+    Klopidogrel için SUT lafzı "uzman hekim raporu" (tek uzman da yeter,
+    heyet zorunluluğu yok); 04.02 / 04.02.1 / 04.04 kodları kabul.
+    """
+    rk = (rapor_kodu or '').strip()
+    if rk.startswith('04.02') or rk.startswith('04.04'):
+        return (SartDurumu.VAR, f'rapor_kodu={rk}')
+    heyet = ilac_sonuc.get('heyet_doktorlari') or []
+    rap_dok = (ilac_sonuc.get('rapor_dr_brans') or
+               ilac_sonuc.get('rapor_doktor_brans') or '').strip()
+    if heyet or rap_dok:
+        return (SartDurumu.VAR,
+                f'rapor doktoru: {rap_dok or str(len(heyet))+" heyet üyesi"}')
+    if rk:
+        return (SartDurumu.VAR, f'rapor_kodu={rk} (klasifiye yok ama mevcut)')
+    return (SartDurumu.YOK, 'Reçeteye bağlı uzman hekim raporu yok')
+
+
+def _klop_atom_rapor_yazan_brans(ilac_sonuc: Dict,
+                                    izinli: Tuple[str, ...]) -> Tuple[SartDurumu, str]:
+    """C3 / B4b: Raporu yazan doktor branşı izinli listede mi?
+
+    Önce `rapor_dr_brans` / `rapor_doktor_brans` (tek-uzman raporu),
+    sonra `heyet_doktorlari` (sağlık kurulu) içinde aranır.
+
+    Branş normalize: _klop_doktor_brans_in helper'ı "VE / İLE / parantez /
+    dash" temizleme yapar. 3EOB6KA MUSTAFA YILMAZ örneği (2026-05-16):
+    "KALP VE DAMAR CERRAHISI (ANA BRANS)" lafzı eski sıkı substring
+    aramasına takılmıyordu — helper ile fix.
+    """
+    rap_dok = (ilac_sonuc.get('rapor_dr_brans') or
+               ilac_sonuc.get('rapor_doktor_brans') or '').strip()
+    if rap_dok:
+        ok, _ = _klop_doktor_brans_in(rap_dok, izinli)
+        if ok:
+            return (SartDurumu.VAR,
+                    f'rapor doktor branşı: {rap_dok.upper()}')
+        return (SartDurumu.YOK,
+                f'rapor doktor branşı yetkili değil: {rap_dok.upper()}')
+    heyet = ilac_sonuc.get('heyet_doktorlari') or []
+    if heyet:
+        for d in heyet:
+            br = d.get('brans', '') or ''
+            ok, _ = _klop_doktor_brans_in(br, izinli)
+            if ok:
+                return (SartDurumu.VAR,
+                        f'heyet üyesi: {d.get("ad", "")} ({br.upper()})')
+        branslar = ', '.join(d.get('brans', '') for d in heyet)
+        return (SartDurumu.YOK,
+                f'heyette yetkili branş yok: {branslar}')
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            'rapor doktor/heyet bilgisi yok — manuel doğrulama')
+
+
+# ─── Prasugrel 4.2.15.Ç ek atomları ──────────────────────────────────────
+
+def _klop_atom_prasu_yas_75_alti(yas: Optional[int],
+                                    metin_lower: str = '') -> Tuple[SartDurumu, str]:
+    """P1: Yaş <75 olmalı.
+
+    Sıra: hasta_yasi int field → rapor metni lafız anchor yakınlık.
+    "75 yaş" anchor ±30 char içinde "alt / kucuk" varsa VAR (encoding/
+    yazım varyasyonu yakalar — 3JV17UV FARAC BOZAN örneği "75 yaşın
+    altında" sorunsuz, ama bazı raporlarda "75yas / 75-yas / 75yas." gibi
+    de geçebilir; anchor yakınlık daha sağlam).
+    """
+    if yas is not None:
+        if yas < 75:
+            return (SartDurumu.VAR, f'Hasta yaşı: {yas} (<75)')
+        return (SartDurumu.YOK,
+                f'Hasta yaşı: {yas} — Prasugrel ≥75 yaşta kontrendike')
+    if not metin_lower:
+        return (SartDurumu.KONTROL_EDILEMEDI,
+                'Hasta yaşı bilinmiyor — manuel doğrulama')
+    # "75 yas" anchor ±30 char "alt/kucuk" — yaygın TR yazımlar
+    for anchor in ('75 yas', '75yas'):
+        idx = metin_lower.find(anchor)
+        while idx >= 0:
+            pencere = metin_lower[max(0, idx - 10):idx + len(anchor) + 40]
+            if any(k in pencere for k in ['alt', 'kucuk', 'küçük', '<']):
+                return (SartDurumu.VAR,
+                        f'"{anchor}" + "alt/küçük" yakınlık tespit')
+            idx = metin_lower.find(anchor, idx + 1)
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            'Hasta yaşı bilinmiyor + raporda "75 yaş altı" lafzı yok — '
+            'manuel doğrulama')
+
+
+def _klop_atom_prasu_kilo_60_ustu(ilac_sonuc: Dict,
+                                     metin_lower: str) -> Tuple[SartDurumu, str]:
+    """P2: Kilo >60 kg olmalı.
+
+    Sıra:
+      1) hasta_kilosu int field
+      2) "60 kg" anchor ±30 char "ust/uzer/fazla/buyuk" → VAR (encoding/
+         yazım varyantları dahil — "60 kg?ın üstündeki" gibi medula
+         encoding hatası da yakalanır, 3JV17UV FARAC BOZAN örneği).
+      3) "60 kg" anchor + "alt/kucuk" → YOK
+      4) Sadece "60 kg" + bağlam yoksa → KE
+    """
+    kg = ilac_sonuc.get('hasta_kilosu')
+    if kg is not None:
+        if kg > 60:
+            return (SartDurumu.VAR, f'Hasta kilosu: {kg} kg (>60)')
+        return (SartDurumu.YOK,
+                f'Hasta kilosu: {kg} kg — Prasugrel ≤60 kg\'da kontrendike')
+    if not metin_lower:
+        return (SartDurumu.KONTROL_EDILEMEDI,
+                'Hasta kilosu bilinmiyor — manuel doğrulama')
+    # "60 kg" anchor ±30 char yakınlık
+    for anchor in ('60 kg', '60kg'):
+        idx = metin_lower.find(anchor)
+        while idx >= 0:
+            pencere = metin_lower[max(0, idx - 5):idx + len(anchor) + 30]
+            if any(k in pencere for k in ['ust', 'üst', 'uzer', 'üzer',
+                                            'fazla', 'buyuk', 'büyük',
+                                            '>']):
+                return (SartDurumu.VAR,
+                        f'"{anchor}" + "üst/üzer/fazla" yakınlık tespit')
+            if any(k in pencere for k in ['alt', 'kucuk', 'küçük', '<']):
+                return (SartDurumu.YOK,
+                        f'"{anchor}" + "alt/küçük" yakınlık — kontrendike')
+            idx = metin_lower.find(anchor, idx + 1)
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            'Hasta kilosu bilinmiyor + raporda "60 kg üstünde" lafzı yok — '
+            'manuel doğrulama')
+
+
+def _klop_atom_prasu_svo_yok(metin_lower: str, teshis_metin: str,
+                                gecmis_icd: List[str]) -> Tuple[SartDurumu, str]:
+    """P3: Serebrovasküler olay öyküsü YOK (DeMorgan).
+
+    Sıra: negatif lafız anchor yakınlık → pozitif lafız/ICD → KE.
+
+    Negatif: SVO/inme/TIA/serebrovaskuler anchor ±50 char içinde
+      "olmayan / yok / olamayan / olmamis / olmamış / gecirmemis" varsa VAR.
+    Pozitif: anchor + "var / saptanmis / oykus" varsa veya teşhis ICD'sinde
+      I63-I66/G45 varsa YOK.
+
+    3IY5A9K GÜRKAN ALİCİK örneği (2026-05-16): "SEREBROVASKULER OLAY
+    OYKUSU OLMAYAN" lafzı eski liste 'serebrovaskuler olay yok'
+    aramasına takılmıyordu — anchor yakınlık ile fix.
+    """
+    # Negatif: anchor ±50 char yakınlık
+    neg_anchorlar = ('serebrovaskuler', 'serebrovasküler', 'svo',
+                      'inme', 'iskemik inme', 'tia')
+    neg_terimler = ('olmayan', 'yok', 'olamayan', 'olmamis', 'olmamış',
+                     'gecirmemis', 'geçirmemiş', 'gecirmedi', 'geçirmedi',
+                     'bulunmuyor', 'tespit edilmemis', 'tespit edilmemiş',
+                     'saptanmamis', 'saptanmamış')
+    for anc in neg_anchorlar:
+        idx = metin_lower.find(anc)
+        while idx >= 0:
+            pencere = metin_lower[max(0, idx - 10):idx + len(anc) + 50]
+            if any(t in pencere for t in neg_terimler):
+                return (SartDurumu.VAR,
+                        f'"{anc}" + olumsuz ibare yakınlık — '
+                        f'SVO öyküsü olmadığı lafzen belirtilmiş')
+            idx = metin_lower.find(anc, idx + 1)
+    # Pozitif: anchor + "var/saptanmis/oykus" veya ICD
+    poz = (any(k in metin_lower for k in [
+        'serebrovaskuler olay var', 'serebrovasküler olay var',
+        'iskemik inme var', 'inme oykus', 'inme öyküs',
+        'svo oykus', 'svo öyküs',
+        'tia oykus', 'tia öyküs', 'tia gecir', 'tia geçir',
+        'inme gecir', 'inme geçir', 'svo gecir', 'svo geçir',
+    ]) or any(k in teshis_metin for k in ['I63', 'I64', 'I65', 'I66', 'G45']))
+    if not poz:
+        gec_var, _ = _yoak_gecmis_icd_var(
+            gecmis_icd, ('I63', 'I64', 'I65', 'I66', 'G45'))
+        if gec_var:
+            poz = True
+    if poz:
+        return (SartDurumu.YOK,
+                'SVO/inme/TIA öyküsü tespit — Prasugrel kontrendike')
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            'SVO öyküsü ibaresi (var/yok) rapor metninde yok — '
+            'manuel doğrulama')
+
+
+def _klop_atom_prasu_pkg_karari(metin_lower: str) -> Tuple[bool, str]:
+    """P4: Perkütan koroner girişim (PKG) kararı alındı."""
+    if any(k in metin_lower for k in [
+        'perkutan koroner girisim', 'perkütan koroner girişim',
+        'pkg karar', 'pci karar', 'pkg planlan', 'pci planlan',
+        'pkg ile', 'pci ile', 'koroner girisim karari',
+        'koroner girişim kararı',
+    ]):
+        return (True, 'aktif_metin')
+    if 'pkg' in metin_lower or 'pci' in metin_lower:
+        return (True, 'aktif_metin')
+    return (False, '')
+
+
+def _klop_atom_prasu_stent_trombozu(metin_lower: str) -> Tuple[bool, str]:
+    """P5 (alternatif): Klopidogrel altında iken stent trombozu gelişmiş."""
+    if any(k in metin_lower for k in [
+        'stent trombozu', 'stent tromboz',
+        'klopidogrel altinda stent', 'klopidogrel altında stent',
+        'klopidogrel altinda iken stent', 'klopidogrel altında iken stent',
+    ]):
+        return (True, 'aktif_metin')
+    return (False, '')
+
+
+# ─── Tikagrelor 4.2.15.E ek atomları ────────────────────────────────────
+
+def _klop_atom_tikag_fibrinolitik_yok(metin_lower: str) -> Tuple[SartDurumu, str]:
+    """T2: Son 72 saat içinde fibrinolitik uygulanmamış (DeMorgan).
+
+    Önce negatif aranır: "fibrinolitik tedavi uygulanmami(ştır)" cümlesinde
+    "uygulan" stem'i de geçer; bu yüzden pozitif önce kontrol edilemez.
+    """
+    neg = any(k in metin_lower for k in [
+        'fibrinolitik tedavi uygulanmami', 'fibrinolitik uygulanmami',
+        'fibrinolitik verilmemi', 'fibrinolitik almami', 'fibrinolitik almamiş',
+        'fibrinolitik yok', 'trombolitik yok',
+        'fibrinolitik tedavi yok', 'trombolitik tedavi yok',
+    ])
+    if neg:
+        return (SartDurumu.VAR,
+                '"fibrinolitik tedavi uygulanmamıştır" ibaresi tespit')
+    poz = any(k in metin_lower for k in [
+        'fibrinolitik tedavi uygulan', 'fibrinolitik uygulan',
+        'fibrinolitik verildi', 'fibrinolitik aldı', 'fibrinolitik aldi',
+        'trombolitik tedavi', 'streptokinaz', 'alteplaz', 'tenekteplaz',
+    ])
+    if poz:
+        return (SartDurumu.YOK,
+                'Fibrinolitik tedavi öyküsü tespit — Tikagrelor için 72sa yasak')
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            '72 saat fibrinolitik durumu rapor metninden okunamadı — '
+            'manuel doğrulama')
+
+
+def _klop_atom_tikag_varfarin_yok(metin_lower: str,
+                                     ilac_sonuc: Dict) -> Tuple[SartDurumu, str]:
+    """T3: Hastanın varfarin tedavisi altında olmaması.
+
+    Diğer ilaç adlarında varfarin/coumadin var mı önce kontrol; sonra metinde
+    negatif (var olmadığı), sonra pozitif (varfarin altında) aranır.
+
+    Negatif lafız varyantları (3HCB4FX AYŞE ULAŞ örneği, 2026-05-16):
+      "varfarin tedavisi altında OLMAYAN" — "olmayan" lafzı eklendi
+      "varfarin kullanmayan / almayan" da SUT-tipi lafızlardır.
+    """
+    diger = ilac_sonuc.get('diger_ilac_adlari') or []
+    diger_str = ' '.join(str(x) for x in diger).upper()
+    if 'VARFARIN' in diger_str or 'COUMADIN' in diger_str or 'WARFARIN' in diger_str:
+        return (SartDurumu.YOK,
+                'Varfarin/Coumadin diğer reçetelerde tespit — Tikagrelor kontrendike')
+    neg = any(k in metin_lower for k in [
+        'varfarin yok', 'varfarin almiyor', 'varfarin almıyor',
+        'varfarin kullanmiyor', 'varfarin kullanmıyor',
+        'varfarin tedavisi altinda degil', 'varfarin tedavisi altında değil',
+        'varfarin altinda degil', 'varfarin altında değil',
+        # 'olmayan' / 'almayan' / 'kullanmayan' lafızları (TR SUT yazımı)
+        'varfarin tedavisi altinda olmayan',
+        'varfarin tedavisi altında olmayan',
+        'varfarin altinda olmayan', 'varfarin altında olmayan',
+        'varfarin olmayan', 'varfarin almayan', 'varfarin kullanmayan',
+        'varfarin kullanmamak', 'coumadin kullanmiyor', 'coumadin kullanmıyor',
+        'coumadin olmayan',
+    ])
+    if neg:
+        return (SartDurumu.VAR, 'Varfarin tedavisi olmadığı lafzen belirtilmiş')
+    poz = any(k in metin_lower for k in [
+        'varfarin tedavi', 'varfarin altinda', 'varfarin altında',
+        'coumadin tedavi', 'coumadin altinda', 'coumadin altında',
+    ])
+    if poz:
+        return (SartDurumu.YOK,
+                'Varfarin tedavisi altında ibaresi tespit — Tikagrelor kontrendike')
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            'Varfarin tedavi durumu net okunamadı — manuel doğrulama')
+
+
+def _klop_atom_tikag_ekg_kanit(metin_lower: str) -> Tuple[SartDurumu, str]:
+    """T4: EKG'de ≥2 ardışık derivasyonda ST yüksek/depres + troponin/CK-MB pozitif.
+
+    Pratikte EKG değişikliği + troponin/CK-MB pozitif lafzı yeterli.
+
+    Gevşek lafız yakalama (3HCB4FX AYŞE ULAŞ, 2026-05-16): SUT raporlarında
+    "TROPONİN DEĞERİ VE CK-MB DEĞERİ POZİTİF" gibi sözcükler arasında
+    "değeri" / "ve" / "..." bulunabiliyor. Direkt substring "troponin
+    pozitif" yetmedi — "troponin" / "pozitif" yakınlık (≤80 karakter) ile.
+    """
+    # Troponin / CK-MB pozitif kanıtı (gevşek — anchor yakınlığı 80 karakter)
+    bio_poz = False
+    for anchor in ('troponin', 'ck-mb', 'ck mb', 'ckmb'):
+        idx = metin_lower.find(anchor)
+        while idx >= 0:
+            # ±80 karakter pencerede 'pozitif' / 'yuksek' / '+' / 'yüksek' var mı
+            pencere = metin_lower[max(0, idx - 80):idx + len(anchor) + 80]
+            if any(k in pencere for k in ['pozitif', 'yuksek', 'yüksek',
+                                            '(+)', ' (+)', '+:']):
+                bio_poz = True
+                break
+            idx = metin_lower.find(anchor, idx + 1)
+        if bio_poz:
+            break
+    # EKG değişikliği (her zamanki anchor listesi)
+    ekg_var = any(k in metin_lower for k in [
+        'st segment', 'st elevasyon', 'st depres', 'st yukselm', 'st yükselm',
+        't negatif', 't negativit', 'ekg degisik', 'ekg değişik',
+        'persistan st', 'iki ardisik', 'iki ardışık',
+        'ardisik derivasyon', 'ardışık derivasyon',
+    ])
+    if bio_poz and ekg_var:
+        return (SartDurumu.VAR,
+                'EKG değişikliği + troponin/CK-MB pozitif kanıtı tespit')
+    return (SartDurumu.KONTROL_EDILEMEDI,
+            'EKG + troponin/CK-MB ikili kanıt rapor metninde net değil — '
+            'manuel doğrulama')
+
+
+# ─── Yolak dispatcher fonksiyonları ──────────────────────────────────────
+
+def _klop_y1_stent_kontrol(metin_lower: str, teshis_metin: str,
+                              ilac_sonuc: Dict, gecmis_icd: List[str],
+                              sartlar: List[SartSonuc]) -> None:
+    """SUT 4.2.15.A(1) - Koroner stent öncesi (raporsuz).
+
+    Sadece reçete yazan şartı var (rapor aranmaz) — kullanıcı kuralı
+    2026-05-16: "rapor şartı yoksa rapor atomu eklemeyiz".
+    """
+    g_end = 'Y-1: Koroner stent öncesi [(1)]'
+    g_dr_recete = 'Y-1: Reçete yazan doktor [(1)]'
+    g_info = 'Y-1: Miktar/süre (bilgi)'
+
+    # A1: Koroner stent uygulandı
+    var, kaynak = _klop_atom_koroner_stent(metin_lower, teshis_metin, gecmis_icd)
+    sartlar.append(SartSonuc(
+        'Koroner artere stent uygulandı/uygulanacak',
+        SartDurumu.VAR if var else SartDurumu.YOK,
+        f'kaynak: {kaynak}' if var else 'stent/PKG/PCI ibaresi yok',
+        'rapor_metni/teshis/gecmis_rapor', grup=g_end))
+
+    # A2: Reçete yazan doktor branşı (zorunlu — raporsuz akış için)
+    doktor_brans = ilac_sonuc.get('doktor_uzmanligi') or ''
+    brans_ok, db = _klop_doktor_brans_in(doktor_brans, _KLOP_BRANS_KARD_KVC)
+    sartlar.append(SartSonuc(
+        'Reçete yazan doktor: Kardiyoloji ∨ KDC',
+        SartDurumu.VAR if brans_ok else (
+            SartDurumu.YOK if db else SartDurumu.KONTROL_EDILEMEDI),
+        f'reçete doktor branşı: {db or "(boş)"}',
+        'doktor_uzmanligi', grup=g_dr_recete))
+
+    # A3: Miktar (bilgi)
+    sartlar.append(SartSonuc(
+        'Miktar ≤ 4 hafta (taburculuk sonrası)',
+        SartDurumu.KONTROL_EDILEMEDI,
+        'Reçete miktarı pipeline parse zayıf — manuel doğrulama',
+        'recete_miktar', grup=g_info))
+
+
+def _klop_y2_aks_kontrol(metin_lower: str, teshis_metin: str,
+                            birlesik: str, ilac_sonuc: Dict,
+                            rapor_kodu: str, gecmis_icd: List[str],
+                            sartlar: List[SartSonuc]) -> None:
+    """SUT 4.2.15.A(2) - Akut Koroner Sendrom (raporsuz veya 12 ay rapor).
+
+    SUT lafzı 2 alt-yol — kullanıcı kuralı 2026-05-16:
+      Yol-A: Reçete yazan = Kard/KDC/İç/Acil (raporsuz akut/4hf)
+      Yol-B: Rapor mevcut ∧ Rapor yazan = Kard/KDC/İç/Acil (12 ay raporlu)
+    İki alt-yol üst-VEYA (biri tam yeterli — sema_grup_matematigi'nin
+    Y-2 alt-OR çiftiyle birleştirilir).
+    """
+    g_tani = 'Y-2: AKS tanısı [(2)] — ≥1'
+    g_kanit = 'Y-2: EKG/troponin kanıtı [(2)]'
+    g_yol_a = 'Y-2: (a) Raporsuz akış [(2)] [yol-a]'
+    g_yol_b = 'Y-2: (b) Raporlu 12 ay akış [(2)] [yol-b]'
+    g_info = 'Y-2: Hastane yatış/müşahede (bilgi)'
+
+    # B1a-c: NSTEMI ∨ anstabil angina ∨ STEMI
+    nstemi_var, _ = _klop_atom_nstemi(metin_lower, teshis_metin)
+    sartlar.append(SartSonuc(
+        'NSTEMI (ST yükselmesiz MI)',
+        SartDurumu.VAR if nstemi_var else SartDurumu.YOK,
+        'NSTEMI ibaresi/I21.4' if nstemi_var else 'NSTEMI ibaresi yok',
+        'rapor_metni/teshis', grup=g_tani, veya_grubu=True))
+    ang_var, _ = _klop_atom_anstabil_angina(metin_lower, teshis_metin)
+    sartlar.append(SartSonuc(
+        'Anstabil angina',
+        SartDurumu.VAR if ang_var else SartDurumu.YOK,
+        'anstabil angina ibaresi/I20.0' if ang_var
+        else 'anstabil angina ibaresi yok',
+        'rapor_metni/teshis', grup=g_tani, veya_grubu=True))
+    stemi_var, _ = _klop_atom_stemi(metin_lower, teshis_metin)
+    sartlar.append(SartSonuc(
+        'STEMI (ST yükselmeli MI)',
+        SartDurumu.VAR if stemi_var else SartDurumu.YOK,
+        'STEMI ibaresi/I21.0-3' if stemi_var else 'STEMI ibaresi yok',
+        'rapor_metni/teshis', grup=g_tani, veya_grubu=True))
+
+    # B3: EKG/troponin (STEMI ise lafzen zaten içerir → VAR sayılır)
+    ekg_durum, ekg_neden = _klop_atom_ekg_troponin(metin_lower)
+    if stemi_var and ekg_durum != SartDurumu.YOK:
+        ekg_durum = SartDurumu.VAR
+        ekg_neden = 'STEMI tanısı kendiliğinden ST yükselmesi içerir'
+    sartlar.append(SartSonuc(
+        'EKG değişikliği VEYA troponin pozitif',
+        ekg_durum, ekg_neden, 'rapor_metni', grup=g_kanit))
+
+    # ── Yol-A: Raporsuz akış (akut/4 hafta) ──
+    # Tek atom: reçete yazan branş yetkili olmalı
+    doktor_brans = ilac_sonuc.get('doktor_uzmanligi') or ''
+    recete_ok, db = _klop_doktor_brans_in(doktor_brans, _KLOP_BRANS_AKS_RAPORSUZ)
+    sartlar.append(SartSonuc(
+        'Yol-A: Reçete yazan = Kard/KDC/İç/Acil',
+        SartDurumu.VAR if recete_ok else (
+            SartDurumu.YOK if db else SartDurumu.KONTROL_EDILEMEDI),
+        f'reçete doktor branşı: {db or "(boş)"}',
+        'doktor_uzmanligi', grup=g_yol_a))
+
+    # ── Yol-B: Raporlu 12 ay akış ──
+    # İki atom AND: rapor mevcut + rapor yazan branş yetkili
+    rapor_var_durum, rapor_var_neden = _klop_atom_uzman_rapor_var(
+        ilac_sonuc, rapor_kodu)
+    sartlar.append(SartSonuc(
+        'Yol-B: Uzman hekim raporu mevcut',
+        rapor_var_durum, rapor_var_neden,
+        'rapor_kodu/heyet', grup=g_yol_b))
+    rapor_brans_durum, rapor_brans_neden = _klop_atom_rapor_yazan_brans(
+        ilac_sonuc, _KLOP_BRANS_AKS_RAPORSUZ)
+    sartlar.append(SartSonuc(
+        'Yol-B: Rapor yazan = Kard/KDC/İç/Acil',
+        rapor_brans_durum, rapor_brans_neden,
+        'rapor_doktor/heyet', grup=g_yol_b))
+
+    # Bilgi: hastane yatış (parser zayıf)
+    yatis = any(k in metin_lower for k in [
+        'hastaneye yat', 'hastaneye yati', 'müşahede',
+        'musahede', 'yatirilan', 'yatırılan',
+    ])
+    sartlar.append(SartSonuc(
+        'Hastaneye yatış / müşahede ibaresi (bilgi)',
+        SartDurumu.VAR if yatis else SartDurumu.KONTROL_EDILEMEDI,
+        'lafzen yatış/müşahede tespit' if yatis else 'lafız yok — manuel',
+        'rapor_metni', grup=g_info))
+
+
+def _klop_y3_kronik_kontrol(metin_lower: str, teshis_metin: str,
+                                birlesik: str, ilac_sonuc: Dict,
+                                rapor_kodu: str, gecmis_icd: List[str],
+                                sartlar: List[SartSonuc]) -> None:
+    """SUT 4.2.15.A(3) - Kronik endikasyonlar (12 ay rapor)."""
+    g_end = 'Y-3: Kronik endikasyon [(3)] — ≥1'
+    g_rapor = 'Y-3: Uzman hekim raporu [(3)]'
+    g_dr = 'Y-3: Rapor doktor branşı [(3)]'
+    g_info = 'Y-3: Rapor süresi ≤12 ay (bilgi)'
+
+    # C1a-d: 4 alternatif endikasyon (OR ≥1)
+    biyo_var, biyo_kaynak = _klop_atom_biyoprotez(metin_lower, teshis_metin)
+    sartlar.append(SartSonuc(
+        'Kalp kapak biyoprotezi',
+        SartDurumu.VAR if biyo_var else SartDurumu.YOK,
+        f'kaynak: {biyo_kaynak}' if biyo_var
+        else 'biyoprotez ibaresi/Z95.2-4 yok',
+        'rapor_metni/teshis', grup=g_end, veya_grubu=True))
+    anjio_var, anjio_kaynak = _klop_atom_anjio_kah(metin_lower, teshis_metin)
+    sartlar.append(SartSonuc(
+        'Anjiografik koroner arter hastalığı',
+        SartDurumu.VAR if anjio_var else SartDurumu.YOK,
+        f'kaynak: {anjio_kaynak}' if anjio_var
+        else 'anjio/angio/anjiyo + KAH ibaresi yok',
+        'rapor_metni/teshis', grup=g_end, veya_grubu=True))
+    # C1b-detay: Anjiografi tarihi raporda var mı? (Y-3 endikasyonuna OR atomu)
+    # Aktif rapor + geçmiş raporlar (bypass — bir kez anjio yapılmış ise
+    # belge kalıcıdır, kullanıcı kararı 2026-05-16).
+    gecmis_metinler = (ilac_sonuc.get('gecmis_rapor_metinleri') or
+                       ilac_sonuc.get('hasta_tum_rapor_metinleri') or [])
+    tarih_durum, tarih_neden = _klop_atom_anjio_tarihi(
+        birlesik, metin_lower, gecmis_metinler)
+    sartlar.append(SartSonuc(
+        'Anjiografi tarihi raporda',
+        tarih_durum, tarih_neden,
+        'rapor_metni/gecmis_rapor', grup=g_end, veya_grubu=True))
+    pah_var, pah_kaynak = _klop_atom_pah(metin_lower, teshis_metin)
+    sartlar.append(SartSonuc(
+        'Tıkayıcı periferik arter hastalığı',
+        SartDurumu.VAR if pah_var else SartDurumu.YOK,
+        f'kaynak: {pah_kaynak}' if pah_var
+        else 'PAH/klaudikasyo/I70.2 ibaresi yok',
+        'rapor_metni/teshis', grup=g_end, veya_grubu=True))
+    inme_var, inme_kaynak = _klop_atom_iskemik_inme(
+        metin_lower, teshis_metin, gecmis_icd)
+    sartlar.append(SartSonuc(
+        'Serebral iskemik olay / iskemik inme',
+        SartDurumu.VAR if inme_var else SartDurumu.YOK,
+        f'kaynak: {inme_kaynak}' if inme_var
+        else 'iskemik inme/SVO/I63-66 ibaresi yok',
+        'rapor_metni/teshis/gecmis_rapor', grup=g_end, veya_grubu=True))
+
+    # C2: Uzman hekim raporu var
+    rapor_durum, rapor_neden = _klop_atom_uzman_rapor_var(ilac_sonuc, rapor_kodu)
+    sartlar.append(SartSonuc(
+        'Uzman hekim raporu VAR (≤12 ay)',
+        rapor_durum, rapor_neden, 'rapor_kodu/heyet', grup=g_rapor))
+
+    # C3: Rapor yazan doktor branşı (Kard/İç/Nör/KDC/Acil — ZORUNLU)
+    # Reçete yazan atomu YOK — SUT "tüm hekimlerce reçete edilebilir"
+    # diyor (kullanıcı kuralı 2026-05-16: kısıtlama yoksa atom eklemiyoruz).
+    brans_durum, brans_neden = _klop_atom_rapor_yazan_brans(
+        ilac_sonuc, _KLOP_BRANS_KRONIK_RAPOR)
+    sartlar.append(SartSonuc(
+        'Rapor yazan doktor: Kard/İç/Nör/KDC/Acil',
+        brans_durum, brans_neden, 'rapor_doktor/heyet', grup=g_dr))
+
+    # C5: rapor süresi (bilgi)
+    sartlar.append(SartSonuc(
+        'Rapor süresi ≤12 ay (bilgi)',
+        SartDurumu.KONTROL_EDILEMEDI,
+        'Rapor süresi metinden parse zayıf — manuel doğrulama',
+        'rapor_suresi', grup=g_info))
+
+
+def _klop_y4_girisimsel_kontrol(metin_lower: str, teshis_metin: str,
+                                    ilac_sonuc: Dict,
+                                    sartlar: List[SartSonuc]) -> None:
+    """SUT 4.2.15.A(4) - Girişimsel intravasküler işlem (raporsuz).
+
+    Sadece reçete yazan şartı var (rapor aranmaz) — kullanıcı kuralı
+    2026-05-16: rapor şartı yoksa rapor atomu eklemiyoruz.
+    """
+    g_islem = 'Y-4: Girişimsel işlem + cihaz [(4)]'
+    g_dr_recete = 'Y-4: Reçete yazan doktor [(4)]'
+    g_info = 'Y-4: Miktar ≤ 4 hafta (bilgi)'
+
+    # D1: girişimsel işlem
+    islem_var, islem_kaynak = _klop_atom_girisimsel_islem(metin_lower)
+    sartlar.append(SartSonuc(
+        'Girişimsel periferik / serebral işlem',
+        SartDurumu.VAR if islem_var else SartDurumu.KONTROL_EDILEMEDI,
+        f'kaynak: {islem_kaynak}' if islem_var
+        else 'girişimsel periferik/serebral ibaresi yok — manuel',
+        'rapor_metni', grup=g_islem))
+    # D2: cihaz
+    cihaz_var, cihaz_kaynak = _klop_atom_intravaskuler_cihaz(metin_lower)
+    sartlar.append(SartSonuc(
+        'İntravasküler cihaz (stent/stentgraft/koil/onyx/...)',
+        SartDurumu.VAR if cihaz_var else SartDurumu.KONTROL_EDILEMEDI,
+        f'kaynak: {cihaz_kaynak}' if cihaz_var
+        else 'stentgraft/koil/onyx ibaresi yok — manuel',
+        'rapor_metni', grup=g_islem))
+
+    # D3: Reçete yazan doktor branşı (zorunlu — raporsuz akış için)
+    doktor_brans = ilac_sonuc.get('doktor_uzmanligi') or ''
+    brans_ok, db = _klop_doktor_brans_in(doktor_brans, _KLOP_BRANS_GIRISIMSEL)
+    sartlar.append(SartSonuc(
+        'Reçete yazan doktor: Kard/İç/Nör/KDC/B.Cer/Gir.Radyoloji',
+        SartDurumu.VAR if brans_ok else (
+            SartDurumu.YOK if db else SartDurumu.KONTROL_EDILEMEDI),
+        f'reçete doktor branşı: {db or "(boş)"}',
+        'doktor_uzmanligi', grup=g_dr_recete))
+
+    # D4: miktar (bilgi)
+    sartlar.append(SartSonuc(
+        'Miktar ≤ 4 hafta (bilgi)',
+        SartDurumu.KONTROL_EDILEMEDI,
+        'Reçete miktarı pipeline parse zayıf — manuel doğrulama',
+        'recete_miktar', grup=g_info))
+
+
+def _klop_prasugrel_ek_atomlar(metin_lower: str, teshis_metin: str,
+                                  ilac_sonuc: Dict, yas: Optional[int],
+                                  gecmis_icd: List[str],
+                                  sartlar: List[SartSonuc]) -> None:
+    """SUT 4.2.15.Ç ek şartları: yaş<75 ∧ kilo>60 ∧ SVO yok ∧
+    (PKG kararı (NSTEMI ∨ STEMI) ∨ stent trombozu)."""
+    g_kontr = 'Prasugrel kontrendikasyon [Ç(1)]'
+    g_end = 'Prasugrel endikasyon [Ç(1)∨(2)] — ≥1'
+
+    yas_durum, yas_neden = _klop_atom_prasu_yas_75_alti(yas, metin_lower)
+    sartlar.append(SartSonuc(
+        'Yaş < 75', yas_durum, yas_neden,
+        'hasta_yasi/rapor_metni', grup=g_kontr))
+    kilo_durum, kilo_neden = _klop_atom_prasu_kilo_60_ustu(ilac_sonuc, metin_lower)
+    sartlar.append(SartSonuc(
+        'Kilo > 60 kg', kilo_durum, kilo_neden, 'hasta_kilosu', grup=g_kontr))
+    svo_durum, svo_neden = _klop_atom_prasu_svo_yok(
+        metin_lower, teshis_metin, gecmis_icd)
+    sartlar.append(SartSonuc(
+        'SVO öyküsü YOK', svo_durum, svo_neden,
+        'rapor_metni/teshis/gecmis_rapor', grup=g_kontr))
+
+    # Endikasyon: (PKG + (NSTEMI ∨ STEMI)) ∨ stent trombozu
+    pkg_var, _ = _klop_atom_prasu_pkg_karari(metin_lower)
+    nstemi, _ = _klop_atom_nstemi(metin_lower, teshis_metin)
+    stemi, _ = _klop_atom_stemi(metin_lower, teshis_metin)
+    pkg_aks = pkg_var and (nstemi or stemi)
+    sartlar.append(SartSonuc(
+        'PKG kararı + (NSTEMI ∨ STEMI)',
+        SartDurumu.VAR if pkg_aks else SartDurumu.YOK,
+        ('PKG + AKS tespit' if pkg_aks
+         else 'PKG kararı veya AKS tanısı eksik'),
+        'rapor_metni', grup=g_end, veya_grubu=True))
+    tromboz_var, _ = _klop_atom_prasu_stent_trombozu(metin_lower)
+    sartlar.append(SartSonuc(
+        'Klopidogrel altında stent trombozu',
+        SartDurumu.VAR if tromboz_var else SartDurumu.YOK,
+        'stent trombozu ibaresi tespit' if tromboz_var
+        else 'stent trombozu ibaresi yok',
+        'rapor_metni', grup=g_end, veya_grubu=True))
+
+
+def _klop_tikagrelor_ek_atomlar(metin_lower: str, teshis_metin: str,
+                                    ilac_sonuc: Dict,
+                                    sartlar: List[SartSonuc]) -> None:
+    """SUT 4.2.15.E ek şartları: AKS (NSTEMI ∨ STEMI) ∧
+    fibrinolitik 72sa YOK ∧ varfarin YOK ∧ EKG+troponin kanıtı."""
+    g_tani = 'Tikagrelor AKS tanısı [E(1)] — ≥1'
+    g_kontr = 'Tikagrelor kontrendikasyon/kanıt [E(2)(3)(4)]'
+
+    nstemi, _ = _klop_atom_nstemi(metin_lower, teshis_metin)
+    sartlar.append(SartSonuc(
+        'NSTEMI', SartDurumu.VAR if nstemi else SartDurumu.YOK,
+        'NSTEMI ibaresi/I21.4' if nstemi else 'NSTEMI ibaresi yok',
+        'rapor_metni/teshis', grup=g_tani, veya_grubu=True))
+    stemi, _ = _klop_atom_stemi(metin_lower, teshis_metin)
+    sartlar.append(SartSonuc(
+        'STEMI', SartDurumu.VAR if stemi else SartDurumu.YOK,
+        'STEMI ibaresi/I21.0-3' if stemi else 'STEMI ibaresi yok',
+        'rapor_metni/teshis', grup=g_tani, veya_grubu=True))
+
+    fib_durum, fib_neden = _klop_atom_tikag_fibrinolitik_yok(metin_lower)
+    sartlar.append(SartSonuc(
+        '72 saat fibrinolitik YOK', fib_durum, fib_neden,
+        'rapor_metni', grup=g_kontr))
+    varf_durum, varf_neden = _klop_atom_tikag_varfarin_yok(metin_lower, ilac_sonuc)
+    sartlar.append(SartSonuc(
+        'Varfarin tedavisi altında DEĞİL', varf_durum, varf_neden,
+        'rapor_metni/diger_ilaclar', grup=g_kontr))
+    ekg_durum, ekg_neden = _klop_atom_tikag_ekg_kanit(metin_lower)
+    sartlar.append(SartSonuc(
+        'EKG (≥2 ardışık deriv. ST/T) + troponin/CK-MB pozitif',
+        ekg_durum, ekg_neden, 'rapor_metni', grup=g_kontr))
+
+
+# ─── Genel sonuç: 4-way üst-VEYA (Klop_UYGUN ⇔ Y1 ∨ Y2 ∨ Y3 ∨ Y4) ──────
+
+def _klop_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,
+                                sut_kurali: str, birlesik: str,
+                                anahtar: str, etken: str) -> KontrolRaporu:
+    """4 yolaktan ≥1 UYGUN ise UYGUN. Prasu/Tikag ek şartları AND ile bağlanır.
+
+    Yolak ön-eki: 'Y-1' / 'Y-2' / 'Y-3' / 'Y-4'
+    Ek grup ön-eki: 'Prasugrel' / 'Tikagrelor'
+    """
+    # Grupla
+    gruplar: Dict[str, List[SartSonuc]] = {}
+    for s in sartlar:
+        gruplar.setdefault(s.grup, []).append(s)
+
+    grup_durumlari: Dict[str, SartDurumu] = {}
+    for ad, gs in gruplar.items():
+        if (not ad or '(bilgi)' in ad or '[pasif]' in ad):
+            continue
+        if any(s.veya_grubu for s in gs):
+            grup_durumlari[ad] = _yoak_grup_durumu(gs, veya=True)
+        else:
+            grup_durumlari[ad] = _yoak_grup_durumu(gs, veya=False)
+
+    # Y-2 alt-yol üst-VEYA önişleme (SUT 4.2.15.A(2) 2 alt-yol):
+    #   Yol-A (raporsuz): "Y-2: (a) Raporsuz akış"  → reçete yetkili atomu
+    #   Yol-B (raporlu):  "Y-2: (b) Raporlu 12 ay"  → rapor mevcut ∧ rapor yetkili (AND)
+    # Yol-A ∨ Yol-B → birleştirilmiş "Y-2: Yetkili akış" grubu (alt-OR).
+    # Bu, Y-2'nin diğer atomları (tanı, EKG) ile AND'lenirken Yol-A/Yol-B
+    # AND değil OR olur.
+    y2_yol_a_key = next((k for k in grup_durumlari
+                          if k.startswith('Y-2: (a) Raporsuz akış')), None)
+    y2_yol_b_key = next((k for k in grup_durumlari
+                          if k.startswith('Y-2: (b) Raporlu 12 ay')), None)
+    if y2_yol_a_key and y2_yol_b_key:
+        da = grup_durumlari[y2_yol_a_key]
+        db = grup_durumlari[y2_yol_b_key]
+        if da == SartDurumu.VAR or db == SartDurumu.VAR:
+            y2_alt = SartDurumu.VAR
+        elif da == SartDurumu.KONTROL_EDILEMEDI or db == SartDurumu.KONTROL_EDILEMEDI:
+            y2_alt = SartDurumu.KONTROL_EDILEMEDI
+        else:
+            y2_alt = SartDurumu.YOK
+        # Yol-A/Yol-B gruplarını sil, birleşik koy (sema panel "alt" ile gösterir)
+        grup_durumlari['Y-2: Yetkili akış [(a) VEYA (b)]'] = y2_alt
+        grup_durumlari.pop(y2_yol_a_key)
+        grup_durumlari.pop(y2_yol_b_key)
+
+    # Her yolağın durumu: yolak prefixiyle eşleşen grupların AND'i
+    def _yolak_durumu(prefix: str) -> Optional[SartDurumu]:
+        keys = [k for k in grup_durumlari if k.startswith(prefix)]
+        if not keys:
+            return None
+        durumlar = [grup_durumlari[k] for k in keys]
+        if any(d == SartDurumu.YOK for d in durumlar):
+            return SartDurumu.YOK
+        if any(d == SartDurumu.KONTROL_EDILEMEDI for d in durumlar):
+            return SartDurumu.KONTROL_EDILEMEDI
+        return SartDurumu.VAR
+
+    y1 = _yolak_durumu('Y-1')
+    y2 = _yolak_durumu('Y-2')
+    y3 = _yolak_durumu('Y-3')
+    y4 = _yolak_durumu('Y-4')
+    yolaklar = [y for y in (y1, y2, y3, y4) if y is not None]
+
+    # Üst-VEYA: ≥1 VAR → VAR; hepsi YOK → YOK; aksi → KE
+    if any(y == SartDurumu.VAR for y in yolaklar):
+        klop_yolak_durum = SartDurumu.VAR
+    elif all(y == SartDurumu.YOK for y in yolaklar) and yolaklar:
+        klop_yolak_durum = SartDurumu.YOK
+    elif yolaklar:
+        klop_yolak_durum = SartDurumu.KONTROL_EDILEMEDI
+    else:
+        klop_yolak_durum = SartDurumu.KONTROL_EDILEMEDI
+
+    detaylar['yolak_durumlari'] = {
+        'Y-1 stent': y1.value if y1 else 'NA',
+        'Y-2 AKS': y2.value if y2 else 'NA',
+        'Y-3 kronik': y3.value if y3 else 'NA',
+        'Y-4 girişimsel': y4.value if y4 else 'NA',
+    }
+
+    # Prasugrel / Tikagrelor ek şartlar (AND ile birleştirilir)
+    ek_durum = SartDurumu.VAR
+    ek_eksik_gruplar: List[str] = []
+    ek_ke_gruplar: List[str] = []
+    for ad, d in grup_durumlari.items():
+        if ad.startswith('Prasugrel') or ad.startswith('Tikagrelor'):
+            if d == SartDurumu.YOK:
+                ek_durum = SartDurumu.YOK
+                ek_eksik_gruplar.append(ad)
+            elif d == SartDurumu.KONTROL_EDILEMEDI and ek_durum != SartDurumu.YOK:
+                ek_durum = SartDurumu.KONTROL_EDILEMEDI
+                ek_ke_gruplar.append(ad)
+
+    # Final: yolak AND ek
+    if klop_yolak_durum == SartDurumu.YOK or ek_durum == SartDurumu.YOK:
+        final_durum = SartDurumu.YOK
+    elif (klop_yolak_durum == SartDurumu.KONTROL_EDILEMEDI or
+          ek_durum == SartDurumu.KONTROL_EDILEMEDI):
+        final_durum = SartDurumu.KONTROL_EDILEMEDI
+    else:
+        final_durum = SartDurumu.VAR
+
+    detaylar['grup_durumlari'] = {g: d.value for g, d in grup_durumlari.items()}
+    detaylar['etken_madde_kategorisi'] = etken
+    eslesen = _eslesen_parcayi_bul(birlesik, anahtar) if birlesik else ''
+
+    if final_durum == SartDurumu.YOK:
+        yok_yol = [n for n, y in [('Y-1', y1), ('Y-2', y2), ('Y-3', y3),
+                                   ('Y-4', y4)]
+                    if y == SartDurumu.YOK]
+        msg = f'{etken} SUT şartları sağlanmıyor — yolaklar: {", ".join(yok_yol)}'
+        if ek_eksik_gruplar:
+            msg += f' | ek şart eksik: {", ".join(ek_eksik_gruplar)}'
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN_DEGIL,
+            mesaj=msg, sut_kurali=sut_kurali, detaylar=detaylar,
+            sartlar=sartlar, aranan_ibare='Tüm SUT şartları',
+            bulunan_metin=eslesen)
+    if final_durum == SartDurumu.KONTROL_EDILEMEDI:
+        ke_yol = [n for n, y in [('Y-1', y1), ('Y-2', y2), ('Y-3', y3),
+                                  ('Y-4', y4)]
+                    if y == SartDurumu.KONTROL_EDILEMEDI]
+        msg = f'{etken} ŞÜPHELİ — yolaklar KE: {", ".join(ke_yol) or "—"}'
+        if ek_ke_gruplar:
+            msg += f' | ek şart KE: {", ".join(ek_ke_gruplar)}'
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
+            mesaj=msg, sut_kurali=sut_kurali, detaylar=detaylar,
+            sartlar=sartlar,
+            uyari='Bazı şartlar metinden tespit edilemedi — manuel',
+            aranan_ibare='Tüm SUT şartları', bulunan_metin=eslesen)
+    var_yol = [n for n, y in [('Y-1', y1), ('Y-2', y2), ('Y-3', y3),
+                                ('Y-4', y4)]
+                if y == SartDurumu.VAR]
+    return KontrolRaporu(
+        sonuc=KontrolSonucu.UYGUN,
+        mesaj=f'{etken} SUT şartları sağlanıyor — uygun yol: '
+              f'{", ".join(var_yol) or "—"}',
+        sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
+        aranan_ibare='Tüm SUT şartları', bulunan_metin=eslesen)
+
+
+def kontrol_klopidogrel(ilac_sonuc: Dict) -> KontrolRaporu:
+    """SUT 4.2.15.A/Ç/E — Klopidogrel / Prasugrel / Tikagrelor atomik kontrolü.
+
+    Atomik şema (CLAUDE.md §1-9, SUT_MANTIK_SEMA_PROTOKOLU.md, YOAK pilot).
+    Klopidogrel için 4 paralel yolak (Y1: stent / Y2: AKS / Y3: kronik /
+    Y4: girişimsel). Prasugrel/Tikagrelor için ek şart blokları AND'le bağlanır.
+
+    Genel formül:
+      Klop_UYGUN ⇔ (Y1 ∨ Y2 ∨ Y3 ∨ Y4)
+      Prasu_UYGUN ⇔ (Y1 ∨ Y2 ∨ Y3 ∨ Y4) ∧ (yaş<75 ∧ kilo>60 ∧ SVO yok)
+                    ∧ ((PKG + AKS) ∨ stent trombozu)
+      Tikag_UYGUN ⇔ (Y1 ∨ Y2 ∨ Y3 ∨ Y4) ∧ (NSTEMI ∨ STEMI)
+                    ∧ (fibrinolitik 72sa YOK ∧ varfarin YOK ∧ EKG+troponin)
     """
     tum_metin = _tum_metinleri_birlesir(ilac_sonuc)
     ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
-    rapor_kodu = ilac_sonuc.get('rapor_kodu', '')
-    recete_teshisleri = ilac_sonuc.get('recete_teshisleri', [])
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
+    recete_teshisleri = ilac_sonuc.get('recete_teshisleri', []) or []
     teshis_metin = ' '.join(recete_teshisleri).upper() if recete_teshisleri else ''
-
     birlesik = (tum_metin or '') + ' ' + teshis_metin
-    metin_lower = _turkce_normalize(birlesik) if birlesik else ''
+    metin_lower = _tr_lower(birlesik) if birlesik else ''
+    yas = _yoak_yas_oku(ilac_sonuc, birlesik)
+    gecmis_icd = (ilac_sonuc.get('diger_raporlar_icd_tum_zamanlar') or
+                  ilac_sonuc.get('diger_raporlar_icd') or [])
+    etken = _klop_etken_tespit(ilac_sonuc)
 
-    sut_kurali = 'SUT 4.2.15 — Klopidogrel/Prasugrel/Tikagrelor kullanım kuralları'
-    detaylar = {'ilac_adi': ilac_adi, 'rapor_kodu': rapor_kodu}
+    sut_kurali_map = {
+        'KLOPIDOGREL': 'SUT 4.2.15.A — Klopidogrel atomik (4 yolak)',
+        'PRASUGREL': 'SUT 4.2.15.Ç — Prasugrel (yolak + yaş/kilo/SVO + AKS PKG)',
+        'TIKAGRELOR': 'SUT 4.2.15.E — Tikagrelor (yolak + NSTEMI/STEMI + '
+                       'fibrinolitik/varfarin/EKG)',
+    }
+    sut_kurali = sut_kurali_map.get(etken, sut_kurali_map['KLOPIDOGREL'])
 
-    # ── 1. Endikasyon tespiti ──
-    endikasyonlar = []
-    eslesen_metinler = []
+    sartlar: List[SartSonuc] = []
+    detaylar: Dict = {
+        'sut_maddesi': {'KLOPIDOGREL': '4.2.15.A',
+                         'PRASUGREL': '4.2.15.Ç',
+                         'TIKAGRELOR': '4.2.15.E'}.get(etken, '4.2.15.A'),
+        'etken_madde': etken,
+        'ilac_adi': ilac_adi,
+        'rapor_kodu': rapor_kodu,
+        'hasta_yasi': yas,
+    }
 
-    # Stent
-    stent_var = 'stent' in metin_lower
-    if stent_var:
-        endikasyonlar.append('Koroner stent')
-        eslesen_metinler.append(_eslesen_parcayi_bul(birlesik, 'stent'))
-
-    # AKS / MI
-    aks_var = any(k in metin_lower for k in ['akut koroner', 'aks', 'stemi', 'nstemi',
-                                              'unstabil angina', 'unstable angina'])
-    mi_var = any(k in metin_lower for k in ['miyokard', 'infarktusu', 'infarktus'])
-    if aks_var or mi_var:
-        endikasyonlar.append('AKS/MI')
-        for k in ['akut koroner', 'stemi', 'nstemi', 'miyokard']:
-            p = _eslesen_parcayi_bul(birlesik, k)
-            if p:
-                eslesen_metinler.append(p)
-                break
-
-    # Raporda "12 ay klopidogrel kullanımı uygundur" → stent/AKS sonrası onay
-    klopidogrel_onay = any(k in metin_lower for k in [
-        'klopidogrel kullanimi uygundur', 'clopidogrel kullanimi uygundur',
-        '12 ay klopidogrel', '12 ay clopidogrel',
-    ])
-    if klopidogrel_onay and not stent_var and not aks_var and not mi_var:
-        endikasyonlar.append('Doktor onayı (12 ay)')
-        eslesen_metinler.append(_eslesen_parcayi_bul(birlesik, 'klopidogrel') or
-                                _eslesen_parcayi_bul(birlesik, 'clopidogrel') or '')
-
-    # Anjiografi / KAH (çeşitli yazımlar: anjio/angio/anjiyo/angyo).
-    # 'kah tarih' (KAH TARİHİ DD.MM.YYYY) — TR rapor dilinde "koroner anjiografi
-    # tarihi" anlamında kullanılan kısaltma (3M4UYAG örneği, 2026-05-07).
-    anjio_var = any(k in metin_lower for k in
-                    ['anjio', 'angio', 'anjiyo', 'angyo', 'angiyo', 'kah tarih'])
-    kah_var = any(k in metin_lower for k in ['koroner arter', 'iskemik kalp'])
-    bypass_var = any(k in metin_lower for k in ['bypass', 'kabg'])
-    perkutan_var = any(k in metin_lower for k in ['perkutan', 'pkag', 'ptca'])
-    if anjio_var or kah_var or bypass_var or perkutan_var:
-        endikasyonlar.append('KAH/Anjiografi')
-        for k in ['anjio', 'koroner arter', 'bypass', 'kabg', 'perkütan']:
-            p = _eslesen_parcayi_bul(birlesik, k)
-            if p:
-                eslesen_metinler.append(p)
-                break
-
-    # İskemik inme
-    # NOT: "TIA" kısaltması Türkçe-normalize sonrası "tıa" olur — her ikisi de aransın.
-    inme_var = any(k in metin_lower for k in ['iskemik inme', 'serebral iskemi',
-                                               'serebrovasküler', 'serebrovaskuler',
-                                               'tia', 'tıa'])
-    icd_inme = any(k in teshis_metin for k in ['I63', 'I64', 'I65', 'I66', 'G45', 'G46'])
-    if inme_var or icd_inme:
-        endikasyonlar.append('İskemik inme')
-        for k in ['inme', 'serebral', 'serebrovas']:
-            p = _eslesen_parcayi_bul(birlesik, k)
-            if p:
-                eslesen_metinler.append(p)
-                break
-
-    # Periferik arter
-    pah_var = any(k in metin_lower for k in ['periferik arter', 'tıkayıcı', 'tikayici',
-                                              'kladikasyo', 'intermittan'])
-    icd_pah = any(k in teshis_metin for k in ['I70', 'I73', 'I74'])
-    if pah_var or icd_pah:
-        endikasyonlar.append('Periferik arter')
-        for k in ['periferik arter', 'tıkayıcı', 'tikayici']:
-            p = _eslesen_parcayi_bul(birlesik, k)
-            if p:
-                eslesen_metinler.append(p)
-                break
-
-    # ICD kodları ile ek kontrol
-    icd_kah = any(k in teshis_metin for k in ['I20', 'I21', 'I22', 'I23', 'I24', 'I25'])
-    if icd_kah and 'KAH/Anjiografi' not in endikasyonlar:
-        endikasyonlar.append('KAH (ICD)')
-
-    # ── 2. ASA intoleransı kontrolü ──
-    # 'gis intolerans' = "GİS intoleransI" (gastrointestinal sistem kısaltması)
-    # TR rapor dilinde yaygın (3MQQQBQ örneği, 2026-05-07).
-    asa_intolerans = any(k in metin_lower for k in ['asa intolerans', 'aspirin intolerans',
-                                                     'aspirin kontrendik', 'asetilsalisilik intolerans',
-                                                     'gastrointestinal intolerans',
-                                                     'gis intolerans',
-                                                     'aspirin allerjisi', 'asa allerjisi'])
-    # ASA gerektiren endikasyonlar: sadece "KAH" — iskemik inme ve PAH için SUT 4.2.15'te
-    # ASA intoleransı ŞARTI yok (raporda Inme/PAH endikasyonu yeterli).
-    asa_gereken = any(e in endikasyonlar for e in ['KAH/Anjiografi', 'KAH (ICD)'])
-    asa_gereksiz = any(e in endikasyonlar for e in ['Koroner stent', 'AKS/MI', 'Doktor onayı (12 ay)',
-                                                      'İskemik inme', 'Periferik arter'])
-
-    # ── 3. Tarih bilgisi ──
-    # Sistem timestamp'lerini ((Ekleme=...)) hariç tut, aksi halde kullanıcıya
-    # "Tarih: 02/01/2026" gösterilir ama bu rapor düzenleme zamanıdır (3MQQQBQ).
-    birlesik_tarih_temiz = _sistem_timestamp_temizle(birlesik)
-    tarih_match = re.findall(r'\d{2}[./]\d{2}[./]\d{4}', birlesik_tarih_temiz)
-    tarih_str = f" | Tarih: {', '.join(tarih_match[:2])}" if tarih_match else ""
-
-    detaylar['endikasyonlar'] = endikasyonlar
-    detaylar['asa_intolerans'] = asa_intolerans
-    detaylar['tarihler'] = tarih_match[:3] if tarih_match else []
-
-    eslesen_birlesik = eslesen_metinler[0] if eslesen_metinler else ""
-
-    # ── 4. Sonuç ──
-    if not endikasyonlar:
+    # ── Erken çıkış: boş metin + rapor yok ────────────────────────────
+    if not metin_lower.strip() and not rapor_kodu:
+        sartlar.append(SartSonuc(
+            'Rapor/mesaj metni',
+            SartDurumu.YOK,
+            'Metin boş ve rapor da yok — endikasyon belirlenemez',
+            'tum_metin', grup='Y-2: AKS tanısı [(2)] — ≥1', veya_grubu=True))
         return KontrolRaporu(
-            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-            mesaj='Stent/AKS/anjiografi/inme/periferik arter ibaresi bulunamadı',
-            detaylar=detaylar,
-            uyari='RAPOR KONTROLÜ GEREKLİ: Endikasyon raporda belirtilmeli',
-            sut_kurali=sut_kurali,
-            aranan_ibare='stent / AKS / anjiografi / koroner arter / iskemik inme / periferik arter'
-        )
+            sonuc=KontrolSonucu.UYGUN_DEGIL,
+            mesaj=f'{etken}: rapor/metin yok — endikasyon belirlenemez',
+            sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
+            aranan_ibare='stent / AKS / anjio / inme / PAH / girişimsel')
 
-    # Stent veya AKS → ASA intoleransı gerekmez
-    if asa_gereksiz:
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN,
-            mesaj=f"Endikasyon: {', '.join(endikasyonlar)}{tarih_str}",
-            detaylar=detaylar,
-            uyari='Stent sonrası max 12 ay kullanım' if stent_var else None,
-            sut_kurali=sut_kurali,
-            aranan_ibare='stent / AKS / MI',
-            bulunan_metin=eslesen_birlesik
-        )
+    # ── 4 yolağın atomlarını üret (her yolak paralel) ─────────────────
+    _klop_y1_stent_kontrol(metin_lower, teshis_metin, ilac_sonuc,
+                              gecmis_icd, sartlar)
+    _klop_y2_aks_kontrol(metin_lower, teshis_metin, birlesik, ilac_sonuc,
+                            rapor_kodu, gecmis_icd, sartlar)
+    _klop_y3_kronik_kontrol(metin_lower, teshis_metin, birlesik, ilac_sonuc,
+                                rapor_kodu, gecmis_icd, sartlar)
+    _klop_y4_girisimsel_kontrol(metin_lower, teshis_metin, ilac_sonuc, sartlar)
 
-    # KAH/inme/PAH → ASA intoleransı gerekli (+ anjio belgelenmişse anjio tarihi)
-    if asa_gereken:
-        eksiklikler = []
-        onaylar = []
+    # ── Prasugrel / Tikagrelor ek atomları ────────────────────────────
+    if etken == 'PRASUGREL':
+        _klop_prasugrel_ek_atomlar(metin_lower, teshis_metin, ilac_sonuc,
+                                       yas, gecmis_icd, sartlar)
+    elif etken == 'TIKAGRELOR':
+        _klop_tikagrelor_ek_atomlar(metin_lower, teshis_metin, ilac_sonuc,
+                                        sartlar)
 
-        # 3a) Anjio belgelenmiş KAH'ta anjiografi tarihi raporda zorunlu.
-        # Sistem timestamp'i ((Ekleme=...)) tarih olarak yakalanmamalı (3MQQQBQ).
-        # Kırpık tarih (yıl 3 hane) malformed olarak işaretlenir (3MQQQBQ).
-        if anjio_var:
-            anjio_tarih, anjio_malformed = _anjio_tarihi_yakin_bul(birlesik, metin_lower)
-            if anjio_tarih and not anjio_malformed:
-                detaylar['anjio_tarihi'] = anjio_tarih
-                onaylar.append(f'anjio tarihi {anjio_tarih}')
-            elif anjio_tarih and anjio_malformed:
-                detaylar['anjio_tarihi_malformed'] = anjio_tarih
-                eksiklikler.append(
-                    f'anjiografi tarihi formatı hatalı/kırpık ({anjio_tarih})')
-            else:
-                eksiklikler.append('anjiografi tarihi raporda belirtilmemiş')
-
-        # 3b) ASA intoleransı veya rapor kodu fallback (Medula örtük onay)
-        rapor_kodu_klop = (ilac_sonuc.get('rapor_kodu') or '').strip()
-        medula_onay = bool(rapor_kodu_klop and (
-            rapor_kodu_klop.startswith('04.02.1')
-            or rapor_kodu_klop.startswith('04.04.1')))
-
-        if asa_intolerans:
-            onaylar.append('ASA intoleransı mevcut')
-        elif medula_onay:
-            onaylar.append(f'rapor kodu {rapor_kodu_klop} (örtük ASA intoleransı)')
-            detaylar['medula_otomatik'] = True
-        else:
-            eksiklikler.append('ASA/aspirin intoleransı ibaresi yok')
-
-        # Eksiklik varsa ŞÜPHELİ döndür (anjio tarihi yok ve/veya ASA yok)
-        if eksiklikler:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f"Endikasyon: {', '.join(endikasyonlar)} — "
-                       f"eksiklik: {'; '.join(eksiklikler)}"),
-                detaylar={**detaylar, 'eksiklikler': eksiklikler},
-                uyari='SUT 4.2.15 — ' + '; '.join(eksiklikler),
-                sut_kurali=sut_kurali,
-                aranan_ibare=' / '.join(eksiklikler),
-                bulunan_metin=eslesen_birlesik
-            )
-
-        # Tüm şartlar tamam → UYGUN
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN,
-            mesaj=(f"Endikasyon: {', '.join(endikasyonlar)} + "
-                   f"{' + '.join(onaylar)}{tarih_str}"),
-            detaylar=detaylar,
-            uyari=('ASA intoleransı raporda yer aldığı varsayılır'
-                   if (medula_onay and not asa_intolerans) else None),
-            sut_kurali=sut_kurali,
-            aranan_ibare=('endikasyon + ASA intoleransı'
-                          + (' + anjio tarihi' if anjio_var else '')),
-            bulunan_metin=eslesen_birlesik
-        )
-
-    # Genel endikasyon bulundu
-    return KontrolRaporu(
-        sonuc=KontrolSonucu.UYGUN,
-        mesaj=f"Endikasyon: {', '.join(endikasyonlar)}{tarih_str}",
-        detaylar=detaylar,
-        sut_kurali=sut_kurali,
-        aranan_ibare='stent / AKS / anjiografi / koroner arter',
-        bulunan_metin=eslesen_birlesik
-    )
+    # ── Üst-VEYA matematiği ───────────────────────────────────────────
+    return _klop_genel_sonuc_atomik(sartlar, detaylar, sut_kurali,
+                                       birlesik, 'klopidogrel', etken)
 
 
 def _ldl_tarihlerini_eslestir(metin: str, olcumler: List[Dict],
@@ -6929,11 +8017,15 @@ def _statin_atom_yas_65(yas: Optional[int]) -> SartDurumu:
     return SartDurumu.VAR if yas >= 65 else SartDurumu.YOK
 
 
-def _statin_gecmis_icd_var(diger_icd: Optional[List[str]],
+def _lipid_gecmis_icd_var(diger_icd: Optional[List[str]],
                              icd_prefixleri: Tuple[str, ...]
                              ) -> Tuple[bool, str]:
     """Hastanın geçmiş raporlarındaki ICD listesinde verilen prefix'lerden
     biri var mı? (Bkz. YOAK kalıbı `_yoak_gecmis_icd_var`.)
+
+    Jenerik helper — statin (4.2.28.A) + fibrat (4.2.28.B) atomları
+    tarafından paylaşılır. 2026-05-16'da `_statin_gecmis_icd_var`'dan
+    rename edildi (FERİDE EGE fibrat geçmiş rapor desteği eklendiğinde).
 
     Format: ['I25.9 KAH', 'I63.0 İskemik inme', '[Rap 04.02] KAH']
     Returns: (var_mi, eşleşen_satir)
@@ -6951,17 +8043,19 @@ def _statin_gecmis_icd_var(diger_icd: Optional[List[str]],
     return (False, '')
 
 
-def _statin_gecmis_metin_ara(diger_rapor_metinleri: Optional[List[str]],
+def _lipid_gecmis_metin_ara(diger_rapor_metinleri: Optional[List[str]],
                               pattern: str,
                               *,
                               aile_oykusu_redder: bool = False
                               ) -> Tuple[bool, str]:
     """Hastanın geçmiş rapor metinlerinde verilen regex'i ara.
 
-    Statin SUT 4.2.28.A için sekonder koruma şartları (KAH/MI/inme/AKS/PAH/AAA/
-    karotid) hastanın geçmiş raporlarında metinsel kanıt olarak da kabul edilir
-    — örn: "KAG yapıldı", "stent uygulandı", "geçirilmiş MI". Aktif rapor
-    metnindeki kanıt + geçmiş rapor ICD'leri yetersiz kaldığında fallback.
+    Jenerik helper — statin (4.2.28.A) + fibrat (4.2.28.B) atomları
+    tarafından paylaşılır. KV/sekonder koruma şartları (KAH/MI/inme/AKS/
+    PAH/AAA/karotid) hastanın geçmiş raporlarında metinsel kanıt olarak da
+    kabul edilir — örn: "KAG yapıldı", "stent uygulandı", "geçirilmiş MI".
+    Aktif rapor metnindeki kanıt + geçmiş rapor ICD'leri yetersiz kaldığında
+    fallback. 2026-05-16'da `_statin_gecmis_metin_ara`'dan rename edildi.
 
     Args:
         diger_rapor_metinleri: reçete tarihinden ÖNCEKİ tüm rapor açıklamaları.
@@ -7009,7 +8103,7 @@ def _statin_atom_dm(metin_lower: str, teshis_metin: str,
                 r'şeker\s*hastal', r'seker\s*hastal']
     if any(re.search(p, metin_lower) for p in patterns):
         return (True, 'aktif_metin')
-    gv, gs = _statin_gecmis_icd_var(
+    gv, gs = _lipid_gecmis_icd_var(
         diger_icd, ('E10', 'E11', 'E12', 'E13', 'E14'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
@@ -7025,11 +8119,11 @@ def _statin_atom_aks(metin_lower: str, teshis_metin: str,
         return (True, 'aktif_teshis')
     if re.search(r'akut\s*koroner|\baks\b', metin_lower):
         return (True, 'aktif_metin')
-    gv, gs = _statin_gecmis_icd_var(
+    gv, gs = _lipid_gecmis_icd_var(
         diger_icd, ('I20', 'I21', 'I22', 'I23', 'I24'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
-    gv2, gs2 = _statin_gecmis_metin_ara(
+    gv2, gs2 = _lipid_gecmis_metin_ara(
         diger_rapor_metinleri,
         r'akut\s*koroner|\baks\b',
         aile_oykusu_redder=True,
@@ -7050,10 +8144,10 @@ def _statin_atom_mi(metin_lower: str, teshis_metin: str,
         r'miyokard\s*infar|miyokard\s*enfark|geçirilmiş\s*mi\b|\bstemi\b|\bnstemi\b',
             metin_lower):
         return (True, 'aktif_metin')
-    gv, gs = _statin_gecmis_icd_var(diger_icd, ('I21', 'I22', 'I25.2'))
+    gv, gs = _lipid_gecmis_icd_var(diger_icd, ('I21', 'I22', 'I25.2'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
-    gv2, gs2 = _statin_gecmis_metin_ara(
+    gv2, gs2 = _lipid_gecmis_metin_ara(
         diger_rapor_metinleri,
         r'miyokard\s*infar|miyokard\s*enfark|geçirilmiş\s*mi\b|'
         r'\bstemi\b|\bnstemi\b',
@@ -7076,11 +8170,11 @@ def _statin_atom_inme(metin_lower: str, teshis_metin: str,
         r'\binme\b|\bstroke\b|serebrovask|\bsvo\b|geçirilmiş\s*inme',
             metin_lower):
         return (True, 'aktif_metin')
-    gv, gs = _statin_gecmis_icd_var(
+    gv, gs = _lipid_gecmis_icd_var(
         diger_icd, ('I60', 'I61', 'I62', 'I63', 'I64', 'I65', 'I66', 'I69'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
-    gv2, gs2 = _statin_gecmis_metin_ara(
+    gv2, gs2 = _lipid_gecmis_metin_ara(
         diger_rapor_metinleri,
         r'\binme\b|\bstroke\b|serebrovask|\bsvo\b|geçirilmiş\s*inme',
         aile_oykusu_redder=True,
@@ -7125,12 +8219,12 @@ def _statin_atom_kah(metin_lower: str, teshis_metin: str,
             r'\bkah\b|iskemik\s*kalp|\bkabg\b|by[-\s]?pass|\bstent\b',
             metin_lower):
         return (True, 'aktif_metin')
-    gv, gs = _statin_gecmis_icd_var(
+    gv, gs = _lipid_gecmis_icd_var(
         diger_icd, ('I20', 'I21', 'I22', 'I23', 'I24', 'I25'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
     # Geçmiş rapor metinleri — KAG/anjiyo dahil sekonder koruma kanıtları
-    gv2, gs2 = _statin_gecmis_metin_ara(
+    gv2, gs2 = _lipid_gecmis_metin_ara(
         diger_rapor_metinleri,
         r'\bkah\b|koroner\s*arter|iskemik\s*kalp|\bkabg\b|by[-\s]?pass|'
         r'\bstent\b|\bkag\b|anjio(?:graf|plast)',
@@ -7150,10 +8244,10 @@ def _statin_atom_pah(metin_lower: str, teshis_metin: str,
         return (True, 'aktif_teshis')
     if re.search(r'periferik\s*arter|\bpah\b|\bpaod\b', metin_lower):
         return (True, 'aktif_metin')
-    gv, gs = _statin_gecmis_icd_var(diger_icd, ('I70', 'I73', 'I74'))
+    gv, gs = _lipid_gecmis_icd_var(diger_icd, ('I70', 'I73', 'I74'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
-    gv2, gs2 = _statin_gecmis_metin_ara(
+    gv2, gs2 = _lipid_gecmis_metin_ara(
         diger_rapor_metinleri,
         r'periferik\s*arter|\bpah\b|\bpaod\b',
         aile_oykusu_redder=True,
@@ -7174,10 +8268,10 @@ def _statin_atom_aaa(metin_lower: str, teshis_metin: str = '',
             r'abdominal\s*aort\s*anevrizm|\baaa\b|aort\s*diseks',
             metin_lower):
         return (True, 'aktif_metin')
-    gv, gs = _statin_gecmis_icd_var(diger_icd, ('I71',))
+    gv, gs = _lipid_gecmis_icd_var(diger_icd, ('I71',))
     if gv:
         return (True, f'gecmis_icd:{gs}')
-    gv2, gs2 = _statin_gecmis_metin_ara(
+    gv2, gs2 = _lipid_gecmis_metin_ara(
         diger_rapor_metinleri,
         r'abdominal\s*aort\s*anevrizm|\baaa\b|aort\s*diseks',
         aile_oykusu_redder=True,
@@ -7196,10 +8290,10 @@ def _statin_atom_karotid(metin_lower: str, teshis_metin: str = '',
         return (True, 'aktif_teshis')
     if re.search(r'karotid|karotis', metin_lower):
         return (True, 'aktif_metin')
-    gv, gs = _statin_gecmis_icd_var(diger_icd, ('I65', 'I63.2'))
+    gv, gs = _lipid_gecmis_icd_var(diger_icd, ('I65', 'I63.2'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
-    gv2, gs2 = _statin_gecmis_metin_ara(
+    gv2, gs2 = _lipid_gecmis_metin_ara(
         diger_rapor_metinleri,
         r'karotid|karotis',
         aile_oykusu_redder=True,
@@ -7430,9 +8524,17 @@ def _statin_atom_6ay_ara(ilac_sonuc: Dict) -> Tuple[SartDurumu, str]:
     """SUT 4.2.28.A-1(3) son cümle + A-2(3): tedaviye 6+ ay ara veren
     hastalarda yeniden başlangıç kriterleri aranır.
 
-    Pipeline ilac_sonuc'a 'son_statin_alim_tarihi' (Botanik EOS sat.kay.
-    son tarih) eklediyse onunla hesapla. Yoksa KE (manuel doğrulama).
+    Pipeline ilac_sonuc'a 'son_statin_alim_tarihi' (Botanik EOS satış
+    kaydındaki son tarih) eklediyse onunla hesapla. Yoksa KE (manuel).
     Devam raporlarında zaten ara olmadığı varsayılır → VAR.
+
+    Kullanıcı kararı (2026-05-16, [[feedback_6ay_ara_eczane_satis_gecmisi]]):
+    Botanik EOS sadece BU eczanenin satış geçmişini tutar — Medula'daki
+    diğer eczane satışları görünmez. 3 yönlü karar:
+      • Son satış < 6 ay (bizim eczaneden) → VAR (kesin biliyoruz ara yok)
+      • Son satış ≥ 6 ay (bizim eczaneden) → KE (başka eczaneden almış
+        olabilir, Medula manuel kontrolü gerek) — YOK demiyoruz!
+      • Hiç satış kaydı yok → KE (yeni hasta veya başka eczane)
     """
     # Devam raporu ise zaten ara yok kabul edilir
     rapor_tipi = ilac_sonuc.get('_rapor_tipi') or ''
@@ -7444,8 +8546,9 @@ def _statin_atom_6ay_ara(ilac_sonuc: Dict) -> Tuple[SartDurumu, str]:
                 or ilac_sonuc.get('son_lipid_alim_tarihi'))
     if not son_alim:
         return (SartDurumu.KONTROL_EDILEMEDI,
-                'Son statin alım tarihi pipeline\'a eklenmemiş — '
-                'manuel doğrulama gerekli')
+                'Bu eczane satış geçmişinde bu hastaya ait ilaç kaydı '
+                'yok — Medula\'dan manuel doğrulama gerekli (başka '
+                'eczaneden alıyor olabilir)')
     try:
         from datetime import datetime
         if isinstance(son_alim, str):
@@ -7454,11 +8557,13 @@ def _statin_atom_6ay_ara(ilac_sonuc: Dict) -> Tuple[SartDurumu, str]:
             son_dt = son_alim
         gecen_ay = (datetime.now() - son_dt).days / 30.4
         if gecen_ay >= 6:
-            return (SartDurumu.YOK,
-                    f'Son alımdan {gecen_ay:.1f} ay geçti — '
-                    f'≥6 ay ara, başlangıç kriterleri yeniden aranır')
+            return (SartDurumu.KONTROL_EDILEMEDI,
+                    f'Bu eczaneden son alım {gecen_ay:.1f} ay önce '
+                    f'(≥6 ay) — ama hasta arada başka eczaneden '
+                    f'almış olabilir, Medula\'dan manuel doğrulama')
         return (SartDurumu.VAR,
-                f'Son alımdan {gecen_ay:.1f} ay geçti (<6 ay)')
+                f'Bu eczaneden son alım {gecen_ay:.1f} ay önce '
+                f'(<6 ay) — ara verilmemiş')
     except Exception:
         return (SartDurumu.KONTROL_EDILEMEDI,
                 'Son alım tarihi parse edilemedi — manuel doğrulama')
@@ -7739,23 +8844,67 @@ def _statin_yetiskin_kontrol(
     detaylar['devam_ibare'] = devam_ibare
 
     # ── Yol-İdame: rapor yenileme (4.2.28.D + madde 3 son cümle) ──
-    # Üst-VEYA listesinde ayrı paralel kol — devam raporlarında tek başına
-    # yeterli (başlangıç eşik/risk/ölçüm aranmaz). Madde 3 son cümle:
-    # "Raporun yenilenmesinde lipid düzeyini gösteren yeni bir tetkik sonucu
-    # istenmez."
+    # Üst-VEYA listesinde ayrı paralel kol. SUT madde 3 son cümle "tetkik
+    # istenmez" der AMA eczacı kararı (2026-05-16, SABİRE YILDIZ 3LBJ4E5):
+    # idame yolu için 3 şart birden gerekli — "idame tedavisi uygundur"
+    # tek başına yetmez, çünkü doktorun hangi başlangıç raporuna istinaden
+    # idame verdiği belirsiz. AND grubu (üçü de gerekli):
+    #   (a) idame/istinaden/devam ibaresi
+    #   (b) Eski rapor tarihi ("X tarihli rapor" veya "DD/MM/YYYY tarihli")
+    #   (c) Eski/başlangıç LDL ölçüm değeri raporda yazılı
     g_idame = 'Yol-İdame — Önceki rapora istinaden [(D)]'
     if rapor_tipi == 'DEVAM':
         sartlar.append(SartSonuc(
-            'Önceki rapora istinaden (idame/devam ibaresi)',
+            '(a) İdame/istinaden/devam ibaresi',
             SartDurumu.VAR,
-            f'Bulunan: "{devam_ibare}" — madde 3 son cümle gereği '
-            f'tetkik aranmaz, başlangıç şartı tekrar aranmaz',
+            f'Bulunan: "{devam_ibare}"',
             'rapor_metni', grup=g_idame))
     else:
         sartlar.append(SartSonuc(
-            'Önceki rapora istinaden (idame/devam ibaresi)',
+            '(a) İdame/istinaden/devam ibaresi',
             SartDurumu.YOK,
             'Devam/idame/istinaden ibaresi yok — başlangıç raporu',
+            'rapor_metni', grup=g_idame))
+
+    # (b) Eski rapor tarihi — DD/MM/YYYY veya DD.MM.YYYY formatında tarih
+    # + ardından 'tarih(li/inde)' VEYA 'rapor(u/una/dan/...)' kelimesi.
+    # SELMA BOZTAS 3GZISZZ vakası (2026-05-16): "16.02.2024 raporuna
+    # istinaden" — "tarihli" yok ama "raporuna" var → eşleşmeli.
+    tarih_pattern = re.compile(
+        r'\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}\s*'
+        r'(?:tarih(?:li|inde)?|rapor[a-zçğıöşü]*)'
+        r'|\d{4}\s*(?:yılı|yili)\s*rapor'
+        r'|başlama\s*tarih',
+        re.IGNORECASE)
+    tarih_eslesen = tarih_pattern.search(metin_lower) if metin_lower else None
+    if tarih_eslesen:
+        sartlar.append(SartSonuc(
+            '(b) Eski rapor tarihi belirtilmiş',
+            SartDurumu.VAR,
+            f'Bulunan tarih ibaresi: "{tarih_eslesen.group(0)}"',
+            'rapor_metni', grup=g_idame))
+    else:
+        sartlar.append(SartSonuc(
+            '(b) Eski rapor tarihi belirtilmiş',
+            SartDurumu.YOK,
+            'İdame için referans alınan eski rapor tarihi yok '
+            '(SUT yorumu: "X tarihli rapora istinaden" gibi ifade gerekli)',
+            'rapor_metni', grup=g_idame))
+
+    # (c) Eski/başlangıç LDL ölçüm değeri yazılı — max_ldl yukarıda
+    # rapor metninden çıkarıldı. None ise eski ölçüm yok demektir.
+    if max_ldl is not None:
+        sartlar.append(SartSonuc(
+            '(c) Başlangıç LDL ölçüm değeri yazılı',
+            SartDurumu.VAR,
+            f'Bulunan: LDL = {max_ldl} mg/dL',
+            'rapor_metni', grup=g_idame))
+    else:
+        sartlar.append(SartSonuc(
+            '(c) Başlangıç LDL ölçüm değeri yazılı',
+            SartDurumu.YOK,
+            'İdame raporu LDL ölçüm değeri içermiyor '
+            '(SUT yorumu: idame için başlangıç LDL belirtilmeli)',
             'rapor_metni', grup=g_idame))
 
     # ── A: Endikasyon önkoşulu (LDL değeri raporda var mı) ─────────
@@ -8446,6 +9595,38 @@ def _statin_cocuk_kontrol(
         sartlar, detaylar, sut_kurali, birlesik=birlesik, anahtar='ldl')
 
 
+def _sut_rapor_metni_sync_onkosulu(ilac_sonuc: Dict,
+                                    sut_maddesi: str) -> Optional[KontrolRaporu]:
+    """SecilenRapor cache'inde rapor seçimi var ama Botanik EOS'un RaporAna
+    tablosuna sync olmamış (kağıt reçete sync sorunu) durumunda
+    UYGUN_DEĞİL KontrolRaporu döner; aksi halde None — normal kontrol
+    akışı devam eder.
+
+    Kullanıcı kararı (2026-05-16, HAYDAR ALİ DAŞTAN 2W58MXQ): bu durumda
+    ŞÜPHELİ/KE değil UYGUN_DEĞİL. Rapor metni olmadan SUT şartları
+    doğrulanamaz; manuel inceleme gerekir ama liste UYGUN_DEĞİL'de
+    görünmelidir ki gözden kaçmasın.
+    """
+    if ilac_sonuc.get('rapor_secim_kaynagi') != 'tier0_sr_no_rapana':
+        return None
+    sart = SartSonuc(
+        ad='Rapor metni Botanik EOS\'a senkronize',
+        durum=SartDurumu.YOK,
+        neden='Rapor seçimi SecilenRapor cache\'inde var ama RaporAna '
+              'tablosunda detay yok (kağıt reçete sync sorunu). SUT '
+              'şartları doğrulanamaz — manuel inceleme gerekir.',
+        kaynak='sistem',
+        grup='Önkoşul - Rapor metni sync')
+    return KontrolRaporu(
+        sonuc=KontrolSonucu.UYGUN_DEGIL,
+        mesaj=(f'{sut_maddesi}: Rapor seçili ama metni Botanik EOS\'a '
+                'sync olmamış (kağıt reçete sync sorunu) — manuel inceleme'),
+        sartlar=[sart],
+        sut_kurali=sut_maddesi,
+        aranan_ibare='Rapor metni Botanik RaporAna tablosunda mevcut olmalı',
+    )
+
+
 def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
     """SUT 4.2.28.A — Statin atomik üst dispatcher.
 
@@ -8464,6 +9645,9 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
         (4): Yüksek doz → uzman raporu (Kardiyo/KVC/Endokrin/Geriatri/Nöro/İç)
       4.2.28.A-2 Çocuk: yaş<10 / yaş≥10 alt yolakları, farklı eşik+risk
     """
+    _onkosul = _sut_rapor_metni_sync_onkosulu(ilac_sonuc, '4.2.28.A')
+    if _onkosul is not None:
+        return _onkosul
     tum_metin = _tum_metinleri_birlesir(ilac_sonuc)
     ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
     rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
@@ -8541,48 +9725,149 @@ def kontrol_statin(ilac_sonuc: Dict) -> KontrolRaporu:
 #     paylaşılmaz (gelecekte SUT değişikliklerinde kontaminasyon olmasın)
 #   - Tam atomik göç + 7 tab şema (A/B/C/D/E/F/G) otomatik render
 
-_FIBRAT_UZMAN_DALLARI_KEYS = (
-    # SUT 4.2.28.B son cümle — Geriatri YOK (statinden farklı)
-    'KARDIYOLOJI', 'KARDİYOLOJİ', 'KARDIO',
-    'KALP VE DAMAR CERRAHISI', 'KALP VE DAMAR CERRAHİSİ',
-    'KALP DAMAR', 'KDC', 'KVC',
-    'ENDOKRINOLOJI', 'ENDOKRİNOLOJİ', 'ENDOKRIN',
-    'NOROLOJI', 'NÖROLOJİ', 'NORO',
-    'IC HASTALIKLARI', 'İÇ HASTALIKLARI', 'DAHILIYE', 'DAHİLİYE',
-    'INTERNAL MEDICINE',
+_FIBRAT_UZMAN_DAL_MAP = {
+    # SUT 4.2.28.B son cümle — 5 dal (Geriatri YOK; statinden farklı).
+    # Dal adı → o dalı doktor_uzmanligi alanında işaret eden anahtarlar.
+    'Kardiyoloji': ('KARDIYOLOJI', 'KARDİYOLOJİ', 'KARDIO'),
+    'Kalp ve damar cerrahisi': ('KALP VE DAMAR CERRAHISI',
+                                'KALP VE DAMAR CERRAHİSİ',
+                                'KALP DAMAR', 'KDC', 'KVC'),
+    'Endokrinoloji': ('ENDOKRINOLOJI', 'ENDOKRİNOLOJİ', 'ENDOKRIN'),
+    'Nöroloji': ('NOROLOJI', 'NÖROLOJİ', 'NORO'),
+    'İç hastalıkları': ('IC HASTALIKLARI', 'İÇ HASTALIKLARI',
+                        'DAHILIYE', 'DAHİLİYE', 'INTERNAL MEDICINE'),
+}
+
+# Flat anahtar listesi (geri uyumluluk: _fibrat_atom_uzman_rapor kullanır)
+_FIBRAT_UZMAN_DALLARI_KEYS = tuple(
+    k for anahtarlar in _FIBRAT_UZMAN_DAL_MAP.values() for k in anahtarlar
 )
+
+
+def _fibrat_uzman_dal_alt_liste(doktor_uzmanligi: str,
+                                 rapor_kodu: str
+                                 ) -> List[Tuple[str, str]]:
+    """5 dalın her biri için ✓/✗/? alt-liste — atom kutusunda görselleşir.
+
+    Atomik şema §1: SUT lafzındaki "Kardiyoloji VEYA KVC VEYA ..." OR-yapısı
+    tek ampulün İÇİNDE alt liste olarak gösterilir (kalabalık değil).
+
+    Mantık:
+      - doktor branşı bir dalı işaret ediyorsa → o dal "var", diğerleri "yok"
+      - doktor branşı 5 dalın dışında (örn. aile hekimi) → 5 dal "yok"
+        (ana atom rapor_kodu otoritesi varsa yine VAR'a düşer — bu sadece
+        görsel detay)
+      - doktor branşı tanımsız → 5 dal "kontrol_edilemedi"
+    """
+    du = (doktor_uzmanligi or '').upper().strip()
+    alt: List[Tuple[str, str]] = []
+    for dal, anahtarlar in _FIBRAT_UZMAN_DAL_MAP.items():
+        if not du:
+            alt.append((dal, 'kontrol_edilemedi'))
+        elif any(a in du for a in anahtarlar):
+            alt.append((dal, 'var'))
+        else:
+            alt.append((dal, 'yok'))
+    return alt
 
 
 def _fibrat_atom_tg_olcum(metin: str) -> Tuple[Optional[int], str]:
     """SUT 4.2.28.B — TG sayısal değer parse (statin LDL kalıbına paralel).
 
     Yazım çeşitliliği: TG / Trig / Trigliserid / Trigliserit / Triglyceride /
-    Trigiliserid (typo: fazladan i) / T.G. / TGs. I→ı normalize yapılmaz
-    (TRIG bozulmasın).
+    Trigiliserid (typo: fazladan i) / TRIGLESERID (typo: e yerine i) /
+    T.G. / TGs. I→ı normalize YAPILMAZ (büyük TRIG bozulmasın). Ama küçük
+    ı→i normalize YAPILIR — Python lower() Türkçe noktasız ı'yı dönüştürmez,
+    bu yüzden "trıg: 715" gibi yazımları yakalamak için elle eklenir.
+
+    Bug düzeltmeleri (HASAN ÖZÇİÇEK 3DSL57J, 2026-05-16):
+      • "(Ekleme=DD/MM/YYYY HH:MM)" blokları parse öncesi temizlenir —
+        tarih içindeki "01" gibi parçaların TG değeri sanılmasını engeller
+        (statin LDL parser ile aynı kalıp).
+      • Tarih bileşeni reddi: yakalanan sayıdan sonra "/DD/YYYY" geliyorsa
+        bu sayı tarih (gün/ay) bileşenidir — TG değil, atlanır.
+      • Medula "DEĞER TARİH ETİKET" alt formatı: bazı raporlar
+        "304.8 7/6/2023 TRIGLISERID" sırasıyla yazıyor (düzeltme yazımı) —
+        ek pattern eklendi.
+      • TRIGLESERID typo'su kabul (E yerine İ — Türkçe klavyede sık hata).
 
     Returns: (en_yuksek_tg_mg_dl, eslesen_kisa_parca).
     """
     if not metin:
         return None, ''
-    metin_lower_sade = metin.replace('İ', 'i').lower()
+    # (Ekleme=DD/MM/YYYY HH:MM) bloklarını sil — statin LDL parser kalıbı.
+    metin = re.sub(
+        r'\(?\s*ekleme\s*[=:]\s*\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}'
+        r'(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?\)?',
+        ' ', metin, flags=re.IGNORECASE,
+    )
+    metin_lower_sade = metin.replace('İ', 'i').replace('ı', 'i').lower()
     bulunanlar: List[int] = []
     eslesen = ''
+    # Ana pattern'ler: ETİKET → DEĞER sıralı yazım
+    # 2026-05-16 ek (Mustafa Özlü 2CUHRVG): "triglised" typo (D düşmüş —
+    # "trigliserid" yerine "triglised"). Tek ETİKET regex'i compile et,
+    # alt formatlarda da yeniden kullanılır.
+    _tg_etiket = (r'trig[ai]?l?[ie]?seri[dt]'   # trigliserid/trigliserit/trigleserid/trigiliserid
+                  r'|trig[ai]?l?[ie]?sed'        # triglised typo (D düşmüş)
+                  r'|triglyceri')                # triglyceride
     tg_patterns = [
-        r'(?:trig[ai]?l?i?seri[dt]|triglyceri)e?[^0-9]{0,20}(\d{2,4})',
-        r'\btrig(?![a-z])\.?\s*[:=]?\s*(\d{2,4})',
+        # Tam yazımlar: [^0-9]{0,20} açıklayıcı kelimeleri (değeri, düzeyi) kapsar.
+        rf'(?:{_tg_etiket})e?[^0-9]{{0,20}}(\d{{2,4}})',
+        # TRIG / Trigs / Trig.  — kısaltma (s opsiyonel: çoğul/serum)
+        r'\btrigs?(?![a-z])\.?\s*[:=]?\s*(\d{2,4})',
+        # TRG / TRGs — Türkçe medikal raporlarda kullanılan kısaltma
+        r'\btrgs?(?![a-z])\.?\s*[:=]?\s*(\d{2,4})',
+        # TG / TGs — en yaygın kısaltma
         r'\btgs?(?![a-z])\.?\s*[:=]?\s*(\d{2,4})',
+        # T.G. — noktalı kısaltma
         r'\bt\.g\.?\s*[:=]?\s*(\d{2,4})',
+        # Kısaltma + Türkçe açıklayıcı kelime: "TG düzeyi 250",
+        # "Trig değeri 715", "trgs seviyesi 300". Sınırlı kelime listesi
+        # ile false-positive ("TG ve LDL: 200" gibi) önlenir.
+        r'\b(?:tgs?|trgs?|trigs?|t\.g)\.?\s*'
+        r'(?:değer|deger|düzey|duzey|seviye|miktar|sonuc[u]?|ölcüm|olcum)'
+        r'[a-zçğıöşüi]*\s*[:=]?\s*(\d{2,4})',
     ]
     for pattern in tg_patterns:
-        for m in re.findall(pattern, metin_lower_sade):
+        for m in re.finditer(pattern, metin_lower_sade):
+            captured = m.group(1)
+            # Tarih bileşeni reddi (örn "01" + "/11/2023" → tarih, TG değil)
+            son_idx = m.start(1) + len(captured)
+            sonrasi = metin_lower_sade[son_idx:son_idx + 8]
+            if re.match(r'[./\-]\d{1,2}[./\-]\d', sonrasi):
+                continue
             try:
-                bulunanlar.append(int(m))
+                bulunanlar.append(int(captured))
             except ValueError:
                 pass
+    # ALT FORMAT 1: "DEĞER TARİH ETİKET" — Medula düzeltme yazımı
+    # Örn: "/ 304.8 7/6/2023 TRIGLISERID (...)" — değer önce, etiket sonra.
+    deger_once = re.compile(
+        rf'(?<![/.\d\-])(\d{{2,4}})(?:[.,]\d+)?\s+'
+        rf'\d{{1,2}}[./\-]\d{{1,2}}[./\-]\d{{2,4}}\s+'
+        rf'(?:{_tg_etiket})'
+    )
+    for m in deger_once.finditer(metin_lower_sade):
+        try:
+            bulunanlar.append(int(m.group(1)))
+        except ValueError:
+            pass
+    # ALT FORMAT 2: "TARİH İBARE : DEĞER" — MUSTAFA ÖZLÜ 2CUHRVG yazımı
+    # Örn: "30.10.2020 Triglised : 780 mg/dl 23.11.2020 Triglised : 860"
+    tarih_once = re.compile(
+        rf'\d{{1,2}}[./\-]\d{{1,2}}[./\-]\d{{2,4}}\s+'
+        rf'(?:{_tg_etiket})\w*\s*[:=]\s*(\d{{2,4}})'
+    )
+    for m in tarih_once.finditer(metin_lower_sade):
+        try:
+            bulunanlar.append(int(m.group(1)))
+        except ValueError:
+            pass
     if not bulunanlar:
         return None, ''
-    for k in ['trigliserid', 'trigliserit', 'triglyceri',
-              'trig', 't.g', 'tg']:
+    for k in ['trigliserid', 'trigliserit', 'trigleserid', 'triglised',
+              'triglyceri', 'trig', 't.g', 'tg']:
         p = _eslesen_parcayi_bul(metin, k)
         if p:
             eslesen = p
@@ -8590,45 +9875,164 @@ def _fibrat_atom_tg_olcum(metin: str) -> Tuple[Optional[int], str]:
     return max(bulunanlar), eslesen
 
 
-def _fibrat_atom_dm(metin_lower: str, teshis_metin: str) -> bool:
-    """SUT 4.2.28.B(1)(b) — Diabetes mellitus."""
+def _fibrat_atom_dm(metin_lower: str, teshis_metin: str,
+                    diger_icd: Optional[List[str]] = None,
+                    diger_rapor_metinleri: Optional[List[str]] = None,
+                    ) -> Tuple[bool, str]:
+    """SUT 4.2.28.B(1)(b) — Diabetes mellitus.
+
+    4-katmanlı kanıt (statin kalıbı, FERİDE EGE 3KTNEKA — 2026-05-16):
+      1. aktif teşhis ICD (E10-E14)
+      2. aktif rapor metni (diyabet/DM/şeker hastalığı)
+      3. geçmiş raporların ICD listesi
+      4. geçmiş rapor metinleri
+
+    DOLAYLI KANITLAR (HÜSEYİN SAAT 2RCDQJV, 2026-05-16):
+      • metformin / sülfanilüre / OAD / oral antidiyabetik ibareleri
+      • "glisemik kontrol" lafzı (DM rapor şablonu)
+      • HbA1c değeri ≥ 6.5 (DM tanı eşiği)
+      Bunlar tek başına lafzen "diyabet" demese de DM tedavisi ima eder.
+
+    Returns: (var_mi, kaynak) — kaynak: 'aktif_teshis' | 'aktif_metin' |
+                                        'aktif_metin (dolaylı: ...)' |
+                                        'gecmis_icd:<satir>' | 'gecmis_rapor:...' | ''
+    """
     if any(k in teshis_metin for k in ['E10', 'E11', 'E12', 'E13', 'E14']):
-        return True
+        return (True, 'aktif_teshis')
     patterns = [r'\bdiyabet', r'\bdiabet', r'\bdm\b', r'\bt[12]dm\b',
                 r'\bniddm\b', r'\biddm\b',
                 r'tip\s*[12]\s*(?:dm|diyabet|diabet)',
                 r'şeker\s*hastal', r'seker\s*hastal']
-    return any(re.search(p, metin_lower) for p in patterns)
+    if any(re.search(p, metin_lower) for p in patterns):
+        return (True, 'aktif_metin')
+    # DOLAYLI KANITLAR (aktif metin)
+    # 1. Antidiyabetik etken madde ibareleri — DM tedavisi → DM tanısı ima eder.
+    oad_patterns = [
+        r'\bmetformin', r'\bglukofa', r'\bdiabinor',           # metformin
+        r'\bsülfanilür', r'\bsulfanilur', r'\bsülfonilür',     # sülfanilüre
+        r'\bsulfonilur', r'\bglikla[zs]i', r'\bglimepir',      # gliklazid/glimepirid
+        r'\bgliben(?:klamid|klamit)',                            # glibenklamid
+        r'\boad\b', r'oral\s*antidiyabet', r'oral\s*antidiabet',
+        r'\binsulin\b', r'\binsülin\b',                          # insülin
+        r'\bdpp[- ]?4', r'glipti[nz]',                          # DPP-4 (sitagliptin vb.)
+        r'\bsglt[- ]?2',                                         # SGLT-2
+        r'\bakar?boz\b',                                         # akarboz
+    ]
+    for p in oad_patterns:
+        m = re.search(p, metin_lower)
+        if m:
+            return (True, f'aktif_metin (dolaylı: {m.group(0)})')
+    # 2. "Glisemik kontrol" / "kan şekeri kontrolü" lafzı — DM rapor şablonu
+    if re.search(r'glisemik\s*kontrol|kan\s*[şs]ekeri\s*kontrol', metin_lower):
+        return (True, 'aktif_metin (dolaylı: glisemik kontrol ibaresi)')
+    # 3. HbA1c değeri ≥ 6.5 (DM tanı eşiği — ADA/IDF kriteri)
+    # "Hemoglobin A1c: 8.4" / "HbA1c 7.2" / "A1c=6.8" gibi yazımlar.
+    a1c_pat = re.compile(
+        r'(?:hemoglobin\s*a?1?c|hba?1?c|\ba1c)\s*[:=]?\s*'
+        r'(\d{1,2})[.,](\d)')
+    for m in a1c_pat.finditer(metin_lower):
+        try:
+            tam = int(m.group(1))
+            ond = int(m.group(2))
+            if tam > 6 or (tam == 6 and ond >= 5):
+                return (True, f'aktif_metin (dolaylı: HbA1c={tam}.{ond} ≥6.5)')
+        except ValueError:
+            pass
+    # Geçmiş ICD (her zaman düz kontrol)
+    gv, gs = _lipid_gecmis_icd_var(
+        diger_icd, ('E10', 'E11', 'E12', 'E13', 'E14'))
+    if gv:
+        return (True, f'gecmis_icd:{gs}')
+    # Geçmiş metin: DM lafzen + dolaylı kanıtlar
+    gv2, gs2 = _lipid_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        '|'.join(patterns + oad_patterns
+                 + [r'glisemik\s*kontrol', r'kan\s*[şs]ekeri\s*kontrol']),
+    )
+    if gv2:
+        return (True, gs2)
+    return (False, '')
 
 
-def _fibrat_atom_aks(metin_lower: str, teshis_metin: str) -> bool:
-    """SUT 4.2.28.B(1)(b) — Akut koroner sendrom."""
+def _fibrat_atom_aks(metin_lower: str, teshis_metin: str,
+                     diger_icd: Optional[List[str]] = None,
+                     diger_rapor_metinleri: Optional[List[str]] = None,
+                     ) -> Tuple[bool, str]:
+    """SUT 4.2.28.B(1)(b) — Akut koroner sendrom (4-katmanlı kanıt)."""
     if any(k in teshis_metin for k in ['I20', 'I21', 'I22', 'I23', 'I24']):
-        return True
-    return bool(re.search(r'akut\s*koroner|\baks\b', metin_lower))
+        return (True, 'aktif_teshis')
+    if re.search(r'akut\s*koroner|\baks\b', metin_lower):
+        return (True, 'aktif_metin')
+    gv, gs = _lipid_gecmis_icd_var(
+        diger_icd, ('I20', 'I21', 'I22', 'I23', 'I24'))
+    if gv:
+        return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _lipid_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'akut\s*koroner|\baks\b',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
+    return (False, '')
 
 
-def _fibrat_atom_mi(metin_lower: str, teshis_metin: str) -> bool:
-    """SUT 4.2.28.B(1)(b) — Geçirilmiş Mİ."""
+def _fibrat_atom_mi(metin_lower: str, teshis_metin: str,
+                    diger_icd: Optional[List[str]] = None,
+                    diger_rapor_metinleri: Optional[List[str]] = None,
+                    ) -> Tuple[bool, str]:
+    """SUT 4.2.28.B(1)(b) — Geçirilmiş Mİ (4-katmanlı kanıt)."""
     if any(k in teshis_metin for k in ['I21', 'I22', 'I25.2']):
-        return True
-    return bool(re.search(
+        return (True, 'aktif_teshis')
+    if re.search(
+            r'miyokard\s*infar|miyokard\s*enfark|geçirilmiş\s*mi\b|\bstemi\b|\bnstemi\b',
+            metin_lower):
+        return (True, 'aktif_metin')
+    gv, gs = _lipid_gecmis_icd_var(
+        diger_icd, ('I21', 'I22', 'I25.2'))
+    if gv:
+        return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _lipid_gecmis_metin_ara(
+        diger_rapor_metinleri,
         r'miyokard\s*infar|miyokard\s*enfark|geçirilmiş\s*mi\b|\bstemi\b|\bnstemi\b',
-        metin_lower))
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
+    return (False, '')
 
 
-def _fibrat_atom_inme(metin_lower: str, teshis_metin: str) -> bool:
-    """SUT 4.2.28.B(1)(b) — Geçirilmiş inme."""
+def _fibrat_atom_inme(metin_lower: str, teshis_metin: str,
+                      diger_icd: Optional[List[str]] = None,
+                      diger_rapor_metinleri: Optional[List[str]] = None,
+                      ) -> Tuple[bool, str]:
+    """SUT 4.2.28.B(1)(b) — Geçirilmiş inme (4-katmanlı kanıt)."""
     if any(k in teshis_metin for k in
            ['I60', 'I61', 'I62', 'I63', 'I64', 'I65', 'I66', 'I69']):
-        return True
-    return bool(re.search(
+        return (True, 'aktif_teshis')
+    if re.search(
+            r'\binme\b|\bstroke\b|serebrovask|\bsvo\b|geçirilmiş\s*inme',
+            metin_lower):
+        return (True, 'aktif_metin')
+    gv, gs = _lipid_gecmis_icd_var(
+        diger_icd, ('I60', 'I61', 'I62', 'I63', 'I64', 'I65', 'I66', 'I69'))
+    if gv:
+        return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _lipid_gecmis_metin_ara(
+        diger_rapor_metinleri,
         r'\binme\b|\bstroke\b|serebrovask|\bsvo\b|geçirilmiş\s*inme',
-        metin_lower))
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
+    return (False, '')
 
 
 def _fibrat_atom_kah(metin_lower: str, teshis_metin: str,
-                       rapor_kodu: str) -> bool:
+                     rapor_kodu: str,
+                     diger_icd: Optional[List[str]] = None,
+                     diger_rapor_metinleri: Optional[List[str]] = None,
+                     ) -> Tuple[bool, str]:
     """SUT 4.2.28.B(1)(b) — Koroner arter hastalığı (hastanın kendisinde).
 
     rapor_kodu 04.02 / 04.04 KAH örtük endikasyon (rec_rap_kod otoritesi).
@@ -8636,36 +10040,101 @@ def _fibrat_atom_kah(metin_lower: str, teshis_metin: str,
     """
     rk = (rapor_kodu or '').strip()
     if rk.startswith(('04.02', '04.04')):
-        return True
+        return (True, f'rapor_kodu:{rk}')
     if any(k in teshis_metin for k in
            ['I20', 'I21', 'I22', 'I23', 'I24', 'I25']):
-        return True
+        return (True, 'aktif_teshis')
     for m in re.finditer(r'koroner\s*arter', metin_lower):
         on40 = metin_lower[max(0, m.start() - 40):m.start()]
         if any(k in on40 for k in ('aile', 'ailesel', 'öykü', 'oyku')):
             continue
-        return True
-    return bool(re.search(
-        r'\bkah\b|iskemik\s*kalp|\bkabg\b|by[-\s]?pass|\bstent\b',
-        metin_lower))
+        return (True, 'aktif_metin')
+    if re.search(r'\bkah\b|iskemik\s*kalp|\bkabg\b|by[-\s]?pass|\bstent\b',
+                 metin_lower):
+        return (True, 'aktif_metin')
+    gv, gs = _lipid_gecmis_icd_var(
+        diger_icd, ('I20', 'I21', 'I22', 'I23', 'I24', 'I25'))
+    if gv:
+        return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _lipid_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'koroner\s*arter|\bkah\b|iskemik\s*kalp|\bkabg\b|by[-\s]?pass|\bstent\b',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
+    return (False, '')
 
 
-def _fibrat_atom_pah(metin_lower: str, teshis_metin: str) -> bool:
-    """SUT 4.2.28.B(1)(b) — Periferik arter hastalığı."""
+def _fibrat_atom_pah(metin_lower: str, teshis_metin: str,
+                     diger_icd: Optional[List[str]] = None,
+                     diger_rapor_metinleri: Optional[List[str]] = None,
+                     ) -> Tuple[bool, str]:
+    """SUT 4.2.28.B(1)(b) — Periferik arter hastalığı (4-katmanlı kanıt)."""
     if any(k in teshis_metin for k in ['I70', 'I73', 'I74']):
-        return True
-    return bool(re.search(r'periferik\s*arter|\bpah\b|\bpaod\b', metin_lower))
+        return (True, 'aktif_teshis')
+    if re.search(r'periferik\s*arter|\bpah\b|\bpaod\b', metin_lower):
+        return (True, 'aktif_metin')
+    gv, gs = _lipid_gecmis_icd_var(
+        diger_icd, ('I70', 'I73', 'I74'))
+    if gv:
+        return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _lipid_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'periferik\s*arter|\bpah\b|\bpaod\b',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
+    return (False, '')
 
 
-def _fibrat_atom_aaa(metin_lower: str) -> bool:
-    """SUT 4.2.28.B(1)(b) — Abdominal aort anevrizması."""
-    return bool(re.search(
-        r'abdominal\s*aort\s*anevrizm|\baaa\b|aort\s*diseks', metin_lower))
+def _fibrat_atom_aaa(metin_lower: str,
+                     diger_icd: Optional[List[str]] = None,
+                     diger_rapor_metinleri: Optional[List[str]] = None,
+                     ) -> Tuple[bool, str]:
+    """SUT 4.2.28.B(1)(b) — Abdominal aort anevrizması (4-katmanlı kanıt).
+
+    AAA için ICD prefix'i: I71 (aort anevrizması/diseksiyonu).
+    """
+    if re.search(r'abdominal\s*aort\s*anevrizm|\baaa\b|aort\s*diseks',
+                 metin_lower):
+        return (True, 'aktif_metin')
+    gv, gs = _lipid_gecmis_icd_var(diger_icd, ('I71',))
+    if gv:
+        return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _lipid_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'abdominal\s*aort\s*anevrizm|\baaa\b|aort\s*diseks',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
+    return (False, '')
 
 
-def _fibrat_atom_karotid(metin_lower: str) -> bool:
-    """SUT 4.2.28.B(1)(b) — Karotid arter hastalığı."""
-    return bool(re.search(r'karotid|karotis', metin_lower))
+def _fibrat_atom_karotid(metin_lower: str,
+                         diger_icd: Optional[List[str]] = None,
+                         diger_rapor_metinleri: Optional[List[str]] = None,
+                         ) -> Tuple[bool, str]:
+    """SUT 4.2.28.B(1)(b) — Karotid arter hastalığı (4-katmanlı kanıt).
+
+    Karotid ICD prefix'i: I65 (precerebral arter tıkanması) / I63.0-I63.2
+    (karotid kaynaklı serebral enfarktüs).
+    """
+    if re.search(r'karotid|karotis', metin_lower):
+        return (True, 'aktif_metin')
+    gv, gs = _lipid_gecmis_icd_var(diger_icd, ('I65',))
+    if gv:
+        return (True, f'gecmis_icd:{gs}')
+    gv2, gs2 = _lipid_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'karotid|karotis',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
+    return (False, '')
 
 
 def _fibrat_atom_uzman_rapor(doktor_uzmanligi: str,
@@ -8706,6 +10175,13 @@ def _fibrat_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,
     for ad, gs in gruplar.items():
         if not ad or '(bilgi)' in ad or '[paralel]' in ad:
             continue
+        # Sartlı-atom-only grup: tüm atomlar sartli_atom=True ise matematik
+        # dışı (ayrı SARTLI_UYGUN yolu ile değerlendirilir, aşağıdaki
+        # sartli_atomlar tespiti ile). Ana devrede yine ampul olarak çizilir.
+        # 2026-05-16: T1 (6 ay ara) grubu '(bilgi)' suffix'inden bu mekanizmaya
+        # taşındı — ana devre şeması şeffaflığı için.
+        if gs and all(s.sartli_atom for s in gs):
+            continue
         veya_flag = any(s.veya_grubu for s in gs)
         grup_durumlari[ad] = _yoak_grup_durumu(gs, veya=veya_flag)
 
@@ -8735,6 +10211,14 @@ def _fibrat_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,
     ke_gruplar = [g for g, d in grup_durumlari.items()
                   if d == SartDurumu.KONTROL_EDILEMEDI]
 
+    # Şartlı atomlar: KE durumda ama sartli_atom=True (sistem sorgulayamadı,
+    # eczacı manuel doğrularsa kesin UYGUN). '(bilgi)' grupları hesaplama
+    # dışı tutulduğu için yok_gruplar/ke_gruplar listelerine girmez —
+    # ayrı bir tespit gerekir.
+    sartli_atomlar = [s for s in sartlar
+                      if s.sartli_atom
+                      and s.durum == SartDurumu.KONTROL_EDILEMEDI]
+
     detaylar['grup_durumlari'] = {
         g: d.value for g, d in grup_durumlari.items()}
     eslesen = (_eslesen_parcayi_bul(birlesik, 'trigliserid')
@@ -8755,6 +10239,18 @@ def _fibrat_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,
                   f'{", ".join(ke_gruplar)}',
             sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
             uyari='Bazı şartlar metinden tespit edilemedi',
+            aranan_ibare='TG eşik + KV hastalık + uzman raporu',
+            bulunan_metin=eslesen)
+    if sartli_atomlar:
+        # Hesaplanabilir tüm gruplar VAR, sadece şartlı atom(lar) KE →
+        # SARTLI_UYGUN. Eczacı manuel doğrulama yaparsa kesin UYGUN olur.
+        sartli_adlar = [s.ad for s in sartli_atomlar]
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.SARTLI_UYGUN,
+            mesaj=f'Fibrat ŞARTLI UYGUN — sistem sorgulayamıyor: '
+                  f'{", ".join(sartli_adlar)} (eczacı manuel doğrulamalı)',
+            sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
+            uyari='Şartlı atom(lar) eczacı tarafından doğrulanmalı',
             aranan_ibare='TG eşik + KV hastalık + uzman raporu',
             bulunan_metin=eslesen)
     return KontrolRaporu(
@@ -8780,6 +10276,9 @@ def kontrol_fibrat(ilac_sonuc: Dict) -> KontrolRaporu:
     NOT: 6 ay ara verme şartı SGK/sistem tarafından kontrol ediliyor —
     bu modül kapsamı dışında (kullanıcı kararı 2026-05-14).
     """
+    _onkosul = _sut_rapor_metni_sync_onkosulu(ilac_sonuc, '4.2.28.B')
+    if _onkosul is not None:
+        return _onkosul
     tum_metin = _tum_metinleri_birlesir(ilac_sonuc)
     ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
     rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
@@ -8789,6 +10288,13 @@ def kontrol_fibrat(ilac_sonuc: Dict) -> KontrolRaporu:
                     if recete_teshisleri else '')
     birlesik_metin = (tum_metin or '') + ' ' + teshis_metin
     metin_lower = _tr_lower(birlesik_metin) if birlesik_metin else ''
+    # Geçmiş rapor verileri (FERİDE EGE 3KTNEKA — 2026-05-16):
+    # GUI önceki raporlardaki ICD'leri ve rapor metinlerini topluyor ve
+    # ilac_sonuc'a koyuyor. Statin kalıbı: KV risk faktörleri (DM/AKS/Mİ/
+    # inme/KAH/PAH/AAA/karotid) aktif raporda olmasa bile geçmiş raporlardan
+    # tespit edilebilir.
+    diger_icd = ilac_sonuc.get('diger_raporlar_icd') or []
+    diger_rapor_metinleri = ilac_sonuc.get('diger_rapor_metinleri') or []
 
     sartlar: List[SartSonuc] = []
     detaylar: Dict = {
@@ -8797,6 +10303,7 @@ def kontrol_fibrat(ilac_sonuc: Dict) -> KontrolRaporu:
         'sut_maddesi': '4.2.28.B',
         'tg_degeri': None,
         'risk_faktorleri': [],
+        'risk_kaynaklari': {},  # {'DM': 'gecmis_icd:E11.9 ...'}
     }
     sut_kurali = 'SUT 4.2.28.B — Fibrat (atomik şema)'
 
@@ -8827,11 +10334,19 @@ def kontrol_fibrat(ilac_sonuc: Dict) -> KontrolRaporu:
             sut_kurali=sut_kurali, detaylar=detaylar, sartlar=sartlar,
             aranan_ibare='TG / KV hastalık / uzman raporu')
 
-    # ── 1) Endikasyon önkoşul: TG değer var mı? ───────────────────
+    # ── 1) Endikasyon önkoşul: R1 (rapor) + TG değer var mı? ──────
+    g_endik = 'Endikasyon önkoşul [(1)]'
+
+    # R1 — Uzman hekim raporu VAR (precheck geçildiyse metin/rapor mevcut)
+    sartlar.append(SartSonuc(
+        'Uzman hekim raporu VAR', SartDurumu.VAR,
+        (f'rapor_kodu={rapor_kodu}' if rapor_kodu
+         else 'rapor metni mevcut (kod yok)'),
+        'rap_kod/tum_metin', grup=g_endik))
+
     tg_degeri, tg_eslesen = _fibrat_atom_tg_olcum(birlesik_metin)
     detaylar['tg_degeri'] = tg_degeri
 
-    g_endik = 'Endikasyon önkoşul [(1)]'
     if tg_degeri is None:
         sartlar.append(SartSonuc(
             'TG sayısal değer raporda VAR', SartDurumu.YOK,
@@ -8843,25 +10358,42 @@ def kontrol_fibrat(ilac_sonuc: Dict) -> KontrolRaporu:
             f'TG = {tg_degeri} mg/dL (raporda tespit)', 'rapor_metni',
             grup=g_endik))
 
-    # ── 2) KV hastalık atomları (Yol-b risk havuzu) ──────────────
-    dm_var = _fibrat_atom_dm(metin_lower, teshis_metin)
-    aks_var = _fibrat_atom_aks(metin_lower, teshis_metin)
-    mi_var = _fibrat_atom_mi(metin_lower, teshis_metin)
-    inme_var = _fibrat_atom_inme(metin_lower, teshis_metin)
-    kah_var = _fibrat_atom_kah(metin_lower, teshis_metin, rapor_kodu)
-    pah_var = _fibrat_atom_pah(metin_lower, teshis_metin)
-    aaa_var = _fibrat_atom_aaa(metin_lower)
-    karotid_var = _fibrat_atom_karotid(metin_lower)
+    # ── 2) KV hastalık atomları (Yol-b risk havuzu) — 4-katmanlı kanıt ─
+    # aktif teşhis ICD → aktif rapor metni → geçmiş ICD → geçmiş rapor metni
+    dm_var, dm_kaynak = _fibrat_atom_dm(
+        metin_lower, teshis_metin, diger_icd, diger_rapor_metinleri)
+    aks_var, aks_kaynak = _fibrat_atom_aks(
+        metin_lower, teshis_metin, diger_icd, diger_rapor_metinleri)
+    mi_var, mi_kaynak = _fibrat_atom_mi(
+        metin_lower, teshis_metin, diger_icd, diger_rapor_metinleri)
+    inme_var, inme_kaynak = _fibrat_atom_inme(
+        metin_lower, teshis_metin, diger_icd, diger_rapor_metinleri)
+    kah_var, kah_kaynak = _fibrat_atom_kah(
+        metin_lower, teshis_metin, rapor_kodu,
+        diger_icd, diger_rapor_metinleri)
+    pah_var, pah_kaynak = _fibrat_atom_pah(
+        metin_lower, teshis_metin, diger_icd, diger_rapor_metinleri)
+    aaa_var, aaa_kaynak = _fibrat_atom_aaa(
+        metin_lower, diger_icd, diger_rapor_metinleri)
+    karotid_var, karotid_kaynak = _fibrat_atom_karotid(
+        metin_lower, diger_icd, diger_rapor_metinleri)
     kv_bulunanlar = []
-    if dm_var:      kv_bulunanlar.append('DM')
-    if aks_var:     kv_bulunanlar.append('AKS')
-    if mi_var:      kv_bulunanlar.append('Mİ')
-    if inme_var:    kv_bulunanlar.append('İnme')
-    if kah_var:     kv_bulunanlar.append('KAH')
-    if pah_var:     kv_bulunanlar.append('PAH')
-    if aaa_var:     kv_bulunanlar.append('AAA')
-    if karotid_var: kv_bulunanlar.append('Karotid')
+    kv_kaynaklar = {}
+    for ad, var, kaynak in [
+        ('DM', dm_var, dm_kaynak),
+        ('AKS', aks_var, aks_kaynak),
+        ('Mİ', mi_var, mi_kaynak),
+        ('İnme', inme_var, inme_kaynak),
+        ('KAH', kah_var, kah_kaynak),
+        ('PAH', pah_var, pah_kaynak),
+        ('AAA', aaa_var, aaa_kaynak),
+        ('Karotid', karotid_var, karotid_kaynak),
+    ]:
+        if var:
+            kv_bulunanlar.append(ad)
+            kv_kaynaklar[ad] = kaynak
     detaylar['risk_faktorleri'] = kv_bulunanlar
+    detaylar['risk_kaynaklari'] = kv_kaynaklar
     kv_var = bool(kv_bulunanlar)
 
     # ── 3) Yol-a: TG > 500 (tek atom, ek koşul yok) ──────────────
@@ -8884,17 +10416,37 @@ def kontrol_fibrat(ilac_sonuc: Dict) -> KontrolRaporu:
     # ── 4) Yol-b: TG > 200 + ≥1 KV hastalık ──────────────────────
     g_b = 'Yol-b — TG>200 + KV hastalık [(1)(b)]'
     g_b_detay = 'Yol-b KV hastalık detay (bilgi)'
+    # Kaynak etiketi formatlayıcı (aktif/geçmiş ayrımı — şema mesajları için).
+    # Hem Yol-b özet hem de KV detay grup içinde kullanılır.
+    def _kaynak_kisalt(k: str) -> str:
+        if k.startswith('aktif_teshis'):
+            return 'aktif teşhis'
+        if k.startswith('aktif_metin'):
+            return 'aktif rapor'
+        if k.startswith('rapor_kodu:'):
+            return f'rapor kodu {k.split(":",1)[1]}'
+        if k.startswith('gecmis_icd:'):
+            return f'geçmiş ICD: {k.split(":",1)[1][:30]}'
+        if k.startswith('gecmis_rapor:'):
+            return 'geçmiş rapor metni'
+        return k or 'tespit'
+
     if tg_degeri is not None and tg_degeri > 200:
         sartlar.append(SartSonuc(
             'TG > 200 mg/dL', SartDurumu.VAR,
             f'TG {tg_degeri} > 200', 'rapor_metni', grup=g_b))
+        bulunan_detay = ', '.join(
+            f'{ad} ({_kaynak_kisalt(kv_kaynaklar.get(ad, ""))})'
+            for ad in kv_bulunanlar
+        ) if kv_bulunanlar else ''
         sartlar.append(SartSonuc(
             '≥1 KV hastalık (DM/AKS/Mİ/inme/KAH/PAH/AAA/karotid)',
             SartDurumu.VAR if kv_var else SartDurumu.YOK,
-            (f'Bulunan: {", ".join(kv_bulunanlar)}'
+            (f'Bulunan: {bulunan_detay}'
              if kv_bulunanlar
-             else 'DM/AKS/Mİ/inme/KAH/PAH/AAA/karotid ibaresi yok'),
-            'rapor_metni/teshis', grup=g_b))
+             else 'DM/AKS/Mİ/inme/KAH/PAH/AAA/karotid ibaresi yok '
+                  '(aktif + geçmiş raporlarda taranan)'),
+            'rapor_metni/teshis/gecmis', grup=g_b))
     else:
         sartlar.append(SartSonuc(
             'TG > 200 mg/dL',
@@ -8906,31 +10458,59 @@ def kontrol_fibrat(ilac_sonuc: Dict) -> KontrolRaporu:
 
     # Yol-b KV hastalık detay (paralel grup — şema panelinde görünür,
     # matematik dışı; çünkü g_b'deki "≥1 KV hastalık" atomu özet sağlıyor)
-    for ad, var in [
-        ('Diabetes mellitus', dm_var),
-        ('Akut koroner sendrom', aks_var),
-        ('Geçirilmiş Mİ', mi_var),
-        ('Geçirilmiş inme', inme_var),
-        ('Koroner arter hastalığı (KAH)', kah_var),
-        ('Periferik arter hastalığı (PAH)', pah_var),
-        ('Abdominal aort anevrizması (AAA)', aaa_var),
-        ('Karotid arter hastalığı', karotid_var),
+    for ad, var, kaynak, kisa in [
+        ('Diabetes mellitus', dm_var, dm_kaynak, 'DM'),
+        ('Akut koroner sendrom', aks_var, aks_kaynak, 'AKS'),
+        ('Geçirilmiş Mİ', mi_var, mi_kaynak, 'Mİ'),
+        ('Geçirilmiş inme', inme_var, inme_kaynak, 'İnme'),
+        ('Koroner arter hastalığı (KAH)', kah_var, kah_kaynak, 'KAH'),
+        ('Periferik arter hastalığı (PAH)', pah_var, pah_kaynak, 'PAH'),
+        ('Abdominal aort anevrizması (AAA)', aaa_var, aaa_kaynak, 'AAA'),
+        ('Karotid arter hastalığı', karotid_var, karotid_kaynak, 'Karotid'),
     ]:
+        if var:
+            neden = f'{ad} tespit ({_kaynak_kisalt(kaynak)})'
+        else:
+            neden = (f'{ad} ibaresi yok (aktif rapor + reçete teşhisi + '
+                     'geçmiş raporlar tarandı)')
         sartlar.append(SartSonuc(
             ad,
             SartDurumu.VAR if var else SartDurumu.YOK,
-            f'{ad} tespit' if var else f'{ad} ibaresi yok',
-            'rapor_metni/teshis', grup=g_b_detay, veya_grubu=True))
+            neden,
+            'rapor_metni/teshis/gecmis',
+            grup=g_b_detay, veya_grubu=True))
 
     # ── 5) Uzman branşı (D1) — 5 branştan en az biri ──────────────
     g_d = 'Uzman branşı [(1) son cümle]'
     uzman_durum = _fibrat_atom_uzman_rapor(doktor_uzm, rapor_kodu)
+    # 5 dal alt-listesi: atom kutusunun İÇİNDE ✓/✗/? olarak görünür
+    # (atomik §1: SUT'un OR-yapısı görsel olarak korunur, kalabalık olmaz)
+    uzman_alt_liste = _fibrat_uzman_dal_alt_liste(doktor_uzm, rapor_kodu)
     sartlar.append(SartSonuc(
         'Uzman branşı (Kardiyo/KVC/Endokrin/İç hast./Nöro)',
         uzman_durum,
         f'Doktor uzmanlığı: {doktor_uzm or "bilinmiyor"}; '
         f'rapor_kodu={rapor_kodu or "yok"}',
-        'doktor_uzmanligi/rapor_kodu', grup=g_d))
+        'doktor_uzmanligi/rapor_kodu', grup=g_d,
+        alt_liste=uzman_alt_liste))
+
+    # ── 6) Devam kriterleri — 6 ay ara verme (ana devrede sarı KE) ──
+    # SUT (Ek cümle 2018, RG-10/5/2018-30417): Tedaviye 6 ay veya daha uzun
+    # süre ara veren hastalarda başlangıç kriterleri yeniden aranır.
+    # Sistem hasta satış geçmişine sorgulanamadığı için bu atom ŞARTLI
+    # (sartli_atom=True) — diğer şartlar VAR ise genel sonuç SARTLI_UYGUN
+    # olur, eczacı manuel doğrulamayla kesin UYGUN'a çevirir.
+    # 2026-05-16: Eskiden 'Devam kriterleri (bilgi)' idi, '(bilgi)' suffix
+    # GUI'de ana devre dışı bırakıyordu; kullanıcı isteğiyle ana hatta sarı
+    # KE ampul olarak çizilsin diye suffix kaldırıldı. Math bozulmasın diye
+    # _fibrat_genel_sonuc_atomik içinde 'sartli_atom-only grup' filtresi var.
+    g_devam = 'Devam kriterleri [Ek cümle 2018]'
+    sartlar.append(SartSonuc(
+        'Son 6 ay tedaviye ara verilmedi',
+        SartDurumu.KONTROL_EDILEMEDI,
+        'Hasta satış geçmişi sistemde sorgulanamıyor — eczacı manuel '
+        'doğrulamalı (6+ ay ara → başlangıç kriterleri yeniden aranır)',
+        'hasta_gecmisi', grup=g_devam, sartli_atom=True))
 
     return _fibrat_genel_sonuc_atomik(
         sartlar, detaylar, sut_kurali, birlesik=birlesik_metin)
@@ -18671,27 +20251,39 @@ def _hepatit_alt_sinif(ilac_adi: str, etkin: str) -> str:
 
 
 def kontrol_hepatit(ilac_sonuc: Dict) -> KontrolRaporu:
-    """SUT 4.2.13.3 (Kronik Hepatit B) ve 4.2.13.4 (Kronik Hepatit C DAA)
-    kontrol fonksiyonu.
+    """SUT 4.2.13 — Hepatit atomik 12-yolak dispatcher (yeni mimari).
 
-    Kapsam:
-      - HBV: Entekavir, Tenofovir TDF/TAF, Lamivudin, Telbivudin, Adefovir
-      - HCV DAA: Sofosbuvir, Ledipasvir, Velpatasvir, Voxilaprevir,
-                 Glecaprevir, Pibrentasvir, Ombitasvir, Paritaprevir,
-                 Dasabuvir, Daklatasvir, Elbasvir, Grazoprevir
-      - Klasik: Peginterferon alfa, Ribavirin
+    Bu fonksiyon `recete_kontrol.hepatit_kontrol.kontrol_hepatit_atomik`
+    sarmalıdır. Eski yüzeysel kontrol (rapor kodu fallback + lab regex)
+    2026-05-16'da atomik şema mimarisine taşındı (YOAK/Statin/Fibrat
+    kalıbı, CLAUDE.md §1-11 + docs/SUT_MANTIK_SEMA_PROTOKOLU.md).
 
-    Kurallar:
-      • Uzman branşı: Gastroenteroloji / Enfeksiyon Hastalıkları /
-                      Hepatoloji (HBV için İç Hastalıkları da kabul)
-      • HBV: HBsAg pozitif + (HBeAg pozitif → HBV DNA ≥ 20.000 IU/mL,
-              HBeAg negatif → ≥ 2.000 IU/mL) + ALT yüksek veya biyopsi
-      • HCV: Anti-HCV pozitif + HCV RNA pozitif + genotip + fibrozis
-              evresi (METAVIR F0-F4) — HCV DAA tedavi süresi 8/12/16/24
-              hafta protokolü
-      • Rapor kodu pragmatik fallback: 06.01 / 14.01 / B16-B18 → Medula
-        zaten endikasyon/lab şartı kontrol etmiş kabul edilir
+    Yolaklar:
+        1. KRONIK-B-ERISKIN      4.2.13.1
+        2. KRONIK-B-COCUK        4.2.13.1 (2-18)
+        3. B-SIROZ               4.2.13.1.1
+        4. B-IMMUNOSUP           4.2.13.1.2
+        5. B-TRANSPLANT          4.2.13.1.3
+        6. AKUT-B                4.2.13(3)
+        7. KRONIK-D              4.2.13.2
+        8. AKUT-C                4.2.13.3.1
+        9. KRONIK-C-ERISKIN-NAIVE 4.2.13.3.2.A.1
+        10. KRONIK-C-ERISKIN-EXP 4.2.13.3.2.A.2
+        11. KRONIK-C-COCUK-NAIVE 4.2.13.3.2.B
+        12. KRONIK-C-COCUK-EXP   4.2.13.3.2.B.1
+
+    SartSonuc.grup + veya_grubu flag'leri ile sema panel atomik devre
+    şeması otomatik render eder.
     """
+    try:
+        from recete_kontrol.hepatit_kontrol import kontrol_hepatit_atomik
+        return kontrol_hepatit_atomik(ilac_sonuc)
+    except Exception as exc:
+        logger.exception('Hepatit atomik kontrol hatası, eski parser\'a düşülüyor: %s',
+                          exc)
+        # Eski yüzeysel kontrol fallback (alt kısım — hata durumunda)
+        pass
+    # ─── Aşağısı eski yüzeysel kontrol (fallback) ───
     ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
     etkin = (ilac_sonuc.get('etkin_madde') or '').upper()
     rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
@@ -18949,6 +20541,7 @@ KATEGORI_KONTROL_FONKSIYONU = {
     'KALSITONIN': kontrol_kalsitonin,
     'AKTIF_D_VITAMINI': kontrol_aktif_d_vitamini,
     'OSTEOPOROZ_BIYOLOJIK': kontrol_osteoporoz_biyolojik,
+    'HEPATIT': kontrol_hepatit,  # 12 yolak atomik dispatcher (4.2.13)
     # Minimal handlers — rapor varsa uygun, yoksa kontroledilemedi
     'BENZODIAZEPIN': kontrol_raporsuz_bilgilendirme,  # Raporsuz, uzman değerlendirmesi
     'GOZ_LUBRIKAN': kontrol_raporsuz_bilgilendirme,   # Raporsuz, suni gözyaşı
@@ -19029,6 +20622,7 @@ KATEGORI_ISIMLERI = {
     'NOROPATIK_AGRI': 'Nöropatik Ağrı (Gabapentin/Pregabalin/Duloksetin)',
     'ENTERAL_BESLENME': 'Enteral Beslenme Solüsyonları',
     'IMMUNSUPRESIF': 'İmmünosüpresif (Organ Nakli / 4.2.32)',
+    'HEPATIT': 'Hepatit B/C/D — 12 yolak atomik (4.2.13)',
 }
 
 
