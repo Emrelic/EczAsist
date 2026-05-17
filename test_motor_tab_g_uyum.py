@@ -55,7 +55,7 @@ def _gui_serilestir(rapor) -> str:
 SENARYOLAR = [
     {
         'ad': 'Yol-a UYGUN — TG=620 + Kardiyo',
-        'beklenen_verdict': 'uygun',
+        'beklenen_verdict': 'sartli_uygun',  # T1 (6 ay ara) şartlı atom — eczacı manuel doğrular
         'ilac': {
             'ilac_adi': 'LIPANTHYL 200 MG',
             'rapor_kodu': '04.08',
@@ -65,7 +65,7 @@ SENARYOLAR = [
     },
     {
         'ad': 'Yol-b UYGUN — TG=350 + DM + İç hast.',
-        'beklenen_verdict': 'uygun',
+        'beklenen_verdict': 'sartli_uygun',  # T1 (6 ay ara) şartlı atom — eczacı manuel doğrular
         'ilac': {
             'ilac_adi': 'LIPANTHYL 200 MG',
             'rapor_kodu': '04.08',

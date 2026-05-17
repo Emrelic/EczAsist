@@ -1556,11 +1556,17 @@ class AylikReceteSorguGUI:
         # ATC B01AC04/22/24 — klopidogrel/prasugrel/tikagrelor (P2Y12).
         # Endikasyon (stent/AKS/MI/KAH/inme/PAH) + ASA intoleransı + 12 ay
         # stent kuralı + kombinasyon yasağı (P2Y12+YOAK).
+        # Üst satır = grup adı (bold), alt satır = ilaç listesi (küçük punto).
+        # 2 satırlık metin Tkinter'da Button(text="A\nB") ile gösterilir;
+        # font tek olduğundan ikinci satır da bold — kompakt görünüm için
+        # justify=center kullanılır.
         self.btn_klopidogrel = tk.Button(
-            row_sut, text="💊 KLOPİDOGREL",
+            row_sut,
+            text="💊 ANTİPLATELET (P2Y12)\nKlopidogrel · Prasugrel · Tikagrelor",
             font=("Segoe UI", 9, "bold"),
+            justify="center",
             fg="white", bg="#6A1B9A", activebackground="#4A148C",
-            bd=0, padx=12, pady=3, cursor="hand2",
+            bd=0, padx=12, pady=2, cursor="hand2",
             command=self._klopidogrel_kontrol_baslat
         )
         self.btn_klopidogrel.pack(side="left", padx=(0, 4), pady=2)
@@ -2100,6 +2106,18 @@ class AylikReceteSorguGUI:
         _Tooltip(btn_t3,
                   "Seçili reçeteleri ŞÜPHELİ olarak manuel teyit eder.\n"
                   "Tablodaki satır kalın yazı + ? rozeti ile işaretlenir.")
+        # ⌫ — Tüm görünen satırların teyidini topluca sıfırla (kullanıcı isteği 2026-05-17)
+        btn_t4 = tk.Button(
+            baslik, text="⌫", bg="#546E7A", fg="white",
+            font=("Segoe UI", 10, "bold"),
+            relief="flat", bd=0, padx=7, pady=1, cursor="hand2",
+            command=self._ana_teyit_kaldir_tumu)
+        btn_t4.pack(side="left", padx=(4, 1), pady=3)
+        _Tooltip(btn_t4,
+                  "Görünen TÜM reçete satırlarının teyidini sıfırlar "
+                  "(UYGUN / UYGUN DEĞİL / ŞÜPHELİ rozetlerini siler).\n"
+                  "Filtre dışı satırlar etkilenmez.\n"
+                  "İşlem öncesi onay sorulur.")
         self._sema_panel_teyit_lbl = tk.Label(
             baslik, text="", bg="#37474F", fg="#FFEB3B",
             font=("Segoe UI", 8, "italic"))
@@ -2665,20 +2683,85 @@ class AylikReceteSorguGUI:
         # gizli olduğu için sorun değil).
         self._sema_tam_zoom_lbl = zoom_lbl_full
 
-        # ── Hasta/reçete bilgi şeridi (kullanıcı isteği 2026-05-16: tam
-        # ekranda kimin reçetesine baktığımızı her zaman görelim)
-        info_bar = tk.Frame(top, bg="#E3F2FD", height=28)
+        # ── Hasta/reçete/rapor bilgi şeridi (kullanıcı isteği 2026-05-17:
+        # yataya yayılı; sol=reçete (mavi) + sağ=rapor (sarı). Uzun veri
+        # gelirse Label wraplength sayesinde alt satıra geçer; hala sığmazsa
+        # mouse hover ile tooltip'te tam metin görünür.
+        info_bar = tk.Frame(top, bg="#E3F2FD")
         info_bar.pack(side="top", fill="x")
-        info_bar.pack_propagate(False)
-        self._sema_tam_info_lbl = tk.Label(
-            info_bar, text="(reçete seçilmedi)",
+        # pack_propagate(True) — Frame, içerik kadar (2 satır veya gerekirse
+        # 3-5 satır) yükselir. Kullanıcı kuralı 2026-05-17: okunamamazlık olmasın.
+
+        # SOL — Reçete bloğu (mavi)
+        info_sol = tk.Frame(info_bar, bg="#E3F2FD")
+        info_sol.pack(side="left", fill="both", expand=True,
+                       padx=(8, 2), pady=3)
+        tk.Label(info_sol, text="📋 REÇETE",
+                  bg="#E3F2FD", fg="#01579B",
+                  font=("Segoe UI", 8, "bold"),
+                  anchor="w").pack(fill="x")
+        # wraplength: dar pencerede otomatik alt satır.
+        # Sema penceresi tam ekran (~1900 px) → her blok ~940 px.
+        self._sema_tam_info_rec_lbl = tk.Label(
+            info_sol, text="(reçete seçilmedi)",
             bg="#E3F2FD", fg="#0D47A1",
-            font=("Segoe UI", 10, "bold"), anchor="w")
-        self._sema_tam_info_lbl.pack(side="left", fill="x",
-                                       expand=True, padx=12, pady=2)
-        # Hasta info şeridinde de sağ tık menüsü — TC/künye kopyalama vb.
-        info_bar.bind("<Button-3>", self._sag_tik_menu_tam_ekran)
-        self._sema_tam_info_lbl.bind("<Button-3>", self._sag_tik_menu_tam_ekran)
+            font=("Segoe UI", 9, "bold"),
+            anchor="nw", justify="left",
+            wraplength=900)
+        self._sema_tam_info_rec_lbl.pack(fill="both", expand=True)
+
+        # Ayırıcı dikey çizgi
+        tk.Frame(info_bar, bg="#90CAF9", width=2).pack(
+            side="left", fill="y", pady=4)
+
+        # SAĞ — Rapor bloğu (sarı — RaporAna alanı rengi)
+        info_sag = tk.Frame(info_bar, bg="#FFF8E1")
+        info_sag.pack(side="left", fill="both", expand=True,
+                       padx=(2, 8), pady=3)
+        tk.Label(info_sag, text="📄 RAPOR",
+                  bg="#FFF8E1", fg="#E65100",
+                  font=("Segoe UI", 8, "bold"),
+                  anchor="w").pack(fill="x")
+        self._sema_tam_info_rap_lbl = tk.Label(
+            info_sag, text="",
+            bg="#FFF8E1", fg="#5D4037",
+            font=("Segoe UI", 9, "bold"),
+            anchor="nw", justify="left",
+            wraplength=900)
+        self._sema_tam_info_rap_lbl.pack(fill="both", expand=True)
+
+        # Pencere boyu değişince wraplength'i dinamik ayarla — pencere küçülürse
+        # metin daha çok satıra sarar, büyürse tek satır.
+        def _info_resize(_ev=None):
+            try:
+                w = info_bar.winfo_width()
+                if w < 200:
+                    return
+                # Her panel ~ (toplam - 20 padding - 2 ayırıcı) / 2
+                yari = max(300, (w - 22) // 2)
+                self._sema_tam_info_rec_lbl.config(wraplength=yari)
+                self._sema_tam_info_rap_lbl.config(wraplength=yari)
+            except Exception:
+                pass
+        info_bar.bind("<Configure>", _info_resize)
+
+        # Geriye uyumluluk — eski koda dokunmayan _sema_tam_info_lbl alias
+        # (yeni kod sol bloğa yazar; eski _sema_tam_bilgi_guncelle çağırımları
+        # alttaki güncel implementasyona düşer).
+        self._sema_tam_info_lbl = self._sema_tam_info_rec_lbl
+
+        # Tooltip — hover ile tam (kırpılmamış) metin görünür.
+        # _Tooltip text mutable; _sema_tam_bilgi_guncelle her güncellemede
+        # self._sema_tam_tt_rec.text / .text yeniden atar.
+        self._sema_tam_tt_rec = _Tooltip(
+            self._sema_tam_info_rec_lbl, "(reçete seçilmedi)", delay_ms=600)
+        self._sema_tam_tt_rap = _Tooltip(
+            self._sema_tam_info_rap_lbl, "", delay_ms=600)
+
+        # Sağ tık menüsü — her iki blok da
+        for w in (info_bar, info_sol, info_sag,
+                   self._sema_tam_info_rec_lbl, self._sema_tam_info_rap_lbl):
+            w.bind("<Button-3>", self._sag_tik_menu_tam_ekran)
 
         # Notebook — DMN + Klasik
         nb = ttk.Notebook(top)
@@ -3124,6 +3207,96 @@ class AylikReceteSorguGUI:
         except Exception:
             pass
 
+    def _ana_teyit_kaldir_tumu(self) -> None:
+        """Tüm görünen (filtrelenmiş) satırların teyitlerini sıfırlar.
+        Kullanıcı isteği 2026-05-17 — toplu teyit temizleme butonu.
+
+        Sadece TreeView'de gösterilen satırları etkiler (filtre dışı satırlar
+        dokunulmaz). Aktif teyiti olmayan satırlar atlanır.
+        """
+        # Görünen satırlar (filtreden geçenler)
+        try:
+            gorunen_iidler = list(self.tv.get_children())
+        except Exception:
+            gorunen_iidler = []
+        if not gorunen_iidler:
+            try:
+                messagebox.showinfo(
+                    "Teyit Kaldır",
+                    "Görünen reçete satırı yok.",
+                    parent=self.root)
+            except Exception:
+                pass
+            return
+
+        # Aktif teyiti olanları topla
+        if not hasattr(self, "_teyit_map") or self._teyit_map is None:
+            self._teyit_map = {}
+        teyitli_iidler = [iid for iid in gorunen_iidler
+                           if self._teyit_map.get(iid)
+                           or (self.satir_indeks.get(iid) or {}).get("teyit")]
+        recete_sayisi = set()
+        for iid in teyitli_iidler:
+            s = self.satir_indeks.get(iid)
+            if s:
+                recete_sayisi.add(
+                    str(s.get("rec_no") or "").strip()
+                    or str(s.get("sistem_recete_no") or "").strip()
+                    or iid)
+        if not teyitli_iidler:
+            try:
+                messagebox.showinfo(
+                    "Teyit Kaldır",
+                    "Görünen satırlarda teyitli kayıt yok.",
+                    parent=self.root)
+            except Exception:
+                pass
+            return
+
+        # Onay
+        if not messagebox.askyesno(
+            "Teyit Kaldır — Tümü",
+            f"Görünen {len(recete_sayisi)} reçete ({len(teyitli_iidler)} "
+            f"ilaç satırı) teyiti silinecek.\n\nDevam edilsin mi?",
+            parent=self.root,
+        ):
+            return
+
+        silinen = 0
+        for iid in teyitli_iidler:
+            satir = self.satir_indeks.get(iid)
+            if not satir:
+                continue
+            try:
+                recete_teyit_db.teyit_sil(iid)
+            except Exception:
+                pass
+            self._teyit_map.pop(iid, None)
+            satir["teyit"] = ""
+            self.satir_renkleri[iid] = RENK_BEYAZ
+            try:
+                values = tuple(str(satir.get(k, "")) for k in SUTUN_KOD)
+                self.tv.item(iid, values=values, tags=(RENK_BEYAZ,))
+            except Exception:
+                pass
+            silinen += 1
+
+        self._state_kaydet()
+
+        try:
+            sema_satir = self._aktif_satir()
+            if sema_satir:
+                self._sema_teyit_lbl_guncelle(sema_satir)
+        except Exception:
+            pass
+
+        try:
+            self._durum_yaz(
+                f"Toplu teyit kaldırıldı: {silinen} satır "
+                f"({len(recete_sayisi)} reçete)")
+        except Exception:
+            pass
+
     def _sema_temizle(self, mesaj: str = "") -> None:
         """Şema panelini temizle, opsiyonel placeholder mesaj.
 
@@ -3242,6 +3415,35 @@ class AylikReceteSorguGUI:
         except Exception as e:
             self._sema_temizle(f"Hata: {e}")
 
+    def _sema_heyet_brans_listesi(self, rapor_ana_id) -> list:
+        """Verilen RaporAnaId için heyet doktorlarının branş listesi.
+        Cache'li (rapor_ana_id → ['Kardiyoloji', 'Genel Cerrahi', ...]).
+        Boş list = RaporDoktor satırı yok ya da branş bilgisi eksik."""
+        if not rapor_ana_id:
+            return []
+        cache = getattr(self, '_sema_heyet_brans_cache', None)
+        if cache is None:
+            cache = {}
+            self._sema_heyet_brans_cache = cache
+        if rapor_ana_id in cache:
+            return cache[rapor_ana_id]
+        try:
+            rows = self.db.sorgu_calistir(
+                """SELECT b.BransAdi
+                   FROM RaporDoktor rd
+                   LEFT JOIN Brans b ON b.BransId = rd.RaporDoktorBransId
+                   WHERE rd.RaporDoktorRaporAnaId = ?
+                     AND (rd.RaporDoktorSilme IS NULL
+                          OR rd.RaporDoktorSilme = 0)
+                   ORDER BY b.BransAdi""",
+                (rapor_ana_id,))
+            branslar = [(r.get('BransAdi') or '').strip()
+                         for r in rows if (r.get('BransAdi') or '').strip()]
+        except Exception:
+            branslar = []
+        cache[rapor_ana_id] = branslar
+        return branslar
+
     def _sema_tam_bilgi_guncelle(self, satir: dict) -> None:
         """Tam ekran şema penceresinde info_bar + window title'ı güncelle."""
         top = getattr(self, '_sema_tam_top', None)
@@ -3255,25 +3457,128 @@ class AylikReceteSorguGUI:
             sis_no = (satir.get("sistem_recete_no") or "").strip()
             ilac = (satir.get("ilac") or "").strip()
             verdict = (satir.get("verdict") or "").strip()
+            rec_brans = (satir.get("brans") or "").strip()
+            rec_tesh = (satir.get("rec_tesh") or "").strip()
+            rec_ack = (satir.get("rec_ack") or "").strip()
+            rap_kod = (satir.get("rap_kod") or "").strip()
+            rap_kod_ack = (satir.get("rap_kod_aciklama") or "").strip()
+            rap_tak_no = (satir.get("rap_tak_no") or "").strip()
+            rap_brans = (satir.get("rapor_doktor_brans") or "").strip()
+            rap_tesh = (satir.get("rap_tesh") or "").strip()
+            rap_ack = (satir.get("rap_ack") or "").strip()
 
-            parcalar = [hasta]
+            def _kirp(s: str, n: int) -> str:
+                """Tek satıra düzleştir + uzunsa kırp (label görünür kısmı için)."""
+                if not s:
+                    return ""
+                t = " ".join(s.split())
+                return t if len(t) <= n else t[: n - 1] + "…"
+
+            def _duz(s: str) -> str:
+                """Tek satıra düzleştir, kırpma YOK (tooltip için tam metin)."""
+                return " ".join(s.split()) if s else ""
+
+            # ── SOL — REÇETE (2 satır, yataya yayılmış) ─────────────────
+            # Satır 1: hasta · TC · reç.tar · e-reç · sis.reç · ilaç
+            sol_s1 = [hasta]
             if tc:
-                parcalar.append(f"TC {tc}")
+                sol_s1.append(f"TC {tc}")
             if rec_tar:
-                parcalar.append(f"Reç. Tar: {rec_tar}")
+                sol_s1.append(f"Reç.Tar {rec_tar}")
             if rec_no:
-                parcalar.append(f"E-Reç: {rec_no}")
+                sol_s1.append(f"E-Reç {rec_no}")
             if sis_no and sis_no != rec_no:
-                parcalar.append(f"Sis.Reç: {sis_no}")
+                sol_s1.append(f"Sis.Reç {sis_no}")
             if ilac:
-                parcalar.append(f"İlaç: {ilac}")
+                sol_s1.append(f"İlaç: {ilac}")
+            # Satır 2: reç. yazan dr branşı · reç. teşhisi · reç. açıklaması · → SONUÇ
+            # Cap büyük tutuldu (200/300) — wraplength alt satıra geçirir; kalan
+            # uzun metin tooltip'te tam okunur.
+            sol_s2 = [f"Reç.Yazan: {rec_brans or '?'}"]
+            if rec_tesh:
+                sol_s2.append(f"Reç.Teşhisi: {_kirp(rec_tesh, 200)}")
+            if rec_ack:
+                sol_s2.append(f"Reç.Açıklaması: {_kirp(rec_ack, 300)}")
             if verdict:
-                parcalar.append(f"→ {verdict}")
-            metin = "  │  ".join(parcalar)
+                sol_s2.append(f"→ {verdict}")
+            sol_metin = "  ·  ".join(sol_s1) + "\n" + "  ·  ".join(sol_s2)
 
-            lbl = getattr(self, '_sema_tam_info_lbl', None)
-            if lbl is not None:
-                lbl.config(text=metin)
+            # Tooltip için TAM (kırpılmamış) metin
+            sol_tt_lines = [
+                "═══ REÇETE ═══",
+                "  ·  ".join(sol_s1),
+                f"Reç.Yazan: {rec_brans or '?'}",
+            ]
+            if rec_tesh:
+                sol_tt_lines.append(f"Reç.Teşhisi: {_duz(rec_tesh)}")
+            if rec_ack:
+                sol_tt_lines.append(f"Reç.Açıklaması: {_duz(rec_ack)}")
+            if verdict:
+                sol_tt_lines.append(f"Genel sonuç: {verdict}")
+            sol_tt = "\n".join(sol_tt_lines)
+
+            # ── SAĞ — RAPOR (2 satır, yataya yayılmış) ──────────────────
+            if rap_kod:
+                # Heyet branş listesi (3 doktor varsa: "Kard · Gen.Cer · Nöro")
+                rapor_ana_id = satir.get("rapor_ana_id")
+                heyet_branslar = self._sema_heyet_brans_listesi(rapor_ana_id)
+                if heyet_branslar:
+                    yazan_str = " · ".join(heyet_branslar)
+                elif rap_brans:
+                    yazan_str = rap_brans  # fallback — tek branş
+                else:
+                    secim_kaynagi = (
+                        satir.get("rapor_secim_kaynagi") or "").lower()
+                    if not rapor_ana_id or "sr_no_rapana" in secim_kaynagi:
+                        yazan_str = "(rapor DB'de yok)"
+                    else:
+                        yazan_str = "(heyet DB'de yok)"
+
+                # Satır 1: rapor kodu + kod metni · rapor no · rapor ICD teşhisleri · raporu yazan branşları
+                kod_seg = rap_kod
+                if rap_kod_ack:
+                    kod_seg += f" — {_kirp(rap_kod_ack, 80)}"
+                sag_s1 = [f"Rapor: {kod_seg}"]
+                if rap_tak_no:
+                    sag_s1.append(f"No {rap_tak_no}")
+                if rap_tesh:
+                    sag_s1.append(f"Teşhis: {_kirp(rap_tesh, 120)}")
+                sag_s1.append(f"Yazan: {yazan_str}")
+                # Satır 2: rapor açıklaması (geniş alan — yataya yayılır)
+                sag_s2 = (f"Rapor Açıklaması: {_kirp(rap_ack, 400)}"
+                           if rap_ack else "Rapor Açıklaması: —")
+                sag_metin = "  ·  ".join(sag_s1) + "\n" + sag_s2
+
+                # Tooltip için TAM metin
+                sag_tt_lines = ["═══ RAPOR ═══",
+                                  f"Rapor Kodu: {rap_kod}"
+                                  + (f" — {_duz(rap_kod_ack)}" if rap_kod_ack
+                                     else "")]
+                if rap_tak_no:
+                    sag_tt_lines.append(f"Rapor No: {rap_tak_no}")
+                if rap_tesh:
+                    sag_tt_lines.append(f"Rapor Teşhisi: {_duz(rap_tesh)}")
+                sag_tt_lines.append(f"Rapor Yazan: {yazan_str}")
+                if rap_ack:
+                    sag_tt_lines.append(f"Rapor Açıklaması: {_duz(rap_ack)}")
+                sag_tt = "\n".join(sag_tt_lines)
+            else:
+                sag_metin = "Rapor: yok (raporsuz reçete)\n"
+                sag_tt = "═══ RAPOR ═══\nRaporsuz reçete"
+
+            rec_lbl = getattr(self, '_sema_tam_info_rec_lbl', None)
+            if rec_lbl is not None:
+                rec_lbl.config(text=sol_metin)
+            rap_lbl = getattr(self, '_sema_tam_info_rap_lbl', None)
+            if rap_lbl is not None:
+                rap_lbl.config(text=sag_metin)
+            # Tooltip metinlerini güncelle (hover'da tam metin görünür)
+            tt_rec = getattr(self, '_sema_tam_tt_rec', None)
+            if tt_rec is not None:
+                tt_rec.text = sol_tt
+            tt_rap = getattr(self, '_sema_tam_tt_rap', None)
+            if tt_rap is not None:
+                tt_rap.text = sag_tt
 
             # Pencere title (taskbar'da da görünür)
             title_kisa = f"📋 {hasta}"
@@ -3441,29 +3746,35 @@ class AylikReceteSorguGUI:
                 ham_gruplar[k]["alt"] = True
 
         # ─── GENERIC ÇOKLU-YOLAK ÜST-VEYA ────────────────────────────────
-        # Herhangi bir SUT kontrolü atomik şartlarını "Y-<n>: ..." prefix'iyle
-        # yazmışsa, sema panel otomatik 4-yolak paralel şema (üst-OR) çıkarır.
-        # Klopidogrel SUT 4.2.15.A pilot (Y-1..Y-4); ileride herhangi bir
-        # ilaç grubu (Statin, YOAK, vs.) kendi yolaklarını "Y-1:/Y-2:/..."
-        # prefix'iyle işaretlerse aynı görsel matematiği kullanır.
+        # Herhangi bir SUT kontrolü atomik şartlarını "[YPT]-<n>: ..."
+        # prefix'iyle yazmışsa, sema panel otomatik paralel şema (üst-OR)
+        # çıkarır:
+        #   Y-<n> → Klopidogrel SUT 4.2.15.A (4 yolak)
+        #   P-<n> → Prasugrel SUT 4.2.15.Ç (2 yolak: P-1 ∨ P-2)
+        #   T-<n> → Tikagrelor SUT 4.2.15.E (tek yolak — şema tek kol gösterir)
+        # NOT: "P-Yol-A/B" ve "T-Yol-A/B" akış grupları, yolak değil; bu
+        # regex '[YPT]-<rakam>:' deseni nedeniyle bunları yakalamaz (Yol-A'da
+        # tire sonrası harf var, rakam değil).
         # Adımlar:
-        #   1) sartlar'daki tüm "Y-<n>:" grupları regex ile tespit.
+        #   1) sartlar'daki tüm "[YPT]-<n>:" grupları regex ile tespit.
         #   2) Her yolak içi gruplar AND'lenir → sanal yolak.
         #   3) Tüm yolaklar arası ≥1 yeterli (üst-OR).
+        # Grup adı sonu: tek harf (P-1A:, P-2B:) veya direkt ':'.
+        # Regex grup(1)="Y-1"/"P-1"/"T-1", grup(2)="1".
         import re as _re
-        _yolak_pat = _re.compile(r'^(Y-(\d+)):')
-        _yolak_no_keys: dict = {}  # {"Y-1": ["Y-1: Koroner stent", ...]}
+        _yolak_pat = _re.compile(r'^([YPT]-(\d+))[A-Z]?:')
+        _yolak_no_keys: dict = {}  # {"Y-1": [...], "P-1": [...], "T-1": [...]}
         for k in list(ham_gruplar.keys()):
             if ham_gruplar[k].get("alt") or ham_gruplar[k].get("sanal_yolak"):
                 continue
             m = _yolak_pat.match(k)
             if m:
-                yol_prefix = m.group(1)  # "Y-1", "Y-2", ...
+                yol_prefix = m.group(1)  # "Y-1" / "P-1" / "T-1"
                 _yolak_no_keys.setdefault(yol_prefix, []).append(k)
         yolak_sanal_keys = []
-        # Yolaklar Y-1, Y-2, ... sırasında işlenir
+        # Yolaklar sırasında işlenir (Y/P/T harfi + numara)
         for yol_prefix in sorted(_yolak_no_keys.keys(),
-                                  key=lambda p: int(p.split('-')[1])):
+                                  key=lambda p: (p[0], int(p.split('-')[1]))):
             yolak_keys = _yolak_no_keys[yol_prefix]
             gruplari = [ham_gruplar[k] for k in yolak_keys]
             toplam_gerekli = sum(g["gerekli"] for g in gruplari)
@@ -3631,8 +3942,33 @@ class AylikReceteSorguGUI:
                     return
                 parcalar.append((baslik, txt, vurgu))
 
+            # Reçete yazan branşı (üstte — reçeteyle birlikte gruplandı)
+            _ekle("👨‍⚕ Reçete Yazan",
+                   str(satir.get("brans") or ""), "#0D47A1")
             _ekle("📄 Reçete Açıklaması",
                    str(satir.get("rec_ack") or ""), "#0D47A1")
+            # Rapor yazan doktor branşı — heyet üyesi varsa heyet listesi,
+            # yoksa tek branş fallback, hiçbiri yoksa açıklayıcı placeholder.
+            # (HASAN KILIÇ 2X11WU7 / kullanıcı talebi 2026-05-17: bu alanı sağ
+            # info kartında göster.)
+            try:
+                _rap_yazan_str = ""
+                _rap_kod = (satir.get("rap_kod") or "").strip()
+                if _rap_kod:
+                    _heyet = self._sema_heyet_brans_listesi(
+                        satir.get("rapor_ana_id"))
+                    if _heyet:
+                        _rap_yazan_str = " · ".join(_heyet)
+                    else:
+                        _tek = (satir.get("rapor_doktor_brans") or "").strip()
+                        if _tek:
+                            _rap_yazan_str = _tek
+                        else:
+                            _rap_yazan_str = "(branş bilgisi DB'de yok)"
+                if _rap_yazan_str:
+                    _ekle("👨‍⚕ Rapor Yazan", _rap_yazan_str, "#1B5E20")
+            except Exception:
+                pass
             _ekle("📄 Rapor Açıklaması",
                    str(satir.get("rap_ack") or ""), "#1B5E20")
             _ekle("🩺 Reçete Teşhisi",
@@ -3980,8 +4316,11 @@ class AylikReceteSorguGUI:
     def _dmn_yolak_modu_ciz(self, c, sartlar: list,
                                yolak_no_keys: dict,
                                detaylar: dict, verdict: str,
-                               satir: dict) -> None:
-        """Generic çoklu-yolak DMN Karar Modeli (Klopidogrel 4.2.15.A pilot).
+                               satir: dict,
+                               yolak_prefix_harfi: str = 'Y') -> None:
+        """Generic çoklu-yolak DMN Karar Modeli.
+
+        yolak_prefix_harfi: 'Y' Klopidogrel / 'P' Prasugrel / 'T' Tikagrelor.
 
         DRD (Decision Requirements Diagram) yapısı:
           • N input-data block (yolak başına: rapor + reçete)
@@ -3995,13 +4334,26 @@ class AylikReceteSorguGUI:
         z = max(0.25, min(2.0, getattr(self, '_klasik_zoom', 1.0)))
         margin = 14
 
-        # Yolak başlıkları (Klopidogrel için; başkalarda Y-1.. fallback)
-        YOLAK_BASLIKLARI = {
+        # Yolak başlıkları (ilaç bazlı — prefix harfine göre seçilir)
+        YOLAK_BASLIKLARI_Y = {  # Klopidogrel SUT 4.2.15.A
             1: "Y-1: Koroner stent\nöncesi (raporsuz)",
             2: "Y-2: Akut Koroner\nSendrom (AKS)",
             3: "Y-3: Kronik\n(12 ay rapor)",
             4: "Y-4: Girişimsel\nintravasküler",
         }
+        YOLAK_BASLIKLARI_P = {  # Prasugrel SUT 4.2.15.Ç
+            1: "P-1: Standart yol\n(AKS+PKG)",
+            2: "P-2: Stent trombozu\nyolu",
+        }
+        YOLAK_BASLIKLARI_T = {  # Tikagrelor SUT 4.2.15.E
+            1: "T-1: AKS + EKG kanıt\n(AND-zincir)",
+        }
+        if yolak_prefix_harfi == 'P':
+            YOLAK_BASLIKLARI = YOLAK_BASLIKLARI_P
+        elif yolak_prefix_harfi == 'T':
+            YOLAK_BASLIKLARI = YOLAK_BASLIKLARI_T
+        else:
+            YOLAK_BASLIKLARI = YOLAK_BASLIKLARI_Y
 
         # Yolak başına durum hesapla
         def _grup_durumu(atoms, veya):
@@ -4056,16 +4408,43 @@ class AylikReceteSorguGUI:
         else:
             v_kisa, v_renk, v_bg = (v or "—"), "#37474F", "#ECEFF1"
 
-        # Başlık
+        # Başlık — tek yolak (AND-zincir) ya da çoklu yolak (üst-VEYA)
         y = margin
+        n_yolak = len(prefix_list)
+        if n_yolak == 1:
+            baslik_metin = "🎯 DMN Karar Modeli — Tek Yolak AND-zincir"
+            tek_prefix = f'{yolak_prefix_harfi}-{prefix_list[0]}'
+            # Alt-harf AND zincir formülünü çıkar
+            alt_harf_seti = set()
+            import re as _re_alt
+            _alt_pat = _re_alt.compile(
+                rf'^{yolak_prefix_harfi}-{prefix_list[0]}([A-Z]):')
+            for s in sartlar:
+                g = s.get('grup', '') or ''
+                ma = _alt_pat.match(g)
+                if ma:
+                    alt_harf_seti.add(ma.group(1))
+            if len(alt_harf_seti) >= 2:
+                formul = (tek_prefix + ' ≡ ' +
+                           ' ∧ '.join(f'{tek_prefix}{h}'
+                                       for h in sorted(alt_harf_seti)))
+            else:
+                formul = tek_prefix
+        else:
+            baslik_metin = "🎯 DMN Karar Modeli (DRD) — Çoklu-Yolak Üst-VEYA"
+            formul = " ∨ ".join(f"{yolak_prefix_harfi}-{n}" for n in prefix_list)
         c.create_text(margin, y, anchor="nw",
-                       text="🎯 DMN Karar Modeli (DRD) — Çoklu-Yolak Üst-VEYA",
+                       text=baslik_metin,
                        fill="#1A237E", font=("Segoe UI", 11, "bold"),
                        tags=('dmn',))
         y += 20
-        formul = " ∨ ".join(f"Y-{n}" for n in prefix_list)
+        if n_yolak == 1:
+            karar_metni = (f"Karar formülü: {formul} → UYGUN  ⇔  "
+                           "tüm AND alt-grupları sağlanmalı")
+        else:
+            karar_metni = f"Karar formülü: ({formul}) → UYGUN  ⇔  ≥1 yolak tam"
         c.create_text(margin, y, anchor="nw",
-                       text=f"Karar formülü: ({formul}) → UYGUN  ⇔  ≥1 yolak tam",
+                       text=karar_metni,
                        fill="#37474F", font=("Segoe UI", 9, "italic"),
                        tags=('dmn',))
         y += 28
@@ -4110,7 +4489,8 @@ class AylikReceteSorguGUI:
             c.create_rectangle(col1_x, yy, col1_x + INPUT_W, yy + INPUT_H,
                                 fill=bg, outline=fg, width=2,
                                 tags=('dmn',))
-            baslik = YOLAK_BASLIKLARI.get(n, f"Y-{n}: yolak {n}")
+            baslik = YOLAK_BASLIKLARI.get(
+                n, f"{yolak_prefix_harfi}-{n}: yolak {n}")
             c.create_text(col1_x + INPUT_W/2, yy + INPUT_H/2,
                            text=baslik, fill=fg,
                            font=("Segoe UI", 9, "bold"),
@@ -4227,7 +4607,8 @@ class AylikReceteSorguGUI:
                                     tags=('dmn',))
                 if gi == 0:
                     c.create_text(col_x[0] + 6, ty + row_h/2, anchor="w",
-                                   text=f"Y-{n}", fill="#1A237E",
+                                   text=f"{yolak_prefix_harfi}-{n}",
+                                   fill="#1A237E",
                                    font=("Segoe UI", 9, "bold"),
                                    tags=('dmn',))
                 # Grup adı (kısalt)
@@ -4277,19 +4658,30 @@ class AylikReceteSorguGUI:
         sartlar = sartlar or []
 
         # ── GENERIC YOLAK MODU TESPİTİ ──
+        # Y-<n>: Klopidogrel / P-<n>: Prasugrel / T-<n>: Tikagrelor.
+        # Grup adı sonu opsiyonel tek harf alabilir (P-1A:, P-2B: gibi);
+        # bunlar aynı yolağa (P-1) ait farklı AND alt-gruplarıdır.
+        # "P-Yol-A" / "T-Yol-A" akış grupları yolak değil — regex tire sonrası
+        # rakam zorunlu olduğu için bunları yakalamaz.
         import re as _re
-        _yolak_pat = _re.compile(r'^Y-(\d+):')
+        _yolak_pat = _re.compile(r'^([YPT])-(\d+)[A-Z]?:')
         yolak_no_keys: dict = {}
+        yolak_prefix_harfi = 'Y'
         for s in sartlar:
             g = s.get("grup", "") or ""
             if "[pasif]" in g or "(bilgi)" in g:
                 continue
             m = _yolak_pat.match(g)
             if m:
-                yolak_no_keys.setdefault(int(m.group(1)), []).append(s)
-        if len(yolak_no_keys) >= 2:
+                yolak_prefix_harfi = m.group(1)
+                yolak_no_keys.setdefault(int(m.group(2)), []).append(s)
+        # Tikagrelor tek yolak — şema yine de render edilir (AND-zincir görsel).
+        # Klop 4 / Prasu 2 / Tikag 1.
+        min_yolak = 1 if yolak_prefix_harfi == 'T' else 2
+        if len(yolak_no_keys) >= min_yolak:
             return self._dmn_yolak_modu_ciz(
-                c, sartlar, yolak_no_keys, detaylar, verdict, satir)
+                c, sartlar, yolak_no_keys, detaylar, verdict, satir,
+                yolak_prefix_harfi=yolak_prefix_harfi)
 
         # Yolak tespit — sadece YOAK EK-4/F M.53-54 (ortopedi); diğer
         # EK-4/F maddeleri (M.51 ARB vs.) bu şemanın kapsamında değil
@@ -5022,8 +5414,11 @@ class AylikReceteSorguGUI:
     def _klasik_yolak_modu_ciz(self, c, sartlar: list,
                                   yolak_no_keys: dict,
                                   detaylar: dict, verdict: str,
-                                  satir: dict) -> None:
-        """Generic çoklu-yolak paralel render (Klopidogrel 4.2.15.A pilot).
+                                  satir: dict,
+                                  yolak_prefix_harfi: str = 'Y') -> None:
+        """Generic çoklu-yolak paralel render.
+
+        yolak_prefix_harfi: 'Y' Klopidogrel / 'P' Prasugrel / 'T' Tikagrelor.
 
         Atomik şartlarda "Y-<n>:" prefix'li gruplar varsa bu metod devreye girer.
         Sol pil → N paralel yolak kolu (dikey üst üste) → Sağ pil.
@@ -5067,16 +5462,46 @@ class AylikReceteSorguGUI:
             v_renk = "#37474F"
         n_yolak = len(yolak_no_keys)
         prefix_list = sorted(yolak_no_keys.keys())
-        formul = ' ∨ '.join(f'Y-{n}' for n in prefix_list)
-        c.create_text(margin, y, anchor="nw",
-                       text=f"🔆 Çoklu-Yolak Paralel Şema — "
-                            f"{n_yolak} yolak (üst-VEYA: {formul})",
-                       fill="#1A237E", font=("Segoe UI", 11, "bold"))
-        y += 22
-        c.create_text(margin, y, anchor="nw",
-                       text="Sol pil ⊕ → N paralel yolak kolu → Sağ pil ⊖ · "
-                            "Her yolak içi AND · Yolaklar arası OR (≥1 yeterli)",
-                       fill="#90A4AE", font=("Segoe UI", 8, "italic"))
+        # Başlık dinamik: tek yolak → AND-zincir formülü; çoklu → üst-VEYA
+        if n_yolak == 1:
+            tek_prefix = f'{yolak_prefix_harfi}-{prefix_list[0]}'
+            # Tek yolak içi AND alt-grupları varsa (T-1A ∧ T-1B ...) listele
+            alt_harf_seti = set()
+            import re as _re_alt
+            _alt_pat = _re_alt.compile(
+                rf'^{yolak_prefix_harfi}-{prefix_list[0]}([A-Z]):')
+            for s in sartlar:
+                g = s.get('grup', '') or ''
+                ma = _alt_pat.match(g)
+                if ma:
+                    alt_harf_seti.add(ma.group(1))
+            if len(alt_harf_seti) >= 2:
+                alt_formul = ' ∧ '.join(f'{tek_prefix}{h}'
+                                          for h in sorted(alt_harf_seti))
+                formul = f'{tek_prefix} ≡ {alt_formul}'
+                baslik_ek = 'AND-zincir'
+            else:
+                formul = tek_prefix
+                baslik_ek = 'tek yolak'
+            c.create_text(margin, y, anchor="nw",
+                           text=f"🔆 SUT Devre Şeması — {baslik_ek} ({formul})",
+                           fill="#1A237E", font=("Segoe UI", 11, "bold"))
+            y += 22
+            c.create_text(margin, y, anchor="nw",
+                           text=("Sol pil ⊕ → tek yolak içi AND alt-gruplar "
+                                 "→ Sağ pil ⊖ · Hepsi sağlanmalı"),
+                           fill="#90A4AE", font=("Segoe UI", 8, "italic"))
+        else:
+            formul = ' ∨ '.join(f'{yolak_prefix_harfi}-{n}' for n in prefix_list)
+            c.create_text(margin, y, anchor="nw",
+                           text=f"🔆 Çoklu-Yolak Paralel Şema — "
+                                f"{n_yolak} yolak (üst-VEYA: {formul})",
+                           fill="#1A237E", font=("Segoe UI", 11, "bold"))
+            y += 22
+            c.create_text(margin, y, anchor="nw",
+                           text="Sol pil ⊕ → N paralel yolak kolu → Sağ pil ⊖ · "
+                                "Her yolak içi AND · Yolaklar arası OR (≥1 yeterli)",
+                           fill="#90A4AE", font=("Segoe UI", 8, "italic"))
         y += 16
         c.create_text(margin, y, anchor="nw",
                        text=f"Sonuç: {verdict_kisa}",
@@ -5232,18 +5657,31 @@ class AylikReceteSorguGUI:
         icerik_x_baslangic = baslik_x + BASLIK_W + 16
         durum_x = icerik_x_baslangic + max_icerik_w + 16
 
-        # SUT lafzındaki yolak başlıkları (Klopidogrel 4.2.15.A için)
-        YOLAK_BASLIKLARI = {
+        # SUT lafzındaki yolak başlıkları — prefix harfine göre seçilir
+        YOLAK_BASLIKLARI_Y = {  # Klopidogrel 4.2.15.A
             1: "Y-1: Koroner stent öncesi\n(raporsuz, ≤4 hf)",
             2: "Y-2: Akut Koroner Sendrom\n(NSTEMI/AA/STEMI)",
             3: "Y-3: Kronik endikasyon\n(12 ay rapor zorunlu)",
             4: "Y-4: Girişimsel intravasküler\n(raporsuz, ≤4 hf)",
         }
+        YOLAK_BASLIKLARI_P = {  # Prasugrel 4.2.15.Ç
+            1: "P-1: Standart yol\n(yaş+kilo+SVO+AKS+PKG)",
+            2: "P-2: Stent trombozu yolu\n(Klopidogrel altında)",
+        }
+        YOLAK_BASLIKLARI_T = {  # Tikagrelor 4.2.15.E
+            1: "T-1: AKS+EKG kanıt\n(AND-zincir)",
+        }
+        if yolak_prefix_harfi == 'P':
+            YOLAK_BASLIKLARI = YOLAK_BASLIKLARI_P
+        elif yolak_prefix_harfi == 'T':
+            YOLAK_BASLIKLARI = YOLAK_BASLIKLARI_T
+        else:
+            YOLAK_BASLIKLARI = YOLAK_BASLIKLARI_Y
 
         # Yolak ayraç renkleri (her yolak için DİSTİNCT outline — görsel ayrım)
         YOLAK_AYRAC_RENK = {
-            1: "#0D47A1",  # Y-1 koyu mavi
-            2: "#33691E",  # Y-2 koyu yeşil
+            1: "#0D47A1",  # Y-1/P-1/T-1 koyu mavi
+            2: "#33691E",  # Y-2/P-2 koyu yeşil
             3: "#E65100",  # Y-3 turuncu
             4: "#6A1B9A",  # Y-4 mor
         }
@@ -5309,7 +5747,8 @@ class AylikReceteSorguGUI:
                                 baslik_x + BASLIK_W, yolak_top + yolak_h,
                                 fill='white', outline=durum_renk, width=2,
                                 tags=('klasik',))
-            baslik_txt = YOLAK_BASLIKLARI.get(n, f"Y-{n}: (yolak {n})")
+            baslik_txt = YOLAK_BASLIKLARI.get(
+                n, f"{yolak_prefix_harfi}-{n}: (yolak {n})")
             c.create_text(baslik_x + BASLIK_W/2, yolak_mid_y,
                            text=baslik_txt, fill=ayrac_renk,
                            font=("Segoe UI", 10, "bold"),
@@ -5472,19 +5911,26 @@ class AylikReceteSorguGUI:
         sartlar = sartlar or []
 
         # ── YOLAK MODU TESPİTİ (generic çoklu paralel yolak) ──
+        # Y-<n>: Klopidogrel / P-<n>: Prasugrel / T-<n>: Tikagrelor.
+        # Grup adı sonu opsiyonel tek harf (P-1A, P-1B aynı yolak 1).
         import re as _re
-        _yolak_pat = _re.compile(r'^Y-(\d+):')
+        _yolak_pat = _re.compile(r'^([YPT])-(\d+)[A-Z]?:')
         yolak_no_keys: dict = {}
+        yolak_prefix_harfi = 'Y'
         for s in sartlar:
             g = s.get("grup", "") or ""
             if "[pasif]" in g or "(bilgi)" in g:
                 continue
             m = _yolak_pat.match(g)
             if m:
-                yolak_no_keys.setdefault(int(m.group(1)), []).append(s)
-        if len(yolak_no_keys) >= 2:
+                yolak_prefix_harfi = m.group(1)
+                yolak_no_keys.setdefault(int(m.group(2)), []).append(s)
+        # Tikagrelor tek yolak — yine de render edilir
+        min_yolak = 1 if yolak_prefix_harfi == 'T' else 2
+        if len(yolak_no_keys) >= min_yolak:
             return self._klasik_yolak_modu_ciz(
-                c, sartlar, yolak_no_keys, detaylar, verdict, satir)
+                c, sartlar, yolak_no_keys, detaylar, verdict, satir,
+                yolak_prefix_harfi=yolak_prefix_harfi)
         alt_dal = (detaylar.get("alt_dal") or "").strip()
         is_yoak_ek4f = (("EK-4/F" in alt_dal or "EK4F" in alt_dal)
                         and ("M.53" in alt_dal or "M.54" in alt_dal
@@ -7516,6 +7962,7 @@ class AylikReceteSorguGUI:
             "kutu": str(r.get("RIAdet") or ""),
             "sut": sut_madde,
             "rap_kod": rap_kod_str,
+            "rap_kod_aciklama": rap_kod_acik,
             "rap_tak_no": rap_tak_no,
             "rap_tesh_tak": rap_tesh_tak,
             "rec_doz": rd_metin,
@@ -8871,21 +9318,22 @@ class AylikReceteSorguGUI:
     def _sag_tik_menu_tam_ekran(self, event):
         """Tam ekran şema penceresinde sağ tık → ana tablo context menüsünü
         aç. Tam ekran açıkken aktif satır zaten self.tv.selection() içinde;
-        _sag_tik_menu'nun identify_row çağrısı yanlış y koordinatına dayanıp
-        seçimi bozmasın diye burada koruyup geri yüklüyoruz."""
+        identify_row(event.y) tam ekrandaki Canvas/widget koordinatını
+        kullanır ve YANLIŞ satırı seçer (hasta değişir bug'ı 2026-05-17).
+        Bu yüzden _sag_tik_menu'yu _from_tam_ekran=True ile çağırıp
+        identify_row adımını tamamen atlatıyoruz."""
         if not self.tv.selection():
             return
-        mevcut = tuple(self.tv.selection())
-        self._sag_tik_menu(event)
-        try:
-            self.tv.selection_set(mevcut)
-        except Exception:
-            pass
+        self._sag_tik_menu(event, _from_tam_ekran=True)
 
-    def _sag_tik_menu(self, event):
-        iid = self.tv.identify_row(event.y)
-        if iid and iid not in self.tv.selection():
-            self.tv.selection_set(iid)
+    def _sag_tik_menu(self, event, _from_tam_ekran: bool = False):
+        # Ana tablodan çağrıldıysa hover'daki satırı seç. Tam ekran şemadan
+        # çağrıldıysa identify_row YOK — event.y tablonun koordinatı değil,
+        # mevcut selection korunur (hasta değişme bug'ı 2026-05-17).
+        if not _from_tam_ekran:
+            iid = self.tv.identify_row(event.y)
+            if iid and iid not in self.tv.selection():
+                self.tv.selection_set(iid)
         if not self.tv.selection():
             return
         m = tk.Menu(self.root, tearoff=0)
@@ -14809,6 +15257,7 @@ class AylikReceteSorguGUI:
                     s["verdict_aranan"] = ""
                     s["verdict_bulunan"] = ""
                     s["verdict_detaylar"] = ""
+                    s["verdict_sartlar"] = ""
                 sayac["_hepatit_disi"] += 1
                 continue
 
@@ -14836,6 +15285,7 @@ class AylikReceteSorguGUI:
                 s["verdict_aranan"] = ""
                 s["verdict_bulunan"] = ""
                 s["verdict_detaylar"] = ""
+                s["verdict_sartlar"] = ""
                 sayac["ŞÜPHELİ"] += 1
                 denetlenen_satirlar.append(s)
                 continue
@@ -14855,6 +15305,24 @@ class AylikReceteSorguGUI:
                                                     ensure_ascii=False)
             except Exception:
                 s["verdict_detaylar"] = str(rapor.detaylar or {})
+            # Atomik şart listesi — atomik şema paneli için (hepatit 12-yolak)
+            # grup + veya_grubu + alt_liste, sema_panel _sema_render_devre okuyor
+            sartlar_obj = getattr(rapor, "sartlar", None) or []
+            try:
+                s["verdict_sartlar"] = json.dumps([
+                    {"ad": p.ad,
+                     "durum": (p.durum.value if hasattr(p.durum, "value")
+                                else str(p.durum)),
+                     "neden": p.neden,
+                     "kaynak": getattr(p, "kaynak", ""),
+                     "grup": getattr(p, "grup", ""),
+                     "veya_grubu": bool(getattr(p, "veya_grubu", False)),
+                     "alt_liste": getattr(p, "alt_liste", None),
+                     "sartli_atom": bool(getattr(p, "sartli_atom", False))}
+                    for p in sartlar_obj
+                ], ensure_ascii=False)
+            except Exception:
+                s["verdict_sartlar"] = ""
             sayac[etiket] = sayac.get(etiket, 0) + 1
             denetlenen_satirlar.append(s)
 
@@ -20208,6 +20676,19 @@ class AylikReceteSorguGUI:
             if mid and mid not in musteri_idler:
                 musteri_idler.append(mid)
         hasta_tum_icd = self._hasta_tum_icd_kodlarini_topla(musteri_idler)
+        # Hastanın TÜM rapor açıklamalarını topla — aktif rapor sessiz olduğunda
+        # "metformin/sülfonilüre maks doz yetersiz glisemik kontrol" ibaresinin
+        # geçmiş raporlarda var olup olmadığına bakılır (kullanıcı kuralı
+        # 2026-05-17: bir kez yazılmış SGK lafzı yeterli sayılır).
+        hasta_tum_rapor_metinleri = (
+            self._hasta_tum_rapor_metinleri_topla(musteri_idler))
+        # Rapor heyetini de çek — SUT 4.2.74(1)/(2) için kardiyoloji/nefroloji
+        # uzman heyet üyesi atomu gerekli (dapagliflozin/empagliflozin KY/KBH
+        # endikasyonu).
+        rapor_ana_idler = list({s.get("rapor_ana_id")
+                                 for s in self.tum_satirlar
+                                 if s.get("rapor_ana_id")})
+        diyabet_rapor_heyet_map = self._rapor_heyet_doktor_topla(rapor_ana_idler)
 
         for s in self.tum_satirlar:
             kategori = self._diyabet_kategori(
@@ -20245,6 +20726,15 @@ class AylikReceteSorguGUI:
             mid = s.get("musteri_id")
             ek_icd = hasta_tum_icd.get(mid, []) if mid else []
             ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
+            # Hastanın geçmiş rapor açıklamaları — glisemik şart ibaresi
+            # bypass'ı için (sut_kontrolleri.kontrol_diyabet_dpp4_sglt2 okur).
+            ilac_sonuc["gecmis_rapor_metinleri"] = (
+                hasta_tum_rapor_metinleri.get(mid, []) if mid else [])
+            # Reçeteye bağlı rapor heyeti — SUT 4.2.74 kardiyolog/nefrolog atomu için
+            rap_id = s.get("rapor_ana_id")
+            if rap_id:
+                ilac_sonuc["heyet_doktorlari"] = (
+                    diyabet_rapor_heyet_map.get(rap_id, []))
 
             try:
                 rapor = kontrol_diyabet_dpp4_sglt2(ilac_sonuc)

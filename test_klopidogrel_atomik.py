@@ -287,8 +287,12 @@ def test_ayse_ulas_tikagrelor_gercek_rapor():
         ilac_adi='BRILINTA 90MG 56 FILM TABLET',
         etkin_madde='TIKAGRELOR',
         recete_teshisleri=['I10', 'I20.9', 'I25.0', 'I21.0'],
-        doktor_uzmanligi='Pratisyen Hekim',
+        # SUT 4.2.15.E reçete yazan: Kard/KDC/İç hast. (Pratisyen
+        # değil — eski test yanlış varsayımdaydı, yeni şema 2026-05-17'de
+        # düzeltildi).
+        doktor_uzmanligi='Ic Hastaliklari',
         rapor_dr_brans='Kardiyoloji',
+        rapor_kodu='04.04',
     ))
     print(f'[T20 AYSE-TIKAGRELOR] {_ozet(r)}')
     assert r.sonuc == KontrolSonucu.UYGUN, \
@@ -375,6 +379,121 @@ def test_aile_hekimi_ilk_24_ay():
         f'aile hekimi rapor + Y-3 ilk 24 ay -> uygun degil'
 
 
+def test_i25_sadece_recete_aciklamasinda_mi():
+    """Kullanıcı kuralı 2026-05-17: Reçete ICD'sinde sadece I25.1 (Ateroskleroz)
+    olsa bile, reçete açıklamasında 'akut miyokard infarktüsü / akut MI / kalp
+    krizi / AKS' ibaresi varsa NSTEMI atomu VAR sayılır.
+    EKG+troponin destekleyici şart (B3) ayrıca zorunlu — Y-2 raporsuz akış.
+    """
+    r = kontrol_klopidogrel(_rec(
+        'Acil servise göğüs ağrısı ile başvuran hasta. Akut miyokard '
+        'infarktüsü tespit edildi. Troponin pozitif, EKG değişikliği mevcut. '
+        'Hastaneye yatırıldı.',
+        recete_teshisleri=['I25.1'],  # sadece ateroskleroz — NSTEMI/STEMI yok
+        doktor_uzmanligi='Acil Tıp',
+    ))
+    print(f'[T22 I25-RECETE-MI] {_ozet(r)}')
+    nstemi = next((s for s in r.sartlar
+                   if s.ad == 'NSTEMI (ST yükselmesiz MI)'), None)
+    assert nstemi and nstemi.durum.value == 'var', \
+        ('NSTEMI atomu reçete açıklamasındaki "akut miyokard infarktüsü" '
+         'lafzından VAR sayılmalı')
+    # Y-2 raporsuz akış UYGUN olmalı (Acil Tıp doktoru + NSTEMI + EKG/trop)
+    assert r.sonuc == KontrolSonucu.UYGUN, \
+        f'I25.1 + reçete açıklamasında MI + EKG/trop + Acil Tıp → UYGUN bekleniyordu, gelen: {r.sonuc}'
+
+
+def test_i25_sadece_klinik_kanit_yok():
+    """Reçete teşhisi sadece I25.1, reçete açıklamasında MI/kalp krizi
+    ibaresi de YOK → Y-2 tanı atomları hepsi YOK → UYGUN_DEGIL.
+    """
+    r = kontrol_klopidogrel(_rec(
+        'Hasta tedavi takibinde.',
+        recete_teshisleri=['I25.1'],
+        doktor_uzmanligi='Acil Tıp',
+    ))
+    print(f'[T23 I25-KLINIK-KANIT-YOK] {_ozet(r)}')
+    assert r.sonuc == KontrolSonucu.UYGUN_DEGIL, \
+        'Sadece I25.1 + klinik kanıt yok → UYGUN_DEGIL bekleniyordu'
+
+
+def test_brilinta_turkce_i_dispatch():
+    """Kullanıcı kuralı 2026-05-17: Bazı BRILINTA satırları klopidogrel
+    şeması veriyordu çünkü _klop_etken_tespit Türkçe 'BRİLİNTA' yazımını
+    yakalayamıyordu (İ.upper() = İ kalıyor, 'BRILINTA' substring False).
+    _tr_lower ASCII normalize sonrası TIKAGRELOR'a düşmeli.
+    """
+    # Türkçe karakterli yazım — eski kodda KLOPIDOGREL'e düşüyordu
+    r = kontrol_klopidogrel(_rec(
+        'STEMI tanisi, EKG ST yukselmesi, troponin pozitif. Fibrinolitik yok. '
+        'Varfarin altinda degil.',
+        ilac_adi='BRİLİNTA 90MG 56 FİLM TABLET',  # Türkçe İ ile
+        etkin_madde='',  # etken madde boş — sadece ilaç adından tespit
+        recete_teshisleri=['I21.0'],
+        doktor_uzmanligi='Kardiyoloji',
+    ))
+    print(f'[T25 BRILINTA-TR-I] sut_maddesi={r.detaylar.get("sut_maddesi")}')
+    assert r.detaylar.get('sut_maddesi') == '4.2.15.E', \
+        f'BRİLİNTA (Türkçe İ) Tikagrelor şemasına düşmeli, gelen: {r.detaylar.get("sut_maddesi")}'
+
+
+def test_planor_klopidogrel_jenerigi_dispatch():
+    """3J625IZ KAHRAMAN BIYIK vakası (2026-05-17): PLANOR 75MG klopidogrel
+    jeneriği; etken madde DB'de KLOPİDOGREL. Yanlışlıkla TIKAG_KEYS'e
+    eklenmişti — Tikagrelor şemasına düşüyordu. Default KLOPIDOGREL'e
+    düşmeli.
+    """
+    r = kontrol_klopidogrel(_rec(
+        'Koroner anjiografi yapildi. KAH belgelenmis.',
+        ilac_adi='PLANOR 75MG 28 FILM TABLET',
+        etkin_madde='KLOPIDOGREL',
+        rapor_kodu='04.02.1',
+        recete_teshisleri=['I25.9'],
+        rapor_dr_brans='Kardiyoloji',
+        doktor_uzmanligi='Pratisyen Hekim',
+    ))
+    print(f'[T27 PLANOR-KLOP] sut_maddesi={r.detaylar.get("sut_maddesi")}')
+    assert r.detaylar.get('sut_maddesi') == '4.2.15.A', \
+        ('PLANOR klopidogrel jeneriğidir, Y-1..Y-4 (4.2.15.A) şemasına '
+         f'düşmeli, gelen: {r.detaylar.get("sut_maddesi")}')
+
+
+def test_brilique_marka_varyanti_dispatch():
+    """BRILIQUE markası (ECP) için TIKAGRELOR şeması çıkmalı."""
+    r = kontrol_klopidogrel(_rec(
+        'STEMI, EKG ST yukselmesi, troponin pozitif. Fibrinolitik yok. '
+        'Varfarin altinda degil.',
+        ilac_adi='BRILIQUE 90MG TABLET',
+        etkin_madde='TICAGRELOR',  # yabancı yazım
+        recete_teshisleri=['I21.0'],
+        doktor_uzmanligi='Kardiyoloji',
+    ))
+    print(f'[T26 BRILIQUE-TICAGRELOR] sut_maddesi={r.detaylar.get("sut_maddesi")}')
+    assert r.detaylar.get('sut_maddesi') == '4.2.15.E', \
+        f'BRILIQUE/TICAGRELOR Tikagrelor şemasına düşmeli, gelen: {r.detaylar.get("sut_maddesi")}'
+
+
+def test_i21_9_lokalizasyon_belirsiz_nstemi_varsayim():
+    """Kullanıcı kuralı 2026-05-17 (güncellendi): I21.9 lokalizasyon belirsiz
+    akut MI — STEMI lafzı yokken NSTEMI varsayım olarak atomda VAR sayılır
+    (genel MI lafzı + AKS üzerinden). STEMI atomunda YOK olmalı; iki tanı
+    aynı anda VAR olamaz (mutually exclusive)."""
+    r = kontrol_klopidogrel(_rec(
+        'Akut koroner sendrom, hasta hastaneye yatırıldı.',
+        recete_teshisleri=['I21.9'],  # tanımlanmamış akut MI
+        doktor_uzmanligi='Kardiyoloji',
+    ))
+    print(f'[T24 I21-9-NSTEMI-VARSAYIM] {_ozet(r)}')
+    nstemi = next((s for s in r.sartlar
+                    if s.ad == 'NSTEMI (ST yükselmesiz MI)'), None)
+    stemi = next((s for s in r.sartlar
+                   if s.ad == 'STEMI (ST yükselmeli MI)'), None)
+    assert nstemi and nstemi.durum.value == 'var', \
+        'I21.9 lokalizasyon belirsiz + AKS lafzı → NSTEMI varsayım VAR olmalı'
+    assert stemi and stemi.durum.value == 'yok', \
+        'STEMI lafzı yok, I21.9 STEMI sayılmaz (mutually exclusive)'
+
+
 if __name__ == '__main__':
     testler = [
         test_y1_stent_uygun,
@@ -398,6 +517,12 @@ if __name__ == '__main__':
         test_hayri_musaoglu_anjigrafik_yazim,
         test_anjio_tarihi_atomu_sema,
         test_aile_hekimi_ilk_24_ay,
+        test_i25_sadece_recete_aciklamasinda_mi,
+        test_i25_sadece_klinik_kanit_yok,
+        test_brilinta_turkce_i_dispatch,
+        test_brilique_marka_varyanti_dispatch,
+        test_planor_klopidogrel_jenerigi_dispatch,
+        test_i21_9_lokalizasyon_belirsiz_nstemi_varsayim,
     ]
     basari = 0
     hata = 0

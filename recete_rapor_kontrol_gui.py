@@ -1637,6 +1637,220 @@ class MedulaBaglanti:
         return gecmis
 
 
+class MultiSelectDonemDropdown(tk.Frame):
+    """Checkbox'lı popup açan çoklu dönem seçim widget'ı.
+
+    Bir butona benzer şekilde davranır; tıklayınca açılır panelde her dönemin
+    yanında onay kutusu çıkar. Seçili dönem sayısına göre buton etiketi
+    'YYYY Ay' (tek) ya da 'YYYY Ay  +N' (çoklu) formatında güncellenir.
+    on_change callback'i seçim değiştikçe tetiklenir.
+    """
+
+    def __init__(self, parent, donemler, varsayilan=None, on_change=None, **btn_kwargs):
+        try:
+            pbg = parent.cget("bg")
+        except Exception:
+            pbg = None
+        if pbg:
+            super().__init__(parent, bg=pbg)
+        else:
+            super().__init__(parent)
+
+        self.donemler = list(donemler)
+        self.on_change = on_change
+
+        if varsayilan is None:
+            self.secili = [self.donemler[0]] if self.donemler else []
+        elif isinstance(varsayilan, (list, tuple, set)):
+            self.secili = [d for d in self.donemler if d in varsayilan]
+            if not self.secili and self.donemler:
+                self.secili = [self.donemler[0]]
+        else:
+            self.secili = ([varsayilan] if varsayilan in self.donemler
+                           else ([self.donemler[0]] if self.donemler else []))
+
+        defaults = dict(font=("Segoe UI", 9), relief="sunken",
+                        bg="white", fg="black", bd=1, cursor="hand2")
+        defaults.update(btn_kwargs)
+        self._buton = tk.Button(self, text=self._etiket(),
+                                 command=self._popup_toggle, **defaults)
+        self._buton.pack(fill="both", expand=True)
+        self._popup = None
+        self._popup_varlari = {}
+        self._global_click_funcid = None
+
+    def _etiket(self):
+        if not self.secili:
+            return "Dönem seç... ▼"
+        if len(self.secili) == 1:
+            return f"{self.secili[0]}  ▼"
+        return f"{self.secili[0]}  +{len(self.secili) - 1}  ▼"
+
+    def _popup_toggle(self):
+        if self._popup is not None and self._popup.winfo_exists():
+            self._popup_kapat()
+            return
+        self._popup_ac()
+
+    def _popup_ac(self):
+        x = self._buton.winfo_rootx()
+        y = self._buton.winfo_rooty() + self._buton.winfo_height()
+        popup = tk.Toplevel(self)
+        popup.wm_overrideredirect(True)
+        popup.geometry(f"+{x}+{y}")
+        popup.configure(bg="#37474F", bd=1, relief="solid",
+                         highlightbackground="#90CAF9", highlightthickness=1)
+        try:
+            popup.transient(self.winfo_toplevel())
+        except Exception:
+            pass
+        try:
+            popup.attributes("-topmost", True)
+        except Exception:
+            pass
+
+        tk.Label(popup, text="Dönem seçin (çoklu)",
+                 font=("Segoe UI", 9, "bold"),
+                 fg="#FFFFFF", bg="#263238", anchor="w",
+                 padx=8, pady=3).pack(fill="x")
+
+        self._popup_varlari = {}
+        for d in self.donemler:
+            var = tk.BooleanVar(value=(d in self.secili))
+            self._popup_varlari[d] = var
+            tk.Checkbutton(popup, text=d, variable=var, anchor="w",
+                           bg="#37474F", fg="#FFFFFF",
+                           selectcolor="#263238",
+                           activebackground="#455A64",
+                           activeforeground="#FFFFFF",
+                           font=("Segoe UI", 9), padx=8,
+                           command=lambda dd=d, vv=var: self._toggle(dd, vv)
+                           ).pack(fill="x", padx=2, pady=1)
+
+        alt = tk.Frame(popup, bg="#263238")
+        alt.pack(fill="x")
+        tk.Button(alt, text="Tümünü Seç", font=("Segoe UI", 8),
+                  fg="white", bg="#1565C0", activebackground="#0D47A1",
+                  bd=0, padx=8, pady=2, command=self._tumunu_sec
+                  ).pack(side="left", padx=4, pady=3)
+        tk.Button(alt, text="Temizle", font=("Segoe UI", 8),
+                  fg="white", bg="#6A1B9A", activebackground="#4A148C",
+                  bd=0, padx=8, pady=2, command=self._temizle
+                  ).pack(side="left", padx=4, pady=3)
+        tk.Button(alt, text="Kapat", font=("Segoe UI", 8),
+                  fg="white", bg="#37474F", activebackground="#263238",
+                  bd=0, padx=8, pady=2, command=self._popup_kapat
+                  ).pack(side="right", padx=4, pady=3)
+
+        self._popup = popup
+        # Popup açık dururken: dışarıya tıklayınca kapat (after_idle ile bind
+        # edildi ki popup'ı açan ilk tıklama tetiklemesin). Escape ile de
+        # kapatılabilir.
+        popup.bind("<Escape>", lambda e: self._popup_kapat())
+        try:
+            popup.focus_set()
+        except Exception:
+            pass
+        self.after_idle(self._global_click_bind)
+
+    def _global_click_bind(self):
+        try:
+            self._global_click_funcid = self.winfo_toplevel().bind(
+                "<Button-1>", self._on_global_click, add="+"
+            )
+        except Exception:
+            self._global_click_funcid = None
+
+    def _on_global_click(self, event):
+        """Popup açıkken: tıklama popup veya butonu içinde değilse kapat."""
+        if self._popup is None:
+            return
+        try:
+            x, y = event.x_root, event.y_root
+            # Popup bbox
+            px, py = self._popup.winfo_rootx(), self._popup.winfo_rooty()
+            pw, ph = self._popup.winfo_width(), self._popup.winfo_height()
+            if px <= x <= px + pw and py <= y <= py + ph:
+                return  # popup içine tıklandı
+            # Dropdown butonu bbox (butona tıklamak _popup_toggle ile zaten
+            # işleniyor; biz burada kapatırsak çakışır)
+            bx, by = self._buton.winfo_rootx(), self._buton.winfo_rooty()
+            bw, bh = self._buton.winfo_width(), self._buton.winfo_height()
+            if bx <= x <= bx + bw and by <= y <= by + bh:
+                return
+        except Exception:
+            pass
+        self._popup_kapat()
+
+    def _popup_kapat(self, *args):
+        if self._global_click_funcid:
+            try:
+                self.winfo_toplevel().unbind("<Button-1>", self._global_click_funcid)
+            except Exception:
+                pass
+            self._global_click_funcid = None
+        if self._popup is not None:
+            try:
+                if self._popup.winfo_exists():
+                    self._popup.destroy()
+            except Exception:
+                pass
+            self._popup = None
+        self._popup_varlari = {}
+
+    def _toggle(self, donem, var):
+        if var.get():
+            if donem not in self.secili:
+                # Orijinal sırada tut
+                self.secili = [d for d in self.donemler
+                               if d in self.secili or d == donem]
+        else:
+            self.secili = [d for d in self.secili if d != donem]
+        # En az bir dönem zorunlu
+        if not self.secili and self.donemler:
+            self.secili = [donem]
+            var.set(True)
+        self._buton.config(text=self._etiket())
+        if self.on_change:
+            try:
+                self.on_change(list(self.secili))
+            except Exception:
+                pass
+
+    def _tumunu_sec(self):
+        self.secili = list(self.donemler)
+        for var in self._popup_varlari.values():
+            var.set(True)
+        self._buton.config(text=self._etiket())
+        if self.on_change:
+            try:
+                self.on_change(list(self.secili))
+            except Exception:
+                pass
+
+    def _temizle(self):
+        ilk = self.donemler[0] if self.donemler else None
+        self.secili = [ilk] if ilk else []
+        for d, var in self._popup_varlari.items():
+            var.set(d == ilk)
+        self._buton.config(text=self._etiket())
+        if self.on_change:
+            try:
+                self.on_change(list(self.secili))
+            except Exception:
+                pass
+
+    def get_secilenler(self):
+        return list(self.secili)
+
+    def set_secilenler(self, donemler):
+        valid = [d for d in self.donemler if d in donemler]
+        if not valid and self.donemler:
+            valid = [self.donemler[0]]
+        self.secili = valid
+        self._buton.config(text=self._etiket())
+
+
 class ReceteRaporKontrolGUI:
     """Reçete/Rapor Kontrol ana ekranı"""
 
@@ -1662,6 +1876,7 @@ class ReceteRaporKontrolGUI:
         self.kontrol_aktif = False
         self.aktif_grup = None
         self._subprocess_proc = None
+        self._coklu_donem_iptal = False
 
         # Escape kısayolu - taramayı durdur
         self.root.bind_all("<Escape>", lambda e: self._taramayi_durdur())
@@ -1878,13 +2093,16 @@ class ReceteRaporKontrolGUI:
                        "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"][ay]
             aylar.append(f"{yil} {ay_adi}")
 
+        # Dönem seçimi — çoklu seçim destekli (checkbox'lı açılır liste).
+        # self.donem_var, eski tek-dönem akışlarıyla geri uyum için tutulur ve
+        # her zaman seçili dönemlerin ilkini gösterir. Çoklu dönem ihtiyacı
+        # olan yerler self.donem_widget.get_secilenler() kullanır.
         self.donem_var = tk.StringVar(value=aylar[0])
-        donem_combo = ttk.Combobox(
-            ay_frame, textvariable=self.donem_var,
-            values=aylar, state="readonly", width=14,
-            font=("Segoe UI", 9)
+        self.donem_widget = MultiSelectDonemDropdown(
+            ay_frame, aylar, varsayilan=aylar[0],
+            on_change=self._donemler_degisti, width=18,
         )
-        donem_combo.pack(side="left", padx=3, pady=3)
+        self.donem_widget.pack(side="left", padx=3, pady=3)
 
         # Ayırıcı
         tk.Frame(icerik_frame, bg="#3D5A80", height=2).pack(fill="x", pady=3)
@@ -2761,110 +2979,137 @@ class ReceteRaporKontrolGUI:
                 try: pythoncom.CoInitialize()
                 except Exception: pass
             try:
-                for index, grup in enumerate(GRUP_TANIMLARI):
-                    if self._tumu_iptal:
-                        break
-                    # _tumu_grup_index: ilk grup (0) için --devam, sonrakiler için --bastan
-                    self._tumu_grup_index = index
-                    grup_kodu = grup["kod"]
-                    grup_adi = grup.get("ad", grup_kodu)
-
-                    # Bu grup için recovery döngüsü.
-                    # Kritik hata gelirse: Medula taskkill + yeniden aç + login,
-                    # ardından kaldığı reçeteden (--devam) tekrar başla.
-                    self._tumu_recovery_devam = False  # ilk denemede normal akış
-                    recovery_sayaci = 0
-                    grup_basarili = False
-
-                    while not self._tumu_iptal and recovery_sayaci <= MAX_RECOVERY:
-                        # Grup başında kritik hata flag'ini ve reçete sayacını sıfırla.
-                        # Subprocess çıktısı bu değerleri set eder; deneme sonrası kontrol ederiz.
-                        self._tumu_son_grup_hata = None
-                        self._tumu_son_grup_recete_sayisi = 0
-                        self._tumu_son_grup_bos_normal = False
-
-                        bitti_evt = threading.Event()
-                        self.root.after(
-                            0,
-                            lambda gk=grup_kodu, evt=bitti_evt:
-                                self._grup_kontrol_baslat(gk, bittiginde=evt.set),
-                        )
-
-                        # Subprocess'in başlama + bitişini bekle.
-                        # Her 0.5 sn'de bir iptal kontrolü.
-                        while not bitti_evt.is_set() and not self._tumu_iptal:
-                            time.sleep(0.5)
-
+                # Çoklu dönem: dış döngü dönemlerin üzerinden geçer; her dönem
+                # için donem_var güncellenir (subprocess donem_var.get()'ten
+                # offset hesapladığı için bu yeterli). _grup_dongusu() bir
+                # dönem içinde tüm grupları işler — hard-stop durumunda False
+                # döner ve dış döngü kırılır.
+                def _grup_dongusu():
+                    for index, grup in enumerate(GRUP_TANIMLARI):
                         if self._tumu_iptal:
-                            self.root.after(0, lambda ga=grup_adi: self.log_yaz(
-                                f"TÜMÜNÜ iptal edildi ({ga} sırasında)", "warning"))
-                            break
+                            return False
+                        # _tumu_grup_index: ilk grup (0) için --devam, sonrakiler için --bastan
+                        self._tumu_grup_index = index
+                        grup_kodu = grup["kod"]
+                        grup_adi = grup.get("ad", grup_kodu)
 
-                        hata_mesaji = getattr(self, "_tumu_son_grup_hata", None)
-                        recete_sayisi = getattr(self, "_tumu_son_grup_recete_sayisi", 0)
-                        bos_normal = getattr(self, "_tumu_son_grup_bos_normal", False)
+                        # Bu grup için recovery döngüsü.
+                        # Kritik hata gelirse: Medula taskkill + yeniden aç + login,
+                        # ardından kaldığı reçeteden (--devam) tekrar başla.
+                        self._tumu_recovery_devam = False  # ilk denemede normal akış
+                        recovery_sayaci = 0
+                        grup_basarili = False
 
-                        # 1) Kritik hata varsa: Medula recovery + aynı gruba --devam ile retry
-                        if hata_mesaji:
-                            recovery_sayaci += 1
-                            if recovery_sayaci > MAX_RECOVERY:
-                                self.root.after(0, lambda h=hata_mesaji, ga=grup_adi: self.log_yaz(
-                                    f"⚠ {ga}: {MAX_RECOVERY} kurtarma denemesi başarısız ({h}) — TÜMÜNÜ durduruldu",
-                                    "error"))
+                        while not self._tumu_iptal and recovery_sayaci <= MAX_RECOVERY:
+                            # Grup başında kritik hata flag'ini ve reçete sayacını sıfırla.
+                            # Subprocess çıktısı bu değerleri set eder; deneme sonrası kontrol ederiz.
+                            self._tumu_son_grup_hata = None
+                            self._tumu_son_grup_recete_sayisi = 0
+                            self._tumu_son_grup_bos_normal = False
+
+                            bitti_evt = threading.Event()
+                            self.root.after(
+                                0,
+                                lambda gk=grup_kodu, evt=bitti_evt:
+                                    self._grup_kontrol_baslat(gk, bittiginde=evt.set),
+                            )
+
+                            # Subprocess'in başlama + bitişini bekle.
+                            # Her 0.5 sn'de bir iptal kontrolü.
+                            while not bitti_evt.is_set() and not self._tumu_iptal:
+                                time.sleep(0.5)
+
+                            if self._tumu_iptal:
+                                self.root.after(0, lambda ga=grup_adi: self.log_yaz(
+                                    f"TÜMÜNÜ iptal edildi ({ga} sırasında)", "warning"))
+                                return False
+
+                            hata_mesaji = getattr(self, "_tumu_son_grup_hata", None)
+                            recete_sayisi = getattr(self, "_tumu_son_grup_recete_sayisi", 0)
+                            bos_normal = getattr(self, "_tumu_son_grup_bos_normal", False)
+
+                            # 1) Kritik hata varsa: Medula recovery + aynı gruba --devam ile retry
+                            if hata_mesaji:
+                                recovery_sayaci += 1
+                                if recovery_sayaci > MAX_RECOVERY:
+                                    self.root.after(0, lambda h=hata_mesaji, ga=grup_adi: self.log_yaz(
+                                        f"⚠ {ga}: {MAX_RECOVERY} kurtarma denemesi başarısız ({h}) — TÜMÜNÜ durduruldu",
+                                        "error"))
+                                    return False
+                                self.root.after(0, lambda h=hata_mesaji, ga=grup_adi, n=recovery_sayaci:
+                                    self.log_yaz(
+                                        f"⚠ {ga} kritik hata ({h}) — Medula yeniden açılıyor "
+                                        f"(deneme {n}/{MAX_RECOVERY})", "warning"))
+                                # taskkill + exe yeniden başlat + login
+                                try:
+                                    kurtuldu = self.medula.medula_oturum_kurtarma()
+                                except Exception as ex:
+                                    self.root.after(0, lambda e=ex: self.log_yaz(
+                                        f"Medula kurtarma istisna: {e}", "error"))
+                                    kurtuldu = False
+                                if not kurtuldu:
+                                    self.root.after(0, lambda: self.log_yaz(
+                                        "Medula kurtarma başarısız — bekleniyor 5 sn ve tekrar denenecek",
+                                        "warning"))
+                                    time.sleep(5)
+                                # Recovery sonrası mutlaka --devam: kaldığı reçeteden başla
+                                self._tumu_recovery_devam = True
+                                continue  # while döngüsünde tekrar dene
+
+                            # 2) Boş grup (Medula "Reçete kaydı bulunamadı") → sıradaki gruba geç
+                            if bos_normal and recete_sayisi == 0:
+                                self.root.after(0, lambda ga=grup_adi: self.log_yaz(
+                                    f"  {ga} grubu boş ('Reçete kaydı bulunamadı.') — sonraki gruba geçiliyor",
+                                    "info"))
+                                grup_basarili = True
                                 break
-                            self.root.after(0, lambda h=hata_mesaji, ga=grup_adi, n=recovery_sayaci:
-                                self.log_yaz(
-                                    f"⚠ {ga} kritik hata ({h}) — Medula yeniden açılıyor "
-                                    f"(deneme {n}/{MAX_RECOVERY})", "warning"))
-                            # taskkill + exe yeniden başlat + login
-                            try:
-                                kurtuldu = self.medula.medula_oturum_kurtarma()
-                            except Exception as ex:
-                                self.root.after(0, lambda e=ex: self.log_yaz(
-                                    f"Medula kurtarma istisna: {e}", "error"))
-                                kurtuldu = False
-                            if not kurtuldu:
-                                self.root.after(0, lambda: self.log_yaz(
-                                    "Medula kurtarma başarısız — bekleniyor 5 sn ve tekrar denenecek",
-                                    "warning"))
-                                time.sleep(5)
-                            # Recovery sonrası mutlaka --devam: kaldığı reçeteden başla
-                            self._tumu_recovery_devam = True
-                            continue  # while döngüsünde tekrar dene
 
-                        # 2) Boş grup (Medula "Reçete kaydı bulunamadı") → sıradaki gruba geç
-                        if bos_normal and recete_sayisi == 0:
-                            self.root.after(0, lambda ga=grup_adi: self.log_yaz(
-                                f"  {ga} grubu boş ('Reçete kaydı bulunamadı.') — sonraki gruba geçiliyor",
-                                "info"))
+                            # 3) 0 reçete + kritik hata yok + boş normal değil:
+                            #    Medula açıkta ama bir şey okunmamış. Recovery dene.
+                            if recete_sayisi == 0:
+                                recovery_sayaci += 1
+                                if recovery_sayaci > MAX_RECOVERY:
+                                    self.root.after(0, lambda ga=grup_adi: self.log_yaz(
+                                        f"⚠ {ga}: {MAX_RECOVERY} denemede 0 reçete işlendi — TÜMÜNÜ durduruldu",
+                                        "warning"))
+                                    return False
+                                self.root.after(0, lambda ga=grup_adi, n=recovery_sayaci: self.log_yaz(
+                                    f"⚠ {ga}: 0 reçete işlendi — Medula yeniden açılıyor "
+                                    f"(deneme {n}/{MAX_RECOVERY})", "warning"))
+                                try:
+                                    self.medula.medula_oturum_kurtarma()
+                                except Exception:
+                                    pass
+                                self._tumu_recovery_devam = True
+                                continue
+
+                            # 4) Başarılı: bir sonraki gruba geç
                             grup_basarili = True
                             break
 
-                        # 3) 0 reçete + kritik hata yok + boş normal değil:
-                        #    Medula açıkta ama bir şey okunmamış. Recovery dene.
-                        if recete_sayisi == 0:
-                            recovery_sayaci += 1
-                            if recovery_sayaci > MAX_RECOVERY:
-                                self.root.after(0, lambda ga=grup_adi: self.log_yaz(
-                                    f"⚠ {ga}: {MAX_RECOVERY} denemede 0 reçete işlendi — TÜMÜNÜ durduruldu",
-                                    "warning"))
-                                break
-                            self.root.after(0, lambda ga=grup_adi, n=recovery_sayaci: self.log_yaz(
-                                f"⚠ {ga}: 0 reçete işlendi — Medula yeniden açılıyor "
-                                f"(deneme {n}/{MAX_RECOVERY})", "warning"))
-                            try:
-                                self.medula.medula_oturum_kurtarma()
-                            except Exception:
-                                pass
-                            self._tumu_recovery_devam = True
-                            continue
+                        if not grup_basarili and not self._tumu_iptal:
+                            # MAX_RECOVERY aşıldı — TÜMÜNÜ'yü durdur
+                            return False
+                    return True
 
-                        # 4) Başarılı: bir sonraki gruba geç
-                        grup_basarili = True
+                donemler = self._secilen_donemler() or [self.donem_var.get()]
+                coklu_donem = len(donemler) > 1
+                if coklu_donem:
+                    self.root.after(0, lambda dl=donemler: self.log_yaz(
+                        f"Çoklu dönem aktif: {', '.join(dl)}", "info"))
+                for donem_idx, donem in enumerate(donemler, 1):
+                    if self._tumu_iptal:
                         break
-
-                    if not grup_basarili and not self._tumu_iptal:
-                        # MAX_RECOVERY aşıldı — TÜMÜNÜ'yü durdur
+                    # Her dönem başında donem_var'ı güncelle (subprocess offset
+                    # bunu okur). UI thread'inden set, kısa bir bekleme ile uygulanır.
+                    self.root.after(0, lambda d=donem: self.donem_var.set(d))
+                    time.sleep(0.15)
+                    if coklu_donem:
+                        self.root.after(
+                            0,
+                            lambda d=donem, i=donem_idx, n=len(donemler): self.log_yaz(
+                                f"════ DÖNEM {i}/{n}: {d} ════", "header"))
+                    if not _grup_dongusu():
                         break
             finally:
                 self._tumu_aktif = False
@@ -3941,6 +4186,8 @@ class ReceteRaporKontrolGUI:
         # TÜMÜNÜ modundaysa: iptal flag'ı set et (loop görsün)
         if getattr(self, "_tumu_aktif", False):
             self._tumu_iptal = True
+        # Çoklu dönem akışındaysa onu da iptal et (dış dönem döngüsünden çıkar)
+        self._coklu_donem_iptal = True
 
         if not self.kontrol_aktif:
             return
@@ -4032,8 +4279,63 @@ class ReceteRaporKontrolGUI:
         """Grup butonu toggle - basınca başlat, tekrar basınca durdur"""
         if self.kontrol_aktif and self.aktif_grup == grup_kodu:
             self._taramayi_durdur()
+            self._coklu_donem_iptal = True
         elif not self.kontrol_aktif:
-            self._grup_kontrol_baslat(grup_kodu)
+            donemler = self._secilen_donemler()
+            if len(donemler) <= 1:
+                # Tek dönem: mevcut akışı koru (donem_var doğru ayarlı)
+                self._grup_kontrol_baslat(grup_kodu)
+            else:
+                self._grup_donemler_calistir(grup_kodu, donemler)
+
+    def _grup_donemler_calistir(self, grup_kodu, donemler):
+        """Tek grup için birden fazla dönemi sırayla işle.
+
+        Her dönem öncesinde self.donem_var güncellenir; subprocess akışı
+        donem_var.get() üzerinden offset hesapladığı için doğru dönem seçilir.
+        Excel raporu her dönem için ayrı dosya olarak yazılır (mevcut
+        Kontrol_Raporu_<grup>_<donem>.xlsx adlandırması otomatik çalışır).
+        """
+        self._coklu_donem_iptal = False
+        grup_adi = next((g["ad"] for g in GRUP_TANIMLARI
+                         if g["kod"] == grup_kodu), grup_kodu)
+
+        def thread_fn():
+            self.root.after(0, lambda: self.log_yaz(
+                f"{'═' * 50}", "header"))
+            self.root.after(0, lambda: self.log_yaz(
+                f"{grup_adi}: {len(donemler)} dönem sırayla işlenecek "
+                f"→ {', '.join(donemler)}", "header"))
+            self.root.after(0, lambda: self.log_yaz(
+                f"{'═' * 50}", "header"))
+
+            for idx, donem in enumerate(donemler, 1):
+                if self._coklu_donem_iptal:
+                    self.root.after(0, lambda: self.log_yaz(
+                        "Çoklu dönem kontrolü iptal edildi", "warning"))
+                    break
+
+                # donem_var'ı güncelle (UI thread'inde)
+                self.root.after(0, lambda d=donem: self.donem_var.set(d))
+                # Set'in işlenmesini bekle
+                time.sleep(0.15)
+
+                self.root.after(0, lambda d=donem, i=idx: self.log_yaz(
+                    f"--- Dönem {i}/{len(donemler)}: {d} ---", "header"))
+
+                evt = threading.Event()
+                self.root.after(0, lambda gk=grup_kodu, e=evt:
+                                self._grup_kontrol_baslat(gk, bittiginde=e.set))
+
+                # Subprocess'in bitişini bekle (her 0.5 sn iptal kontrolü)
+                while not evt.is_set() and not self._coklu_donem_iptal:
+                    time.sleep(0.5)
+
+            self.root.after(0, lambda: self.log_yaz(
+                f"Çoklu dönem kontrolü tamamlandı ({len(donemler)} dönem)",
+                "header"))
+
+        threading.Thread(target=thread_fn, daemon=True).start()
 
     def _tumunu_toggle(self):
         """Tümünü Kontrol Et toggle"""
@@ -4322,6 +4624,23 @@ class ReceteRaporKontrolGUI:
         # Offset = bu ay - seçilen ay (ay farkı)
         offset = (bugun.year * 12 + bugun.month) - (secilen_yil * 12 + secilen_ay)
         return max(0, offset)
+
+    def _donemler_degisti(self, secilenler):
+        """Çoklu dönem widget'ı değiştiğinde — donem_var (compat shim)
+        her zaman seçili dönemlerin ilkini gösterir."""
+        if secilenler:
+            self.donem_var.set(secilenler[0])
+
+    def _secilen_donemler(self):
+        """Aktif çoklu dönem seçimini döndür. Widget hazır değilse donem_var
+        tek elemanlı listeye fallback eder."""
+        w = getattr(self, "donem_widget", None)
+        if w is not None:
+            secilen = w.get_secilenler()
+            if secilen:
+                return secilen
+        deger = self.donem_var.get()
+        return [deger] if deger else []
 
     def _grup_kontrol_islemi(self, grup_kodu):
         """

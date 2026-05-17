@@ -8,9 +8,11 @@ Senaryolar mevzuat lafzından türetildi (docs/sut/SUT_tam_metin.txt:7793-7800):
 - Kati sınırlar: > 500 ve > 200 (= değil)
 
 Beklenen sonuç tipleri:
-  uygun         → tüm şartlar VAR
+  sartli_uygun  → tüm hesaplanabilir şartlar VAR, sadece T1 (6 ay ara) KE
+                  — eczacı manuel doğrulayınca kesin UYGUN olur
+                  (2026-05-16: T1 atomu eklendi, SARTLI_UYGUN dönüş yolu)
   uygun_degil   → ≥1 zorunlu grup YOK
-  kontrol_edilemedi → ≥1 grup KE (manuel doğrulama)
+  kontrol_edilemedi → ≥1 hesaplanabilir grup KE (manuel doğrulama)
 """
 import sys
 import io
@@ -24,7 +26,7 @@ SENARYOLAR = [
     # ── Yol-a (TG > 500) ─────────────────────────────────────────
     {
         'ad': 'Yol-a UYGUN — TG=620 + Kardiyo',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {
             'ilac_adi': 'LIPANTHYL 200 MG',
             'rapor_kodu': '04.08',
@@ -34,7 +36,7 @@ SENARYOLAR = [
     },
     {
         'ad': 'Yol-a UYGUN — Trigliserit 510 + Nöroloji',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {
             'ilac_adi': 'LOPID 600 MG',
             'rapor_kodu': '',
@@ -56,7 +58,7 @@ SENARYOLAR = [
     # ── Yol-b (TG > 200 + KV hastalık ≥1) ────────────────────────
     {
         'ad': 'Yol-b UYGUN — TG=350 + DM + İç hast.',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {
             'ilac_adi': 'LIPANTHYL 200 MG',
             'rapor_kodu': '04.08',
@@ -67,7 +69,7 @@ SENARYOLAR = [
     },
     {
         'ad': 'Yol-b UYGUN — TG=260 + AKS (yeni atom) + KVC',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {
             'ilac_adi': 'LOPID 600 MG',
             'rapor_kodu': '04.08',
@@ -77,7 +79,7 @@ SENARYOLAR = [
     },
     {
         'ad': 'Yol-b UYGUN — TG=380 + AAA (yeni atom) + Endokrin',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {
             'ilac_adi': 'LIPANTHYL 200 MG',
             'rapor_kodu': '04.08',
@@ -87,7 +89,7 @@ SENARYOLAR = [
     },
     {
         'ad': 'Yol-b UYGUN — TG=240 + Karotid (yeni atom) + Nöro',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {
             'ilac_adi': 'LIPANTHYL 200 MG',
             'rapor_kodu': '04.08',
@@ -140,7 +142,7 @@ SENARYOLAR = [
     },
     {
         'ad': 'Branş bilinmiyor + rapor_kodu 04.02 → UYGUN (medula otoritesi)',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {
             'ilac_adi': 'LIPANTHYL 200 MG',
             'rapor_kodu': '04.02',
@@ -184,35 +186,35 @@ SENARYOLAR = [
     # ── 5 uzman branş ayrı ayrı doğrula ──────────────────────────
     {
         'ad': 'Branş 1/5 KARDIYO',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {'ilac_adi': 'LIPANTHYL 200 MG', 'rapor_kodu': '04.08',
                  'doktor_uzmanligi': 'KARDIYOLOJI',
                  'rapor_aciklamalari': ['TG: 620']},
     },
     {
         'ad': 'Branş 2/5 KVC',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {'ilac_adi': 'LIPANTHYL 200 MG', 'rapor_kodu': '04.08',
                  'doktor_uzmanligi': 'KALP VE DAMAR CERRAHISI',
                  'rapor_aciklamalari': ['TG: 620']},
     },
     {
         'ad': 'Branş 3/5 ENDOKRIN',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {'ilac_adi': 'LIPANTHYL 200 MG', 'rapor_kodu': '04.08',
                  'doktor_uzmanligi': 'ENDOKRINOLOJI',
                  'rapor_aciklamalari': ['TG: 620']},
     },
     {
         'ad': 'Branş 4/5 İÇ HAST.',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {'ilac_adi': 'LIPANTHYL 200 MG', 'rapor_kodu': '04.08',
                  'doktor_uzmanligi': 'IC HASTALIKLARI',
                  'rapor_aciklamalari': ['TG: 620']},
     },
     {
         'ad': 'Branş 5/5 NÖROLOJİ',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {'ilac_adi': 'LIPANTHYL 200 MG', 'rapor_kodu': '04.08',
                  'doktor_uzmanligi': 'NOROLOJI',
                  'rapor_aciklamalari': ['TG: 620']},
@@ -221,7 +223,7 @@ SENARYOLAR = [
     # ── ICD tabanlı KV hastalık ──────────────────────────────────
     {
         'ad': 'ICD I21 (Mİ) + TG=300 → Yol-b UYGUN',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {
             'ilac_adi': 'LIPANTHYL 200 MG',
             'rapor_kodu': '04.08',
@@ -232,7 +234,7 @@ SENARYOLAR = [
     },
     {
         'ad': 'ICD I63 (inme) + TG=210 → Yol-b UYGUN',
-        'beklenen': 'uygun',
+        'beklenen': 'sartli_uygun',
         'ilac': {
             'ilac_adi': 'LIPANTHYL 200 MG',
             'rapor_kodu': '04.08',

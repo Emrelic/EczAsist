@@ -33,6 +33,13 @@ class Baglam:
         self.metin_lower: str = (_sk._tr_lower(self.birlesik_metin)
                                  if self.birlesik_metin else '')
 
+        # Geçmiş rapor verileri (FERİDE EGE 3KTNEKA — 2026-05-16):
+        # GUI önceki raporları toplar; statin/fibrat kalıbı: KV risk faktörleri
+        # aktif raporda olmasa bile geçmiş raporlardan tespit edilebilir.
+        self.diger_icd: List[str] = self.ham.get('diger_raporlar_icd') or []
+        self.diger_rapor_metinleri: List[str] = (
+            self.ham.get('diger_rapor_metinleri') or [])
+
         # Helper kısayolları (atomlar bu kanaldan kullanır)
         self._sk = _sk
 

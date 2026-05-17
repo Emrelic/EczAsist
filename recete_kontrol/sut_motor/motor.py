@@ -181,7 +181,8 @@ def _node_calistir(node: Dict, baglam: Baglam,
             sartlar.append(SartSonuc(
                 ad=ad, durum=durum, neden=sonuc.neden,
                 kaynak=node.get('kaynak', ''),
-                grup=grup, veya_grubu=veya))
+                grup=grup, veya_grubu=veya,
+                sartli_atom=bool(node.get('sartli_atom'))))
         return durum
 
     tip = node.get('tip', 'AND').upper()
@@ -296,7 +297,29 @@ def degerlendir(kural: Dict, ilac_sonuc: Dict) -> KontrolRaporu:
     ke_gruplar = sorted({s.grup for s in sartlar
                          if s.durum == SartDurumu.KONTROL_EDILEMEDI and s.grup})
 
+    # Şartlı atomlar: KE + sartli_atom=True (sistem sorgulayamadı, eczacı
+    # manuel doğrularsa kesin UYGUN). Genellikle '(bilgi)' grupta yer alır.
+    # Bu atomlar varsa KE olan tek atom onlar olabilir → SARTLI_UYGUN.
+    sartli_atomlar = [s for s in sartlar
+                      if s.sartli_atom
+                      and s.durum == SartDurumu.KONTROL_EDILEMEDI]
+    # Şartlı olmayan KE atomlar (sistemin gerçekten karar veremediği)
+    sartli_olmayan_ke = [s for s in sartlar
+                         if s.durum == SartDurumu.KONTROL_EDILEMEDI
+                         and not s.sartli_atom]
+
     if kok_durum == SartDurumu.VAR:
+        # Tüm zorunlu şartlar VAR. Şartlı KE varsa SARTLI_UYGUN.
+        if sartli_atomlar:
+            sartli_adlar = [s.ad for s in sartli_atomlar]
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.SARTLI_UYGUN,
+                mesaj=(f"{kural.get('adi', 'SUT')} ŞARTLI UYGUN — sistem "
+                       f"sorgulayamıyor: {', '.join(sartli_adlar)} "
+                       f"(eczacı manuel doğrulamalı)"),
+                sut_kurali=sut_etiketi, detaylar=detaylar, sartlar=sartlar,
+                uyari='Şartlı atom(lar) eczacı tarafından doğrulanmalı',
+                aranan_ibare=aranan)
         return KontrolRaporu(
             sonuc=KontrolSonucu.UYGUN,
             mesaj=f"{kural.get('adi', 'SUT')} şartları sağlanıyor",
@@ -309,6 +332,17 @@ def degerlendir(kural: Dict, ilac_sonuc: Dict) -> KontrolRaporu:
                    + (f" — eksik: {', '.join(eksik_gruplar)}"
                       if eksik_gruplar else '')),
             sut_kurali=sut_etiketi, detaylar=detaylar, sartlar=sartlar,
+            aranan_ibare=aranan)
+    # KE: kök ağaç KE döndü. Tek KE neden 'sartli_atom' ise → SARTLI_UYGUN.
+    if sartli_atomlar and not sartli_olmayan_ke:
+        sartli_adlar = [s.ad for s in sartli_atomlar]
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.SARTLI_UYGUN,
+            mesaj=(f"{kural.get('adi', 'SUT')} ŞARTLI UYGUN — sistem "
+                   f"sorgulayamıyor: {', '.join(sartli_adlar)} "
+                   f"(eczacı manuel doğrulamalı)"),
+            sut_kurali=sut_etiketi, detaylar=detaylar, sartlar=sartlar,
+            uyari='Şartlı atom(lar) eczacı tarafından doğrulanmalı',
             aranan_ibare=aranan)
     return KontrolRaporu(
         sonuc=KontrolSonucu.KONTROL_EDILEMEDI,

@@ -415,6 +415,23 @@ class AnaMenu:
             font=("Arial", 9),
         )
         self.lbl_canli_durum.pack(side="left", padx=(8, 0))
+        # Manuel "şimdi yenile" test butonu — kullanıcı keepalive'ı elle
+        # tetikleyebilsin, hangi yöntemin başardığını log'da görsün.
+        tk.Button(
+            canli_frame,
+            text="🔄 Şimdi Yenile",
+            font=("Arial", 9),
+            bg=self.card_bg,
+            fg=self.fg_color,
+            activebackground=self.header_color,
+            activeforeground=self.fg_color,
+            cursor='hand2',
+            bd=1,
+            relief='ridge',
+            padx=6,
+            pady=2,
+            command=self._medula_simdi_yenile,
+        ).pack(side="left", padx=(8, 0))
 
         # Tema değiştir butonu (sağda, büyük ve belirgin)
         tema = TEMALAR.get(self.aktif_tema, TEMALAR["koyu"])
@@ -1178,6 +1195,34 @@ class AnaMenu:
         modul_pencere.bind('<Destroy>', _geri_getir, add='+')
 
     # ---------------- Medula Canlı Tut ----------------
+    def _medula_simdi_yenile(self):
+        """Manuel keepalive tetikleyici (test/teşhis butonu).
+
+        İki kademeli akışı (PostMessage → foreground+pyautogui) elle tetikler
+        ve hangi yöntemin başardığını log + status bar'a yazar.
+        """
+        try:
+            from medula_oturum_canli import arkaplan_yenile, get_servis
+        except Exception as e:
+            messagebox.showerror("Hata", f"Oturum modülü yüklenemedi:\n{e}")
+            return
+        servis = get_servis()
+        basarili = arkaplan_yenile()
+        yontem = servis._son_yontem or "-"
+        if basarili:
+            logger.info(f"[MANUEL YENİLE] başarılı (yöntem: {yontem})")
+            if self.lbl_canli_durum is not None:
+                self.lbl_canli_durum.config(
+                    text=f"✓ {yontem}", fg="#2E7D32"
+                )
+        else:
+            logger.warning("[MANUEL YENİLE] başarısız — Medula açık mı?")
+            messagebox.showwarning(
+                "Yenileme Başarısız",
+                "Medula penceresi bulunamadı ya da F5 gönderilemedi.\n"
+                "Log'a [OTURUM] satırlarını kontrol et.",
+            )
+
     def _medula_canli_toggle(self):
         """Checkbox değişince MedulaOturumCanli (idle-tabanlı) servisi başlat/durdur."""
         try:
