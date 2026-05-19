@@ -938,6 +938,57 @@ def _hep_bilgi_atom(ad: str, neden: str, grup_baslik: str,
         grup=f'{grup_baslik} (bilgi)', sartli_atom=True)
 
 
+def _hep_baslangic_rapor_db_atom(ilac_sonuc: Dict,
+                                    kategori: str) -> SartSonuc:
+    """Hastanın MEDULA'dan taranmış geçmiş raporlarında, ilgili kategoride
+    (HEPATIT_B / HEPATIT_C / HEPATIT_D) **başlangıç raporu** var mı?
+
+    - Yerel DB'de en eski rapor bulunduysa → VAR (bilgi: tarih + rapor kodu).
+    - DB tamamen boşsa → KE + (bilgi) "Geçmiş Rapor Tara butonuyla tarayın".
+    - DB'de kayıt var ama bu kategoride yoksa → KE + (bilgi) "başka eczane
+      olabilir, manuel doğrulayın" ([[feedback-baska-eczane-ke]]).
+    """
+    g = '(G) Hastanın başlangıç raporu (geçmiş tarama, SUT 4.2.13.1/6-7)'
+    hasta_tc = (ilac_sonuc.get('hasta_tc') or '').strip()
+    if not hasta_tc:
+        return _hep_bilgi_atom(
+            'Hastanın başlangıç raporu (geçmiş)',
+            'Hasta TC bilinmiyor — geçmiş raporlar sorgulanamadı',
+            grup_baslik=g, kaynak='hasta_tc')
+    try:
+        from recete_kontrol.hasta_rapor_gecmisi_db import (
+            en_eski_baslangic_raporu, hasta_raporlarini_oku, sema_olustur)
+        sema_olustur()
+        eski = en_eski_baslangic_raporu(hasta_tc, kategori=kategori)
+        if eski:
+            return SartSonuc(
+                f'Başlangıç raporu DB\'de VAR ({kategori})',
+                SartDurumu.VAR,
+                f'En eski rapor: {eski.rapor_kodu} - {eski.tani} '
+                f'(başl: {eski.baslangic_tarihi}, takip: {eski.rapor_takip_no})',
+                'hasta_rapor_gecmisi_db', grup=f'{g} (bilgi)',
+                sartli_atom=True)
+        # DB'de kayıt var ama bu kategoride yoksa
+        hep_kayit = hasta_raporlarini_oku(hasta_tc)
+        if hep_kayit:
+            return _hep_bilgi_atom(
+                f'Başlangıç raporu DB\'de YOK ({kategori})',
+                f'Hasta DB\'sinde {len(hep_kayit)} rapor var ama '
+                f'{kategori} kategorisinde yok — başka eczane olabilir, '
+                f'manuel doğrulayın',
+                grup_baslik=g, kaynak='hasta_rapor_gecmisi_db')
+        # Hiç tarama yapılmamış
+        return _hep_bilgi_atom(
+            'Hastanın geçmiş raporları DB\'de yok',
+            '🩺 GEÇMİŞ RAPOR TARA butonu ile MEDULA\'dan tarama yapın',
+            grup_baslik=g, kaynak='hasta_rapor_gecmisi_db')
+    except Exception as e:
+        return _hep_bilgi_atom(
+            'Başlangıç raporu sorgu hatası',
+            f'DB sorgusu başarısız: {e}',
+            grup_baslik=g, kaynak='hasta_rapor_gecmisi_db')
+
+
 def hep_icd_var(teshis_metin_upper: str, gecmis_icd: List[str],
                 prefixleri: Tuple[str, ...]) -> Tuple[bool, str]:
     """ICD prefix'lerinden biri aktif teşhis veya geçmiş raporlarda var mı."""
@@ -1292,6 +1343,9 @@ def _hep_yolak1_eriskin_b(metin_lower: str, teshis_metin: str,
             'Süre rapora göre eczacı tarafından doğrulanmalı',
             'rapor_metni', grup=f'{g_pi} (bilgi)', sartli_atom=True))
 
+    # Başlangıç/idame raporu DB sorgu (MEDULA geçmiş tarama)
+    sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_B'))
+
     # ── SUT eksik mevzuat — KE+(bilgi) atomları (verdict matematiğine etkisiz)
     if etkin_tip == 'HBV_ORAL':
         # 4.2.13.1/3 — Erişkin oral antiviral başlangıç dozları
@@ -1402,6 +1456,9 @@ def _hep_yolak2_cocuk_b(metin_lower: str, teshis_metin: str,
     sartlar.append(_hep_atom_sayisal_esik(
         fibroz, 2.0, '>=', 'Fibrozis ≥ 2',
         grup=g_fibroz))
+
+    # Başlangıç/idame raporu DB sorgu (MEDULA geçmiş tarama)
+    sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_B'))
 
     # ── SUT eksik mevzuat — KE+(bilgi) atomları (Y2 çocuk)
     # 4.2.13.1/5 — Yaş-doz uyumu
@@ -1517,6 +1574,9 @@ def _hep_yolak3_b_siroz(metin_lower: str, teshis_metin: str,
         grup_baslik='(8) Rapor süresi (SUT 4.2.13.1/8)',
         kaynak='rapor_tarihi'))
 
+    # Başlangıç/idame raporu DB sorgu (MEDULA geçmiş tarama)
+    sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_B'))
+
     return _hep_genel_sonuc(
         sartlar, detaylar, SUT_KURALI_HEPATIT,
         ust_or_ciftleri=[
@@ -1610,6 +1670,9 @@ def _hep_yolak4_b_immunsup(metin_lower: str, teshis_metin: str,
         grup_baslik='(8) Rapor süresi (SUT 4.2.13.1/8)',
         kaynak='rapor_tarihi'))
 
+    # Başlangıç/idame raporu DB sorgu (MEDULA geçmiş tarama)
+    sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_B'))
+
     return _hep_genel_sonuc(
         sartlar, detaylar, SUT_KURALI_HEPATIT,
         ust_or_ciftleri=[('(1) HBsAg(+) yolu',
@@ -1656,6 +1719,9 @@ def _hep_yolak5_b_transplant(metin_lower: str, teshis_metin: str,
         'Rapor başlangıç/bitiş tarihleri eczacı tarafından doğrulanmalı',
         grup_baslik='(8) Rapor süresi (SUT 4.2.13.1/8)',
         kaynak='rapor_tarihi'))
+
+    # Başlangıç/idame raporu DB sorgu (MEDULA geçmiş tarama)
+    sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_B'))
 
     return _hep_genel_sonuc(
         sartlar, detaylar, SUT_KURALI_HEPATIT,
@@ -1713,6 +1779,9 @@ def _hep_yolak6_akut_b(metin_lower: str, teshis_metin: str,
         SartDurumu.KONTROL_EDILEMEDI,
         'Tedavi sonu kriteri eczacı tarafından izlenmeli',
         'rapor_metni', grup=f'{g_bilgi} (bilgi)', sartli_atom=True))
+
+    # Başlangıç/idame raporu DB sorgu (MEDULA geçmiş tarama)
+    sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_B'))
 
     return _hep_genel_sonuc(
         sartlar, detaylar, SUT_KURALI_HEPATIT,
@@ -1802,6 +1871,11 @@ def _hep_yolak7_kronik_d(metin_lower: str, teshis_metin: str,
 
         # Yan-şart için üst-VEYA: histoloji ∨ ALT yolu (Kronik B kriterleri)
         ust_or_y7.append(('(KB-A-hist)', '(KB-A-alt-iç)'))
+
+    # Başlangıç/idame raporu DB sorgu (Delta için HEPATIT_D + HEPATIT_B birlikte)
+    sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_D'))
+    if etkin_tip == 'HBV_ORAL':
+        sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_B'))
 
     # EK-4E Madde 11/A/10 — Enf Uzm raporu, bulunmadığı yerlerde reçete açıklama
     # bölümünde belirtilmesi koşuluyla iç hastalıkları/çocuk hast uzm reçete eder
@@ -1908,6 +1982,9 @@ def _hep_yolak8_akut_c(metin_lower: str, teshis_metin: str,
         SartDurumu.KONTROL_EDILEMEDI,
         'Süre rapor/eczacı doğrulaması ile takip edilmeli',
         'rapor_metni', grup=f'{g_bilgi} (bilgi)', sartli_atom=True))
+
+    # Başlangıç/idame raporu DB sorgu (MEDULA geçmiş tarama)
+    sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_C'))
 
     return _hep_genel_sonuc(
         sartlar, detaylar, SUT_KURALI_HEPATIT,
@@ -2110,6 +2187,9 @@ def _hep_yolak9_kronik_c_eriskin_naive(metin_lower: str, teshis_metin: str,
         f'Rejim: {rejim}',
         'recete', grup=g_g3))
 
+    # Başlangıç/idame raporu DB sorgu
+    sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_C'))
+
     return _hep_genel_sonuc(
         sartlar, detaylar, SUT_KURALI_HEPATIT,
         ust_or_ciftleri=[
@@ -2259,6 +2339,10 @@ def _hep_yolak10_kronik_c_eriskin_exp(metin_lower: str, teshis_metin: str,
         'Reçete: Sofosbuvir+Ledipasvir+Ribavirin (24 hafta)',
         SartDurumu.VAR if rejim == 'SL_RBV' else SartDurumu.YOK,
         f'Rejim: {rejim}', 'recete', grup=g_x4))
+
+    # Başlangıç/idame raporu DB sorgu (deneyimli için kritik — önceki HCV
+    # tedavisini DB'den kanıtlayabiliriz)
+    sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_C'))
 
     return _hep_genel_sonuc(
         sartlar, detaylar, SUT_KURALI_HEPATIT,

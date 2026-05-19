@@ -1108,6 +1108,11 @@ class AylikReceteSorguGUI:
         row_teyit = tk.Frame(sol_kol, bg="#FAFAFA")
         row_teyit.pack(fill="x", pady=(0, 2))
 
+        # row_medula — 🩺 GEÇMİŞ TARA için ayrı satır (kontrol butonlarıyla
+        # işlevsel bağı yok; kullanıcı isteği 2026-05-19: kendi çerçevesinde).
+        row_medula = tk.Frame(sol_kol, bg="#FAFAFA")
+        row_medula.pack(fill="x", pady=(0, 2))
+
         row3 = tk.Frame(sol_kol, bg="#FAFAFA")
         row3.pack(fill="x", pady=(0, 0))
 
@@ -1380,6 +1385,32 @@ class AylikReceteSorguGUI:
                  "Manuel teyit sonucuna göre filtre:\n"
                  "✓ UYGUN = teyitli yeşil, ✗ UYGUN DEĞİL = teyitli kırmızı,\n"
                  "? ŞÜPHELİ = teyitli sarı, ○ Teyitsiz = henüz teyit edilmemiş.")
+
+        # ─── PANEL: MEDULA GEÇMİŞ TARA — kendi çerçevesinde, row_medula'da ───
+        # Kontrol Butonları ile işlevsel bağı yok (kullanıcı isteği 2026-05-19).
+        # Seçili satırın hastasının TC'si ile MEDULA'ya bağlanıp tüm geçmiş
+        # raporlarını yerel SQLite DB'ye tarar.
+        P_MED_BG = "#EDE7F6"
+        p_medula = tk.Frame(row_medula, bg=P_MED_BG, bd=1, relief="solid")
+        p_medula.pack(side="left", padx=2, pady=1, fill="y")
+        tk.Label(p_medula, text="🩺 MEDULA:",
+                 bg=P_MED_BG, fg="#4527A0",
+                 font=FONT_GROUP).pack(side="left", padx=(6, 4), pady=4)
+        btn_medula_gecmis = tk.Button(
+            p_medula, text="🩺 GEÇMİŞ TARA",
+            bg="#4527A0", fg="white",
+            activebackground="#311B92", bd=1,
+            command=self._medula_gecmis_rapor_tara_baslat,
+            font=FONT_BUTON, padx=10, pady=4,
+            cursor="hand2")
+        btn_medula_gecmis.pack(side="left", padx=(2, 6), pady=4)
+        _Tooltip(btn_medula_gecmis,
+                 "Seçili satırdaki hastanın MEDULA'daki TÜM geçmiş raporlarını\n"
+                 "(bitmiş + aktif, B grubu reçete üzerinden) yerel SQLite DB'ye\n"
+                 "yazar. Hepatit / diyabet / KOAH kontrollerinde 'başlangıç\n"
+                 "raporu var mı / hangi tarihte başladı' sorgusu için kullanılır.\n\n"
+                 "CLAUDE.md uyumlu: SALT OKUMA — MEDULA verisi değiştirilmez.")
+        self.btn_medula_gecmis = btn_medula_gecmis
 
         # ─── PANEL: KONTROL BUTONLARI — Filtrelemeler'in YANINDA, sağ tarafta ───
         # İçinde: ▢ Sadece seçilenler checkbox + 🎯 Kontrol Butonları butonu
@@ -2118,6 +2149,21 @@ class AylikReceteSorguGUI:
                   "(UYGUN / UYGUN DEĞİL / ŞÜPHELİ rozetlerini siler).\n"
                   "Filtre dışı satırlar etkilenmez.\n"
                   "İşlem öncesi onay sorulur.")
+
+        # 🩺 MEDULA geçmiş rapor tarama — teyit butonlarının sağında
+        btn_t_gecmis = tk.Button(
+            baslik, text="🩺", bg="#4527A0", fg="white",
+            font=("Segoe UI", 10, "bold"),
+            relief="flat", bd=0, padx=7, pady=1, cursor="hand2",
+            command=self._medula_gecmis_rapor_tara_baslat)
+        btn_t_gecmis.pack(side="left", padx=(6, 1), pady=3)
+        _Tooltip(btn_t_gecmis,
+                  "🩺 MEDULA Geçmiş Raporlarını Tara\n\n"
+                  "Seçili reçete satırındaki hastanın MEDULA'daki TÜM geçmiş\n"
+                  "raporlarını yerel SQLite DB'ye tarar. Hepatit / diyabet /\n"
+                  "KOAH kontrollerinde 'başlangıç raporu hangi tarihte' sorgusu\n"
+                  "için kullanılır. SALT OKUMA.")
+
         self._sema_panel_teyit_lbl = tk.Label(
             baslik, text="", bg="#37474F", fg="#FFEB3B",
             font=("Segoe UI", 8, "italic"))
@@ -2580,6 +2626,20 @@ class AylikReceteSorguGUI:
                    command=lambda: self._sema_teyit_kaydet(
                        recete_teyit_db.TEYIT_SUPHELI)
                    ).pack(side="left", padx=2)
+        # 🩺 MEDULA geçmiş rapor tarama — teyit butonlarının sağında
+        btn_gecmis_tam = tk.Button(teyit_frame, text="🩺 GEÇMİŞ TARA",
+                   bg="#4527A0", fg="white",
+                   activebackground="#311B92",
+                   font=("Segoe UI", 10, "bold"),
+                   relief="flat", bd=0, padx=10, pady=4,
+                   cursor="hand2",
+                   command=self._medula_gecmis_rapor_tara_baslat)
+        btn_gecmis_tam.pack(side="left", padx=(10, 2))
+        _Tooltip(btn_gecmis_tam,
+                  "Seçili hastanın MEDULA'daki TÜM geçmiş raporlarını yerel\n"
+                  "SQLite DB'ye tarar. Hepatit / diyabet / KOAH kontrolleri\n"
+                  "'başlangıç raporu hangi tarihte' sorgusu için kullanır.\n\n"
+                  "CLAUDE.md: SALT OKUMA — MEDULA verisi değiştirilmez.")
         # Teyit durum etiketi (mevcut kayıt göstergesi)
         self._sema_tam_teyit_lbl = tk.Label(
             header, text="", bg="#1565C0", fg="#FFEB3B",
@@ -9373,6 +9433,15 @@ class AylikReceteSorguGUI:
         else:
             m.add_command(label="📚 Hastanın Reçete ve Rapor Dökümü (hasta kimliği yok)",
                           state="disabled")
+        # 🩺 MEDULA Geçmiş Raporlarını Tara — TC varsa aktif, yoksa disabled
+        if tc_aktif and len(tc_aktif) == 11 and tc_aktif.isdigit():
+            m.add_command(
+                label=f"🩺 MEDULA Geçmiş Raporlarını Tara{ek}",
+                command=self._medula_gecmis_rapor_tara_baslat)
+        else:
+            m.add_command(
+                label="🩺 MEDULA Geçmiş Raporlarını Tara (TC yok)",
+                state="disabled")
         m.add_separator()
         # Üst grup: kopyala / Medula'da aç (tek satır işlemleri)
         m.add_command(label="📋 Hasta TC'sini Kopyala",
@@ -15171,6 +15240,89 @@ class AylikReceteSorguGUI:
                 "Rapor Kaydedildi",
                 f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
                 parent=self.root)
+
+    # ── HASTANIN GEÇMİŞİNİ MEDULA'DAN TARA ───────────────────────────
+    def _medula_gecmis_rapor_tara_baslat(self):
+        """🩺 GEÇMİŞ RAPOR TARA butonu — seçili satırdaki hastanın TC'si ile
+        MEDULA'ya bağlanıp tüm geçmiş raporlarını yerel SQLite DB'ye yazar.
+
+        Akış: aktif satırı al → TC'yi çıkar → background thread'de crawler
+        çağır → status mesajlarını durum çubuğuna ve popup'a aktar.
+        CLAUDE.md: salt okuma, koordinat tıklama YOK.
+        """
+        # Aktif satır → hasta TC (mevcut sağ-tık menüsü helper'ı _aktif_satir
+        # kullanılır — Treeview self.tv, satır lookup self.satir_indeks.get)
+        satir = self._aktif_satir()
+        if not satir:
+            messagebox.showinfo(
+                "Geçmiş Rapor Tara",
+                "Önce listeden bir reçete satırı seçin.\n\n"
+                "Seçili hastanın TC'si MEDULA'ya yapıştırılıp tüm geçmiş "
+                "raporları (bitmiş + aktif) yerel DB'ye taranır.",
+                parent=self.root)
+            return
+        tc = (satir.get("tc") or "").strip()
+        hasta_adi = (satir.get("hasta") or "").strip() or "?"
+        if not tc or len(tc) != 11 or not tc.isdigit():
+            messagebox.showwarning(
+                "Geçmiş Rapor Tara",
+                f"Hastanın TC'si geçersiz: {tc!r}\n\n"
+                "Bu satırda TC bilgisi yok ya da hatalı.",
+                parent=self.root)
+            return
+
+        # Onay
+        cevap = messagebox.askyesno(
+            "MEDULA Tarama Onayı",
+            f"Hasta: {hasta_adi}\nTC: {tc}\n\n"
+            "MEDULA'ya bağlanıp bu hastanın TÜM geçmiş raporlarını "
+            "(bitmiş + aktif, B grubu reçete üzerinden) yerel DB'ye "
+            "yazacak.\n\n"
+            "MEDULA penceresi öne gelir, navigasyon otomatik yapılır. "
+            "Bu sırada Medula'da manuel işlem yapmayın.\n\n"
+            "Devam edilsin mi?",
+            parent=self.root)
+        if not cevap:
+            return
+
+        # Background thread
+        import threading
+        try:
+            from recete_kontrol.medula_rapor_tarayici import (
+                hasta_raporlarini_tara_ve_kaydet)
+        except Exception as e:
+            messagebox.showerror(
+                "Modül Hatası",
+                f"medula_rapor_tarayici yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        self._durum_yaz(f"⏳ MEDULA tarama başlıyor: {hasta_adi} ({tc})")
+        self.root.update_idletasks()
+
+        def _status_cb(msg: str):
+            # Thread-safe status update
+            self.root.after(0, lambda m=msg: self._durum_yaz(m))
+
+        def _worker():
+            try:
+                toplam, kaydedilen = hasta_raporlarini_tara_ve_kaydet(
+                    tc=tc, kategori_filtre=None, detayli_oku=True,
+                    cb=_status_cb)
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Tarama Tamam",
+                    f"Hasta: {hasta_adi} ({tc})\n\n"
+                    f"Toplam satır:     {toplam}\n"
+                    f"Yeni kaydedilen:  {kaydedilen}\n\n"
+                    f"DB: %APPDATA%/BotanikKasa/hasta_rapor_gecmisi.db",
+                    parent=self.root))
+            except Exception as e:
+                logger.exception("MEDULA tarama hatası")
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Tarama Hatası", f"{type(e).__name__}: {e}",
+                    parent=self.root))
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     # ── HEPATİT B/C KONTROL (SUT 4.2.13.3 / 4.2.13.4) ────────────────
     def _hepatit_kontrol_baslat(self):

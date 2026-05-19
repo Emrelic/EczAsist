@@ -40,6 +40,7 @@ class KullaniciYonetimi:
         "min_stok_analiz": "Minimum Stok Analizi",
         "stok_maliyet_analiz": "Stok Maliyet Analizi",
         "prim_raporlama": "Prim Raporlama",
+        "satis_raporlari": "Satış Raporları",
         "hasta_takip": "Hasta Takip & WhatsApp",
         "fatih_siparisci": "Fatih Siparişçi (Müstakil)",
         "hibrit_siparisci": "Hibrit Siparişçi",

@@ -2812,6 +2812,1533 @@ class BotanikDB:
         }
 
 
+    # ============================================================
+    # SATIS RAPORLARI (yeni modul - 2026-05-18)
+    # ReceteAna + EldenAna birlesik, tarih aralikli ve periyot bazli
+    # toplam metrikler (recete/satis/kutu/TL).
+    # ============================================================
+
+    PERIYOT_IFADELERI = {
+        'gunluk':   "CAST(Tarih as date)",
+        'haftalik': "DATEADD(DAY, 2 - ((DATEPART(WEEKDAY, Tarih) + @@DATEFIRST - 1) % 7 + 1), CAST(Tarih as date))",
+        'aylik':    "DATEFROMPARTS(YEAR(Tarih), MONTH(Tarih), 1)",
+        '3aylik':   "DATEFROMPARTS(YEAR(Tarih), ((MONTH(Tarih) - 1) / 3) * 3 + 1, 1)",
+        'yillik':   "DATEFROMPARTS(YEAR(Tarih), 1, 1)",
+    }
+
+    def kurum_listesi_getir(self) -> List[Dict]:
+        """Reçete kırılımında dropdown için kurum listesi (SGK + diğer).
+
+        Returns: [{KurumId, KurumAdi}, ...] alfabetik sıralı.
+        """
+        sql = """
+        SELECT DISTINCT
+            k.KurumId,
+            k.KurumAdi
+        FROM Kurum k
+        WHERE k.KurumAdi IS NOT NULL
+            AND LTRIM(RTRIM(k.KurumAdi)) <> ''
+            AND EXISTS (
+                SELECT 1 FROM ReceteAna ra
+                WHERE ra.RxKurumId = k.KurumId AND ra.RxSilme = 0
+            )
+        ORDER BY k.KurumAdi
+        """
+        return self.sorgu_calistir(sql)
+
+    def urun_fiyat_gecmisi_getir(
+        self,
+        urun_id: int,
+        baslangic_tarih,
+        bitis_tarih,
+        periyot: str = 'aylik',
+    ) -> List[Dict]:
+        """Belirli bir ürünün tarihsel etiket fiyatı (PSF) ortalamasını periyot bazlı döndür.
+
+        ReceteIlaclari.RIEtiketFiyati + EldenIlaclari.RIEtiketFiyati üzerinden
+        her satış anındaki PSF — endeks olarak kullanılır. (TİTCK fiyat tablosu
+        gerekli değil — satış kalemlerinde zaten var.)
+
+        Args:
+            urun_id: Botanik UrunId
+            baslangic_tarih, bitis_tarih: date veya 'YYYY-MM-DD'
+            periyot: 'gunluk'|'haftalik'|'aylik'|'3aylik'|'yillik'
+
+        Returns:
+            [{Donem(date), OrtalamaPSF(float), SatisSayisi(int)}, ...]
+        """
+        if periyot not in self.PERIYOT_IFADELERI:
+            raise ValueError(f"Geçersiz periyot: {periyot}")
+
+        if hasattr(baslangic_tarih, 'strftime'):
+            bas_str = baslangic_tarih.strftime('%Y-%m-%d')
+        else:
+            bas_str = str(baslangic_tarih)
+        if hasattr(bitis_tarih, 'strftime'):
+            bit_str = bitis_tarih.strftime('%Y-%m-%d')
+        else:
+            bit_str = str(bitis_tarih)
+
+        period_expr = self.PERIYOT_IFADELERI[periyot]
+        urun_id_int = int(urun_id)
+
+        sql = f"""
+        WITH FiyatKalem AS (
+            SELECT
+                ra.RxIslemTarihi as Tarih,
+                ri.RIEtiketFiyati as Fiyat
+            FROM ReceteAna ra
+            JOIN ReceteIlaclari ri ON ra.RxId = ri.RIRxId
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0
+                AND ri.RIUrunId = {urun_id_int}
+                AND ri.RIEtiketFiyati IS NOT NULL
+                AND ri.RIEtiketFiyati > 0
+                AND ra.RxIslemTarihi >= ?
+                AND ra.RxIslemTarihi < DATEADD(DAY, 1, CAST(? as date))
+
+            UNION ALL
+
+            SELECT
+                ea.RxIslemTarihi as Tarih,
+                ei.RIEtiketFiyati as Fiyat
+            FROM EldenAna ea
+            JOIN EldenIlaclari ei ON ea.RxId = ei.RIRxId
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0
+                AND ei.RIUrunId = {urun_id_int}
+                AND ei.RIEtiketFiyati IS NOT NULL
+                AND ei.RIEtiketFiyati > 0
+                AND ea.RxIslemTarihi >= ?
+                AND ea.RxIslemTarihi < DATEADD(DAY, 1, CAST(? as date))
+        )
+        SELECT
+            {period_expr} as Donem,
+            AVG(CAST(Fiyat as decimal(18,4))) as OrtalamaPSF,
+            COUNT(*) as SatisSayisi
+        FROM FiyatKalem
+        GROUP BY {period_expr}
+        ORDER BY {period_expr}
+        """
+        params = (bas_str, bit_str, bas_str, bit_str)
+        sonuclar = self.sorgu_calistir(sql, params)
+        return [{
+            'Donem': r.get('Donem'),
+            'OrtalamaPSF': float(r.get('OrtalamaPSF') or 0),
+            'SatisSayisi': int(r.get('SatisSayisi') or 0),
+        } for r in sonuclar]
+
+    def urun_ara(self, arama: str, limit: int = 50) -> List[Dict]:
+        """Ürün arama (endeks tanımına Botanik UrunId eşleme için).
+
+        Returns: [{'UrunId', 'UrunAdi', 'UrunFiyatEtiket'}, ...]
+        """
+        sql = """
+        SELECT TOP (?) UrunId, UrunAdi, UrunFiyatEtiket
+        FROM Urun
+        WHERE UrunSilme = 0 AND UrunAdi LIKE ?
+        ORDER BY UrunAdi
+        """
+        return self.sorgu_calistir(sql, (int(limit), f"%{arama}%"))
+
+    def satis_zaman_tutarlilik_getir(
+        self,
+        baslangic_dt,
+        bitis_dt,
+    ) -> List[Dict]:
+        """Bir datetime aralığında satışların RxIslemTarihi vs RxKayitTarihi
+        karşılaştırması. Zaman kayması/anomali tespitinde kullanılır.
+
+        - RxIslemTarihi: satış üzerindeki zaman (reçete kaydında kullanıcının
+          girdiği veya o anki sistem saati)
+        - RxKayitTarihi: DB'ye INSERT edildiği fiziksel an
+
+        Args:
+            baslangic_dt, bitis_dt: RxIslemTarihi'ne göre filtre
+
+        Returns:
+            [{'Kaynak', 'RxId', 'IslemTarihi', 'KayitTarihi', 'FarkSn'(int)}, ...]
+            FarkSn pozitif → kayıt işlemden sonra (normal)
+            FarkSn büyük → toplu/geç kayıt
+            FarkSn negatif → kayıt işlemden önce (mantıksız, hata)
+        """
+        def _fmt(d):
+            if hasattr(d, 'strftime'):
+                return d.strftime('%Y-%m-%d %H:%M:%S')
+            return str(d)
+        bas_str = _fmt(baslangic_dt)
+        bit_str = _fmt(bitis_dt)
+
+        # Kayıt saatsiz (00:00:00) ise: gün bazlı fark hesapla (saatleri yok say)
+        # Kayıt saatli ise: saniye bazlı fark (klasik)
+        # FarkTipi='sn' veya 'gun' ile hangi hassasiyetin kullanıldığı bildirilir.
+        sql = """
+        SELECT
+            'RECETE' as Kaynak,
+            ra.RxId as RxId,
+            ra.RxIslemTarihi as IslemTarihi,
+            ra.RxKayitTarihi as KayitTarihi,
+            CASE
+                WHEN DATEPART(HOUR, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                     AND DATEPART(MINUTE, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                     AND DATEPART(SECOND, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                THEN CAST(DATEDIFF(DAY,
+                        CAST(ra.RxIslemTarihi as DATE),
+                        CAST(ra.RxKayitTarihi as DATE)) as BIGINT) * 86400
+                ELSE DATEDIFF(SECOND, ra.RxIslemTarihi, ra.RxKayitTarihi)
+            END as FarkSn,
+            CASE
+                WHEN DATEPART(HOUR, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                     AND DATEPART(MINUTE, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                     AND DATEPART(SECOND, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                THEN 'gun'
+                ELSE 'sn'
+            END as FarkTipi
+        FROM ReceteAna ra
+        WHERE ra.RxSilme = 0
+            AND ra.RxIslemTarihi >= ?
+            AND ra.RxIslemTarihi <= ?
+
+        UNION ALL
+
+        SELECT
+            'ELDEN' as Kaynak,
+            ea.RxId as RxId,
+            ea.RxIslemTarihi as IslemTarihi,
+            ea.RxKayitTarihi as KayitTarihi,
+            CASE
+                WHEN DATEPART(HOUR, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                     AND DATEPART(MINUTE, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                     AND DATEPART(SECOND, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                THEN CAST(DATEDIFF(DAY,
+                        CAST(ea.RxIslemTarihi as DATE),
+                        CAST(ea.RxKayitTarihi as DATE)) as BIGINT) * 86400
+                ELSE DATEDIFF(SECOND, ea.RxIslemTarihi, ea.RxKayitTarihi)
+            END as FarkSn,
+            CASE
+                WHEN DATEPART(HOUR, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                     AND DATEPART(MINUTE, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                     AND DATEPART(SECOND, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                THEN 'gun'
+                ELSE 'sn'
+            END as FarkTipi
+        FROM EldenAna ea
+        WHERE ea.RxSilme = 0
+            AND ea.RxIslemTarihi >= ?
+            AND ea.RxIslemTarihi <= ?
+
+        ORDER BY IslemTarihi, RxId
+        """
+        sonuclar = self.sorgu_calistir(sql, (bas_str, bit_str, bas_str, bit_str))
+        return [{
+            'Kaynak': r.get('Kaynak'),
+            'RxId': r.get('RxId'),
+            'IslemTarihi': r.get('IslemTarihi'),
+            'KayitTarihi': r.get('KayitTarihi'),
+            'FarkSn': int(r.get('FarkSn') or 0) if r.get('FarkSn') is not None else None,
+            'FarkTipi': r.get('FarkTipi') or 'sn',
+        } for r in sonuclar]
+
+    def kayit_tarihi_diagnostik(self) -> Dict:
+        """ReceteAna ve EldenAna tablolarındaki `RxKayitTarihi` kolonunu
+        analiz eder + DB genelinde bağımsız zaman kaynağı arar.
+
+        Amaç:
+        1. RxKayitTarihi'nin gerçek tipi (DATE/DATETIME) ve saat bileşeni
+        2. BotanikEOS UI'da görünen saatin hangi kolondan geldiğini bulmak
+        3. **Bağımsız zaman kaynağı arama**: DEFAULT GETDATE() vs sunucu-tarafı
+           timestamp atayan kolonlar (PC saat sapması tespiti için kritik)
+        4. Audit/log tablo adayları
+
+        Returns:
+            {
+                'recete_kolonlar': [...],   # kolon adı + tipi (zaman içerenler)
+                'elden_kolonlar': [...],
+                'recete_kayit_saatli': int, # saat > 0 olan reçete sayısı
+                'recete_kayit_saatsiz': int,
+                'elden_kayit_saatli': int,
+                'elden_kayit_saatsiz': int,
+                'recete_ornek_saatli': [...],  # 5 saatli örnek (RxId + tam tarihler)
+                'recete_ornek_saatsiz': [...], # 5 saatsiz örnek
+                'elden_ornek_saatli': [...],
+                'elden_ornek_saatsiz': [...],
+            }
+        """
+        sonuc = {}
+
+        # 1. ReceteAna ve EldenAna kolon listesi (sadece zaman içerenler)
+        for tablo, anahtar in [('ReceteAna', 'recete_kolonlar'),
+                                ('EldenAna', 'elden_kolonlar')]:
+            sql = """
+                SELECT COLUMN_NAME, DATA_TYPE
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = ?
+                  AND (
+                    DATA_TYPE IN ('date', 'datetime', 'datetime2',
+                                  'datetimeoffset', 'smalldatetime', 'time')
+                    OR COLUMN_NAME LIKE '%Tarih%'
+                    OR COLUMN_NAME LIKE '%Saat%'
+                    OR COLUMN_NAME LIKE '%Zaman%'
+                    OR COLUMN_NAME LIKE '%Date%'
+                    OR COLUMN_NAME LIKE '%Time%'
+                  )
+                ORDER BY ORDINAL_POSITION
+            """
+            sonuc[anahtar] = self.sorgu_calistir(sql, (tablo,))
+
+        # 2. Recete kayıt saatli / saatsiz sayım (TOP 1M ile sınırla,
+        #    geniş tablo için)
+        recete_sayim_sql = """
+            SELECT
+                SUM(CASE
+                    WHEN DATEPART(HOUR, CAST(ra.RxKayitTarihi as DATETIME)) > 0
+                      OR DATEPART(MINUTE, CAST(ra.RxKayitTarihi as DATETIME)) > 0
+                      OR DATEPART(SECOND, CAST(ra.RxKayitTarihi as DATETIME)) > 0
+                    THEN 1 ELSE 0 END) as Saatli,
+                SUM(CASE
+                    WHEN DATEPART(HOUR, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                      AND DATEPART(MINUTE, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                      AND DATEPART(SECOND, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                    THEN 1 ELSE 0 END) as Saatsiz,
+                COUNT(*) as Toplam
+            FROM ReceteAna ra
+            WHERE ra.RxSilme = 0 AND ra.RxKayitTarihi IS NOT NULL
+        """
+        r_rows = self.sorgu_calistir(recete_sayim_sql)
+        if r_rows:
+            sonuc['recete_kayit_saatli'] = int(r_rows[0].get('Saatli') or 0)
+            sonuc['recete_kayit_saatsiz'] = int(r_rows[0].get('Saatsiz') or 0)
+            sonuc['recete_toplam'] = int(r_rows[0].get('Toplam') or 0)
+
+        elden_sayim_sql = """
+            SELECT
+                SUM(CASE
+                    WHEN DATEPART(HOUR, CAST(ea.RxKayitTarihi as DATETIME)) > 0
+                      OR DATEPART(MINUTE, CAST(ea.RxKayitTarihi as DATETIME)) > 0
+                      OR DATEPART(SECOND, CAST(ea.RxKayitTarihi as DATETIME)) > 0
+                    THEN 1 ELSE 0 END) as Saatli,
+                SUM(CASE
+                    WHEN DATEPART(HOUR, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                      AND DATEPART(MINUTE, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                      AND DATEPART(SECOND, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                    THEN 1 ELSE 0 END) as Saatsiz,
+                COUNT(*) as Toplam
+            FROM EldenAna ea
+            WHERE ea.RxSilme = 0 AND ea.RxKayitTarihi IS NOT NULL
+        """
+        e_rows = self.sorgu_calistir(elden_sayim_sql)
+        if e_rows:
+            sonuc['elden_kayit_saatli'] = int(e_rows[0].get('Saatli') or 0)
+            sonuc['elden_kayit_saatsiz'] = int(e_rows[0].get('Saatsiz') or 0)
+            sonuc['elden_toplam'] = int(e_rows[0].get('Toplam') or 0)
+
+        # 3. Saatli ve saatsiz örnekler (BotanikEOS UI ile karşılaştırma için)
+        for tablo_kisa, tablo_full in [('recete', 'ReceteAna ra'),
+                                         ('elden', 'EldenAna ea')]:
+            pref = 'ra' if tablo_kisa == 'recete' else 'ea'
+            for tip_kisa, kosul in [
+                ('saatli',
+                 f"DATEPART(HOUR, CAST({pref}.RxKayitTarihi as DATETIME)) > 0 "
+                 f"OR DATEPART(MINUTE, CAST({pref}.RxKayitTarihi as DATETIME)) > 0 "
+                 f"OR DATEPART(SECOND, CAST({pref}.RxKayitTarihi as DATETIME)) > 0"),
+                ('saatsiz',
+                 f"DATEPART(HOUR, CAST({pref}.RxKayitTarihi as DATETIME)) = 0 "
+                 f"AND DATEPART(MINUTE, CAST({pref}.RxKayitTarihi as DATETIME)) = 0 "
+                 f"AND DATEPART(SECOND, CAST({pref}.RxKayitTarihi as DATETIME)) = 0"),
+            ]:
+                # Convert RxKayitTarihi to string in SQL to bypass pyodbc truncation
+                sql = f"""
+                    SELECT TOP 5
+                        {pref}.RxId,
+                        CONVERT(varchar(30), {pref}.RxIslemTarihi, 121) as IslemStr,
+                        CONVERT(varchar(30), {pref}.RxKayitTarihi, 121) as KayitStr,
+                        DATEPART(HOUR, CAST({pref}.RxKayitTarihi as DATETIME)) as KayitSaat,
+                        DATEPART(MINUTE, CAST({pref}.RxKayitTarihi as DATETIME)) as KayitDk,
+                        DATEPART(SECOND, CAST({pref}.RxKayitTarihi as DATETIME)) as KayitSn
+                    FROM {tablo_full}
+                    WHERE {pref}.RxSilme = 0
+                      AND {pref}.RxKayitTarihi IS NOT NULL
+                      AND ({kosul})
+                    ORDER BY {pref}.RxId DESC
+                """
+                sonuc[f'{tablo_kisa}_ornek_{tip_kisa}'] = self.sorgu_calistir(sql)
+
+        # 4. Bağımsız zaman kaynağı: DEFAULT GETDATE() yazan kolonlar (TÜM DB)
+        bagimsiz_sql = """
+            SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_DEFAULT
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE DATA_TYPE IN ('datetime', 'datetime2', 'datetimeoffset',
+                                'smalldatetime', 'date')
+              AND COLUMN_DEFAULT IS NOT NULL
+              AND (COLUMN_DEFAULT LIKE '%GETDATE%'
+                   OR COLUMN_DEFAULT LIKE '%SYSDATETIME%'
+                   OR COLUMN_DEFAULT LIKE '%CURRENT_TIMESTAMP%'
+                   OR COLUMN_DEFAULT LIKE '%GETUTCDATE%')
+            ORDER BY TABLE_NAME, COLUMN_NAME
+        """
+        sonuc['bagimsiz_timestamp_kolonlari'] = self.sorgu_calistir(bagimsiz_sql)
+
+        # 5. Audit / log tablosu adayları
+        audit_sql = """
+            SELECT TABLE_NAME, TABLE_TYPE
+            FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_TYPE = 'BASE TABLE'
+              AND (
+                TABLE_NAME LIKE '%Log%' OR
+                TABLE_NAME LIKE '%Audit%' OR
+                TABLE_NAME LIKE '%History%' OR
+                TABLE_NAME LIKE '%Hareket%' OR
+                TABLE_NAME LIKE '%Track%' OR
+                TABLE_NAME LIKE '%Trail%'
+              )
+            ORDER BY TABLE_NAME
+        """
+        sonuc['audit_tablo_adaylari'] = self.sorgu_calistir(audit_sql)
+
+        # 6. SQL Server şu anki saati + Python (PC) şu anki saati
+        sunucu_sql = """
+            SELECT
+                SYSDATETIME() as SunucuSysdatetime,
+                GETDATE() as SunucuGetdate,
+                GETUTCDATE() as SunucuUtc,
+                @@VERSION as SqlVersion
+        """
+        rows = self.sorgu_calistir(sunucu_sql)
+        if rows:
+            sonuc['sunucu_zaman'] = dict(rows[0])
+        sonuc['pc_zaman'] = datetime.now()
+        sonuc['pc_zaman_utc'] = datetime.utcnow()
+
+        return sonuc
+
+    def logger_manuel_degisiklik_tarama(
+        self,
+        baslangic_dt,
+        bitis_dt,
+        esik_sn: int = 5,
+        max_kayit: int = 50000,
+    ) -> Dict:
+        """RxIslemTarihi vs Logger orijinal kayıt (Turu=1/1 reçete, 2/1 elden)
+        karşılaştırması. |fark| > esik_sn ise muhtemel manuel tarih değişikliği.
+
+        Logger orijinal kayıt PC saatinden olsa da değiştirilemeyen insert-only
+        log. RxIslemTarihi sonradan elle değiştirilirse Logger sabit kalır →
+        fark olur → manuel müdahale kanıtı.
+
+        Returns:
+            {
+                'manuel_kayitlar': [
+                    {'Kaynak','RxId','RxIslemTarihi','LoggerTarihi','FarkSn',
+                     'LoggerMakina','LoggerPersonelId'},
+                    ...
+                ],
+                'makina_ozeti': [
+                    {'LoggerMakina','IslemSayisi','FarkOrtalama','FarkMin',
+                     'FarkMax','MutlakOrt'},
+                    ...
+                ],
+            }
+        """
+        def _fmt(d):
+            if hasattr(d, 'strftime'):
+                if hasattr(d, 'hour'):
+                    return d.strftime('%Y-%m-%d %H:%M:%S')
+                return d.strftime('%Y-%m-%d') + ' 00:00:00'
+            return str(d)
+        bas_str = _fmt(baslangic_dt)
+        bit_str = _fmt(bitis_dt)
+        esik_sn_int = int(esik_sn)
+        max_kayit_int = int(max_kayit)
+
+        # 1. Manuel değişiklik kayıtları (|fark| > esik)
+        manuel_sql = f"""
+        SELECT TOP {max_kayit_int} * FROM (
+            SELECT
+                'RECETE' as Kaynak,
+                ra.RxId,
+                ra.RxIslemTarihi,
+                L.LoggerTarihi,
+                DATEDIFF(SECOND, L.LoggerTarihi, ra.RxIslemTarihi) as FarkSn,
+                L.LoggerMakina,
+                L.LoggerPersonelId
+            FROM ReceteAna ra
+            INNER JOIN Logger L
+                ON L.LoggerIslemId = ra.RxId
+               AND L.LoggerIslemTuru = 1
+               AND L.LoggerIslemAltTuru = 1
+            WHERE ra.RxSilme = 0
+              AND ra.RxIslemTarihi >= ?
+              AND ra.RxIslemTarihi <= ?
+
+            UNION ALL
+
+            SELECT
+                'ELDEN' as Kaynak,
+                ea.RxId,
+                ea.RxIslemTarihi,
+                L.LoggerTarihi,
+                DATEDIFF(SECOND, L.LoggerTarihi, ea.RxIslemTarihi) as FarkSn,
+                L.LoggerMakina,
+                L.LoggerPersonelId
+            FROM EldenAna ea
+            INNER JOIN Logger L
+                ON L.LoggerIslemId = ea.RxId
+               AND L.LoggerIslemTuru = 2
+               AND L.LoggerIslemAltTuru = 1
+            WHERE ea.RxSilme = 0
+              AND ea.RxIslemTarihi >= ?
+              AND ea.RxIslemTarihi <= ?
+        ) AS T
+        WHERE ABS(FarkSn) > ?
+        ORDER BY ABS(FarkSn) DESC, RxIslemTarihi DESC
+        """
+        params = (bas_str, bit_str, bas_str, bit_str, esik_sn_int)
+        manuel = self.sorgu_calistir(manuel_sql, params)
+
+        # 2. Makina başına istatistik — Logger.LoggerMakina dağılımı + ort fark
+        makina_sql = """
+        SELECT
+            ISNULL(L.LoggerMakina, '(BİLİNMİYOR)') as LoggerMakina,
+            COUNT(*) as IslemSayisi,
+            AVG(CAST(DATEDIFF(SECOND, L.LoggerTarihi,
+                COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi)) as float)) as FarkOrtalama,
+            MIN(DATEDIFF(SECOND, L.LoggerTarihi,
+                COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi))) as FarkMin,
+            MAX(DATEDIFF(SECOND, L.LoggerTarihi,
+                COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi))) as FarkMax,
+            AVG(CAST(ABS(DATEDIFF(SECOND, L.LoggerTarihi,
+                COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi))) as float)) as MutlakOrt,
+            SUM(CASE WHEN ABS(DATEDIFF(SECOND, L.LoggerTarihi,
+                COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi))) > 5
+                THEN 1 ELSE 0 END) as SuphliSayi
+        FROM Logger L
+        LEFT JOIN ReceteAna ra
+            ON ra.RxId = L.LoggerIslemId AND L.LoggerIslemTuru = 1
+        LEFT JOIN EldenAna ea
+            ON ea.RxId = L.LoggerIslemId AND L.LoggerIslemTuru = 2
+        WHERE L.LoggerIslemTuru IN (1, 2)
+          AND L.LoggerIslemAltTuru = 1
+          AND L.LoggerTarihi >= ?
+          AND L.LoggerTarihi <= ?
+          AND COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi) IS NOT NULL
+        GROUP BY ISNULL(L.LoggerMakina, '(BİLİNMİYOR)')
+        ORDER BY COUNT(*) DESC
+        """
+        makina = self.sorgu_calistir(makina_sql, (bas_str, bit_str))
+
+        return {
+            'manuel_kayitlar': [{
+                'Kaynak': r.get('Kaynak'),
+                'RxId': r.get('RxId'),
+                'RxIslemTarihi': r.get('RxIslemTarihi'),
+                'LoggerTarihi': r.get('LoggerTarihi'),
+                'FarkSn': int(r.get('FarkSn') or 0) if r.get('FarkSn') is not None else None,
+                'LoggerMakina': r.get('LoggerMakina'),
+                'LoggerPersonelId': r.get('LoggerPersonelId'),
+            } for r in (manuel or [])],
+            'makina_ozeti': [{
+                'LoggerMakina': r.get('LoggerMakina'),
+                'IslemSayisi': int(r.get('IslemSayisi') or 0),
+                'FarkOrtalama': float(r.get('FarkOrtalama') or 0),
+                'FarkMin': int(r.get('FarkMin') or 0),
+                'FarkMax': int(r.get('FarkMax') or 0),
+                'MutlakOrt': float(r.get('MutlakOrt') or 0),
+                'SuphliSayi': int(r.get('SuphliSayi') or 0),
+            } for r in (makina or [])],
+        }
+
+    def logger_yapisini_incele(self) -> Dict:
+        """Logger tablosunun detaylı incelemesi — cross-check yazımı için.
+
+        Returns:
+            {
+                'kolonlar': [...],
+                'islem_turu_dagilimi': [(IslemTuru, AltTuru, sayı), ...],
+                'ornek_recete_eslesme': [...],  # bir RxId'nin Logger'da
+                                                  # bulunan kayıtları
+                'ornek_elden_eslesme': [...],
+            }
+        """
+        sonuc = {}
+
+        # 1. Logger kolonları
+        kol_sql = """
+            SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = 'Logger'
+            ORDER BY ORDINAL_POSITION
+        """
+        sonuc['kolonlar'] = self.sorgu_calistir(kol_sql)
+
+        # 2. LoggerIslemTuru + LoggerIslemAltTuru dağılımı (TOP 20)
+        try:
+            dag_sql = """
+                SELECT TOP 20
+                    LoggerIslemTuru,
+                    LoggerIslemAltTuru,
+                    COUNT(*) as Sayi
+                FROM Logger
+                GROUP BY LoggerIslemTuru, LoggerIslemAltTuru
+                ORDER BY Sayi DESC
+            """
+            sonuc['islem_turu_dagilimi'] = self.sorgu_calistir(dag_sql)
+        except Exception as e:
+            sonuc['islem_turu_dagilimi'] = []
+            sonuc['dagilim_hata'] = str(e)
+
+        # 3. Son bir reçetenin (RxId) Logger'da eşleşmesi
+        try:
+            son_recete_sql = """
+                SELECT TOP 1 RxId, RxIslemTarihi
+                FROM ReceteAna
+                WHERE RxSilme = 0
+                ORDER BY RxId DESC
+            """
+            sr = self.sorgu_calistir(son_recete_sql)
+            if sr:
+                rx_id = sr[0].get('RxId')
+                sonuc['ornek_recete_rxid'] = rx_id
+                sonuc['ornek_recete_islem'] = sr[0].get('RxIslemTarihi')
+                # Logger'da bu RxId ile eşleşen satırlar (LoggerId veya başka)
+                eslesme_sql = f"""
+                    SELECT TOP 10 *
+                    FROM Logger
+                    WHERE LoggerId = {int(rx_id)}
+                       OR LoggerIslemId = {int(rx_id)}
+                    ORDER BY LoggerTarihi DESC
+                """
+                sonuc['ornek_recete_eslesme'] = self.sorgu_calistir(eslesme_sql)
+        except Exception as e:
+            sonuc['ornek_recete_eslesme'] = []
+            sonuc['recete_hata'] = str(e)
+
+        # 4. Son bir elden satışın Logger'da eşleşmesi
+        try:
+            son_elden_sql = """
+                SELECT TOP 1 RxId, RxIslemTarihi
+                FROM EldenAna
+                WHERE RxSilme = 0
+                ORDER BY RxId DESC
+            """
+            se = self.sorgu_calistir(son_elden_sql)
+            if se:
+                rx_id_e = se[0].get('RxId')
+                sonuc['ornek_elden_rxid'] = rx_id_e
+                sonuc['ornek_elden_islem'] = se[0].get('RxIslemTarihi')
+                eslesme_sql = f"""
+                    SELECT TOP 10 *
+                    FROM Logger
+                    WHERE LoggerId = {int(rx_id_e)}
+                       OR LoggerIslemId = {int(rx_id_e)}
+                    ORDER BY LoggerTarihi DESC
+                """
+                sonuc['ornek_elden_eslesme'] = self.sorgu_calistir(eslesme_sql)
+        except Exception as e:
+            sonuc['ornek_elden_eslesme'] = []
+            sonuc['elden_hata'] = str(e)
+
+        return sonuc
+
+    def log_tablo_analizi(self, tablo_isimleri: Optional[List[str]] = None) -> Dict:
+        """Verilen log tablolarının yapısını + örnek satırlarını döker.
+        Amaç: log tablolarında SUNUCU-tarafı insert zamanı (trigger yazımı vb)
+        var mı yoksa uygulama tarafından mı yazılıyor netleştirmek.
+
+        Args:
+            tablo_isimleri: incelenecek tablolar. None ise default 4 tablo:
+                ['BotanikLog', 'Logger', 'ReceteHesapLog', 'MedulaDokumLog']
+
+        Returns:
+            {tablo_adi: {
+                'kolonlar': [{'COLUMN_NAME','DATA_TYPE','COLUMN_DEFAULT'}],
+                'satir_sayisi': int,
+                'ornekler': [{kolon: değer}, ...],  # TOP 5 son satır
+                'trigger_var_mi': bool,
+                'triggerlar': [trigger adı listesi],
+                'hata': str | None,
+            }, ...}
+        """
+        if not tablo_isimleri:
+            tablo_isimleri = ['BotanikLog', 'Logger', 'ReceteHesapLog',
+                              'MedulaDokumLog']
+
+        sonuc = {}
+        for tablo in tablo_isimleri:
+            tablo_sonuc = {
+                'kolonlar': [], 'satir_sayisi': None,
+                'ornekler': [], 'trigger_var_mi': False,
+                'triggerlar': [], 'hata': None,
+            }
+            # 1. Kolon yapısı + default değerler
+            kol_sql = """
+                SELECT COLUMN_NAME, DATA_TYPE, COLUMN_DEFAULT, IS_NULLABLE
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = ?
+                ORDER BY ORDINAL_POSITION
+            """
+            kolonlar = self.sorgu_calistir(kol_sql, (tablo,))
+            if not kolonlar:
+                tablo_sonuc['hata'] = f"Tablo bulunamadı: {tablo}"
+                sonuc[tablo] = tablo_sonuc
+                continue
+            tablo_sonuc['kolonlar'] = kolonlar
+
+            # 2. Satır sayısı (hızlı yaklaşık — sys.partitions)
+            try:
+                say_sql = """
+                    SELECT SUM(p.row_count) as Sayi
+                    FROM sys.dm_db_partition_stats p
+                    WHERE p.object_id = OBJECT_ID(?)
+                      AND p.index_id < 2
+                """
+                say = self.sorgu_calistir(say_sql, (tablo,))
+                if say and say[0].get('Sayi') is not None:
+                    tablo_sonuc['satir_sayisi'] = int(say[0].get('Sayi'))
+            except Exception:
+                pass
+
+            # 3. Triggerlar (INSERT trigger varsa sunucu tarafı insert zaman
+            #    yazımı yapıyor olabilir)
+            trig_sql = """
+                SELECT t.name as TriggerAdi, t.is_disabled,
+                       OBJECT_DEFINITION(t.object_id) as Tanim
+                FROM sys.triggers t
+                JOIN sys.objects o ON t.parent_id = o.object_id
+                WHERE o.name = ?
+            """
+            try:
+                triglar = self.sorgu_calistir(trig_sql, (tablo,))
+                if triglar:
+                    tablo_sonuc['trigger_var_mi'] = True
+                    tablo_sonuc['triggerlar'] = triglar
+            except Exception:
+                pass
+
+            # 4. TOP 5 örnek satır — varsa identity kolona göre azalan
+            ident_kol = None
+            for k in kolonlar:
+                if str(k.get('DATA_TYPE') or '').lower() in ('int', 'bigint'):
+                    n = (k.get('COLUMN_NAME') or '').lower()
+                    if n.endswith('id') or n == 'id':
+                        ident_kol = k.get('COLUMN_NAME')
+                        break
+            try:
+                if ident_kol:
+                    ornek_sql = (f"SELECT TOP 5 * FROM [{tablo}] "
+                                  f"ORDER BY [{ident_kol}] DESC")
+                else:
+                    ornek_sql = f"SELECT TOP 5 * FROM [{tablo}]"
+                tablo_sonuc['ornekler'] = self.sorgu_calistir(ornek_sql)
+            except Exception as e:
+                tablo_sonuc['hata'] = (tablo_sonuc['hata'] or '') + f" örnek hata: {e}"
+
+            sonuc[tablo] = tablo_sonuc
+
+        return sonuc
+
+    def tek_kayit_zaman_dokumu(self, kaynak: str, rx_id) -> Dict:
+        """Tek bir satışın TÜM zaman/tarih alanlarını + sunucu saati + PC saati
+        döker. Bir kayıtla ilgili çakışan tarihlerin (kayıt/işlem/kontrol/...)
+        karşılaştırılması için kullanılır.
+
+        Returns:
+            {
+                'kaynak': 'RECETE' | 'ELDEN',
+                'rx_id': int,
+                'tablo_adi': str,
+                'kolonlar': [{'COLUMN_NAME', 'DATA_TYPE'}, ...],  # zaman içeren kolonlar
+                'degerler': {kolon_adi: değer, ...},  # her kolonun bu kayıttaki değeri
+                'sunucu_now': datetime,  # SQL Server şu anki saat
+                'sunucu_now_utc': datetime,
+                'pc_now': datetime,  # Python (PC) şu anki saat
+                'pc_now_utc': datetime,
+                'hata': str | None,
+            }
+        """
+        kaynak = (kaynak or '').upper().strip()
+        if kaynak not in ('RECETE', 'ELDEN'):
+            return {'hata': f"Geçersiz kaynak: {kaynak}"}
+        try:
+            rx_id_int = int(rx_id)
+        except (TypeError, ValueError):
+            return {'hata': f"Geçersiz rx_id: {rx_id!r}"}
+
+        tablo = 'ReceteAna' if kaynak == 'RECETE' else 'EldenAna'
+
+        # 1. Zaman kolonlarını bul
+        kol_sql = """
+            SELECT COLUMN_NAME, DATA_TYPE
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = ?
+              AND (
+                DATA_TYPE IN ('date', 'datetime', 'datetime2',
+                              'datetimeoffset', 'smalldatetime', 'time')
+                OR COLUMN_NAME LIKE '%Tarih%'
+                OR COLUMN_NAME LIKE '%Saat%'
+                OR COLUMN_NAME LIKE '%Zaman%'
+              )
+            ORDER BY ORDINAL_POSITION
+        """
+        kolonlar = self.sorgu_calistir(kol_sql, (tablo,))
+        if not kolonlar:
+            return {
+                'kaynak': kaynak, 'rx_id': rx_id_int, 'tablo_adi': tablo,
+                'kolonlar': [], 'degerler': None,
+                'hata': f"{tablo} tablosunda zaman kolonu bulunamadı",
+            }
+
+        # 2. Bu kolonları + sunucu zamanını tek sorguyla çek
+        kol_listesi = ", ".join(f"[{k['COLUMN_NAME']}]" for k in kolonlar)
+        veri_sql = f"""
+            SELECT
+                {kol_listesi},
+                SYSDATETIME() as _SunucuSysdatetime,
+                GETDATE() as _SunucuGetdate,
+                GETUTCDATE() as _SunucuUtc
+            FROM {tablo}
+            WHERE RxId = ?
+        """
+        rows = self.sorgu_calistir(veri_sql, (rx_id_int,))
+        pc_now = datetime.now()
+        pc_now_utc = datetime.utcnow()
+
+        if not rows:
+            return {
+                'kaynak': kaynak, 'rx_id': rx_id_int, 'tablo_adi': tablo,
+                'kolonlar': kolonlar, 'degerler': None,
+                'sunucu_now': None, 'sunucu_now_utc': None,
+                'pc_now': pc_now, 'pc_now_utc': pc_now_utc,
+                'hata': f"{tablo}.RxId={rx_id_int} bulunamadı",
+            }
+
+        row = dict(rows[0])
+        sunucu_now = row.pop('_SunucuSysdatetime', None)
+        sunucu_get = row.pop('_SunucuGetdate', None)
+        sunucu_utc = row.pop('_SunucuUtc', None)
+
+        return {
+            'kaynak': kaynak, 'rx_id': rx_id_int, 'tablo_adi': tablo,
+            'kolonlar': kolonlar,
+            'degerler': row,  # sadece kayıttaki zaman alanları
+            'sunucu_now': sunucu_now,
+            'sunucu_now_getdate': sunucu_get,
+            'sunucu_now_utc': sunucu_utc,
+            'pc_now': pc_now,
+            'pc_now_utc': pc_now_utc,
+            'hata': None,
+        }
+
+    def zaman_anomali_tarama(
+        self,
+        baslangic_dt,
+        bitis_dt,
+        esik_sn: int = 600,
+        max_kayit: int = 200000,
+    ) -> List[Dict]:
+        """Geniş zaman aralığında RxIslemTarihi vs RxKayitTarihi farkı eşik
+        üstündeki TÜM satışları DB seviyesinde filtreler.
+
+        Hassasiyet:
+        - Kayıt saatli ise → fark = saniye bazlı (DATEDIFF(SECOND, ...))
+        - Kayıt saatsiz ise (saat=00:00:00) → işlem saatini de yok say,
+          fark = gün bazlı × 86400 (eşik ile karşılaştırma için saniyeye çevrildi)
+          Aynı gün ise FarkSn=0 → eşik altında → anomali değil
+          1 gün sonra ise FarkSn=86400 → eşik üstü → anomali
+
+        Args:
+            baslangic_dt, bitis_dt: RxIslemTarihi filtresi (date veya datetime)
+            esik_sn: pozitif fark için eşik (sn). |fark| > esik_sn VEYA fark < 0
+                    olan kayıtlar dönecek. Varsayılan 600 (10 dk).
+            max_kayit: güvenlik üst sınırı (DB ezilmesin)
+
+        Returns:
+            [{'Kaynak','RxId','IslemTarihi','KayitTarihi','FarkSn','FarkTipi'},
+              ...]. FarkTipi='sn' veya 'gun'. FarkSn'e göre azalan (|fark|)
+            sıralı.
+        """
+        def _fmt(d):
+            if hasattr(d, 'strftime'):
+                if hasattr(d, 'hour'):
+                    return d.strftime('%Y-%m-%d %H:%M:%S')
+                return d.strftime('%Y-%m-%d') + ' 00:00:00'
+            return str(d)
+        bas_str = _fmt(baslangic_dt)
+        bit_str = _fmt(bitis_dt)
+        esik_sn_int = int(esik_sn)
+        max_kayit_int = int(max_kayit)
+
+        # ÇİFT KARŞILAŞTIRMA:
+        # - FarkSn = RxIslemTarihi vs RxKayitTarihi (kayıt DATE olduğu için
+        #   gün-bazlı * 86400 olarak normalize)
+        # - KontrolFarkSn = RxIslemTarihi vs RxKontrolTarihi (saniye bazlı,
+        #   sadece Reçete'de — Elden'de bu kolon yok, NULL döner)
+        # Anomali: herhangi biri eşik üstü veya negatif.
+        sql = f"""
+        SELECT TOP {max_kayit_int} * FROM (
+            SELECT
+                'RECETE' as Kaynak,
+                ra.RxId as RxId,
+                ra.RxIslemTarihi as IslemTarihi,
+                ra.RxKayitTarihi as KayitTarihi,
+                ra.RxKontrolTarihi as KontrolTarihi,
+                CASE
+                    WHEN DATEPART(HOUR, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                         AND DATEPART(MINUTE, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                         AND DATEPART(SECOND, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                    THEN CAST(DATEDIFF(DAY,
+                            CAST(ra.RxIslemTarihi as DATE),
+                            CAST(ra.RxKayitTarihi as DATE)) as BIGINT) * 86400
+                    ELSE DATEDIFF(SECOND, ra.RxIslemTarihi, ra.RxKayitTarihi)
+                END as FarkSn,
+                CASE
+                    WHEN DATEPART(HOUR, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                         AND DATEPART(MINUTE, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                         AND DATEPART(SECOND, CAST(ra.RxKayitTarihi as DATETIME)) = 0
+                    THEN 'gun'
+                    ELSE 'sn'
+                END as FarkTipi,
+                CASE WHEN ra.RxKontrolTarihi IS NULL THEN NULL
+                     ELSE DATEDIFF(SECOND, ra.RxIslemTarihi, ra.RxKontrolTarihi)
+                END as KontrolFarkSn
+            FROM ReceteAna ra
+            WHERE ra.RxSilme = 0
+                AND ra.RxIslemTarihi >= ?
+                AND ra.RxIslemTarihi <= ?
+                AND ra.RxKayitTarihi IS NOT NULL
+
+            UNION ALL
+
+            SELECT
+                'ELDEN' as Kaynak,
+                ea.RxId as RxId,
+                ea.RxIslemTarihi as IslemTarihi,
+                ea.RxKayitTarihi as KayitTarihi,
+                NULL as KontrolTarihi,
+                CASE
+                    WHEN DATEPART(HOUR, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                         AND DATEPART(MINUTE, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                         AND DATEPART(SECOND, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                    THEN CAST(DATEDIFF(DAY,
+                            CAST(ea.RxIslemTarihi as DATE),
+                            CAST(ea.RxKayitTarihi as DATE)) as BIGINT) * 86400
+                    ELSE DATEDIFF(SECOND, ea.RxIslemTarihi, ea.RxKayitTarihi)
+                END as FarkSn,
+                CASE
+                    WHEN DATEPART(HOUR, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                         AND DATEPART(MINUTE, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                         AND DATEPART(SECOND, CAST(ea.RxKayitTarihi as DATETIME)) = 0
+                    THEN 'gun'
+                    ELSE 'sn'
+                END as FarkTipi,
+                CAST(NULL as BIGINT) as KontrolFarkSn
+            FROM EldenAna ea
+            WHERE ea.RxSilme = 0
+                AND ea.RxIslemTarihi >= ?
+                AND ea.RxIslemTarihi <= ?
+                AND ea.RxKayitTarihi IS NOT NULL
+        ) AS T
+        WHERE FarkSn < 0 OR FarkSn > ?
+           OR (KontrolFarkSn IS NOT NULL
+               AND (KontrolFarkSn < 0 OR KontrolFarkSn > ?))
+        ORDER BY ABS(FarkSn) DESC,
+                 ABS(ISNULL(KontrolFarkSn, 0)) DESC,
+                 IslemTarihi DESC
+        """
+        params = (bas_str, bit_str, bas_str, bit_str, esik_sn_int, esik_sn_int)
+        sonuclar = self.sorgu_calistir(sql, params)
+        return [{
+            'Kaynak': r.get('Kaynak'),
+            'RxId': r.get('RxId'),
+            'IslemTarihi': r.get('IslemTarihi'),
+            'KayitTarihi': r.get('KayitTarihi'),
+            'KontrolTarihi': r.get('KontrolTarihi'),
+            'FarkSn': int(r.get('FarkSn') or 0) if r.get('FarkSn') is not None else None,
+            'FarkTipi': r.get('FarkTipi') or 'sn',
+            'KontrolFarkSn': int(r.get('KontrolFarkSn')) if r.get('KontrolFarkSn') is not None else None,
+        } for r in sonuclar]
+
+    def gun_saat_yogunlugu_getir(
+        self,
+        baslangic_tarih,
+        bitis_tarih,
+    ) -> List[Dict]:
+        """Bir tarih aralığında günlük saat dağılımı (anomali kıyas için).
+
+        Returns:
+            [{'Tarih'(date), 'Saat'(int), 'SatisSayisi'(int)}, ...]
+        """
+        def _fmt(d):
+            if hasattr(d, 'strftime'):
+                return d.strftime('%Y-%m-%d')
+            return str(d)
+        bas_str = _fmt(baslangic_tarih)
+        bit_str = _fmt(bitis_tarih)
+
+        sql = """
+        SELECT
+            CAST(IslemTarihi as date) as Tarih,
+            DATEPART(hour, IslemTarihi) as Saat,
+            COUNT(*) as SatisSayisi
+        FROM (
+            SELECT ra.RxIslemTarihi as IslemTarihi
+            FROM ReceteAna ra
+            WHERE ra.RxSilme = 0
+                AND ra.RxIslemTarihi >= ?
+                AND ra.RxIslemTarihi < DATEADD(DAY, 1, CAST(? as date))
+            UNION ALL
+            SELECT ea.RxIslemTarihi
+            FROM EldenAna ea
+            WHERE ea.RxSilme = 0
+                AND ea.RxIslemTarihi >= ?
+                AND ea.RxIslemTarihi < DATEADD(DAY, 1, CAST(? as date))
+        ) T
+        GROUP BY CAST(IslemTarihi as date), DATEPART(hour, IslemTarihi)
+        ORDER BY Tarih, Saat
+        """
+        sonuclar = self.sorgu_calistir(sql, (bas_str, bit_str, bas_str, bit_str))
+        return [{
+            'Tarih': r.get('Tarih'),
+            'Saat': int(r.get('Saat') or 0),
+            'SatisSayisi': int(r.get('SatisSayisi') or 0),
+        } for r in sonuclar]
+
+    def satis_kalem_detayi_getir(
+        self,
+        baslangic_dt,
+        bitis_dt,
+        kirilim: str = 'tumu',
+        kurum_id: Optional[int] = None,
+    ) -> List[Dict]:
+        """Datetime aralığında her satış KALEMİ için tam detay döner.
+
+        Her ilaç kalemi ayrı satır — hasta + doktor + kurum + ürün + adet + fiyat.
+        satis_zaman_detay_getir'den farkı: bu kalem bazlı (RxIlaci satırı),
+        diğeri satış (RxId) bazlı.
+
+        Args:
+            baslangic_dt, bitis_dt: datetime (saat+dakika+saniye dahil) veya 'YYYY-MM-DD HH:MM:SS'
+            kirilim: 'tumu'|'recete'|'elden'|'kurum'
+
+        Returns:
+            [{'Kaynak', 'RxId', 'IslemTarihi', 'HastaAdi', 'DoktorAdi',
+              'KurumAdi', 'TesisAdi', 'UrunAdi', 'Adet', 'BirimFiyat', 'Tutar'}, ...]
+        """
+        if kirilim not in ('tumu', 'recete', 'elden', 'kurum'):
+            raise ValueError(f"Geçersiz kırılım: {kirilim}")
+
+        # datetime → string
+        def _fmt(d):
+            if hasattr(d, 'strftime'):
+                return d.strftime('%Y-%m-%d %H:%M:%S')
+            return str(d)
+        bas_str = _fmt(baslangic_dt)
+        bit_str = _fmt(bitis_dt)
+
+        recete_aktif = kirilim in ('tumu', 'recete', 'kurum')
+        elden_aktif = kirilim in ('tumu', 'elden')
+
+        kurum_filtre = ""
+        if kirilim in ('kurum', 'recete') and kurum_id is not None:
+            kurum_filtre = f" AND ra.RxKurumId = {int(kurum_id)} "
+
+        # Reçeteli: her kalem için doktor + hasta + kurum + ürün
+        recete_blok = """
+            SELECT
+                'RECETE' as Kaynak,
+                ra.RxId as RxId,
+                ra.RxIslemTarihi as IslemTarihi,
+                m.MusteriAdiSoyadi as HastaAdi,
+                COALESCE(dok.DoktorAdiSoyadi,
+                         ISNULL(dok.DoktorAdi, '') + ' ' + ISNULL(dok.DoktorSoyadi, '')) as DoktorAdi,
+                k.KurumAdi as KurumAdi,
+                h.HastaneAdi as TesisAdi,
+                u.UrunAdi as UrunAdi,
+                ri.RIAdet as Adet,
+                ri.RIEtiketFiyati as BirimFiyat,
+                ri.RIToplam as Tutar
+            FROM ReceteAna ra
+            JOIN ReceteIlaclari ri ON ra.RxId = ri.RIRxId
+            JOIN Urun u ON ri.RIUrunId = u.UrunId
+            LEFT JOIN Musteri m ON ra.RxMusteriId = m.MusteriId
+            LEFT JOIN Doktor dok ON ra.RxDoktorId = dok.DoktorId
+            LEFT JOIN Hastane h ON ra.RxHastaneId = h.HastaneId
+            LEFT JOIN Kurum k ON ra.RxKurumId = k.KurumId
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0
+                AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+                AND ra.RxIslemTarihi >= ?
+                AND ra.RxIslemTarihi <= ?
+        """ + kurum_filtre
+
+        # Elden: doktor/kurum yok
+        elden_blok = """
+            SELECT
+                'ELDEN' as Kaynak,
+                ea.RxId as RxId,
+                ea.RxIslemTarihi as IslemTarihi,
+                m.MusteriAdiSoyadi as HastaAdi,
+                NULL as DoktorAdi,
+                NULL as KurumAdi,
+                NULL as TesisAdi,
+                u.UrunAdi as UrunAdi,
+                ei.RIAdet as Adet,
+                ei.RIEtiketFiyati as BirimFiyat,
+                ei.RIToplam as Tutar
+            FROM EldenAna ea
+            JOIN EldenIlaclari ei ON ea.RxId = ei.RIRxId
+            JOIN Urun u ON ei.RIUrunId = u.UrunId
+            LEFT JOIN Musteri m ON ea.RxMusteriId = m.MusteriId
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0
+                AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+                AND ea.RxIslemTarihi >= ?
+                AND ea.RxIslemTarihi <= ?
+        """
+
+        bloklar = []
+        params = []
+        if recete_aktif:
+            bloklar.append(recete_blok)
+            params.extend([bas_str, bit_str])
+        if elden_aktif:
+            bloklar.append(elden_blok)
+            params.extend([bas_str, bit_str])
+
+        if not bloklar:
+            return []
+
+        sql = "\nUNION ALL\n".join(bloklar) + "\nORDER BY IslemTarihi, RxId"
+        sonuclar = self.sorgu_calistir(sql, tuple(params))
+
+        temiz = []
+        for r in sonuclar:
+            temiz.append({
+                'Kaynak': r.get('Kaynak'),
+                'RxId': r.get('RxId'),
+                'IslemTarihi': r.get('IslemTarihi'),
+                'HastaAdi': r.get('HastaAdi') or '',
+                'DoktorAdi': (r.get('DoktorAdi') or '').strip(),
+                'KurumAdi': r.get('KurumAdi') or '',
+                'TesisAdi': r.get('TesisAdi') or '',
+                'UrunAdi': r.get('UrunAdi') or '',
+                'Adet': float(r.get('Adet') or 0),
+                'BirimFiyat': float(r.get('BirimFiyat') or 0),
+                'Tutar': float(r.get('Tutar') or 0),
+            })
+        return temiz
+
+    def satis_zaman_detay_getir(
+        self,
+        baslangic_tarih,
+        bitis_tarih,
+        kirilim: str = 'tumu',
+        kurum_id: Optional[int] = None,
+    ) -> List[Dict]:
+        """Her satışın zaman detayını (RxIslemTarihi datetime) döndürür.
+
+        Args:
+            baslangic_tarih, bitis_tarih: date veya datetime (saat dahil).
+              datetime ise SQL'de SAAT BAZINDA filtre (çok daha dar pencere).
+              date ise: bas 00:00:00 → bit ertesi gun 00:00:00 (eski davranış).
+
+        Returns:
+            [{'kaynak', 'rx_id', 'tarih', 'kalem_sayisi', 'adet', 'tutar'}, ...]
+        """
+        if kirilim not in ('tumu', 'recete', 'elden', 'kurum'):
+            raise ValueError(f"Geçersiz kırılım: {kirilim}")
+        if kirilim == 'kurum' and kurum_id is None:
+            raise ValueError("kırılım='kurum' için kurum_id zorunlu")
+
+        # datetime ise saat-bazlı filtre (dar pencere, hızlı sorgu)
+        # date ise gun bazlı (eski davranış, geniş pencere)
+        from datetime import datetime as _dt
+        is_datetime_bas = isinstance(baslangic_tarih, _dt)
+        is_datetime_bit = isinstance(bitis_tarih, _dt)
+
+        if is_datetime_bas:
+            bas_str = baslangic_tarih.strftime('%Y-%m-%d %H:%M:%S')
+        elif hasattr(baslangic_tarih, 'strftime'):
+            bas_str = baslangic_tarih.strftime('%Y-%m-%d') + ' 00:00:00'
+        else:
+            bas_str = str(baslangic_tarih)
+
+        if is_datetime_bit:
+            bit_str = bitis_tarih.strftime('%Y-%m-%d %H:%M:%S')
+            bit_filtre = "AND ra.RxIslemTarihi <= ?"
+            bit_filtre_elden = "AND ea.RxIslemTarihi <= ?"
+        elif hasattr(bitis_tarih, 'strftime'):
+            # Tarih ise: ertesi günün 00:00'ı (eski davranış)
+            bit_str = bitis_tarih.strftime('%Y-%m-%d')
+            bit_filtre = "AND ra.RxIslemTarihi < DATEADD(DAY, 1, CAST(? as date))"
+            bit_filtre_elden = "AND ea.RxIslemTarihi < DATEADD(DAY, 1, CAST(? as date))"
+        else:
+            bit_str = str(bitis_tarih)
+            bit_filtre = "AND ra.RxIslemTarihi <= ?"
+            bit_filtre_elden = "AND ea.RxIslemTarihi <= ?"
+
+        recete_aktif = kirilim in ('tumu', 'recete', 'kurum')
+        elden_aktif = kirilim in ('tumu', 'elden')
+
+        kurum_filtre = ""
+        if kirilim == 'kurum' and kurum_id is not None:
+            kurum_filtre = f" AND ra.RxKurumId = {int(kurum_id)} "
+        elif kirilim == 'recete' and kurum_id is not None:
+            kurum_filtre = f" AND ra.RxKurumId = {int(kurum_id)} "
+
+        # Reçete: kalemleri reçete bazında topla (kalem sayısı + kutu + tutar)
+        recete_blok = f"""
+            SELECT
+                'RECETE' as Kaynak,
+                ra.RxId as RxId,
+                ra.RxIslemTarihi as Tarih,
+                COUNT(*) as KalemSayisi,
+                SUM(ri.RIAdet) as Adet,
+                SUM(ri.RIToplam) as Tutar
+            FROM ReceteAna ra
+            JOIN ReceteIlaclari ri ON ra.RxId = ri.RIRxId
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0
+                AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+                AND ra.RxIslemTarihi >= ?
+                {bit_filtre}
+        """ + kurum_filtre + """
+            GROUP BY ra.RxId, ra.RxIslemTarihi
+        """
+
+        elden_blok = f"""
+            SELECT
+                'ELDEN' as Kaynak,
+                ea.RxId as RxId,
+                ea.RxIslemTarihi as Tarih,
+                COUNT(*) as KalemSayisi,
+                SUM(ei.RIAdet) as Adet,
+                SUM(ei.RIToplam) as Tutar
+            FROM EldenAna ea
+            JOIN EldenIlaclari ei ON ea.RxId = ei.RIRxId
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0
+                AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+                AND ea.RxIslemTarihi >= ?
+                {bit_filtre_elden}
+            GROUP BY ea.RxId, ea.RxIslemTarihi
+        """
+
+        kaynak_bloklari = []
+        params = []
+        if recete_aktif:
+            kaynak_bloklari.append(recete_blok)
+            params.extend([bas_str, bit_str])
+        if elden_aktif:
+            kaynak_bloklari.append(elden_blok)
+            params.extend([bas_str, bit_str])
+
+        if not kaynak_bloklari:
+            return []
+
+        sql = "\nUNION ALL\n".join(kaynak_bloklari) + "\nORDER BY Tarih"
+
+        sonuclar = self.sorgu_calistir(sql, tuple(params))
+
+        temiz = []
+        for r in sonuclar:
+            dt = r.get('Tarih')
+            if hasattr(dt, 'date') and not hasattr(dt, 'hour'):
+                continue
+            temiz.append({
+                'kaynak': r.get('Kaynak'),
+                'rx_id': r.get('RxId'),
+                'tarih': dt,
+                'kalem_sayisi': int(r.get('KalemSayisi') or 0),
+                'adet': float(r.get('Adet') or 0),
+                'tutar': float(r.get('Tutar') or 0),
+            })
+        return temiz
+
+    def satis_kalem_detay_getir(self, kaynak: str, rx_id) -> Dict:
+        """Tek bir satışın (RECETE veya ELDEN) tam detayını döndür.
+
+        Args:
+            kaynak: 'RECETE' veya 'ELDEN'
+            rx_id: RxId değeri (int)
+
+        Returns:
+            {
+                'baslik': {...},   # üst bilgiler (hasta, doktor, hastane, kurum, ...)
+                'kalemler': [...], # ilaç satırları (barkod, ad, adet, fiyatlar, ...)
+            }
+            Bulunamazsa baslik=None, kalemler=[].
+        """
+        try:
+            rx_id_int = int(rx_id)
+        except (TypeError, ValueError):
+            return {'baslik': None, 'kalemler': []}
+
+        kaynak = (kaynak or '').upper().strip()
+        if kaynak not in ('RECETE', 'ELDEN'):
+            return {'baslik': None, 'kalemler': []}
+
+        if kaynak == 'RECETE':
+            # Sadece bu repo'da kullanıldığı doğrulanmış kolonlar.
+            # (RxBelgeNo/RxToplam/RxKatilimPayi/RxTeshis/RxAciklama/DoktorBranj
+            #  ReceteAna/Doktor tablosunda olmayabilir → sorgu sessizce 0 satır
+            #  döndürüyordu.) Toplam, kalemlerden hesaplanacak.
+            baslik_sql = """
+                SELECT
+                    ra.RxId,
+                    ra.RxIslemTarihi,
+                    ra.RxKayitTarihi,
+                    ra.RxReceteTarihi,
+                    ra.RxEReceteNo,
+                    m.MusteriAdiSoyadi as HastaAdi,
+                    m.MusteriTCKN as HastaTCKN,
+                    COALESCE(
+                        dok.DoktorAdiSoyadi,
+                        dok.DoktorAdi + ' ' + ISNULL(dok.DoktorSoyadi, '')
+                    ) as DoktorAdi,
+                    h.HastaneAdi as TesisAdi,
+                    k.KurumAdi as KurumAdi
+                FROM ReceteAna ra
+                LEFT JOIN Musteri m ON ra.RxMusteriId = m.MusteriId
+                LEFT JOIN Doktor dok ON ra.RxDoktorId = dok.DoktorId
+                LEFT JOIN Hastane h ON ra.RxHastaneId = h.HastaneId
+                LEFT JOIN Kurum k ON ra.RxKurumId = k.KurumId
+                WHERE ra.RxId = ? AND ra.RxSilme = 0
+            """
+            kalem_sql = """
+                SELECT
+                    ri.RIId,
+                    ri.RIUrunId as UrunId,
+                    u.UrunAdi,
+                    (SELECT TOP 1 b.BarkodAdi FROM Barkod b
+                        WHERE b.BarkodUrunId = u.UrunId
+                        ORDER BY b.BarkodSilme ASC) as Barkod,
+                    ri.RIAdet as Adet,
+                    ri.RIEtiketFiyati as EtiketFiyat,
+                    ri.RIKurumFiyati as KurumFiyat,
+                    ri.RIFiyatFarki as FiyatFarki,
+                    ri.RIIskonto as Iskonto,
+                    ri.RIToplam as Toplam,
+                    ri.RIIade as Iade
+                FROM ReceteIlaclari ri
+                LEFT JOIN Urun u ON ri.RIUrunId = u.UrunId
+                WHERE ri.RIRxId = ? AND ri.RISilme = 0
+                ORDER BY ri.RIId
+            """
+        else:  # ELDEN
+            # Sadece doğrulanmış kolonlar; toplam kalemlerden hesaplanacak.
+            baslik_sql = """
+                SELECT
+                    ea.RxId,
+                    ea.RxIslemTarihi,
+                    ea.RxKayitTarihi,
+                    ea.RxBelgeNo,
+                    m.MusteriAdiSoyadi as HastaAdi,
+                    m.MusteriTCKN as HastaTCKN
+                FROM EldenAna ea
+                LEFT JOIN Musteri m ON ea.RxMusteriId = m.MusteriId
+                WHERE ea.RxId = ? AND ea.RxSilme = 0
+            """
+            kalem_sql = """
+                SELECT
+                    ei.RIId,
+                    ei.RIUrunId as UrunId,
+                    u.UrunAdi,
+                    (SELECT TOP 1 b.BarkodAdi FROM Barkod b
+                        WHERE b.BarkodUrunId = u.UrunId
+                        ORDER BY b.BarkodSilme ASC) as Barkod,
+                    ei.RIAdet as Adet,
+                    ei.RIEtiketFiyati as EtiketFiyat,
+                    NULL as KurumFiyat,
+                    NULL as FiyatFarki,
+                    ei.RIIskonto as Iskonto,
+                    ei.RIToplam as Toplam,
+                    ei.RIIade as Iade
+                FROM EldenIlaclari ei
+                LEFT JOIN Urun u ON ei.RIUrunId = u.UrunId
+                WHERE ei.RIRxId = ? AND ei.RISilme = 0
+                ORDER BY ei.RIId
+            """
+
+        baslik_rows = self.sorgu_calistir(baslik_sql, (rx_id_int,))
+        baslik_hata = self.son_sorgu_hatasi
+        kalem_rows = self.sorgu_calistir(kalem_sql, (rx_id_int,))
+        kalem_hata = self.son_sorgu_hatasi
+
+        baslik = baslik_rows[0] if baslik_rows else None
+        if baslik:
+            baslik = dict(baslik)
+            baslik['Kaynak'] = kaynak
+
+        kalemler = []
+        for r in kalem_rows or []:
+            kalemler.append({
+                'urun_id': r.get('UrunId'),
+                'urun_adi': r.get('UrunAdi') or '',
+                'barkod': r.get('Barkod') or '',
+                'adet': float(r.get('Adet') or 0),
+                'etiket_fiyat': float(r.get('EtiketFiyat') or 0),
+                'kurum_fiyat': float(r.get('KurumFiyat') or 0)
+                                if r.get('KurumFiyat') is not None else None,
+                'fiyat_farki': float(r.get('FiyatFarki') or 0)
+                                if r.get('FiyatFarki') is not None else None,
+                'iskonto': float(r.get('Iskonto') or 0),
+                'toplam': float(r.get('Toplam') or 0),
+                'iade': bool(r.get('Iade')),
+            })
+
+        return {
+            'baslik': baslik,
+            'kalemler': kalemler,
+            'baslik_hata': baslik_hata,
+            'kalem_hata': kalem_hata,
+        }
+
+    def satis_raporu_getir(
+        self,
+        baslangic_tarih,
+        bitis_tarih,
+        kirilim: str = 'tumu',
+        kurum_id: Optional[int] = None,
+        periyot: str = 'aylik',
+    ) -> List[Dict]:
+        """İki tarih arası satışları periyot bazlı grupla.
+
+        Args:
+            baslangic_tarih: date veya 'YYYY-MM-DD'
+            bitis_tarih: date veya 'YYYY-MM-DD' (dahil)
+            kirilim: 'tumu' | 'recete' | 'elden' | 'kurum'
+                'kurum' seçilirse kurum_id zorunlu
+            kurum_id: kırılım='kurum' veya 'recete' iken belirli kurum filtresi
+            periyot: 'gunluk' | 'haftalik' | 'aylik' | '3aylik' | 'yillik'
+
+        Returns:
+            [{Donem(date), ReceteSayisi, SatisSayisi, KutuSayisi, TLTutar}, ...]
+            Donem periyodun başlangıç tarihi.
+        """
+        if periyot not in self.PERIYOT_IFADELERI:
+            raise ValueError(f"Geçersiz periyot: {periyot}. Beklenen: {list(self.PERIYOT_IFADELERI.keys())}")
+        if kirilim not in ('tumu', 'recete', 'elden', 'kurum'):
+            raise ValueError(f"Geçersiz kırılım: {kirilim}")
+        if kirilim == 'kurum' and kurum_id is None:
+            raise ValueError("kırılım='kurum' için kurum_id zorunlu")
+
+        # Tarihleri normalize et
+        if hasattr(baslangic_tarih, 'strftime'):
+            bas_str = baslangic_tarih.strftime('%Y-%m-%d')
+        else:
+            bas_str = str(baslangic_tarih)
+        if hasattr(bitis_tarih, 'strftime'):
+            bit_str = bitis_tarih.strftime('%Y-%m-%d')
+        else:
+            bit_str = str(bitis_tarih)
+
+        period_expr = self.PERIYOT_IFADELERI[periyot]
+
+        # Kaynak filtreleri (reçete / elden / her ikisi)
+        recete_aktif = kirilim in ('tumu', 'recete', 'kurum')
+        elden_aktif = kirilim in ('tumu', 'elden')
+
+        # Kurum filtre cümlesi (parametre ile değil, int olduğu için string interpolation
+        # — kurum_id sadece dropdown'dan int olarak gelir, SQL injection riski yok)
+        kurum_filtre = ""
+        if kirilim == 'kurum' and kurum_id is not None:
+            kurum_filtre = f" AND ra.RxKurumId = {int(kurum_id)} "
+        elif kirilim == 'recete' and kurum_id is not None:
+            kurum_filtre = f" AND ra.RxKurumId = {int(kurum_id)} "
+
+        # Kaynak UNION
+        recete_blok = """
+            SELECT
+                'RECETE' as Kaynak,
+                ra.RxId as RxId,
+                ra.RxIslemTarihi as Tarih,
+                ri.RIAdet as Adet,
+                ri.RIToplam as Tutar
+            FROM ReceteAna ra
+            JOIN ReceteIlaclari ri ON ra.RxId = ri.RIRxId
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0
+                AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+                AND ra.RxIslemTarihi >= ?
+                AND ra.RxIslemTarihi < DATEADD(DAY, 1, CAST(? as date))
+        """ + kurum_filtre
+
+        elden_blok = """
+            SELECT
+                'ELDEN' as Kaynak,
+                ea.RxId as RxId,
+                ea.RxIslemTarihi as Tarih,
+                ei.RIAdet as Adet,
+                ei.RIToplam as Tutar
+            FROM EldenAna ea
+            JOIN EldenIlaclari ei ON ea.RxId = ei.RIRxId
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0
+                AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+                AND ea.RxIslemTarihi >= ?
+                AND ea.RxIslemTarihi < DATEADD(DAY, 1, CAST(? as date))
+        """
+
+        kaynak_bloklari = []
+        params = []
+        if recete_aktif:
+            kaynak_bloklari.append(recete_blok)
+            params.extend([bas_str, bit_str])
+        if elden_aktif:
+            kaynak_bloklari.append(elden_blok)
+            params.extend([bas_str, bit_str])
+
+        if not kaynak_bloklari:
+            return []
+
+        kaynak_sql = "\n            UNION ALL\n".join(kaynak_bloklari)
+
+        sql = f"""
+        WITH SatisKaynak AS (
+        {kaynak_sql}
+        )
+        SELECT
+            {period_expr} as Donem,
+            -- Reçeteli kırılım
+            COUNT(DISTINCT CASE WHEN Kaynak = 'RECETE' THEN CAST(RxId as nvarchar(50)) END) as ReceteliSayisi,
+            SUM(CASE WHEN Kaynak = 'RECETE' THEN 1 ELSE 0 END) as ReceteliKalem,
+            SUM(CASE WHEN Kaynak = 'RECETE' THEN CAST(Adet as decimal(18,4)) ELSE 0 END) as ReceteliKutu,
+            SUM(CASE WHEN Kaynak = 'RECETE' THEN CAST(Tutar as decimal(18,4)) ELSE 0 END) as ReceteliTL,
+            -- Elden kırılım
+            COUNT(DISTINCT CASE WHEN Kaynak = 'ELDEN' THEN CAST(RxId as nvarchar(50)) END) as EldenSayisi,
+            SUM(CASE WHEN Kaynak = 'ELDEN' THEN 1 ELSE 0 END) as EldenKalem,
+            SUM(CASE WHEN Kaynak = 'ELDEN' THEN CAST(Adet as decimal(18,4)) ELSE 0 END) as EldenKutu,
+            SUM(CASE WHEN Kaynak = 'ELDEN' THEN CAST(Tutar as decimal(18,4)) ELSE 0 END) as EldenTL,
+            -- Genel toplam
+            COUNT(DISTINCT CAST(Kaynak as nvarchar(10)) + '-' + CAST(RxId as nvarchar(50))) as SatisSayisi,
+            COUNT(*) as KalemSayisi,
+            SUM(CAST(Adet as decimal(18,4))) as KutuSayisi,
+            SUM(CAST(Tutar as decimal(18,4))) as TLTutar
+        FROM SatisKaynak
+        GROUP BY {period_expr}
+        ORDER BY {period_expr}
+        """
+
+        sonuclar = self.sorgu_calistir(sql, tuple(params))
+
+        # Decimal -> float dönüşümü ve None temizliği
+        temiz = []
+        for r in sonuclar:
+            temiz.append({
+                'Donem': r.get('Donem'),
+                # Reçeteli kırılım
+                'ReceteliSayisi': int(r.get('ReceteliSayisi') or 0),
+                'ReceteliKalem': int(r.get('ReceteliKalem') or 0),
+                'ReceteliKutu': float(r.get('ReceteliKutu') or 0),
+                'ReceteliTL': float(r.get('ReceteliTL') or 0),
+                # Elden kırılım
+                'EldenSayisi': int(r.get('EldenSayisi') or 0),
+                'EldenKalem': int(r.get('EldenKalem') or 0),
+                'EldenKutu': float(r.get('EldenKutu') or 0),
+                'EldenTL': float(r.get('EldenTL') or 0),
+                # Genel toplam
+                'SatisSayisi': int(r.get('SatisSayisi') or 0),
+                'KalemSayisi': int(r.get('KalemSayisi') or 0),
+                'KutuSayisi': float(r.get('KutuSayisi') or 0),
+                'TLTutar': float(r.get('TLTutar') or 0),
+                # Legacy alias (= ReceteliSayisi)
+                'ReceteSayisi': int(r.get('ReceteliSayisi') or 0),
+            })
+        return temiz
+
+
 # Singleton instance
 _db_instance = None
 

@@ -146,6 +146,13 @@ class AnaMenu:
             "renk": "#FF6F00",  # Amber
             "hover": "#E65100"
         },
+        "satis_raporlari": {
+            "baslik": "Satış Raporları",
+            "icon": "📊",
+            "aciklama": "Tarih aralıklı, periyot bazlı satış raporu + nöbet tespiti + endeks ayarları",
+            "renk": "#1565C0",  # Mavi
+            "hover": "#0D47A1"
+        },
         "hasta_takip": {
             "baslik": "Hasta Takip & WA",
             "icon": "📲",
@@ -465,7 +472,7 @@ class AnaMenu:
             "aylik_recete_sorgu", "t_cetvel", "ek_raporlar", "mf_analiz",
             "mf_hizli", "siparis_verme", "fatih_siparisci", "hibrit_siparisci",
             "min_stok_analiz", "stok_maliyet_analiz",
-            "prim_raporlama", "hasta_takip", "yedek_temizlik", "kullanici_yonetimi"
+            "prim_raporlama", "satis_raporlari", "hasta_takip", "yedek_temizlik", "kullanici_yonetimi"
         ]
 
         # Grid ayarları: uniform parametresi ile tum hucreler ayni boyut.
@@ -644,6 +651,8 @@ class AnaMenu:
             self.stok_maliyet_analiz_ac()
         elif modul_key == "prim_raporlama":
             self.prim_raporlama_ac()
+        elif modul_key == "satis_raporlari":
+            self.satis_raporlari_ac()
         elif modul_key == "hasta_takip":
             self.hasta_takip_ac()
         elif modul_key == "yedek_temizlik":
@@ -1089,6 +1098,32 @@ class AnaMenu:
         except Exception as e:
             logger.error(f"Hasta Takip açma hatası: {e}")
             messagebox.showerror("Hata", f"Hasta Takip modülü açılamadı:\n{e}")
+            if pencere is not None:
+                try: pencere.destroy()
+                except Exception: pass
+
+    def satis_raporlari_ac(self):
+        """Satış Raporları modülünü aç"""
+        pencere = None
+        try:
+            pencere = self._modul_pencere_al("satis_raporlari", zoomed=True)
+            if pencere is None:
+                return
+
+            self._yeniden_yukle("botanik_db", "satis_raporlari_gui")
+            from satis_raporlari_gui import SatisRaporlariGUI
+
+            SatisRaporlariGUI(pencere, ana_menu_callback=lambda: None)
+
+        except ImportError as e:
+            logger.error(f"Satış Raporları import hatası: {e}")
+            messagebox.showerror("Hata", f"Satış Raporları modülü yüklenemedi:\n{e}")
+            if pencere is not None:
+                try: pencere.destroy()
+                except Exception: pass
+        except Exception as e:
+            logger.error(f"Satış Raporları açma hatası: {e}", exc_info=True)
+            messagebox.showerror("Hata", f"Satış Raporları açılamadı:\n{e}")
             if pencere is not None:
                 try: pencere.destroy()
                 except Exception: pass
