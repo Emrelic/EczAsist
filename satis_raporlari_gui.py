@@ -163,7 +163,13 @@ class SatisRaporlariGUI:
         # Endeks bazlı görünüm
         self.endeks_db = None  # EndeksDB instance (lazy)
         self.endeks_secim_var = tk.StringVar(value='TL (varsayılan)')
-        # endeks_secim_var değeri formatı: 'TL (varsayılan)' veya 'E:{kod}' veya 'S:{sepet_id}'
+        # endeks_secim_var: legacy tek-endeks combobox (artık popup ile yönetiliyor;
+        # geriye uyum için ilk seçili endeksi yansıtacak şekilde tutulur)
+
+        # Çoklu endeks sütun seçimi (yeni)
+        self.aktif_endeks_listesi: List[Dict] = []
+        # Format: [{'kod': 'E:usd', 'id': 1, 'tip': 'endeks'|'sepet',
+        #          'birim': 'USD', 'ad': 'Amerikan Doları'}, ...]
 
         # Sıralama durumu
         self._son_siralama_sutun = None
@@ -206,6 +212,9 @@ class SatisRaporlariGUI:
                   ).pack(side="right", padx=5, pady=12)
         tk.Button(header, text="🔬 Logger Forensik", bg='#00838F', fg='white',
                   activebackground='#006064', command=self._logger_forensik_ac, **btn_style
+                  ).pack(side="right", padx=5, pady=12)
+        tk.Button(header, text="📊 Birleşik Zaman Analizi", bg='#6A1B9A', fg='white',
+                  activebackground='#4A148C', command=self._birlesik_zaman_ac, **btn_style
                   ).pack(side="right", padx=5, pady=12)
         tk.Button(header, text="🔍 Sorgula", bg='#0277BD', fg='white',
                   activebackground='#01579B', command=self._sorgula, **btn_style
@@ -323,23 +332,25 @@ class SatisRaporlariGUI:
         satir6.pack(fill="x", pady=5, padx=10)
 
         self._lbl(satir6, "📈 Endeks Bazlı Görünüm:").pack(side="left", padx=(0, 8))
-        self.endeks_combo = ttk.Combobox(
-            satir6, textvariable=self.endeks_secim_var, width=45, state="readonly",
-            values=['TL (varsayılan)']
-        )
-        self.endeks_combo.pack(side="left", padx=4)
-        self.endeks_combo.bind('<<ComboboxSelected>>', self._endeks_secimi_degisti)
 
-        tk.Button(satir6, text="🔄 Yenile", font=("Segoe UI", 8),
-                  bg='#90A4AE', fg='white', bd=0, padx=8,
-                  command=self._endeks_listesini_yenile).pack(side="left", padx=4)
+        self.endeks_sec_btn = tk.Button(
+            satir6, text="📋 Endeks Sütunları (0 seçili)",
+            font=("Segoe UI", 9, "bold"),
+            bg='#00838F', fg='white', bd=0, padx=12, pady=3, cursor='hand2',
+            command=self._endeks_sutunlari_sec_dialog
+        )
+        self.endeks_sec_btn.pack(side="left", padx=4)
 
         tk.Button(satir6, text="⚙ Endeks Ayarları", font=("Segoe UI", 9, "bold"),
                   bg='#5D4037', fg='white', bd=0, padx=10, pady=2, cursor='hand2',
                   command=self._endeks_ayarlari_ac).pack(side="left", padx=8)
 
+        tk.Button(satir6, text="📊 Grafik", font=("Segoe UI", 9, "bold"),
+                  bg='#1976D2', fg='white', bd=0, padx=10, pady=2, cursor='hand2',
+                  command=self._grafik_ac).pack(side="left", padx=4)
+
         self.endeks_bilgi_lbl = tk.Label(
-            satir6, text="(TL ÷ seçilen endeks değeri = endeks cinsinden tutar)",
+            satir6, text="(seçilen her endeks için TL ÷ endeks değeri sütunu eklenir)",
             bg=self.filter_bg, font=("Segoe UI", 9, "italic"), fg='#37474F'
         )
         self.endeks_bilgi_lbl.pack(side="left", padx=12)
@@ -499,6 +510,9 @@ class SatisRaporlariGUI:
             return False
 
     def _endeks_listesini_yenile(self):
+        """Endeks Ayarları kapatıldığında çağrılır — silinen endeksleri seçim
+        listesinden temizler. Yeni eklenen endeksler popup açıldığında görünür.
+        """
         if not self._endeks_db_yukle():
             return
         try:
@@ -508,15 +522,187 @@ class SatisRaporlariGUI:
             logger.error(f"Endeks listesi alınamadı: {e}")
             return
 
-        secimler = ['TL (varsayılan)']
-        for e in endeksler:
-            etiket = f"E:{e['kod']} — {e['ad']} ({e['birim'] or '?'})"
-            secimler.append(etiket)
-        for s in sepetler:
-            etiket = f"S:{s['id']} — SEPET: {s['ad']}"
-            secimler.append(etiket)
-        self.endeks_combo['values'] = secimler
-        self._status(f"Endeks listesi yenilendi ({len(endeksler)} endeks, {len(sepetler)} sepet).")
+        # Mevcut seçimlerden artık var olmayanları temizle
+        mevcut_endeks_ids = {e['id'] for e in endeksler}
+        mevcut_sepet_ids = {s['id'] for s in sepetler}
+        yeni_liste = []
+        for sec in self.aktif_endeks_listesi:
+            if sec['tip'] == 'endeks' and sec['id'] in mevcut_endeks_ids:
+                yeni_liste.append(sec)
+            elif sec['tip'] == 'sepet' and sec['id'] in mevcut_sepet_ids:
+                yeni_liste.append(sec)
+        self.aktif_endeks_listesi = yeni_liste
+        self._endeks_secim_butonu_guncelle()
+        self._status(f"Endeks listesi: {len(endeksler)} endeks, {len(sepetler)} sepet.")
+
+    def _endeks_secim_butonu_guncelle(self):
+        """Endeks Sütunları butonunun başlığını güncel seçim sayısı ile yeniler."""
+        n = len(self.aktif_endeks_listesi)
+        if hasattr(self, 'endeks_sec_btn'):
+            self.endeks_sec_btn.config(text=f"📋 Endeks Sütunları ({n} seçili)")
+
+    def _endeks_sutunlari_sec_dialog(self):
+        """Modal popup — tabloya eklenecek endeks/sepet sütunlarını seçtirir.
+
+        Tamam'a basıldığında self.aktif_endeks_listesi güncellenir ve
+        tablo + sütunlar yeniden kurulur.
+        """
+        if not self._endeks_db_yukle():
+            return
+
+        try:
+            endeksler = self.endeks_db.endeksleri_getir()
+            sepetler = self.endeks_db.sepet_listesi()
+        except Exception as e:
+            logger.error(f"Endeks listesi alınamadı: {e}")
+            messagebox.showerror("Hata", f"Endeks listesi alınamadı:\n{e}")
+            return
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Endeks Sütun Seçimi")
+        dlg.geometry("560x650")
+        dlg.transient(self.root)
+        dlg.grab_set()
+        dlg.configure(bg='#ECEFF1')
+
+        # Header
+        hdr = tk.Frame(dlg, bg='#00838F', height=42)
+        hdr.pack(fill='x')
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="📋 Tabloya Eklenecek Endeks/Sepet Sütunları",
+                 font=("Segoe UI", 11, "bold"), bg='#00838F', fg='white'
+                 ).pack(side='left', padx=12, pady=8)
+
+        # Açıklama
+        tk.Label(dlg, text="Seçilen her endeks için tabloya 'TL ÷ endeks' sütunu eklenir.",
+                 font=("Segoe UI", 9, "italic"), bg='#ECEFF1', fg='#37474F'
+                 ).pack(pady=(8, 4), padx=12, anchor='w')
+
+        # Scrollable frame
+        outer = tk.Frame(dlg, bg='white', relief='solid', bd=1)
+        outer.pack(fill='both', expand=True, padx=8, pady=4)
+
+        canvas = tk.Canvas(outer, bg='white', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(outer, orient='vertical', command=canvas.yview)
+        scrollable = tk.Frame(canvas, bg='white')
+        scrollable.bind('<Configure>',
+                        lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.create_window((0, 0), window=scrollable, anchor='nw',
+                             width=520)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+
+        # Mevcut seçimlerin ID setleri (tip'e göre)
+        secili_endeks_ids = {s['id'] for s in self.aktif_endeks_listesi if s['tip'] == 'endeks'}
+        secili_sepet_ids = {s['id'] for s in self.aktif_endeks_listesi if s['tip'] == 'sepet'}
+
+        check_vars: List[Tuple[tk.BooleanVar, Dict, str]] = []
+
+        # Kategori bazlı grupla
+        kategori_etiketleri = {
+            'para':    ('💱 Para (Döviz/Altın)',  '#E1F5FE'),
+            'ucret':   ('💼 Ücret',                '#FFF9C4'),
+            'mal':     ('⛽ Mal',                  '#FFE0B2'),
+            'ilac':    ('💊 İlaç',                 '#E8F5E9'),
+            'kira_vs': ('🏠 Diğer (Kira vs.)',     '#F3E5F5'),
+        }
+        kategoriler = sorted(set(e['kategori'] for e in endeksler))
+        # Bilinen kategorileri önce göster
+        oncelikli = ['para', 'ucret', 'mal', 'kira_vs', 'ilac']
+        kategoriler = [k for k in oncelikli if k in kategoriler] + \
+                      [k for k in kategoriler if k not in oncelikli]
+
+        for kategori in kategoriler:
+            etiket, renk = kategori_etiketleri.get(kategori, (kategori, '#E0E0E0'))
+            tk.Label(scrollable, text=etiket, font=("Segoe UI", 10, "bold"),
+                     bg=renk, anchor='w', padx=8, pady=4
+                     ).pack(fill='x', pady=(8, 2))
+            for e in endeksler:
+                if e['kategori'] != kategori:
+                    continue
+                var = tk.BooleanVar(value=(e['id'] in secili_endeks_ids))
+                check_vars.append((var, dict(e), 'endeks'))
+                tk.Checkbutton(scrollable, variable=var,
+                               text=f"  {e['ad']}  ({e['birim'] or '?'})",
+                               anchor='w', bg='white', font=("Segoe UI", 9)
+                               ).pack(fill='x', padx=14)
+
+        if sepetler:
+            tk.Label(scrollable, text="🧺 Sepetler", font=("Segoe UI", 10, "bold"),
+                     bg='#C8E6C9', anchor='w', padx=8, pady=4
+                     ).pack(fill='x', pady=(8, 2))
+            for s in sepetler:
+                var = tk.BooleanVar(value=(s['id'] in secili_sepet_ids))
+                check_vars.append((var, dict(s), 'sepet'))
+                tk.Checkbutton(scrollable, variable=var,
+                               text=f"  {s['ad']}",
+                               anchor='w', bg='white', font=("Segoe UI", 9)
+                               ).pack(fill='x', padx=14)
+
+        # Buton barı
+        btn_frame = tk.Frame(dlg, bg='#ECEFF1', pady=8)
+        btn_frame.pack(fill='x', side='bottom')
+
+        def tamam():
+            yeni = []
+            for var, item, tip in check_vars:
+                if not var.get():
+                    continue
+                if tip == 'endeks':
+                    yeni.append({
+                        'tip': 'endeks',
+                        'id': item['id'],
+                        'kod': item['kod'],
+                        'birim': item['birim'] or '?',
+                        'ad': item['ad'],
+                    })
+                else:
+                    yeni.append({
+                        'tip': 'sepet',
+                        'id': item['id'],
+                        'kod': f"sepet_{item['id']}",
+                        'birim': 'sepet',
+                        'ad': item['ad'],
+                    })
+            self.aktif_endeks_listesi = yeni
+            # Legacy combobox değerini güncelle (ilk seçili endeks)
+            if yeni:
+                ilk = yeni[0]
+                if ilk['tip'] == 'endeks':
+                    self.endeks_secim_var.set(f"E:{ilk['kod']} — {ilk['ad']} ({ilk['birim']})")
+                else:
+                    self.endeks_secim_var.set(f"S:{ilk['id']} — SEPET: {ilk['ad']}")
+            else:
+                self.endeks_secim_var.set('TL (varsayılan)')
+            self._endeks_secim_butonu_guncelle()
+            self._sutunlari_kur()
+            if self.son_rapor:
+                self._tabloyu_doldur(self.son_rapor)
+            self._status(f"{len(yeni)} endeks sütunu aktif.")
+            dlg.destroy()
+
+        def temizle():
+            for var, _, _ in check_vars:
+                var.set(False)
+
+        def hepsini():
+            for var, _, _ in check_vars:
+                var.set(True)
+
+        tk.Button(btn_frame, text='⊞ Hepsini Seç', command=hepsini,
+                  bg='#78909C', fg='white', bd=0, padx=12, pady=4,
+                  font=("Segoe UI", 9)).pack(side='left', padx=8)
+        tk.Button(btn_frame, text='⊟ Temizle', command=temizle,
+                  bg='#FFB74D', fg='white', bd=0, padx=12, pady=4,
+                  font=("Segoe UI", 9)).pack(side='left', padx=4)
+
+        tk.Button(btn_frame, text='İptal', command=dlg.destroy,
+                  bg='#CFD8DC', fg='#37474F', bd=0, padx=14, pady=4,
+                  font=("Segoe UI", 9)).pack(side='right', padx=8)
+        tk.Button(btn_frame, text='✓ Tamam', command=tamam,
+                  bg='#2E7D32', fg='white', bd=0, padx=18, pady=4,
+                  font=("Segoe UI", 10, "bold")).pack(side='right', padx=4)
 
     def _endeks_ayarlari_ac(self):
         """Endeks Ayarları yönetim penceresini Toplevel olarak aç.
@@ -538,6 +724,44 @@ class SatisRaporlariGUI:
         except Exception as e:
             logger.error(f"Endeks Ayarları açma hatası: {e}", exc_info=True)
             messagebox.showerror("Hata", f"Endeks Ayarları açılamadı:\n{e}")
+
+    def _grafik_ac(self):
+        """Endeks/ciro grafik penceresini Toplevel olarak aç.
+
+        Mevcut tarih aralığı ve seçili endeksi grafik penceresine taşır.
+        """
+        try:
+            from endeks_grafik_gui import EndeksGrafikPenceresi
+        except ImportError as e:
+            logger.error(f"Grafik modülü import hatası: {e}")
+            messagebox.showerror(
+                "Grafik Modülü Yüklenemedi",
+                f"endeks_grafik_gui modülü yüklenemedi:\n{e}\n\n"
+                "matplotlib yüklü mü? pip install matplotlib"
+            )
+            return
+
+        # Mevcut filtre değerlerini yansıt
+        bas_d = self._tarih_oku(self.baslangic_tarih)
+        bit_d = self._tarih_oku(self.bitis_tarih)
+        bas = bas_d.isoformat() if bas_d else None
+        bit = bit_d.isoformat() if bit_d else None
+        endeks_secim_txt = self.endeks_secim_var.get()
+
+        # Endeks dropdown'unda görünen format ile grafik penceresindeki uyumlu mu?
+        # Satış Raporları'nda 'E:usd — Amerikan Doları (USD)' formatı
+        # Grafik penceresinde aynı format kullanılıyor — direkt geç.
+        try:
+            EndeksGrafikPenceresi(
+                self.root,
+                baslangic_tarih=bas,
+                bitis_tarih=bit,
+                ilk_endeks_secim=endeks_secim_txt if endeks_secim_txt and endeks_secim_txt != 'TL (varsayılan)' else None,
+            )
+            self._status("Grafik penceresi açıldı.")
+        except Exception as e:
+            logger.error(f"Grafik açma hatası: {e}", exc_info=True)
+            messagebox.showerror("Hata", f"Grafik penceresi açılamadı:\n{e}")
 
     def _endeks_secimi_degisti(self, _evt=None):
         # Yeniden sütun yapısı ve tablo
@@ -646,16 +870,35 @@ class SatisRaporlariGUI:
         basliklar['kasa_tl'] = '💵 Kasa ₺\n(Hasta payı + Elden)'
         genislikler['kasa_tl'] = 140
 
-        # Endeks bazlı görünüm: Genel grup TL açıksa endeks sütunu
-        endeks_id, birim, tip, ad = self._aktif_endeks_id_ve_birim()
-        self._aktif_endeks_kimlik = endeks_id
-        self._aktif_endeks_tip = tip
-        self._aktif_endeks_birim = birim
-        self._aktif_endeks_ad = ad
-        if tip != 'tl' and self.grup_vars['genel'].get():
-            sutunlar.append('endeks_tutar')
-            basliklar['endeks_tutar'] = f"TL ÷\n{ad}"
-            genislikler['endeks_tutar'] = 140
+        # Endeks bazlı görünüm — çoklu sütun (her seçili endeks/sepet için ayrı)
+        # self._aktif_endeks_kolonlari: tablo doldurma + Excel için sıralı liste
+        self._aktif_endeks_kolonlari: List[Dict] = []
+        if self.grup_vars['genel'].get():
+            for sec in self.aktif_endeks_listesi:
+                sutun_id = f"endeks_{sec['tip']}_{sec['id']}"
+                sutunlar.append(sutun_id)
+                basliklar[sutun_id] = f"TL ÷\n{sec['ad']}"
+                genislikler[sutun_id] = 140
+                self._aktif_endeks_kolonlari.append({
+                    'sutun_id': sutun_id,
+                    'tip': sec['tip'],
+                    'id': sec['id'],
+                    'birim': sec['birim'],
+                    'ad': sec['ad'],
+                })
+
+        # Legacy attribute'ları ilk seçimle doldur (geriye uyumluluk — eski yerlerde)
+        if self._aktif_endeks_kolonlari:
+            ilk = self._aktif_endeks_kolonlari[0]
+            self._aktif_endeks_kimlik = ilk['id']
+            self._aktif_endeks_tip = ilk['tip']
+            self._aktif_endeks_birim = ilk['birim']
+            self._aktif_endeks_ad = ilk['ad']
+        else:
+            self._aktif_endeks_kimlik = None
+            self._aktif_endeks_tip = 'tl'
+            self._aktif_endeks_birim = '₺'
+            self._aktif_endeks_ad = 'TL'
 
         self.tree['columns'] = sutunlar
         for s in sutunlar:
@@ -923,17 +1166,14 @@ class SatisRaporlariGUI:
         if not sonuc:
             return
 
-        endeks_tip = getattr(self, '_aktif_endeks_tip', 'tl')
-        endeks_kimlik = getattr(self, '_aktif_endeks_kimlik', None)
-        endeks_birim = getattr(self, '_aktif_endeks_birim', '₺')
-        endeks_sutun_aktif = (endeks_tip != 'tl') and self.grup_vars['genel'].get()
+        endeks_kolonlari = getattr(self, '_aktif_endeks_kolonlari', [])
 
         # Aktif alan kodları (grup_vars'a göre)
         aktif_alanlar = list(self._alan_kodu_map.keys())  # sıralı
 
         # Toplam akümülatör (her aktif alan için)
         toplam = {alan_kod: 0.0 for alan_kod in aktif_alanlar}
-        toplam_endeks = 0.0
+        toplam_endeksler = {kol['sutun_id']: 0.0 for kol in endeks_kolonlari}
 
         toplam_kasa = 0.0
         for idx, r in enumerate(sonuc):
@@ -948,22 +1188,21 @@ class SatisRaporlariGUI:
                 toplam[alan_kod] += float(deger or 0)
 
             # Kasaya etkiyen tutar: Reçeteli + Elden RIToplam = TLTutar
-            # (RIToplam reçetede hasta payı, eldende toplam — ikisi de kasa)
             kasa_deg = float(r.get('TLTutar') or 0)
             satir.append(self._alan_format(kasa_deg, 'tl'))
             toplam_kasa += kasa_deg
 
-            # Endeks sütunu (Genel grup TL ÷ endeks)
-            if endeks_sutun_aktif:
-                tl_deg = float(r.get('TLTutar') or 0)
-                endeks_deg = self._endeks_degeri_donem(
+            # Endeks sütunları — her seçili endeks/sepet için TL ÷ endeks
+            tl_deg = float(r.get('TLTutar') or 0)
+            for kol in endeks_kolonlari:
+                e_deg = self._endeks_degeri_donem(
                     donem if isinstance(donem, date) else None,
-                    endeks_kimlik, endeks_tip
+                    kol['id'], kol['tip']
                 )
-                if endeks_deg and endeks_deg > 0:
-                    bolum = tl_deg / endeks_deg
-                    satir.append(self._endeks_format(bolum, endeks_birim))
-                    toplam_endeks += bolum
+                if e_deg and e_deg > 0:
+                    bolum = tl_deg / e_deg
+                    satir.append(self._endeks_format(bolum, kol['birim']))
+                    toplam_endeksler[kol['sutun_id']] += bolum
                 else:
                     satir.append("—")
 
@@ -975,10 +1214,11 @@ class SatisRaporlariGUI:
         for alan_kod in aktif_alanlar:
             db_alan, tip = self._alan_kodu_map[alan_kod]
             toplam_satir.append(self._alan_format(toplam[alan_kod], tip))
-        # Kasa toplamı
         toplam_satir.append(self._alan_format(toplam_kasa, 'tl'))
-        if endeks_sutun_aktif:
-            toplam_satir.append(self._endeks_format(toplam_endeks, endeks_birim))
+        for kol in endeks_kolonlari:
+            toplam_satir.append(self._endeks_format(
+                toplam_endeksler[kol['sutun_id']], kol['birim']
+            ))
         self.tree.insert('', 'end', values=toplam_satir, tags=('toplam',))
 
     @staticmethod
@@ -1140,12 +1380,31 @@ class SatisRaporlariGUI:
         kc.alignment = merkez
         ws.merge_cells(start_row=1, start_column=kasa_col,
                        end_row=2, end_column=kasa_col)
+        col = kasa_col + 1
+
+        # Endeks sütunları başlıkları
+        endeks_kolonlari = getattr(self, '_aktif_endeks_kolonlari', [])
+        endeks_fill = PatternFill(start_color='B2EBF2', end_color='B2EBF2',
+                                   fill_type='solid')
+        endeks_col_start = col
+        for kol in endeks_kolonlari:
+            ec = ws.cell(row=1, column=col,
+                         value=f"TL ÷ {kol['ad']} ({kol['birim']})")
+            ec.font = siyah_bold
+            ec.fill = endeks_fill
+            ec.alignment = merkez
+            ws.merge_cells(start_row=1, start_column=col,
+                           end_row=2, end_column=col)
+            col += 1
 
         # Veri satırları
         toplam = {alan_kod: 0.0 for alan_kod in self._alan_kodu_map.keys()}
         toplam_kasa = 0.0
+        toplam_endeksler = {kol['sutun_id']: 0.0 for kol in endeks_kolonlari}
+
         for row_idx, r in enumerate(self.son_rapor, 3):
-            ws.cell(row=row_idx, column=1, value=self._donem_format(r.get('Donem')))
+            donem = r.get('Donem')
+            ws.cell(row=row_idx, column=1, value=self._donem_format(donem))
             col = 2
             for alan_kod in self._alan_kodu_map.keys():
                 db_alan, tip = self._alan_kodu_map[alan_kod]
@@ -1167,6 +1426,24 @@ class SatisRaporlariGUI:
             kc = ws.cell(row=row_idx, column=kasa_col, value=kasa_d)
             kc.number_format = '#,##0.00 ₺'
             toplam_kasa += kasa_d
+
+            # Endeks sütunları
+            tl_deg = float(r.get('TLTutar') or 0)
+            ekol = endeks_col_start
+            for kol in endeks_kolonlari:
+                e_deg = self._endeks_degeri_donem(
+                    donem if isinstance(donem, date) else None,
+                    kol['id'], kol['tip']
+                )
+                ec = ws.cell(row=row_idx, column=ekol)
+                if e_deg and e_deg > 0:
+                    bolum = tl_deg / e_deg
+                    ec.value = bolum
+                    ec.number_format = '#,##0.00'
+                    toplam_endeksler[kol['sutun_id']] += bolum
+                else:
+                    ec.value = None
+                ekol += 1
 
         # TOPLAM satırı
         top_row = len(self.son_rapor) + 3
@@ -1191,12 +1468,23 @@ class SatisRaporlariGUI:
         kc.font = siyah_bold
         kc.fill = toplam_fill
         kc.number_format = '#,##0.00 ₺'
-        col = kasa_col + 1
+        # Endeks toplamları
+        ekol = endeks_col_start
+        for kol in endeks_kolonlari:
+            ec = ws.cell(row=top_row, column=ekol,
+                          value=toplam_endeksler[kol['sutun_id']])
+            ec.font = siyah_bold
+            ec.fill = toplam_fill
+            ec.number_format = '#,##0.00'
+            ekol += 1
+        col = endeks_col_start + len(endeks_kolonlari)
 
         # Sütun genişlikleri
         ws.column_dimensions['A'].width = 22
         for col_idx in range(2, col):
-            ws.column_dimensions[chr(ord('A') + col_idx - 1)].width = 16
+            # openpyxl 1-indexed; chr ile A,B,... AA, AB için utility kullan
+            from openpyxl.utils import get_column_letter
+            ws.column_dimensions[get_column_letter(col_idx)].width = 16
 
         try:
             wb.save(dosya)
@@ -1225,6 +1513,18 @@ class SatisRaporlariGUI:
                 "Veritabanı bağlantısı henüz kurulmadı.")
             return
         LoggerForensikPopup(parent=self.root, db=self.db)
+
+    def _birlesik_zaman_ac(self):
+        """Üç zaman analizini tek pencerede gösterir:
+        - RxIslemTarihi vs RxKayitTarihi (Zaman Tutarlılığı / Toplu Anomali)
+        - RxIslemTarihi vs Logger.LoggerTarihi (Logger Forensik)
+        - RxKontrolTarihi vs RxIslemTarihi (kontrol gecikme)
+        """
+        if self.db is None:
+            messagebox.showerror("DB hazır değil",
+                "Veritabanı bağlantısı henüz kurulmadı.")
+            return
+        BirlesikZamanAnaliziPopup(parent=self.root, db=self.db)
 
     # ------------------------------------------------------------------
     # Dönem Detay Popup
@@ -3480,6 +3780,43 @@ class TopluZamanAnomaliPopup:
             font=("Segoe UI", 8, "italic"), fg='#37474F',
         ).pack(side="left", padx=4)
 
+        # Satır 4: filtre checkbox'ları (tarama sonrası, client-side)
+        s4 = tk.Frame(filt)
+        s4.pack(fill="x", pady=(2, 1))
+        self.donusum_haric_var = tk.BooleanVar(value=False)
+        self.antibiyotik_haric_var = tk.BooleanVar(value=False)
+        self.is_bankasi_haric_var = tk.BooleanVar(value=False)
+        self.bez_haric_var = tk.BooleanVar(value=False)
+        self.cezaevi_haric_var = tk.BooleanVar(value=False)
+        tk.Label(s4, text="Filtreler:",
+                 font=("Segoe UI", 9, "bold"), fg='#37474F'
+                 ).pack(side="left", padx=(4, 8))
+        ttk.Checkbutton(
+            s4, text="🔄 Perakende→Reçete dönüşümlerini gizle",
+            variable=self.donusum_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=6)
+        ttk.Checkbutton(
+            s4, text="🦠 Antibiyotik gizle (ATC J)",
+            variable=self.antibiyotik_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=6)
+        ttk.Checkbutton(
+            s4, text="🏦 İş Bankası gizle",
+            variable=self.is_bankasi_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=6)
+        ttk.Checkbutton(
+            s4, text="🩹 Bez gizle",
+            variable=self.bez_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=6)
+        ttk.Checkbutton(
+            s4, text="🔒 Cezaevi gizle",
+            variable=self.cezaevi_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=6)
+
         # İlerleme + durum
         durum = tk.Frame(self.top, bg='#F5F5F5', height=32)
         durum.pack(fill="x")
@@ -3507,17 +3844,25 @@ class TopluZamanAnomaliPopup:
         tab.pack(fill="both", expand=True, padx=5, pady=3)
 
         cols = ('no', 'kaynak', 'rxid', 'islem', 'kayit', 'kayit_fark',
-                'kontrol', 'kontrol_fark')
+                'kontrol', 'kontrol_fark',
+                'donusum', 'antibiyotik', 'isbankasi', 'bez', 'cezaevi')
         bash = {'no': '#', 'kaynak': 'Kaynak', 'rxid': 'RxId',
                 'islem': 'İşlem Tarihi', 'kayit': 'Kayıt Tarihi',
                 'kayit_fark': 'Kayıt Fark (gün)',
                 'kontrol': 'Kontrol Tarihi',
-                'kontrol_fark': 'Kontrol Fark (sn)'}
+                'kontrol_fark': 'Kontrol Fark (sn)',
+                'donusum': '🔄', 'antibiyotik': '🦠',
+                'isbankasi': '🏦', 'bez': '🩹', 'cezaevi': '🔒'}
         widths = {'no': 50, 'kaynak': 70, 'rxid': 80,
                   'islem': 180, 'kayit': 140,
                   'kayit_fark': 140,
-                  'kontrol': 180, 'kontrol_fark': 180}
-        anchors = {'kaynak': 'center', 'rxid': 'center', 'no': 'center'}
+                  'kontrol': 180, 'kontrol_fark': 180,
+                  'donusum': 45, 'antibiyotik': 45,
+                  'isbankasi': 45, 'bez': 45, 'cezaevi': 45}
+        anchors = {'kaynak': 'center', 'rxid': 'center', 'no': 'center',
+                   'donusum': 'center', 'antibiyotik': 'center',
+                   'isbankasi': 'center', 'bez': 'center',
+                   'cezaevi': 'center'}
 
         self.tree = ttk.Treeview(tab, columns=cols, show='headings', height=18)
         # Başlık başlıklarını sakla (sıralama oku eklemek için)
@@ -4050,9 +4395,13 @@ class TopluZamanAnomaliPopup:
         self.ozet_text.insert('1.0', f"Tarama hatası: {mesaj}")
         messagebox.showerror("Tarama hatası", mesaj)
 
+    def _filtreleri_uygula(self):
+        """Checkbox değişince yeniden render. self.sonuclar bozulmaz,
+        yalnızca tabloya gösterilen kayıt seti filtrelenir."""
+        self._tabloyu_doldur_anomali()
+
     def _tabloyu_doldur_anomali(self):
-        """self.sonuclar'ı tabloya yaz (sıra her zaman self.sonuclar'daki
-        gibidir; sıralama _sirala() bu listeyi yeniden düzenler)."""
+        """self.sonuclar'ı tabloya yaz; checkbox filtreleri uygulanır."""
         def _dt_fmt(d):
             if d is None:
                 return ''
@@ -4065,69 +4414,99 @@ class TopluZamanAnomaliPopup:
         for c in self.tree.get_children():
             self.tree.delete(c)
 
-        for i, k in enumerate(self.sonuclar or [], 1):
-            islem = k.get('IslemTarihi')
-            kayit = k.get('KayitTarihi')
-            kontrol = k.get('KontrolTarihi')
-            fark = k.get('FarkSn')
-            fark_tipi = k.get('FarkTipi') or 'sn'
-            kontrol_fark = k.get('KontrolFarkSn')
+        don_haric = bool(getattr(self, 'donusum_haric_var',
+                                  tk.BooleanVar(value=False)).get())
+        anti_haric = bool(getattr(self, 'antibiyotik_haric_var',
+                                   tk.BooleanVar(value=False)).get())
+        bank_haric = bool(getattr(self, 'is_bankasi_haric_var',
+                                   tk.BooleanVar(value=False)).get())
+        bez_haric = bool(getattr(self, 'bez_haric_var',
+                                  tk.BooleanVar(value=False)).get())
+        cez_haric = bool(getattr(self, 'cezaevi_haric_var',
+                                  tk.BooleanVar(value=False)).get())
 
-            if fark is None:
+        idx = 0
+        for k in (self.sonuclar or []):
+            if don_haric and k.get('DonusumMu'):
                 continue
-            islem_s = _dt_fmt(islem)
-            kayit_s = _dt_fmt(kayit)
-            kontrol_s = _dt_fmt(kontrol) if kontrol is not None else '—'
+            if anti_haric and k.get('AntibiyotikMu'):
+                continue
+            if bank_haric and k.get('IsBankasiMu'):
+                continue
+            if bez_haric and k.get('BezMidir'):
+                continue
+            if cez_haric and k.get('CezaeviMidir'):
+                continue
+            idx += 1
+            i = idx
+            self._tabloyu_satir_ekle(i, k, _dt_fmt)
 
-            # Kayıt farkı (gün veya saniye bazlı)
-            if fark_tipi == 'gun':
-                gun = int(round(fark / 86400))
-                sgn = '-' if gun < 0 else ''
-                kayit_fark_str = f"{sgn}{abs(gun)} gün"
-                kayit_anomali = (gun != 0)
-                kayit_negatif = (gun < 0)
-                kayit_buyuk = abs(gun) >= 7
+    def _tabloyu_satir_ekle(self, i: int, k: Dict, _dt_fmt):
+        """Tek bir kaydı tabloya ekler — _tabloyu_doldur_anomali'den çağrılır."""
+        islem = k.get('IslemTarihi')
+        kayit = k.get('KayitTarihi')
+        kontrol = k.get('KontrolTarihi')
+        fark = k.get('FarkSn')
+        fark_tipi = k.get('FarkTipi') or 'sn'
+        kontrol_fark = k.get('KontrolFarkSn')
+
+        if fark is None:
+            return
+        islem_s = _dt_fmt(islem)
+        kayit_s = _dt_fmt(kayit)
+        kontrol_s = _dt_fmt(kontrol) if kontrol is not None else '—'
+
+        if fark_tipi == 'gun':
+            gun = int(round(fark / 86400))
+            sgn = '-' if gun < 0 else ''
+            kayit_fark_str = f"{sgn}{abs(gun)} gün"
+            kayit_negatif = (gun < 0)
+            kayit_buyuk = abs(gun) >= 7
+            kayit_anomali = (gun != 0)
+        else:
+            kayit_fark_str = _saniye_okunabilir(fark)
+            kayit_negatif = (fark < 0)
+            kayit_buyuk = abs(fark) > 24 * 3600
+            kayit_anomali = (abs(fark) > 600 or fark < 0)
+
+        kontrol_anomali = kontrol_negatif = kontrol_buyuk = False
+        if kontrol_fark is None:
+            kontrol_fark_str = '—'
+        else:
+            if abs(kontrol_fark) >= 60:
+                kontrol_fark_str = f"{kontrol_fark} ({_saniye_okunabilir(kontrol_fark)})"
             else:
-                kayit_fark_str = _saniye_okunabilir(fark)
-                kayit_anomali = (abs(fark) > 600 or fark < 0)
-                kayit_negatif = (fark < 0)
-                kayit_buyuk = abs(fark) > 24 * 3600
+                kontrol_fark_str = str(kontrol_fark)
+            kontrol_anomali = (kontrol_fark < 0 or kontrol_fark > 600)
+            kontrol_negatif = (kontrol_fark < 0)
+            kontrol_buyuk = (abs(kontrol_fark) > 24 * 3600)
 
-            # Kontrol farkı (saniye bazlı, sadece Reçete)
-            kontrol_anomali = False
-            kontrol_negatif = False
-            kontrol_buyuk = False
-            if kontrol_fark is None:
-                kontrol_fark_str = '—'
-            else:
-                if abs(kontrol_fark) >= 60:
-                    kontrol_fark_str = f"{kontrol_fark} ({_saniye_okunabilir(kontrol_fark)})"
-                else:
-                    kontrol_fark_str = str(kontrol_fark)
-                kontrol_anomali = (kontrol_fark < 0 or kontrol_fark > 600)
-                kontrol_negatif = (kontrol_fark < 0)
-                kontrol_buyuk = (abs(kontrol_fark) > 24 * 3600)
+        tag = 'normal'
+        if kayit_negatif or kontrol_negatif:
+            tag = 'negatif'
+        elif kayit_buyuk or kontrol_buyuk:
+            tag = 'cok_buyuk'
+        elif fark_tipi == 'gun' and kayit_anomali:
+            tag = 'gun_anomali'
+        elif kontrol_anomali:
+            tag = 'buyuk'
 
-            # Tag: hangi anomali daha şiddetliyse onu kullan
-            tag = 'normal'
-            if kayit_negatif or kontrol_negatif:
-                tag = 'negatif'
-            elif kayit_buyuk or kontrol_buyuk:
-                tag = 'cok_buyuk'
-            elif fark_tipi == 'gun' and kayit_anomali:
-                tag = 'gun_anomali'
-            elif kontrol_anomali:
-                tag = 'buyuk'
+        if kayit_negatif:
+            kayit_fark_str += " (NEGATİF)"
+        if kontrol_negatif:
+            kontrol_fark_str += " (NEGATİF)"
 
-            if kayit_negatif:
-                kayit_fark_str += " (NEGATİF)"
-            if kontrol_negatif:
-                kontrol_fark_str += " (NEGATİF)"
+        don_str = '🔄' if k.get('DonusumMu') else ''
+        anti_str = '🦠' if k.get('AntibiyotikMu') else ''
+        bank_str = '🏦' if k.get('IsBankasiMu') else ''
+        bez_str = '🩹' if k.get('BezMidir') else ''
+        cez_str = '🔒' if k.get('CezaeviMidir') else ''
 
-            self.tree.insert('', 'end', values=(
-                i, k.get('Kaynak'), k.get('RxId'), islem_s, kayit_s,
-                kayit_fark_str, kontrol_s, kontrol_fark_str,
-            ), tags=(tag,))
+        self.tree.insert('', 'end', values=(
+            i, k.get('Kaynak'), k.get('RxId'), islem_s, kayit_s,
+            kayit_fark_str, kontrol_s, kontrol_fark_str,
+            don_str, anti_str, bank_str, bez_str, cez_str,
+        ), tags=(tag,))
 
     def _sirala(self, sutun_kod: str):
         """Anomali tablosunu sütuna göre sırala. Aynı sütuna ikinci tıkta
@@ -4151,6 +4530,11 @@ class TopluZamanAnomaliPopup:
             'kayit_fark':   lambda r: _safe(r.get('FarkSn'), 0),
             'kontrol':      lambda r: _safe(r.get('KontrolTarihi'), datetime.min),
             'kontrol_fark': lambda r: _safe(r.get('KontrolFarkSn'), 0),
+            'donusum':      lambda r: 1 if r.get('DonusumMu') else 0,
+            'antibiyotik':  lambda r: 1 if r.get('AntibiyotikMu') else 0,
+            'isbankasi':    lambda r: 1 if r.get('IsBankasiMu') else 0,
+            'bez':          lambda r: 1 if r.get('BezMidir') else 0,
+            'cezaevi':      lambda r: 1 if r.get('CezaeviMidir') else 0,
         }
         key_fn = anahtarlar.get(sutun_kod, anahtarlar['islem'])
         try:
@@ -4310,6 +4694,36 @@ class TopluZamanAnomaliPopup:
                 f"      Min: {kontrol_min} sn ({_sn_okunabilir(kontrol_min)})    "
                 f"Max: {kontrol_max} sn ({_sn_okunabilir(kontrol_max)})\n"
             )
+
+        # 5 bayrak özeti (filtre amaçlı işaretleme)
+        n_don = sum(1 for k in self.sonuclar if k.get('DonusumMu'))
+        n_anti = sum(1 for k in self.sonuclar if k.get('AntibiyotikMu'))
+        n_bank = sum(1 for k in self.sonuclar if k.get('IsBankasiMu'))
+        n_bez = sum(1 for k in self.sonuclar if k.get('BezMidir'))
+        n_cez = sum(1 for k in self.sonuclar if k.get('CezaeviMidir'))
+        n_aciklanmamis = sum(
+            1 for k in self.sonuclar
+            if not k.get('DonusumMu') and not k.get('AntibiyotikMu')
+            and not k.get('IsBankasiMu') and not k.get('BezMidir')
+            and not k.get('CezaeviMidir')
+        )
+        ozet += (
+            f"\n"
+            f"🏷 KATEGORİLER (gizleme filtreleri için):\n"
+            f"   • 🔄 Perakende→Reçete dönüşümü : {n_don:>6} "
+            f"({(n_don/n)*100:.1f}%)\n"
+            f"   • 🦠 Antibiyotik içeren        : {n_anti:>6} "
+            f"({(n_anti/n)*100:.1f}%)\n"
+            f"   • 🏦 İş Bankası reçetesi       : {n_bank:>6} "
+            f"({(n_bank/n)*100:.1f}%)\n"
+            f"   • 🩹 Bez içeren                : {n_bez:>6} "
+            f"({(n_bez/n)*100:.1f}%)\n"
+            f"   • 🔒 Cezaevi reçetesi          : {n_cez:>6} "
+            f"({(n_cez/n)*100:.1f}%)\n"
+            f"   • 🚨 Açıklanmamış (hiçbiri)    : {n_aciklanmamis:>6} "
+            f"({(n_aciklanmamis/n)*100:.1f}%)\n"
+        )
+
         ozet += (
             f"\n"
             f"📈 Fark kategorisi:\n"
@@ -4367,7 +4781,9 @@ class TopluZamanAnomaliPopup:
         basliklar = ['No', 'Kaynak', 'RxId', 'İşlem Tarihi',
                      'Kayıt Tarihi', 'Kayıt Fark (gün)',
                      'Kontrol Tarihi', 'Kontrol Fark (sn)',
-                     'Kontrol Fark (sa:dk:sn)']
+                     'Kontrol Fark (sa:dk:sn)',
+                     'Dönüşüm', 'Antibiyotik', 'İş Bankası', 'Bez',
+                     'Cezaevi']
         bf = Font(bold=True, color='FFFFFF')
         bg = PatternFill(start_color='5E35B1', end_color='5E35B1', fill_type='solid')
         for ci, b in enumerate(basliklar, 1):
@@ -4405,6 +4821,16 @@ class TopluZamanAnomaliPopup:
                 sgn = '-' if kontrol_fark < 0 else ''
                 ws.cell(row=i+1, column=9,
                         value=f"{sgn}{sa:02d}:{dk:02d}:{ksn:02d}")
+            ws.cell(row=i+1, column=10,
+                    value='Evet' if k.get('DonusumMu') else 'Hayır')
+            ws.cell(row=i+1, column=11,
+                    value='Evet' if k.get('AntibiyotikMu') else 'Hayır')
+            ws.cell(row=i+1, column=12,
+                    value='Evet' if k.get('IsBankasiMu') else 'Hayır')
+            ws.cell(row=i+1, column=13,
+                    value='Evet' if k.get('BezMidir') else 'Hayır')
+            ws.cell(row=i+1, column=14,
+                    value='Evet' if k.get('CezaeviMidir') else 'Hayır')
 
         ws.column_dimensions['A'].width = 6
         ws.column_dimensions['B'].width = 10
@@ -4514,6 +4940,52 @@ class LoggerForensikPopup:
                                     command=self._taramayi_baslat)
         self.tara_btn.pack(side="right", padx=8)
 
+        # Satır 2: filtre checkboxları (taramadan sonra etkili)
+        s2 = tk.Frame(filt)
+        s2.pack(fill="x", pady=(2, 1))
+        self.donusum_haric_var = tk.BooleanVar(value=False)
+        self.antibiyotik_haric_var = tk.BooleanVar(value=False)
+        self.is_bankasi_haric_var = tk.BooleanVar(value=False)
+        self.bez_haric_var = tk.BooleanVar(value=False)
+        self.cezaevi_haric_var = tk.BooleanVar(value=False)
+        tk.Label(s2, text="Filtreler:",
+                 font=("Segoe UI", 9, "bold"), fg='#37474F'
+                 ).pack(side="left", padx=(4, 8))
+        ttk.Checkbutton(
+            s2,
+            text="🔄 Perakende→Reçete dönüşümlerini gizle "
+                 "(Logger Turu=2/AltTuru=3 izi var)",
+            variable=self.donusum_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=8)
+        ttk.Checkbutton(
+            s2,
+            text="🦠 Antibiyotik içerenleri gizle (ATC J01/J02/J04/J05)",
+            variable=self.antibiyotik_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=8)
+        ttk.Checkbutton(
+            s2,
+            text="🏦 İş Bankası reçetelerini gizle "
+                 "(banka mensup sigortası özel akışı)",
+            variable=self.is_bankasi_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=8)
+        ttk.Checkbutton(
+            s2,
+            text="🩹 Bez içerenleri gizle "
+                 "(hasta bezi / gazlı bez / mesane pedi vb.)",
+            variable=self.bez_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=8)
+        ttk.Checkbutton(
+            s2,
+            text="🔒 Cezaevi reçetelerini gizle "
+                 "(KurumCezaeviId / KurumAdi CEZA/İNFAZ)",
+            variable=self.cezaevi_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=8)
+
         # Durum
         durum = tk.Frame(self.top, bg='#F5F5F5', height=28)
         durum.pack(fill="x")
@@ -4533,19 +5005,30 @@ class LoggerForensikPopup:
         ust.pack(fill="both", expand=True, padx=5, pady=3)
 
         cols = ('no', 'kaynak', 'rxid', 'islem', 'logger', 'fark_sn',
-                'fark', 'makina', 'personel')
+                'fark', 'makina', 'personel',
+                'donusum', 'antibiyotik', 'isbankasi', 'bez', 'cezaevi')
         bash = {'no': '#', 'kaynak': 'Kaynak', 'rxid': 'RxId',
                 'islem': 'RxIslemTarihi (değişen)',
                 'logger': 'Logger Orijinal',
                 'fark_sn': 'Fark (sn)', 'fark': 'Fark (okunabilir)',
                 'makina': 'Logger Makina',
-                'personel': 'Personel'}
+                'personel': 'Personel',
+                'donusum': '🔄 Dönüşüm',
+                'antibiyotik': '🦠 Antibiyotik',
+                'isbankasi': '🏦 İş Bankası',
+                'bez': '🩹 Bez',
+                'cezaevi': '🔒 Cezaevi'}
         widths = {'no': 50, 'kaynak': 70, 'rxid': 80,
                   'islem': 180, 'logger': 180,
                   'fark_sn': 130, 'fark': 130,
-                  'makina': 150, 'personel': 80}
+                  'makina': 150, 'personel': 80,
+                  'donusum': 90, 'antibiyotik': 100, 'isbankasi': 100,
+                  'bez': 80, 'cezaevi': 90}
         anchors = {'no': 'center', 'kaynak': 'center', 'rxid': 'center',
-                   'personel': 'center'}
+                   'personel': 'center',
+                   'donusum': 'center', 'antibiyotik': 'center',
+                   'isbankasi': 'center', 'bez': 'center',
+                   'cezaevi': 'center'}
         self.manuel_tree = ttk.Treeview(ust, columns=cols, show='headings', height=12)
         self._manuel_basliklar_orj = dict(bash)
         for c in cols:
@@ -4671,37 +5154,12 @@ class LoggerForensikPopup:
 
         self.son_manuel = d.get('manuel_kayitlar') or []
         self.son_makina = d.get('makina_ozeti') or []
+        self._son_sure = sure
 
-        # 1. Manuel değişiklik tablosu
-        def _dt_fmt(v):
-            if v is None:
-                return ''
-            if hasattr(v, 'strftime') and hasattr(v, 'hour'):
-                return v.strftime('%Y-%m-%d %H:%M:%S')
-            if hasattr(v, 'strftime'):
-                return v.strftime('%Y-%m-%d')
-            return str(v)
+        # Filtre uygulayıp tabloyu doldur (özet etiketi de güncelleniyor)
+        self._filtreleri_uygula()
 
-        for i, k in enumerate(self.son_manuel, 1):
-            fark = k.get('FarkSn')
-            tag = 'normal'
-            if fark is not None:
-                if fark < 0:
-                    tag = 'negatif'
-                elif abs(fark) > 3600:
-                    tag = 'buyuk'
-            fark_sn_str = (f"{fark:+,d}" if fark is not None else '?')
-            fark_str = _saniye_okunabilir(fark) if fark is not None else '?'
-            self.manuel_tree.insert('', 'end', values=(
-                i, k.get('Kaynak'), k.get('RxId'),
-                _dt_fmt(k.get('RxIslemTarihi')),
-                _dt_fmt(k.get('LoggerTarihi')),
-                fark_sn_str, fark_str,
-                k.get('LoggerMakina') or '(?)',
-                k.get('LoggerPersonelId') or '',
-            ), tags=(tag,))
-
-        # 2. Makina özeti
+        # Makina özeti (filtreden etkilenmez)
         for m in self.son_makina:
             mutlak = m.get('MutlakOrt', 0)
             tag = 'supheli' if mutlak > 60 else ''
@@ -4715,54 +5173,23 @@ class LoggerForensikPopup:
                 f"{m.get('SuphliSayi', 0):,}",
             ), tags=(tag,))
 
-        n_manuel = len(self.son_manuel)
-        n_makina = len(self.son_makina)
-        self.durum_lbl.config(
-            text=f"✓ Tamam ({sure:.1f}sn): {n_manuel} muhtemel manuel "
-                 f"değişiklik, {n_makina} PC analiz edildi.",
-            fg='#2E7D32')
+    @staticmethod
+    def _dt_fmt(v):
+        if v is None:
+            return ''
+        if hasattr(v, 'strftime') and hasattr(v, 'hour'):
+            return v.strftime('%Y-%m-%d %H:%M:%S')
+        if hasattr(v, 'strftime'):
+            return v.strftime('%Y-%m-%d')
+        return str(v)
 
-    def _sirala(self, sutun_kod: str):
-        if not self.son_manuel:
-            return
-        ters = (self._son_sirala_sutun == sutun_kod) and not self._son_sirala_ters
-        self._son_sirala_sutun = sutun_kod
-        self._son_sirala_ters = ters
-
-        def _safe(v, default):
-            return v if v is not None else default
-
-        anahtarlar = {
-            'no':       lambda r: 0,
-            'kaynak':   lambda r: r.get('Kaynak') or '',
-            'rxid':     lambda r: _safe(r.get('RxId'), 0),
-            'islem':    lambda r: _safe(r.get('RxIslemTarihi'), datetime.min),
-            'logger':   lambda r: _safe(r.get('LoggerTarihi'), datetime.min),
-            'fark_sn':  lambda r: _safe(r.get('FarkSn'), 0),
-            'fark':     lambda r: _safe(r.get('FarkSn'), 0),
-            'makina':   lambda r: r.get('LoggerMakina') or '',
-            'personel': lambda r: _safe(r.get('LoggerPersonelId'), 0),
-        }
-        key_fn = anahtarlar.get(sutun_kod, anahtarlar['fark_sn'])
-        try:
-            self.son_manuel = sorted(self.son_manuel, key=key_fn, reverse=ters)
-        except TypeError:
-            self.son_manuel = sorted(
-                self.son_manuel, key=lambda r: str(key_fn(r)), reverse=ters)
-        # Tablo yenile
+    def _tabloyu_doldur(self, kayitlar: List[Dict]):
+        """Manuel değişiklik tablosunu verilen kayıt listesi ile doldurur.
+        (Filtrelenmiş veya tam liste — sıralama uygulanmış olabilir.)
+        """
         for c in self.manuel_tree.get_children():
             self.manuel_tree.delete(c)
-
-        def _dt_fmt(v):
-            if v is None:
-                return ''
-            if hasattr(v, 'strftime') and hasattr(v, 'hour'):
-                return v.strftime('%Y-%m-%d %H:%M:%S')
-            if hasattr(v, 'strftime'):
-                return v.strftime('%Y-%m-%d')
-            return str(v)
-
-        for i, k in enumerate(self.son_manuel, 1):
+        for i, k in enumerate(kayitlar, 1):
             fark = k.get('FarkSn')
             tag = 'normal'
             if fark is not None:
@@ -4772,15 +5199,111 @@ class LoggerForensikPopup:
                     tag = 'buyuk'
             fark_sn_str = (f"{fark:+,d}" if fark is not None else '?')
             fark_str = _saniye_okunabilir(fark) if fark is not None else '?'
+            don_str = '🔄 Evet' if k.get('DonusumMu') else ''
+            anti_str = '🦠 Evet' if k.get('AntibiyotikMu') else ''
+            bank_str = '🏦 Evet' if k.get('IsBankasiMu') else ''
+            bez_str = '🩹 Evet' if k.get('BezMidir') else ''
+            cez_str = '🔒 Evet' if k.get('CezaeviMidir') else ''
             self.manuel_tree.insert('', 'end', values=(
                 i, k.get('Kaynak'), k.get('RxId'),
-                _dt_fmt(k.get('RxIslemTarihi')),
-                _dt_fmt(k.get('LoggerTarihi')),
+                self._dt_fmt(k.get('RxIslemTarihi')),
+                self._dt_fmt(k.get('LoggerTarihi')),
                 fark_sn_str, fark_str,
                 k.get('LoggerMakina') or '(?)',
                 k.get('LoggerPersonelId') or '',
+                don_str, anti_str, bank_str, bez_str, cez_str,
             ), tags=(tag,))
 
+    def _filtreleri_uygula(self):
+        """Checkbox değişince çağrılır. son_manuel listesinden gizlenecekleri
+        çıkarır, tabloyu yeniler ve özet durum etiketini günceller."""
+        don_haric = bool(self.donusum_haric_var.get())
+        anti_haric = bool(self.antibiyotik_haric_var.get())
+        bank_haric = bool(self.is_bankasi_haric_var.get())
+        bez_haric = bool(self.bez_haric_var.get())
+        cez_haric = bool(self.cezaevi_haric_var.get())
+
+        gosterilecek = [
+            k for k in self.son_manuel
+            if not (don_haric and k.get('DonusumMu'))
+            and not (anti_haric and k.get('AntibiyotikMu'))
+            and not (bank_haric and k.get('IsBankasiMu'))
+            and not (bez_haric and k.get('BezMidir'))
+            and not (cez_haric and k.get('CezaeviMidir'))
+        ]
+        # Mevcut sıralama varsa koru
+        if self._son_sirala_sutun:
+            self._uygula_sirala(gosterilecek,
+                                self._son_sirala_sutun,
+                                self._son_sirala_ters)
+        self._tabloyu_doldur(gosterilecek)
+
+        # Durum etiketi: özet bilgi
+        n_top = len(self.son_manuel)
+        n_don = sum(1 for k in self.son_manuel if k.get('DonusumMu'))
+        n_anti = sum(1 for k in self.son_manuel if k.get('AntibiyotikMu'))
+        n_bank = sum(1 for k in self.son_manuel if k.get('IsBankasiMu'))
+        n_bez = sum(1 for k in self.son_manuel if k.get('BezMidir'))
+        n_cez = sum(1 for k in self.son_manuel if k.get('CezaeviMidir'))
+        n_aciklanmamis = sum(
+            1 for k in self.son_manuel
+            if not k.get('DonusumMu')
+            and not k.get('AntibiyotikMu')
+            and not k.get('IsBankasiMu')
+            and not k.get('BezMidir')
+            and not k.get('CezaeviMidir')
+        )
+        n_gor = len(gosterilecek)
+        sure = getattr(self, '_son_sure', 0.0)
+        ozet = (f"✓ ({sure:.1f}sn) Toplam {n_top} manuel "
+                f"| 🔄 Dönüşüm: {n_don} | 🦠 Antibiyotik: {n_anti} "
+                f"| 🏦 İş Bankası: {n_bank} | 🩹 Bez: {n_bez} "
+                f"| 🔒 Cezaevi: {n_cez} "
+                f"| 🚨 Açıklanmamış: {n_aciklanmamis}")
+        if don_haric or anti_haric or bank_haric or bez_haric or cez_haric:
+            ozet += f"  →  GÖSTERİLEN: {n_gor}"
+        self.durum_lbl.config(text=ozet, fg='#2E7D32')
+
+    def _uygula_sirala(self, kayitlar: List[Dict], sutun_kod: str, ters: bool):
+        """In-place sıralama yapar. _sirala ve _filtreleri_uygula'dan çağrılır."""
+        def _safe(v, default):
+            return v if v is not None else default
+
+        anahtarlar = {
+            'no':         lambda r: 0,
+            'kaynak':     lambda r: r.get('Kaynak') or '',
+            'rxid':       lambda r: _safe(r.get('RxId'), 0),
+            'islem':      lambda r: _safe(r.get('RxIslemTarihi'), datetime.min),
+            'logger':     lambda r: _safe(r.get('LoggerTarihi'), datetime.min),
+            'fark_sn':    lambda r: _safe(r.get('FarkSn'), 0),
+            'fark':       lambda r: _safe(r.get('FarkSn'), 0),
+            'makina':     lambda r: r.get('LoggerMakina') or '',
+            'personel':   lambda r: _safe(r.get('LoggerPersonelId'), 0),
+            'donusum':    lambda r: 1 if r.get('DonusumMu') else 0,
+            'antibiyotik': lambda r: 1 if r.get('AntibiyotikMu') else 0,
+            'isbankasi':  lambda r: 1 if r.get('IsBankasiMu') else 0,
+            'bez':        lambda r: 1 if r.get('BezMidir') else 0,
+            'cezaevi':    lambda r: 1 if r.get('CezaeviMidir') else 0,
+        }
+        key_fn = anahtarlar.get(sutun_kod, anahtarlar['fark_sn'])
+        try:
+            kayitlar.sort(key=key_fn, reverse=ters)
+        except TypeError:
+            kayitlar.sort(key=lambda r: str(key_fn(r)), reverse=ters)
+
+    def _sirala(self, sutun_kod: str):
+        if not self.son_manuel:
+            return
+        ters = (self._son_sirala_sutun == sutun_kod) and not self._son_sirala_ters
+        self._son_sirala_sutun = sutun_kod
+        self._son_sirala_ters = ters
+
+        # Sıralamayı tam listeye uygula, sonra filtreyi tekrar çalıştır (tablo
+        # yeniden dolar)
+        self._uygula_sirala(self.son_manuel, sutun_kod, ters)
+        self._filtreleri_uygula()
+
+        # Başlık ok'unu güncelle
         ok = ' ↓' if ters else ' ↑'
         for c, orj in self._manuel_basliklar_orj.items():
             yeni = orj + (ok if c == sutun_kod else '')
@@ -4835,7 +5358,10 @@ class LoggerForensikPopup:
                           fill_type='solid')
         basliklar1 = ['No', 'Kaynak', 'RxId', 'RxIslemTarihi (değişen)',
                       'Logger Orijinal', 'Fark (sn)', 'Fark (sa:dk:sn)',
-                      'Logger Makina', 'Personel']
+                      'Logger Makina', 'Personel',
+                      'Dönüşüm (Perakende→Reçete)', 'Antibiyotik (ATC J)',
+                      'İş Bankası (Kurum)', 'Bez (Hasta/Gazlı/Sargı)',
+                      'Cezaevi (Kurum)']
         for ci, b in enumerate(basliklar1, 1):
             c = ws1.cell(row=1, column=ci, value=b)
             c.font = bf
@@ -4858,6 +5384,16 @@ class LoggerForensikPopup:
                      value=f"{sgn}{sa:02d}:{dk:02d}:{ksn:02d}")
             ws1.cell(row=i+1, column=8, value=k.get('LoggerMakina'))
             ws1.cell(row=i+1, column=9, value=k.get('LoggerPersonelId'))
+            ws1.cell(row=i+1, column=10,
+                     value='Evet' if k.get('DonusumMu') else 'Hayır')
+            ws1.cell(row=i+1, column=11,
+                     value='Evet' if k.get('AntibiyotikMu') else 'Hayır')
+            ws1.cell(row=i+1, column=12,
+                     value='Evet' if k.get('IsBankasiMu') else 'Hayır')
+            ws1.cell(row=i+1, column=13,
+                     value='Evet' if k.get('BezMidir') else 'Hayır')
+            ws1.cell(row=i+1, column=14,
+                     value='Evet' if k.get('CezaeviMidir') else 'Hayır')
 
         # Sheet 2: Makina özet
         ws2 = wb.create_sheet("PC Makina Özet")
@@ -4865,6 +5401,615 @@ class LoggerForensikPopup:
                       '|Fark| Ort (sn)', 'Min Fark', 'Max Fark',
                       '|Fark|>5sn Sayı']
         for ci, b in enumerate(basliklar2, 1):
+            c = ws2.cell(row=1, column=ci, value=b)
+            c.font = bf
+            c.fill = bg
+            c.alignment = Alignment(horizontal='center')
+        for i, m in enumerate(self.son_makina, 2):
+            ws2.cell(row=i, column=1, value=m.get('LoggerMakina'))
+            ws2.cell(row=i, column=2, value=m.get('IslemSayisi'))
+            ws2.cell(row=i, column=3, value=round(m.get('FarkOrtalama', 0), 2))
+            ws2.cell(row=i, column=4, value=round(m.get('MutlakOrt', 0), 2))
+            ws2.cell(row=i, column=5, value=m.get('FarkMin'))
+            ws2.cell(row=i, column=6, value=m.get('FarkMax'))
+            ws2.cell(row=i, column=7, value=m.get('SuphliSayi'))
+
+        try:
+            wb.save(dosya)
+            messagebox.showinfo("Kaydedildi", f"Rapor kaydedildi:\n{dosya}")
+        except Exception as e:
+            messagebox.showerror("Hata", str(e))
+
+
+class BirlesikZamanAnaliziPopup:
+    """Üç zaman analizini tek pencerede gösterir:
+    - Kayıt Fark: RxIslemTarihi vs RxKayitTarihi (Zaman Tutarlılığı)
+    - Logger Fark: RxIslemTarihi vs Logger.LoggerTarihi (manuel müdahale)
+    - Kontrol Fark: RxKontrolTarihi vs RxIslemTarihi (sadece reçete)
+    + Dönüşüm/Antibiyotik/İş Bankası filtreleri
+    """
+
+    def __init__(self, parent, db):
+        self.parent = parent
+        self.db = db
+        self.son_kayitlar: List[Dict] = []
+        self.son_makina: List[Dict] = []
+        self._son_sirala_sutun: Optional[str] = None
+        self._son_sirala_ters: bool = False
+        self._son_sure: float = 0.0
+
+        self.top = tk.Toplevel(parent)
+        self.top.title("📊 Birleşik Zaman Analizi")
+        self.top.geometry("1500x900")
+        try:
+            self.top.state('zoomed')
+        except Exception:
+            pass
+        self.top.transient(parent)
+
+        try:
+            self._arayuz()
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"BirlesikZamanAnaliziPopup HATA: {e}\n{tb}")
+            print(f"[Birleşik Zaman] HATA: {e}\n{tb}")
+
+    def _arayuz(self):
+        # Header
+        header = tk.Frame(self.top, bg='#6A1B9A', height=46)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        tk.Label(header,
+                 text="📊 Birleşik Zaman Analizi  —  Kayıt + Logger + Kontrol",
+                 font=("Segoe UI", 11, "bold"), bg='#6A1B9A', fg='white',
+                 ).pack(side="left", padx=15, pady=12)
+        tk.Button(header, text="✕ Kapat", bg='#C62828', fg='white', bd=0,
+                  cursor='hand2', font=("Segoe UI", 9), padx=10,
+                  command=self.top.destroy).pack(side="right", padx=10, pady=8)
+        tk.Button(header, text="📥 Excel", bg='#2E7D32', fg='white', bd=0,
+                  cursor='hand2', font=("Segoe UI", 9), padx=10,
+                  command=self._excel_aktar).pack(side="right", padx=5, pady=8)
+        tk.Button(header, text="🔎 Detay Gör", bg='#FF8F00', fg='white', bd=0,
+                  cursor='hand2', font=("Segoe UI", 9), padx=10,
+                  command=self._secili_detayi_ac).pack(side="right", padx=5, pady=8)
+
+        # Açıklama
+        aciklama = tk.Label(self.top,
+            text="ℹ Üç farklı zaman karşılaştırması tek pencerede:  "
+                 "🔸 Kayıt Fark (RxIslemTarihi − RxKayitTarihi)  •  "
+                 "🔸 Logger Fark (RxIslemTarihi − Logger.LoggerTarihi)  •  "
+                 "🔸 Kontrol Fark (RxKontrolTarihi − RxIslemTarihi).  "
+                 "En güçlü manuel müdahale kanıtı LOGGER farkı çünkü "
+                 "Logger insert-only.",
+            font=("Segoe UI", 9, "italic"), fg='#37474F', bg='#F3E5F5',
+            anchor='w', justify='left', padx=15, pady=8, wraplength=1450)
+        aciklama.pack(fill="x")
+
+        # Parametre paneli
+        filt = ttk.LabelFrame(self.top, text="Tarama Parametreleri", padding=6)
+        filt.pack(fill="x", padx=5, pady=4)
+
+        # Satır 1: Tarih
+        s1 = tk.Frame(filt)
+        s1.pack(fill="x", pady=3)
+        tk.Label(s1, text="Başlangıç:", font=("Segoe UI", 9, "bold")
+                 ).pack(side="left", padx=4)
+        self.bas_entry = ttk.Entry(s1, width=14)
+        self.bas_entry.insert(0, "2017-05-23")
+        self.bas_entry.pack(side="left", padx=4)
+        tk.Label(s1, text="→  Bitiş:",
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=4)
+        self.bit_entry = ttk.Entry(s1, width=14)
+        self.bit_entry.insert(0, datetime.now().strftime('%Y-%m-%d'))
+        self.bit_entry.pack(side="left", padx=4)
+        for et, gun in [("Son 90 gün", 90), ("Son 1 yıl", 365),
+                         ("Tümü (2017→)", -1)]:
+            ttk.Button(s1, text=et, width=14,
+                       command=lambda g=gun: self._tarih_preset(g)
+                       ).pack(side="left", padx=2)
+        self.tara_btn = ttk.Button(s1, text="▶ Taramayı Başlat", width=20,
+                                    command=self._taramayi_baslat)
+        self.tara_btn.pack(side="right", padx=8)
+
+        # Satır 2: Eşikler + mantık
+        s2 = tk.Frame(filt)
+        s2.pack(fill="x", pady=3)
+        tk.Label(s2, text="🔸 Kayıt eşik (sn):",
+                 font=("Segoe UI", 9, "bold"), fg='#6A1B9A'
+                 ).pack(side="left", padx=(4, 4))
+        self.kayit_esik_entry = ttk.Entry(s2, width=8)
+        self.kayit_esik_entry.insert(0, "86400")  # 1 gün (RxKayitTarihi DATE)
+        self.kayit_esik_entry.pack(side="left", padx=2)
+
+        tk.Label(s2, text="🔸 Logger eşik (sn):",
+                 font=("Segoe UI", 9, "bold"), fg='#00838F'
+                 ).pack(side="left", padx=(15, 4))
+        self.logger_esik_entry = ttk.Entry(s2, width=8)
+        self.logger_esik_entry.insert(0, "60")
+        self.logger_esik_entry.pack(side="left", padx=2)
+
+        tk.Label(s2, text="🔸 Kontrol eşik (sn):",
+                 font=("Segoe UI", 9, "bold"), fg='#1565C0'
+                 ).pack(side="left", padx=(15, 4))
+        self.kontrol_esik_entry = ttk.Entry(s2, width=8)
+        self.kontrol_esik_entry.insert(0, "3600")  # 1 saat
+        self.kontrol_esik_entry.pack(side="left", padx=2)
+
+        tk.Label(s2, text="    Mantık:",
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(15, 4))
+        self.mantik_var = tk.StringVar(value="OR")
+        ttk.Radiobutton(s2, text="En az birinde fark (OR)",
+                        variable=self.mantik_var, value="OR"
+                        ).pack(side="left", padx=4)
+        ttk.Radiobutton(s2, text="Hepsinde fark (AND)",
+                        variable=self.mantik_var, value="AND"
+                        ).pack(side="left", padx=4)
+
+        # Satır 3: filtre checkbox'ları
+        s3 = tk.Frame(filt)
+        s3.pack(fill="x", pady=(2, 1))
+        self.donusum_haric_var = tk.BooleanVar(value=False)
+        self.antibiyotik_haric_var = tk.BooleanVar(value=False)
+        self.is_bankasi_haric_var = tk.BooleanVar(value=False)
+        self.bez_haric_var = tk.BooleanVar(value=False)
+        self.cezaevi_haric_var = tk.BooleanVar(value=False)
+        tk.Label(s3, text="Filtreler:",
+                 font=("Segoe UI", 9, "bold"), fg='#37474F'
+                 ).pack(side="left", padx=(4, 8))
+        ttk.Checkbutton(
+            s3, text="🔄 Dönüşümleri gizle",
+            variable=self.donusum_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=6)
+        ttk.Checkbutton(
+            s3, text="🦠 Antibiyotik gizle",
+            variable=self.antibiyotik_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=6)
+        ttk.Checkbutton(
+            s3, text="🏦 İş Bankası gizle",
+            variable=self.is_bankasi_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=6)
+        ttk.Checkbutton(
+            s3, text="🩹 Bez gizle",
+            variable=self.bez_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=6)
+        ttk.Checkbutton(
+            s3, text="🔒 Cezaevi gizle",
+            variable=self.cezaevi_haric_var,
+            command=self._filtreleri_uygula,
+        ).pack(side="left", padx=6)
+
+        # Durum
+        durum = tk.Frame(self.top, bg='#F5F5F5', height=28)
+        durum.pack(fill="x")
+        durum.pack_propagate(False)
+        self.durum_lbl = tk.Label(durum,
+            text="Hazır. 'Taramayı Başlat'a basın.",
+            bg='#F5F5F5', fg='#1565C0', font=("Segoe UI", 9, "italic"),
+            anchor='w', padx=10)
+        self.durum_lbl.pack(side="left", fill="x", expand=True)
+        self.progress = ttk.Progressbar(durum, mode='indeterminate', length=200)
+        self.progress.pack(side="right", padx=10, pady=3)
+
+        # Ana tablo
+        ust = ttk.LabelFrame(self.top,
+            text="📋 BİRLEŞİK KAYIT TABLOSU "
+                 "(her satırda 3 fark görünür — eşik üstü vurgulanır)",
+            padding=4)
+        ust.pack(fill="both", expand=True, padx=5, pady=3)
+
+        cols = ('no', 'kaynak', 'rxid',
+                'islem', 'kayit', 'logger', 'kontrol',
+                'kayit_fark', 'logger_fark', 'kontrol_fark',
+                'makina', 'personel',
+                'donusum', 'antibiyotik', 'isbankasi', 'bez', 'cezaevi')
+        bash = {'no': '#', 'kaynak': 'Kaynak', 'rxid': 'RxId',
+                'islem': 'RxIslemTarihi',
+                'kayit': 'RxKayitTarihi',
+                'logger': 'LoggerTarihi',
+                'kontrol': 'RxKontrolTarihi',
+                'kayit_fark': '🔸 Kayıt Fark',
+                'logger_fark': '🔸 Logger Fark',
+                'kontrol_fark': '🔸 Kontrol Fark',
+                'makina': 'Makina', 'personel': 'Pers',
+                'donusum': '🔄', 'antibiyotik': '🦠', 'isbankasi': '🏦',
+                'bez': '🩹', 'cezaevi': '🔒'}
+        widths = {'no': 45, 'kaynak': 65, 'rxid': 70,
+                  'islem': 145, 'kayit': 100, 'logger': 145, 'kontrol': 145,
+                  'kayit_fark': 110, 'logger_fark': 110, 'kontrol_fark': 110,
+                  'makina': 110, 'personel': 50,
+                  'donusum': 45, 'antibiyotik': 45, 'isbankasi': 45,
+                  'bez': 45, 'cezaevi': 45}
+        anchors = {'no': 'center', 'kaynak': 'center', 'rxid': 'center',
+                   'personel': 'center',
+                   'kayit_fark': 'e', 'logger_fark': 'e', 'kontrol_fark': 'e',
+                   'donusum': 'center', 'antibiyotik': 'center',
+                   'isbankasi': 'center', 'bez': 'center',
+                   'cezaevi': 'center'}
+        self.tree = ttk.Treeview(ust, columns=cols, show='headings', height=18)
+        self._basliklar_orj = dict(bash)
+        for c in cols:
+            self.tree.heading(c, text=bash[c],
+                               command=lambda col=c: self._sirala(col))
+            self.tree.column(c, width=widths[c],
+                              anchor=anchors.get(c, 'w'))
+        self.tree.pack(side="left", fill="both", expand=True)
+        sb1 = ttk.Scrollbar(ust, orient="vertical", command=self.tree.yview)
+        sb1.pack(side="right", fill="y")
+        self.tree.configure(yscrollcommand=sb1.set)
+        self.tree.tag_configure('logger_buyuk', background='#FFCDD2')
+        self.tree.tag_configure('kayit_buyuk', background='#FFE0B2')
+        self.tree.tag_configure('hem_buyuk', background='#EF9A9A')
+        self.tree.tag_configure('normal', background='white')
+        self.tree.bind('<Double-1>', self._secili_detayi_ac)
+
+        # Alt panel: PC sapma özeti (Logger'a göre)
+        alt = ttk.LabelFrame(self.top,
+            text="🖥 PC (LoggerMakina) BAŞINA LOGGER SAPMA ÖZETİ",
+            padding=4)
+        alt.pack(fill="x", padx=5, pady=3)
+        m_cols = ('makina', 'sayi', 'fark_ort', 'mutlak_ort',
+                  'fark_min', 'fark_max', 'supheli')
+        m_bash = {'makina': 'PC / Makina',
+                  'sayi': 'İşlem Sayısı',
+                  'fark_ort': 'Ort. Fark (sn)',
+                  'mutlak_ort': '|Fark| Ort. (sn)',
+                  'fark_min': 'Min Fark', 'fark_max': 'Max Fark',
+                  'supheli': '|Fark|>5sn'}
+        m_widths = {'makina': 250, 'sayi': 100,
+                    'fark_ort': 130, 'mutlak_ort': 150,
+                    'fark_min': 100, 'fark_max': 100, 'supheli': 130}
+        self.makina_tree = ttk.Treeview(alt, columns=m_cols,
+                                          show='headings', height=5)
+        for c in m_cols:
+            self.makina_tree.heading(c, text=m_bash[c])
+            self.makina_tree.column(c, width=m_widths[c],
+                                      anchor=('w' if c == 'makina' else 'e'))
+        self.makina_tree.pack(side="left", fill="both", expand=True)
+        sb2 = ttk.Scrollbar(alt, orient="vertical",
+                             command=self.makina_tree.yview)
+        sb2.pack(side="right", fill="y")
+        self.makina_tree.configure(yscrollcommand=sb2.set)
+        self.makina_tree.tag_configure('supheli', background='#FFE0B2')
+
+    def _tarih_preset(self, gun: int):
+        bugun = datetime.now()
+        if gun == -1:
+            bas = datetime(2017, 5, 23)
+        else:
+            bas = bugun - timedelta(days=gun)
+        self.bas_entry.delete(0, tk.END)
+        self.bas_entry.insert(0, bas.strftime('%Y-%m-%d'))
+        self.bit_entry.delete(0, tk.END)
+        self.bit_entry.insert(0, bugun.strftime('%Y-%m-%d'))
+
+    def _tarih_oku(self, widget) -> Optional[datetime]:
+        metin = (widget.get() or '').strip()
+        for fmt in ('%Y-%m-%d', '%d.%m.%Y'):
+            try:
+                return datetime.strptime(metin, fmt)
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _esik_oku(entry, default: int) -> int:
+        try:
+            return int((entry.get() or str(default)).strip())
+        except ValueError:
+            return default
+
+    def _taramayi_baslat(self):
+        bas = self._tarih_oku(self.bas_entry)
+        bit = self._tarih_oku(self.bit_entry)
+        if bas is None or bit is None:
+            messagebox.showerror("Tarih hatası",
+                "Tarihleri 'YYYY-MM-DD' formatında girin.")
+            return
+        if bas > bit:
+            messagebox.showerror("Tarih hatası",
+                "Başlangıç bitişten sonra olamaz.")
+            return
+        bit = bit.replace(hour=23, minute=59, second=59)
+        k_esik = self._esik_oku(self.kayit_esik_entry, 86400)
+        l_esik = self._esik_oku(self.logger_esik_entry, 60)
+        c_esik = self._esik_oku(self.kontrol_esik_entry, 3600)
+        en_az = (self.mantik_var.get() == 'OR')
+
+        self.tara_btn.config(state='disabled')
+        self.progress.start(10)
+        op = 'OR' if en_az else 'AND'
+        self.durum_lbl.config(
+            text=f"⏳ Taranıyor: {bas.date()} → {bit.date()} | "
+                 f"Kayıt {k_esik}sn {op} Logger {l_esik}sn {op} Kontrol {c_esik}sn",
+            fg='#C62828')
+        for c in self.tree.get_children():
+            self.tree.delete(c)
+        for c in self.makina_tree.get_children():
+            self.makina_tree.delete(c)
+
+        import time as _time
+        t0 = _time.time()
+
+        def _calis():
+            try:
+                d = self.db.birlesik_zaman_analizi(
+                    bas, bit,
+                    kayit_esik_sn=k_esik,
+                    logger_esik_sn=l_esik,
+                    kontrol_esik_sn=c_esik,
+                    en_az_birinde=en_az,
+                )
+                dt = _time.time() - t0
+                self.top.after(0, lambda: self._sonuclari_goster(d, dt))
+            except Exception as e:
+                import traceback
+                tb = traceback.format_exc()
+                logger.error(f"Birleşik zaman hatası: {e}\n{tb}")
+                self.top.after(0, lambda: self._hata(str(e)))
+
+        threading.Thread(target=_calis, daemon=True).start()
+
+    def _hata(self, mesaj: str):
+        self.progress.stop()
+        self.tara_btn.config(state='normal')
+        self.durum_lbl.config(text=f"❌ Hata: {mesaj}", fg='#B71C1C')
+        messagebox.showerror("Tarama hatası", mesaj)
+
+    def _sonuclari_goster(self, d: Dict, sure: float):
+        self.progress.stop()
+        self.tara_btn.config(state='normal')
+        self.son_kayitlar = d.get('kayitlar') or []
+        self.son_makina = d.get('makina_ozeti') or []
+        self._son_sure = sure
+
+        # PC sapma özeti
+        for m in self.son_makina:
+            mutlak = m.get('MutlakOrt', 0)
+            tag = 'supheli' if mutlak > 60 else ''
+            self.makina_tree.insert('', 'end', values=(
+                m.get('LoggerMakina'),
+                f"{m.get('IslemSayisi'):,}",
+                f"{m.get('FarkOrtalama', 0):+.1f}",
+                f"{mutlak:.1f}",
+                f"{m.get('FarkMin', 0):+,d}",
+                f"{m.get('FarkMax', 0):+,d}",
+                f"{m.get('SuphliSayi', 0):,}",
+            ), tags=(tag,))
+
+        self._filtreleri_uygula()
+
+    @staticmethod
+    def _dt_fmt(v):
+        if v is None:
+            return ''
+        if hasattr(v, 'strftime') and hasattr(v, 'hour'):
+            return v.strftime('%Y-%m-%d %H:%M:%S')
+        if hasattr(v, 'strftime'):
+            return v.strftime('%Y-%m-%d')
+        return str(v)
+
+    @staticmethod
+    def _fark_fmt(v):
+        if v is None:
+            return '—'
+        return f"{v:+,d}"
+
+    def _tabloyu_doldur(self, kayitlar: List[Dict]):
+        for c in self.tree.get_children():
+            self.tree.delete(c)
+        k_esik = self._esik_oku(self.kayit_esik_entry, 86400)
+        l_esik = self._esik_oku(self.logger_esik_entry, 60)
+        for i, k in enumerate(kayitlar, 1):
+            kf = k.get('KayitFark')
+            lf = k.get('LoggerFark')
+            cf = k.get('KontrolFark')
+            kf_buyuk = (kf is not None and abs(kf) > k_esik)
+            lf_buyuk = (lf is not None and abs(lf) > l_esik)
+            if lf_buyuk and kf_buyuk:
+                tag = 'hem_buyuk'
+            elif lf_buyuk:
+                tag = 'logger_buyuk'
+            elif kf_buyuk:
+                tag = 'kayit_buyuk'
+            else:
+                tag = 'normal'
+            don_str = '🔄' if k.get('DonusumMu') else ''
+            anti_str = '🦠' if k.get('AntibiyotikMu') else ''
+            bank_str = '🏦' if k.get('IsBankasiMu') else ''
+            bez_str = '🩹' if k.get('BezMidir') else ''
+            cez_str = '🔒' if k.get('CezaeviMidir') else ''
+            self.tree.insert('', 'end', values=(
+                i, k.get('Kaynak'), k.get('RxId'),
+                self._dt_fmt(k.get('RxIslemTarihi')),
+                self._dt_fmt(k.get('RxKayitTarihi')),
+                self._dt_fmt(k.get('LoggerTarihi')),
+                self._dt_fmt(k.get('RxKontrolTarihi')),
+                self._fark_fmt(kf),
+                self._fark_fmt(lf),
+                self._fark_fmt(cf),
+                k.get('LoggerMakina') or '(?)',
+                k.get('LoggerPersonelId') or '',
+                don_str, anti_str, bank_str, bez_str, cez_str,
+            ), tags=(tag,))
+
+    def _filtreleri_uygula(self):
+        don_haric = bool(self.donusum_haric_var.get())
+        anti_haric = bool(self.antibiyotik_haric_var.get())
+        bank_haric = bool(self.is_bankasi_haric_var.get())
+        bez_haric = bool(self.bez_haric_var.get())
+        cez_haric = bool(self.cezaevi_haric_var.get())
+        gosterilecek = [
+            k for k in self.son_kayitlar
+            if not (don_haric and k.get('DonusumMu'))
+            and not (anti_haric and k.get('AntibiyotikMu'))
+            and not (bank_haric and k.get('IsBankasiMu'))
+            and not (bez_haric and k.get('BezMidir'))
+            and not (cez_haric and k.get('CezaeviMidir'))
+        ]
+        if self._son_sirala_sutun:
+            self._uygula_sirala(gosterilecek,
+                                self._son_sirala_sutun,
+                                self._son_sirala_ters)
+        self._tabloyu_doldur(gosterilecek)
+
+        n_top = len(self.son_kayitlar)
+        n_don = sum(1 for k in self.son_kayitlar if k.get('DonusumMu'))
+        n_anti = sum(1 for k in self.son_kayitlar if k.get('AntibiyotikMu'))
+        n_bank = sum(1 for k in self.son_kayitlar if k.get('IsBankasiMu'))
+        n_bez = sum(1 for k in self.son_kayitlar if k.get('BezMidir'))
+        n_cez = sum(1 for k in self.son_kayitlar if k.get('CezaeviMidir'))
+        n_lf = sum(1 for k in self.son_kayitlar
+                   if (k.get('LoggerFark') or 0) and abs(k.get('LoggerFark') or 0) > 60)
+        n_aciklanmamis = sum(
+            1 for k in self.son_kayitlar
+            if not k.get('DonusumMu') and not k.get('AntibiyotikMu')
+            and not k.get('IsBankasiMu') and not k.get('BezMidir')
+            and not k.get('CezaeviMidir')
+        )
+        n_gor = len(gosterilecek)
+        ozet = (f"✓ ({self._son_sure:.1f}sn) Toplam {n_top} kayıt "
+                f"| 🔴 Logger>60sn: {n_lf} "
+                f"| 🔄 Dönüşüm: {n_don} | 🦠 Antibiyotik: {n_anti} "
+                f"| 🏦 İş Bankası: {n_bank} | 🩹 Bez: {n_bez} "
+                f"| 🔒 Cezaevi: {n_cez} "
+                f"| 🚨 Açıklanmamış: {n_aciklanmamis}")
+        if don_haric or anti_haric or bank_haric or bez_haric or cez_haric:
+            ozet += f"  →  GÖSTERİLEN: {n_gor}"
+        self.durum_lbl.config(text=ozet, fg='#2E7D32')
+
+    def _uygula_sirala(self, kayitlar: List[Dict], sutun_kod: str, ters: bool):
+        def _safe(v, default):
+            return v if v is not None else default
+        anahtarlar = {
+            'no':           lambda r: 0,
+            'kaynak':       lambda r: r.get('Kaynak') or '',
+            'rxid':         lambda r: _safe(r.get('RxId'), 0),
+            'islem':        lambda r: _safe(r.get('RxIslemTarihi'), datetime.min),
+            'kayit':        lambda r: _safe(r.get('RxKayitTarihi'), datetime.min),
+            'logger':       lambda r: _safe(r.get('LoggerTarihi'), datetime.min),
+            'kontrol':      lambda r: _safe(r.get('RxKontrolTarihi'), datetime.min),
+            'kayit_fark':   lambda r: abs(r.get('KayitFark') or 0),
+            'logger_fark':  lambda r: abs(r.get('LoggerFark') or 0),
+            'kontrol_fark': lambda r: abs(r.get('KontrolFark') or 0),
+            'makina':       lambda r: r.get('LoggerMakina') or '',
+            'personel':     lambda r: _safe(r.get('LoggerPersonelId'), 0),
+            'donusum':      lambda r: 1 if r.get('DonusumMu') else 0,
+            'antibiyotik':  lambda r: 1 if r.get('AntibiyotikMu') else 0,
+            'isbankasi':    lambda r: 1 if r.get('IsBankasiMu') else 0,
+            'bez':          lambda r: 1 if r.get('BezMidir') else 0,
+            'cezaevi':      lambda r: 1 if r.get('CezaeviMidir') else 0,
+        }
+        key_fn = anahtarlar.get(sutun_kod, anahtarlar['logger_fark'])
+        try:
+            kayitlar.sort(key=key_fn, reverse=ters)
+        except TypeError:
+            kayitlar.sort(key=lambda r: str(key_fn(r)), reverse=ters)
+
+    def _sirala(self, sutun_kod: str):
+        if not self.son_kayitlar:
+            return
+        ters = (self._son_sirala_sutun == sutun_kod) and not self._son_sirala_ters
+        self._son_sirala_sutun = sutun_kod
+        self._son_sirala_ters = ters
+        self._uygula_sirala(self.son_kayitlar, sutun_kod, ters)
+        self._filtreleri_uygula()
+        ok = ' ↓' if ters else ' ↑'
+        for c, orj in self._basliklar_orj.items():
+            yeni = orj + (ok if c == sutun_kod else '')
+            try:
+                self.tree.heading(c, text=yeni)
+            except Exception:
+                pass
+
+    def _secili_detayi_ac(self, _event=None):
+        sec = self.tree.selection()
+        if not sec:
+            messagebox.showinfo("Seçim yok",
+                "Önce tablodan bir satır seçin.")
+            return
+        vals = self.tree.item(sec[0], 'values')
+        if not vals or len(vals) < 3:
+            return
+        kaynak = (vals[1] or '').strip().upper()
+        rx_id = (vals[2] or '').strip()
+        if kaynak not in ('RECETE', 'ELDEN') or not rx_id:
+            return
+        SatisDetayPopup(parent=self.top, db=self.db,
+                        kaynak=kaynak, rx_id=rx_id)
+
+    def _excel_aktar(self):
+        if not self.son_kayitlar and not self.son_makina:
+            messagebox.showinfo("Boş", "Önce taramayı çalıştırın.")
+            return
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment
+        except ImportError:
+            messagebox.showerror("openpyxl yok",
+                "Excel export için openpyxl gerekli.")
+            return
+        from tkinter import filedialog as fd
+        dosya = fd.asksaveasfilename(
+            title="Birleşik Zaman Analizi raporu kaydet",
+            defaultextension=".xlsx",
+            filetypes=[("Excel", "*.xlsx")],
+            initialfile=f"birlesik_zaman_"
+                        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+        if not dosya:
+            return
+
+        wb = Workbook()
+        ws1 = wb.active
+        ws1.title = "Birleşik Kayıtlar"
+        bf = Font(bold=True, color='FFFFFF')
+        bg = PatternFill(start_color='6A1B9A', end_color='6A1B9A',
+                          fill_type='solid')
+        basliklar = ['No', 'Kaynak', 'RxId',
+                     'RxIslemTarihi', 'RxKayitTarihi',
+                     'LoggerTarihi', 'RxKontrolTarihi',
+                     'Kayıt Fark (sn)', 'Logger Fark (sn)',
+                     'Kontrol Fark (sn)',
+                     'Logger Makina', 'Personel',
+                     'Dönüşüm', 'Antibiyotik', 'İş Bankası', 'Bez',
+                     'Cezaevi']
+        for ci, b in enumerate(basliklar, 1):
+            c = ws1.cell(row=1, column=ci, value=b)
+            c.font = bf
+            c.fill = bg
+            c.alignment = Alignment(horizontal='center')
+        for i, k in enumerate(self.son_kayitlar, 1):
+            ws1.cell(row=i+1, column=1, value=i)
+            ws1.cell(row=i+1, column=2, value=k.get('Kaynak'))
+            ws1.cell(row=i+1, column=3, value=k.get('RxId'))
+            ws1.cell(row=i+1, column=4, value=k.get('RxIslemTarihi'))
+            ws1.cell(row=i+1, column=5, value=k.get('RxKayitTarihi'))
+            ws1.cell(row=i+1, column=6, value=k.get('LoggerTarihi'))
+            ws1.cell(row=i+1, column=7, value=k.get('RxKontrolTarihi'))
+            ws1.cell(row=i+1, column=8, value=k.get('KayitFark'))
+            ws1.cell(row=i+1, column=9, value=k.get('LoggerFark'))
+            ws1.cell(row=i+1, column=10, value=k.get('KontrolFark'))
+            ws1.cell(row=i+1, column=11, value=k.get('LoggerMakina'))
+            ws1.cell(row=i+1, column=12, value=k.get('LoggerPersonelId'))
+            ws1.cell(row=i+1, column=13,
+                     value='Evet' if k.get('DonusumMu') else 'Hayır')
+            ws1.cell(row=i+1, column=14,
+                     value='Evet' if k.get('AntibiyotikMu') else 'Hayır')
+            ws1.cell(row=i+1, column=15,
+                     value='Evet' if k.get('IsBankasiMu') else 'Hayır')
+            ws1.cell(row=i+1, column=16,
+                     value='Evet' if k.get('BezMidir') else 'Hayır')
+            ws1.cell(row=i+1, column=17,
+                     value='Evet' if k.get('CezaeviMidir') else 'Hayır')
+
+        ws2 = wb.create_sheet("PC Makina Özet")
+        m_bash = ['Makina', 'İşlem Sayısı', 'Ort Fark (sn)',
+                  '|Fark| Ort (sn)', 'Min Fark', 'Max Fark', '|Fark|>5sn']
+        for ci, b in enumerate(m_bash, 1):
             c = ws2.cell(row=1, column=ci, value=b)
             c.font = bf
             c.fill = bg

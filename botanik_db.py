@@ -3223,18 +3223,29 @@ class BotanikDB:
         log. RxIslemTarihi sonradan elle değiştirilirse Logger sabit kalır →
         fark olur → manuel müdahale kanıtı.
 
+        Her kayıt için beş ek bayrak hesaplanır:
+        - DonusumMu: Reçete için, Logger Turu=1/AltTuru=1 anının ±3sn'sinde
+          aynı LoggerMakina'da bir Turu=2/AltTuru=3 logu varsa 1.
+        - AntibiyotikMu: Reçete/elden kalemlerinden en az biri ATC
+          J01/J02/J04/J05 ise 1.
+        - IsBankasiMu: Reçetenin RxKurumId'si Kurum.KurumAdi LIKE '%İş Bank%'
+          eşleşiyorsa 1. Elden için 0.
+        - BezMidir: Reçete/elden kalemlerinden en az birinin UrunAdi'nde
+          'BEZ' geçiyorsa 1.
+        - CezaeviMidir: Reçetenin RxKurumId'si bir cezaeviyse 1 (Kurum.
+          KurumCezaeviId IS NOT NULL veya KurumAdi'nde 'CEZA'/'İNFAZ').
+          Elden için 0.
+
         Returns:
             {
                 'manuel_kayitlar': [
                     {'Kaynak','RxId','RxIslemTarihi','LoggerTarihi','FarkSn',
-                     'LoggerMakina','LoggerPersonelId'},
+                     'LoggerMakina','LoggerPersonelId',
+                     'DonusumMu','AntibiyotikMu','IsBankasiMu',
+                     'BezMidir','CezaeviMidir'},
                     ...
                 ],
-                'makina_ozeti': [
-                    {'LoggerMakina','IslemSayisi','FarkOrtalama','FarkMin',
-                     'FarkMax','MutlakOrt'},
-                    ...
-                ],
+                'makina_ozeti': [...],
             }
         """
         def _fmt(d):
@@ -3248,7 +3259,13 @@ class BotanikDB:
         esik_sn_int = int(esik_sn)
         max_kayit_int = int(max_kayit)
 
-        # 1. Manuel değişiklik kayıtları (|fark| > esik)
+        # 1. Manuel değişiklik kayıtları (|fark| > esik) + DonusumMu + AntibiyotikMu
+        # Antibiyotik ATC prefixleri: J01* sistemik antibakteriyel,
+        # J02* antifungal, J04* tüberküloz, J05* antiviral
+        anti_filter = (
+            "(atc.ATCKodu LIKE 'J01%' OR atc.ATCKodu LIKE 'J02%' "
+            "OR atc.ATCKodu LIKE 'J04%' OR atc.ATCKodu LIKE 'J05%')"
+        )
         manuel_sql = f"""
         SELECT TOP {max_kayit_int} * FROM (
             SELECT
@@ -3258,7 +3275,39 @@ class BotanikDB:
                 L.LoggerTarihi,
                 DATEDIFF(SECOND, L.LoggerTarihi, ra.RxIslemTarihi) as FarkSn,
                 L.LoggerMakina,
-                L.LoggerPersonelId
+                L.LoggerPersonelId,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM Logger L2
+                    WHERE L2.LoggerIslemTuru = 2
+                      AND L2.LoggerIslemAltTuru = 3
+                      AND L2.LoggerMakina = L.LoggerMakina
+                      AND L2.LoggerTarihi >= DATEADD(SECOND, -3, L.LoggerTarihi)
+                      AND L2.LoggerTarihi <= DATEADD(SECOND, 3, L.LoggerTarihi)
+                ) THEN 1 ELSE 0 END as DonusumMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM ReceteIlaclari ri
+                    INNER JOIN Urun u ON u.UrunId = ri.RIUrunId
+                    INNER JOIN ATC atc ON atc.ATCId = u.UrunATCId
+                    WHERE ri.RIRxId = ra.RxId AND {anti_filter}
+                ) THEN 1 ELSE 0 END as AntibiyotikMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM Kurum k
+                    WHERE k.KurumId = ra.RxKurumId
+                      AND (k.KurumAdi LIKE N'%İş Bank%'
+                        OR k.KurumAdi LIKE N'%İŞ BANK%')
+                ) THEN 1 ELSE 0 END as IsBankasiMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM ReceteIlaclari ri
+                    INNER JOIN Urun u ON u.UrunId = ri.RIUrunId
+                    WHERE ri.RIRxId = ra.RxId AND u.UrunAdi LIKE N'%BEZ%'
+                ) THEN 1 ELSE 0 END as BezMidir,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM Kurum k
+                    WHERE k.KurumId = ra.RxKurumId
+                      AND (k.KurumCezaeviId IS NOT NULL
+                        OR k.KurumAdi LIKE N'%CEZA%'
+                        OR k.KurumAdi LIKE N'%İNFAZ%')
+                ) THEN 1 ELSE 0 END as CezaeviMidir
             FROM ReceteAna ra
             INNER JOIN Logger L
                 ON L.LoggerIslemId = ra.RxId
@@ -3277,7 +3326,21 @@ class BotanikDB:
                 L.LoggerTarihi,
                 DATEDIFF(SECOND, L.LoggerTarihi, ea.RxIslemTarihi) as FarkSn,
                 L.LoggerMakina,
-                L.LoggerPersonelId
+                L.LoggerPersonelId,
+                0 as DonusumMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM EldenIlaclari ei
+                    INNER JOIN Urun u ON u.UrunId = ei.RIUrunId
+                    INNER JOIN ATC atc ON atc.ATCId = u.UrunATCId
+                    WHERE ei.RIRxId = ea.RxId AND {anti_filter}
+                ) THEN 1 ELSE 0 END as AntibiyotikMu,
+                0 as IsBankasiMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM EldenIlaclari ei
+                    INNER JOIN Urun u ON u.UrunId = ei.RIUrunId
+                    WHERE ei.RIRxId = ea.RxId AND u.UrunAdi LIKE N'%BEZ%'
+                ) THEN 1 ELSE 0 END as BezMidir,
+                0 as CezaeviMidir
             FROM EldenAna ea
             INNER JOIN Logger L
                 ON L.LoggerIslemId = ea.RxId
@@ -3333,7 +3396,250 @@ class BotanikDB:
                 'FarkSn': int(r.get('FarkSn') or 0) if r.get('FarkSn') is not None else None,
                 'LoggerMakina': r.get('LoggerMakina'),
                 'LoggerPersonelId': r.get('LoggerPersonelId'),
+                'DonusumMu': bool(r.get('DonusumMu') or 0),
+                'AntibiyotikMu': bool(r.get('AntibiyotikMu') or 0),
+                'IsBankasiMu': bool(r.get('IsBankasiMu') or 0),
+                'BezMidir': bool(r.get('BezMidir') or 0),
+                'CezaeviMidir': bool(r.get('CezaeviMidir') or 0),
             } for r in (manuel or [])],
+            'makina_ozeti': [{
+                'LoggerMakina': r.get('LoggerMakina'),
+                'IslemSayisi': int(r.get('IslemSayisi') or 0),
+                'FarkOrtalama': float(r.get('FarkOrtalama') or 0),
+                'FarkMin': int(r.get('FarkMin') or 0),
+                'FarkMax': int(r.get('FarkMax') or 0),
+                'MutlakOrt': float(r.get('MutlakOrt') or 0),
+                'SuphliSayi': int(r.get('SuphliSayi') or 0),
+            } for r in (makina or [])],
+        }
+
+    def birlesik_zaman_analizi(
+        self,
+        baslangic_dt,
+        bitis_dt,
+        kayit_esik_sn: int = 60,
+        logger_esik_sn: int = 60,
+        kontrol_esik_sn: int = 60,
+        en_az_birinde: bool = True,
+        max_kayit: int = 50000,
+    ) -> Dict:
+        """Üç zaman analizini tek sorguda birleştirir.
+
+        Her reçete/elden kaydı için 3 fark hesaplanır:
+        - KayitFark: RxIslemTarihi − RxKayitTarihi (saniye)
+          (RxKayitTarihi DATE, saatsiz; fark gün × 86400 ölçeklenir)
+        - LoggerFark: RxIslemTarihi − Logger.LoggerTarihi (saniye)
+          (Logger insert-only; manuel müdahale kanıtı)
+        - KontrolFark: RxKontrolTarihi − RxIslemTarihi (saniye, sadece reçete)
+          (Kontrol/onay işlemden ne kadar sonra; NULL ise None döner)
+
+        Filtreleme:
+        - en_az_birinde=True (OR): herhangi bir |fark| > kendi eşiği ise dahil
+        - en_az_birinde=False (AND): hepsinin |fark| > kendi eşiği ise dahil
+
+        Her kayıt için Logger Forensik bayrakları da hesaplanır:
+        DonusumMu / AntibiyotikMu / IsBankasiMu.
+
+        Returns:
+            {
+                'kayitlar': [{...}, ...],
+                'makina_ozeti': [...]   # Logger'a göre, manuel tarama ile aynı
+            }
+        """
+        def _fmt(d):
+            if hasattr(d, 'strftime'):
+                if hasattr(d, 'hour'):
+                    return d.strftime('%Y-%m-%d %H:%M:%S')
+                return d.strftime('%Y-%m-%d') + ' 00:00:00'
+            return str(d)
+        bas_str = _fmt(baslangic_dt)
+        bit_str = _fmt(bitis_dt)
+        max_kayit_int = int(max_kayit)
+        k_esik = int(kayit_esik_sn)
+        l_esik = int(logger_esik_sn)
+        c_esik = int(kontrol_esik_sn)
+
+        anti_filter = (
+            "(atc.ATCKodu LIKE 'J01%' OR atc.ATCKodu LIKE 'J02%' "
+            "OR atc.ATCKodu LIKE 'J04%' OR atc.ATCKodu LIKE 'J05%')"
+        )
+
+        # KayitFark için RxKayitTarihi DATE — CAST(... AS datetime) ile saatsiz
+        # toplam saniye = gün × 86400. RxIslemTarihi - RxKayitTarihi sonucu.
+        # ABS değerleri WHERE'da kullanılır.
+        if en_az_birinde:
+            mantik_op = "OR"
+        else:
+            mantik_op = "AND"
+
+        # Reçete bloğu — Kontrol da gösterilir
+        # Elden bloğu — KontrolFark her zaman NULL (RxKontrolTarihi yok)
+        birlesik_sql = f"""
+        SELECT TOP {max_kayit_int} * FROM (
+            SELECT
+                'RECETE' as Kaynak,
+                ra.RxId,
+                ra.RxIslemTarihi,
+                CAST(ra.RxKayitTarihi AS datetime) as RxKayitTarihi,
+                L.LoggerTarihi,
+                ra.RxKontrolTarihi,
+                DATEDIFF(SECOND,
+                    CAST(ra.RxKayitTarihi AS datetime), ra.RxIslemTarihi)
+                    as KayitFark,
+                DATEDIFF(SECOND, L.LoggerTarihi, ra.RxIslemTarihi)
+                    as LoggerFark,
+                CASE WHEN ra.RxKontrolTarihi IS NULL THEN NULL
+                     ELSE DATEDIFF(SECOND, ra.RxIslemTarihi, ra.RxKontrolTarihi)
+                END as KontrolFark,
+                L.LoggerMakina,
+                L.LoggerPersonelId,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM Logger L2
+                    WHERE L2.LoggerIslemTuru = 2
+                      AND L2.LoggerIslemAltTuru = 3
+                      AND L2.LoggerMakina = L.LoggerMakina
+                      AND L2.LoggerTarihi >= DATEADD(SECOND, -3, L.LoggerTarihi)
+                      AND L2.LoggerTarihi <= DATEADD(SECOND, 3, L.LoggerTarihi)
+                ) THEN 1 ELSE 0 END as DonusumMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM ReceteIlaclari ri
+                    INNER JOIN Urun u ON u.UrunId = ri.RIUrunId
+                    INNER JOIN ATC atc ON atc.ATCId = u.UrunATCId
+                    WHERE ri.RIRxId = ra.RxId AND {anti_filter}
+                ) THEN 1 ELSE 0 END as AntibiyotikMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM Kurum k
+                    WHERE k.KurumId = ra.RxKurumId
+                      AND (k.KurumAdi LIKE N'%İş Bank%'
+                        OR k.KurumAdi LIKE N'%İŞ BANK%')
+                ) THEN 1 ELSE 0 END as IsBankasiMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM ReceteIlaclari ri
+                    INNER JOIN Urun u ON u.UrunId = ri.RIUrunId
+                    WHERE ri.RIRxId = ra.RxId AND u.UrunAdi LIKE N'%BEZ%'
+                ) THEN 1 ELSE 0 END as BezMidir,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM Kurum k
+                    WHERE k.KurumId = ra.RxKurumId
+                      AND (k.KurumCezaeviId IS NOT NULL
+                        OR k.KurumAdi LIKE N'%CEZA%'
+                        OR k.KurumAdi LIKE N'%İNFAZ%')
+                ) THEN 1 ELSE 0 END as CezaeviMidir
+            FROM ReceteAna ra
+            INNER JOIN Logger L
+                ON L.LoggerIslemId = ra.RxId
+               AND L.LoggerIslemTuru = 1
+               AND L.LoggerIslemAltTuru = 1
+            WHERE ra.RxSilme = 0
+              AND ra.RxIslemTarihi >= ?
+              AND ra.RxIslemTarihi <= ?
+
+            UNION ALL
+
+            SELECT
+                'ELDEN' as Kaynak,
+                ea.RxId,
+                ea.RxIslemTarihi,
+                CAST(ea.RxKayitTarihi AS datetime) as RxKayitTarihi,
+                L.LoggerTarihi,
+                CAST(NULL AS datetime) as RxKontrolTarihi,
+                DATEDIFF(SECOND,
+                    CAST(ea.RxKayitTarihi AS datetime), ea.RxIslemTarihi)
+                    as KayitFark,
+                DATEDIFF(SECOND, L.LoggerTarihi, ea.RxIslemTarihi)
+                    as LoggerFark,
+                CAST(NULL AS int) as KontrolFark,
+                L.LoggerMakina,
+                L.LoggerPersonelId,
+                0 as DonusumMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM EldenIlaclari ei
+                    INNER JOIN Urun u ON u.UrunId = ei.RIUrunId
+                    INNER JOIN ATC atc ON atc.ATCId = u.UrunATCId
+                    WHERE ei.RIRxId = ea.RxId AND {anti_filter}
+                ) THEN 1 ELSE 0 END as AntibiyotikMu,
+                0 as IsBankasiMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM EldenIlaclari ei
+                    INNER JOIN Urun u ON u.UrunId = ei.RIUrunId
+                    WHERE ei.RIRxId = ea.RxId AND u.UrunAdi LIKE N'%BEZ%'
+                ) THEN 1 ELSE 0 END as BezMidir,
+                0 as CezaeviMidir
+            FROM EldenAna ea
+            INNER JOIN Logger L
+                ON L.LoggerIslemId = ea.RxId
+               AND L.LoggerIslemTuru = 2
+               AND L.LoggerIslemAltTuru = 1
+            WHERE ea.RxSilme = 0
+              AND ea.RxIslemTarihi >= ?
+              AND ea.RxIslemTarihi <= ?
+        ) AS T
+        WHERE
+            ABS(ISNULL(KayitFark, 0)) > {k_esik} {mantik_op}
+            ABS(ISNULL(LoggerFark, 0)) > {l_esik} {mantik_op}
+            (KontrolFark IS NOT NULL
+              AND ABS(KontrolFark) > {c_esik})
+        ORDER BY
+            ABS(ISNULL(LoggerFark, 0)) DESC,
+            ABS(ISNULL(KayitFark, 0)) DESC,
+            RxIslemTarihi DESC
+        """
+        params = (bas_str, bit_str, bas_str, bit_str)
+        kayitlar = self.sorgu_calistir(birlesik_sql, params)
+
+        # Makina özeti — Logger Forensik ile aynı
+        makina_sql = """
+        SELECT
+            ISNULL(L.LoggerMakina, '(BİLİNMİYOR)') as LoggerMakina,
+            COUNT(*) as IslemSayisi,
+            AVG(CAST(DATEDIFF(SECOND, L.LoggerTarihi,
+                COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi)) as float)) as FarkOrtalama,
+            MIN(DATEDIFF(SECOND, L.LoggerTarihi,
+                COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi))) as FarkMin,
+            MAX(DATEDIFF(SECOND, L.LoggerTarihi,
+                COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi))) as FarkMax,
+            AVG(CAST(ABS(DATEDIFF(SECOND, L.LoggerTarihi,
+                COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi))) as float)) as MutlakOrt,
+            SUM(CASE WHEN ABS(DATEDIFF(SECOND, L.LoggerTarihi,
+                COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi))) > 5
+                THEN 1 ELSE 0 END) as SuphliSayi
+        FROM Logger L
+        LEFT JOIN ReceteAna ra
+            ON ra.RxId = L.LoggerIslemId AND L.LoggerIslemTuru = 1
+        LEFT JOIN EldenAna ea
+            ON ea.RxId = L.LoggerIslemId AND L.LoggerIslemTuru = 2
+        WHERE L.LoggerIslemTuru IN (1, 2)
+          AND L.LoggerIslemAltTuru = 1
+          AND L.LoggerTarihi >= ?
+          AND L.LoggerTarihi <= ?
+          AND COALESCE(ra.RxIslemTarihi, ea.RxIslemTarihi) IS NOT NULL
+        GROUP BY ISNULL(L.LoggerMakina, '(BİLİNMİYOR)')
+        ORDER BY COUNT(*) DESC
+        """
+        makina = self.sorgu_calistir(makina_sql, (bas_str, bit_str))
+
+        def _i(v):
+            return int(v) if v is not None else None
+
+        return {
+            'kayitlar': [{
+                'Kaynak': r.get('Kaynak'),
+                'RxId': r.get('RxId'),
+                'RxIslemTarihi': r.get('RxIslemTarihi'),
+                'RxKayitTarihi': r.get('RxKayitTarihi'),
+                'LoggerTarihi': r.get('LoggerTarihi'),
+                'RxKontrolTarihi': r.get('RxKontrolTarihi'),
+                'KayitFark': _i(r.get('KayitFark')),
+                'LoggerFark': _i(r.get('LoggerFark')),
+                'KontrolFark': _i(r.get('KontrolFark')),
+                'LoggerMakina': r.get('LoggerMakina'),
+                'LoggerPersonelId': r.get('LoggerPersonelId'),
+                'DonusumMu': bool(r.get('DonusumMu') or 0),
+                'AntibiyotikMu': bool(r.get('AntibiyotikMu') or 0),
+                'IsBankasiMu': bool(r.get('IsBankasiMu') or 0),
+                'BezMidir': bool(r.get('BezMidir') or 0),
+                'CezaeviMidir': bool(r.get('CezaeviMidir') or 0),
+            } for r in (kayitlar or [])],
             'makina_ozeti': [{
                 'LoggerMakina': r.get('LoggerMakina'),
                 'IslemSayisi': int(r.get('IslemSayisi') or 0),
@@ -3665,12 +3971,18 @@ class BotanikDB:
         esik_sn_int = int(esik_sn)
         max_kayit_int = int(max_kayit)
 
-        # ÇİFT KARŞILAŞTIRMA:
+        # ÇİFT KARŞILAŞTIRMA + 4 BAYRAK (Logger Forensik ile aynı semantik):
         # - FarkSn = RxIslemTarihi vs RxKayitTarihi (kayıt DATE olduğu için
         #   gün-bazlı * 86400 olarak normalize)
-        # - KontrolFarkSn = RxIslemTarihi vs RxKontrolTarihi (saniye bazlı,
-        #   sadece Reçete'de — Elden'de bu kolon yok, NULL döner)
-        # Anomali: herhangi biri eşik üstü veya negatif.
+        # - KontrolFarkSn = RxIslemTarihi vs RxKontrolTarihi (saniye, reçete)
+        # - DonusumMu: Logger Turu=1/AltTuru=1 ±3sn + aynı PC'de Turu=2/AltTuru=3
+        # - AntibiyotikMu: ReceteIlaclari/EldenIlaclari'nda ATC J01/J02/J04/J05
+        # - IsBankasiMu: RxKurumId → Kurum.KurumAdi LIKE '%İş Bank%' (reçete)
+        # - BezMidir: ReceteIlaclari/EldenIlaclari'nda UrunAdi LIKE '%BEZ%'
+        anti_filter = (
+            "(atc.ATCKodu LIKE 'J01%' OR atc.ATCKodu LIKE 'J02%' "
+            "OR atc.ATCKodu LIKE 'J04%' OR atc.ATCKodu LIKE 'J05%')"
+        )
         sql = f"""
         SELECT TOP {max_kayit_int} * FROM (
             SELECT
@@ -3697,7 +4009,42 @@ class BotanikDB:
                 END as FarkTipi,
                 CASE WHEN ra.RxKontrolTarihi IS NULL THEN NULL
                      ELSE DATEDIFF(SECOND, ra.RxIslemTarihi, ra.RxKontrolTarihi)
-                END as KontrolFarkSn
+                END as KontrolFarkSn,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM Logger L1
+                    INNER JOIN Logger L2
+                        ON L2.LoggerIslemTuru = 2 AND L2.LoggerIslemAltTuru = 3
+                       AND L2.LoggerMakina = L1.LoggerMakina
+                       AND L2.LoggerTarihi >= DATEADD(SECOND, -3, L1.LoggerTarihi)
+                       AND L2.LoggerTarihi <= DATEADD(SECOND, 3, L1.LoggerTarihi)
+                    WHERE L1.LoggerIslemId = ra.RxId
+                      AND L1.LoggerIslemTuru = 1
+                      AND L1.LoggerIslemAltTuru = 1
+                ) THEN 1 ELSE 0 END as DonusumMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM ReceteIlaclari ri
+                    INNER JOIN Urun u ON u.UrunId = ri.RIUrunId
+                    INNER JOIN ATC atc ON atc.ATCId = u.UrunATCId
+                    WHERE ri.RIRxId = ra.RxId AND {anti_filter}
+                ) THEN 1 ELSE 0 END as AntibiyotikMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM Kurum k
+                    WHERE k.KurumId = ra.RxKurumId
+                      AND (k.KurumAdi LIKE N'%İş Bank%'
+                        OR k.KurumAdi LIKE N'%İŞ BANK%')
+                ) THEN 1 ELSE 0 END as IsBankasiMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM ReceteIlaclari ri
+                    INNER JOIN Urun u ON u.UrunId = ri.RIUrunId
+                    WHERE ri.RIRxId = ra.RxId AND u.UrunAdi LIKE N'%BEZ%'
+                ) THEN 1 ELSE 0 END as BezMidir,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM Kurum k
+                    WHERE k.KurumId = ra.RxKurumId
+                      AND (k.KurumCezaeviId IS NOT NULL
+                        OR k.KurumAdi LIKE N'%CEZA%'
+                        OR k.KurumAdi LIKE N'%İNFAZ%')
+                ) THEN 1 ELSE 0 END as CezaeviMidir
             FROM ReceteAna ra
             WHERE ra.RxSilme = 0
                 AND ra.RxIslemTarihi >= ?
@@ -3728,7 +4075,21 @@ class BotanikDB:
                     THEN 'gun'
                     ELSE 'sn'
                 END as FarkTipi,
-                CAST(NULL as BIGINT) as KontrolFarkSn
+                CAST(NULL as BIGINT) as KontrolFarkSn,
+                0 as DonusumMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM EldenIlaclari ei
+                    INNER JOIN Urun u ON u.UrunId = ei.RIUrunId
+                    INNER JOIN ATC atc ON atc.ATCId = u.UrunATCId
+                    WHERE ei.RIRxId = ea.RxId AND {anti_filter}
+                ) THEN 1 ELSE 0 END as AntibiyotikMu,
+                0 as IsBankasiMu,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM EldenIlaclari ei
+                    INNER JOIN Urun u ON u.UrunId = ei.RIUrunId
+                    WHERE ei.RIRxId = ea.RxId AND u.UrunAdi LIKE N'%BEZ%'
+                ) THEN 1 ELSE 0 END as BezMidir,
+                0 as CezaeviMidir
             FROM EldenAna ea
             WHERE ea.RxSilme = 0
                 AND ea.RxIslemTarihi >= ?
@@ -3753,6 +4114,11 @@ class BotanikDB:
             'FarkSn': int(r.get('FarkSn') or 0) if r.get('FarkSn') is not None else None,
             'FarkTipi': r.get('FarkTipi') or 'sn',
             'KontrolFarkSn': int(r.get('KontrolFarkSn')) if r.get('KontrolFarkSn') is not None else None,
+            'DonusumMu': bool(r.get('DonusumMu') or 0),
+            'AntibiyotikMu': bool(r.get('AntibiyotikMu') or 0),
+            'IsBankasiMu': bool(r.get('IsBankasiMu') or 0),
+            'BezMidir': bool(r.get('BezMidir') or 0),
+            'CezaeviMidir': bool(r.get('CezaeviMidir') or 0),
         } for r in sonuclar]
 
     def gun_saat_yogunlugu_getir(

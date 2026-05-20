@@ -1105,13 +1105,10 @@ class AylikReceteSorguGUI:
         row_verdict.pack(fill="x", pady=(0, 2))
 
         # Manuel teyit filtre satırı — verdict satırının ALTINDA, aynı tarzda.
+        # 🩺 GEÇMİŞ TARA da bu satırın sağına yerleştirilir (kullanıcı isteği
+        # 2026-05-20: teyit butonlarının sağındaki boşluğa).
         row_teyit = tk.Frame(sol_kol, bg="#FAFAFA")
         row_teyit.pack(fill="x", pady=(0, 2))
-
-        # row_medula — 🩺 GEÇMİŞ TARA için ayrı satır (kontrol butonlarıyla
-        # işlevsel bağı yok; kullanıcı isteği 2026-05-19: kendi çerçevesinde).
-        row_medula = tk.Frame(sol_kol, bg="#FAFAFA")
-        row_medula.pack(fill="x", pady=(0, 2))
 
         row3 = tk.Frame(sol_kol, bg="#FAFAFA")
         row3.pack(fill="x", pady=(0, 0))
@@ -1386,13 +1383,13 @@ class AylikReceteSorguGUI:
                  "✓ UYGUN = teyitli yeşil, ✗ UYGUN DEĞİL = teyitli kırmızı,\n"
                  "? ŞÜPHELİ = teyitli sarı, ○ Teyitsiz = henüz teyit edilmemiş.")
 
-        # ─── PANEL: MEDULA GEÇMİŞ TARA — kendi çerçevesinde, row_medula'da ───
+        # ─── PANEL: MEDULA GEÇMİŞ TARA — row_teyit içinde, teyit butonlarının sağında ───
         # Kontrol Butonları ile işlevsel bağı yok (kullanıcı isteği 2026-05-19).
         # Seçili satırın hastasının TC'si ile MEDULA'ya bağlanıp tüm geçmiş
         # raporlarını yerel SQLite DB'ye tarar.
         P_MED_BG = "#EDE7F6"
-        p_medula = tk.Frame(row_medula, bg=P_MED_BG, bd=1, relief="solid")
-        p_medula.pack(side="left", padx=2, pady=1, fill="y")
+        p_medula = tk.Frame(row_teyit, bg=P_MED_BG, bd=1, relief="solid")
+        p_medula.pack(side="left", padx=(10, 2), pady=1, fill="y")
         tk.Label(p_medula, text="🩺 MEDULA:",
                  bg=P_MED_BG, fg="#4527A0",
                  font=FONT_GROUP).pack(side="left", padx=(6, 4), pady=4)
