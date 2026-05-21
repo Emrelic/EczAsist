@@ -6,13 +6,13 @@
       "header_satir": 0,
       "veri_baslangic_offset": 0,
       "sutunlar": {
-        "fatura_no": "Fatura No",
-        "tarih": "Fatura Tarihi",
-        "fatura_tutari": "Fatura Tutarı",
-        "borc": "",
-        "alacak": "İade/Çık Tut",
-        "tip": "Tipi",
-        "aciklama": "İlgili Adı"
+        "fatura_no": "Evrak No",
+        "tarih": "Tarih",
+        "fatura_tutari": "",
+        "borc": "Borc",
+        "alacak": "Alacak",
+        "tip": "Türü",
+        "aciklama": "Açıklama"
       },
       "fatura_no_regex": "",
       "duzenlenebilir": false

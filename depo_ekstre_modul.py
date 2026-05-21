@@ -373,14 +373,14 @@ class DepoEkstreModul:
             "aktif_sablon": "Selçuk Ecza (Varsayılan)",
             "sablonlar": {
                 "Selçuk Ecza (Varsayılan)": {
-                    "aciklama": "Sistem varsayılanı",
+                    "aciklama": "Sistem varsayılanı (Selçuk depo Excel formatı)",
                     "header_satir": 0,
                     "veri_baslangic_offset": 0,
                     "sutunlar": {
-                        "fatura_no": "Fatura No", "tarih": "Fatura Tarihi",
-                        "fatura_tutari": "Fatura Tutarı", "borc": "",
-                        "alacak": "İade/Çık Tut", "tip": "Tipi",
-                        "aciklama": "İlgili Adı"
+                        "fatura_no": "Evrak No", "tarih": "Tarih",
+                        "fatura_tutari": "", "borc": "Borc",
+                        "alacak": "Alacak", "tip": "Türü",
+                        "aciklama": "Açıklama"
                     },
                     "fatura_no_regex": "",
                     "duzenlenebilir": False
@@ -516,6 +516,20 @@ class DepoEkstreModul:
         import re
 
         sutunlar = sablon.get('sutunlar', {})
+
+        # Guard: şablonun tanımladığı kaynak sütunlardan HİÇBİRİ df'de yoksa,
+        # şablon yanlış konfigüre edilmiş demektir — uygulamayı atla, orijinal df'i döndür.
+        # Aksi halde tüm hedef kolonlar NaN olur ve boş DataFrame'e skaler atama → 0 satır kalır.
+        tanimli_kaynaklar = [k for k in sutunlar.values() if k]
+        if tanimli_kaynaklar:
+            eslesen = [k for k in tanimli_kaynaklar if k in df.columns]
+            if not eslesen:
+                logger.warning(
+                    f"Şablon uygulanmadı — şablondaki kaynak sütunların hiçbiri Excel'de yok. "
+                    f"Şablon kaynakları: {tanimli_kaynaklar} | Excel kolonları: {list(df.columns)}"
+                )
+                return df
+
         offset = sablon.get('veri_baslangic_offset', 0)
         if offset > 0 and len(df) > offset:
             df = df.iloc[offset:].reset_index(drop=True)
@@ -562,6 +576,15 @@ class DepoEkstreModul:
                 )
             except Exception as e:
                 logger.error(f"Fatura no regex hatası: {e}")
+
+        # Filtrenin orijinal kolon adına (örn. 'Türü') yönelik kayıtlarını boşa
+        # düşürmemek için ham kolonları da df'e ekle (üst üste binmeyenleri).
+        # Filtre penceresi ham Excel'i okuyup orijinal sütun adlarıyla checkbox
+        # üretiyor; karşılaştırma şablon-sonrası df üzerinde dönüyor — eğer
+        # orijinal adlar silinirse filtre eşleşmiyor.
+        for sutun_adi in df.columns:
+            if sutun_adi not in yeni.columns:
+                yeni[sutun_adi] = df[sutun_adi].values
         return yeni
 
     def depo_sablon_ayarlari_ac(self):
@@ -1275,15 +1298,27 @@ class DepoEkstreModul:
         self._diag_log(f"[sonuc_pencere] DEPO eşleme: Fatura={depo_fatura_col} Borç={depo_borc_col} Alacak={depo_alacak_col} Tarih={depo_tarih_col} Tip={depo_tip_col}")
         self._diag_log(f"[sonuc_pencere] ECZANE eşleme: Fatura={eczane_fatura_col} Borç={eczane_borc_col} Alacak={eczane_alacak_col} Tarih={eczane_tarih_col} Tip={eczane_tip_col}")
 
+        # Sütun bulunamadı mı yoksa var ama boş mu? Kullanıcı için farkı netleştir.
+        def _sutun_durumu_aciklama(df, aday_listesi, etiket):
+            mevcut_eslesme = [a for a in aday_listesi if a in df.columns]
+            if mevcut_eslesme:
+                return (
+                    f"{etiket} sütunu Excel'de var ({', '.join(mevcut_eslesme)}) ama tüm hücreleri BOŞ.\n"
+                    f"→ Büyük olasılıkla yanlış şablon seçili. "
+                    f"'⚙️ Format' butonundan doğru şablonu seçin veya yeni şablon oluşturun.\n"
+                    f"Mevcut sütunlar: {', '.join(df.columns)}"
+                )
+            return f"{etiket} sütunu bulunamadı.\nMevcut sütunlar: {', '.join(df.columns)}"
+
         hatalar = []
         if not depo_fatura_col:
-            hatalar.append(f"DEPO'da Fatura No sütunu bulunamadı.\nMevcut sütunlar: {', '.join(df_depo.columns)}")
+            hatalar.append(_sutun_durumu_aciklama(df_depo, ['Evrak No', 'Fatura No', 'Belge No', 'Fiş No'], "DEPO'da Fatura No"))
         if not depo_borc_col:
-            hatalar.append(f"DEPO'da Borç/Tutar sütunu bulunamadı.\nMevcut sütunlar: {', '.join(df_depo.columns)}")
+            hatalar.append(_sutun_durumu_aciklama(df_depo, ['Borc', 'Borç', 'Tutar', 'Fatura Tutarı', 'Net Tutar'], "DEPO'da Borç/Tutar"))
         if not eczane_fatura_col:
-            hatalar.append(f"ECZANE'de Fatura No sütunu bulunamadı.\nMevcut sütunlar: {', '.join(df_eczane.columns)}")
+            hatalar.append(_sutun_durumu_aciklama(df_eczane, ['Fatura No', 'Evrak No', 'Belge No', 'Fiş No'], "ECZANE'de Fatura No"))
         if not eczane_borc_col:
-            hatalar.append(f"ECZANE'de Fatura Tutarı sütunu bulunamadı.\nMevcut sütunlar: {', '.join(df_eczane.columns)}")
+            hatalar.append(_sutun_durumu_aciklama(df_eczane, ['Fatura Tutarı', 'Tutar', 'Borç', 'Toplam'], "ECZANE'de Fatura Tutarı"))
 
         # Alacak sütunu bulunamadıysa uyarı
         if not depo_alacak_col:
