@@ -90,6 +90,13 @@ medula_settings.json
 
 # DB connection credentials (each setup has its own; never push real passwords)
 db_config.json
+
+# AI Kontrol — kullanıcı bazlı Anthropic API anahtarı (KVKK + güvenlik)
+ai_config.json
+ai_kontrol_log.db
+
+# Claude Code yerel memory (her makine kendine özel; repo'ya gitmez)
+memory/
 timing_stats.json
 ekstre_filtre_ayarlari.json
 

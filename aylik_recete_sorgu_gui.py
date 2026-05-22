@@ -26,7 +26,7 @@ import threading
 import tkinter as tk
 from datetime import date
 from tkinter import filedialog, messagebox, ttk
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from botanik_db import BotanikDB
 from recete_kontrol.sut_kontrolleri import _tr_lower
@@ -265,6 +265,14 @@ SUTUNLAR = [
     ("renkli_rr",  "Renkli RR",    85,
      "RENKLİ REÇETE butonu doldurur: Kırmızı/Yeşil/Mor reçetelerin "
      "renkli reçete sisteminde kaydı VAR / YOK / — (kapsam dışı)"),
+    ("ai_kars",    "AI Karş.",     120,
+     "🤖 AI KONTROL butonu doldurur: Anthropic Claude'un SUT uygunluk "
+     "değerlendirmesi — UYGUN / UYGUN DEĞİL / ŞÜPHELİ / KONTROL EDİLEMEDİ / "
+     "YETERSİZ VERİ / MANUEL KONTROL"),
+    ("ai_aciklama", "AI Açıklama", 280,
+     "🤖 AI'ın özet açıklaması — sağlanan/sağlanmayan/kontrol edilemeyen "
+     "şartlar ve SUT referansı. Hücreye tıklayınca tam metin sağdaki "
+     "hücre içeriği panelinde görüntülenir."),
     ("verdict_sart_raporu", "Şart Raporu", 460,
      "SUT kontrolü sonrası şart raporu: kullanılan SUT maddesi, ana mesaj, "
      "aranan/bulunan ibareler ve uyarılar. Excel kontrol raporundaki "
@@ -770,6 +778,810 @@ class MultiSelectDropdown(tk.Frame):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# AI KONTROL — İLERLEME DIALOG
+# ═══════════════════════════════════════════════════════════════════════
+class AIKontrolIlerleme:
+    """🤖 AI Kontrol sırasında aşama/sayaç/süreyi gösteren modal pencere.
+
+    Worker thread'ten thread-safe güncelleme için: tüm setter'lar
+    `self.root.after(0, ...)` üzerinden çağrılmalı.
+
+    Aşamalar:
+        VERI : 📦 Veriler toplanıyor (Botanik DB + geçmiş rapor)
+        AI   : 🤖 Claude değerlendiriyor (API/subprocess çağrısı)
+        KAYIT: 💾 Sonuç kaydediliyor (yerel DB)
+    """
+    ASAMA_VERI = "VERI"
+    ASAMA_AI = "AI"
+    ASAMA_KAYIT = "KAYIT"
+
+    _ASAMA_LABEL = {
+        ASAMA_VERI:  "📦 Veriler toplanıyor (Botanik DB + geçmiş raporlar)",
+        ASAMA_AI:    "🤖 Claude değerlendiriyor (model sorgulanıyor)",
+        ASAMA_KAYIT: "💾 Sonuç işleniyor ve kaydediliyor",
+    }
+    _ASAMA_SIRASI = (ASAMA_VERI, ASAMA_AI, ASAMA_KAYIT)
+
+    def __init__(self, parent: tk.Tk, toplam: int):
+        import time
+        self.parent = parent
+        self.root = parent
+        self.toplam = max(1, int(toplam))
+        self.mevcut_no = 0
+        self.mevcut_ilac = ""
+        self.iptal_istendi = False
+        self._t0 = time.time()
+        self._t_recete = time.time()
+        self._asama_durumlari = {a: "bekliyor" for a in self._ASAMA_SIRASI}
+        self._kapali = False
+        self._tamamlandi_flag = False
+        self._timer_job = None
+        self._sayac_etiket = {}        # AI çağrısı sayaçları (success/fail)
+        self._sayac_etiket = {
+            "UYGUN": 0, "UYGUN_DEGIL": 0, "SUPHELI": 0,
+            "KONTROL_EDILEMEDI": 0, "HATA": 0,
+        }
+        self._yapi_kur()
+        self._timer_baslat()
+
+    # ── Pencere yapısı ───────────────────────────────────────────────
+    def _yapi_kur(self):
+        w = tk.Toplevel(self.parent)
+        self.win = w
+        w.title("🤖 AI Kontrol İşleniyor")
+        w.transient(self.parent)
+        try:
+            w.grab_set()
+        except Exception:
+            pass
+        w.resizable(True, True)
+        w.protocol("WM_DELETE_WINDOW", self._iptal_tikla)
+        w.configure(bg="#FAFAFA")
+
+        # Konum: ekran merkezi (büyük pencere için ekran taşmasını engelle)
+        try:
+            self.parent.update_idletasks()
+            sw = self.parent.winfo_screenwidth()
+            sh = self.parent.winfo_screenheight()
+            ww, wh = 980, 720
+            if wh > sh - 60:
+                wh = sh - 60
+            if ww > sw - 40:
+                ww = sw - 40
+            x = max(0, (sw - ww) // 2)
+            y = max(0, (sh - wh) // 2 - 20)
+            w.geometry(f"{ww}x{wh}+{x}+{y}")
+            w.minsize(620, 540)
+        except Exception:
+            w.geometry("980x720")
+
+        # ── Başlık ──
+        baslik = tk.Frame(w, bg="#01579B", height=44)
+        baslik.pack(fill="x")
+        baslik.pack_propagate(False)
+        tk.Label(
+            baslik, text="🤖 AI Kontrol Çalışıyor",
+            font=("Segoe UI", 13, "bold"),
+            bg="#01579B", fg="white",
+        ).pack(side="left", padx=14, pady=8)
+        self.lbl_sayac = tk.Label(
+            baslik, text=f"0 / {self.toplam}",
+            font=("Segoe UI", 11, "bold"),
+            bg="#01579B", fg="#E1F5FE",
+        )
+        self.lbl_sayac.pack(side="right", padx=14, pady=8)
+
+        # ── Aktif reçete-ilaç ──
+        bilgi = tk.Frame(w, bg="#FAFAFA")
+        bilgi.pack(fill="x", padx=14, pady=(10, 4))
+        tk.Label(
+            bilgi, text="İşlenen ilaç:",
+            font=("Segoe UI", 9), bg="#FAFAFA", fg="#666",
+        ).pack(side="left")
+        self.lbl_ilac = tk.Label(
+            bilgi, text="—",
+            font=("Segoe UI", 10, "bold"),
+            bg="#FAFAFA", fg="#01579B",
+            anchor="w",
+        )
+        self.lbl_ilac.pack(side="left", padx=(8, 0), fill="x", expand=True)
+
+        # ── Aşama listesi ──
+        asama_frame = tk.LabelFrame(
+            w, text=" Aşamalar ",
+            font=("Segoe UI", 9, "bold"),
+            bg="#FAFAFA", fg="#333",
+            padx=12, pady=8,
+        )
+        asama_frame.pack(fill="x", padx=14, pady=8)
+
+        self._asama_widgetlari = {}
+        for asama in self._ASAMA_SIRASI:
+            satir = tk.Frame(asama_frame, bg="#FAFAFA")
+            satir.pack(fill="x", pady=3)
+            ikon = tk.Label(
+                satir, text="⚪", font=("Segoe UI", 11),
+                bg="#FAFAFA", width=2,
+            )
+            ikon.pack(side="left")
+            metin = tk.Label(
+                satir, text=self._ASAMA_LABEL[asama],
+                font=("Segoe UI", 10),
+                bg="#FAFAFA", fg="#888",
+                anchor="w",
+            )
+            metin.pack(side="left", fill="x", expand=True)
+            sure = tk.Label(
+                satir, text="", font=("Segoe UI", 9),
+                bg="#FAFAFA", fg="#999", width=8,
+            )
+            sure.pack(side="right")
+            self._asama_widgetlari[asama] = (ikon, metin, sure, [None])
+            # 4. eleman: aşama başlangıç zamanı [mutable]
+
+        # ── İlerleme çubuğu (indeterminate) ──
+        pb_frame = tk.Frame(w, bg="#FAFAFA")
+        pb_frame.pack(fill="x", padx=14, pady=(4, 4))
+        self.pb = ttk.Progressbar(pb_frame, mode="indeterminate")
+        self.pb.pack(fill="x")
+        try:
+            self.pb.start(80)
+        except Exception:
+            pass
+
+        # ── Süre + ara özet ──
+        alt = tk.Frame(w, bg="#FAFAFA")
+        alt.pack(fill="x", padx=14, pady=(2, 6))
+        self.lbl_sure = tk.Label(
+            alt, text="Geçen süre: 0 sn",
+            font=("Segoe UI", 9), bg="#FAFAFA", fg="#555",
+        )
+        self.lbl_sure.pack(side="left")
+        self.lbl_ozet = tk.Label(
+            alt, text="",
+            font=("Segoe UI", 9), bg="#FAFAFA", fg="#2E7D32",
+        )
+        self.lbl_ozet.pack(side="right")
+
+        # ── 💬 Canlı AI yorum paneli ──
+        yorum_frame = tk.LabelFrame(
+            w, text=" 💬 AI Yorumu (canlı — her reçete bittikçe eklenir) ",
+            font=("Segoe UI", 9, "bold"),
+            bg="#FAFAFA", fg="#01579B",
+            padx=8, pady=6,
+        )
+        yorum_frame.pack(fill="both", expand=True, padx=14, pady=(4, 4))
+
+        yorum_ic = tk.Frame(yorum_frame, bg="#FAFAFA")
+        yorum_ic.pack(fill="both", expand=True)
+        vsb_y = ttk.Scrollbar(yorum_ic, orient="vertical")
+        vsb_y.pack(side="right", fill="y")
+        self.txt_yorum = tk.Text(
+            yorum_ic, wrap="word",
+            font=("Segoe UI", 10),
+            bg="#FFFFFF", fg="#212121",
+            padx=10, pady=8,
+            height=12,
+            yscrollcommand=vsb_y.set,
+            state="disabled",
+        )
+        self.txt_yorum.pack(side="left", fill="both", expand=True)
+        vsb_y.config(command=self.txt_yorum.yview)
+
+        # Stil tagları
+        self.txt_yorum.tag_configure(
+            "h_recete", font=("Segoe UI", 11, "bold"),
+            foreground="#FFFFFF", background="#01579B",
+            lmargin1=4, lmargin2=4, spacing1=6, spacing3=4,
+        )
+        self.txt_yorum.tag_configure(
+            "h_sonuc_uygun", font=("Segoe UI", 10, "bold"), foreground="#2E7D32")
+        self.txt_yorum.tag_configure(
+            "h_sonuc_yok", font=("Segoe UI", 10, "bold"), foreground="#C62828")
+        self.txt_yorum.tag_configure(
+            "h_sonuc_supheli", font=("Segoe UI", 10, "bold"), foreground="#EF6C00")
+        self.txt_yorum.tag_configure(
+            "h_alt", font=("Segoe UI", 9, "bold"), foreground="#0277BD",
+            spacing1=6, spacing3=2,
+        )
+        self.txt_yorum.tag_configure(
+            "klinik", font=("Segoe UI", 10), foreground="#212121",
+            lmargin1=8, lmargin2=8, spacing1=2, spacing3=2,
+        )
+        self.txt_yorum.tag_configure(
+            "var", foreground="#2E7D32")
+        self.txt_yorum.tag_configure(
+            "yok", foreground="#C62828")
+        self.txt_yorum.tag_configure(
+            "ke", foreground="#EF6C00")
+
+        # ── İptal butonu ──
+        btn_frame = tk.Frame(w, bg="#FAFAFA")
+        btn_frame.pack(fill="x", padx=14, pady=(2, 10))
+        self.btn_iptal = tk.Button(
+            btn_frame, text="✖ İptal Et (bu reçete bitince durur)",
+            font=("Segoe UI", 10),
+            bg="#FFEBEE", fg="#B71C1C", activebackground="#FFCDD2",
+            relief="flat", bd=1, cursor="hand2",
+            command=self._iptal_tikla,
+        )
+        self.btn_iptal.pack(fill="x")
+
+    # ── Timer (geçen süre) ──────────────────────────────────────────
+    def _timer_baslat(self):
+        import time
+        if self._kapali:
+            return
+        elapsed = int(time.time() - self._t0)
+        try:
+            self.lbl_sure.config(
+                text=f"Geçen süre: {elapsed // 60}dk {elapsed % 60:02d}sn"
+                     if elapsed >= 60 else f"Geçen süre: {elapsed} sn"
+            )
+        except Exception:
+            return
+        # Aktif aşamanın süresini güncelle
+        for asama, (ikon, metin, sure, t0_ref) in self._asama_widgetlari.items():
+            if self._asama_durumlari.get(asama) == "calisiyor" and t0_ref[0]:
+                a_el = int(time.time() - t0_ref[0])
+                try:
+                    sure.config(text=f"{a_el}s")
+                except Exception:
+                    pass
+        self._timer_job = self.parent.after(500, self._timer_baslat)
+
+    # ── Public API (worker thread'ten root.after ile çağrılır) ──────
+    def recete_basla(self, no: int, ilac_adi: str):
+        """Yeni bir reçete-ilaç işlemeye başlandı."""
+        import time
+        if self._kapali:
+            return
+        self.mevcut_no = no
+        self.mevcut_ilac = ilac_adi or "—"
+        self._t_recete = time.time()
+        try:
+            self.lbl_sayac.config(text=f"{no} / {self.toplam}")
+            self.lbl_ilac.config(text=self.mevcut_ilac[:60])
+        except Exception:
+            return
+        # Aşamaları sıfırla
+        for asama in self._ASAMA_SIRASI:
+            self._asama_durumlari[asama] = "bekliyor"
+            ikon, metin, sure, t0_ref = self._asama_widgetlari[asama]
+            try:
+                ikon.config(text="⚪")
+                metin.config(fg="#888")
+                sure.config(text="")
+            except Exception:
+                pass
+            t0_ref[0] = None
+
+    def asama_basla(self, asama: str):
+        """Belirtilen aşamayı 'çalışıyor' durumuna al."""
+        import time
+        if self._kapali or asama not in self._ASAMA_SIRASI:
+            return
+        self._asama_durumlari[asama] = "calisiyor"
+        ikon, metin, sure, t0_ref = self._asama_widgetlari[asama]
+        t0_ref[0] = time.time()
+        try:
+            ikon.config(text="⏳")
+            metin.config(fg="#01579B", font=("Segoe UI", 10, "bold"))
+        except Exception:
+            pass
+
+    def asama_bitir(self, asama: str, basarili: bool = True):
+        """Belirtilen aşamayı 'tamam' veya 'hata' durumuna al."""
+        import time
+        if self._kapali or asama not in self._ASAMA_SIRASI:
+            return
+        ikon, metin, sure, t0_ref = self._asama_widgetlari[asama]
+        if t0_ref[0]:
+            elapsed = int(time.time() - t0_ref[0])
+            try:
+                sure.config(text=f"{elapsed}s")
+            except Exception:
+                pass
+        self._asama_durumlari[asama] = "tamam" if basarili else "hata"
+        try:
+            if basarili:
+                ikon.config(text="✓")
+                metin.config(fg="#2E7D32", font=("Segoe UI", 10))
+            else:
+                ikon.config(text="✗")
+                metin.config(fg="#C62828", font=("Segoe UI", 10))
+        except Exception:
+            pass
+
+    def sonuc_kaydet(self, sonuc_etiketi: str):
+        """Bir reçetenin sonuç sayaç güncellemesi."""
+        if self._kapali:
+            return
+        key = sonuc_etiketi if sonuc_etiketi in self._sayac_etiket else "HATA"
+        self._sayac_etiket[key] = self._sayac_etiket.get(key, 0) + 1
+        try:
+            self.lbl_ozet.config(
+                text=(
+                    f"✓{self._sayac_etiket['UYGUN']}  "
+                    f"✗{self._sayac_etiket['UYGUN_DEGIL']}  "
+                    f"?{self._sayac_etiket['SUPHELI']}  "
+                    f"KE{self._sayac_etiket['KONTROL_EDILEMEDI']}  "
+                    f"⚡{self._sayac_etiket['HATA']}"
+                )
+            )
+        except Exception:
+            pass
+
+    def yorum_ekle(self, no: int, ilac_adi: str,
+                   sonuc_etiketi: str, ai_sonuc=None,
+                   hata_mesaji: str = ""):
+        """Bir reçetenin AI yorumunu panele append et.
+
+        Args:
+            no, ilac_adi: reçete sayaç + ilaç adı (başlık satırı)
+            sonuc_etiketi: 'UYGUN' / 'UYGUN_DEGIL' / 'SUPHELI' / 'KONTROL_EDILEMEDI' / 'HATA'
+            ai_sonuc: sonuc_parser.AISonuc instance (varsa) — şartlar + yorum çekilir
+            hata_mesaji: AI çağrısı başarısızsa hata mesajı
+        """
+        if self._kapali:
+            return
+        try:
+            self.txt_yorum.config(state="normal")
+
+            # Başlık satırı (renkli banner)
+            etiket_tr = {
+                "UYGUN": "✓ UYGUN",
+                "UYGUN_DEGIL": "✗ UYGUN DEĞİL",
+                "SUPHELI": "? ŞÜPHELİ",
+                "KONTROL_EDILEMEDI": "? KONTROL EDİLEMEDİ",
+                "MANUEL_KONTROL_GEREKIR": "⚙ MANUEL",
+                "HATA": "⚡ HATA",
+            }.get(sonuc_etiketi, sonuc_etiketi)
+
+            baslik = f"  {no}/{self.toplam} — {(ilac_adi or '')[:50]}   [{etiket_tr}]  \n"
+            self.txt_yorum.insert("end", baslik, "h_recete")
+
+            # Hata durumu
+            if hata_mesaji or sonuc_etiketi == "HATA":
+                self.txt_yorum.insert("end", "\n⚡ Hata: ", "h_alt")
+                self.txt_yorum.insert("end", (hata_mesaji or "(detay yok)") + "\n\n")
+            elif ai_sonuc is not None:
+                # SUT referans
+                if getattr(ai_sonuc, "sut_referans", ""):
+                    self.txt_yorum.insert(
+                        "end", f"\nSUT: {ai_sonuc.sut_referans}", "h_alt")
+                    if getattr(ai_sonuc, "guven_skoru", 0):
+                        self.txt_yorum.insert(
+                            "end",
+                            f"   ·   Güven: %{int(ai_sonuc.guven_skoru * 100)}\n")
+                    else:
+                        self.txt_yorum.insert("end", "\n")
+
+                # ÖZET
+                ozet = (getattr(ai_sonuc, "ozet_aciklama", "") or "").strip()
+                if ozet:
+                    self.txt_yorum.insert("end", "\n📝 Özet:\n", "h_alt")
+                    self.txt_yorum.insert("end", ozet + "\n")
+
+                # Sağlanan / Sağlanmayan / KE
+                saglanan = getattr(ai_sonuc, "saglanan_sartlar", []) or []
+                saglanmayan = getattr(ai_sonuc, "saglanmayan_sartlar", []) or []
+                ke = getattr(ai_sonuc, "kontrol_edilemeyen_sartlar", []) or []
+
+                if saglanan:
+                    self.txt_yorum.insert(
+                        "end", f"\n✓ Sağlanan ({len(saglanan)}):\n", "h_alt")
+                    for s in saglanan:
+                        self.txt_yorum.insert("end", f"   • {s}\n", "var")
+                if saglanmayan:
+                    self.txt_yorum.insert(
+                        "end", f"\n✗ Sağlanmayan ({len(saglanmayan)}):\n", "h_alt")
+                    for s in saglanmayan:
+                        ad = s.get("sart", "") if isinstance(s, dict) else str(s)
+                        nd = s.get("neden", "") if isinstance(s, dict) else ""
+                        if nd:
+                            self.txt_yorum.insert(
+                                "end", f"   • {ad} — {nd}\n", "yok")
+                        else:
+                            self.txt_yorum.insert("end", f"   • {ad}\n", "yok")
+                if ke:
+                    self.txt_yorum.insert(
+                        "end", f"\n? Kontrol edilemeyen ({len(ke)}):\n", "h_alt")
+                    for s in ke:
+                        ad = s.get("sart", "") if isinstance(s, dict) else str(s)
+                        ek = s.get("eksik_veri", "") if isinstance(s, dict) else ""
+                        if ek:
+                            self.txt_yorum.insert(
+                                "end", f"   • {ad} — {ek}\n", "ke")
+                        else:
+                            self.txt_yorum.insert("end", f"   • {ad}\n", "ke")
+
+                # KLİNİK YORUM (ana içerik)
+                klinik = (getattr(ai_sonuc, "klinik_yorum", "") or "").strip()
+                if klinik:
+                    self.txt_yorum.insert(
+                        "end", "\n💬 Klinik Yorum:\n", "h_alt")
+                    self.txt_yorum.insert("end", klinik + "\n", "klinik")
+
+            self.txt_yorum.insert("end", "\n" + ("─" * 90) + "\n")
+            self.txt_yorum.see("end")
+        except Exception as e:
+            logger.debug("yorum_ekle: %s", e)
+        finally:
+            try:
+                self.txt_yorum.config(state="disabled")
+            except Exception:
+                pass
+
+    def iptal_edildi_mi(self) -> bool:
+        return self.iptal_istendi
+
+    def _iptal_tikla(self):
+        if self._kapali:
+            return
+        # Worker zaten tamamlandıysa direkt kapat
+        if self._tamamlandi_flag:
+            self.kapat()
+            return
+        # İlk tıkta graceful iptal iste, butonu "Şimdi Kapat (zorla)"ya çevir
+        if not self.iptal_istendi:
+            self.iptal_istendi = True
+            try:
+                self.btn_iptal.config(
+                    text="✖ Pencereyi Şimdi Kapat (işlem arka planda devam eder)",
+                    bg="#FFCDD2", fg="#B71C1C",
+                    state="normal",
+                    command=self._zorla_kapat,
+                )
+                self.lbl_ozet.config(
+                    text="(iptal istendi — bitince kapanır, ya da Şimdi Kapat'a bas)",
+                    fg="#EF6C00")
+            except Exception:
+                pass
+            return
+        # İkinci tıkta zorla kapat
+        self._zorla_kapat()
+
+    def _zorla_kapat(self):
+        """Worker bitmemiş olsa bile pencereyi şimdi kapat (worker arka planda
+        devam eder, kaydedilen sonuçlar DB'de korunur)."""
+        self.iptal_istendi = True
+        self.kapat()
+
+    def tamamlandi(self):
+        """Worker bitti — pencereyi otomatik kapatma, kullanıcı yorumları
+        okuyup kendisi kapatsın. Sadece progressbar dur + İptal → Kapat."""
+        if self._kapali:
+            return
+        self._tamamlandi_flag = True
+        try:
+            if self._timer_job:
+                self.parent.after_cancel(self._timer_job)
+                self._timer_job = None
+        except Exception:
+            pass
+        try:
+            self.pb.stop()
+            self.pb.config(mode="determinate")
+            try:
+                self.pb["value"] = 100
+            except Exception:
+                pass
+        except Exception:
+            pass
+        # Modal grab'i bırak — kullanıcı ana pencereye de erişebilsin
+        try:
+            self.win.grab_release()
+        except Exception:
+            pass
+        # Pencerenin X butonu da artık temiz kapatsın
+        try:
+            self.win.protocol("WM_DELETE_WINDOW", self.kapat)
+        except Exception:
+            pass
+        try:
+            self.btn_iptal.config(
+                text="✓ Tamamlandı — Kapat",
+                bg="#E8F5E9", fg="#1B5E20", activebackground="#C8E6C9",
+                state="normal",
+                command=self.kapat,
+            )
+        except Exception:
+            pass
+
+    def kapat(self):
+        if self._kapali:
+            return
+        self._kapali = True
+        try:
+            if self._timer_job:
+                self.parent.after_cancel(self._timer_job)
+        except Exception:
+            pass
+        try:
+            self.pb.stop()
+        except Exception:
+            pass
+        try:
+            self.win.grab_release()
+        except Exception:
+            pass
+        try:
+            self.win.destroy()
+        except Exception:
+            pass
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 📸 EK GÖRSEL YÖNETİM DIALOG (per-satır)
+# ═══════════════════════════════════════════════════════════════════════
+class _EkGorselYonetDialog(tk.Toplevel):
+    """Bir satıra eklenmiş ek görselleri yönet: ekle/sil/temizle.
+
+    Görseller `gui_parent.ek_gorseller[ri_id]` içinde tutulur:
+        {"klasor": Path, "yollar": [Path, ...]}
+
+    Görsel ekleme:
+      • 📷 Ekran Bölgesi Seç → BolgeSecimOverlay (screenshot_sorgu modülü)
+      • 📂 Dosyadan Ekle    → filedialog ile PNG/JPG seç
+
+    Diyalog kapanınca state korunur (AI Kontrol çağrısında kullanılacak).
+    """
+
+    def __init__(self, gui_parent, satir: dict, ri_id: str):
+        super().__init__(gui_parent.root)
+        self.gui = gui_parent
+        self.satir = satir
+        self.ri_id = str(ri_id)
+        self.klasor = gui_parent._ek_gorsel_klasoru_olustur(self.ri_id)
+
+        # State'i başlat (yoksa)
+        if self.ri_id not in self.gui.ek_gorseller:
+            self.gui.ek_gorseller[self.ri_id] = {
+                "klasor": self.klasor,
+                "yollar": [],
+            }
+
+        rec_no = satir.get("rec_no") or "—"
+        ilac = (satir.get("ilac") or "—")[:40]
+        self.title(f"📸 Ek Görsel Yönet — {rec_no} / {ilac}")
+        self.geometry("680x520")
+        self.minsize(560, 420)
+        self.configure(bg="#FAFAFA")
+        self.transient(gui_parent.root)
+        try:
+            self.grab_set()
+        except Exception:
+            pass
+
+        # Üst banner
+        ust = tk.Frame(self, bg="#0277BD", height=46)
+        ust.pack(fill="x")
+        ust.pack_propagate(False)
+        tk.Label(
+            ust, text="📸 AI Kontrol için Ek Görseller",
+            font=("Segoe UI", 12, "bold"),
+            bg="#0277BD", fg="white",
+        ).pack(side="left", padx=14, pady=10)
+
+        # Bilgi
+        bilgi_metni = (
+            f"  Reçete: {rec_no}    İlaç: {ilac}\n"
+            "  Botanik DB'de eksik kalan bilgileri (önceki eczane ilaçları,\n"
+            "  başka kurumdan raporlar) görselle tamamla. AI bunları\n"
+            "  paket verisiyle KONSOLİDE edip değerlendirecek."
+        )
+        tk.Label(
+            self, text=bilgi_metni, bg="#E1F5FE", fg="#01579B",
+            justify="left", anchor="w", font=("Segoe UI", 9),
+            padx=10, pady=6,
+        ).pack(fill="x")
+
+        # Görsel listesi
+        liste_frame = tk.LabelFrame(
+            self, text=" Eklenen Görseller ", bg="#FAFAFA",
+            font=("Segoe UI", 9, "bold"), padx=8, pady=6,
+        )
+        liste_frame.pack(fill="both", expand=True, padx=10, pady=8)
+
+        lst_ic = tk.Frame(liste_frame, bg="#FAFAFA")
+        lst_ic.pack(fill="both", expand=True)
+        vsb = ttk.Scrollbar(lst_ic, orient="vertical")
+        vsb.pack(side="right", fill="y")
+        self.lst = tk.Listbox(
+            lst_ic, font=("Consolas", 9), bg="#FFFFFF",
+            yscrollcommand=vsb.set, selectmode="extended",
+        )
+        self.lst.pack(side="left", fill="both", expand=True)
+        vsb.config(command=self.lst.yview)
+
+        # Butonlar
+        btn_frame = tk.Frame(self, bg="#FAFAFA")
+        btn_frame.pack(fill="x", padx=10, pady=(2, 4))
+        tk.Button(
+            btn_frame, text="📷 Ekran Bölgesi Seç",
+            font=("Segoe UI", 10, "bold"),
+            bg="#0277BD", fg="white", activebackground="#01579B",
+            relief="flat", bd=0, padx=12, cursor="hand2",
+            command=self._bolge_sec,
+        ).pack(side="left", padx=2)
+        tk.Button(
+            btn_frame, text="📂 Dosyadan Ekle",
+            font=("Segoe UI", 10),
+            bg="#E1F5FE", fg="#01579B",
+            relief="flat", bd=1, padx=12, cursor="hand2",
+            command=self._dosyadan_ekle,
+        ).pack(side="left", padx=2)
+        tk.Button(
+            btn_frame, text="🗑 Seçili Sil",
+            font=("Segoe UI", 10),
+            bg="#FFEBEE", fg="#B71C1C",
+            relief="flat", bd=1, cursor="hand2",
+            command=self._secili_sil,
+        ).pack(side="right", padx=2)
+        tk.Button(
+            btn_frame, text="🧹 Tümünü Temizle",
+            font=("Segoe UI", 10),
+            bg="#FAFAFA", fg="#999",
+            relief="flat", bd=1, cursor="hand2",
+            command=self._tumunu_sil,
+        ).pack(side="right", padx=2)
+
+        alt = tk.Frame(self, bg="#FAFAFA")
+        alt.pack(fill="x", padx=10, pady=(4, 10))
+        self.lbl_durum = tk.Label(
+            alt, text="", font=("Segoe UI", 9), bg="#FAFAFA", fg="#555",
+            anchor="w",
+        )
+        self.lbl_durum.pack(side="left", fill="x", expand=True)
+        tk.Button(
+            alt, text="✓ Kapat (görseller saklanır)",
+            font=("Segoe UI", 10),
+            bg="#E8F5E9", fg="#1B5E20",
+            relief="flat", cursor="hand2",
+            command=self.destroy,
+        ).pack(side="right", padx=2)
+
+        self._listeyi_yenile()
+
+    def _listeyi_yenile(self):
+        self.lst.delete(0, "end")
+        st = self.gui.ek_gorseller.get(self.ri_id, {"yollar": []})
+        yollar = st.get("yollar", [])
+        for i, yol in enumerate(yollar, 1):
+            from pathlib import Path
+            ad = Path(str(yol)).name
+            try:
+                boyut = Path(str(yol)).stat().st_size // 1024
+                self.lst.insert("end", f"  {i:2d}.  {ad}   ({boyut} KB)")
+            except Exception:
+                self.lst.insert("end", f"  {i:2d}.  {ad}")
+        n = len(yollar)
+        self.lbl_durum.config(
+            text=f"{n} görsel ekli — AI Kontrol bu reçeteye geldiğinde "
+            f"görsel + DB verisi birlikte gönderilecek."
+            if n else "Henüz görsel eklenmedi."
+        )
+
+    def _bolge_sec(self):
+        """Ekran bölgesi seçimi → screenshot kaydet → listeye ekle."""
+        try:
+            from recete_kontrol.ai_kontrol.screenshot_sorgu import (
+                BolgeSecimOverlay,
+            )
+        except ImportError as e:
+            messagebox.showerror(
+                "Modül Hatası",
+                f"Screenshot modülü yüklenemedi:\n{e}\n\n"
+                "Gereksinim: pip install Pillow",
+                parent=self)
+            return
+
+        # Dialog'u geçici gizle (overlay tam ekran kaplayacak)
+        self.withdraw()
+        try:
+            overlay = BolgeSecimOverlay(self.gui.root)
+            overlay.wait_window()
+            bbox = getattr(overlay, "bbox", None)
+            ekran_resmi = getattr(overlay, "ekran_resmi", None)
+        except Exception as e:
+            self.deiconify()
+            messagebox.showerror(
+                "Ekran Seçimi", f"Hata: {type(e).__name__}: {e}",
+                parent=self)
+            return
+
+        self.deiconify()
+
+        if not bbox or not ekran_resmi:
+            return  # iptal
+
+        try:
+            from datetime import datetime
+            from pathlib import Path
+            x1, y1, x2, y2 = bbox
+            kirpilmis = ekran_resmi.crop((x1, y1, x2, y2))
+            zaman = datetime.now().strftime("%H%M%S")
+            seq = len(self.gui.ek_gorseller[self.ri_id]["yollar"]) + 1
+            dosya = self.klasor / f"ss_{seq:02d}_{zaman}.png"
+            kirpilmis.save(str(dosya), "PNG")
+            self.gui.ek_gorseller[self.ri_id]["yollar"].append(dosya)
+            self._listeyi_yenile()
+        except Exception as e:
+            messagebox.showerror(
+                "Kaydetme Hatası",
+                f"Görsel kaydedilemedi: {type(e).__name__}: {e}",
+                parent=self)
+
+    def _dosyadan_ekle(self):
+        """Disk üzerinden PNG/JPG seçimi."""
+        from pathlib import Path
+        yollar = filedialog.askopenfilenames(
+            title="Görsel(ler) seç — PNG/JPG",
+            parent=self,
+            filetypes=[
+                ("Resimler", "*.png *.jpg *.jpeg"),
+                ("PNG", "*.png"),
+                ("JPEG", "*.jpg *.jpeg"),
+                ("Tümü", "*.*"),
+            ],
+        )
+        if not yollar:
+            return
+        # Klasöre kopyala (Read aracı tek klasör altındaki dosyalara erişiyor)
+        import shutil
+        from datetime import datetime
+        eklendi = 0
+        for src in yollar:
+            try:
+                src_p = Path(src)
+                zaman = datetime.now().strftime("%H%M%S")
+                seq = len(self.gui.ek_gorseller[self.ri_id]["yollar"]) + 1
+                hedef = self.klasor / f"dosya_{seq:02d}_{zaman}{src_p.suffix.lower()}"
+                shutil.copy2(src_p, hedef)
+                self.gui.ek_gorseller[self.ri_id]["yollar"].append(hedef)
+                eklendi += 1
+            except Exception as e:
+                logger.warning("Dosya kopyalanamadı %s: %s", src, e)
+        if eklendi:
+            self._listeyi_yenile()
+
+    def _secili_sil(self):
+        secili = self.lst.curselection()
+        if not secili:
+            return
+        yollar = self.gui.ek_gorseller[self.ri_id]["yollar"]
+        # Tersten sil (index kaymasın)
+        for idx in sorted(secili, reverse=True):
+            if 0 <= idx < len(yollar):
+                yol = yollar.pop(idx)
+                try:
+                    from pathlib import Path
+                    Path(str(yol)).unlink(missing_ok=True)
+                except Exception:
+                    pass
+        self._listeyi_yenile()
+
+    def _tumunu_sil(self):
+        if not self.gui.ek_gorseller[self.ri_id]["yollar"]:
+            return
+        if not messagebox.askyesno(
+            "Tümünü Sil",
+            f"{len(self.gui.ek_gorseller[self.ri_id]['yollar'])} görsel "
+            "silinecek. Emin misiniz?",
+            parent=self,
+        ):
+            return
+        self.gui._ek_gorsel_temizle(self.ri_id)
+        # Klasörü yeniden oluştur (yeni eklemeler için)
+        self.klasor = self.gui._ek_gorsel_klasoru_olustur(self.ri_id)
+        self.gui.ek_gorseller[self.ri_id] = {
+            "klasor": self.klasor, "yollar": [],
+        }
+        self._listeyi_yenile()
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # ANA SINIF
 # ═══════════════════════════════════════════════════════════════════════
 class AylikReceteSorguGUI:
@@ -827,6 +1639,13 @@ class AylikReceteSorguGUI:
         self.satir_indeks = {}        # {iid: satir_dict}
         self.satir_renkleri = {}      # {iid: renk}
         self.secili_iidler = set()    # checkbox ile seçilmiş satırlar
+
+        # AI Kontrol için satıra eklenmiş ek görseller
+        # {ri_id: {"klasor": Path, "yollar": [Path, ...]}}
+        # Eczacı Botanik DB'de eksik kalan bilgileri (önceki eczane ilaçları,
+        # başka kurumdan raporlar) ekran görüntüsü ile tamamlar; AI worker
+        # bu görsel varsa multimodal path'e düşer.
+        self.ek_gorseller: Dict[str, Dict[str, Any]] = {}
 
         # Filtre durumu
         self.aktif_sutun_filtre = {}  # {sutun_kod: arama_metni}
@@ -1409,6 +2228,134 @@ class AylikReceteSorguGUI:
                  "CLAUDE.md uyumlu: SALT OKUMA — MEDULA verisi değiştirilmez.")
         self.btn_medula_gecmis = btn_medula_gecmis
 
+        # ─── PANEL: AI KONTROL — MEDULA panelinin sağında ───
+        # Kullanıcı isteği 2026-05-21: Anthropic Claude ile SUT uygunluk kontrolü.
+        # Seçili satır(lar) için anonim paket → Claude API → UYGUN/UYGUN_DEGIL/
+        # SUPHELI/KE etiketi + açıklama. Sonuçlar AI Karş. / AI Açıklama
+        # sütunlarına yazılır.
+        #
+        # Faz 1: Sadece Botanik DB kaynağı. "Medula" checkbox'ı disabled.
+        # Faz 2: Medula entegrasyonu (ileride).
+        P_AI_BG = "#E1F5FE"
+        p_ai = tk.Frame(row_teyit, bg=P_AI_BG, bd=1, relief="solid")
+        p_ai.pack(side="left", padx=(8, 2), pady=1, fill="y")
+        tk.Label(p_ai, text="🤖 AI:", bg=P_AI_BG, fg="#01579B",
+                 font=FONT_GROUP).pack(side="left", padx=(6, 2), pady=4)
+
+        # 2 checkbox — veri kaynağı seçimi
+        ai_cb_frame = tk.Frame(p_ai, bg=P_AI_BG)
+        ai_cb_frame.pack(side="left", padx=(0, 4), pady=2)
+        self.ai_kaynak_botanik = tk.BooleanVar(value=True)
+        self.ai_kaynak_medula = tk.BooleanVar(value=False)
+        cb_botanik = tk.Checkbutton(
+            ai_cb_frame, text="Botanik DB",
+            variable=self.ai_kaynak_botanik,
+            bg=P_AI_BG, fg="#01579B", selectcolor="#FFFFFF",
+            font=("Segoe UI", 8), padx=2, bd=0, anchor="w")
+        cb_botanik.pack(anchor="w")
+        cb_medula = tk.Checkbutton(
+            ai_cb_frame, text="Meduladan da",
+            variable=self.ai_kaynak_medula,
+            bg=P_AI_BG, fg="#999999", selectcolor="#FFFFFF",
+            font=("Segoe UI", 8), padx=2, bd=0, anchor="w",
+            state="disabled")
+        cb_medula.pack(anchor="w")
+        _Tooltip(cb_botanik,
+                 "İşaretli: Hasta'nın Botanik DB'deki rapor + ilaç geçmişi\n"
+                 "AI paketine eklenir (son 5 yıl rapor, 24 ay ilaç).")
+        _Tooltip(cb_medula,
+                 "Faz 2'de aktive olacak — şu an pasif.\n"
+                 "Aktif olduğunda: Hasta bize gelmediyse / başka eczaneden\n"
+                 "aldıysa Medula'dan tamamlayıcı ilaç+rapor verisi çekilir.")
+
+        # Model seçimi — varsayılan SONNET (dengeli + hızlı)
+        self.ai_model_var = tk.StringVar(value="sonnet")
+        ai_model_frame = tk.Frame(p_ai, bg=P_AI_BG)
+        ai_model_frame.pack(side="left", padx=(0, 4), pady=2)
+        tk.Label(ai_model_frame, text="Model:", bg=P_AI_BG, fg="#01579B",
+                 font=("Segoe UI", 8)).pack(anchor="w")
+        cmb_model = ttk.Combobox(
+            ai_model_frame, textvariable=self.ai_model_var,
+            values=["sonnet", "opus", "haiku"],
+            state="readonly", width=10, font=("Segoe UI", 8))
+        cmb_model.set("sonnet")        # default: Sonnet (Anthropic önerisi)
+        cmb_model.pack(anchor="w")
+        _Tooltip(cmb_model,
+                 "Sonnet = hızlı + dengeli (VARSAYILAN, önerilen)\n"
+                 "Opus   = en kaliteli (3-5x maliyet/süre)\n"
+                 "Haiku  = en hızlı/ucuz (basit kontrollere)")
+
+        # Ana buton + ayarlar
+        ai_btn_frame = tk.Frame(p_ai, bg=P_AI_BG)
+        ai_btn_frame.pack(side="left", padx=(0, 4), pady=2)
+        btn_ai = tk.Button(
+            ai_btn_frame, text="🤖 AI KONTROL",
+            bg="#0277BD", fg="white",
+            activebackground="#01579B", bd=1,
+            command=self._ai_kontrol_baslat,
+            font=FONT_BUTON, padx=10, pady=2,
+            cursor="hand2")
+        btn_ai.pack(side="top", fill="x", pady=(0, 2))
+        _Tooltip(btn_ai,
+                 "Anthropic Claude ile SUT uygunluk kontrolü.\n\n"
+                 "Akış: Tabloda SEÇİLİ satır(lar) → anonimleştirilmiş\n"
+                 "paket (TC=hash, ad GÖNDERİLMEZ, yaş/cinsiyet/teşhis/\n"
+                 "ilaç/rapor) → Claude API → UYGUN/UYGUN DEĞİL/ŞÜPHELİ/\n"
+                 "KONTROL EDİLEMEDİ etiketi + açıklama. Sonuç AI Karş.\n"
+                 "ve AI Açıklama sütunlarına yazılır.\n\n"
+                 "CLAUDE.md uyumlu: hasta TC + ad gönderilmez, sadece\n"
+                 "anonim klinik veri. KVKK Madde 6 uyumlu.")
+        # Önizle + Ayarlar — küçük buton satırı
+        ai_kucuk_frame = tk.Frame(ai_btn_frame, bg=P_AI_BG)
+        ai_kucuk_frame.pack(side="top", fill="x")
+        btn_ai_onizle = tk.Button(
+            ai_kucuk_frame, text="🔍 Önizle",
+            bg="#FFECB3", fg="#5D4037",
+            activebackground="#FFD54F", bd=1,
+            command=self._ai_paket_onizle,
+            font=("Segoe UI", 8, "bold"), padx=4, pady=2,
+            cursor="hand2")
+        btn_ai_onizle.pack(side="left", fill="x", expand=True, padx=(0, 1))
+        _Tooltip(btn_ai_onizle,
+                 "Seçili satır için AI'a gönderilecek\n"
+                 "TAM paket JSON'unu modal pencerede göster.\n"
+                 "AI çağrılmaz; sadece şeffaflık + KVKK kontrol için.\n"
+                 "Modaldan 'AI'a Gönder' ile direkt çağrı da yapılabilir.")
+        btn_ai_ss = tk.Button(
+            ai_kucuk_frame, text="📸 SS",
+            bg="#FFE0B2", fg="#E65100",
+            activebackground="#FFCC80", bd=1,
+            command=self._ai_screenshot_sorgu_baslat,
+            font=("Segoe UI", 8, "bold"), padx=4, pady=2,
+            cursor="hand2")
+        btn_ai_ss.pack(side="left", padx=(1, 1))
+        _Tooltip(btn_ai_ss,
+                 "📸 Screenshot ile AI Sorgu (subprocess + Claude Code CLI)\n\n"
+                 "Tabloda seçili hasta için ekran görüntüsü tabanlı sorgu:\n"
+                 "1. Pencere açılır, F9 ile veya buton ile screenshot alınır.\n"
+                 "2. Maus ile çerçeve çizip alan seçilir, etiket onaylanır.\n"
+                 "3. İstenildiği kadar screenshot toplanır.\n"
+                 "4. AI'ya gönder → Claude görselleri Read aracıyla açar,\n"
+                 "   SUT açısından inceleyip UYGUN/UYGUN DEĞİL/ŞÜPHELİ/\n"
+                 "   KE etiketi + ham veri raporu döner.\n"
+                 "5. Sonuç gösterildikten sonra screenshot klasörü silinir.\n\n"
+                 "Kullanım: Medula'da reçete/rapor/ilaç geçmişi açıkken F9.")
+        btn_ai_ayar = tk.Button(
+            ai_kucuk_frame, text="⚙",
+            bg="#B3E5FC", fg="#01579B",
+            activebackground="#81D4FA", bd=1,
+            command=self._ai_ayarlar_ac,
+            font=("Segoe UI", 8, "bold"), padx=4, pady=2,
+            cursor="hand2")
+        btn_ai_ayar.pack(side="left", padx=(1, 0))
+        _Tooltip(btn_ai_ayar,
+                 "AI Ayarlar — backend (API/subprocess), API anahtarı,\n"
+                 "model, günlük limit, KVKK onayı, sistem prompt, çağrı logu.")
+        self.btn_ai_kontrol = btn_ai
+        self.btn_ai_ayar = btn_ai_ayar
+        self.btn_ai_onizle = btn_ai_onizle
+        self.btn_ai_ss = btn_ai_ss
+
         # ─── PANEL: KONTROL BUTONLARI — Filtrelemeler'in YANINDA, sağ tarafta ───
         # İçinde: ▢ Sadece seçilenler checkbox + 🎯 Kontrol Butonları butonu
         P_KTR_BG = "#E8EAF6"
@@ -1741,7 +2688,7 @@ class AylikReceteSorguGUI:
         # Kategori tespiti: sut_kategorisi_tespit_et() (ATC + etken madde +
         # SUT_MADDESI_KATEGORI mapping) — kontrolü kategoriye göre dispatch eder.
         self.btn_antiht = tk.Button(
-            row_diger2, text="🩸 ANTİHT (mono+kombi)",
+            row_diger2, text="🫀 TÜM ANTİHT (ARB+mono+kombi)",
             font=("Segoe UI", 9, "bold"),
             fg="white", bg="#01579B", activebackground="#01428A",  # koyu mavi
             bd=0, padx=12, pady=3, cursor="hand2",
@@ -1993,6 +2940,12 @@ class AylikReceteSorguGUI:
                        lambda _e: self.root.after(60,
                                                     self._filtre_slotlarini_hizala),
                        add="+")
+
+        # AI Açıklama / AI Karş. sütunlarında hover → tam içerik tooltip
+        self._ai_tt_state = {"iid": None, "kod": None, "after_id": None,
+                              "tip": None}
+        self.tv.bind("<Motion>", self._ai_aciklama_hover, add="+")
+        self.tv.bind("<Leave>", self._ai_aciklama_hover_leave, add="+")
 
         # ─────────── Yatay scroll senkronu (filtre + tablo birlikte) ───────────
 
@@ -8245,6 +9198,13 @@ class AylikReceteSorguGUI:
             teyit_map = {}
         self._teyit_map = teyit_map
 
+        # AI Kontrol sonuç haritası (DB'den kaydedilmiş AI değerlendirmeleri)
+        try:
+            ai_map = recete_teyit_db.ai_sonuc_haritasi()
+        except Exception:
+            ai_map = {}
+        self._ai_map = ai_map
+
         for s in self.tum_satirlar:
             iid = str(s["ri_id"])
             if not self._satir_filtreden_geciyor_mu(s):
@@ -8252,6 +9212,15 @@ class AylikReceteSorguGUI:
             renk = self.satir_renkleri.get(iid, RENK_BEYAZ)
             if renk not in self.aktif_renk_filtre:
                 continue
+            # AI sonucu — daha önce kaydedilmiş varsa satıra enjekte et
+            ai_kayit = ai_map.get(iid)
+            if ai_kayit:
+                if not s.get("ai_kars"):
+                    from recete_kontrol.ai_kontrol.sonuc_parser import ETIKET_KISA
+                    s["ai_kars"] = ETIKET_KISA.get(
+                        ai_kayit["ai_sonuc"], ai_kayit["ai_sonuc"])
+                if not s.get("ai_aciklama"):
+                    s["ai_aciklama"] = ai_kayit["ai_aciklama"]
             # Reçete türü filtresi: sadece kullanıcının kapattığı tipleri ele
             if gizli_recete_turleri:
                 rec_tip = (s.get("rec_tip") or "").strip()
@@ -9500,6 +10469,22 @@ class AylikReceteSorguGUI:
         m.add_cascade(label="👁 Manuel Teyit ▸", menu=teyit_menu)
 
         m.add_separator()
+        m.add_command(
+            label="🤖 AI Raporu Aç (geniş klinik yorum)",
+            command=lambda: self._ai_rapor_goster(self._aktif_satir()),
+        )
+        # 📸 Ek görsel: sayıyı label'da göster
+        try:
+            _aktif = self._aktif_satir()
+            _ri = str((_aktif or {}).get("ri_id")
+                       or (_aktif or {}).get("RIId") or "")
+            _sayi = self._ek_gorsel_sayisi(_ri) if _ri else 0
+        except Exception:
+            _sayi = 0
+        m.add_command(
+            label=f"📸 Ek Görsel Yönet (AI için) — {_sayi} ekli",
+            command=lambda: self._ek_gorsel_yonet_baslat(self._aktif_satir()),
+        )
         m.add_command(label="Detay Göster", command=self._satir_detay)
         try:
             m.tk_popup(event.x_root, event.y_root)
@@ -9758,6 +10743,16 @@ class AylikReceteSorguGUI:
         s = self.satir_indeks.get(iid)
         if not s:
             return
+        # Çift-tık AI Karş./AI Açıklama sütunundaysa → geniş AI raporu aç
+        if event is not None:
+            try:
+                col_id = self.tv.identify_column(event.x)
+                kod = self._col_id_to_kod(col_id)
+            except Exception:
+                kod = ""
+            if kod in ("ai_kars", "ai_aciklama"):
+                self._ai_rapor_goster(s)
+                return
         win = tk.Toplevel(self.root)
         win.title(f"Detay — {s.get('rec_no')} / {s.get('ilac')}")
         win.geometry("780x600")
@@ -9768,6 +10763,486 @@ class AylikReceteSorguGUI:
             txt.insert("end", f"{s.get(kod, '')}\n\n")
         txt.tag_configure("lbl", font=("Segoe UI", 9, "bold"), foreground="#1976D2")
         txt.config(state="disabled")
+
+    # ────────────────────────────────────────────────────────────────
+    # 📸 AI Kontrol için EK GÖRSEL yönetimi (satır başına)
+    # ────────────────────────────────────────────────────────────────
+    def _ek_gorsel_klasoru_olustur(self, ri_id: str):
+        """Satıra ait ek görseller için %APPDATA% altında klasör oluştur."""
+        import os
+        from pathlib import Path
+        base = os.environ.get("APPDATA") or str(Path.home())
+        kok = Path(base) / "BotanikKasa" / "ai_ek_gorseller" / str(ri_id)
+        kok.mkdir(parents=True, exist_ok=True)
+        return kok
+
+    def _ek_gorsel_sayisi(self, ri_id: str) -> int:
+        st = self.ek_gorseller.get(str(ri_id))
+        return len(st["yollar"]) if st else 0
+
+    def _ek_gorsel_yonet_baslat(self, satir: dict):
+        """Sağ tık → '📸 Ek Görsel Yönet': küçük yönetim diyaloğunu aç."""
+        if not satir:
+            return
+        ri_id = str(satir.get("ri_id") or satir.get("RIId") or "")
+        if not ri_id:
+            messagebox.showwarning(
+                "Ek Görsel", "Satırda ri_id yok — görsel eklenemez.",
+                parent=self.root)
+            return
+        try:
+            _EkGorselYonetDialog(self, satir, ri_id)
+        except Exception as e:
+            logger.exception("Ek görsel diyalog hatası")
+            messagebox.showerror(
+                "Ek Görsel", f"Diyalog açılamadı: {type(e).__name__}: {e}",
+                parent=self.root)
+
+    def _ek_gorsel_temizle(self, ri_id: str):
+        """Satıra ait klasörü sil ve state'ten çıkar (AI çağrısı sonrası)."""
+        import shutil
+        st = self.ek_gorseller.pop(str(ri_id), None)
+        if not st:
+            return
+        klasor = st.get("klasor")
+        if klasor:
+            try:
+                shutil.rmtree(klasor, ignore_errors=True)
+            except Exception as e:
+                logger.debug("ek gorsel klasor silme: %s", e)
+
+    # ────────────────────────────────────────────────────────────────
+    # AI Açıklama / AI Karş. hücresi — hover tooltip (tam metin)
+    # ────────────────────────────────────────────────────────────────
+    def _ai_aciklama_hover(self, event):
+        try:
+            region = self.tv.identify_region(event.x, event.y)
+        except Exception:
+            return
+        if region != "cell":
+            self._ai_aciklama_hover_leave()
+            return
+        col_id = self.tv.identify_column(event.x)
+        kod = self._col_id_to_kod(col_id)
+        if kod not in ("ai_aciklama", "ai_kars"):
+            self._ai_aciklama_hover_leave()
+            return
+        iid = self.tv.identify_row(event.y)
+        if not iid:
+            self._ai_aciklama_hover_leave()
+            return
+        st = self._ai_tt_state
+        # Aynı hücre üzerindeyse tooltip zaten var, dokunma
+        if st.get("iid") == iid and st.get("kod") == kod and st.get("tip"):
+            return
+        # Farklı hücre → öncekini kapat, yenisi için zamanla
+        self._ai_aciklama_hover_leave()
+        st["iid"] = iid
+        st["kod"] = kod
+        st["after_id"] = self.tv.after(
+            450, lambda: self._ai_aciklama_tt_show(iid, kod, event.x_root, event.y_root))
+
+    def _ai_aciklama_hover_leave(self, _event=None):
+        st = self._ai_tt_state
+        if st.get("after_id"):
+            try:
+                self.tv.after_cancel(st["after_id"])
+            except Exception:
+                pass
+            st["after_id"] = None
+        if st.get("tip"):
+            try:
+                st["tip"].destroy()
+            except Exception:
+                pass
+            st["tip"] = None
+        st["iid"] = None
+        st["kod"] = None
+
+    def _ai_aciklama_tt_show(self, iid: str, kod: str, x_root: int, y_root: int):
+        s = self.satir_indeks.get(iid)
+        if not s:
+            return
+        metin = (s.get("ai_aciklama") or "").strip()
+        if not metin:
+            return
+        # Çok uzunsa orta kırp (görsel sınır)
+        gosterilecek = metin
+        if len(gosterilecek) > 1200:
+            gosterilecek = gosterilecek[:1200] + "\n\n... (devamı için çift tık)"
+        tip = tk.Toplevel(self.tv)
+        tip.wm_overrideredirect(True)
+        tip.wm_geometry(f"+{x_root + 14}+{y_root + 18}")
+        try:
+            tip.attributes("-topmost", True)
+        except Exception:
+            pass
+        outer = tk.Frame(tip, bg="#01579B", bd=0)
+        outer.pack()
+        tk.Label(
+            outer, text="🤖 AI Yorumu (çift tık → geniş rapor)",
+            bg="#01579B", fg="white",
+            font=("Segoe UI", 8, "bold"),
+            padx=8, pady=2,
+        ).pack(fill="x")
+        tk.Label(
+            outer, text=gosterilecek,
+            bg="#FFFDE7", fg="#212121",
+            font=("Segoe UI", 9),
+            relief="flat", bd=0, padx=10, pady=8,
+            wraplength=520, justify="left", anchor="w",
+        ).pack(fill="both")
+        self._ai_tt_state["tip"] = tip
+
+    # ────────────────────────────────────────────────────────────────
+    # 🤖 AI RAPORU (geniş görüntüleyici)
+    # ────────────────────────────────────────────────────────────────
+    def _ai_rapor_goster(self, satir: dict):
+        """Seçili satırın en son AI çağrı kaydını ai_kontrol_log.db'den çekip
+        geniş, bölümlü, okunabilir bir pencerede göster.
+
+        Bölümler:
+          - Renkli SONUÇ banner (UYGUN/UYGUN_DEGIL/SUPHELI vb.)
+          - Meta (model, güven, SUT, tarih, latency, maliyet)
+          - ✓ Sağlanan şartlar / ✗ Sağlanmayan / ? Kontrol edilemeyen
+          - 📝 Özet açıklama
+          - 🔬 Teknik detay
+          - 💬 Klinik Yorum (büyük punto, ana içerik)
+          - 📋 Kopyala + 📄 Ham JSON butonları
+        """
+        if not satir:
+            messagebox.showinfo(
+                "AI Raporu", "Satır bulunamadı.", parent=self.root)
+            return
+
+        ri_id = str(satir.get("ri_id") or satir.get("RIId") or "")
+        recete_no = str(satir.get("rec_no") or "")
+        ilac_adi = str(satir.get("ilac") or "")
+
+        # DB'den son AI cevabını çek
+        try:
+            from recete_kontrol.ai_kontrol import ai_log_db
+            con = ai_log_db._baglanti()
+            cur = con.execute(
+                "SELECT tarih, model, sonuc_etiketi, guven_skoru, "
+                "       input_tokens, output_tokens, cached_input_tokens, "
+                "       maliyet_usd, latency_ms, cevap_text, hata "
+                "FROM ai_cagri_log "
+                "WHERE ri_id = ? OR recete_no = ? "
+                "ORDER BY id DESC LIMIT 1",
+                (ri_id, recete_no),
+            )
+            row = cur.fetchone()
+        except Exception as e:
+            logger.exception("AI log sorgu hatası")
+            messagebox.showerror(
+                "AI Raporu", f"AI log okunamadı: {e}", parent=self.root)
+            return
+
+        if not row:
+            # DB'de yok → satıra yazılı ai_aciklama varsa onu fallback göster
+            fallback = (satir.get("ai_aciklama") or "").strip()
+            if not fallback:
+                messagebox.showinfo(
+                    "AI Raporu",
+                    "Bu reçete için AI kaydı bulunamadı.\n"
+                    "Önce satırı seçip 🤖 AI KONTROL butonuna basın.",
+                    parent=self.root)
+                return
+            self._ai_rapor_pencere_olustur(
+                satir, meta={}, json_veri={}, ham_text=fallback,
+                fallback_aciklama=fallback,
+            )
+            return
+
+        (tarih, model, sonuc_etiketi, guven, in_tok, out_tok, cached_tok,
+         maliyet, latency_ms, cevap_text, hata) = row
+
+        meta = {
+            "tarih": tarih or "",
+            "model": model or "",
+            "sonuc_etiketi": sonuc_etiketi or "",
+            "guven_skoru": guven or 0.0,
+            "input_tokens": in_tok or 0,
+            "output_tokens": out_tok or 0,
+            "cached_input_tokens": cached_tok or 0,
+            "maliyet_usd": maliyet or 0.0,
+            "latency_ms": latency_ms or 0,
+            "hata": hata or "",
+        }
+
+        # cevap_text'i JSON'a çevir
+        json_veri = {}
+        try:
+            from recete_kontrol.ai_kontrol import sonuc_parser
+            ai_sonuc = sonuc_parser.parse(cevap_text or "")
+            json_veri = {
+                "sonuc": ai_sonuc.sonuc,
+                "guven_skoru": ai_sonuc.guven_skoru,
+                "sut_referans": ai_sonuc.sut_referans,
+                "saglanan_sartlar": ai_sonuc.saglanan_sartlar,
+                "saglanmayan_sartlar": ai_sonuc.saglanmayan_sartlar,
+                "kontrol_edilemeyen_sartlar": ai_sonuc.kontrol_edilemeyen_sartlar,
+                "ozet_aciklama": ai_sonuc.ozet_aciklama,
+                "detay_rapor": ai_sonuc.detay_rapor,
+                "klinik_yorum": ai_sonuc.klinik_yorum,
+            }
+        except Exception as e:
+            logger.warning("AI cevap parse atlandı: %s", e)
+
+        self._ai_rapor_pencere_olustur(
+            satir, meta=meta, json_veri=json_veri,
+            ham_text=cevap_text or "",
+        )
+
+    def _ai_rapor_pencere_olustur(
+        self, satir: dict, *, meta: dict, json_veri: dict,
+        ham_text: str, fallback_aciklama: str = "",
+    ):
+        """AI raporu için Toplevel pencere; meta + JSON alanları render eder."""
+        recete_no = satir.get("rec_no") or "—"
+        ilac_adi = satir.get("ilac") or "—"
+        hasta = satir.get("hasta_adi") or satir.get("musteri_adi") or ""
+
+        # Sonuç → renk
+        SONUC_RENK_BG = {
+            "UYGUN":              ("#2E7D32", "#E8F5E9"),  # koyu yeşil bg, açık yeşil panel
+            "UYGUN_DEGIL":        ("#C62828", "#FFEBEE"),
+            "UYGUN DEĞİL":        ("#C62828", "#FFEBEE"),
+            "SUPHELI":            ("#EF6C00", "#FFF3E0"),
+            "ŞÜPHELİ":            ("#EF6C00", "#FFF3E0"),
+            "KONTROL_EDILEMEDI":  ("#F9A825", "#FFFDE7"),
+            "KONTROL EDİLEMEDİ":  ("#F9A825", "#FFFDE7"),
+            "MANUEL_KONTROL_GEREKIR": ("#6A1B9A", "#F3E5F5"),
+            "MANUEL KONTROL":     ("#6A1B9A", "#F3E5F5"),
+            "HATA":               ("#424242", "#EEEEEE"),
+            "AI HATA":            ("#424242", "#EEEEEE"),
+        }
+        sonuc_str = (meta.get("sonuc_etiketi")
+                     or json_veri.get("sonuc") or "—")
+        banner_fg, banner_bg = SONUC_RENK_BG.get(sonuc_str, ("#01579B", "#E1F5FE"))
+
+        win = tk.Toplevel(self.root)
+        win.title(f"🤖 AI Raporu — {recete_no} / {ilac_adi[:40]}")
+        win.configure(bg="#FAFAFA")
+        # Ekran merkezine konumlandır (taşma engelle)
+        try:
+            self.root.update_idletasks()
+            sw = self.root.winfo_screenwidth()
+            sh = self.root.winfo_screenheight()
+            ww, wh = 1000, 760
+            if wh > sh - 60:
+                wh = sh - 60
+            if ww > sw - 40:
+                ww = sw - 40
+            x = max(0, (sw - ww) // 2)
+            y = max(0, (sh - wh) // 2 - 20)
+            win.geometry(f"{ww}x{wh}+{x}+{y}")
+            win.minsize(640, 480)
+        except Exception:
+            win.geometry("1000x760")
+        try:
+            win.transient(self.root)
+        except Exception:
+            pass
+
+        # ── Üst banner (renkli sonuç) ──
+        banner = tk.Frame(win, bg=banner_fg, height=60)
+        banner.pack(fill="x")
+        banner.pack_propagate(False)
+        tk.Label(
+            banner, text=f"🤖 AI SONUÇ: {sonuc_str}",
+            font=("Segoe UI", 16, "bold"),
+            bg=banner_fg, fg="white",
+        ).pack(side="left", padx=20, pady=12)
+        guven = (json_veri.get("guven_skoru") or meta.get("guven_skoru") or 0.0)
+        if guven:
+            tk.Label(
+                banner, text=f"Güven: %{int(float(guven) * 100)}",
+                font=("Segoe UI", 12, "bold"),
+                bg=banner_fg, fg="#FFFFFF",
+            ).pack(side="right", padx=20, pady=12)
+
+        # ── Reçete/hasta üst bilgi ──
+        ust = tk.Frame(win, bg=banner_bg)
+        ust.pack(fill="x", padx=0, pady=0)
+        bilgi = (
+            f"  Reçete: {recete_no}    İlaç: {ilac_adi}"
+            + (f"    Hasta: {hasta}" if hasta else "")
+        )
+        tk.Label(
+            ust, text=bilgi, font=("Segoe UI", 10),
+            bg=banner_bg, fg="#333", anchor="w", justify="left",
+        ).pack(fill="x", padx=12, pady=6)
+
+        # Meta satırı (model + tarih + maliyet)
+        meta_parts = []
+        if meta.get("model"):
+            meta_parts.append(f"Model: {meta['model']}")
+        if meta.get("tarih"):
+            meta_parts.append(f"Tarih: {meta['tarih'][:19]}")
+        sut_ref = json_veri.get("sut_referans") or ""
+        if sut_ref:
+            meta_parts.append(f"SUT: {sut_ref}")
+        if meta.get("latency_ms"):
+            meta_parts.append(f"Süre: {meta['latency_ms']/1000:.1f}s")
+        if meta.get("maliyet_usd"):
+            meta_parts.append(f"Maliyet: ${meta['maliyet_usd']:.4f}")
+        if meta.get("output_tokens"):
+            meta_parts.append(f"Out: {meta['output_tokens']} tok")
+        if meta_parts:
+            tk.Label(
+                ust, text="  " + "  ·  ".join(meta_parts),
+                font=("Segoe UI", 8), bg=banner_bg, fg="#555",
+                anchor="w", justify="left",
+            ).pack(fill="x", padx=12, pady=(0, 6))
+
+        # ── Ana scrollable text alanı ──
+        gov = tk.Frame(win, bg="#FAFAFA")
+        gov.pack(fill="both", expand=True, padx=10, pady=(8, 4))
+
+        text_frame = tk.Frame(gov, bg="#FAFAFA")
+        text_frame.pack(fill="both", expand=True)
+        vsb = ttk.Scrollbar(text_frame, orient="vertical")
+        vsb.pack(side="right", fill="y")
+        txt = tk.Text(
+            text_frame, wrap="word",
+            font=("Segoe UI", 10),
+            bg="#FFFFFF", fg="#212121",
+            padx=14, pady=10,
+            yscrollcommand=vsb.set,
+            spacing1=2, spacing3=4,
+        )
+        txt.pack(side="left", fill="both", expand=True)
+        vsb.config(command=txt.yview)
+
+        # Stil tagları
+        txt.tag_configure("baslik", font=("Segoe UI", 13, "bold"),
+                          foreground="#01579B", spacing1=12, spacing3=6)
+        txt.tag_configure("alt_baslik", font=("Segoe UI", 10, "bold"),
+                          foreground="#0277BD", spacing1=8, spacing3=4)
+        txt.tag_configure("var", foreground="#2E7D32",
+                          font=("Segoe UI", 10))
+        txt.tag_configure("yok", foreground="#C62828",
+                          font=("Segoe UI", 10))
+        txt.tag_configure("ke", foreground="#EF6C00",
+                          font=("Segoe UI", 10))
+        txt.tag_configure("klinik", font=("Segoe UI", 11),
+                          foreground="#212121", lmargin1=10, lmargin2=10,
+                          spacing1=4, spacing3=4)
+        txt.tag_configure("kucuk", font=("Segoe UI", 9), foreground="#666")
+        txt.tag_configure("hata", foreground="#B71C1C",
+                          font=("Segoe UI", 10, "bold"))
+
+        # Hata varsa en başta göster
+        if meta.get("hata"):
+            txt.insert("end", "⚠ HATA: ", "hata")
+            txt.insert("end", f"{meta['hata']}\n\n")
+
+        # Şartlar
+        saglanan = json_veri.get("saglanan_sartlar") or []
+        saglanmayan = json_veri.get("saglanmayan_sartlar") or []
+        kontrol_ed = json_veri.get("kontrol_edilemeyen_sartlar") or []
+
+        if saglanan or saglanmayan or kontrol_ed:
+            txt.insert("end", "📋 ŞARTLAR\n", "baslik")
+        if saglanan:
+            txt.insert("end", f"✓ Sağlanan ({len(saglanan)}):\n", "alt_baslik")
+            for sart in saglanan:
+                txt.insert("end", f"   • {sart}\n", "var")
+            txt.insert("end", "\n")
+        if saglanmayan:
+            txt.insert("end", f"✗ Sağlanmayan ({len(saglanmayan)}):\n", "alt_baslik")
+            for s in saglanmayan:
+                ad = s.get("sart", "") if isinstance(s, dict) else str(s)
+                neden = s.get("neden", "") if isinstance(s, dict) else ""
+                if neden:
+                    txt.insert("end", f"   • {ad}\n     → {neden}\n", "yok")
+                else:
+                    txt.insert("end", f"   • {ad}\n", "yok")
+            txt.insert("end", "\n")
+        if kontrol_ed:
+            txt.insert("end", f"? Kontrol Edilemeyen ({len(kontrol_ed)}) — manuel doğrula:\n",
+                       "alt_baslik")
+            for s in kontrol_ed:
+                ad = s.get("sart", "") if isinstance(s, dict) else str(s)
+                eksik = s.get("eksik_veri", "") if isinstance(s, dict) else ""
+                if eksik:
+                    txt.insert("end", f"   • {ad}\n     → {eksik}\n", "ke")
+                else:
+                    txt.insert("end", f"   • {ad}\n", "ke")
+            txt.insert("end", "\n")
+
+        # Özet açıklama
+        ozet = (json_veri.get("ozet_aciklama") or "").strip()
+        if ozet:
+            txt.insert("end", "📝 ÖZET\n", "baslik")
+            txt.insert("end", f"{ozet}\n\n")
+
+        # Teknik detay
+        detay = (json_veri.get("detay_rapor") or "").strip()
+        if detay:
+            txt.insert("end", "🔬 TEKNİK DETAY\n", "baslik")
+            txt.insert("end", f"{detay}\n\n")
+
+        # KLİNİK YORUM — ana içerik
+        klinik = (json_veri.get("klinik_yorum") or "").strip()
+        if klinik:
+            txt.insert("end", "💬 KLİNİK YORUM (AI bütünsel analiz)\n", "baslik")
+            txt.insert("end", f"{klinik}\n\n", "klinik")
+
+        # Hiçbir bölüm yoksa (fallback) ai_aciklama'yı bas
+        if not (saglanan or saglanmayan or kontrol_ed or ozet or detay or klinik):
+            if fallback_aciklama:
+                txt.insert("end", "AI Açıklama (özet kaydı):\n", "baslik")
+                txt.insert("end", fallback_aciklama + "\n")
+            else:
+                txt.insert("end",
+                           "(AI cevabında yapılandırılmış alan bulunamadı.)\n",
+                           "kucuk")
+
+        txt.config(state="disabled")
+
+        # ── Alt buton barı ──
+        alt = tk.Frame(win, bg="#FAFAFA")
+        alt.pack(fill="x", padx=10, pady=(4, 10))
+
+        def _kopyala():
+            tum = txt.get("1.0", "end").strip()
+            self._panoya_yaz(tum)
+            self._durum_yaz("✓ AI raporu panoya kopyalandı")
+
+        def _ham_json():
+            ham_win = tk.Toplevel(win)
+            ham_win.title("Ham AI Cevabı (JSON)")
+            ham_win.geometry("840x600")
+            ham_txt = tk.Text(ham_win, wrap="word",
+                              font=("Consolas", 9), bg="#263238", fg="#ECEFF1")
+            ham_txt.pack(fill="both", expand=True)
+            ham_txt.insert("1.0", ham_text or "(ham cevap yok)")
+            ham_txt.config(state="disabled")
+
+        tk.Button(
+            alt, text="📋 Panoya Kopyala",
+            font=("Segoe UI", 10),
+            bg="#E3F2FD", fg="#01579B",
+            relief="flat", cursor="hand2",
+            command=_kopyala,
+        ).pack(side="left", padx=4)
+        tk.Button(
+            alt, text="📄 Ham JSON",
+            font=("Segoe UI", 10),
+            bg="#FAFAFA", fg="#555",
+            relief="flat", cursor="hand2",
+            command=_ham_json,
+        ).pack(side="left", padx=4)
+        tk.Button(
+            alt, text="Kapat",
+            font=("Segoe UI", 10),
+            bg="#FAFAFA", fg="#333",
+            relief="flat", cursor="hand2",
+            command=win.destroy,
+        ).pack(side="right", padx=4)
 
     # ───────────────────────── Reçete / Rapor detay pencereleri (Botanik EOS canlı) ─────────────────────────
     def _recete_detay_goster(self):
@@ -11900,28 +13375,31 @@ class AylikReceteSorguGUI:
 
     @staticmethod
     def _antiht_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
-        """Satırın ANTİHT (mono/kombi antihipertansif) kapsamına girip
-        girmediğini sınıflandırır.
+        """Satırın ANTİHİPERTANSİF (mono/kombi/ARB) kapsamına girip girmediğini
+        sınıflandırır. Tek 'TÜM ANTİHT KONTROL' butonu için birleşik dispatcher.
 
-        Önce ATC bazlı net karar; ardından etken madde fallback
-        (sut_kategorisi_tespit_et kombi etken maddeyi MONO sayma hatasını
-        önlemek için).
+        Dönüş:
+          - 'ARB'  → ATC C09C*/C09D* veya sartan/rilmeniden/moksonidin etken
+                     → kontrol_arb_ek4f_m51 (EK-4/F m.51, SGK 17.10.16 istisnası)
+          - 'KOMBI'→ ATC C09B* (ACE+diüretik/KKB) veya etkende kombi marker
+                     → kontrol_kombine_antihipertansif (ARB-dışı genel hüküm)
+          - 'MONO' → ATC C09A* (ACE-i) / C03 (diüretik) / C07 (BB) / C08 (KKB)
+                     / C02AC (santral) → kontrol_mono_antihipertansif
+          - 'NONE' → kapsam dışı (boş bırak)
 
-        ARB (C09C*/C09D*) ve ARB etken maddeleri (sartan/rilmeniden/
-        moksonidin) → 'NONE' döner çünkü ARB için ayrı buton var
-        (kontrol_arb_ek4f_m51, 1300/51 istisnası ile).
-
-        Dönüş: 'MONO' / 'KOMBI' / 'NONE'
+        NOT: 2026-05-21 öncesi ARB satırları 'NONE' dönerdi (ayrı buton); şimdi
+        tek butonla birleşik dispatch yapılıyor. ARB butonu hala mevcut
+        (kullanıcı yalnız ARB testi için).
         """
         a = (atc or "").upper().strip()
         et = (etkin or "").upper()
         cls = AylikReceteSorguGUI
 
-        # 1) ARB'yi tamamen dışla (kendi butonu var)
+        # 1) ARB tespiti — birleşik dispatcher için ayrı kategori
         if a.startswith("C09C") or a.startswith("C09D"):
-            return "NONE"
+            return "ARB"
         if any(m in et for m in cls._ARB_ETKEN_MARKERLAR):
-            return "NONE"
+            return "ARB"
 
         # 2) ATC bazlı net karar
         if a.startswith("C09B"):  # ACE-i + diüretik/KKB kombi
@@ -13950,6 +15428,13 @@ class AylikReceteSorguGUI:
         try:
             from recete_kontrol.sut_kontrolleri import kontrol_arb_ek4f_m51
             from recete_kontrol.base_kontrol import KontrolSonucu
+            # Motor opsiyonu — env var ECZASIST_SUT_MOTOR=ARB_EK4F_M51 ise
+            # JSON deklaratif motoru kullan (sut_kurallari/arb_ek4f_m51.json).
+            from recete_kontrol.sut_motor.uyumluluk import (
+                motor_aktif_mi, kontrol_arb_ek4f_m51_motor)
+            if motor_aktif_mi('ARB_EK4F_M51'):
+                kontrol_arb_ek4f_m51 = kontrol_arb_ek4f_m51_motor
+                self._durum_yaz("ARB kontrolü: JSON motor aktif (ARB_EK4F_M51)")
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -14251,18 +15736,21 @@ class AylikReceteSorguGUI:
                 f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
                 parent=self.root)
 
-    # ── ANTİHT KONTROL (SUT 4.2.12.B mono + kombi antihipertansif) ──
+    # ── TÜM ANTİHT KONTROL (mono + kombi + ARB birleşik) ──
     def _antiht_kontrol_baslat(self):
-        """ANTİHT KONTROL butonu — yüklenen satırlardan mono/kombi
-        antihipertansif kapsamına girenleri sut_kategorisi_tespit_et()
-        üzerinden sınıflar ve uygun kontrol fn'ine dispatch eder.
+        """TÜM ANTİHT KONTROL butonu — yüklenen satırlardan tüm antihipertansif
+        kapsamına girenleri 3-kategoriye ayırıp uygun kontrol fn'ine dispatch
+        eder.
 
         Dispatch:
           - MONO  → kontrol_mono_antihipertansif
-                    (ACE-i / ARB / KKB / BB / Diüretik / Alfa bloker;
+                    (ACE-i / KKB / BB / Diüretik / Alfa bloker;
                      raporsuz uyumluluk + ACE+ARB kontrendikasyon)
           - KOMBI → kontrol_kombine_antihipertansif
-                    (raporsuz / 04.05 / monoterapi ibaresi 3-yollu)
+                    (ARB-dışı kombi: ACE+HCT vb. genel hüküm)
+          - ARB   → kontrol_arb_ek4f_m51
+                    (EK-4/F m.51 — mono ARB / ARB+HCT / Kombi+monoterapi /
+                     raporsuz aile hekimi 4-yollu USTOR)
         """
         if not self.tum_satirlar:
             messagebox.showinfo(
@@ -14271,11 +15759,34 @@ class AylikReceteSorguGUI:
                 parent=self.root)
             return
         try:
-            from recete_kontrol.sut_kontrolleri import (
-                kontrol_mono_antihipertansif,
-                kontrol_kombine_antihipertansif,
-            )
             from recete_kontrol.base_kontrol import KontrolSonucu
+            # JSON motoru antihipertansif 3 grubu için VARSAYILAN AÇIK
+            # (2026-05-21 kullanıcı kararı). Motor atomik şemayı otomatik
+            # üretir (SartSonuc listesi → Tab G sema_panel devre şeması).
+            # Eski Python fonksiyonları fallback olarak korunur (motor
+            # import/JSON load hatasında devreye girer).
+            try:
+                from recete_kontrol.sut_motor.uyumluluk import (
+                    kontrol_mono_antihipertansif_motor as kontrol_mono_antihipertansif,
+                    kontrol_kombi_antiht_arbdis_motor as kontrol_kombine_antihipertansif,
+                    kontrol_arb_ek4f_m51_motor as kontrol_arb_ek4f_m51,
+                )
+                self._durum_yaz(
+                    "Antihipertansif: JSON motor aktif (ARB+MONO+KOMBI) — "
+                    "atomik akım şeması Tab G'de görünür")
+            except Exception as e_motor:
+                # Fallback: motor başarısız ise eski Python fonksiyonları
+                logger.warning("Antihipertansif motor yüklenemedi, "
+                                "eski Python fonksiyonlarına düşülüyor: %s",
+                                e_motor)
+                from recete_kontrol.sut_kontrolleri import (
+                    kontrol_mono_antihipertansif,
+                    kontrol_kombine_antihipertansif,
+                    kontrol_arb_ek4f_m51,
+                )
+                self._durum_yaz(
+                    f"Motor yüklenemedi ({e_motor}) — eski Python "
+                    "kontrol fonksiyonları kullanılıyor")
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -14294,7 +15805,7 @@ class AylikReceteSorguGUI:
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
                  "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
-        kategori_sayac = {"MONO": 0, "KOMBI": 0}
+        kategori_sayac = {"MONO": 0, "KOMBI": 0, "ARB": 0}
         denetlenen_satirlar = []
 
         # Aynı reçetenin diğer satırlarını grupla (ACE+ARB kombi yasağı için)
@@ -14308,7 +15819,7 @@ class AylikReceteSorguGUI:
             kategori = self._antiht_kategori(
                 s.get("ilac"), s.get("etkin"), s.get("atc"))
             if kategori == "NONE":
-                if s.get("verdict_kategori") in ("MONO", "KOMBI"):
+                if s.get("verdict_kategori") in ("MONO", "KOMBI", "ARB"):
                     s["verdict"] = ""
                     s["verdict_detay"] = ""
                     s["verdict_kategori"] = ""
@@ -14323,13 +15834,21 @@ class AylikReceteSorguGUI:
 
             rno = s.get("rec_no") or ""
             ayni_recete = rec_grup.get(rno, [])
-            ilac_sonuc = self._ilac_sonuc_olustur_antiht(s, ayni_recete)
+            # ARB için ayrı ilac_sonuc kurucusu (kutu_sayisi/kurum/tesis dahil);
+            # MONO/KOMBI için mevcut antiht kurucusu (diger_etken_maddeler ile
+            # ACE+ARB kontrendikasyon için).
+            if kategori == "ARB":
+                ilac_sonuc = self._ilac_sonuc_olustur_arb(s)
+            else:
+                ilac_sonuc = self._ilac_sonuc_olustur_antiht(s, ayni_recete)
 
             try:
                 if kategori == "MONO":
                     rapor = kontrol_mono_antihipertansif(ilac_sonuc)
-                else:  # KOMBI
+                elif kategori == "KOMBI":
                     rapor = kontrol_kombine_antihipertansif(ilac_sonuc)
+                else:  # ARB
+                    rapor = kontrol_arb_ek4f_m51(ilac_sonuc)
             except Exception as e:
                 logger.warning("ANTİHT kontrol hata (rx %s): %s",
                                 s.get("rec_no"), e)
@@ -15297,8 +16816,11 @@ class AylikReceteSorguGUI:
         self._durum_yaz(f"⏳ MEDULA tarama başlıyor: {hasta_adi} ({tc})")
         self.root.update_idletasks()
 
+        # Tüm status mesajlarını biriktir — sıfır sonuç gelirse popup'ta göster
+        status_log: list[str] = []
+
         def _status_cb(msg: str):
-            # Thread-safe status update
+            status_log.append(msg)
             self.root.after(0, lambda m=msg: self._durum_yaz(m))
 
         def _worker():
@@ -15306,20 +16828,505 @@ class AylikReceteSorguGUI:
                 toplam, kaydedilen = hasta_raporlarini_tara_ve_kaydet(
                     tc=tc, kategori_filtre=None, detayli_oku=True,
                     cb=_status_cb)
-                self.root.after(0, lambda: messagebox.showinfo(
-                    "Tarama Tamam",
-                    f"Hasta: {hasta_adi} ({tc})\n\n"
-                    f"Toplam satır:     {toplam}\n"
-                    f"Yeni kaydedilen:  {kaydedilen}\n\n"
-                    f"DB: %APPDATA%/BotanikKasa/hasta_rapor_gecmisi.db",
-                    parent=self.root))
+                if toplam == 0 and kaydedilen == 0:
+                    # Bailout — sebebi son status mesajlarından göster
+                    son_satirlar = "\n".join(status_log[-12:]) if status_log \
+                        else "(durum mesajı kaydedilmedi)"
+                    self.root.after(0, lambda: messagebox.showerror(
+                        "Tarama Başarısız",
+                        f"Hasta: {hasta_adi} ({tc})\n\n"
+                        f"MEDULA tarama tamamlanamadı. Son adımlar:\n\n"
+                        f"{son_satirlar}\n\n"
+                        f"İpucu: BotanikMedula açık ve login ekranındaysa "
+                        f"manuel kapatın, sonra tekrar deneyin.",
+                        parent=self.root))
+                else:
+                    self.root.after(0, lambda: messagebox.showinfo(
+                        "Tarama Tamam",
+                        f"Hasta: {hasta_adi} ({tc})\n\n"
+                        f"Toplam satır:     {toplam}\n"
+                        f"Yeni kaydedilen:  {kaydedilen}\n\n"
+                        f"DB: %APPDATA%/BotanikKasa/hasta_rapor_gecmisi.db",
+                        parent=self.root))
             except Exception as e:
                 logger.exception("MEDULA tarama hatası")
+                son_satirlar = "\n".join(status_log[-8:]) if status_log else ""
                 self.root.after(0, lambda: messagebox.showerror(
-                    "Tarama Hatası", f"{type(e).__name__}: {e}",
+                    "Tarama Hatası",
+                    f"{type(e).__name__}: {e}\n\n"
+                    f"Son adımlar:\n{son_satirlar}",
                     parent=self.root))
 
         threading.Thread(target=_worker, daemon=True).start()
+
+    # ──────────────────────────────────────────────────────────────────
+    # 🤖 AI KONTROL — Anthropic Claude ile SUT uygunluk denetimi
+    # ──────────────────────────────────────────────────────────────────
+    # Kullanıcı isteği 2026-05-21. Faz 1: sadece Botanik DB kaynağı.
+    # Akış:
+    #   1. Seçili satırlar (yoksa onay diyaloğu) → KVKK + API key kontrolü
+    #   2. Her satır için Botanik DB'den anonim paket → AI → JSON parse
+    #   3. Sonuç recete_teyit_db.ai_sonuc_kaydet ile yerel DB'ye
+    #   4. Tablo "AI Karş." + "AI Açıklama" sütunları yenilenir
+    #   5. Özet dialog (UYGUN/UYGUN_DEGIL/ŞÜPHELİ/KE sayıları + maliyet)
+
+    def _ai_ayarlar_ac(self) -> None:
+        """⚙ AI Ayarlar diyaloğunu aç."""
+        try:
+            from recete_kontrol.ai_kontrol import ai_ayarlar_dialog
+        except Exception as e:
+            messagebox.showerror(
+                "AI Ayarlar",
+                f"AI Kontrol modülü yüklenemedi:\n{type(e).__name__}: {e}",
+                parent=self.root)
+            return
+        try:
+            ai_ayarlar_dialog.ayarlari_ac(self.root)
+        except Exception as e:
+            logger.exception("AI Ayarlar açma hatası")
+            messagebox.showerror(
+                "AI Ayarlar",
+                f"Diyalog açılamadı:\n{type(e).__name__}: {e}",
+                parent=self.root)
+
+    def _ai_paket_onizle(self) -> None:
+        """🔍 Önizle — seçili (ilk) satır için AI paketini modal'da göster."""
+        sec_iidler = list(self.tv.selection())
+        if not sec_iidler:
+            messagebox.showinfo(
+                "AI Paket Önizle",
+                "Önce tabloda bir satır seçin.\n"
+                "Çoklu seçili ise sadece İLK satır önizlenir.",
+                parent=self.root)
+            return
+        satir = self.satir_indeks.get(sec_iidler[0])
+        if not satir:
+            messagebox.showwarning(
+                "AI Paket Önizle", "Seçili satır bulunamadı.",
+                parent=self.root)
+            return
+
+        try:
+            from recete_kontrol.ai_kontrol import (
+                paket_olusturucu, paket_onizle_dialog)
+        except Exception as e:
+            messagebox.showerror(
+                "AI Paket Önizle",
+                f"Modüller yüklenemedi:\n{type(e).__name__}: {e}",
+                parent=self.root)
+            return
+
+        konfig = paket_olusturucu.PaketKonfig(
+            botanik_db_kullan=bool(self.ai_kaynak_botanik.get()),
+            medula_kullan=False,
+        )
+
+        # Paket oluştur (Botanik DB sorguları içerebilir, biraz sürebilir)
+        self._durum_yaz("⏳ Paket hazırlanıyor (DB sorguları)...")
+        self.root.update_idletasks()
+        try:
+            paket = paket_olusturucu.paket_olustur(
+                satir, konfig=konfig, db=getattr(self, 'db', None))
+        except Exception as e:
+            logger.exception("Paket önizleme hatası")
+            messagebox.showerror(
+                "Paket Hatası",
+                f"Paket oluşturulamadı:\n{type(e).__name__}: {e}",
+                parent=self.root)
+            return
+        self._durum_yaz("✓ Paket hazır — önizleme açıldı.")
+
+        # Modal'dan AI'a göndermek isterse callback ver
+        def _gonder(paket_arg):
+            # Mevcut AI kontrol akışını tetikle (sadece bu satır için)
+            self.tv.selection_set(sec_iidler[0])
+            self._ai_kontrol_baslat()
+
+        paket_onizle_dialog.onizle(self.root, paket, ai_gonder_callback=_gonder)
+
+    def _ai_screenshot_sorgu_baslat(self) -> None:
+        """📸 Screenshot ile AI Sorgu — seçili satır için diyaloğu aç.
+
+        Akış:
+          • Tabloda seçili (ilk) satırın hasta + reçete bilgisi okunur.
+          • screenshot_sorgu.ScreenshotSorguDialog açılır.
+          • F9 / Screenshot Al ile görseller toplanır, AI'ya gönderilir.
+          • Sonuç modal pencerede gösterilir; diyalog kapanırken
+            geçici klasör silinir.
+
+        Backend: claude_code_subprocess + Read aracı (multimodal).
+        API key gerektirmez; kullanıcının Max planı / claude CLI yeterli.
+        """
+        satir = (
+            self._aktif_satir()
+            if callable(getattr(self, "_aktif_satir", None))
+            else None
+        )
+        if not satir:
+            messagebox.showinfo(
+                "Screenshot AI Sorgu",
+                "Önce tabloda bir satır seçin.\n\n"
+                "Hasta + reçete bilgisi seçili satırdan otomatik alınır;\n"
+                "screenshot'lar bu hastanın klasörüne kaydedilir.",
+                parent=self.root)
+            return
+
+        # Backend hazır mı? claude CLI kontrol
+        try:
+            from recete_kontrol.ai_kontrol import (
+                claude_code_subprocess, screenshot_sorgu,
+            )
+        except ImportError as e:
+            messagebox.showerror(
+                "Screenshot AI Sorgu",
+                f"Modül yüklenemedi:\n{type(e).__name__}: {e}\n\n"
+                "Gereksinimler: Pillow + keyboard + Claude Code CLI.\n"
+                "Kurulum: pip install -r requirements.txt",
+                parent=self.root)
+            return
+
+        ok, durum = claude_code_subprocess.saglik_kontrolu()
+        if not ok:
+            messagebox.showerror(
+                "Claude CLI Bulunamadı",
+                f"{durum}\n\n"
+                "Screenshot sorgu özelliği subprocess backend'i kullanır;\n"
+                "yerel `claude` komutu PATH'te olmalı.",
+                parent=self.root)
+            return
+
+        hasta_bilgi = {
+            "ad": str(satir.get("hasta") or "").strip(),
+            "tc": str(satir.get("tc") or "").strip(),
+            "yas": str(satir.get("yas") or "").strip(),
+            "cinsiyet": str(satir.get("cins") or "").strip(),
+        }
+        recete_bilgi = {
+            "recete_no": str(satir.get("rec_no") or "").strip(),
+            "tarih": str(satir.get("rec_tar") or "").strip(),
+            "ilac": str(satir.get("ilac") or "").strip(),
+            "rapor_kodu": str(satir.get("rap_kod") or "").strip(),
+        }
+
+        try:
+            screenshot_sorgu.ac(self.root, hasta_bilgi, recete_bilgi)
+        except Exception as e:
+            logger.exception("Screenshot sorgu diyaloğu açma hatası")
+            messagebox.showerror(
+                "Screenshot AI Sorgu",
+                f"Diyalog açılamadı:\n{type(e).__name__}: {e}",
+                parent=self.root)
+
+    def _ai_kontrol_baslat(self) -> None:
+        """🤖 AI KONTROL butonu — seçili satırlar için AI denetimi başlat."""
+        try:
+            from recete_kontrol.ai_kontrol import (
+                ai_istemci, ayarlar as ai_ayarlar, paket_olusturucu,
+                sonuc_parser,
+            )
+        except ImportError as e:
+            messagebox.showerror(
+                "AI Kontrol",
+                f"AI Kontrol modülü yüklenemedi:\n{type(e).__name__}: {e}\n\n"
+                "Anthropic SDK kurulu mu? pip install anthropic>=0.40.0",
+                parent=self.root)
+            return
+
+        # 1. Seçili satırları al
+        sec_iidler = list(self.tv.selection())
+        if not sec_iidler:
+            messagebox.showinfo(
+                "AI Kontrol",
+                "Önce tabloda denetlenecek satır(lar)ı seçin.\n\n"
+                "Tek satır: tıkla.\nÇoklu: Ctrl+Click veya Shift+Click.",
+                parent=self.root)
+            return
+        satirlar: list[dict] = []
+        for iid in sec_iidler:
+            s = self.satir_indeks.get(iid)
+            if s:
+                satirlar.append((iid, s))
+        if not satirlar:
+            messagebox.showwarning(
+                "AI Kontrol", "Seçili satırlar bulunamadı.",
+                parent=self.root)
+            return
+
+        # 2. API key + KVKK kontrolü
+        if not ai_ayarlar.api_key_var_mi():
+            messagebox.showinfo(
+                "API Anahtarı Yok",
+                "AI Kontrol kullanmak için kendi Anthropic API anahtarınızı "
+                "Ayarlar diyaloğundan girmelisiniz.\n\n"
+                "Şimdi ayarlar penceresi açılacak.",
+                parent=self.root)
+            self._ai_ayarlar_ac()
+            return
+        if not ai_ayarlar.kvkk_onayli_mi():
+            messagebox.showinfo(
+                "KVKK Onayı Yok",
+                "Hasta verisinin (anonim formatta) Anthropic'e gönderilmesi "
+                "için KVKK onayı vermeniz gerekiyor.\n\n"
+                "Ayarlar penceresinden onay verebilirsiniz.",
+                parent=self.root)
+            self._ai_ayarlar_ac()
+            return
+        asildi, asma_msg = ai_ayarlar.limit_asildi_mi()
+        if asildi:
+            messagebox.showwarning(
+                "Limit Aşıldı", asma_msg, parent=self.root)
+            return
+
+        # 3. Konfigürasyon — checkbox + model
+        konfig = paket_olusturucu.PaketKonfig(
+            botanik_db_kullan=bool(self.ai_kaynak_botanik.get()),
+            medula_kullan=False,   # Faz 1: daima False (UI'da disabled)
+        )
+        if not konfig.botanik_db_kullan:
+            messagebox.showwarning(
+                "Veri Kaynağı Yok",
+                "En az bir veri kaynağı (Botanik DB) seçili olmalı.",
+                parent=self.root)
+            return
+
+        secim = self.ai_model_var.get()
+        model_id = None  # None → ayarlar.varsayilan_model
+        if secim == "sonnet":
+            model_id = ai_ayarlar.MODEL_SONNET
+        elif secim == "opus":
+            model_id = ai_ayarlar.MODEL_OPUS
+        elif secim == "haiku":
+            model_id = ai_ayarlar.MODEL_HAIKU
+
+        # 4. Onay diyaloğu (maliyet uyarısı)
+        n = len(satirlar)
+        # Sonnet için yaklaşık tahmin: ~3000 input + ~500 output token / reçete
+        # İlk çağrı cache miss; sonrakiler cache hit (%90 ucuz).
+        tahmin_usd = 0.013 * n  # kabaca; opus için ~5x
+        if (model_id or "").endswith("opus-4-7"):
+            tahmin_usd *= 5
+        elif (model_id or "").endswith("haiku-4-5-20251001"):
+            tahmin_usd *= 0.3
+
+        cevap = messagebox.askyesno(
+            "🤖 AI Kontrol Başlat",
+            f"{n} reçete-ilaç satırı AI denetimine gönderilecek.\n\n"
+            f"Model       : {secim} (override)\n"
+            f"Veri kaynağı: Botanik DB\n"
+            f"Tahmini maliyet: ~${tahmin_usd:.3f}\n\n"
+            f"Hasta verisi anonim (TC hash, ad GÖNDERİLMEZ).\n"
+            f"Sonuçlar 'AI Karş.' ve 'AI Açıklama' sütunlarına yazılır.\n\n"
+            f"Devam edilsin mi?",
+            parent=self.root,
+        )
+        if not cevap:
+            return
+
+        self._durum_yaz(f"⏳ AI Kontrol başlıyor: {n} satır...")
+        self.btn_ai_kontrol.config(state="disabled")
+
+        # 5. İlerleme dialog'u (worker tarafından root.after ile güncellenir)
+        ilerleme = AIKontrolIlerleme(self.root, toplam=n)
+
+        # 6. Background worker
+        import threading
+        sayac = {
+            "UYGUN": 0, "UYGUN_DEGIL": 0, "SUPHELI": 0,
+            "KONTROL_EDILEMEDI": 0, "YETERSIZ_VERI": 0,
+            "MANUEL_KONTROL_GEREKIR": 0, "HATA": 0,
+        }
+        toplam_maliyet = [0.0]   # mutable kapanış
+
+        def _worker():
+            try:
+                import recete_teyit_db
+                try:
+                    kullanici = self._aktif_kullanici_adi() or ""
+                except Exception:
+                    kullanici = ""
+
+                for i, (iid, s) in enumerate(satirlar, 1):
+                    # İptal kontrolü
+                    if ilerleme.iptal_edildi_mi():
+                        self.root.after(
+                            0, lambda i=i: self._durum_yaz(
+                                f"⏸ AI Kontrol iptal edildi ({i-1}/{n} tamamlandı)"))
+                        break
+
+                    ilac_ad = s.get('ilac', '')
+                    self.root.after(
+                        0, lambda i=i, a=ilac_ad: (
+                            self._durum_yaz(f"⏳ AI Kontrol {i}/{n}: {a[:30]}"),
+                            ilerleme.recete_basla(i, a),
+                        )
+                    )
+
+                    # ── 1. AŞAMA: Veri toplama (paket_olustur) ──
+                    self.root.after(
+                        0, ilerleme.asama_basla, AIKontrolIlerleme.ASAMA_VERI)
+                    try:
+                        paket = paket_olusturucu.paket_olustur(
+                            s, konfig=konfig, db=getattr(self, 'db', None))
+                        self.root.after(
+                            0, ilerleme.asama_bitir,
+                            AIKontrolIlerleme.ASAMA_VERI, True)
+                    except Exception as e_p:
+                        logger.exception("AI paket oluşturma hatası")
+                        self.root.after(
+                            0, ilerleme.asama_bitir,
+                            AIKontrolIlerleme.ASAMA_VERI, False)
+                        sayac["HATA"] += 1
+                        s["ai_kars"] = sonuc_parser.ETIKET_KISA[
+                            sonuc_parser.SONUC_HATA]
+                        s["ai_aciklama"] = f"Paket hatası: {e_p}"
+                        self.root.after(
+                            0, ilerleme.sonuc_kaydet, "HATA")
+                        self.root.after(
+                            0, ilerleme.yorum_ekle, i, ilac_ad,
+                            "HATA", None, f"Paket hatası: {e_p}")
+                        continue
+
+                    # ── 2. AŞAMA: AI çağrısı (kontrol_et) ──
+                    # Bu satıra ek görsel eklenmiş mi kontrol et
+                    _ri_id_str = str(s.get("ri_id") or s.get("RIId") or iid)
+                    _ek_st = self.ek_gorseller.get(_ri_id_str)
+                    _gorsel_yollari = (
+                        [str(y) for y in (_ek_st or {}).get("yollar", [])]
+                        if _ek_st else []
+                    )
+                    self.root.after(
+                        0, ilerleme.asama_basla, AIKontrolIlerleme.ASAMA_AI)
+                    try:
+                        if _gorsel_yollari:
+                            # Multimodal: paket + görseller birlikte
+                            from recete_kontrol.ai_kontrol import (
+                                screenshot_subprocess,
+                            )
+                            ai_sonuc, istat = (
+                                screenshot_subprocess
+                                .kontrol_et_paket_ve_gorseller(
+                                    paket, _gorsel_yollari,
+                                    model=model_id,
+                                    ri_id=_ri_id_str,
+                                )
+                            )
+                        else:
+                            # Standart: sadece paket
+                            ai_sonuc, istat = ai_istemci.kontrol_et(
+                                paket, model=model_id, ri_id=_ri_id_str)
+                        toplam_maliyet[0] += istat.maliyet_usd
+                        self.root.after(
+                            0, ilerleme.asama_bitir,
+                            AIKontrolIlerleme.ASAMA_AI, True)
+                    except ai_istemci.LimitAsildi as e:
+                        self.root.after(
+                            0, ilerleme.asama_bitir,
+                            AIKontrolIlerleme.ASAMA_AI, False)
+                        self.root.after(0, lambda m=str(e): messagebox.showwarning(
+                            "Limit Aşıldı", m, parent=self.root))
+                        break
+                    except Exception as e_ai:
+                        logger.warning("AI çağrı hatası (%s): %s",
+                                       s.get("rec_no"), e_ai)
+                        self.root.after(
+                            0, ilerleme.asama_bitir,
+                            AIKontrolIlerleme.ASAMA_AI, False)
+                        sayac["HATA"] += 1
+                        s["ai_kars"] = sonuc_parser.ETIKET_KISA[
+                            sonuc_parser.SONUC_HATA]
+                        s["ai_aciklama"] = f"{type(e_ai).__name__}: {e_ai}"
+                        self.root.after(
+                            0, ilerleme.sonuc_kaydet, "HATA")
+                        self.root.after(
+                            0, ilerleme.yorum_ekle, i, ilac_ad,
+                            "HATA", None, f"{type(e_ai).__name__}: {e_ai}")
+                        continue
+
+                    sayac[ai_sonuc.sonuc] = sayac.get(ai_sonuc.sonuc, 0) + 1
+                    s["ai_kars"] = ai_sonuc.etiket
+                    s["ai_aciklama"] = ai_sonuc.aciklama_metni()
+
+                    # ── 3. AŞAMA: Sonuç kaydı (yerel DB) ──
+                    self.root.after(
+                        0, ilerleme.asama_basla, AIKontrolIlerleme.ASAMA_KAYIT)
+                    try:
+                        recete_teyit_db.ai_sonuc_kaydet(
+                            ri_id=str(s.get("ri_id") or s.get("RIId") or iid),
+                            ai_sonuc=ai_sonuc.sonuc,
+                            ai_aciklama=s["ai_aciklama"],
+                            ai_model=istat.model,
+                            ai_guven=ai_sonuc.guven_skoru,
+                            ai_sut_ref=ai_sonuc.sut_referans,
+                            hasta_tc=str(s.get("tc") or ""),
+                            recete_no=str(s.get("rec_no") or ""),
+                            ilac_adi=str(s.get("ilac") or ""),
+                            kullanici=kullanici,
+                        )
+                        self.root.after(
+                            0, ilerleme.asama_bitir,
+                            AIKontrolIlerleme.ASAMA_KAYIT, True)
+                    except Exception as e_db:
+                        logger.warning("AI DB kaydı atlandı: %s", e_db)
+                        self.root.after(
+                            0, ilerleme.asama_bitir,
+                            AIKontrolIlerleme.ASAMA_KAYIT, False)
+
+                    self.root.after(
+                        0, ilerleme.sonuc_kaydet, ai_sonuc.sonuc)
+                    # Canlı yorum paneline başarılı AI yorumunu ekle
+                    self.root.after(
+                        0, ilerleme.yorum_ekle, i, ilac_ad,
+                        ai_sonuc.sonuc, ai_sonuc, "")
+                    # Başarılı çağrı sonrası: ek görselleri sil + state'ten çıkar
+                    if _gorsel_yollari:
+                        self.root.after(
+                            0, self._ek_gorsel_temizle, _ri_id_str)
+
+                # Bitti — özet göster, dialog'u kullanıcı kapansın
+                self.root.after(0, ilerleme.tamamlandi)
+                self.root.after(0, self._ai_kontrol_tamamlandi,
+                                sayac, toplam_maliyet[0], n)
+            except Exception as e:
+                logger.exception("AI Kontrol worker hatası")
+                self.root.after(0, ilerleme.tamamlandi)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "AI Kontrol Hatası",
+                    f"{type(e).__name__}: {e}",
+                    parent=self.root))
+            finally:
+                self.root.after(
+                    0, lambda: self.btn_ai_kontrol.config(state="normal"))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _ai_kontrol_tamamlandi(self, sayac: dict, maliyet: float, n: int) -> None:
+        """AI Kontrol worker bittikten sonra UI tarafı."""
+        try:
+            self._tabloyu_yenile()
+        except Exception as e:
+            logger.warning("Tablo yenileme atlandı: %s", e)
+        self._durum_yaz(
+            f"✓ AI Kontrol tamam: UYGUN={sayac.get('UYGUN', 0)}  "
+            f"UYGUN_DEGIL={sayac.get('UYGUN_DEGIL', 0)}  "
+            f"ŞÜPHELİ={sayac.get('SUPHELI', 0)}  "
+            f"KE={sayac.get('KONTROL_EDILEMEDI', 0)}  "
+            f"Maliyet=${maliyet:.4f}"
+        )
+        messagebox.showinfo(
+            "🤖 AI Kontrol Tamamlandı",
+            f"Toplam denetlenen   : {n}\n"
+            f"  ✓ UYGUN               : {sayac.get('UYGUN', 0)}\n"
+            f"  ✗ UYGUN DEĞİL         : {sayac.get('UYGUN_DEGIL', 0)}\n"
+            f"  ? ŞÜPHELİ             : {sayac.get('SUPHELI', 0)}\n"
+            f"  ? KONTROL EDİLEMEDİ   : {sayac.get('KONTROL_EDILEMEDI', 0)}\n"
+            f"  ⚠ YETERSİZ VERİ       : {sayac.get('YETERSIZ_VERI', 0)}\n"
+            f"  ⚙ MANUEL KONTROL      : {sayac.get('MANUEL_KONTROL_GEREKIR', 0)}\n"
+            f"  ⚡ HATA                : {sayac.get('HATA', 0)}\n\n"
+            f"Toplam maliyet: ${maliyet:.4f}\n\n"
+            f"Sonuçlar 'AI Karş.' ve 'AI Açıklama' sütunlarında.\n"
+            f"Detayları görmek için hücreye tıklayın.",
+            parent=self.root,
+        )
 
     # ── HEPATİT B/C KONTROL (SUT 4.2.13.3 / 4.2.13.4) ────────────────
     def _hepatit_kontrol_baslat(self):
