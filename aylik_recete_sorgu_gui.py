@@ -1676,15 +1676,20 @@ class AylikReceteSorguGUI:
             "ŞARTLI UYGUN":       tk.BooleanVar(value=True),
             "MANUEL KONTROL":     tk.BooleanVar(value=True),
             "DİĞER RAPOR UYGUN":  tk.BooleanVar(value=True),
+            "TIBBEN UYGUN DEĞİL": tk.BooleanVar(value=True),
             "":                   tk.BooleanVar(value=True),  # henüz kontrol edilmemiş
         }
         # Manuel teyit filtresi — recete_teyit_db sabitleri (UYGUN/SUPHELI/UYGUN_DEGIL/
-        # DIGER_RAPOR_UYGUN). "":True → teyit edilmemiş satırlar görünür.
+        # DIGER_RAPOR_UYGUN/SARTLI_UYGUN/MANUEL_KONTROL/TIBBEN_UYGUN_DEGIL).
+        # "":True → teyit edilmemiş satırlar görünür.
         self.var_teyit_filtre = {
             "UYGUN":              tk.BooleanVar(value=True),
             "SUPHELI":            tk.BooleanVar(value=True),
             "UYGUN_DEGIL":        tk.BooleanVar(value=True),
             "DIGER_RAPOR_UYGUN":  tk.BooleanVar(value=True),
+            "SARTLI_UYGUN":       tk.BooleanVar(value=True),
+            "MANUEL_KONTROL":     tk.BooleanVar(value=True),
+            "TIBBEN_UYGUN_DEGIL": tk.BooleanVar(value=True),
             "":                   tk.BooleanVar(value=True),  # teyit edilmemiş
         }
 
@@ -1879,6 +1884,10 @@ class AylikReceteSorguGUI:
                   "Seçili yıl/ay için Botanik EOS'tan reçete-ilaç satırlarını "
                   "yükle (sadece okuma).")
 
+        # NOT: 🎯 Seçim butonları (Tümü/Hiçbiri/Tersine/Vurgulu) ALT satıra
+        # taşındı (Filtrelemeler + Kontrol Butonları ile birlikte row3'te).
+        # Kullanıcı mockup'ı 2026-05-23.
+
         # ── SAĞ: ARAÇLAR (Excel + Sütunlar) ──
         sag = tk.Frame(row1, bg=HEADER_BG)
         sag.pack(side="right", padx=10, pady=5)
@@ -1910,24 +1919,27 @@ class AylikReceteSorguGUI:
         #                      Sıra B → Göster + Filtreleri Sıfırla
         # Sağ kolon (2 sıra yüksekliğinde): Hücre içeriği göstergesi
         # ════════════════════════════════════════════════════════════════
+        # ust_alan — yatay 50/50 bölünür: sol_kol (kontrol panelleri) | sag_kol
+        # (hücre içeriği). Kullanıcı isteği 2026-05-23: hücre içeriği panelini
+        # pencerenin yarısı kadar geniş tut (uzun rapor/açıklama metinleri için).
         ust_alan = tk.Frame(self.root, bg="#FAFAFA")
         ust_alan.pack(fill="x", padx=4, pady=(2, 2))
 
         sol_kol = tk.Frame(ust_alan, bg="#FAFAFA")
         sol_kol.pack(side="left", fill="y")
+        sol_kol.pack_propagate(False)  # genişliği iç widget'lar belirlemesin
 
+        # Satır sırası (kullanıcı mockup 2026-05-23 — bilimsel akış):
+        #   row2:        Renkler (Boyama + Renk filtresi alt alta hizalı) — en sık eylem
+        #   row_verdict: ✓ Sonuç (motorun verdict'i, 7 etiket) — sürekli görünür filtre
+        #   row_teyit:   🖉 Teyit (eczacının manuel teyiti, 7 etiket) — sürekli görünür filtre
+        #   row3:        Seçim + Filtrelemeler + Kontrol Butonları + AI — başlangıç aksiyonları
         row2 = tk.Frame(sol_kol, bg="#FAFAFA")
         row2.pack(fill="x", pady=(0, 2))
 
-        # Verdict (kontrol sonucu) filtresi — row3'ün ÜSTÜNDE
-        # (kontrol butonlarının üstündeki küçük boş alan).
-        # Renkli checkbox'lar — etiketlere göre tabloyu filtreler.
         row_verdict = tk.Frame(sol_kol, bg="#FAFAFA")
         row_verdict.pack(fill="x", pady=(0, 2))
 
-        # Manuel teyit filtre satırı — verdict satırının ALTINDA, aynı tarzda.
-        # 🩺 GEÇMİŞ TARA da bu satırın sağına yerleştirilir (kullanıcı isteği
-        # 2026-05-20: teyit butonlarının sağındaki boşluğa).
         row_teyit = tk.Frame(sol_kol, bg="#FAFAFA")
         row_teyit.pack(fill="x", pady=(0, 2))
 
@@ -1936,6 +1948,19 @@ class AylikReceteSorguGUI:
 
         sag_kol = tk.Frame(ust_alan, bg="#FAFAFA")
         sag_kol.pack(side="left", fill="both", expand=True, padx=(2, 0))
+
+        # 50/50 split: pencere genişledikçe sol_kol da yarısı kadar büyür.
+        # sag_kol "expand=True" ile geri kalan yarıyı doldurur. Bind <Configure>
+        # her yeniden boyutlandırmada genişliği oran olarak korur.
+        def _ust_alan_split(event=None):
+            try:
+                w = ust_alan.winfo_width()
+                if w > 200:
+                    sol_kol.configure(width=w // 2)
+            except Exception:
+                pass
+        ust_alan.bind("<Configure>", _ust_alan_split)
+        self.root.after(80, _ust_alan_split)
 
         def _panel_olustur(parent, baslik, baslik_fg, panel_bg):
             """Renkli arka planlı, başlık etiketli kompakt panel."""
@@ -1946,9 +1971,117 @@ class AylikReceteSorguGUI:
                                               pady=4)
             return p
 
-        # ─── PANEL 1: SEÇİM (açık mavi) ───
+        # ═══════════════════════════════════════════════════════════════════
+        # PANEL: RENKLER (Boyama + Renk Filtresi alt alta hizalı)
+        # Üst satır = eylem (bir rengi uygula), alt satır = görünüm (bir
+        # rengi göster/gizle). 6 renk dikey hizada → kullanıcı bir renge
+        # bakarken hem boyamayı hem filtreyi aynı X koordinatında görür.
+        # Kullanıcı isteği 2026-05-23 (bilimsel/fonksiyonel hizalama). Eski:
+        # row2'de p1 (Seçim - header'a taşındı) + p2 (Boyama), row3'te p3
+        # (Göster) ayrı panellerdi → şimdi tek panelde birleşti.
+        # ═══════════════════════════════════════════════════════════════════
+        P_BOYA_BG = "#FFF8E1"
+        p_renk = tk.Frame(row2, bg=P_BOYA_BG, bd=1, relief="solid")
+        p_renk.pack(side="left", padx=2, pady=1, fill="y")
+
+        tk.Label(p_renk, text="🎨 Renkler", bg=P_BOYA_BG, fg="#E65100",
+                 font=FONT_GROUP).grid(row=0, column=0, rowspan=2,
+                                        padx=(8, 8), pady=2, sticky="ns")
+
+        # --- ÜST SIRA (row=0): BOYAMA — eylem ---
+        self.boya_mod = tk.StringVar(value="secili")
+        mod_frame = tk.Frame(p_renk, bg=P_BOYA_BG)
+        mod_frame.grid(row=0, column=1, padx=(0, 8), pady=(3, 0), sticky="w")
+        tk.Label(mod_frame, text="Boya:", bg=P_BOYA_BG, fg="#5D4037",
+                  font=("Segoe UI", 8, "bold")).pack(side="left", padx=(0, 2))
+        rb_secili = tk.Radiobutton(
+            mod_frame, text="Seçili",
+            variable=self.boya_mod, value="secili",
+            bg=P_BOYA_BG, fg="#5D4037",
+            selectcolor="#FFFFFF",
+            font=("Segoe UI", 8, "bold"),
+            bd=0, anchor="w")
+        rb_secili.pack(side="left", padx=(0, 2))
+        rb_filtreli = tk.Radiobutton(
+            mod_frame, text="Filtreli",
+            variable=self.boya_mod, value="filtreli",
+            bg=P_BOYA_BG, fg="#5D4037",
+            selectcolor="#FFFFFF",
+            font=("Segoe UI", 8, "bold"),
+            bd=0, anchor="w")
+        rb_filtreli.pack(side="left")
+        _Tooltip(rb_secili, "Seçili: SADECE tabloda işaretli satırlar boyanır")
+        _Tooltip(rb_filtreli,
+                  "Filtreli: filtre sonucunda görünen TÜM satırlar boyanır\n"
+                  "(scroll dışındakiler dahil)")
+
+        # 6 renk boyama butonu — her renk col 2..7 (alt sıradaki filtre ile hizalı)
+        for i, renk in enumerate([RENK_YESIL, RENK_SARI, RENK_TURUNCU,
+                                    RENK_KIRMIZI, RENK_BEYAZ, RENK_GRI]):
+            b = tk.Button(p_renk, text=renk_kisa[renk],
+                          bg=RENK_BG[renk], fg=RENK_FG[renk], bd=1,
+                          command=lambda r=renk: self._boya_dispatch(r),
+                          padx=2, width=2, font=("Segoe UI", 11))
+            b.grid(row=0, column=2 + i, padx=1, pady=(3, 1), sticky="ew")
+            _Tooltip(b,
+                      f"Boya: {renk_aciklama[renk]}\n"
+                      "Mod (sol): Seçili = işaretli satırlar / "
+                      "Filtreli = görünen tümü")
+
+        # 🧹 Sıfırla — 2 sıraya yayılan, panelin sağında (tüm filtreleri sıfırlar)
+        btn_sifirla = tk.Button(
+            p_renk, text="🧹 Sıfırla",
+            bg="#FFE082", fg="#5D4037",
+            activebackground="#FFD54F", bd=1,
+            command=self._tum_filtreleri_temizle,
+            font=FONT_BUTON, padx=8, pady=2,
+            cursor="hand2")
+        btn_sifirla.grid(row=0, column=8, rowspan=2, padx=(8, 6), pady=2,
+                          sticky="ns")
+        _Tooltip(btn_sifirla,
+                  "Tüm filtreleri SIFIRLA:\n"
+                  "• Sütun arama kutuları\n"
+                  "• Renk filtresi (6 renk açık)\n"
+                  "• Excel-benzeri değer/metin filtreleri\n"
+                  "• Sıralama")
+
+        # --- ALT SIRA (row=1): RENK FİLTRESİ — görünüm ---
+        tk.Label(p_renk, text="👁 Filtre:", bg=P_BOYA_BG, fg="#1B5E20",
+                 font=("Segoe UI", 8, "bold")).grid(row=1, column=1,
+                                                    padx=(0, 8), pady=(0, 3),
+                                                    sticky="e")
+
+        # Label'sız renkli kareler — Gestalt similarity (renk kendisi bilgi taşır)
+        self.var_renk = {}
+        for i, renk in enumerate([RENK_YESIL, RENK_SARI, RENK_TURUNCU,
+                                    RENK_KIRMIZI, RENK_BEYAZ, RENK_GRI]):
+            v = tk.BooleanVar(value=True)
+            cb = tk.Checkbutton(p_renk, text="",
+                                  variable=v, bg=RENK_BG[renk],
+                                  fg=RENK_FG[renk],
+                                  selectcolor=RENK_BG[renk],
+                                  font=("Segoe UI", 9, "bold"),
+                                  padx=0, bd=1, relief="solid", width=2,
+                                  command=self._renk_filtre_degisti)
+            cb.grid(row=1, column=2 + i, padx=1, pady=(0, 3), sticky="ew")
+            self.var_renk[renk] = v
+            _Tooltip(cb,
+                      f"{renk_etiket[renk]}\n"
+                      f"{renk_aciklama[renk]}\n"
+                      "renkli satırları tabloda GÖSTER / GİZLE")
+
+        # Reçete türü filtresi kaldırıldı; ilgili kod yolları boş dict ile çalışır.
+        # Hücre içeriği göstergesi sağ kolonda (sag_kol) oluşturulur — aşağıda.
+        self.var_recete_turu = {}
+
+        # ─── PANEL: SEÇİM (row3'te, Filtrelemeler'in solunda) ───
+        # Kullanıcı mockup'ı 2026-05-23: Tümü/Hiçbiri/Tersine/Vurgulu butonları
+        # eylem grubunun bir parçası → alt satıra (Filtrelemeler + Kontrol ile).
         P_SECIM_BG = "#E3F2FD"
-        p1 = _panel_olustur(row2, "🎯 Seçim", "#0D47A1", P_SECIM_BG)
+        p_secim = tk.Frame(row3, bg=P_SECIM_BG, bd=1, relief="solid")
+        p_secim.pack(side="left", padx=2, pady=1, fill="y")
+        tk.Label(p_secim, text="🎯 Seçim", bg=P_SECIM_BG, fg="#0D47A1",
+                  font=FONT_GROUP).pack(side="left", padx=(6, 6), pady=4)
         for txt, cmd, tip in [
             ("☑ Tümü", self._tumunu_sec,
              "Filtreden geçen tüm satırları SEÇ"),
@@ -1960,104 +2093,13 @@ class AylikReceteSorguGUI:
              "Shift/Ctrl ile vurgulanmış satırların\n"
              "checkbox'larını işaretle"),
         ]:
-            b = tk.Button(p1, text=txt, bg="white", bd=1,
+            b = tk.Button(p_secim, text=txt, bg="white", bd=1,
                           command=cmd, padx=8, pady=3, font=FONT_BUTON)
             b.pack(side="left", padx=2, pady=4)
             _Tooltip(b, tip)
-        tk.Frame(p1, bg=P_SECIM_BG, width=4).pack(side="left")
 
-        # ─── PANEL 2: BOYAMA (açık sarı) — TEK PARÇA + radio mod selector ───
-        P_BOYA_BG = "#FFF8E1"
-        p2 = _panel_olustur(row2, "🎨 Boyama", "#E65100", P_BOYA_BG)
-
-        # Mod seçici: Seçili / Filtreli (radiobutton — yer kazanır)
-        self.boya_mod = tk.StringVar(value="secili")
-        mod_frame = tk.Frame(p2, bg=P_BOYA_BG)
-        mod_frame.pack(side="left", padx=(0, 6), pady=2)
-        rb_secili = tk.Radiobutton(
-            mod_frame, text="Seçili",
-            variable=self.boya_mod, value="secili",
-            bg=P_BOYA_BG, fg="#5D4037",
-            selectcolor="#FFFFFF",
-            font=("Segoe UI", 8, "bold"),
-            bd=0, anchor="w")
-        rb_secili.pack(side="top", anchor="w")
-        rb_filtreli = tk.Radiobutton(
-            mod_frame, text="Filtreli",
-            variable=self.boya_mod, value="filtreli",
-            bg=P_BOYA_BG, fg="#5D4037",
-            selectcolor="#FFFFFF",
-            font=("Segoe UI", 8, "bold"),
-            bd=0, anchor="w")
-        rb_filtreli.pack(side="top", anchor="w")
-        _Tooltip(rb_secili, "Seçili: SADECE tabloda işaretli satırlar boyanır")
-        _Tooltip(rb_filtreli,
-                  "Filtreli: filtre sonucunda görünen TÜM satırlar boyanır\n"
-                  "(scroll dışındakiler dahil)")
-
-        # Tek satır 6 renk butonu — radio'ya göre çalışır
-        btn_frame = tk.Frame(p2, bg=P_BOYA_BG)
-        btn_frame.pack(side="left", padx=(0, 6), pady=4)
-        for renk in [RENK_YESIL, RENK_SARI, RENK_TURUNCU,
-                       RENK_KIRMIZI, RENK_BEYAZ, RENK_GRI]:
-            b = tk.Button(btn_frame, text=renk_kisa[renk],
-                          bg=RENK_BG[renk], fg=RENK_FG[renk], bd=1,
-                          command=lambda r=renk: self._boya_dispatch(r),
-                          padx=4, width=2, font=("Segoe UI", 11))
-            b.pack(side="left", padx=1)
-            _Tooltip(b,
-                      f"Boya: {renk_aciklama[renk]}\n"
-                      "Mod (sol): Seçili = işaretli satırlar / "
-                      "Filtreli = görünen tümü")
-
-        # ─── PANEL 3: FİLTRE (açık yeşil) — alt sıraya geçiyor ───
-        P_FLT_BG = "#E8F5E9"
-        p3 = _panel_olustur(row3, "👁 Göster", "#1B5E20", P_FLT_BG)
-
-        # Label'sız renkli kareler (yer kazanmak için — UX karar 2026-05-08)
-        # Renk kendisi bilgi taşır (Gestalt similarity). Tooltip ile ad açıklanır.
-        self.var_renk = {}
-        for renk in [RENK_BEYAZ, RENK_YESIL, RENK_SARI,
-                       RENK_TURUNCU, RENK_KIRMIZI, RENK_GRI]:
-            v = tk.BooleanVar(value=True)
-            cb = tk.Checkbutton(p3, text="",  # label kaldırıldı (yer için)
-                                  variable=v, bg=RENK_BG[renk],
-                                  fg=RENK_FG[renk],
-                                  selectcolor=RENK_BG[renk],
-                                  font=("Segoe UI", 9, "bold"),
-                                  padx=2, bd=1, relief="solid", width=2,
-                                  command=self._renk_filtre_degisti)
-            cb.pack(side="left", padx=1, pady=4)
-            self.var_renk[renk] = v
-            _Tooltip(cb,
-                      f"{renk_etiket[renk]}\n"
-                      f"{renk_aciklama[renk]}\n"
-                      "renkli satırları tabloda GÖSTER / GİZLE")
-
-        # 🧹 Filtreleri Sıfırla — Göster panelinin İÇİNE taşındı (kullanıcı isteği)
-        btn_sifirla_p3 = tk.Button(
-            p3, text="🧹 Sıfırla",
-            bg="#FFE082", fg="#5D4037",
-            activebackground="#FFD54F", bd=1,
-            command=self._tum_filtreleri_temizle,
-            font=FONT_BUTON, padx=8, pady=2)
-        btn_sifirla_p3.pack(side="left", padx=(8, 6), pady=4)
-        _Tooltip(btn_sifirla_p3,
-                  "Tüm filtreleri SIFIRLA:\n"
-                  "• Sütun arama kutuları\n"
-                  "• Renk filtresi (6 renk açık)\n"
-                  "• Excel-benzeri değer/metin filtreleri\n"
-                  "• Sıralama")
-
-        # 🚫 Boş Satırları Gizle + ⚙ Ayar butonu KALDIRILDI — yerine
-        # ayrı bir "📁 Filtrelemeler" kompozit dikdörtgen butonu eklendi.
-
-        # Reçete türü filtresi kaldırıldı; ilgili kod yolları boş dict ile çalışır.
-        # Hücre içeriği göstergesi sağ kolonda (sag_kol) oluşturulur — aşağıda.
-        self.var_recete_turu = {}
-
-        # ─── PANEL: FİLTRELEMELER kompozit (Kullan + Filtrelemeler + Sıfırla)
-        # Tek bir mavi dikdörtgen panel — soldan sağa 3 widget
+        # ─── PANEL: FİLTRELEMELER kompozit (Kullan + Filtrelemeler) ───
+        # Tek bir mavi dikdörtgen panel — soldan sağa 2 widget
         P_FLT_BG2 = "#E3F2FD"
         p_flt = tk.Frame(row3, bg=P_FLT_BG2, bd=1, relief="solid")
         p_flt.pack(side="left", padx=2, pady=1, fill="y")
@@ -2106,13 +2148,14 @@ class AylikReceteSorguGUI:
 
         # Etiket → (renk, kısa-ad) eşlemesi (sırası önemli — soldan sağa)
         _VRD_RENKLERI = [
-            ("UYGUN",             "#2E7D32", "✓ UYGUN"),
-            ("UYGUN DEĞİL",       "#C62828", "✗ UYGUN DEĞİL"),
-            ("ŞÜPHELİ",           "#EF6C00", "? ŞÜPHELİ"),
-            ("ŞARTLI UYGUN",      "#1565C0", "≈ ŞARTLI UYGUN"),
-            ("MANUEL KONTROL",    "#6A1B9A", "⚠ MANUEL"),
-            ("DİĞER RAPOR UYGUN", "#00695C", "ℹ DİĞER RAPOR"),
-            ("",                  "#546E7A", "○ Boş"),
+            ("UYGUN",              "#2E7D32", "✓ UYGUN"),
+            ("UYGUN DEĞİL",        "#C62828", "✗ UYGUN DEĞİL"),
+            ("ŞÜPHELİ",            "#EF6C00", "? ŞÜPHELİ"),
+            ("ŞARTLI UYGUN",       "#1565C0", "≈ ŞARTLI UYGUN"),
+            ("MANUEL KONTROL",     "#6A1B9A", "⚠ MANUEL"),
+            ("DİĞER RAPOR UYGUN",  "#00695C", "ℹ DİĞER RAPOR"),
+            ("TIBBEN UYGUN DEĞİL", "#4A148C", "⚕ TIBBEN UD"),
+            ("",                   "#546E7A", "○ Boş"),
         ]
         # Checkbox referansları + temel etiket metni → _filtre_sayimlarini_guncelle
         # her yenilemede butona "(N)" ekleyebilsin
@@ -2167,7 +2210,10 @@ class AylikReceteSorguGUI:
             ("UYGUN",              "#2E7D32", "✓ UYGUN"),
             ("UYGUN_DEGIL",        "#C62828", "✗ UYGUN DEĞİL"),
             ("SUPHELI",            "#EF6C00", "? ŞÜPHELİ"),
+            ("SARTLI_UYGUN",       "#1565C0", "≈ ŞARTLI"),
+            ("MANUEL_KONTROL",     "#6A1B9A", "⚠ MANUEL"),
             ("DIGER_RAPOR_UYGUN",  "#00695C", "ℹ DİĞER RAPOR"),
+            ("TIBBEN_UYGUN_DEGIL", "#4A148C", "⚕ TIBBEN UD"),
             ("",                   "#546E7A", "○ Teyitsiz"),
         ]
         self._teyit_filtre_cbs = {}
@@ -2206,174 +2252,13 @@ class AylikReceteSorguGUI:
                  "✓ UYGUN = teyitli yeşil, ✗ UYGUN DEĞİL = teyitli kırmızı,\n"
                  "? ŞÜPHELİ = teyitli sarı, ○ Teyitsiz = henüz teyit edilmemiş.")
 
-        # ─── PANEL: MEDULA GEÇMİŞ TARA — row_teyit içinde, teyit butonlarının sağında ───
-        # Kontrol Butonları ile işlevsel bağı yok (kullanıcı isteği 2026-05-19).
-        # Seçili satırın hastasının TC'si ile MEDULA'ya bağlanıp tüm geçmiş
-        # raporlarını yerel SQLite DB'ye tarar.
-        P_MED_BG = "#EDE7F6"
-        p_medula = tk.Frame(row_teyit, bg=P_MED_BG, bd=1, relief="solid")
-        p_medula.pack(side="left", padx=(10, 2), pady=1, fill="y")
-        tk.Label(p_medula, text="🩺 MEDULA:",
-                 bg=P_MED_BG, fg="#4527A0",
-                 font=FONT_GROUP).pack(side="left", padx=(6, 4), pady=4)
-        btn_medula_gecmis = tk.Button(
-            p_medula, text="🩺 GEÇMİŞ TARA",
-            bg="#4527A0", fg="white",
-            activebackground="#311B92", bd=1,
-            command=self._medula_gecmis_rapor_tara_baslat,
-            font=FONT_BUTON, padx=10, pady=4,
-            cursor="hand2")
-        btn_medula_gecmis.pack(side="left", padx=(2, 6), pady=4)
-        _Tooltip(btn_medula_gecmis,
-                 "Seçili satırdaki hastanın MEDULA'daki TÜM geçmiş raporlarını\n"
-                 "(bitmiş + aktif, B grubu reçete üzerinden) yerel SQLite DB'ye\n"
-                 "yazar. Hepatit / diyabet / KOAH kontrollerinde 'başlangıç\n"
-                 "raporu var mı / hangi tarihte başladı' sorgusu için kullanılır.\n\n"
-                 "CLAUDE.md uyumlu: SALT OKUMA — MEDULA verisi değiştirilmez.")
-        self.btn_medula_gecmis = btn_medula_gecmis
+        # NOT: 🩺 MEDULA GEÇMİŞ TARA paneli buradan kaldırıldı (kullanıcı isteği
+        # 2026-05-23). Şema panel toolbar'ında 🩺 butonu zaten mevcut
+        # (_sema_kur içinde, btn_t_gecmis). Ana sayfada tekrarına gerek yok.
 
-        # ─── PANEL: AI KONTROL — MEDULA panelinin sağında ───
-        # Kullanıcı isteği 2026-05-21: Anthropic Claude ile SUT uygunluk kontrolü.
-        # Seçili satır(lar) için anonim paket → Claude API → UYGUN/UYGUN_DEGIL/
-        # SUPHELI/KE etiketi + açıklama. Sonuçlar AI Karş. / AI Açıklama
-        # sütunlarına yazılır.
-        #
-        # Faz 1: Sadece Botanik DB kaynağı. "Medula" checkbox'ı disabled.
-        # Faz 2: Medula entegrasyonu (ileride).
-        P_AI_BG = "#E1F5FE"
-        p_ai = tk.Frame(row_teyit, bg=P_AI_BG, bd=1, relief="solid")
-        p_ai.pack(side="left", padx=(8, 2), pady=1, fill="y")
-        tk.Label(p_ai, text="🤖 AI:", bg=P_AI_BG, fg="#01579B",
-                 font=FONT_GROUP).pack(side="left", padx=(6, 2), pady=4)
-
-        # 2 checkbox — veri kaynağı seçimi
-        ai_cb_frame = tk.Frame(p_ai, bg=P_AI_BG)
-        ai_cb_frame.pack(side="left", padx=(0, 4), pady=2)
-        self.ai_kaynak_botanik = tk.BooleanVar(value=True)
-        self.ai_kaynak_medula = tk.BooleanVar(value=False)
-        cb_botanik = tk.Checkbutton(
-            ai_cb_frame, text="Botanik DB",
-            variable=self.ai_kaynak_botanik,
-            bg=P_AI_BG, fg="#01579B", selectcolor="#FFFFFF",
-            font=("Segoe UI", 8), padx=2, bd=0, anchor="w")
-        cb_botanik.pack(anchor="w")
-        cb_medula = tk.Checkbutton(
-            ai_cb_frame, text="Meduladan da",
-            variable=self.ai_kaynak_medula,
-            bg=P_AI_BG, fg="#999999", selectcolor="#FFFFFF",
-            font=("Segoe UI", 8), padx=2, bd=0, anchor="w",
-            state="disabled")
-        cb_medula.pack(anchor="w")
-        _Tooltip(cb_botanik,
-                 "İşaretli: Hasta'nın Botanik DB'deki rapor + ilaç geçmişi\n"
-                 "AI paketine eklenir (son 5 yıl rapor, 24 ay ilaç).")
-        _Tooltip(cb_medula,
-                 "Faz 2'de aktive olacak — şu an pasif.\n"
-                 "Aktif olduğunda: Hasta bize gelmediyse / başka eczaneden\n"
-                 "aldıysa Medula'dan tamamlayıcı ilaç+rapor verisi çekilir.")
-
-        # Model seçimi — varsayılan SONNET (dengeli + hızlı)
-        self.ai_model_var = tk.StringVar(value="sonnet")
-        ai_model_frame = tk.Frame(p_ai, bg=P_AI_BG)
-        ai_model_frame.pack(side="left", padx=(0, 4), pady=2)
-        tk.Label(ai_model_frame, text="Model:", bg=P_AI_BG, fg="#01579B",
-                 font=("Segoe UI", 8)).pack(anchor="w")
-        cmb_model = ttk.Combobox(
-            ai_model_frame, textvariable=self.ai_model_var,
-            values=["sonnet", "opus", "haiku"],
-            state="readonly", width=10, font=("Segoe UI", 8))
-        cmb_model.set("sonnet")        # default: Sonnet (Anthropic önerisi)
-        cmb_model.pack(anchor="w")
-        _Tooltip(cmb_model,
-                 "Sonnet = hızlı + dengeli (VARSAYILAN, önerilen)\n"
-                 "Opus   = en kaliteli (3-5x maliyet/süre)\n"
-                 "Haiku  = en hızlı/ucuz (basit kontrollere)")
-
-        # Ana buton + ayarlar
-        ai_btn_frame = tk.Frame(p_ai, bg=P_AI_BG)
-        ai_btn_frame.pack(side="left", padx=(0, 4), pady=2)
-        btn_ai = tk.Button(
-            ai_btn_frame, text="🤖 AI KONTROL",
-            bg="#0277BD", fg="white",
-            activebackground="#01579B", bd=1,
-            command=self._ai_kontrol_baslat,
-            font=FONT_BUTON, padx=10, pady=2,
-            cursor="hand2")
-        btn_ai.pack(side="top", fill="x", pady=(0, 2))
-        _Tooltip(btn_ai,
-                 "Anthropic Claude ile SUT uygunluk kontrolü.\n\n"
-                 "Akış: Tabloda SEÇİLİ satır(lar) → anonimleştirilmiş\n"
-                 "paket (TC=hash, ad GÖNDERİLMEZ, yaş/cinsiyet/teşhis/\n"
-                 "ilaç/rapor) → Claude API → UYGUN/UYGUN DEĞİL/ŞÜPHELİ/\n"
-                 "KONTROL EDİLEMEDİ etiketi + açıklama. Sonuç AI Karş.\n"
-                 "ve AI Açıklama sütunlarına yazılır.\n\n"
-                 "CLAUDE.md uyumlu: hasta TC + ad gönderilmez, sadece\n"
-                 "anonim klinik veri. KVKK Madde 6 uyumlu.")
-        # Önizle + Ayarlar — küçük buton satırı
-        ai_kucuk_frame = tk.Frame(ai_btn_frame, bg=P_AI_BG)
-        ai_kucuk_frame.pack(side="top", fill="x")
-        btn_ai_onizle = tk.Button(
-            ai_kucuk_frame, text="🔍 Önizle",
-            bg="#FFECB3", fg="#5D4037",
-            activebackground="#FFD54F", bd=1,
-            command=self._ai_paket_onizle,
-            font=("Segoe UI", 8, "bold"), padx=4, pady=2,
-            cursor="hand2")
-        btn_ai_onizle.pack(side="left", fill="x", expand=True, padx=(0, 1))
-        _Tooltip(btn_ai_onizle,
-                 "Seçili satır için AI'a gönderilecek\n"
-                 "TAM paket JSON'unu modal pencerede göster.\n"
-                 "AI çağrılmaz; sadece şeffaflık + KVKK kontrol için.\n"
-                 "Modaldan 'AI'a Gönder' ile direkt çağrı da yapılabilir.")
-        # SS yığını — üstte checkbox (F2 yakalama modu), altta sayaçlı buton
-        ss_yigin = tk.Frame(ai_kucuk_frame, bg=P_AI_BG)
-        ss_yigin.pack(side="left", padx=(1, 1), fill="y")
-        self.var_ss_f2_aktif = tk.BooleanVar(value=False)
-        cb_ss_f2 = tk.Checkbutton(
-            ss_yigin, text="F2 ile yakala",
-            variable=self.var_ss_f2_aktif,
-            bg=P_AI_BG, fg="#E65100", selectcolor="#FFFFFF",
-            font=("Segoe UI", 7, "bold"), padx=0, pady=0, bd=0,
-            command=self._ss_f2_aktif_degisti,
-        )
-        cb_ss_f2.pack(side="top", anchor="w")
-        _Tooltip(cb_ss_f2,
-                 "F2 ile arka planda ekran görüntüsü yakalama modu.\n\n"
-                 "AÇIK iken: Medula'dayken F2'ye basınca pencere\n"
-                 "AÇILMAZ — çerçeve seçim overlay'i gelir, maus bırakınca\n"
-                 "screenshot SEÇİLİ satırın ek-görsel paketine eklenir.\n"
-                 "Kaç tane istersen ekleyebilirsin.\n\n"
-                 "🤖 AI KONTROL butonuna basınca Botanik DB verisi +\n"
-                 "biriken screenshot'lar Claude'a birlikte gönderilir.")
-        btn_ai_ss = tk.Button(
-            ss_yigin, text="📸 SS (0)",
-            bg="#FFE0B2", fg="#E65100",
-            activebackground="#FFCC80", bd=1,
-            command=self._ai_screenshot_sorgu_baslat,
-            font=("Segoe UI", 8, "bold"), padx=4, pady=2,
-            cursor="hand2")
-        btn_ai_ss.pack(side="top", fill="x")
-        _Tooltip(btn_ai_ss,
-                 "📸 Ek Görsel Yönet — seçili satıra eklenmiş\n"
-                 "screenshot'ları gör/yönet (rename/sil/dosyadan ekle).\n"
-                 "Sayı = bu satırdaki ek görsel adedi.\n\n"
-                 "Gönderim: AI KONTROL ile birlikte otomatik.\n"
-                 "Yakalama: 'F2 ile yakala' checkbox'ı açıkken F2.")
-        btn_ai_ayar = tk.Button(
-            ai_kucuk_frame, text="⚙",
-            bg="#B3E5FC", fg="#01579B",
-            activebackground="#81D4FA", bd=1,
-            command=self._ai_ayarlar_ac,
-            font=("Segoe UI", 8, "bold"), padx=4, pady=2,
-            cursor="hand2")
-        btn_ai_ayar.pack(side="left", padx=(1, 0))
-        _Tooltip(btn_ai_ayar,
-                 "AI Ayarlar — backend (API/subprocess), API anahtarı,\n"
-                 "model, günlük limit, KVKK onayı, sistem prompt, çağrı logu.")
-        self.btn_ai_kontrol = btn_ai
-        self.btn_ai_ayar = btn_ai_ayar
-        self.btn_ai_onizle = btn_ai_onizle
-        self.btn_ai_ss = btn_ai_ss
+        # NOT: AI paneli row3'e (eylem grubuyla) taşındı + sadeleştirildi.
+        # Aşağıdaki kontrol değişkenleri (ai_kaynak_medula, ai_model_var) UI'dan
+        # kaldırılmış olsa da kod yolu için tanımları p_ai bloğunda korunur.
 
         # ─── PANEL: KONTROL BUTONLARI — Filtrelemeler'in YANINDA, sağ tarafta ───
         # İçinde: ▢ Sadece seçilenler checkbox + 🎯 Kontrol Butonları butonu
@@ -2408,6 +2293,106 @@ class AylikReceteSorguGUI:
                  "15 SUT/uyarı kontrol butonunu içeren popup açılır.\n"
                  "Bir kontrol seç → otomatik çalışır.\n\n"
                  "▢ 'Sadece seçilenler' işaretliyse SEÇİLİ satırlara uygulanır.")
+
+        # ─── PANEL: AI KONTROL (row3'te, Kontrol Butonları'nın sağında) ───
+        # Kullanıcı isteği 2026-05-23: sadeleştirilmiş tek satır eylem paneli.
+        # Görünür: ☑ Botanik DB | 🤖 AI KONTROL | 🔍 Önizle | 📸 SS(N) | ☐ F2 | ⚙
+        # Gizli (⚙ ayarlar penceresinde): "Meduladan da" disabled checkbox, Model
+        # combobox (varsayılan sonnet — Anthropic önerisi).
+        P_AI_BG = "#E1F5FE"
+        p_ai = tk.Frame(row3, bg=P_AI_BG, bd=1, relief="solid")
+        p_ai.pack(side="left", padx=2, pady=1, fill="y")
+        tk.Label(p_ai, text="🤖 AI:", bg=P_AI_BG, fg="#01579B",
+                 font=FONT_GROUP).pack(side="left", padx=(6, 4), pady=4)
+
+        # Botanik DB checkbox — tek görünür kaynak (Medula Faz 2)
+        self.ai_kaynak_botanik = tk.BooleanVar(value=True)
+        self.ai_kaynak_medula = tk.BooleanVar(value=False)   # ⚙ ayarlardan
+        self.ai_model_var = tk.StringVar(value="sonnet")     # ⚙ ayarlardan
+        cb_botanik = tk.Checkbutton(
+            p_ai, text="Botanik",
+            variable=self.ai_kaynak_botanik,
+            bg=P_AI_BG, fg="#01579B", selectcolor="#FFFFFF",
+            font=("Segoe UI", 8, "bold"), padx=2, bd=0)
+        cb_botanik.pack(side="left", padx=(0, 4), pady=4)
+        _Tooltip(cb_botanik,
+                 "Botanik DB rapor + ilaç geçmişi AI paketine eklenir\n"
+                 "(son 5 yıl rapor, 24 ay ilaç).\n"
+                 "Medula entegrasyonu Faz 2 — ⚙ ayarlardan etkinleşecek.")
+
+        btn_ai = tk.Button(
+            p_ai, text="🤖 AI KONTROL",
+            bg="#0277BD", fg="white",
+            activebackground="#01579B", bd=1,
+            command=self._ai_kontrol_baslat,
+            font=FONT_BUTON, padx=10, pady=4,
+            cursor="hand2")
+        btn_ai.pack(side="left", padx=(0, 2), pady=4)
+        _Tooltip(btn_ai,
+                 "Anthropic Claude ile SUT uygunluk kontrolü.\n"
+                 "Seçili satır(lar) → anonim paket → Claude API →\n"
+                 "UYGUN/UYGUN DEĞİL/ŞÜPHELİ/KE etiketi + açıklama\n"
+                 "(AI Karş. / AI Açıklama sütunlarına yazılır).\n\n"
+                 "Model + Medula kaynağı ⚙ ayarlardan değiştirilir.\n"
+                 "KVKK Madde 6 uyumlu: hasta TC + ad gönderilmez.")
+
+        btn_ai_onizle = tk.Button(
+            p_ai, text="🔍",
+            bg="#FFECB3", fg="#5D4037",
+            activebackground="#FFD54F", bd=1,
+            command=self._ai_paket_onizle,
+            font=("Segoe UI", 9, "bold"), padx=5, pady=3,
+            cursor="hand2")
+        btn_ai_onizle.pack(side="left", padx=1, pady=4)
+        _Tooltip(btn_ai_onizle,
+                 "🔍 Önizle — Seçili satır için AI'a gönderilecek paket\n"
+                 "JSON'unu modal pencerede göster. AI çağrılmaz; sadece\n"
+                 "şeffaflık + KVKK kontrol amaçlı.")
+
+        btn_ai_ss = tk.Button(
+            p_ai, text="📸 SS (0)",
+            bg="#FFE0B2", fg="#E65100",
+            activebackground="#FFCC80", bd=1,
+            command=self._ai_screenshot_sorgu_baslat,
+            font=("Segoe UI", 8, "bold"), padx=5, pady=3,
+            cursor="hand2")
+        btn_ai_ss.pack(side="left", padx=1, pady=4)
+        _Tooltip(btn_ai_ss,
+                 "📸 Ek Görsel Yönet — seçili satıra eklenmiş screenshot'ları\n"
+                 "gör/yönet. Sayı = ek görsel adedi.\n"
+                 "Yakalama: F2 checkbox AÇIK iken Medula'da F2.")
+
+        self.var_ss_f2_aktif = tk.BooleanVar(value=False)
+        cb_ss_f2 = tk.Checkbutton(
+            p_ai, text="F2",
+            variable=self.var_ss_f2_aktif,
+            bg=P_AI_BG, fg="#E65100", selectcolor="#FFFFFF",
+            font=("Segoe UI", 8, "bold"), padx=2, bd=0,
+            command=self._ss_f2_aktif_degisti)
+        cb_ss_f2.pack(side="left", padx=(2, 2), pady=4)
+        _Tooltip(cb_ss_f2,
+                 "F2 ile arka planda ekran görüntüsü yakalama modu.\n"
+                 "AÇIK iken: Medula'da F2 → çerçeve seçim overlay →\n"
+                 "screenshot SEÇİLİ satırın ek-görsel paketine eklenir.\n"
+                 "AI KONTROL'de paket ile birlikte Claude'a gönderilir.")
+
+        btn_ai_ayar = tk.Button(
+            p_ai, text="⚙",
+            bg="#B3E5FC", fg="#01579B",
+            activebackground="#81D4FA", bd=1,
+            command=self._ai_ayarlar_ac,
+            font=("Segoe UI", 10, "bold"), padx=5, pady=3,
+            cursor="hand2")
+        btn_ai_ayar.pack(side="left", padx=(1, 6), pady=4)
+        _Tooltip(btn_ai_ayar,
+                 "AI Ayarlar — API anahtarı, model (sonnet/opus/haiku),\n"
+                 "Medula kaynağı, günlük limit, KVKK onayı, sistem prompt,\n"
+                 "çağrı logu.")
+
+        self.btn_ai_kontrol = btn_ai
+        self.btn_ai_ayar = btn_ai_ayar
+        self.btn_ai_onizle = btn_ai_onizle
+        self.btn_ai_ss = btn_ai_ss
 
         # NOT: Manuel Teyit butonları sağ tık menüsüne taşındı
         # (ana ekranda hücre içerik panelini daraltıyordu).
@@ -7432,6 +7417,11 @@ class AylikReceteSorguGUI:
               'Yol-ç(2) — LDL>70',
               'Yol-İdame —'),
              'Statin başlama (a)∨(b)∨(c)∨(ç₁)∨(ç₂)∨İdame'),
+            # ARB EK-4/F m.51: 4 alternatif ödeme yolu (Y1∨Y2∨Y3∨Y4)
+            # SUT lafzı + SGK 17.10.2016 duyurusu + aile hek raporsuz 1 kutu
+            # genel hükmü → 4 paralel yol, en az 1 tam ise UYGUN.
+            (('Y-1:', 'Y-2:', 'Y-3:', 'Y-4:'),
+             'ARB ödeme yolu Y1∨Y2∨Y3∨Y4'),
         ]
         nway_eslesme = {}
         for prefixler, baslik in nway_listesi:
@@ -10850,6 +10840,18 @@ class AylikReceteSorguGUI:
             label=f"ℹ DİĞER RAPOR UYGUN ({sec_sayisi} satır)",
             command=lambda: self._ana_teyit_kaydet(
                 recete_teyit_db.TEYIT_DIGER_RAPOR))
+        teyit_menu.add_command(
+            label=f"≈ ŞARTLI UYGUN ({sec_sayisi} satır)",
+            command=lambda: self._ana_teyit_kaydet(
+                recete_teyit_db.TEYIT_SARTLI_UYGUN))
+        teyit_menu.add_command(
+            label=f"⚠ MANUEL KONTROL ({sec_sayisi} satır)",
+            command=lambda: self._ana_teyit_kaydet(
+                recete_teyit_db.TEYIT_MANUEL_KONTROL))
+        teyit_menu.add_command(
+            label=f"⚕ TIBBEN UYGUN DEĞİL ({sec_sayisi} satır)",
+            command=lambda: self._ana_teyit_kaydet(
+                recete_teyit_db.TEYIT_TIBBEN_UYGUN_DEGIL))
         teyit_menu.add_separator()
         teyit_menu.add_command(
             label=f"🗑 Teyiti Kaldır ({sec_sayisi} satır)",
