@@ -1195,6 +1195,10 @@ def sut_kategorisi_tespit_et(ilac_sonuc: Dict) -> Optional[str]:
                 ('GOZ DAMLA', 'GÖZ DAMLA', 'GOZ EM', 'GÖZ EM',
                  'GOZ COZ', 'GÖZ ÇÖZ', 'OPHTH', 'EYE DROP')):
             return 'GOZ_LUBRIKAN'
+    # HEMANGIOL (propranolol oral çözelti) → SUT 4.2.62 bebek hemanjiyomu.
+    # Tablet propranolol antihipertansif olarak kalır.
+    if _cesitli_hemanjiyom_eslesti_mi(ilac_adi_upper, etkin_madde_raw):
+        return 'CESITLI_HEMANJIYOM'
 
     # 1. SUT maddesi ile eşleştir (en güvenilir)
     sut_maddesi = ilac_sonuc.get('sut_maddesi')
@@ -4527,21 +4531,30 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
         'aile_hekimi': aile_hekimi,
     }
 
-    # SartSonuc listesi — atomik şema sekmeleri için
+    # ═══════════════════════════════════════════════════════════════════
+    # 4-YOLAK PARALEL MODEL (SUT EK-4/F m.51: Y1 ∨ Y2 ∨ Y3 ∨ Y4)
+    # ═══════════════════════════════════════════════════════════════════
+    # SUT lafzı 4 ALTERNATİF yol içerir — aralarında VEYA, içlerinde VE:
+    #   Y-1: Mono ARB raporlu                          (raporlu + mono)
+    #   Y-2: ARB+HCT raporlu — SGK 17.10.2016 istisnası (raporlu + HCT-only)
+    #   Y-3: ARB+CCB/ACE/3'lü raporlu + monoterapi      (raporlu + kombi diğer)
+    #   Y-4: Raporsuz + aile hekimi + ayda ≤1 kutu
+    # Üst-VEYA matematiği: en az 1 yolun TÜM atomları VAR ise → UYGUN
+    # Render: `Y-` prefix'li grup adları → _klasik_yolak_modu_ciz otomatik
+    # 4 paralel kol çizer (klop pattern).
+    # ═══════════════════════════════════════════════════════════════════
     sartlar: List[SartSonuc] = []
+    brans_pratisyen = ('PRATISYEN' in doktor_brans
+                       or 'PRATİSYEN' in doktor_brans)
+    detaylar['yetki_kaynagi'] = yetki_kaynagi
 
-    # Grup-A: İlaç tipi tespiti (bilgi grubu)
+    # ── İlaç tipi (bilgi grubu — hesaplama dışı) ──────────────────────
     g_tip = 'İlaç tipi (bilgi)'
     sartlar.append(SartSonuc(
         'ARB etken madde',
-        SartDurumu.VAR,  # bu fonksiyona girildiyse ARB kapsamında
+        SartDurumu.VAR,
         f'Etken madde: {etkin_madde or ilac_adi}',
         'etkin_madde/ilac_adi', grup=g_tip))
-    sartlar.append(SartSonuc(
-        'Kombinasyon (ARB + diğer antihipertansif)',
-        SartDurumu.VAR if is_kombi else SartDurumu.YOK,
-        ('Kombi tespit edildi' if is_kombi else 'Mono ARB'),
-        'etkin_madde', grup=g_tip))
     if is_kombi:
         kombi_turu = ('HCT (diüretik)' if is_hct_only_kombi
                        else ('CCB+HCT 3\'lü' if (ccb_var and hct_var)
@@ -4551,211 +4564,176 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
                                                else 'belirsiz')))))
         sartlar.append(SartSonuc(
             'Kombi türü',
-            SartDurumu.VAR,
-            kombi_turu, 'etkin_madde', grup=g_tip))
-
-    # Grup-R: Rapor durumu (bilgi)
-    g_rap = 'Rapor durumu (bilgi)'
-    sartlar.append(SartSonuc(
-        'Rapor kodu',
-        SartDurumu.VAR if is_raporlu else SartDurumu.YOK,
-        (f'rapor_kodu={rapor_kodu}' if is_raporlu
-         else 'Raporsuz reçete'),
-        'rap_kod', grup=g_rap))
-
-    # ── Grup-Y: Yetki/aile hekimi (bilgi grubu) ────────────────────
-    g_yetki = 'Yetki — aile hekimi (bilgi)'
-    sartlar.append(SartSonuc(
-        'Aile hekimi yetkisi (branş/kurum/tesis ≥1)',
-        SartDurumu.VAR if aile_hekimi else SartDurumu.YOK,
-        (f'Yetki kaynağı: {yetki_kaynagi}' if aile_hekimi
-         else f'Doktor: {doktor_brans or "bilinmiyor"}, kurum: '
-              f'{kurum_adi or "bilinmiyor"}'),
-        'doktor_uzmanligi/kurum/tesis', grup=g_yetki))
-    detaylar['yetki_kaynagi'] = yetki_kaynagi
-
-    # ── RAPORLU SENARYO ────────────────────────────────────────────
-    if is_raporlu:
-        if is_mono:
-            # Mono ARB raporlu → her durumda UYGUN
-            g_mono_rap = 'Mono ARB raporlu yolu'
-            sartlar.append(SartSonuc(
-                'Mono ARB + rapor varlığı', SartDurumu.VAR,
-                f'rapor_kodu={rapor_kodu}, mono ARB',
-                'rap_kod/etkin_madde', grup=g_mono_rap))
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN,
-                mesaj=(f'Mono ARB raporlu (rap.kod {rapor_kodu}) — '
-                       'doz/uygulama planı/süre belirtme zorunluluğu yok'),
-                detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
-                aranan_ibare='Mono ARB + rapor varlığı')
-
-        # SGK 17.10.2016 ISTISNASI — ARB + HCT (diüretik) raporlu kombi
-        if is_hct_only_kombi:
-            g_hct = 'Kombi ARB+HCT (SGK 17.10.2016 istisnası)'
-            sartlar.append(SartSonuc(
-                'ARB+HCT diüretik kombi (1300/51 kapsam DIŞINDA)',
-                SartDurumu.VAR,
-                'SGK 17.10.2016 duyurusu — monoterapi ibaresi aranmaz',
-                'etkin_madde', grup=g_hct))
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN,
-                mesaj=(f'ARB+HCT (diüretik) kombi raporlu '
-                       f'(rap.kod {rapor_kodu}) — SGK 17.10.2016: diüretikli '
-                       'kombinasyonlar 1300/51 kapsamı dışında'),
-                detaylar={**detaylar,
-                           'istisna': 'SGK 17.10.2016 — diüretik kombi'},
-                sut_kurali=sut_kurali, sartlar=sartlar,
-                aranan_ibare=('ARB + HCT kombi (SGK 17.10.2016 diüretik '
-                              'istisnası)'),
-                uyari=('Bilgi: bazı SGK il müdürlükleri istisnayı uygulamayıp '
-                       'kesinti yapabilir — bölgesel uygulama farklılığı'))
-
-        # Kombi ARB raporlu (CCB / ACE-i / 3'lü) — monoterapi yetersizliği aranır
-        # I/İ/ı → i tek-noktaya indirgeme
-        ml = (tum_metin.replace('İ', 'i').replace('I', 'i')
-                       .replace('ı', 'i').lower())
-        mono_ibare_var, eslesen_kelime = _arb_atom_monoterapi_ibaresi(ml)
-
-        g_kombi_diger = 'Kombi ARB (CCB/ACE/3\'lü) — monoterapi yetersizliği'
+            SartDurumu.VAR, kombi_turu, 'etkin_madde', grup=g_tip))
+    else:
         sartlar.append(SartSonuc(
-            'Monoterapi yetersizliği ibaresi raporda',
-            SartDurumu.VAR if mono_ibare_var else SartDurumu.YOK,
-            (f'İbare tespit: "{eslesen_kelime}"' if mono_ibare_var
-             else 'Ibare bulunamadı — SUT EK-4/F m.51 raporda belirtilmeli'),
-            'rapor_metni', grup=g_kombi_diger))
+            'Kombi türü', SartDurumu.YOK, 'Mono ARB', 'etkin_madde',
+            grup=g_tip))
 
-        if mono_ibare_var:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN,
-                mesaj=(f'Kombi ARB raporlu (rap.kod {rapor_kodu}) — '
-                       'monoterapi yetersizliği ibaresi raporda mevcut'),
-                detaylar={**detaylar, 'eslesen_ibare': eslesen_kelime},
-                sut_kurali=sut_kurali, sartlar=sartlar,
-                aranan_ibare='Monoterapi yetersizliği ibaresi (raporda)',
-                bulunan_metin=_eslesen_parcayi_bul(tum_metin, eslesen_kelime))
+    # ── Y-1: Mono ARB raporlu ─────────────────────────────────────────
+    g_y1 = 'Y-1: Mono ARB raporlu'
+    sartlar.append(SartSonuc(
+        'Mono ARB ilaç (kombi DEĞİL)',
+        SartDurumu.VAR if is_mono else SartDurumu.YOK,
+        ('Mono ARB' if is_mono else 'Kombi ARB (içerik: belirsiz)'),
+        'etkin_madde', grup=g_y1))
+    sartlar.append(SartSonuc(
+        'Rapor kodu VAR',
+        SartDurumu.VAR if is_raporlu else SartDurumu.YOK,
+        (f'rapor_kodu={rapor_kodu}' if is_raporlu else 'Raporsuz'),
+        'rap_kod', grup=g_y1))
 
-        # ── DİĞER RAPOR BYPASS — aktif raporda ibare yok ama hastanın
-        #    geçmiş raporlarından birinde varsa bypass uygulanır.
-        #    Bu, ARB kombi için en yaygın bypass kullanım senaryosudur:
-        #    hekim önceki raporda monoterapi yetersizliğini belgelediği için
-        #    yenileme raporuna tekrar yazmamış olabilir. ─────────────────
-        bypass = None
+    # ── Y-2: ARB+HCT raporlu (SGK 17.10.2016 diüretik istisnası) ──────
+    g_y2 = 'Y-2: ARB+HCT raporlu (SGK 17.10.2016 istisnası)'
+    sartlar.append(SartSonuc(
+        'Sadece ARB+HCT diüretik kombi (CCB/ACE içermez)',
+        SartDurumu.VAR if is_hct_only_kombi else SartDurumu.YOK,
+        ('SGK 17.10.2016 — 1300/51 kapsam DIŞINDA'
+         if is_hct_only_kombi
+         else ('Mono ARB' if is_mono
+               else ('CCB/ACE/3\'lü içeriyor — istisna geçersiz'))),
+        'etkin_madde', grup=g_y2))
+    sartlar.append(SartSonuc(
+        'Rapor kodu VAR',
+        SartDurumu.VAR if is_raporlu else SartDurumu.YOK,
+        (f'rapor_kodu={rapor_kodu}' if is_raporlu else 'Raporsuz'),
+        'rap_kod', grup=g_y2))
+
+    # ── Y-3: ARB+CCB/ACE/3'lü raporlu + monoterapi ibaresi ────────────
+    g_y3 = 'Y-3: ARB+CCB/ACE/3\'lü raporlu + monoterapi ibaresi'
+    is_kombi_diger = is_kombi and not is_hct_only_kombi
+    sartlar.append(SartSonuc(
+        'ARB kombi (CCB ∨ ACE ∨ 3\'lü — HCT-only DEĞİL)',
+        SartDurumu.VAR if is_kombi_diger else SartDurumu.YOK,
+        ('Kombi tipi: ' + ('CCB' if ccb_var and not hct_var
+                            else ('ACE-i' if ace_var and not hct_var
+                                  else '3\'lü/diğer'))
+         if is_kombi_diger
+         else ('Sadece ARB+HCT — Y-2 yolu' if is_hct_only_kombi
+               else 'Mono ARB — Y-1 yolu')),
+        'etkin_madde', grup=g_y3))
+    sartlar.append(SartSonuc(
+        'Rapor kodu VAR',
+        SartDurumu.VAR if is_raporlu else SartDurumu.YOK,
+        (f'rapor_kodu={rapor_kodu}' if is_raporlu else 'Raporsuz'),
+        'rap_kod', grup=g_y3))
+    # Monoterapi ibaresi (KRİTİK — bypass adayı)
+    ml = (tum_metin.replace('İ', 'i').replace('I', 'i')
+                   .replace('ı', 'i').lower())
+    mono_ibare_var, eslesen_kelime = _arb_atom_monoterapi_ibaresi(ml)
+    sartlar.append(SartSonuc(
+        'Raporda "monoterapi ile kan basıncı sağlanamadı" ibaresi',
+        SartDurumu.VAR if mono_ibare_var else SartDurumu.YOK,
+        (f'İbare: "{eslesen_kelime}"' if mono_ibare_var
+         else 'İbare aktif raporda yok'),
+        'rapor_metni', grup=g_y3))
+
+    # ── Y-4: Raporsuz + aile hekimi + ayda ≤1 kutu ────────────────────
+    g_y4 = 'Y-4: Raporsuz + aile hekimi + ayda ≤1 kutu'
+    sartlar.append(SartSonuc(
+        'Rapor kodu YOK (raporsuz reçete)',
+        SartDurumu.VAR if not is_raporlu else SartDurumu.YOK,
+        ('Raporsuz' if not is_raporlu else f'rapor_kodu={rapor_kodu}'),
+        'rap_kod', grup=g_y4))
+    sartlar.append(SartSonuc(
+        'Aile hekimi yetkisi (branş ∨ kurum ∨ tesis)',
+        SartDurumu.VAR if aile_hekimi
+        else (SartDurumu.KONTROL_EDILEMEDI if brans_pratisyen
+              else SartDurumu.YOK),
+        (f'Yetki: {yetki_kaynagi}' if aile_hekimi
+         else ('Pratisyen — sertifika/ASM tespit edilemedi'
+               if brans_pratisyen
+               else f'Branş: {doktor_brans or "?"}, '
+                    f'Kurum: {kurum_adi or "?"}')),
+        'doktor_uzmanligi/kurum/tesis', grup=g_y4))
+    sartlar.append(SartSonuc(
+        'Aylık kutu sayısı ≤ 1',
+        SartDurumu.YOK if kutu_asildi else SartDurumu.VAR,
+        f'Kutu: {kutu:g}', 'kutu_sayisi', grup=g_y4))
+
+    # ── DİĞER RAPOR BYPASS — Y-3 monoterapi atomu için ────────────────
+    # Aktif raporda ibare yok ama hastanın geçmiş raporlarından birinde
+    # varsa → atom VAR + bypass_kaynak. Y-3 yolağı bu sayede tamamlanabilir.
+    bypass_kaydi = None
+    if not mono_ibare_var:
         bypass_tc = (ilac_sonuc.get('hasta_tc') or '').strip()
         bypass_tno = (ilac_sonuc.get('rapor_takip_no') or '').strip()
         if bypass_tc:
             try:
                 from recete_kontrol.diger_rapor_bypass import (
                     gecmis_raporlarda_ibare_ara, IBARELER_ARB_MONOTERAPI)
-                bypass = gecmis_raporlarda_ibare_ara(
+                bypass_kaydi = gecmis_raporlarda_ibare_ara(
                     bypass_tc, list(IBARELER_ARB_MONOTERAPI),
                     aktif_rapor_takip_no=bypass_tno,
                     kategori='HIPERTANSIYON')
             except Exception as e:
                 logger.debug("ARB monoterapi bypass sorgu hatası: %s", e)
-
-        if bypass:
-            # Monoterapi atomu durumunu bypass ile VAR'a yükselt
+        if bypass_kaydi:
             for sart in sartlar:
-                if 'Monoterapi yetersizliği ibaresi' in sart.ad:
+                if 'monoterapi' in sart.ad.lower() and sart.grup == g_y3:
                     sart.durum = SartDurumu.VAR
-                    sart.neden = f'Diğer rapor bypass: {bypass["ozet"]}'
-                    sart.bypass_kaynak = bypass["ozet"]
+                    sart.neden = f'BYPASS: {bypass_kaydi["ozet"]}'
+                    sart.bypass_kaynak = bypass_kaydi["ozet"]
                     break
+
+    # ── ÜST-VEYA matematiği: en az 1 yolun tüm atomları VAR ise UYGUN ──
+    yolaklar = [
+        ('Y-1', g_y1, 'Mono ARB raporlu'),
+        ('Y-2', g_y2, 'ARB+HCT raporlu (diüretik istisnası)'),
+        ('Y-3', g_y3, 'Kombi raporlu + monoterapi ibaresi'),
+        ('Y-4', g_y4, 'Raporsuz + aile hekimi + ≤1 kutu'),
+    ]
+    aktif_yol_bilgi = None     # (yol_kod, yol_ad)
+    bypass_yol = False         # bypass'lı atomla tamamlanmış yol mu?
+    yol_ke_var = False
+    for yol_kod, yol_grup, yol_ad in yolaklar:
+        yol_atomlari = [s for s in sartlar if s.grup == yol_grup]
+        durumlar = [s.durum for s in yol_atomlari]
+        if all(d == SartDurumu.VAR for d in durumlar):
+            aktif_yol_bilgi = (yol_kod, yol_ad)
+            if any(getattr(s, 'bypass_kaynak', None) for s in yol_atomlari):
+                bypass_yol = True
+            break
+        if SartDurumu.KONTROL_EDILEMEDI in durumlar:
+            yol_ke_var = True
+
+    if aktif_yol_bilgi:
+        yol_kod, yol_ad = aktif_yol_bilgi
+        if bypass_yol and bypass_kaydi:
             return KontrolRaporu(
                 sonuc=KontrolSonucu.DIGER_RAPOR_UYGUN,
-                mesaj=(f'Kombi ARB raporlu (rap.kod {rapor_kodu}) — '
-                       f'aktif raporda monoterapi ibaresi yok; hastanın '
-                       f'diğer raporunda bulundu: {bypass["ozet"]}'),
-                detaylar={**detaylar, 'bypass': bypass},
+                mesaj=(f'{yol_kod} ({yol_ad}) — aktif raporda monoterapi '
+                       f'ibaresi yok; hastanın diğer raporunda bulundu: '
+                       f'{bypass_kaydi["ozet"]}'),
+                detaylar={**detaylar, 'bypass': bypass_kaydi,
+                          'aktif_yol': yol_kod},
                 sut_kurali=sut_kurali, sartlar=sartlar,
                 aranan_ibare='Monoterapi yetersizliği ibaresi (diğer raporda bulundu)',
-                bulunan_metin=bypass.get('snippet', ''))
-
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=(f'Kombi ARB raporlu (rap.kod {rapor_kodu}) — '
-                   'monoterapi yetersizliği ibaresi raporda bulunamadı'),
-            detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
-            uyari=('SUT EK-4/F m.51: ARB+CCB/ACE-i/3\'lü kombi için raporda '
-                   '"monoterapi ile kan basıncı yeterli oranda kontrol altına '
-                   'alınamadığı" ibaresi BULUNMALIDIR — yoksa şart sağlanmıyor'),
-            aranan_ibare='monoterapi / tek ilaç yetersiz / kombinasyon endikasyonu')
-
-    # ── RAPORSUZ SENARYO ───────────────────────────────────────────
-    brans_pratisyen = ('PRATISYEN' in doktor_brans
-                       or 'PRATİSYEN' in doktor_brans)
-
-    g_raporsuz = 'Raporsuz ARB yolu — aile hekimi + ≤1 kutu'
-    sartlar.append(SartSonuc(
-        'Aylık kutu sayısı ≤ 1',
-        SartDurumu.YOK if kutu_asildi else SartDurumu.VAR,
-        f'Kutu: {kutu:g}', 'kutu_sayisi', grup=g_raporsuz))
-    # aile hekimi şartı zaten g_yetki grubunda; burada referans şart ekleyelim
-    sartlar.append(SartSonuc(
-        'Reçete yazma yetkisi: aile hekimi',
-        SartDurumu.VAR if aile_hekimi
-        else (SartDurumu.KONTROL_EDILEMEDI if brans_pratisyen
-              else SartDurumu.YOK),
-        (f'Aile hekimi yetkisi: {yetki_kaynagi}' if aile_hekimi
-         else (f'Pratisyen hekim — sertifika/ASM kaydı tespit edilemedi'
-               if brans_pratisyen
-               else f'Branş: {doktor_brans or "bilinmiyor"}, '
-                    f'kurum: {kurum_adi or "bilinmiyor"}')),
-        'doktor_uzmanligi/kurum/tesis', grup=g_raporsuz))
-
-    # ── Karar ──
-    if aile_hekimi and not kutu_asildi:
-        kutu_str = f'{kutu:g}' if kutu else '≤1'
+                bulunan_metin=bypass_kaydi.get('snippet', ''))
         return KontrolRaporu(
             sonuc=KontrolSonucu.UYGUN,
-            mesaj=(f'Raporsuz ARB — aile hekimi yetkisi ({yetki_kaynagi}) '
-                   f'+ {kutu_str} kutu (SUT: aile hekimi raporsuz ayda 1 kutu)'),
-            detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
-            aranan_ibare='Aile hekimliği sertifikası VEYA ASM kurumu + ayda ≤1 kutu',
-            bulunan_metin=yetki_kaynagi)
+            mesaj=f'{yol_kod} ({yol_ad}) — tüm şartlar sağlandı',
+            detaylar={**detaylar, 'aktif_yol': yol_kod},
+            sut_kurali=sut_kurali, sartlar=sartlar,
+            aranan_ibare=yol_ad)
 
-    if aile_hekimi and kutu_asildi:
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=(f'Raporsuz ARB — aile hekimi yetkisi var ({yetki_kaynagi}) '
-                   f'ama {kutu:g} kutu (SUT sınırı: ayda 1 kutu)'),
-            detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
-            uyari='Raporsuz ARB ayda en fazla 1 kutu — fazlası için rapor şart',
-            aranan_ibare='Raporsuz ayda 1 kutu sınırı',
-            bulunan_metin=yetki_kaynagi)
-
-    if kutu_asildi:
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=(f'Raporsuz ARB — yazan branş '
-                   f'"{doktor_brans or "bilinmiyor"}", kurum '
-                   f'"{kurum_adi or "bilinmiyor"}", {kutu:g} kutu '
-                   '(SUT: raporsuz sadece aile hekimi + ayda 1 kutu)'),
-            detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
-            uyari='Raporsuz ARB sadece aile hekimi tarafından ve ayda 1 kutu',
-            aranan_ibare='Aile hekimi yetkisi + 1 kutu sınırı')
-
-    if brans_pratisyen:
+    if yol_ke_var:
         return KontrolRaporu(
             sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-            mesaj=(f'Raporsuz ARB — pratisyen hekim '
-                   f'(kurum: {kurum_adi or "bilinmiyor"}) — '
-                   'aile hekimi sertifikası/ASM kaydı tespit edilemedi'),
+            mesaj=('Hiçbir yolun (Y1∨Y2∨Y3∨Y4) tüm şartları net olarak '
+                   'sağlanmadı; bir yolda KE atom var — manuel kontrol'),
             detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
-            uyari=('Pratisyen hekim aile hekimliği sertifikalı veya ASM\'de '
-                   'çalışıyor olabilir — manuel kontrol gerekli'),
-            aranan_ibare='Aile hekimi sertifikası VEYA ASM kurumu')
+            uyari='SUT EK-4/F m.51 — 4 yoldan biri eksik/şüpheli',
+            aranan_ibare='Y1: mono+rap ∨ Y2: HCT+rap ∨ Y3: kombi+rap+mono ibare ∨ Y4: aile hek.+1 kutu')
 
     return KontrolRaporu(
-        sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-        mesaj=(f'Raporsuz ARB — yazan branş "{doktor_brans or "bilinmiyor"}", '
-               f'kurum "{kurum_adi or "bilinmiyor"}" '
-               '(SUT: raporsuz reçete sadece aile hekimlerince)'),
+        sonuc=KontrolSonucu.UYGUN_DEGIL,
+        mesaj=('SUT EK-4/F m.51: 4 yoldan hiçbiri tamamlanmadı '
+               '(Y1 mono+rap, Y2 HCT+rap, Y3 kombi+rap+monoterapi ibare, '
+               'Y4 raporsuz+aile hek+≤1 kutu)'),
         detaylar=detaylar, sut_kurali=sut_kurali, sartlar=sartlar,
-        uyari=('SUT EK-4/F M.51: Raporsuz ARB için aile hekimi yetkisi '
-               '(branşta sertifika veya ASM kurumu) gerekli'),
-        aranan_ibare='Aile hekimi (sertifika veya ASM kurumu)')
+        uyari='ARB için en az 1 ödeme yolu sağlanmalıdır',
+        aranan_ibare='Y1 ∨ Y2 ∨ Y3 ∨ Y4 (alternatif yollar)')
 
 
 # Hastanın "diğer aktif raporlarında" hangi tanı kategorilerine bakılacağını
@@ -5104,6 +5082,25 @@ def kontrol_diyabet_dpp4_sglt2(ilac_sonuc: Dict) -> KontrolRaporu:
     rapor = _kontrol_diyabet_dpp4_sglt2_impl(ilac_sonuc, sartlar)
     if not rapor.sartlar:
         rapor.sartlar = list(sartlar)
+
+    # GUI 'Diğer Yolaklar' accordion paneli için metadata enjeksiyonu —
+    # diyabet_4_2_38 atomik motorun dispatcher mantığını kullanır.
+    try:
+        from recete_kontrol.diyabet_4_2_38 import (
+            yolak_belirle, DIYABET_YOLAK_METADATA, _dia_diger_yolaklar)
+        aktif = yolak_belirle(ilac_sonuc)
+        if aktif:
+            if rapor.detaylar is None:
+                rapor.detaylar = {}
+            rapor.detaylar.setdefault('yolak', aktif)
+            rapor.detaylar['diger_yolaklar'] = _dia_diger_yolaklar(
+                aktif, ilac_sonuc)
+            rapor.detaylar['aktif_yolak_meta'] = DIYABET_YOLAK_METADATA.get(
+                aktif, {'ad': aktif, 'sut': '?'})
+            rapor.detaylar['kontrol_modulu'] = 'diyabet'
+    except Exception:
+        pass
+
     return rapor
 
 
@@ -23045,13 +23042,44 @@ _CESITLI_BPH_TICARI = (
 _CESITLI_RANOLAZIN_ETKEN = ('RANOLAZIN', 'RANOLAZINE')
 _CESITLI_RANOLAZIN_TICARI = ('RANEXA',)
 
+# Hemanjiyom — Propranolol HCl oral çözelti (SUT 4.2.62).
+# 2026-05-23: HEMANGIOL marka adı ve "oral çözelti" form ibaresi ile tespit.
+# Tablet propranolol antihipertansif olarak kalır; sadece oral çözelti formu
+# bebek hemanjiyomu (5 hafta - 5 ay) endikasyonuna yönelir.
+_CESITLI_HEMANJIYOM_TICARI = ('HEMANGIOL',)
+_CESITLI_HEMANJIYOM_FORM_IBARELERI = (
+    'ORAL ÇÖZELTI', 'ORAL COZELTI', 'ORAL CÖZELTI', 'ORAL ÇOZELTI',
+    'ORAL SOLUSYON', 'ORAL SOLÜSYON', 'ORAL SOLUTION',
+    'OR. COZELTI', 'OR.COZELTI', 'OR. ÇÖZELTI',
+)
+
+
+def _cesitli_hemanjiyom_eslesti_mi(ilac_adi: str, etkin_madde: str) -> bool:
+    """HEMANGIOL (propranolol oral çözelti — SUT 4.2.62) tespiti.
+
+    İki yoldan biri yeterli:
+      1) İlaç adında 'HEMANGIOL' marka geçer (en güvenilir).
+      2) İlaç adı 'PROPRANOLOL' ve form ibaresi 'ORAL ÇÖZELTI/SOLÜSYON' var
+         (ileride başka jenerik propranolol oral çözeltiler çıkarsa diye).
+
+    Tablet/IV/diğer formlardaki propranolol antihipertansif kapsamında kalır.
+    """
+    ad = (ilac_adi or '').upper()
+    et = (etkin_madde or '').upper()
+    if any(t in ad for t in _CESITLI_HEMANJIYOM_TICARI):
+        return True
+    if 'PROPRANOLOL' in (ad + ' ' + et):
+        if any(f in ad for f in _CESITLI_HEMANJIYOM_FORM_IBARELERI):
+            return True
+    return False
+
 
 def _cesitli_alt_grup_tespit(ilac_adi: str, etkin_madde: str,
                               atc_kodu: str) -> str:
     """Satırın ÇEŞİTLİ kapsamına girip girmediğini ve hangi alt gruba ait
     olduğunu tespit eder.
 
-    Dönüş: 'URINER' / 'GOZYASI' / 'BPH' / 'RANOLAZIN' / 'NONE'
+    Dönüş: 'URINER' / 'GOZYASI' / 'BPH' / 'RANOLAZIN' / 'HEMANJIYOM' / 'NONE'
 
     ATC önceliği:
       - G04BD*  → URINER (üriner antispazmotik / Mirabegron)
@@ -23059,10 +23087,15 @@ def _cesitli_alt_grup_tespit(ilac_adi: str, etkin_madde: str,
       - S01XA / S01KA / S01X  → GOZYASI (oftalmoloji)
       - N06AX21 → URINER (Duloksetin — üriner endikasyonu için)
       - C01EB18 → RANOLAZIN (SUT 4.2.15.F — kronik stabil angina)
+      - C07AA05 + oral çözelti / HEMANGIOL → HEMANJIYOM (SUT 4.2.62)
     """
     ad = (ilac_adi or '').upper()
     et = (etkin_madde or '').upper()
     a = (atc_kodu or '').upper().strip()
+
+    # HEMANJIYOM önce: propranolol oral çözelti antihipertansiften ayrılır.
+    if _cesitli_hemanjiyom_eslesti_mi(ad, et):
+        return 'HEMANJIYOM'
 
     if a.startswith('G04BD'):
         return 'URINER'
@@ -23563,13 +23596,509 @@ def kontrol_cesitli_bph_alfa_bloker(ilac_sonuc: Dict) -> KontrolRaporu:
     )
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# HEMANJIYOM — SUT 4.2.62 Propranolol HCl Oral Çözelti (HEMANGIOL)
+# ═══════════════════════════════════════════════════════════════════════
+# SUT 4.2.62 (Ek:RG-16/6/2020-31157 Mükerrer) — bebek hemanjiyomu tedavisi.
+#
+# Atomik şartlar (devre şeması):
+#   A1+A2: yaş aralığı 5 hafta - 5 ay (AND, tek atom — gün hesabı)
+#   A3:    sistemik tedavi gerektiren / morbidite hemanjiyomu (rapor metni)
+#   A4:    alt madde (a) hayat tehdidi VEYA (b) ülsere VEYA (c) yara izi (≥1)
+#   A5:    rapor doktor branşı (5 uzmandan biri)
+#   A6:    reçete hekim branşı (aynı 5 uzmandan biri)
+#   A7:    rapor süresi ≤ 6 ay
+#   A8:    toplam tedavi başlangıçtan itibaren ≤ 6 ay
+
+_HEMANJIYOM_YETKILI_BRANSLAR = (
+    'COCUK HEMATOLOJI VE ONKOLOJI', 'ÇOCUK HEMATOLOJI VE ONKOLOJI',
+    'ÇOCUK HEMATOLOJİ VE ONKOLOJİ',
+    'COCUK HEMATOLOJI', 'ÇOCUK HEMATOLOJI', 'ÇOCUK HEMATOLOJİ',
+    'PEDIATRIK HEMATOLOJI', 'PEDİATRİK HEMATOLOJİ',
+    'COCUK ONKOLOJI', 'ÇOCUK ONKOLOJI', 'ÇOCUK ONKOLOJİ',
+    'PEDIATRIK ONKOLOJI', 'PEDİATRİK ONKOLOJİ',
+    'COCUK KARDIYOLOJI', 'ÇOCUK KARDIYOLOJI', 'ÇOCUK KARDİYOLOJİ',
+    'PEDIATRIK KARDIYOLOJI', 'PEDİATRİK KARDİYOLOJİ',
+    'NEONATOLOJI', 'NEONATOLOJİ',
+    'YENIDOGAN', 'YENİDOĞAN',
+)
+
+
+def _hemanjiyom_dogum_tarihi_oku(ilac_sonuc: Dict):
+    """Hasta doğum tarihini date olarak döndür (gün hesabı için).
+
+    Dönüş: datetime.date veya None. Rapor metninden yaş okunmaz (DB-only).
+    """
+    from datetime import date, datetime
+    dogum = (ilac_sonuc.get('dogum_tarihi') or
+             ilac_sonuc.get('hasta_dogum_tarihi'))
+    if isinstance(dogum, date):
+        return dogum
+    if not dogum:
+        return None
+    s = str(dogum).strip()
+    for fmt in ('%Y-%m-%d', '%d.%m.%Y', '%d/%m/%Y', '%Y/%m/%d',
+                '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S'):
+        try:
+            return datetime.strptime(s[:len(fmt) + 4], fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _hemanjiyom_atom_yas_araligi(ilac_sonuc: Dict) -> SartSonuc:
+    """A1+A2: Yaş 5 hafta (≥35 gün) — 5 ay (≤ ~152 gün, takvim ayı).
+
+    Rapor metni KULLANILMAZ. Hasta doğum tarihi yoksa KE.
+    hasta_yasi yıl bazlı kalırsa: 0 yıl gelirse "5 ay altı olabilir" ama
+    netleştirilemez → KE; 1+ yıl gelirse açıkça yaş üst sınırı aşıldı → YOK.
+    """
+    from datetime import date
+    grup = 'Yaş aralığı'
+    ad = 'Hasta 5 hafta – 5 ay aralığında'
+
+    dogum = _hemanjiyom_dogum_tarihi_oku(ilac_sonuc)
+    if dogum is not None:
+        bugun = date.today()
+        gun = (bugun - dogum).days
+        # 5 hafta = 35 gün; 5 ay ≈ takvim olarak doğum + 5 ay
+        # Gün toleransı: 5 takvim ayı = 5 * 30.4375 ≈ 152 gün; üst sınır 153
+        if gun < 35:
+            return SartSonuc(ad, SartDurumu.YOK,
+                             f'Hasta yaşı {gun} gün — alt sınır 35 gün (5 hafta)',
+                             kaynak='dogum_tarihi', grup=grup)
+        if gun > 153:
+            return SartSonuc(ad, SartDurumu.YOK,
+                             f'Hasta yaşı {gun} gün (~{gun // 30} ay) — üst sınır 5 ay',
+                             kaynak='dogum_tarihi', grup=grup)
+        hafta = gun // 7
+        return SartSonuc(ad, SartDurumu.VAR,
+                         f'Hasta yaşı {gun} gün (~{hafta} hafta) — aralıkta',
+                         kaynak='dogum_tarihi', grup=grup)
+
+    # Fallback: hasta_yasi (yıl). 0 yıl belirsiz; ≥1 yıl açıkça dışında.
+    hy = ilac_sonuc.get('hasta_yasi') or ilac_sonuc.get('yas')
+    try:
+        yas_yil = int(re.sub(r'[^0-9]', '', str(hy or '')) or -1)
+    except (ValueError, TypeError):
+        yas_yil = -1
+    if yas_yil >= 1:
+        return SartSonuc(ad, SartDurumu.YOK,
+                         f'Hasta yaşı {yas_yil} yıl — 5 ay üstü',
+                         kaynak='hasta_yasi', grup=grup)
+    return SartSonuc(
+        ad, SartDurumu.KONTROL_EDILEMEDI,
+        'Doğum tarihi DB\'de yok — gün/hafta hesaplanamadı, manuel doğrulanmalı',
+        kaynak='hasta_yasi/dogum_tarihi', grup=grup)
+
+
+def _hemanjiyom_atom_endikasyon(metin_lower: str,
+                                  teshis_metin: str) -> SartSonuc:
+    """A3: Sistemik tedavi gerektiren / morbidite riski hemanjiyom.
+
+    Pozitif ibareler: 'hemanjiyom', 'hemangioma', 'hemanjioma'.
+    Morbidite anahtarları: yutma güçlüğü, kanama, bası, solunum güçlüğü,
+    sistemik tedavi, hızla çoğal/büyü.
+    """
+    grup = 'Endikasyon'
+    ad = 'Çocukluk çağı hemanjiyomu (sistemik tedavi gerektiren)'
+
+    hem_var = ('hemanjiyom' in metin_lower or 'hemangiyoma' in metin_lower
+               or 'hemanjioma' in metin_lower or 'hemangioma' in metin_lower
+               or 'hemanjiom' in metin_lower
+               or 'D18' in (teshis_metin or '').upper())
+    if not hem_var:
+        return SartSonuc(ad, SartDurumu.KONTROL_EDILEMEDI,
+                         'Rapor metninde "hemanjiyom" ibaresi bulunamadı',
+                         kaynak='rapor_metni', grup=grup)
+    morbidite_anahtarlari = (
+        'yutma güçl', 'yutma gucl', 'kanama', 'bası bulgu', 'basi bulgu',
+        'solunum güçl', 'solunum gucl', 'sistemik tedavi',
+        'hızla çoğal', 'hizla cogal', 'hızla büyü', 'hizla buyu',
+        'morbidite',
+    )
+    eslesen = [k for k in morbidite_anahtarlari if k in metin_lower]
+    if eslesen:
+        return SartSonuc(ad, SartDurumu.VAR,
+                         f'Hemanjiyom + morbidite ibaresi: {", ".join(eslesen[:3])}',
+                         kaynak='rapor_metni', grup=grup)
+    return SartSonuc(ad, SartDurumu.KONTROL_EDILEMEDI,
+                     'Hemanjiyom geçiyor ama morbidite ibaresi netleşmedi — manuel doğrulanmalı',
+                     kaynak='rapor_metni', grup=grup)
+
+
+def _hemanjiyom_atom_alt_madde_a(metin_lower: str) -> SartSonuc:
+    """A4a: Hayatı veya hayati fonksiyonu tehdit edici hemanjiyom."""
+    grup = 'Alt madde (a/b/c — ≥1)'
+    ad = '(a) Hayatı/hayati fonksiyonu tehdit edici'
+    anahtarlar = (
+        'hayatı tehdit', 'hayati tehdit', 'hayat tehdit',
+        'hayati fonksiyon', 'hayatı fonksiyon',
+        'life threat', 'organ tehdit',
+        'havayolu', 'havayolunu',
+    )
+    eslesen = [k for k in anahtarlar if k in metin_lower]
+    if eslesen:
+        return SartSonuc(ad, SartDurumu.VAR,
+                         f'İbare: {", ".join(eslesen[:2])}',
+                         kaynak='rapor_metni', grup=grup, veya_grubu=True)
+    return SartSonuc(ad, SartDurumu.YOK,
+                     'Rapor lafzında hayat tehdidi ibaresi yok',
+                     kaynak='rapor_metni', grup=grup, veya_grubu=True)
+
+
+def _hemanjiyom_atom_alt_madde_b(metin_lower: str) -> SartSonuc:
+    """A4b: Ağrılı ve/veya yara bakım tedavilerine yanıtsız ülsere hemanjiyom."""
+    grup = 'Alt madde (a/b/c — ≥1)'
+    ad = '(b) Ülsere + yara bakımına yanıtsız / ağrılı'
+    ulsere = ('ülsere' in metin_lower or 'ulsere' in metin_lower
+              or 'ülser' in metin_lower)
+    agri = ('ağrı' in metin_lower or 'agri' in metin_lower
+            or 'ağrılı' in metin_lower)
+    yanitsiz = ('yanıt verme' in metin_lower or 'yanit verme' in metin_lower
+                or 'yanıtsız' in metin_lower or 'yanitsiz' in metin_lower
+                or 'cevapsız' in metin_lower or 'cevapsiz' in metin_lower)
+    if ulsere and (agri or yanitsiz):
+        return SartSonuc(ad, SartDurumu.VAR,
+                         f'Ülsere + {"ağrılı" if agri else "yanıtsız"}',
+                         kaynak='rapor_metni', grup=grup, veya_grubu=True)
+    if ulsere:
+        return SartSonuc(ad, SartDurumu.KONTROL_EDILEMEDI,
+                         'Ülsere geçiyor ama ağrı/yara bakımı yanıtsızlığı netleşmedi',
+                         kaynak='rapor_metni', grup=grup, veya_grubu=True)
+    return SartSonuc(ad, SartDurumu.YOK,
+                     'Ülsere hemanjiyom ibaresi yok',
+                     kaynak='rapor_metni', grup=grup, veya_grubu=True)
+
+
+def _hemanjiyom_atom_alt_madde_c(metin_lower: str) -> SartSonuc:
+    """A4c: Kalıcı yara izi / şekil bozukluğu riski."""
+    grup = 'Alt madde (a/b/c — ≥1)'
+    ad = '(c) Kalıcı yara izi / şekil bozukluğu riski'
+    anahtarlar = (
+        'kalıcı yara', 'kalici yara', 'yara izi', 'iz riski',
+        'şekil bozukl', 'sekil bozukl', 'deformi', 'estetik',
+        'kalıcı iz', 'kalici iz', 'kozmetik',
+    )
+    eslesen = [k for k in anahtarlar if k in metin_lower]
+    if eslesen:
+        return SartSonuc(ad, SartDurumu.VAR,
+                         f'İbare: {", ".join(eslesen[:2])}',
+                         kaynak='rapor_metni', grup=grup, veya_grubu=True)
+    return SartSonuc(ad, SartDurumu.YOK,
+                     'Rapor lafzında kalıcı yara izi/şekil bozukluğu ibaresi yok',
+                     kaynak='rapor_metni', grup=grup, veya_grubu=True)
+
+
+def _hemanjiyom_brans_yetkili_mi(brans: str) -> bool:
+    if not brans:
+        return False
+    b = (brans or '').upper().strip()
+    return any(k in b for k in _HEMANJIYOM_YETKILI_BRANSLAR)
+
+
+def _hemanjiyom_atom_rapor_brans(ilac_sonuc: Dict) -> SartSonuc:
+    """A5: Rapor doktor branşı 5 uzmandan biri.
+
+    Rapor kodu eşleşmesi (02.x = onkoloji, 05.x = pediatri+kardiyo)
+    yardımcı kanıt olarak değerlendirilebilir ama branş tek başına
+    karar verir.
+    """
+    grup = 'Yetki — rapor'
+    ad = 'Rapor doktor branşı (çocuk hem-onk/hem/onk/kard/neonatoloji)'
+    brans = (ilac_sonuc.get('doktor_uzmanligi') or
+             ilac_sonuc.get('doktor_brans') or '').strip()
+    if not brans:
+        return SartSonuc(ad, SartDurumu.KONTROL_EDILEMEDI,
+                         'Rapor doktor branşı boş — manuel doğrulanmalı',
+                         kaynak='doktor_brans', grup=grup)
+    if _hemanjiyom_brans_yetkili_mi(brans):
+        return SartSonuc(ad, SartDurumu.VAR,
+                         f'Yetkili branş: {brans}',
+                         kaynak='doktor_brans', grup=grup)
+    return SartSonuc(ad, SartDurumu.YOK,
+                     f'Branş "{brans}" — yetkili 5 uzman dışında',
+                     kaynak='doktor_brans', grup=grup)
+
+
+def _hemanjiyom_atom_recete_hekim(ilac_sonuc: Dict) -> SartSonuc:
+    """A6: Reçete hekim branşı aynı 5 uzmandan biri.
+
+    `recete_hekim_uzmanligi` doluysa onu kullan; yoksa fallback olarak
+    rapor doktor branşı (genelde aynı kişi).
+    """
+    grup = 'Yetki — reçete'
+    ad = 'Reçete hekim branşı (aynı 5 uzman)'
+    brans = (ilac_sonuc.get('recete_hekim_uzmanligi') or
+             ilac_sonuc.get('recete_hekim_brans') or '').strip()
+    if not brans:
+        rapor_brans = (ilac_sonuc.get('doktor_uzmanligi') or
+                       ilac_sonuc.get('doktor_brans') or '').strip()
+        if rapor_brans and _hemanjiyom_brans_yetkili_mi(rapor_brans):
+            return SartSonuc(ad, SartDurumu.KONTROL_EDILEMEDI,
+                             f'Reçete hekim branşı boş; rapor doktoru ({rapor_brans}) '
+                             'yetkili ama reçete eden farklı olabilir — manuel doğrula',
+                             kaynak='recete_hekim_brans', grup=grup)
+        return SartSonuc(ad, SartDurumu.KONTROL_EDILEMEDI,
+                         'Reçete hekim branşı bilgisi yok — manuel doğrulanmalı',
+                         kaynak='recete_hekim_brans', grup=grup)
+    if _hemanjiyom_brans_yetkili_mi(brans):
+        return SartSonuc(ad, SartDurumu.VAR,
+                         f'Yetkili branş: {brans}',
+                         kaynak='recete_hekim_brans', grup=grup)
+    return SartSonuc(ad, SartDurumu.YOK,
+                     f'Branş "{brans}" — yetkili 5 uzman dışında',
+                     kaynak='recete_hekim_brans', grup=grup)
+
+
+def _hemanjiyom_atom_rapor_suresi(ilac_sonuc: Dict,
+                                    metin_lower: str) -> SartSonuc:
+    """A7: Rapor süresi ≤ 6 ay.
+
+    Tarih alanlarından (rapor_baslangic_tarihi / rapor_bitis_tarihi)
+    hesapla. Yoksa rapor metninde '6 ay' / '180 gün' ibaresine bak.
+    """
+    from datetime import date, datetime
+    grup = 'Süre — rapor'
+    ad = 'Rapor süresi ≤ 6 ay'
+
+    bas = (ilac_sonuc.get('rapor_baslangic_tarihi') or
+           ilac_sonuc.get('rapor_bas_tarihi'))
+    bit = (ilac_sonuc.get('rapor_bitis_tarihi') or
+           ilac_sonuc.get('rapor_son_tarihi'))
+
+    def _parse(d):
+        if isinstance(d, date):
+            return d
+        if not d:
+            return None
+        s = str(d).strip()
+        for fmt in ('%Y-%m-%d', '%d.%m.%Y', '%d/%m/%Y',
+                    '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S'):
+            try:
+                return datetime.strptime(s[:len(fmt) + 4], fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    d_bas, d_bit = _parse(bas), _parse(bit)
+    if d_bas and d_bit:
+        gun = (d_bit - d_bas).days
+        if gun <= 186:  # 6 ay + birkaç gün tolerans
+            return SartSonuc(ad, SartDurumu.VAR,
+                             f'Rapor süresi {gun} gün — 6 ay limitini aşmıyor',
+                             kaynak='rapor_tarihleri', grup=grup)
+        return SartSonuc(ad, SartDurumu.YOK,
+                         f'Rapor süresi {gun} gün — 6 aydan uzun',
+                         kaynak='rapor_tarihleri', grup=grup)
+
+    # Metinden ipucu
+    m = re.search(r'(?:rapor.{0,15})?(\d{1,2})\s*ay\b', metin_lower)
+    if m:
+        try:
+            ay = int(m.group(1))
+            if ay <= 6:
+                return SartSonuc(ad, SartDurumu.VAR,
+                                 f'Rapor metni: "{ay} ay" — limitte',
+                                 kaynak='rapor_metni', grup=grup)
+            return SartSonuc(ad, SartDurumu.YOK,
+                             f'Rapor metni: "{ay} ay" — 6 ay limitinin üstünde',
+                             kaynak='rapor_metni', grup=grup)
+        except ValueError:
+            pass
+    return SartSonuc(ad, SartDurumu.KONTROL_EDILEMEDI,
+                     'Rapor başlangıç/bitiş tarihleri DB\'de yok ve metinde '
+                     'süre ibaresi netleşmedi — manuel doğrulanmalı',
+                     kaynak='rapor_tarihleri', grup=grup, sartli_atom=True)
+
+
+def _hemanjiyom_atom_toplam_tedavi(ilac_sonuc: Dict) -> SartSonuc:
+    """A8: Tedavi başlangıcından itibaren toplam ≤ 6 ay.
+
+    Hasta ilaç geçmişinde ilk HEMANGIOL kullanım tarihi varsa onunla
+    bugünün farkı hesaplanır. Pipeline'da yoksa şartlı atom (KE).
+    """
+    from datetime import date, datetime
+    grup = 'Süre — tedavi'
+    ad = 'Toplam tedavi süresi ≤ 6 ay (başlangıçtan)'
+
+    ilac_gecmisi = ilac_sonuc.get('hasta_ilac_gecmisi') or \
+                   ilac_sonuc.get('ilac_kullanim_gecmisi') or []
+    ilk_tarih = None
+    if isinstance(ilac_gecmisi, list):
+        for kayit in ilac_gecmisi:
+            if not isinstance(kayit, dict):
+                continue
+            ad_g = str(kayit.get('ilac_adi') or '').upper()
+            et_g = str(kayit.get('etkin_madde') or '').upper()
+            if 'HEMANGIOL' in ad_g or (
+                    'PROPRANOLOL' in (ad_g + et_g)
+                    and any(f in ad_g for f in _CESITLI_HEMANJIYOM_FORM_IBARELERI)):
+                t = kayit.get('tarih') or kayit.get('ilk_tarih') or \
+                    kayit.get('recete_tarihi')
+                if not t:
+                    continue
+                if isinstance(t, date):
+                    dt = t
+                else:
+                    dt = None
+                    for fmt in ('%Y-%m-%d', '%d.%m.%Y', '%d/%m/%Y'):
+                        try:
+                            dt = datetime.strptime(str(t)[:10], fmt).date()
+                            break
+                        except ValueError:
+                            continue
+                if dt and (ilk_tarih is None or dt < ilk_tarih):
+                    ilk_tarih = dt
+
+    if ilk_tarih is not None:
+        gun = (date.today() - ilk_tarih).days
+        if gun <= 186:
+            kalan = 186 - gun
+            return SartSonuc(ad, SartDurumu.VAR,
+                             f'İlk HEMANGIOL: {ilk_tarih.isoformat()} '
+                             f'({gun} gün geçti, ~{kalan} gün kalan)',
+                             kaynak='ilac_gecmisi', grup=grup)
+        return SartSonuc(ad, SartDurumu.YOK,
+                         f'İlk HEMANGIOL: {ilk_tarih.isoformat()} '
+                         f'({gun} gün geçti — 6. ayın sonunda tedavi sonlandırılır)',
+                         kaynak='ilac_gecmisi', grup=grup)
+
+    return SartSonuc(ad, SartDurumu.KONTROL_EDILEMEDI,
+                     'Hasta ilaç geçmişinde HEMANGIOL kaydı yok — '
+                     'ilk reçete tarihi manuel doğrulanmalı',
+                     kaynak='ilac_gecmisi', grup=grup, sartli_atom=True)
+
+
+def _hemanjiyom_genel_sonuc(sartlar: List[SartSonuc]) -> Tuple[KontrolSonucu, str]:
+    """8 atom sonucundan genel kararı üret.
+
+    Mantık:
+      - Yaş atomu YOK → UYGUN_DEGIL (kesin dışında)
+      - Endikasyon YOK → UYGUN_DEGIL
+      - Alt madde grubu (≥1) hiç VAR yok ve hiç KE yok → UYGUN_DEGIL
+      - Branş atomlarından (A5+A6) ikisi de YOK → UYGUN_DEGIL
+      - Herhangi bir AND atomu YOK → UYGUN_DEGIL
+      - KE varsa ve KE'lerin tümü sartli_atom → SARTLI_UYGUN
+      - KE varsa ve KE'lerden biri sartli değil → KONTROL_EDILEMEDI (ŞÜPHELİ)
+      - Hepsi VAR → UYGUN
+    """
+    yas = next((s for s in sartlar if s.grup == 'Yaş aralığı'), None)
+    endik = next((s for s in sartlar if s.grup == 'Endikasyon'), None)
+    alt_grup = [s for s in sartlar if s.grup.startswith('Alt madde')]
+    yetki_rapor = next((s for s in sartlar if s.grup == 'Yetki — rapor'), None)
+    yetki_rec = next((s for s in sartlar if s.grup == 'Yetki — reçete'), None)
+
+    if yas and yas.durum == SartDurumu.YOK:
+        return (KontrolSonucu.UYGUN_DEGIL,
+                f'Yaş aralığı dışında: {yas.neden}')
+    if endik and endik.durum == SartDurumu.YOK:
+        return (KontrolSonucu.UYGUN_DEGIL,
+                'Hemanjiyom endikasyonu bulunamadı')
+    if alt_grup:
+        alt_var = any(s.durum == SartDurumu.VAR for s in alt_grup)
+        alt_ke = any(s.durum == SartDurumu.KONTROL_EDILEMEDI for s in alt_grup)
+        if not alt_var and not alt_ke:
+            return (KontrolSonucu.UYGUN_DEGIL,
+                    'Alt madde (a/b/c) hiçbiri rapor lafzında bulunamadı')
+
+    # Branş kontrolü: A5 ve A6 yan yana — ikisi de YOK → kesin
+    if (yetki_rapor and yetki_rapor.durum == SartDurumu.YOK and
+            yetki_rec and yetki_rec.durum == SartDurumu.YOK):
+        return (KontrolSonucu.UYGUN_DEGIL,
+                'Rapor ve reçete hekim branşları yetkili 5 uzman dışında')
+
+    # AND atomlarından biri YOK?
+    and_yok = [s for s in sartlar
+               if s.durum == SartDurumu.YOK and not s.veya_grubu]
+    if and_yok:
+        return (KontrolSonucu.UYGUN_DEGIL,
+                'Bir veya daha fazla zorunlu şart sağlanmıyor: '
+                + ', '.join(s.ad for s in and_yok[:3]))
+
+    # KE atomları
+    ke = [s for s in sartlar if s.durum == SartDurumu.KONTROL_EDILEMEDI]
+    if ke:
+        if all(s.sartli_atom for s in ke):
+            return (KontrolSonucu.SARTLI_UYGUN,
+                    'Hesaplanabilir şartlar UYGUN; manuel doğrulanması gereken: '
+                    + ', '.join(s.ad for s in ke[:3]))
+        return (KontrolSonucu.KONTROL_EDILEMEDI,
+                'Bazı şartlar netleşmedi: '
+                + ', '.join(s.ad for s in ke[:3]))
+
+    return (KontrolSonucu.UYGUN,
+            'SUT 4.2.62 — tüm şartlar sağlanıyor (HEMANGIOL bebek hemanjiyomu)')
+
+
+def kontrol_cesitli_hemanjiyom_4_2_62(ilac_sonuc: Dict) -> KontrolRaporu:
+    """SUT 4.2.62 — Propranolol HCl oral çözelti (HEMANGIOL) atomik kontrolü.
+
+    8 atomik şart (devre şeması):
+      A1+A2: yaş 5 hafta - 5 ay (AND)
+      A3:    sistemik tedavi gerektiren hemanjiyom endikasyonu (AND)
+      A4a:   hayat tehdidi (VEYA ≥1)
+      A4b:   ülsere + yanıtsız (VEYA ≥1)
+      A4c:   kalıcı iz/şekil bozukluğu (VEYA ≥1)
+      A5:    rapor doktor branşı (5 uzmandan biri, AND)
+      A6:    reçete hekim branşı (aynı 5 uzman, AND)
+      A7:    rapor süresi ≤ 6 ay (AND, şartlı)
+      A8:    toplam tedavi ≤ 6 ay (AND, şartlı — hasta geçmişi)
+    """
+    sut_kurali = 'SUT 4.2.62 — Propranolol HCl oral çözelti (bebek hemanjiyomu)'
+    metin = _tum_metinleri_birlesir(ilac_sonuc) or ''
+    metin_lower = _tr_lower(metin)
+    teshis_metin = ' '.join(ilac_sonuc.get('recete_teshisleri', []) or [])
+    if not teshis_metin:
+        teshis_metin = ilac_sonuc.get('teshis_metin', '') or ''
+
+    sartlar: List[SartSonuc] = []
+    sartlar.append(_hemanjiyom_atom_yas_araligi(ilac_sonuc))
+    sartlar.append(_hemanjiyom_atom_endikasyon(metin_lower, teshis_metin))
+    sartlar.append(_hemanjiyom_atom_alt_madde_a(metin_lower))
+    sartlar.append(_hemanjiyom_atom_alt_madde_b(metin_lower))
+    sartlar.append(_hemanjiyom_atom_alt_madde_c(metin_lower))
+    sartlar.append(_hemanjiyom_atom_rapor_brans(ilac_sonuc))
+    sartlar.append(_hemanjiyom_atom_recete_hekim(ilac_sonuc))
+    sartlar.append(_hemanjiyom_atom_rapor_suresi(ilac_sonuc, metin_lower))
+    sartlar.append(_hemanjiyom_atom_toplam_tedavi(ilac_sonuc))
+
+    sonuc, mesaj = _hemanjiyom_genel_sonuc(sartlar)
+
+    detaylar = {
+        'alt_grup': 'HEMANJIYOM',
+        'sut_maddesi': '4.2.62',
+        'ilac_adi': (ilac_sonuc.get('ilac_adi') or '').upper(),
+        'etkin_madde': (ilac_sonuc.get('etkin_madde') or '').upper(),
+        'doktor_brans': (ilac_sonuc.get('doktor_uzmanligi') or '').strip(),
+        'recete_hekim': (ilac_sonuc.get('recete_hekim_uzmanligi') or '').strip(),
+        'sart_sayisi': len(sartlar),
+        'verdict_sartlar': [
+            {'ad': s.ad, 'durum': s.durum.value, 'neden': s.neden,
+             'kaynak': s.kaynak, 'grup': s.grup, 'veya_grubu': s.veya_grubu,
+             'sartli_atom': s.sartli_atom}
+            for s in sartlar
+        ],
+    }
+
+    return KontrolRaporu(
+        sonuc=sonuc,
+        mesaj=mesaj,
+        detaylar=detaylar,
+        sut_kurali=sut_kurali,
+        aranan_ibare='5 hafta-5 ay bebek + hemanjiyom + uzman branş',
+        sartlar=sartlar,
+    )
+
+
 def kontrol_cesitli(ilac_sonuc: Dict) -> KontrolRaporu:
     """ÇEŞİTLİ İLAÇLAR dispatcher — alt grubu tespit edip ilgili kontrole
-    yönlendirir. 4 alt grup:
-      URINER    → kontrol_cesitli_madde_45_uriner
-      GOZYASI   → kontrol_cesitli_suni_gozyasi
-      BPH       → kontrol_cesitli_bph_alfa_bloker
-      RANOLAZIN → kontrol_ranolazin (SUT 4.2.15.F, 2026-05-13 eklendi)
+    yönlendirir. 5 alt grup:
+      URINER     → kontrol_cesitli_madde_45_uriner
+      GOZYASI    → kontrol_cesitli_suni_gozyasi
+      BPH        → kontrol_cesitli_bph_alfa_bloker
+      RANOLAZIN  → kontrol_ranolazin (SUT 4.2.15.F, 2026-05-13 eklendi)
+      HEMANJIYOM → kontrol_cesitli_hemanjiyom_4_2_62 (SUT 4.2.62, 2026-05-23)
     """
     alt_grup = _cesitli_alt_grup_tespit(
         ilac_sonuc.get('ilac_adi', '') or '',
@@ -23584,9 +24113,19 @@ def kontrol_cesitli(ilac_sonuc: Dict) -> KontrolRaporu:
         return kontrol_cesitli_bph_alfa_bloker(ilac_sonuc)
     if alt_grup == 'RANOLAZIN':
         return kontrol_ranolazin(ilac_sonuc)
+    if alt_grup == 'HEMANJIYOM':
+        return kontrol_cesitli_hemanjiyom_4_2_62(ilac_sonuc)
     return KontrolRaporu(
         sonuc=KontrolSonucu.ATLANDI,
         mesaj='ÇEŞİTLİ kapsamında olmayan ilaç',
         detaylar={'alt_grup': 'NONE'},
-        sut_kurali='ÇEŞİTLİ İLAÇLAR (M.45 / M.2 / BPH α-bloker / Ranolazin)',
+        sut_kurali='ÇEŞİTLİ İLAÇLAR (M.45 / M.2 / BPH α-bloker / Ranolazin / Hemanjiyom 4.2.62)',
     )
+
+
+# CESITLI_HEMANJIYOM (SUT 4.2.62) — KATEGORI dispatcher'a runtime'da bağlanır
+# (fonksiyon yukarıdaki literal sonrasında tanımlandığı için).
+KATEGORI_KONTROL_FONKSIYONU['CESITLI_HEMANJIYOM'] = kontrol_cesitli_hemanjiyom_4_2_62
+KATEGORI_ISIMLERI['CESITLI_HEMANJIYOM'] = (
+    'Hemanjiyom — Propranolol oral çözelti / HEMANGIOL (4.2.62)'
+)
