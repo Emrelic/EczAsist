@@ -26,7 +26,7 @@ import threading
 import tkinter as tk
 from datetime import date
 from tkinter import filedialog, messagebox, ttk
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from botanik_db import BotanikDB
 from recete_kontrol.sut_kontrolleri import _tr_lower
@@ -3137,14 +3137,17 @@ class AylikReceteSorguGUI:
                   "için kullanılır. SALT OKUMA.")
 
         # 🔍 Diğer Yolaklar toggle — dispatcher'ın elediği yolakları göster/gizle
+        # NOT: Başlık çubuğu sıkışmasın diye SAĞ tarafta + sadece emoji.
+        # (Önceden side="left" + uzun text idi; "Tam Ekran" / ▼▬▲ butonlarını
+        #  ekran dışına itiyordu — 2026-05-23 düzeltmesi.)
         self._diger_yolak_panel_acik = False
         self._diger_yolak_btn = tk.Button(
-            baslik, text="🔍 Diğer Yolaklar",
+            baslik, text="🔍",
             bg="#37474F", fg="#FFCC80",
-            font=("Segoe UI", 9, "bold"),
-            relief="flat", bd=0, padx=8, pady=1, cursor="hand2",
+            font=("Segoe UI", 10, "bold"),
+            relief="flat", bd=0, padx=7, pady=1, cursor="hand2",
             command=self._diger_yolaklar_toggle)
-        self._diger_yolak_btn.pack(side="left", padx=(6, 1), pady=3)
+        self._diger_yolak_btn.pack(side="right", padx=(2, 4), pady=3)
         _Tooltip(self._diger_yolak_btn,
                   "🔍 Dispatcher'ın elediği diğer yolakları göster/gizle.\n\n"
                   "Aktif yolak şu an çizilen şemadır. Diğer 11 yolak için\n"
@@ -15811,6 +15814,28 @@ class AylikReceteSorguGUI:
                                                     ensure_ascii=False)
             except Exception:
                 s["verdict_detaylar"] = str(rapor.detaylar or {})
+            # ── ATOMİK ŞART LİSTESİ (akım şeması paneli için) ────────────
+            # Bu blok eksikti → ARB için akım şeması (sema panel) hiç
+            # çizilmiyordu. verdict_sartlar JSON'u _sema_render_devre tarafından
+            # parse edilir; içeride bypass_kaynak alanı bypass atomlarının
+            # turkuaz/mint görsel render için gereklidir.
+            sartlar_obj = getattr(rapor, "sartlar", None) or []
+            try:
+                s["verdict_sartlar"] = json.dumps([
+                    {"ad": p.ad,
+                     "durum": (p.durum.value if hasattr(p.durum, "value")
+                                else str(p.durum)),
+                     "neden": p.neden,
+                     "kaynak": getattr(p, "kaynak", ""),
+                     "grup": getattr(p, "grup", ""),
+                     "veya_grubu": bool(getattr(p, "veya_grubu", False)),
+                     "alt_liste": getattr(p, "alt_liste", None),
+                     "sartli_atom": bool(getattr(p, "sartli_atom", False)),
+                     "bypass_kaynak": getattr(p, "bypass_kaynak", None)}
+                    for p in sartlar_obj
+                ], ensure_ascii=False)
+            except Exception:
+                s["verdict_sartlar"] = ""
             sayac[etiket] = sayac.get(etiket, 0) + 1
             denetlenen_satirlar.append(s)
 
