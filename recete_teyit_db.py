@@ -37,8 +37,13 @@ _TABLO = "recete_teyit"
 TEYIT_UYGUN = "UYGUN"
 TEYIT_UYGUN_DEGIL = "UYGUN_DEGIL"
 TEYIT_SUPHELI = "SUPHELI"
+# Diğer rapor bypass etiketi — aktif raporda eksik şart hastanın geçmiş
+# raporundan tamamlandı; eczacı kontrol edip "bypass'i kabul ediyorum"
+# diye manuel işaretleyebilir (otomatik kontrol verdict'ine ek olarak).
+TEYIT_DIGER_RAPOR = "DIGER_RAPOR_UYGUN"
 
-GECERLI_SONUCLAR = {TEYIT_UYGUN, TEYIT_UYGUN_DEGIL, TEYIT_SUPHELI}
+GECERLI_SONUCLAR = {TEYIT_UYGUN, TEYIT_UYGUN_DEGIL, TEYIT_SUPHELI,
+                     TEYIT_DIGER_RAPOR}
 
 
 def _db_yolu() -> Path:
@@ -48,6 +53,31 @@ def _db_yolu() -> Path:
 
 
 _conn: sqlite3.Connection | None = None
+
+
+# AI Kontrol sütunları (Faz 1 — kullanıcı isteği 2026-05-21)
+# AI butonunun ürettiği sonuç + açıklama bu sütunlara yazılır.
+_AI_SUTUNLARI = [
+    ("ai_sonuc",     "TEXT"),   # UYGUN / UYGUN_DEGIL / SUPHELI / KE / vs.
+    ("ai_aciklama",  "TEXT"),   # AI'ın özet+detay açıklama metni
+    ("ai_model",     "TEXT"),   # claude-sonnet-4-6 / claude-opus-4-7
+    ("ai_tarih",     "TEXT"),   # AI çağrı tarihi (ISO)
+    ("ai_guven",     "REAL"),   # 0.0–1.0
+    ("ai_sut_ref",   "TEXT"),   # SUT madde referansı
+]
+
+
+def _ai_sutunlari_ekle(conn: sqlite3.Connection) -> None:
+    """Mevcut tabloya AI sütunlarını ekle (yoksa)."""
+    try:
+        cur = conn.execute(f"PRAGMA table_info({_TABLO})")
+        mevcut = {row[1] for row in cur.fetchall()}
+        for ad, tip in _AI_SUTUNLARI:
+            if ad not in mevcut:
+                conn.execute(f"ALTER TABLE {_TABLO} ADD COLUMN {ad} {tip}")
+        conn.commit()
+    except Exception as e:
+        logger.warning("AI sütun migration: %s", e)
 
 
 def _baglanti() -> sqlite3.Connection:
@@ -74,6 +104,7 @@ def _baglanti() -> sqlite3.Connection:
             """
         )
         _conn.commit()
+        _ai_sutunlari_ekle(_conn)
         logger.info("recete_teyit DB hazır: %s", _db_yolu())
     except Exception as e:
         logger.error("recete_teyit DB açılamadı: %s", e)
@@ -210,12 +241,14 @@ ROZET = {
     TEYIT_UYGUN: "✓",
     TEYIT_UYGUN_DEGIL: "✗",
     TEYIT_SUPHELI: "?",
+    TEYIT_DIGER_RAPOR: "ℹ",
 }
 
 ETIKET = {
     TEYIT_UYGUN: "UYGUN (teyit)",
     TEYIT_UYGUN_DEGIL: "UYGUN DEĞİL (teyit)",
     TEYIT_SUPHELI: "ŞÜPHELİ (teyit)",
+    TEYIT_DIGER_RAPOR: "DİĞER RAPOR UYGUN (teyit)",
 }
 
 
@@ -223,3 +256,129 @@ def rozet(teyit_sonucu: str | None) -> str:
     if not teyit_sonucu:
         return ""
     return ROZET.get(teyit_sonucu, "")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# AI Kontrol sonucu yazma/okuma (Faz 1)
+# ──────────────────────────────────────────────────────────────────────
+
+def ai_sonuc_kaydet(
+    ri_id: str,
+    *,
+    ai_sonuc: str,
+    ai_aciklama: str = "",
+    ai_model: str = "",
+    ai_guven: float = 0.0,
+    ai_sut_ref: str = "",
+    hasta_tc: str = "",
+    recete_no: str = "",
+    ilac_adi: str = "",
+    kullanici: str = "",
+) -> bool:
+    """AI kontrol sonucunu kaydet (mevcut kaydı koruyup AI alanlarını günceller)."""
+    if not ri_id:
+        return False
+    try:
+        conn = _baglanti()
+        # UPSERT: kayıt yoksa oluştur, varsa AI alanlarını güncelle
+        conn.execute(
+            f"""
+            INSERT INTO {_TABLO}
+              (ri_id, hasta_tc, recete_no, ilac_adi, kullanici, tarih,
+               ai_sonuc, ai_aciklama, ai_model, ai_tarih, ai_guven, ai_sut_ref)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ri_id) DO UPDATE SET
+              ai_sonuc=excluded.ai_sonuc,
+              ai_aciklama=excluded.ai_aciklama,
+              ai_model=excluded.ai_model,
+              ai_tarih=excluded.ai_tarih,
+              ai_guven=excluded.ai_guven,
+              ai_sut_ref=excluded.ai_sut_ref
+            """,
+            (
+                str(ri_id),
+                str(hasta_tc or ""),
+                str(recete_no or ""),
+                str(ilac_adi or ""),
+                str(kullanici or ""),
+                datetime.now().isoformat(timespec="seconds"),
+                str(ai_sonuc or ""),
+                str(ai_aciklama or "")[:50000],
+                str(ai_model or ""),
+                datetime.now().isoformat(timespec="seconds"),
+                float(ai_guven or 0.0),
+                str(ai_sut_ref or ""),
+            ),
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error("ai_sonuc_kaydet hatası: %s", e)
+        return False
+
+
+def ai_sonuc_oku(ri_id: str) -> dict | None:
+    """Bir ri_id için kayıtlı AI sonucunu döndür."""
+    if not ri_id:
+        return None
+    try:
+        conn = _baglanti()
+        cur = conn.execute(
+            f"""SELECT ai_sonuc, ai_aciklama, ai_model, ai_tarih,
+                       ai_guven, ai_sut_ref
+                FROM {_TABLO} WHERE ri_id=?""",
+            (str(ri_id),),
+        )
+        row = cur.fetchone()
+        if not row or not row[0]:
+            return None
+        return {
+            "ai_sonuc": row[0],
+            "ai_aciklama": row[1] or "",
+            "ai_model": row[2] or "",
+            "ai_tarih": row[3] or "",
+            "ai_guven": row[4] or 0.0,
+            "ai_sut_ref": row[5] or "",
+        }
+    except Exception as e:
+        logger.error("ai_sonuc_oku hatası: %s", e)
+        return None
+
+
+def ai_sonuc_haritasi(ri_idler: list[str] | None = None) -> dict[str, dict]:
+    """Birden fazla ri_id için AI sonucu haritası döndür."""
+    try:
+        conn = _baglanti()
+        if ri_idler is None:
+            cur = conn.execute(
+                f"""SELECT ri_id, ai_sonuc, ai_aciklama, ai_model,
+                           ai_tarih, ai_guven, ai_sut_ref
+                    FROM {_TABLO}
+                    WHERE ai_sonuc IS NOT NULL AND ai_sonuc <> ''"""
+            )
+        else:
+            if not ri_idler:
+                return {}
+            placeholders = ",".join("?" for _ in ri_idler)
+            cur = conn.execute(
+                f"""SELECT ri_id, ai_sonuc, ai_aciklama, ai_model,
+                           ai_tarih, ai_guven, ai_sut_ref
+                    FROM {_TABLO}
+                    WHERE ri_id IN ({placeholders})
+                      AND ai_sonuc IS NOT NULL AND ai_sonuc <> ''""",
+                tuple(str(x) for x in ri_idler),
+            )
+        return {
+            str(r[0]): {
+                "ai_sonuc": r[1],
+                "ai_aciklama": r[2] or "",
+                "ai_model": r[3] or "",
+                "ai_tarih": r[4] or "",
+                "ai_guven": r[5] or 0.0,
+                "ai_sut_ref": r[6] or "",
+            }
+            for r in cur.fetchall() if r[1]
+        }
+    except Exception as e:
+        logger.error("ai_sonuc_haritasi hatası: %s", e)
+        return {}

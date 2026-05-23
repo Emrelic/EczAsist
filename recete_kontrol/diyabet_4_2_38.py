@@ -876,13 +876,40 @@ def diyabet_kontrol_4_2_38(ilac_sonuc: Dict) -> KontrolRaporu:
     # Çapraz kombi yasakları
     sartlar.extend(capraz_kombi_yasak(ilac_sonuc, yolak))
 
+    # ── DİĞER RAPOR BYPASS — atomları otomatik tarayıp bypass uygula ─────
+    # Atom adında "metformin", "sülfonilüre" veya "glisemik" geçen ve durumu
+    # VAR olmayan atomlar için hastanın geçmiş raporlarında ibare aranır;
+    # bulunursa atom VAR + bypass_kaynak olarak işaretlenir. Tüm atomlar
+    # sonra _genel_sonuc'a girer ve UYGUN dönerse sonuç DIGER_RAPOR_UYGUN'a
+    # yükseltilir (sonuc_bypass_uygula_genel altta).
+    try:
+        from recete_kontrol.diger_rapor_bypass import (
+            atomlari_otomatik_bypass, sonuc_bypass_uygula_genel,
+            IBARELER_DIYABET_GLISEMIK)
+        atomlari_otomatik_bypass(
+            sartlar, ilac_sonuc,
+            ad_anahtar_kelimeleri=('metformin', 'sülfonilüre', 'sulfonilure',
+                                    'glisemik'),
+            ibareler=IBARELER_DIYABET_GLISEMIK,
+            kategori='DIYABET')
+    except Exception as e:
+        # Bypass opsiyonel — başarısızlığı kontrolü etkilemez
+        import logging as _lg
+        _lg.getLogger(__name__).debug("Diyabet bypass atlandı: %s", e)
+
     sonuc = _genel_sonuc(sartlar)
     mesaj = _mesaj_uret(sonuc, yolak, sartlar)
 
-    return KontrolRaporu(
+    rapor = KontrolRaporu(
         sonuc=sonuc,
         mesaj=mesaj,
         sut_kurali=f'SUT 4.2.38 / Yolak {yolak}',
         sartlar=sartlar,
         detaylar={'yolak': yolak},
     )
+    try:
+        from recete_kontrol.diger_rapor_bypass import sonuc_bypass_uygula_genel
+        sonuc_bypass_uygula_genel(rapor, sartlar)
+    except Exception:
+        pass
+    return rapor

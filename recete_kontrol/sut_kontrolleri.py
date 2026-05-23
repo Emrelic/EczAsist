@@ -4634,6 +4634,44 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
                 sut_kurali=sut_kurali, sartlar=sartlar,
                 aranan_ibare='Monoterapi yetersizliği ibaresi (raporda)',
                 bulunan_metin=_eslesen_parcayi_bul(tum_metin, eslesen_kelime))
+
+        # ── DİĞER RAPOR BYPASS — aktif raporda ibare yok ama hastanın
+        #    geçmiş raporlarından birinde varsa bypass uygulanır.
+        #    Bu, ARB kombi için en yaygın bypass kullanım senaryosudur:
+        #    hekim önceki raporda monoterapi yetersizliğini belgelediği için
+        #    yenileme raporuna tekrar yazmamış olabilir. ─────────────────
+        bypass = None
+        bypass_tc = (ilac_sonuc.get('hasta_tc') or '').strip()
+        bypass_tno = (ilac_sonuc.get('rapor_takip_no') or '').strip()
+        if bypass_tc:
+            try:
+                from recete_kontrol.diger_rapor_bypass import (
+                    gecmis_raporlarda_ibare_ara, IBARELER_ARB_MONOTERAPI)
+                bypass = gecmis_raporlarda_ibare_ara(
+                    bypass_tc, list(IBARELER_ARB_MONOTERAPI),
+                    aktif_rapor_takip_no=bypass_tno,
+                    kategori='HIPERTANSIYON')
+            except Exception as e:
+                logger.debug("ARB monoterapi bypass sorgu hatası: %s", e)
+
+        if bypass:
+            # Monoterapi atomu durumunu bypass ile VAR'a yükselt
+            for sart in sartlar:
+                if 'Monoterapi yetersizliği ibaresi' in sart.ad:
+                    sart.durum = SartDurumu.VAR
+                    sart.neden = f'Diğer rapor bypass: {bypass["ozet"]}'
+                    sart.bypass_kaynak = bypass["ozet"]
+                    break
+            return KontrolRaporu(
+                sonuc=KontrolSonucu.DIGER_RAPOR_UYGUN,
+                mesaj=(f'Kombi ARB raporlu (rap.kod {rapor_kodu}) — '
+                       f'aktif raporda monoterapi ibaresi yok; hastanın '
+                       f'diğer raporunda bulundu: {bypass["ozet"]}'),
+                detaylar={**detaylar, 'bypass': bypass},
+                sut_kurali=sut_kurali, sartlar=sartlar,
+                aranan_ibare='Monoterapi yetersizliği ibaresi (diğer raporda bulundu)',
+                bulunan_metin=bypass.get('snippet', ''))
+
         return KontrolRaporu(
             sonuc=KontrolSonucu.UYGUN_DEGIL,
             mesaj=(f'Kombi ARB raporlu (rap.kod {rapor_kodu}) — '
@@ -8452,9 +8490,33 @@ def kontrol_klopidogrel(ilac_sonuc: Dict) -> KontrolRaporu:
                                 rapor_kodu, gecmis_icd, sartlar)
     _klop_y4_girisimsel_kontrol(metin_lower, teshis_metin, ilac_sonuc, sartlar)
 
+    # ── DİĞER RAPOR BYPASS — anjiyografi tarihi atomları için cache taraması
+    # Atomik şemada "anjio tarihi" atomu YOK durumundaysa hastanın geçmiş
+    # raporlarında ibare aranır; bulunursa atom VAR + bypass_kaynak olarak
+    # işaretlenir. Mevcut `_klop_atom_anjio_tarihi` GUI'den parametre olarak
+    # gelen `gecmis_rapor_metinleri` üzerinden bypass yapıyor; bu generic
+    # bypass cache'i `hasta_tc` ile direkt okur (paralel mekanizma).
+    try:
+        from recete_kontrol.diger_rapor_bypass import (
+            atomlari_otomatik_bypass, IBARELER_P2Y12_ANJIYO)
+        atomlari_otomatik_bypass(
+            sartlar, ilac_sonuc,
+            ad_anahtar_kelimeleri=('anjio', 'anjiyo', 'angio', 'angiyo',
+                                    'kateterizasyon', 'pci'),
+            ibareler=IBARELER_P2Y12_ANJIYO,
+            kategori=None)  # KAH kategorisi cache'te yok — tüm raporlar
+    except Exception as e:
+        logger.debug("Klopidogrel anjio bypass atlandı: %s", e)
+
     # ── Üst-VEYA matematiği ───────────────────────────────────────────
-    return _klop_genel_sonuc_atomik(sartlar, detaylar, sut_kurali,
-                                       birlesik, 'klopidogrel', 'KLOPIDOGREL')
+    rapor = _klop_genel_sonuc_atomik(sartlar, detaylar, sut_kurali,
+                                          birlesik, 'klopidogrel', 'KLOPIDOGREL')
+    try:
+        from recete_kontrol.diger_rapor_bypass import sonuc_bypass_uygula_genel
+        sonuc_bypass_uygula_genel(rapor, sartlar)
+    except Exception:
+        pass
+    return rapor
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -8787,7 +8849,26 @@ def kontrol_prasugrel(ilac_sonuc: Dict) -> KontrolRaporu:
         f'reçete doktor branşı: {db_b or "(boş)"}',
         'doktor_uzmanligi', grup=g_yol_b))
 
-    return _prasu_genel_sonuc_atomik(sartlar, detaylar, sut_kurali, birlesik)
+    # DİĞER RAPOR BYPASS — anjiyo tarihi atomları için (klopidogrel ile aynı)
+    try:
+        from recete_kontrol.diger_rapor_bypass import (
+            atomlari_otomatik_bypass, sonuc_bypass_uygula_genel,
+            IBARELER_P2Y12_ANJIYO)
+        atomlari_otomatik_bypass(
+            sartlar, ilac_sonuc,
+            ad_anahtar_kelimeleri=('anjio', 'anjiyo', 'angio', 'angiyo',
+                                    'kateterizasyon', 'pci'),
+            ibareler=IBARELER_P2Y12_ANJIYO,
+            kategori=None)
+    except Exception as e:
+        logger.debug("Prasugrel anjio bypass atlandı: %s", e)
+
+    rapor = _prasu_genel_sonuc_atomik(sartlar, detaylar, sut_kurali, birlesik)
+    try:
+        sonuc_bypass_uygula_genel(rapor, sartlar)
+    except Exception:
+        pass
+    return rapor
 
 
 def _prasu_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,
@@ -9066,7 +9147,26 @@ def kontrol_tikagrelor(ilac_sonuc: Dict) -> KontrolRaporu:
         f'reçete doktor branşı: {db_b or "(boş)"}',
         'doktor_uzmanligi', grup=g_yol_b))
 
-    return _tikag_genel_sonuc_atomik(sartlar, detaylar, sut_kurali, birlesik)
+    # DİĞER RAPOR BYPASS — anjiyo tarihi atomları (klopidogrel ile aynı)
+    try:
+        from recete_kontrol.diger_rapor_bypass import (
+            atomlari_otomatik_bypass, sonuc_bypass_uygula_genel,
+            IBARELER_P2Y12_ANJIYO)
+        atomlari_otomatik_bypass(
+            sartlar, ilac_sonuc,
+            ad_anahtar_kelimeleri=('anjio', 'anjiyo', 'angio', 'angiyo',
+                                    'kateterizasyon', 'pci'),
+            ibareler=IBARELER_P2Y12_ANJIYO,
+            kategori=None)
+    except Exception as e:
+        logger.debug("Tikagrelor anjio bypass atlandı: %s", e)
+
+    rapor = _tikag_genel_sonuc_atomik(sartlar, detaylar, sut_kurali, birlesik)
+    try:
+        sonuc_bypass_uygula_genel(rapor, sartlar)
+    except Exception:
+        pass
+    return rapor
 
 
 def _tikag_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,

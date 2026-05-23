@@ -1670,20 +1670,22 @@ class AylikReceteSorguGUI:
         # _satir_filtreden_geciyor_mu erken kontrol yapar; etiket görünmez ise
         # satır dışlanır. UI: row3 üstünde panel olarak.
         self.var_verdict_filtre = {
-            "UYGUN":           tk.BooleanVar(value=True),
-            "UYGUN DEĞİL":     tk.BooleanVar(value=True),
-            "ŞÜPHELİ":         tk.BooleanVar(value=True),
-            "ŞARTLI UYGUN":    tk.BooleanVar(value=True),
-            "MANUEL KONTROL":  tk.BooleanVar(value=True),
-            "":                tk.BooleanVar(value=True),  # henüz kontrol edilmemiş
+            "UYGUN":              tk.BooleanVar(value=True),
+            "UYGUN DEĞİL":        tk.BooleanVar(value=True),
+            "ŞÜPHELİ":            tk.BooleanVar(value=True),
+            "ŞARTLI UYGUN":       tk.BooleanVar(value=True),
+            "MANUEL KONTROL":     tk.BooleanVar(value=True),
+            "DİĞER RAPOR UYGUN":  tk.BooleanVar(value=True),
+            "":                   tk.BooleanVar(value=True),  # henüz kontrol edilmemiş
         }
-        # Manuel teyit filtresi — recete_teyit_db sabitleri (UYGUN/SUPHELI/UYGUN_DEGIL)
-        # "":True → teyit edilmemiş satırlar görünür.
+        # Manuel teyit filtresi — recete_teyit_db sabitleri (UYGUN/SUPHELI/UYGUN_DEGIL/
+        # DIGER_RAPOR_UYGUN). "":True → teyit edilmemiş satırlar görünür.
         self.var_teyit_filtre = {
-            "UYGUN":       tk.BooleanVar(value=True),
-            "SUPHELI":     tk.BooleanVar(value=True),
-            "UYGUN_DEGIL": tk.BooleanVar(value=True),
-            "":            tk.BooleanVar(value=True),  # teyit edilmemiş
+            "UYGUN":              tk.BooleanVar(value=True),
+            "SUPHELI":            tk.BooleanVar(value=True),
+            "UYGUN_DEGIL":        tk.BooleanVar(value=True),
+            "DIGER_RAPOR_UYGUN":  tk.BooleanVar(value=True),
+            "":                   tk.BooleanVar(value=True),  # teyit edilmemiş
         }
 
         # Detaylı filtre ayarları (⚙ butonundan açılan pencere ile yönetilir)
@@ -2104,12 +2106,13 @@ class AylikReceteSorguGUI:
 
         # Etiket → (renk, kısa-ad) eşlemesi (sırası önemli — soldan sağa)
         _VRD_RENKLERI = [
-            ("UYGUN",          "#2E7D32", "✓ UYGUN"),
-            ("UYGUN DEĞİL",    "#C62828", "✗ UYGUN DEĞİL"),
-            ("ŞÜPHELİ",        "#EF6C00", "? ŞÜPHELİ"),
-            ("ŞARTLI UYGUN",   "#1565C0", "≈ ŞARTLI UYGUN"),
-            ("MANUEL KONTROL", "#6A1B9A", "⚠ MANUEL"),
-            ("",               "#546E7A", "○ Boş"),
+            ("UYGUN",             "#2E7D32", "✓ UYGUN"),
+            ("UYGUN DEĞİL",       "#C62828", "✗ UYGUN DEĞİL"),
+            ("ŞÜPHELİ",           "#EF6C00", "? ŞÜPHELİ"),
+            ("ŞARTLI UYGUN",      "#1565C0", "≈ ŞARTLI UYGUN"),
+            ("MANUEL KONTROL",    "#6A1B9A", "⚠ MANUEL"),
+            ("DİĞER RAPOR UYGUN", "#00695C", "ℹ DİĞER RAPOR"),
+            ("",                  "#546E7A", "○ Boş"),
         ]
         # Checkbox referansları + temel etiket metni → _filtre_sayimlarini_guncelle
         # her yenilemede butona "(N)" ekleyebilsin
@@ -2161,10 +2164,11 @@ class AylikReceteSorguGUI:
                  font=FONT_GROUP).pack(side="left", padx=(6, 4), pady=2)
 
         _TYT_RENKLERI = [
-            ("UYGUN",       "#2E7D32", "✓ UYGUN"),
-            ("UYGUN_DEGIL", "#C62828", "✗ UYGUN DEĞİL"),
-            ("SUPHELI",     "#EF6C00", "? ŞÜPHELİ"),
-            ("",            "#546E7A", "○ Teyitsiz"),
+            ("UYGUN",              "#2E7D32", "✓ UYGUN"),
+            ("UYGUN_DEGIL",        "#C62828", "✗ UYGUN DEĞİL"),
+            ("SUPHELI",            "#EF6C00", "? ŞÜPHELİ"),
+            ("DIGER_RAPOR_UYGUN",  "#00695C", "ℹ DİĞER RAPOR"),
+            ("",                   "#546E7A", "○ Teyitsiz"),
         ]
         self._teyit_filtre_cbs = {}
         self._teyit_filtre_temel = {}
@@ -2321,25 +2325,40 @@ class AylikReceteSorguGUI:
                  "TAM paket JSON'unu modal pencerede göster.\n"
                  "AI çağrılmaz; sadece şeffaflık + KVKK kontrol için.\n"
                  "Modaldan 'AI'a Gönder' ile direkt çağrı da yapılabilir.")
+        # SS yığını — üstte checkbox (F2 yakalama modu), altta sayaçlı buton
+        ss_yigin = tk.Frame(ai_kucuk_frame, bg=P_AI_BG)
+        ss_yigin.pack(side="left", padx=(1, 1), fill="y")
+        self.var_ss_f2_aktif = tk.BooleanVar(value=False)
+        cb_ss_f2 = tk.Checkbutton(
+            ss_yigin, text="F2 ile yakala",
+            variable=self.var_ss_f2_aktif,
+            bg=P_AI_BG, fg="#E65100", selectcolor="#FFFFFF",
+            font=("Segoe UI", 7, "bold"), padx=0, pady=0, bd=0,
+            command=self._ss_f2_aktif_degisti,
+        )
+        cb_ss_f2.pack(side="top", anchor="w")
+        _Tooltip(cb_ss_f2,
+                 "F2 ile arka planda ekran görüntüsü yakalama modu.\n\n"
+                 "AÇIK iken: Medula'dayken F2'ye basınca pencere\n"
+                 "AÇILMAZ — çerçeve seçim overlay'i gelir, maus bırakınca\n"
+                 "screenshot SEÇİLİ satırın ek-görsel paketine eklenir.\n"
+                 "Kaç tane istersen ekleyebilirsin.\n\n"
+                 "🤖 AI KONTROL butonuna basınca Botanik DB verisi +\n"
+                 "biriken screenshot'lar Claude'a birlikte gönderilir.")
         btn_ai_ss = tk.Button(
-            ai_kucuk_frame, text="📸 SS",
+            ss_yigin, text="📸 SS (0)",
             bg="#FFE0B2", fg="#E65100",
             activebackground="#FFCC80", bd=1,
             command=self._ai_screenshot_sorgu_baslat,
             font=("Segoe UI", 8, "bold"), padx=4, pady=2,
             cursor="hand2")
-        btn_ai_ss.pack(side="left", padx=(1, 1))
+        btn_ai_ss.pack(side="top", fill="x")
         _Tooltip(btn_ai_ss,
-                 "📸 Screenshot ile AI Sorgu (subprocess + Claude Code CLI)\n\n"
-                 "Tabloda seçili hasta için ekran görüntüsü tabanlı sorgu:\n"
-                 "1. Pencere açılır, F9 ile veya buton ile screenshot alınır.\n"
-                 "2. Maus ile çerçeve çizip alan seçilir, etiket onaylanır.\n"
-                 "3. İstenildiği kadar screenshot toplanır.\n"
-                 "4. AI'ya gönder → Claude görselleri Read aracıyla açar,\n"
-                 "   SUT açısından inceleyip UYGUN/UYGUN DEĞİL/ŞÜPHELİ/\n"
-                 "   KE etiketi + ham veri raporu döner.\n"
-                 "5. Sonuç gösterildikten sonra screenshot klasörü silinir.\n\n"
-                 "Kullanım: Medula'da reçete/rapor/ilaç geçmişi açıkken F9.")
+                 "📸 Ek Görsel Yönet — seçili satıra eklenmiş\n"
+                 "screenshot'ları gör/yönet (rename/sil/dosyadan ekle).\n"
+                 "Sayı = bu satırdaki ek görsel adedi.\n\n"
+                 "Gönderim: AI KONTROL ile birlikte otomatik.\n"
+                 "Yakalama: 'F2 ile yakala' checkbox'ı açıkken F2.")
         btn_ai_ayar = tk.Button(
             ai_kucuk_frame, text="⚙",
             bg="#B3E5FC", fg="#01579B",
@@ -2930,6 +2949,9 @@ class AylikReceteSorguGUI:
         self.tv.bind("<Button-1>", self._sol_tik_dispatch, add="+")
         # Tek tıklamada şema panelini güncelle
         self.tv.bind("<<TreeviewSelect>>", self._sema_secim_guncelle, add="+")
+        # SS buton sayacını (aktif satırın ek görsel sayısı) güncelle
+        self.tv.bind("<<TreeviewSelect>>",
+                     self._ss_buton_sayac_guncelle, add="+")
         # Sütun genişlikleri değiştiğinde filtre slotlarını yeniden hizala.
         # Treeview'in column-resize özel event'i yok; mouse release sonrası
         # küçük bir gecikme ile güncel genişlikleri okuruz.
@@ -5750,7 +5772,11 @@ class AylikReceteSorguGUI:
             gruplar[g].append(s)
 
         v = (verdict or "").upper().strip()
-        if "ŞARTLI" in v or "SARTLI" in v:
+        # NOT: "DİĞER RAPOR UYGUN" kontrolü "UYGUN" eşleşmesinden ÖNCE
+        # yapılmalı — yoksa "UYGUN" branch'ine düşüp ana etiketle karışır.
+        if "DİĞER" in v or "DIGER" in v:
+            verdict_kisa = "DİĞER RAPOR UYGUN"
+        elif "ŞARTLI" in v or "SARTLI" in v:
             verdict_kisa = "ŞARTLI UYGUN"
         elif "UYGUN" in v and ("DEĞİL" in v or "DEGIL" in v):
             verdict_kisa = "UYGUN DEĞİL"
@@ -5763,11 +5789,12 @@ class AylikReceteSorguGUI:
         else:
             verdict_kisa = v or "—"
         verdict_renk = {
-            "UYGUN":          ("#1B5E20", "#C8E6C9"),
-            "UYGUN DEĞİL":    ("#B71C1C", "#FFCDD2"),
-            "ŞÜPHELİ":        ("#E65100", "#FFE0B2"),
-            "ŞARTLI UYGUN":   ("#33691E", "#DCEDC8"),
-            "MANUEL KONTROL": ("#0D47A1", "#BBDEFB"),
+            "UYGUN":              ("#1B5E20", "#C8E6C9"),
+            "UYGUN DEĞİL":        ("#B71C1C", "#FFCDD2"),
+            "ŞÜPHELİ":            ("#E65100", "#FFE0B2"),
+            "ŞARTLI UYGUN":       ("#33691E", "#DCEDC8"),
+            "MANUEL KONTROL":     ("#0D47A1", "#BBDEFB"),
+            "DİĞER RAPOR UYGUN":  ("#00695C", "#B2DFDB"),
         }.get(verdict_kisa, ("#37474F", "#ECEFF1"))
 
         # ─── Başlık ────────────────────────────────────────────
@@ -6783,13 +6810,18 @@ class AylikReceteSorguGUI:
 
                 if veya and len(ats) > 1:
                     # OR alt-paralel: atomlar dikey üst üste
+                    # PARALEL_DY = atom merkezleri arası — kutular çakışmasın
+                    # diye BLOK_H'den net 20 px büyük tutulur (kullanıcı kuralı
+                    # 2026-05-23: HAI/Fibrozis çifti yapışık görünüyordu).
                     n_or = len(ats)
-                    ust_atom_y = yolak_top + (yolak_h - (n_or*BLOK_H + (n_or-1)*8))/2
+                    PARALEL_DY = max(BLOK_H + 20, 24)
+                    ust_atom_y = yolak_top + (yolak_h - (n_or*BLOK_H
+                                                          + (n_or-1)*(PARALEL_DY - BLOK_H)))/2
                     # Sol/sağ alt-paralel raylar (kısa)
                     par_ray_left_x = cur_x
                     par_ray_right_x = cur_x + BLOK_W
                     par_y_top = ust_atom_y + BLOK_H/2
-                    par_y_bot = ust_atom_y + (n_or-1)*(BLOK_H+8) + BLOK_H/2
+                    par_y_bot = ust_atom_y + (n_or-1)*PARALEL_DY + BLOK_H/2
                     # Sol giriş kablosu (yolak hat → paralel ray)
                     c.create_line(cur_x - 8, yolak_mid_y,
                                    cur_x, yolak_mid_y,
@@ -6804,7 +6836,7 @@ class AylikReceteSorguGUI:
                     # Her OR atomu
                     for ai, a in enumerate(ats):
                         ax = cur_x
-                        ay = ust_atom_y + ai * (BLOK_H + 8)
+                        ay = ust_atom_y + ai * PARALEL_DY
                         self._klasik_blok_ciz(c, ax, ay, BLOK_W, BLOK_H,
                                                 a, veya_uye=True)
                     # OR sembolü
@@ -6966,7 +6998,11 @@ class AylikReceteSorguGUI:
 
         # Verdict normalize
         v = (verdict or "").upper().strip()
-        if "ŞARTLI" in v or "SARTLI" in v:
+        # NOT: "DİĞER RAPOR UYGUN" kontrolü "UYGUN" eşleşmesinden ÖNCE
+        # yapılmalı — yoksa "UYGUN" branch'ine düşüp ana etiketle karışır.
+        if "DİĞER" in v or "DIGER" in v:
+            verdict_kisa = "DİĞER RAPOR UYGUN"
+        elif "ŞARTLI" in v or "SARTLI" in v:
             verdict_kisa = "ŞARTLI UYGUN"
         elif "UYGUN" in v and ("DEĞİL" in v or "DEGIL" in v):
             verdict_kisa = "UYGUN DEĞİL"
@@ -7088,8 +7124,11 @@ class AylikReceteSorguGUI:
         BLOK_H = max(36, int(88 * z))      # dikdörtgen yüksekliği — 2 katmanlı
         ATOM_GAP_X = max(28, int(40 * z))  # AND içinde atom arası kablo (∧ görsün, gap dahil)
         BLOK_GAP_X = max(32, int(50 * z))  # gruplar arası ana hat (∧ için, gap dahil)
-        PARALEL_GAP_Y = max(50, int(75 * z))   # ① path-İÇİ OR atom arası (sıkı)
-        YOLAK_GAP_Y = max(120, int(180 * z))   # ② AYRI yolak arası (≥2× PARALEL)
+        # PARALEL_GAP_Y: path-İÇİ OR atom MERKEZLERİ arası dikey mesafe.
+        # MUTLAKA BLOK_H'den büyük olmalı — aksi halde kutular çakışır.
+        # Net görsel boşluk = PARALEL_GAP_Y - BLOK_H (≥16 px hedef).
+        PARALEL_GAP_Y = max(BLOK_H + 16, int(108 * z))  # ① path-İÇİ OR atom arası
+        YOLAK_GAP_Y = max(2 * PARALEL_GAP_Y, int(180 * z))   # ② AYRI yolak arası (≥2× PARALEL)
         KAVSAK_X_PAD = max(24, int(32 * z))  # kavşak öncesi/sonrası kablo (∨ junction, gap dahil)
         RAY_KALIN = 4                      # paralel grup sol/sağ ray (kalın belirgin)
         BOX_PIN = max(4, int(5 * z))       # kablo kutu kenarından bu kadar geri durur
@@ -9138,13 +9177,14 @@ class AylikReceteSorguGUI:
         Tüm SUT kontrol fonksiyonları (statin/diyabet/arb/klopidogrel/...)
         bu helper ile satıra yazsa kod tekrarı azalır.
         """
-        from recete_kontrol.base_kontrol import KontrolSonucu
+        from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         VERDICT_ETIKET = {
             KontrolSonucu.UYGUN: "UYGUN",
             KontrolSonucu.UYGUN_DEGIL: "UYGUN DEĞİL",
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI: "ATLANDI",
         }
         s["verdict"] = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
@@ -10461,6 +10501,10 @@ class AylikReceteSorguGUI:
             label=f"? ŞÜPHELİ ({sec_sayisi} satır)",
             command=lambda: self._ana_teyit_kaydet(
                 recete_teyit_db.TEYIT_SUPHELI))
+        teyit_menu.add_command(
+            label=f"ℹ DİĞER RAPOR UYGUN ({sec_sayisi} satır)",
+            command=lambda: self._ana_teyit_kaydet(
+                recete_teyit_db.TEYIT_DIGER_RAPOR))
         teyit_menu.add_separator()
         teyit_menu.add_command(
             label=f"🗑 Teyiti Kaldır ({sec_sayisi} satır)",
@@ -13100,6 +13144,10 @@ class AylikReceteSorguGUI:
         for t in _bol(s.get("rap_tesh")):
             rapor_aciklamalari.append(t)
 
+        # rapor_metni alanı diyabet atomik kontrollerinin (atom_metformin_
+        # sulfo_max_yetersiz vb.) okuduğu birleşik rapor metni.
+        rapor_metni = ' '.join(rapor_aciklamalari) if rapor_aciklamalari else ''
+
         return {
             "ilac_adi": s.get("ilac") or "",
             "etkin_madde": s.get("etkin") or "",
@@ -13108,12 +13156,18 @@ class AylikReceteSorguGUI:
             "rapor_kodu_aciklama": "",
             "recete_teshisleri": _bol(s.get("rec_tesh")),
             "rapor_aciklamalari": rapor_aciklamalari,
+            "rapor_metni": rapor_metni,
             "recete_aciklamalari": _bol(s.get("rec_ack")),
             "mesaj_metni": "",
             "doktor_uzmanligi": s.get("brans") or "",
             "hasta_yasi": s.get("yas") or "",
             "recete_dozu": s.get("rec_doz") or "",
             "recete_ilaclari": [{"ad": x} for x in (diger_ilac_adlari or []) if x],
+            # Diğer-rapor-bypass için (yerel cache'den hasta geçmiş raporlarında
+            # 'metformin/sülfonilüre maks tolere doz yetersiz glisemik' ibaresi
+            # aramak için gerekli)
+            "hasta_tc": (s.get("tc") or "").strip(),
+            "rapor_takip_no": (s.get("rap_no") or "").strip(),
         }
 
     # ───────────────────────────────────────────────────────────────────
@@ -13286,6 +13340,10 @@ class AylikReceteSorguGUI:
             "kurum_adi": s.get("kurum_adi") or "",
             "tesis_kodu": s.get("tesis_kodu") or "",
             "kutu_sayisi": s.get("kutu") or "",
+            # Diğer-rapor-bypass için (hastanın geçmiş raporlarında ibare
+            # aramak için gerekli — yerel SQLite cache okur)
+            "hasta_tc": (s.get("tc") or "").strip(),
+            "rapor_takip_no": (s.get("rap_no") or "").strip(),
         }
 
     # ───────────────────────────────────────────────────────────────────
@@ -14499,6 +14557,10 @@ class AylikReceteSorguGUI:
             # SUT 4.2.15.A (3) — rapor heyet listesi (Y-3 C3 atomu için)
             # Batch tarafından _yoak_heyet_doktorlari_topla ile doldurulur.
             "heyet_doktorlari": [],
+            # Diğer-rapor-bypass için (anjiyografi tarihi geçmiş raporda
+            # aramak için gerekli — yerel hasta_rapor_gecmisi cache okur)
+            "hasta_tc": (s.get("tc") or "").strip(),
+            "rapor_takip_no": (s.get("rap_no") or "").strip(),
         }
 
     # ───────────────────────────────────────────────────────────────────
@@ -15427,7 +15489,7 @@ class AylikReceteSorguGUI:
             return
         try:
             from recete_kontrol.sut_kontrolleri import kontrol_arb_ek4f_m51
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
             # Motor opsiyonu — env var ECZASIST_SUT_MOTOR=ARB_EK4F_M51 ise
             # JSON deklaratif motoru kullan (sut_kurallari/arb_ek4f_m51.json).
             from recete_kontrol.sut_motor.uyumluluk import (
@@ -15449,6 +15511,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -15590,7 +15653,7 @@ class AylikReceteSorguGUI:
             return
         try:
             from recete_kontrol.sut_kontrolleri import kontrol_cesitli
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -15605,6 +15668,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -15759,7 +15823,7 @@ class AylikReceteSorguGUI:
                 parent=self.root)
             return
         try:
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
             # JSON motoru antihipertansif 3 grubu için VARSAYILAN AÇIK
             # (2026-05-21 kullanıcı kararı). Motor atomik şemayı otomatik
             # üretir (SartSonuc listesi → Tab G sema_panel devre şeması).
@@ -15801,6 +15865,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -15963,7 +16028,7 @@ class AylikReceteSorguGUI:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_ivabradin, kontrol_ranolazin,
             )
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -15978,6 +16043,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -16125,7 +16191,7 @@ class AylikReceteSorguGUI:
             return
         try:
             from recete_kontrol.sut_kontrolleri import kontrol_potasyum_sitrat
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -16140,6 +16206,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -16271,7 +16338,7 @@ class AylikReceteSorguGUI:
             return
         try:
             from recete_kontrol.sut_kontrolleri import kontrol_raporsuz_bilgilendirme
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -16286,6 +16353,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -16432,7 +16500,7 @@ class AylikReceteSorguGUI:
                 kontrol_dmah, kontrol_kadin_hormon, kontrol_trimetazidin,
                 kontrol_antibiyotik_florokinolon,
             )
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -16447,6 +16515,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         DISPATCH = {
@@ -16599,7 +16668,7 @@ class AylikReceteSorguGUI:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_psikiyatri, kontrol_antiepileptik_4_2_25,
             )
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -16614,6 +16683,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -16945,17 +17015,13 @@ class AylikReceteSorguGUI:
         paket_onizle_dialog.onizle(self.root, paket, ai_gonder_callback=_gonder)
 
     def _ai_screenshot_sorgu_baslat(self) -> None:
-        """📸 Screenshot ile AI Sorgu — seçili satır için diyaloğu aç.
+        """📸 SS butonu — seçili satıra ait ek görsel yönet dialogunu aç.
 
-        Akış:
-          • Tabloda seçili (ilk) satırın hasta + reçete bilgisi okunur.
-          • screenshot_sorgu.ScreenshotSorguDialog açılır.
-          • F9 / Screenshot Al ile görseller toplanır, AI'ya gönderilir.
-          • Sonuç modal pencerede gösterilir; diyalog kapanırken
-            geçici klasör silinir.
-
-        Backend: claude_code_subprocess + Read aracı (multimodal).
-        API key gerektirmez; kullanıcının Max planı / claude CLI yeterli.
+        Eski "screenshot ile sorgu" dialogu kullanım dışı (AI'ya tek
+        başına gönderim artık yok). Bu buton, mevcut satırda toplanmış
+        ek görselleri listeler; rename / sil / dosyadan ekle / bölge
+        seçimi yapılır. Gerçek AI çağrısı 🤖 AI KONTROL ile tetiklenir
+        (worker satırda görsel varsa multimodal path'e router'lar).
         """
         satir = (
             self._aktif_satir()
@@ -16964,58 +17030,190 @@ class AylikReceteSorguGUI:
         )
         if not satir:
             messagebox.showinfo(
-                "Screenshot AI Sorgu",
+                "Ek Görsel Yönet",
                 "Önce tabloda bir satır seçin.\n\n"
-                "Hasta + reçete bilgisi seçili satırdan otomatik alınır;\n"
-                "screenshot'lar bu hastanın klasörüne kaydedilir.",
+                "Sayaç ve ek görseller seçili satırla ilişkilendirilir.\n"
+                "F2 ile yakalama da seçili satıra eklenir.",
                 parent=self.root)
             return
+        # Mevcut yönet diyaloğunu çağır (sağ tık menüsü ile aynı akış)
+        self._ek_gorsel_yonet_baslat(satir)
+        # Diyalog kapandıktan sonra sayaç güncellensin
+        self._ss_buton_sayac_guncelle()
 
-        # Backend hazır mı? claude CLI kontrol
+    # ──────────────────────────────────────────────────────────
+    # F2 ile arka plan screenshot yakalama (checkbox kontrollü)
+    # ──────────────────────────────────────────────────────────
+
+    def _ss_f2_aktif_degisti(self) -> None:
+        """Checkbox değişti — F2 hotkey'ini kaydet/kaldır."""
+        aktif = bool(self.var_ss_f2_aktif.get())
+        if aktif:
+            self._ss_f2_hotkey_kaydet()
+        else:
+            self._ss_f2_hotkey_kaldir()
+
+    def _ss_f2_hotkey_kaydet(self) -> None:
         try:
-            from recete_kontrol.ai_kontrol import (
-                claude_code_subprocess, screenshot_sorgu,
+            import keyboard
+        except ImportError:
+            messagebox.showwarning(
+                "keyboard Eksik",
+                "F2 global hotkey için keyboard kütüphanesi gerekli.\n\n"
+                "Kurulum: pip install keyboard\n\n"
+                "Bu olmadan checkbox açık olsa bile F2 çalışmaz.",
+                parent=self.root)
+            self.var_ss_f2_aktif.set(False)
+            return
+        # Aynı handle varsa önce temizle
+        self._ss_f2_hotkey_kaldir()
+
+        def _f2_handler():
+            try:
+                self.root.after(0, self._ss_f2_yakala)
+            except tk.TclError:
+                pass
+
+        try:
+            self._ss_f2_handle = keyboard.add_hotkey(
+                "f2", _f2_handler, suppress=False,
             )
-        except ImportError as e:
-            messagebox.showerror(
-                "Screenshot AI Sorgu",
-                f"Modül yüklenemedi:\n{type(e).__name__}: {e}\n\n"
-                "Gereksinimler: Pillow + keyboard + Claude Code CLI.\n"
-                "Kurulum: pip install -r requirements.txt",
-                parent=self.root)
-            return
-
-        ok, durum = claude_code_subprocess.saglik_kontrolu()
-        if not ok:
-            messagebox.showerror(
-                "Claude CLI Bulunamadı",
-                f"{durum}\n\n"
-                "Screenshot sorgu özelliği subprocess backend'i kullanır;\n"
-                "yerel `claude` komutu PATH'te olmalı.",
-                parent=self.root)
-            return
-
-        hasta_bilgi = {
-            "ad": str(satir.get("hasta") or "").strip(),
-            "tc": str(satir.get("tc") or "").strip(),
-            "yas": str(satir.get("yas") or "").strip(),
-            "cinsiyet": str(satir.get("cins") or "").strip(),
-        }
-        recete_bilgi = {
-            "recete_no": str(satir.get("rec_no") or "").strip(),
-            "tarih": str(satir.get("rec_tar") or "").strip(),
-            "ilac": str(satir.get("ilac") or "").strip(),
-            "rapor_kodu": str(satir.get("rap_kod") or "").strip(),
-        }
-
-        try:
-            screenshot_sorgu.ac(self.root, hasta_bilgi, recete_bilgi)
+            logger.info("F2 hotkey kaydedildi (SS yakalama)")
+            self._durum_yaz(
+                "✓ F2 ile SS yakalama AKTİF — Medula'da F2 ile çerçeve seç."
+            )
         except Exception as e:
-            logger.exception("Screenshot sorgu diyaloğu açma hatası")
+            logger.warning("F2 hotkey kayıt başarısız: %s", e)
             messagebox.showerror(
-                "Screenshot AI Sorgu",
-                f"Diyalog açılamadı:\n{type(e).__name__}: {e}",
+                "F2 Hotkey",
+                f"F2 kaydı başarısız:\n{type(e).__name__}: {e}",
                 parent=self.root)
+            self.var_ss_f2_aktif.set(False)
+
+    def _ss_f2_hotkey_kaldir(self) -> None:
+        h = getattr(self, "_ss_f2_handle", None)
+        if h is None:
+            return
+        try:
+            import keyboard
+            keyboard.remove_hotkey(h)
+            logger.info("F2 hotkey kaldırıldı (SS yakalama)")
+        except Exception as e:
+            logger.debug("F2 hotkey kaldırma hatası: %s", e)
+        self._ss_f2_handle = None
+
+    def _ss_f2_yakala(self) -> None:
+        """F2 handler — aktif satıra screenshot ekle.
+
+        Akış:
+          1. Aktif satırı oku; yoksa status bar uyar.
+          2. BolgeSecimOverlay aç (dialog açmadan, tam ekran karartılı).
+          3. bbox al → kırp → ek_gorseller[ri_id] klasörüne kaydet.
+          4. SS buton sayacını güncelle.
+        """
+        # Reentrancy guard — F2 spamlanırsa overlay üst üste açılmasın
+        if getattr(self, "_ss_f2_overlay_aktif", False):
+            return
+        self._ss_f2_overlay_aktif = True
+        try:
+            satir = (
+                self._aktif_satir()
+                if callable(getattr(self, "_aktif_satir", None))
+                else None
+            )
+            if not satir:
+                self._durum_yaz(
+                    "⚠ F2 yakalama atlandı — önce tabloda bir satır seçin."
+                )
+                return
+
+            ri_id = str(satir.get("ri_id") or satir.get("RIId") or "")
+            if not ri_id:
+                self._durum_yaz(
+                    "⚠ F2 yakalama atlandı — satırda ri_id yok."
+                )
+                return
+
+            # State garantisi
+            if ri_id not in self.ek_gorseller:
+                self.ek_gorseller[ri_id] = {
+                    "klasor": self._ek_gorsel_klasoru_olustur(ri_id),
+                    "yollar": [],
+                }
+            klasor = self.ek_gorseller[ri_id]["klasor"]
+
+            # Overlay → bbox
+            try:
+                from recete_kontrol.ai_kontrol.screenshot_sorgu import (
+                    BolgeSecimOverlay,
+                )
+            except ImportError as e:
+                logger.warning("BolgeSecimOverlay import hatası: %s", e)
+                self._durum_yaz(
+                    f"✗ Bölge seçim modülü yüklenemedi: {e}"
+                )
+                return
+
+            try:
+                overlay = BolgeSecimOverlay(self.root)
+            except Exception as e:
+                logger.exception("Overlay açma hatası")
+                self._durum_yaz(f"✗ Overlay açılamadı: {e}")
+                return
+
+            self.root.wait_window(overlay)
+            bbox = getattr(overlay, "bbox", None)
+            ekran_resmi = getattr(overlay, "ekran_resmi", None)
+            if not bbox or not ekran_resmi:
+                self._durum_yaz("Yakalama iptal edildi.")
+                return
+
+            try:
+                from datetime import datetime
+                from pathlib import Path
+                kirpilmis = ekran_resmi.crop(bbox)
+                zaman = datetime.now().strftime("%H%M%S")
+                seq = len(self.ek_gorseller[ri_id]["yollar"]) + 1
+                dosya = Path(klasor) / f"ss_{seq:02d}_{zaman}.png"
+                kirpilmis.save(str(dosya), "PNG")
+                self.ek_gorseller[ri_id]["yollar"].append(dosya)
+            except Exception as e:
+                logger.exception("F2 screenshot kaydetme hatası")
+                self._durum_yaz(f"✗ Kaydetme hatası: {e}")
+                return
+
+            n = len(self.ek_gorseller[ri_id]["yollar"])
+            self._ss_buton_sayac_guncelle()
+            self._durum_yaz(
+                f"📸 Ek görsel #{n} eklendi (satır {satir.get('rec_no', '?')})"
+            )
+        finally:
+            self._ss_f2_overlay_aktif = False
+
+    # ──────────────────────────────────────────────────────────
+    # SS buton sayacı
+    # ──────────────────────────────────────────────────────────
+
+    def _ss_buton_sayac_guncelle(self, *_args) -> None:
+        """SS buton metnini aktif satırın ek görsel sayısına göre güncelle.
+
+        TreeviewSelect, F2 capture, AI Kontrol cleanup sonrası çağrılır.
+        """
+        btn = getattr(self, "btn_ai_ss", None)
+        if btn is None:
+            return
+        try:
+            satir = self._aktif_satir() if callable(
+                getattr(self, "_aktif_satir", None)
+            ) else None
+            ri_id = str(
+                (satir or {}).get("ri_id")
+                or (satir or {}).get("RIId") or ""
+            )
+            n = self._ek_gorsel_sayisi(ri_id) if ri_id else 0
+            btn.config(text=f"📸 SS ({n})")
+        except Exception:
+            logger.debug("SS buton sayaç güncelleme hatası", exc_info=True)
 
     def _ai_kontrol_baslat(self) -> None:
         """🤖 AI KONTROL butonu — seçili satırlar için AI denetimi başlat."""
@@ -17281,6 +17479,9 @@ class AylikReceteSorguGUI:
                     if _gorsel_yollari:
                         self.root.after(
                             0, self._ek_gorsel_temizle, _ri_id_str)
+                        # Sayacı sıfırla (silinen satır aktif satır olabilir)
+                        self.root.after(
+                            10, self._ss_buton_sayac_guncelle)
 
                 # Bitti — özet göster, dialog'u kullanıcı kapansın
                 self.root.after(0, ilerleme.tamamlandi)
@@ -17362,7 +17563,7 @@ class AylikReceteSorguGUI:
         try:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_hepatit, _diger_rapor_notunu_uyariya_ekle)
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -17389,6 +17590,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -17567,7 +17769,7 @@ class AylikReceteSorguGUI:
         try:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_solunum, _diger_rapor_notunu_uyariya_ekle)
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -17604,6 +17806,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -17775,7 +17978,7 @@ class AylikReceteSorguGUI:
             return
         try:
             from recete_kontrol.doz_kontrol import kontrol_doz
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"Doz kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -17790,6 +17993,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -19077,7 +19281,7 @@ class AylikReceteSorguGUI:
         try:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_noropatik_4_2_35, _diger_rapor_notunu_uyariya_ekle)
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -19092,6 +19296,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -19271,7 +19476,7 @@ class AylikReceteSorguGUI:
                 kontrol_statin, kontrol_fibrat,
                 _diger_rapor_notunu_uyariya_ekle,
             )
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
             from recete_kontrol.eski_rapor_kontrol import (
                 eski_rapor_statin_kontrol_calistir,
             )
@@ -19327,6 +19532,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -22789,7 +22995,7 @@ class AylikReceteSorguGUI:
         try:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_diyabet_dpp4_sglt2, _diger_rapor_notunu_uyariya_ekle)
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -22804,6 +23010,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -23272,7 +23479,7 @@ class AylikReceteSorguGUI:
         try:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_klopidogrel, _diger_rapor_notunu_uyariya_ekle)
-            from recete_kontrol.base_kontrol import KontrolSonucu, KontrolRaporu
+            from recete_kontrol.base_kontrol import KontrolSonucu, KontrolRaporu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -23287,6 +23494,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -23824,7 +24032,7 @@ class AylikReceteSorguGUI:
         try:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_yoak, _diger_rapor_notunu_uyariya_ekle)
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -23839,6 +24047,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -24385,7 +24594,7 @@ class AylikReceteSorguGUI:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_bifosfonat, kontrol_osteoporoz_biyolojik,
             )
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -24413,6 +24622,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
@@ -24854,7 +25064,7 @@ class AylikReceteSorguGUI:
         try:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_enteral_beslenme, _diger_rapor_notunu_uyariya_ekle)
-            from recete_kontrol.base_kontrol import KontrolSonucu
+            from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
             self._durum_yaz(f"SUT kontrol modülü yüklenemedi: {e}")
             messagebox.showerror(
@@ -24869,6 +25079,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,

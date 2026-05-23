@@ -23,7 +23,43 @@ class KontrolSonucu(Enum):
                                     # 'şartlı atom'lar KE (örn. 6 ay ara, rapor süresi).
                                     # "X şartıyla uygun" — pipeline verisi gelirse netleşir.
     MANUEL_KONTROL = "manuel_kontrol"  # Sistem otomatik karar veremiyor, insan göz atmalı (örn. aile hekimi + 24 ay belirsiz)
+    DIGER_RAPOR_UYGUN = "diger_rapor_uygun"  # İlintilenen rapor şartı sağlamadı ama
+                                              # hastanın geçmiş raporlarından birinde
+                                              # ibare bulundu → bypass uygulandı.
+                                              # Örn: ARB monoterapi ibaresi aktif raporda
+                                              # yok ama eski raporda var; Diyabet metformin
+                                              # yetersizliği ibaresi; P2Y12 anjiyo tarihi.
     ATLANDI = "atlandi"       # Bu reçete için kontrol gerekmiyor
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# MERKEZİ ETİKET / RENK HARİTALARI (tüm GUI bunlardan import etmeli)
+# ═══════════════════════════════════════════════════════════════════════
+# Bu haritalar daha önce aylik_recete_sorgu_gui.py'da her kontrol butonu
+# içinde tekrar tekrar tanımlıydı (18+ yer). Yeni etiket eklendiğinde
+# tüm yerlerin senkron kalması için merkezîleştirildi.
+
+VERDICT_ETIKET = {
+    KontrolSonucu.UYGUN:             "UYGUN",
+    KontrolSonucu.UYGUN_DEGIL:       "UYGUN DEĞİL",
+    KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+    KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
+    KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
+    KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+    KontrolSonucu.ATLANDI:           "ATLANDI",
+}
+
+# UI verdict etiketi → (fg, bg) RGB hex
+VERDICT_RENK = {
+    "UYGUN":              ("#1B5E20", "#C8E6C9"),
+    "UYGUN DEĞİL":        ("#B71C1C", "#FFCDD2"),
+    "ŞÜPHELİ":            ("#E65100", "#FFE0B2"),
+    "ŞARTLI UYGUN":       ("#33691E", "#DCEDC8"),
+    "MANUEL KONTROL":     ("#0D47A1", "#BBDEFB"),
+    "DİĞER RAPOR UYGUN":  ("#00695C", "#B2DFDB"),  # turkuaz-mint (UYGUN'a yakın
+                                                    # ama açıkça ayırt edilebilir)
+    "ATLANDI":            ("#546E7A", "#ECEFF1"),
+}
 
 
 class SartDurumu(Enum):
@@ -73,6 +109,12 @@ class SartSonuc:
     # (örn. hasta satış geçmişi, rapor süresi metnine girmemiş) için
     # kullanılır — eczacı manuel doğruladığında kesin UYGUN olur.
     sartli_atom: bool = False
+    # 'Diğer rapor bypass' kaynağı — aktif raporda ibare yoktu ama geçmiş
+    # raporlardan birinde bulundu. Atom durumu YOK yerine VAR olarak
+    # işaretlenir, durum=VAR + bypass_kaynak="rapor_takip_no:tarih" set edilir.
+    # Genel sonuçta tüm atomlar OK ise → KontrolSonucu.DIGER_RAPOR_UYGUN.
+    # Akış şemasında atom yanına paralel "ℹ diğer rapor" düğümü çizilir.
+    bypass_kaynak: Optional[str] = None
 
 
 @dataclass
