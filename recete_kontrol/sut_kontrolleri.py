@@ -9646,7 +9646,7 @@ def _tum_ldl_olcumlerini_bul(metin: str) -> List[Dict]:
     # SIKI/GEVŞEK lookahead'ı tarih başını reddettiği için bu format
     # yakalanamıyor; özel pattern gerek.
     ldl_tarih_bitisik = re.compile(
-        r'ldl[\s:=-]*(\d{2,3})[/.\-]\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4}'
+        r'ldl[\s:=.\-]*(\d{2,3})[/.\-]\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4}'
     )
     for m in ldl_tarih_bitisik.finditer(metin_lower):
         _ekle(m.group(1), m.start(1),
@@ -9962,6 +9962,40 @@ def _statin_atom_yas_65(yas: Optional[int]) -> SartDurumu:
     return SartDurumu.VAR if yas >= 65 else SartDurumu.YOK
 
 
+def _kv_kaynak_siki_mi(kaynak: str) -> bool:
+    """KV/risk atomu kaynağı 'sıkı kanıt' mı? (REFİKA kuralı — 2026-05-22)
+
+    SUT denetiminde KV hastalık (DM/AKS/Mİ/inme/KAH/PAH/AAA/karotid)
+    tespitinde kanıt hiyerarşisi:
+
+    SIKI (True — VAR sayılır):
+      • aktif_teshis*  — reçete satırı/rapor teşhis ICD'si (somut)
+      • gecmis_icd:*   — hastanın geçmiş raporlarındaki ICD listesi (resmi)
+      • gecmis_rapor:* — geçmiş resmi rapor metni (tarihli/imzalı belge)
+      • rapor_kodu:*   — rec_rap_kod otoritesi (örn KAH için 04.02/04.04)
+      • aktif_metin:antidiyabetik* — ilaç tedavisi (DM için objektif)
+      • aktif_metin:HbA1c=*  — WHO/ADA DM tanı kriteri (lab)
+      • aktif_metin:AKŞ=*    — WHO/ADA DM tanı kriteri (lab)
+
+    ZAYIF (False — KE sayılır, manuel doğrulama gerekli):
+      • aktif_metin (sade) — doktorun aktif rapora yazdığı serbest ibare;
+        hastanın resmi ek hastalık raporu olmadan ifade tek başına yeterli
+        değil (REFİKA SARIGÜL 2R8W2UK).
+      • '' (boş) — hiç kaynak yok
+
+    Kullanıcı kuralı: "Eğer hastanın diyabet/KAH/AAA/SVH/periferik damar
+    hastalığı gibi ek hastalık RAPORU yok ise sadece reete/rapor metninde
+    ibare geçmesini ŞÜPHELİ olarak ele alalım".
+    """
+    if not kaynak:
+        return False
+    if kaynak == 'aktif_metin':
+        return False  # ZAYIF: doktor serbest beyan, somut belge yok
+    # Kategorize edilmiş tüm kaynaklar (aktif_metin:lab, aktif_teshis:*,
+    # gecmis_*, rapor_kodu:*) — sıkı kanıt
+    return True
+
+
 def _lipid_gecmis_icd_var(diger_icd: Optional[List[str]],
                              icd_prefixleri: Tuple[str, ...]
                              ) -> Tuple[bool, str]:
@@ -10039,6 +10073,18 @@ def _statin_atom_dm(metin_lower: str, teshis_metin: str,
 
     Returns: (var_mi, kaynak) — kaynak: 'aktif_metin' | 'aktif_teshis' |
                                           'gecmis_icd:<satir>' | ''
+
+    Kanıt kaynakları (öncelik sırası):
+      1. Aktif teşhis ICD (E10-E14)
+      2. Aktif rapor metni: lafzen "diyabet/DM/şeker hastalığı"
+      3. Aktif rapor metni: antidiyabetik ilaç adı (metformin/sulfonilürel/
+         insülin/DPP4/SGLT2/GLP1/glitazon) — hasta DM tedavisi alıyor
+      4. Aktif rapor metni: HbA1c ≥ 6.5% (WHO/ADA DM tanı kriteri)
+      5. Aktif rapor metni: Açlık Kan Şekeri ≥ 126 mg/dL (WHO/ADA tanı)
+      6. Geçmiş raporların ICD'leri (E10-E14)
+
+    FADİM YÜKSEL 3NC6FI8 (2026-05-22): "Metformin ve Sulfonilureleri" +
+    "Hemoglobin A1c: 9.9" + "Açlık Kan Şekeri: 147" — hepsi DM kanıtı.
     """
     if any(k in teshis_metin for k in ['E10', 'E11', 'E12', 'E13', 'E14']):
         return (True, 'aktif_teshis')
@@ -10048,6 +10094,42 @@ def _statin_atom_dm(metin_lower: str, teshis_metin: str,
                 r'şeker\s*hastal', r'seker\s*hastal']
     if any(re.search(p, metin_lower) for p in patterns):
         return (True, 'aktif_metin')
+    # Antidiyabetik ilaç adları → hasta DM tedavisi alıyor (lafzen DM ima)
+    ilac_pattern = (
+        r'\bmetformin\w*|\bsulfonil[uüy]re\w*|\binsul[iı]n\w*|\binsülin\w*|'
+        r'\bgliklazid\w*|\bglimepirid\w*|\bglibenklamid\w*|\bpiyoglitazon\w*|'
+        r'\brepaglinid\w*|\bnateglinid\w*|'
+        r'\bsitagliptin\w*|\bsaksagliptin\w*|\bvildagliptin\w*|\blinagliptin\w*|'
+        r'\bempagliflozin\w*|\bdapagliflozin\w*|\bkanagliflozin\w*|'
+        r'\bliraglutid\w*|\bsemaglutid\w*|\bdulaglutid\w*'
+    )
+    m_ilac = re.search(ilac_pattern, metin_lower)
+    if m_ilac:
+        return (True, f'aktif_metin:antidiyabetik({m_ilac.group(0)})')
+    # HbA1c ≥ 6.5 → WHO/ADA DM tanı kriteri
+    m_hba1c = re.search(
+        r'(?:hb\s*a1c|hemoglobin\s*a1c|glikoz[iı]l[iı]\s*hemoglobin)\s*'
+        r'[:=]?\s*(\d+(?:[.,]\d+)?)', metin_lower)
+    if m_hba1c:
+        try:
+            val = float(m_hba1c.group(1).replace(',', '.'))
+            if val >= 6.5:
+                return (True, f'aktif_metin:HbA1c={val}')
+        except ValueError:
+            pass
+    # Açlık Kan Şekeri ≥ 126 mg/dL → WHO/ADA DM tanı kriteri
+    # "Açlık Kan Şekeri: 147" / "AKŞ: 147" / "FPG 147" — değer yakala
+    m_aks = re.search(
+        r'(?:açlık\s*kan\s*şeker[a-zçğıöşü]*|\bakş\b|'
+        r'açlık\s*plazma\s*gliko[a-zçğıöşü]*|\bfpg\b)\s*'
+        r'[:=]?\s*(\d{2,3})(?!\d)', metin_lower)
+    if m_aks:
+        try:
+            val = int(m_aks.group(1))
+            if val >= 126:
+                return (True, f'aktif_metin:AKŞ={val}')
+        except ValueError:
+            pass
     gv, gs = _lipid_gecmis_icd_var(
         diger_icd, ('E10', 'E11', 'E12', 'E13', 'E14'))
     if gv:
@@ -10085,8 +10167,13 @@ def _statin_atom_mi(metin_lower: str, teshis_metin: str,
     """SUT 4.2.28.A(1)(ç) — Geçirilmiş Mİ."""
     if any(k in teshis_metin for k in ['I21', 'I22', 'I25.2']):
         return (True, 'aktif_teshis')
+    # Türkçe ı/i varyantları: metin_lower transformasyonu I→ı çevirir,
+    # bu yüzden "STEMI" → "stemı", "NSTEMI" → "nstemı", "MIyokard" → "mıyokard"
+    # olur. Hem "i" hem "ı" varyantlarını kapsa. Bonus: "enfaktusu" gibi yaygın
+    # halk yazımı için "enfa(kt|rk)" eklendi (RECEP ERTEN 2RQ85MG, 2026-05-22).
     if re.search(
-        r'miyokard\s*infar|miyokard\s*enfark|geçirilmiş\s*mi\b|\bstemi\b|\bnstemi\b',
+        r'm[iı]yokard\s*[iı]nfar|m[iı]yokard\s*enfa(?:rk|kt)|'
+        r'geçirilmiş\s*m[iı]\b|\bstem[iı]\b|\bnstem[iı]\b',
             metin_lower):
         return (True, 'aktif_metin')
     gv, gs = _lipid_gecmis_icd_var(diger_icd, ('I21', 'I22', 'I25.2'))
@@ -10094,8 +10181,8 @@ def _statin_atom_mi(metin_lower: str, teshis_metin: str,
         return (True, f'gecmis_icd:{gs}')
     gv2, gs2 = _lipid_gecmis_metin_ara(
         diger_rapor_metinleri,
-        r'miyokard\s*infar|miyokard\s*enfark|geçirilmiş\s*mi\b|'
-        r'\bstemi\b|\bnstemi\b',
+        r'm[iı]yokard\s*[iı]nfar|m[iı]yokard\s*enfa(?:rk|kt)|'
+        r'geçirilmiş\s*m[iı]\b|\bstem[iı]\b|\bnstem[iı]\b',
         aile_oykusu_redder=True,
     )
     if gv2:
@@ -10159,9 +10246,12 @@ def _statin_atom_kah(metin_lower: str, teshis_metin: str,
         if any(k in on40 for k in ('aile', 'ailesel', 'öykü', 'oyku')):
             continue
         return (True, 'aktif_metin')
-    # KAH/iskemik kalp/stent/bypass — bunlar hasta'da var demek
+    # KAH/iskemik kalp/stent/bypass/KAG/anjiyo — bunlar hasta'da var demek.
+    # anjiyo varyantları: anjio, anjıo, anjiyo, anjıyo + opsiyonel graf/plast
+    # suffix. "anjiyo uygulandı" da kapsanır (YAĞMUR DOĞAN 3M5HM7G, 2026-05-22).
     if re.search(
-            r'\bkah\b|iskemik\s*kalp|\bkabg\b|by[-\s]?pass|\bstent\b',
+            r'\bkah\b|iskemik\s*kalp|\bkabg\b|by[-\s]?pass|\bstent\b|'
+            r'\bkag\b|anj[iı]y?o(?:graf|plast)?',
             metin_lower):
         return (True, 'aktif_metin')
     gv, gs = _lipid_gecmis_icd_var(
@@ -10359,7 +10449,7 @@ def _statin_atom_rapor_tipi(metin_lower: str) -> Tuple[str, str]:
         return 'BASLANGIC', ''
     devam_kaliplari = [
         (r'\bistinaden\b', 'istinaden'),
-        (r'idame\s*tedavi', 'idame tedavisi'),
+        (r'idame\s*(?:tedavi|rapor)', 'idame'),
         (r'devam\s*rapor', 'devam raporu'),
         (r'yenile(?:me|nme|nen)\b', 'yenileme'),
         (r'\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}\s*tarih(?:li|inde)\s*'
@@ -10618,6 +10708,50 @@ def _statin_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,
         veya_flag = any(s.veya_grubu for s in gs)
         grup_durumlari[ad] = _yoak_grup_durumu(gs, veya=veya_flag)
 
+    # ── ERKEN UYGUN: HERHANGİ BİR yolak tam VAR ise UYGUN ────────────
+    # SUT 4.2.28.A-1(1) lafzı: a/b/c/ç şartlarından biri sağlanırsa statin
+    # endikasyonu var. Üst-VEYA yapısı: bir yolak yeterli, diğerlerine bakılmaz.
+    # 4.2.28.D + madde 3 son cümle: idame raporu da ayrı bir yolak.
+    #
+    # Kullanıcı kuralı (2026-05-22): "Herhangi bir yolak şartı sağlandıysa
+    # rapor UYGUN — başka yolakların 'kontrol edilemedi' durumlarına bakılmaz;
+    # meta atomlar (uzman branşı/6 ay ara/24 ay aile hekimi) yoksayılır".
+    #
+    # Yol önceliği (mevzuat sırası):
+    #   Yol-a: LDL>190 + 2 ölçüm
+    #   Yol-b: LDL>160 + ≥2 ek risk + 2 ölçüm
+    #   Yol-c: LDL>130 + ≥3 ek risk + 2 ölçüm
+    #   Yol-ç(1): LDL>100 + ≥1 yüksek KV
+    #   Yol-ç(2): LDL>70 + ≥1 yüksek KV
+    #   Yol-İdame: (a)+(b)+(c) idame şartları
+    erken_uygun_yol = None
+    for yol_prefix, yol_etiket in (
+        ('Yol-a — LDL>190', 'LDL>190 + 2 ölçüm'),
+        ('Yol-b — LDL>160', 'LDL>160 + ≥2 ek risk + 2 ölçüm'),
+        ('Yol-c — LDL>130', 'LDL>130 + ≥3 ek risk + 2 ölçüm'),
+        ('Yol-ç(1) — LDL>100', 'LDL>100 + ek hastalık'),
+        ('Yol-ç(2) — LDL>70', 'LDL>70 + ek hastalık'),
+        ('Yol-İdame —', 'İdame raporu (a+b+c)'),
+    ):
+        yk = next((k for k in grup_durumlari if k.startswith(yol_prefix)), None)
+        if yk and grup_durumlari[yk] == SartDurumu.VAR:
+            erken_uygun_yol = (yk, yol_etiket)
+            break
+    if erken_uygun_yol:
+        yk, yol_etiket = erken_uygun_yol
+        detaylar['grup_durumlari'] = {g: d.value for g, d in grup_durumlari.items()}
+        detaylar['erken_uygun'] = yk
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj=(f'Statin SUT 4.2.28.A — {yol_etiket} → UYGUN '
+                   f'(diğer yolakların ve meta atomların durumu yoksayıldı)'),
+            sut_kurali=sut_kurali,
+            detaylar=detaylar,
+            sartlar=sartlar,
+            aranan_ibare='≥1 yolak tam VAR',
+            bulunan_metin=f'Erken UYGUN: {yk} — meta atomlar bypass',
+        )
+
     # Üst-VEYA dalları — Yol-a/b/c/ç(1)/ç(2)/İdame prefix bazlı
     # Yol-ç SUT'ta iki ayrı cümle olarak yazıldı (LDL>100/LDL>70) → iki dal.
     # Yol-İdame: SUT 4.2.28.D + madde 3 son cümle — rapor yenileme yolu.
@@ -10815,11 +10949,21 @@ def _statin_yetiskin_kontrol(
     # + ardından 'tarih(li/inde)' VEYA 'rapor(u/una/dan/...)' kelimesi.
     # SELMA BOZTAS 3GZISZZ vakası (2026-05-16): "16.02.2024 raporuna
     # istinaden" — "tarihli" yok ama "raporuna" var → eşleşmeli.
+    # EROL SARAÇ 39XOVYL vakası (2026-05-22): "22.12.2023 05:24 LDL Kolesterol
+    # ... 82 mg/dL" — tarih + saat + lab (ldl/tg/hdl/kolesterol/trigliserid)
+    # de "başlama tarihi + başlama değeri" referansı sayılır (SUT 4.2.28.D-1
+    # lafzı: "rapor düzenlenme tarihi VEYA tedaviye başlama tarihi VE başlama
+    # değerlerinin raporda belirtilmesi yeterlidir"). (a) idame ibaresi VAR
+    # şartı ile birlikte kullanıldığı için yalnız başına "DD.MM.YYYY LDL" yanlış
+    # uygunluk üretmez.
     tarih_pattern = re.compile(
         r'\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}\s*'
         r'(?:tarih(?:li|inde)?|rapor[a-zçğıöşü]*)'
         r'|\d{4}\s*(?:yılı|yili)\s*rapor'
-        r'|başlama\s*tarih',
+        r'|başlama\s*tarih'
+        r'|\d{1,2}[./\-]\d{1,2}[./\-]\d{2,4}\s+'
+        r'(?:\d{1,2}:\d{2}(?::\d{2})?\s+)?'
+        r'(?:ldl|hdl|trig[a-zçğıöşü]*|kolester[a-zçğıöşü]*|kolestrol)',
         re.IGNORECASE)
     tarih_eslesen = tarih_pattern.search(metin_lower) if metin_lower else None
     if tarih_eslesen:
@@ -11074,6 +11218,29 @@ def _statin_yetiskin_kontrol(
         ('AAA', 'var' if aaa_var else 'yok'),
         ('Karotid', 'var' if karotid_var else 'yok'),
     ]
+    # REFİKA kuralı (2026-05-22, REFİKA SARIGÜL 2R8W2UK): KV atomu yalnız
+    # aktif rapor metni serbest beyanından geliyorsa (somut belge yok) →
+    # KONTROL_EDILEMEDI (manuel doğrula). Geçmiş ICD/rapor/aktif teşhis veya
+    # lab/medikasyon kanıtı varsa VAR.
+    yuksek_kv_kaynaklar_listesi = [
+        detaylar['kv_kaynaklari'].get(ad, '') for ad in yuksek_kv_bulunanlar
+    ]
+    yuksek_kv_siki_var = any(
+        _kv_kaynak_siki_mi(k) for k in yuksek_kv_kaynaklar_listesi)
+    yuksek_kv_zayif_only = (
+        bool(yuksek_kv_kaynaklar_listesi) and not yuksek_kv_siki_var)
+    if yuksek_kv_siki_var:
+        yuksek_kv_durum = SartDurumu.VAR
+        yuksek_kv_neden = yuksek_kv_aciklama
+    elif yuksek_kv_zayif_only:
+        yuksek_kv_durum = SartDurumu.KONTROL_EDILEMEDI
+        yuksek_kv_neden = (
+            f'{yuksek_kv_aciklama} — yalnız aktif rapor metninde, '
+            'resmi geçmiş ek hastalık raporu/ICD bulunamadı; eczacı '
+            'manuel doğrulamalı')
+    else:
+        yuksek_kv_durum = SartDurumu.YOK
+        yuksek_kv_neden = yuksek_kv_aciklama
 
     # ── Yol-ç(1): LDL > 100 + KV ──
     if max_ldl is not None and max_ldl > 100:
@@ -11082,8 +11249,8 @@ def _statin_yetiskin_kontrol(
             f'LDL {max_ldl} > 100', 'rapor_metni', grup=g_c2_a))
         sartlar.append(SartSonuc(
             '≥1 yüksek KV hastalık',
-            SartDurumu.VAR if yuksek_kv_var else SartDurumu.YOK,
-            yuksek_kv_aciklama,
+            yuksek_kv_durum,
+            yuksek_kv_neden,
             'rapor_metni/teshis', grup=g_c2_a,
             alt_liste=yuksek_kv_alt))
     else:
@@ -11102,8 +11269,8 @@ def _statin_yetiskin_kontrol(
             f'LDL {max_ldl} > 70', 'rapor_metni', grup=g_c2_b))
         sartlar.append(SartSonuc(
             '≥1 yüksek KV hastalık',
-            SartDurumu.VAR if yuksek_kv_var else SartDurumu.YOK,
-            yuksek_kv_aciklama,
+            yuksek_kv_durum,
+            yuksek_kv_neden,
             'rapor_metni/teshis', grup=g_c2_b,
             alt_liste=yuksek_kv_alt))
     else:
@@ -11756,6 +11923,17 @@ def _fibrat_atom_tg_olcum(metin: str) -> Tuple[Optional[int], str]:
     _tg_etiket = (r'trig[ai]?l?[ie]?seri[dt]'   # trigliserid/trigliserit/trigleserid/trigiliserid
                   r'|trig[ai]?l?[ie]?sed'        # triglised typo (D düşmüş)
                   r'|triglyceri')                # triglyceride
+    # ÖZEL FORMAT — NOKTA-AYRAÇLI TG+TARİH BİTİŞİK: "trigliserid.345.21/10/2021"
+    # ZEYNEP TAŞKAN 2UUS0P5 (2026-05-22). LDL parser ile aynı bug, aynı fix.
+    # Tarih bileşeni reddi YAPILMAZ — pattern zaten tarihi tüketiyor.
+    tg_tarih_bitisik = re.compile(
+        rf'(?:{_tg_etiket})e?\.(\d{{2,4}})[./\-]\d{{1,2}}[./\-]\d{{1,2}}[./\-]\d{{2,4}}'
+    )
+    for m in tg_tarih_bitisik.finditer(metin_lower_sade):
+        try:
+            bulunanlar.append(int(m.group(1)))
+        except ValueError:
+            pass
     tg_patterns = [
         # Tam yazımlar: [^0-9]{0,20} açıklayıcı kelimeleri (değeri, düzeyi) kapsar.
         rf'(?:{_tg_etiket})e?[^0-9]{{0,20}}(\d{{2,4}})',
@@ -12130,6 +12308,34 @@ def _fibrat_genel_sonuc_atomik(sartlar: List[SartSonuc], detaylar: Dict,
         veya_flag = any(s.veya_grubu for s in gs)
         grup_durumlari[ad] = _yoak_grup_durumu(gs, veya=veya_flag)
 
+    # ── ERKEN UYGUN: HERHANGİ BİR yolak tam VAR ise UYGUN ────────────
+    # SUT 4.2.28.B(1) lafzı: a) TG>500 VEYA b) TG>200 + ≥1 KV hastalık.
+    # Bir yolak yeterli; uzman branşı/6 ay ara/meta atomlar yoksayılır.
+    # Kullanıcı kuralı (2026-05-22): bkz. statin _genel_sonuc_atomik.
+    erken_uygun_yol = None
+    for yol_prefix, yol_etiket in (
+        ('Yol-a — TG>500', 'TG>500'),
+        ('Yol-b — TG>200', 'TG>200 + ≥1 KV hastalık'),
+    ):
+        yk = next((k for k in grup_durumlari if k.startswith(yol_prefix)), None)
+        if yk and grup_durumlari[yk] == SartDurumu.VAR:
+            erken_uygun_yol = (yk, yol_etiket)
+            break
+    if erken_uygun_yol:
+        yk, yol_etiket = erken_uygun_yol
+        detaylar['grup_durumlari'] = {g: d.value for g, d in grup_durumlari.items()}
+        detaylar['erken_uygun'] = yk
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.UYGUN,
+            mesaj=(f'Fibrat SUT 4.2.28.B — {yol_etiket} → UYGUN '
+                   f'(diğer yolakların ve meta atomların durumu yoksayıldı)'),
+            sut_kurali=sut_kurali,
+            detaylar=detaylar,
+            sartlar=sartlar,
+            aranan_ibare='≥1 yolak tam VAR',
+            bulunan_metin=f'Erken UYGUN: {yk} — meta atomlar bypass',
+        )
+
     # Üst-VEYA: Yol-a / Yol-b prefix bazlı
     yol_prefixleri = [
         ('Yol-a — TG>500', 'Yol-b — TG>200'),
@@ -12384,13 +12590,27 @@ def kontrol_fibrat(ilac_sonuc: Dict) -> KontrolRaporu:
             f'{ad} ({_kaynak_kisalt(kv_kaynaklar.get(ad, ""))})'
             for ad in kv_bulunanlar
         ) if kv_bulunanlar else ''
+        # REFİKA kuralı (2026-05-22): KV atomu yalnız aktif rapor metni
+        # serbest beyanından geliyorsa (somut belge yok) → KE; sıkı kanıt
+        # (geçmiş ICD/aktif teşhis/rapor_kodu/lab) varsa VAR.
+        kv_kaynaklar_listesi = [kv_kaynaklar.get(ad, '') for ad in kv_bulunanlar]
+        kv_siki_var = any(_kv_kaynak_siki_mi(k) for k in kv_kaynaklar_listesi)
+        kv_zayif_only = bool(kv_kaynaklar_listesi) and not kv_siki_var
+        if kv_siki_var:
+            kv_b_durum = SartDurumu.VAR
+            kv_b_neden = f'Bulunan: {bulunan_detay}'
+        elif kv_zayif_only:
+            kv_b_durum = SartDurumu.KONTROL_EDILEMEDI
+            kv_b_neden = (f'Bulunan: {bulunan_detay} — yalnız aktif rapor '
+                          'metninde, resmi geçmiş ek hastalık raporu/ICD '
+                          'bulunamadı; eczacı manuel doğrulamalı')
+        else:
+            kv_b_durum = SartDurumu.YOK
+            kv_b_neden = ('DM/AKS/Mİ/inme/KAH/PAH/AAA/karotid ibaresi yok '
+                          '(aktif + geçmiş raporlarda taranan)')
         sartlar.append(SartSonuc(
             '≥1 KV hastalık (DM/AKS/Mİ/inme/KAH/PAH/AAA/karotid)',
-            SartDurumu.VAR if kv_var else SartDurumu.YOK,
-            (f'Bulunan: {bulunan_detay}'
-             if kv_bulunanlar
-             else 'DM/AKS/Mİ/inme/KAH/PAH/AAA/karotid ibaresi yok '
-                  '(aktif + geçmiş raporlarda taranan)'),
+            kv_b_durum, kv_b_neden,
             'rapor_metni/teshis/gecmis', grup=g_b))
     else:
         sartlar.append(SartSonuc(
