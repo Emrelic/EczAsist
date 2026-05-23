@@ -3317,18 +3317,34 @@ class AylikReceteSorguGUI:
 
         sag = tk.Frame(dy_govde, bg="#FFFDE7")
         sag.pack(side="left", fill="both", expand=True, padx=(6, 0))
-        self._diger_yolak_text = tk.Text(
-            sag, font=("Consolas", 9), bg="white", wrap="word",
-            height=10, state="disabled")
-        self._diger_yolak_text.pack(side="left", fill="both", expand=True)
-        dy_xsb = ttk.Scrollbar(sag, orient="vertical",
-                                command=self._diger_yolak_text.yview)
-        dy_xsb.pack(side="right", fill="y")
-        self._diger_yolak_text.configure(yscrollcommand=dy_xsb.set)
+
+        # Üstte özet etiketi (yolak adı + sonuç)
+        self._diger_yolak_baslik_lbl = tk.Label(
+            sag, text="(Sol listeden pasif yolak seçin)",
+            bg="#FFFDE7", fg="#5D4037",
+            font=("Segoe UI", 9, "bold"), anchor="w", justify="left")
+        self._diger_yolak_baslik_lbl.pack(side="top", fill="x", padx=4, pady=(2, 4))
+
+        # Atomik şema canvas (kutucuklu, basit grup-bazlı çizim)
+        canvas_frame = tk.Frame(sag, bg="white", bd=1, relief="solid")
+        canvas_frame.pack(side="top", fill="both", expand=True)
+        self._diger_yolak_canvas = tk.Canvas(canvas_frame, bg="white",
+                                               highlightthickness=0)
+        dy_ysb2 = ttk.Scrollbar(canvas_frame, orient="vertical",
+                                  command=self._diger_yolak_canvas.yview)
+        dy_ysb2.pack(side="right", fill="y")
+        self._diger_yolak_canvas.pack(side="left", fill="both", expand=True)
+        self._diger_yolak_canvas.configure(yscrollcommand=dy_ysb2.set)
+
+        def _dy_canvas_wheel(event):
+            self._diger_yolak_canvas.yview_scroll(
+                int(-1 * (event.delta / 120)), "units")
+        self._diger_yolak_canvas.bind("<MouseWheel>", _dy_canvas_wheel)
 
         # Veri ön belleği: aktif satırın diger_yolaklar listesi + ilac_sonuc
         self._diger_yolak_aktif_satir: Optional[Dict] = None
         self._diger_yolak_aktif_liste: List[Dict] = []
+        self._diger_yolak_aktif_modul: str = ''
 
         self._sema_temizle("Bir reçete satırı seçin")
 
@@ -4554,61 +4570,56 @@ class AylikReceteSorguGUI:
 
     def _diger_yolaklar_doldur(self, satir: Optional[Dict]) -> None:
         """Aktif satırın `verdict_detaylar` JSON'undan diger_yolaklar listesini
-        çıkar ve Listbox'ı doldur. Hepatit dışı kontroller için liste boş —
-        panel 'desteklenmiyor' mesajı gösterir."""
+        çıkar ve Listbox'ı doldur. Modul anahtarına göre desteklenir."""
         self._diger_yolak_aktif_satir = satir
         self._diger_yolak_aktif_liste = []
+        self._diger_yolak_aktif_modul = ''
         lb = getattr(self, '_diger_yolak_listbox', None)
-        tx = getattr(self, '_diger_yolak_text', None)
-        if not lb or not tx:
+        bl = getattr(self, '_diger_yolak_baslik_lbl', None)
+        cv = getattr(self, '_diger_yolak_canvas', None)
+        if not lb or not bl or not cv:
             return
         try:
             lb.delete(0, tk.END)
-            tx.configure(state="normal")
-            tx.delete("1.0", tk.END)
+            cv.delete("all")
         except Exception:
             return
 
         if not satir:
-            tx.insert("1.0", "(Reçete seçili değil)")
-            tx.configure(state="disabled")
+            bl.configure(text="(Reçete seçili değil)")
             return
 
         # verdict_detaylar JSON'ında diger_yolaklar var mı?
         det_json = satir.get("verdict_detaylar") or ""
         diger = []
         aktif_meta = None
+        modul = ''
         try:
             if det_json:
                 det = json.loads(det_json) if isinstance(det_json, str) else det_json
                 diger = det.get("diger_yolaklar") or []
                 aktif_meta = det.get("aktif_yolak_meta")
+                modul = det.get("kontrol_modulu") or ''
         except Exception:
             diger = []
 
         if not diger:
-            tx.insert("1.0",
-                       "Bu kontrol modülü 'diğer yolaklar' API'sini henüz "
-                       "desteklemiyor. Şimdilik sadece hepatit (HBV/HCV/HDV) "
-                       "kontrollerinde aktif.\n\n"
-                       "Hepatit reçetesi seçerseniz dispatcher'ın elediği "
-                       "11 pasif yolak burada listelenir.")
-            tx.configure(state="disabled")
+            bl.configure(
+                text=("Bu kontrol modülü 'diğer yolaklar' API'sini henüz "
+                       "desteklemiyor. Şimdilik hepatit + diyabet aktif."))
             return
 
         self._diger_yolak_aktif_liste = diger
-        # Başlık satırı (aktif yolak)
+        self._diger_yolak_aktif_modul = modul
         if aktif_meta:
-            tx.insert(
-                "1.0",
-                f"✅ AKTİF YOLAK: {aktif_meta.get('ad','?')} "
-                f"(SUT {aktif_meta.get('sut','?')})\n\n"
-                "Sol listede pasif yolak başlıklarına tıklayınca "
-                "o yolağın atomik şartları LAZY hesaplanır ve burada "
-                "görüntülenir.")
+            bl.configure(
+                text=(f"✅ AKTİF: {aktif_meta.get('ad','?')} "
+                      f"(SUT {aktif_meta.get('sut','?')})  |  modul: {modul}\n"
+                      "Sol listeden pasif yolak seçin — atomik şartları "
+                      "LAZY hesaplanıp aşağıda kutu-bazlı şema olarak çizilir."),
+                justify="left")
         else:
-            tx.insert("1.0", "Sol listeden bir pasif yolak seçin.")
-        tx.configure(state="disabled")
+            bl.configure(text=f"Sol listeden bir pasif yolak seçin (modul: {modul})")
 
         # Listbox'ı doldur
         for d in diger:
@@ -4621,10 +4632,11 @@ class AylikReceteSorguGUI:
             lb.insert(tk.END, satir_metin)
 
     def _diger_yolaklar_secim(self, _event=None) -> None:
-        """Listbox'tan seçim → lazy yolak hesapla → atomları metin olarak göster."""
+        """Listbox'tan seçim → lazy yolak hesapla → atomları canvas'a kutu-bazlı çiz."""
         lb = getattr(self, '_diger_yolak_listbox', None)
-        tx = getattr(self, '_diger_yolak_text', None)
-        if not lb or not tx:
+        bl = getattr(self, '_diger_yolak_baslik_lbl', None)
+        cv = getattr(self, '_diger_yolak_canvas', None)
+        if not lb or not bl or not cv:
             return
         sel = lb.curselection()
         if not sel:
@@ -4636,51 +4648,135 @@ class AylikReceteSorguGUI:
         kod = secilen.get("kod")
         ad = secilen.get("ad") or kod
         satir = self._diger_yolak_aktif_satir
+        modul = self._diger_yolak_aktif_modul
         if not satir or not kod:
             return
 
-        tx.configure(state="normal")
-        tx.delete("1.0", tk.END)
-        tx.insert("1.0",
-                   f"⏳ {kod} {ad} — atomlar hesaplanıyor (lazy)...\n")
-        tx.configure(state="disabled")
-        tx.update_idletasks()
+        bl.configure(text=f"⏳ {kod} {ad} — atomlar hesaplanıyor (lazy)...")
+        cv.delete("all")
+        bl.update_idletasks()
 
-        # Hepatit için lazy hesap
+        # Modul-aware lazy hesap
+        rapor = None
         try:
-            from recete_kontrol.hepatit_kontrol import hepatit_yolak_hesapla
-            ilac_sonuc = self._ilac_sonuc_olustur_hepatit(satir)
-            rapor = hepatit_yolak_hesapla(ilac_sonuc, kod)
+            if modul == 'hepatit':
+                from recete_kontrol.hepatit_kontrol import hepatit_yolak_hesapla
+                ilac_sonuc = self._ilac_sonuc_olustur_hepatit(satir)
+                rapor = hepatit_yolak_hesapla(ilac_sonuc, kod)
+            elif modul == 'diyabet':
+                from recete_kontrol.diyabet_4_2_38 import diyabet_yolak_hesapla
+                # Diyabet ilac_sonuc oluşturma 2 arg alıyor (s, diger_ilac_adlari)
+                ilac_sonuc = self._ilac_sonuc_olustur_diyabet(satir, [])
+                rapor = diyabet_yolak_hesapla(ilac_sonuc, kod)
+            else:
+                bl.configure(
+                    text=f"❌ '{modul}' modülü için lazy hesap fonksiyonu yok")
+                return
         except Exception as e:
-            tx.configure(state="normal")
-            tx.delete("1.0", tk.END)
-            tx.insert("1.0", f"❌ Hesap hatası: {e}")
-            tx.configure(state="disabled")
+            bl.configure(text=f"❌ Hesap hatası: {e}")
             return
 
-        # Sonucu metin olarak ekrana yaz
-        tx.configure(state="normal")
-        tx.delete("1.0", tk.END)
-        tx.insert(tk.END, f"📋 {kod} — {ad}\n")
-        tx.insert(tk.END, f"   Eleme nedeni: {secilen.get('eleme_nedeni','—')}\n\n")
-        tx.insert(tk.END, f"➡ HESAPLANAN SONUÇ: {rapor.sonuc.value.upper()}\n")
-        if rapor.mesaj:
-            tx.insert(tk.END, f"   {rapor.mesaj}\n")
-        tx.insert(tk.END, "\n── ATOMİK ŞARTLAR ─────────────────\n")
-        gruplar_dict: Dict[str, List] = {}
+        # Başlık güncelle
+        son = rapor.sonuc.value if hasattr(rapor.sonuc, 'value') else str(rapor.sonuc)
+        son_renk = {'uygun': '#1B5E20', 'uygun_degil': '#B71C1C',
+                     'kontrol_edilemedi': '#E65100',
+                     'sartli_uygun': '#1565C0',
+                     'atlandi': '#546E7A',
+                     'diger_rapor_uygun': '#006064'}.get(son, '#37474F')
+        bl.configure(
+            text=(f"📋 {kod} — {ad}    |    "
+                  f"➡ SONUÇ: {son.upper()}    |    "
+                  f"eleme: {secilen.get('eleme_nedeni','—')}"),
+            fg=son_renk)
+
+        # Canvas'a kutu-bazlı şema çiz: gruplar dikey, her atom = kutu
+        self._diger_yolak_sema_ciz(cv, rapor)
+
+    def _diger_yolak_sema_ciz(self, c: tk.Canvas, rapor) -> None:
+        """Pasif yolak için basit kutu-bazlı atomik şema çizimi.
+
+        Düzen: dikey gruplar; her grup başlığı + içindeki atom kutuları
+        yatay sıralı. Atom kutusu üstte ad (siyah), altta neden (renk),
+        renk = durum (yeşil=VAR, kırmızı=YOK, turuncu=KE).
+        """
+        c.delete("all")
+        durum_renk = {
+            'var': ('#E8F5E9', '#1B5E20', '#43A047'),       # bg, fg, border
+            'yok': ('#FFEBEE', '#B71C1C', '#E53935'),
+            'kontrol_edilemedi': ('#FFF8E1', '#E65100', '#FB8C00'),
+            'na': ('#ECEFF1', '#37474F', '#90A4AE'),
+        }
+        # Gruplara böl (sırayı koru)
+        gruplar: List[Tuple[str, List]] = []
+        grup_idx_map: Dict[str, int] = {}
         for s in (rapor.sartlar or []):
             g = getattr(s, 'grup', '') or '(grupsuz)'
-            gruplar_dict.setdefault(g, []).append(s)
-        for grup_ad, atomlar in gruplar_dict.items():
-            tx.insert(tk.END, f"\n● {grup_ad}\n")
+            if g not in grup_idx_map:
+                grup_idx_map[g] = len(gruplar)
+                gruplar.append((g, []))
+            gruplar[grup_idx_map[g]][1].append(s)
+
+        x_pad = 12
+        y_cursor = 10
+        kutu_w = 220
+        kutu_h = 56
+        kutu_gap_x = 10
+        grup_gap_y = 14
+        baslik_h = 22
+
+        c_w = max(int(c.winfo_width()) or 600, 600)
+
+        for grup_ad, atomlar in gruplar:
+            # Grup başlığı
+            c.create_rectangle(x_pad, y_cursor,
+                                c_w - x_pad, y_cursor + baslik_h,
+                                fill="#37474F", outline="")
+            c.create_text(x_pad + 8, y_cursor + baslik_h / 2,
+                           text=f"● {grup_ad}",
+                           fill="white", anchor="w",
+                           font=("Segoe UI", 9, "bold"))
+            y_cursor += baslik_h + 4
+
+            # Atomlar — yatay sıralı, satır kaydırma
+            cur_x = x_pad
+            row_h = kutu_h + 8
+            atom_row_start_y = y_cursor
             for a in atomlar:
                 dur = a.durum.value if hasattr(a.durum, 'value') else str(a.durum)
-                sym = {'var': '✓', 'yok': '✗',
-                        'kontrol_edilemedi': '?'}.get(dur, '·')
-                tx.insert(tk.END, f"   {sym} {a.ad}\n")
-                if a.neden:
-                    tx.insert(tk.END, f"      └─ {a.neden}\n")
-        tx.configure(state="disabled")
+                bg, fg, br = durum_renk.get(dur, durum_renk['na'])
+                # Satıra sığmıyorsa yeni satır
+                if cur_x + kutu_w > c_w - x_pad:
+                    cur_x = x_pad
+                    y_cursor += row_h
+                # Kutu
+                c.create_rectangle(cur_x, y_cursor,
+                                    cur_x + kutu_w, y_cursor + kutu_h,
+                                    fill=bg, outline=br, width=2)
+                # Üst etiket — ad (kırp)
+                ad = (a.ad or '')[:60]
+                if len(a.ad or '') > 60:
+                    ad += '…'
+                c.create_text(cur_x + kutu_w / 2, y_cursor + 14,
+                               text=ad, fill="#212121",
+                               font=("Segoe UI", 8, "bold"),
+                               width=kutu_w - 12)
+                # Alt etiket — durum sembolü + neden
+                sym = {'var': '✓ VAR', 'yok': '✗ YOK',
+                        'kontrol_edilemedi': '? KE', 'na': '· NA'}.get(dur, dur)
+                neden = (a.neden or '')[:80]
+                if len(a.neden or '') > 80:
+                    neden += '…'
+                c.create_text(cur_x + 6, y_cursor + kutu_h - 22,
+                               text=sym, fill=fg, anchor="w",
+                               font=("Segoe UI", 8, "bold"))
+                c.create_text(cur_x + kutu_w / 2, y_cursor + kutu_h - 8,
+                               text=neden, fill=fg,
+                               font=("Segoe UI", 7),
+                               width=kutu_w - 12)
+                cur_x += kutu_w + kutu_gap_x
+            y_cursor += row_h + grup_gap_y
+
+        c.configure(scrollregion=(0, 0, c_w, y_cursor + 20))
 
     def _sema_heyet_brans_listesi(self, rapor_ana_id) -> list:
         """Verilen RaporAnaId için heyet doktorlarının branş listesi.
@@ -9432,6 +9528,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI: "ATLANDI",
         }
         s["verdict"] = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
@@ -11676,7 +11773,10 @@ class AylikReceteSorguGUI:
                        ri.RIId, ri.RIUrunId, ri.RIRaporKodId, ri.RIRaporNo,
                        ri.RIAdet, ri.RIDoz, ri.RITekrar, ri.RIAralik, ri.RIPeriyotId,
                        ri.RIToplam, ri.RIFiyatFarki, ri.RISilme,
-                       u.UrunAdi, u.UrunBarkodu,
+                       u.UrunAdi,
+                       (SELECT TOP 1 b.BarkodAdi FROM Barkod b
+                         WHERE b.BarkodUrunId = u.UrunId
+                         ORDER BY b.BarkodSilme ASC) AS UrunBarkodu,
                        atc.ATCKodu, atc.ATCTurkce
                    FROM ReceteIlaclari ri
                    LEFT JOIN Urun u ON u.UrunId = ri.RIUrunId
@@ -15760,10 +15860,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_arb_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_arb_disi": 0}
         kategori_sayac = {"ARB_MONO": 0, "ARB_KOMBI": 0, "ARB_KOMBI_HCT": 0}
         denetlenen_satirlar = []
 
@@ -15939,17 +16040,23 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_kapsam_disi": 0}
         kategori_sayac = {"URINER": 0, "GOZYASI": 0, "BPH": 0}
         denetlenen_satirlar = []
 
         # Aynı reçetenin diğer satırlarını grupla (kombi yasağı için)
         rec_grup = {}
         for s in self.tum_satirlar:
-            rno = s.get("rec_no") or ""
+            # rec_no öncelikli; yoksa sistem_recete_no; ikisi de boşsa
+            # satır kendi tekil anahtarında — boş rec_no'lu farklı hastaların
+            # kalemleri aynı "reçete" grubunda toplanmasın (Bug fix 2026-05-23).
+            rno = (s.get("rec_no") or s.get("sistem_recete_no") or "").strip()
+            if not rno:
+                rno = f"__solo_{id(s)}__"
             rec_grup.setdefault(rno, []).append(s)
 
         # Önceki çalıştırmadan kalan ÇEŞİTLİ verdict'lerini temizle
@@ -16136,17 +16243,23 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_kapsam_disi": 0}
         kategori_sayac = {"MONO": 0, "KOMBI": 0, "ARB": 0}
         denetlenen_satirlar = []
 
         # Aynı reçetenin diğer satırlarını grupla (ACE+ARB kombi yasağı için)
         rec_grup = {}
         for s in self.tum_satirlar:
-            rno = s.get("rec_no") or ""
+            # rec_no öncelikli; yoksa sistem_recete_no; ikisi de boşsa
+            # satır kendi tekil anahtarında — boş rec_no'lu farklı hastaların
+            # kalemleri aynı "reçete" grubunda toplanmasın (Bug fix 2026-05-23).
+            rno = (s.get("rec_no") or s.get("sistem_recete_no") or "").strip()
+            if not rno:
+                rno = f"__solo_{id(s)}__"
             rec_grup.setdefault(rno, []).append(s)
 
         # Önceki çalıştırmadan kalan ANTİHT verdict'lerini temizle
@@ -16212,6 +16325,24 @@ class AylikReceteSorguGUI:
                                                     ensure_ascii=False)
             except Exception:
                 s["verdict_detaylar"] = str(rapor.detaylar or {})
+            # Atomik şart listesi — akım şeması paneli için (eksikti)
+            sartlar_obj = getattr(rapor, "sartlar", None) or []
+            try:
+                s["verdict_sartlar"] = json.dumps([
+                    {"ad": p.ad,
+                     "durum": (p.durum.value if hasattr(p.durum, "value")
+                                else str(p.durum)),
+                     "neden": p.neden,
+                     "kaynak": getattr(p, "kaynak", ""),
+                     "grup": getattr(p, "grup", ""),
+                     "veya_grubu": bool(getattr(p, "veya_grubu", False)),
+                     "alt_liste": getattr(p, "alt_liste", None),
+                     "sartli_atom": bool(getattr(p, "sartli_atom", False)),
+                     "bypass_kaynak": getattr(p, "bypass_kaynak", None)}
+                    for p in sartlar_obj
+                ], ensure_ascii=False)
+            except Exception:
+                s["verdict_sartlar"] = ""
             sayac[etiket] = sayac.get(etiket, 0) + 1
             denetlenen_satirlar.append(s)
 
@@ -16314,16 +16445,22 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_kapsam_disi": 0}
         kategori_sayac = {"IVABRADIN": 0, "RANOLAZIN": 0, "EPLERENON": 0}
         denetlenen_satirlar = []
 
         rec_grup = {}
         for s in self.tum_satirlar:
-            rno = s.get("rec_no") or ""
+            # rec_no öncelikli; yoksa sistem_recete_no; ikisi de boşsa
+            # satır kendi tekil anahtarında — boş rec_no'lu farklı hastaların
+            # kalemleri aynı "reçete" grubunda toplanmasın (Bug fix 2026-05-23).
+            rno = (s.get("rec_no") or s.get("sistem_recete_no") or "").strip()
+            if not rno:
+                rno = f"__solo_{id(s)}__"
             rec_grup.setdefault(rno, []).append(s)
 
         for s in self.tum_satirlar:
@@ -16477,10 +16614,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_kapsam_disi": 0}
         kategori_sayac = {"POTASYUM": 0}
         denetlenen_satirlar = []
 
@@ -16624,16 +16762,22 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_kapsam_disi": 0}
         kategori_sayac = {"RAPORSUZ": 0}
         denetlenen_satirlar = []
 
         rec_grup = {}
         for s in self.tum_satirlar:
-            rno = s.get("rec_no") or ""
+            # rec_no öncelikli; yoksa sistem_recete_no; ikisi de boşsa
+            # satır kendi tekil anahtarında — boş rec_no'lu farklı hastaların
+            # kalemleri aynı "reçete" grubunda toplanmasın (Bug fix 2026-05-23).
+            rno = (s.get("rec_no") or s.get("sistem_recete_no") or "").strip()
+            if not rno:
+                rno = f"__solo_{id(s)}__"
             rec_grup.setdefault(rno, []).append(s)
 
         for s in self.tum_satirlar:
@@ -16786,6 +16930,7 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         DISPATCH = {
@@ -16795,7 +16940,7 @@ class AylikReceteSorguGUI:
             "ANTIBIYOTIK_FLOROKINOLON": kontrol_antibiyotik_florokinolon,
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_kapsam_disi": 0}
         kategori_sayac = {k: 0 for k in DISPATCH}
         denetlenen_satirlar = []
 
@@ -16954,10 +17099,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_kapsam_disi": 0}
         kategori_sayac = {"PSIKIYATRI": 0, "ANTIEPILEPTIK": 0}
         alt_sayac = {}
         denetlenen_satirlar = []
@@ -16966,7 +17112,12 @@ class AylikReceteSorguGUI:
         # Reçete numarasına göre dict
         rec_grup = {}
         for s in self.tum_satirlar:
-            rno = s.get("rec_no") or ""
+            # rec_no öncelikli; yoksa sistem_recete_no; ikisi de boşsa
+            # satır kendi tekil anahtarında — boş rec_no'lu farklı hastaların
+            # kalemleri aynı "reçete" grubunda toplanmasın (Bug fix 2026-05-23).
+            rno = (s.get("rec_no") or s.get("sistem_recete_no") or "").strip()
+            if not rno:
+                rno = f"__solo_{id(s)}__"
             rec_grup.setdefault(rno, []).append(s)
 
         # Önceki çalıştırmadan kalan PSI/AEP verdict'lerini temizle
@@ -17861,10 +18012,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_hepatit_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_hepatit_disi": 0}
         kategori_sayac = {"HBV": 0, "HCV": 0, "KLASIK": 0}
         denetlenen_satirlar = []
 
@@ -18078,10 +18230,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_solunum_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_solunum_disi": 0}
         # Alt-sınıf bazlı sayım (rapor için)
         ALT_SINIFLAR = ("SABA", "SAMA", "SABA+SAMA", "ICS", "LABA", "LAMA",
                         "LABA+ICS", "LABA+LAMA", "UCLU", "LTRA", "OMALIZUMAB",
@@ -18265,10 +18418,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0}
         denetlenen = []
 
         def _bol(metin):
@@ -19568,10 +19722,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_kapsam_disi": 0}
         kategori_sayac = {"PREGABALIN": 0, "GABAPENTIN": 0, "DULOKSETIN": 0,
                           "ALFA_LIPOIK": 0, "KAPSAISIN": 0}
         denetlenen_satirlar = []
@@ -19579,7 +19734,12 @@ class AylikReceteSorguGUI:
         # Aynı reçeteye ait satırları gruplama (Pregab+Gabap kombi yasağı için)
         rec_grup = {}
         for s in self.tum_satirlar:
-            rno = s.get("rec_no") or ""
+            # rec_no öncelikli; yoksa sistem_recete_no; ikisi de boşsa
+            # satır kendi tekil anahtarında — boş rec_no'lu farklı hastaların
+            # kalemleri aynı "reçete" grubunda toplanmasın (Bug fix 2026-05-23).
+            rno = (s.get("rec_no") or s.get("sistem_recete_no") or "").strip()
+            if not rno:
+                rno = f"__solo_{id(s)}__"
             rec_grup.setdefault(rno, []).append(s)
 
         for s in self.tum_satirlar:
@@ -19804,10 +19964,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_lipid_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_lipid_disi": 0}
         # Rapor için kategoriye göre ayrım da tutulur
         kategori_sayac = {"STATIN": 0, "FIBRAT": 0, "DIGER_LIPID": 0}
         denetlenen_satirlar = []  # rapor için (lipid olanlar)
@@ -23283,10 +23444,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_diyabet_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_diyabet_disi": 0}
         # Alt sınıf bazlı sayım (raporlama için)
         kategori_sayac = {"INSULIN": 0, "BIGUANID": 0, "SULFONILURE": 0,
                           "GLINID": 0, "TZD": 0, "AKARBOZ": 0,
@@ -23767,10 +23929,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_klop_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_klop_disi": 0}
         # Alt sınıf dağılımı (raporlama için)
         kategori_sayac = {"KLOPIDOGREL": 0, "PRASUGREL": 0, "TIKAGRELOR": 0}
         denetlenen_satirlar = []
@@ -24321,10 +24484,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_yoak_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_yoak_disi": 0}
         kategori_sayac = {"DABIGATRAN": 0, "RIVAROKSABAN": 0,
                           "APIKSABAN": 0, "EDOKSABAN": 0}
         denetlenen_satirlar = []
@@ -24897,10 +25061,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_osteo_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_osteo_disi": 0}
         kategori_sayac = {
             "BIFOSFONAT_ORAL": 0, "BIFOSFONAT_IV": 0,
             "DENOSUMAB": 0, "TERIPARATID": 0, "ROMOSOZUMAB": 0,
@@ -25354,10 +25519,11 @@ class AylikReceteSorguGUI:
             KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
             KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
             KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
             KontrolSonucu.ATLANDI:           "ATLANDI",
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
-                 "ŞÜPHELİ": 0, "ATLANDI": 0, "_enteral_disi": 0}
+                 "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_enteral_disi": 0}
         kategori_sayac = {"STANDART": 0, "DIYABETIK": 0, "RENAL": 0,
                           "PEDIATRIK": 0, "IMMUNONUTRIYON": 0, "DIGER": 0}
         denetlenen_satirlar = []
