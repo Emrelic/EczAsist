@@ -3136,6 +3136,23 @@ class AylikReceteSorguGUI:
                   "KOAH kontrollerinde 'başlangıç raporu hangi tarihte' sorgusu\n"
                   "için kullanılır. SALT OKUMA.")
 
+        # 🔍 Diğer Yolaklar toggle — dispatcher'ın elediği yolakları göster/gizle
+        self._diger_yolak_panel_acik = False
+        self._diger_yolak_btn = tk.Button(
+            baslik, text="🔍 Diğer Yolaklar",
+            bg="#37474F", fg="#FFCC80",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat", bd=0, padx=8, pady=1, cursor="hand2",
+            command=self._diger_yolaklar_toggle)
+        self._diger_yolak_btn.pack(side="left", padx=(6, 1), pady=3)
+        _Tooltip(self._diger_yolak_btn,
+                  "🔍 Dispatcher'ın elediği diğer yolakları göster/gizle.\n\n"
+                  "Aktif yolak şu an çizilen şemadır. Diğer 11 yolak için\n"
+                  "(hepatit) eleme nedeni listesi açılır; bir başlığa\n"
+                  "tıklayınca o yolağın atomları lazy hesaplanır ve\n"
+                  "panelde görüntülenir.\n\n"
+                  "Sadece hepatit modülünde aktif (diğer modüller için yapım aşamasında).")
+
         self._sema_panel_teyit_lbl = tk.Label(
             baslik, text="", bg="#37474F", fg="#FFEB3B",
             font=("Segoe UI", 8, "italic"))
@@ -3254,6 +3271,61 @@ class AylikReceteSorguGUI:
                                                "units")
         self._klasik_canvas.bind("<MouseWheel>", _klasik_on_wheel)
         self._klasik_canvas.bind("<Shift-MouseWheel>", _klasik_on_shift_wheel)
+
+        # ── DİĞER YOLAKLAR PANELİ (varsayılan gizli, toggle ile açılır) ──
+        # Üst panel'in altında ayrı bir frame; 🔍 toggle butonu pack/forget
+        # eder. İçerik: sol Listbox (pasif yolak başlıkları + gerekçe) +
+        # sağ ScrolledText (seçili yolağın atomları lazy hesaplanır).
+        self._diger_yolak_frame = tk.Frame(parent, bg="#FFFDE7",
+                                             height=200, bd=1, relief="solid")
+        # NOT: ŞİMDİLİK pack ETMİYORUZ — toggle butonu ile açılır
+        self._diger_yolak_frame.pack_propagate(False)
+
+        # Başlık
+        dy_baslik = tk.Frame(self._diger_yolak_frame, bg="#FFA000", height=24)
+        dy_baslik.pack(side="top", fill="x")
+        dy_baslik.pack_propagate(False)
+        tk.Label(dy_baslik,
+                  text="🔍 Dispatcher'ın Elediği Diğer Yolaklar (lazy hesaplama)",
+                  bg="#FFA000", fg="white",
+                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=8)
+        tk.Button(dy_baslik, text="✕", bg="#FFA000", fg="white",
+                   font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                   padx=8, pady=0, cursor="hand2",
+                   command=self._diger_yolaklar_toggle).pack(side="right")
+
+        # İçerik: sol liste, sağ atomlar metni
+        dy_govde = tk.Frame(self._diger_yolak_frame, bg="#FFFDE7")
+        dy_govde.pack(side="top", fill="both", expand=True, padx=4, pady=4)
+
+        sol = tk.Frame(dy_govde, bg="#FFFDE7", width=320)
+        sol.pack(side="left", fill="y")
+        sol.pack_propagate(False)
+        self._diger_yolak_listbox = tk.Listbox(
+            sol, font=("Segoe UI", 8), bg="white",
+            selectmode="single", activestyle="dotbox")
+        self._diger_yolak_listbox.pack(side="left", fill="both", expand=True)
+        dy_ysb = ttk.Scrollbar(sol, orient="vertical",
+                                command=self._diger_yolak_listbox.yview)
+        dy_ysb.pack(side="right", fill="y")
+        self._diger_yolak_listbox.configure(yscrollcommand=dy_ysb.set)
+        self._diger_yolak_listbox.bind("<<ListboxSelect>>",
+                                         self._diger_yolaklar_secim)
+
+        sag = tk.Frame(dy_govde, bg="#FFFDE7")
+        sag.pack(side="left", fill="both", expand=True, padx=(6, 0))
+        self._diger_yolak_text = tk.Text(
+            sag, font=("Consolas", 9), bg="white", wrap="word",
+            height=10, state="disabled")
+        self._diger_yolak_text.pack(side="left", fill="both", expand=True)
+        dy_xsb = ttk.Scrollbar(sag, orient="vertical",
+                                command=self._diger_yolak_text.yview)
+        dy_xsb.pack(side="right", fill="y")
+        self._diger_yolak_text.configure(yscrollcommand=dy_xsb.set)
+
+        # Veri ön belleği: aktif satırın diger_yolaklar listesi + ilac_sonuc
+        self._diger_yolak_aktif_satir: Optional[Dict] = None
+        self._diger_yolak_aktif_liste: List[Dict] = []
 
         self._sema_temizle("Bir reçete satırı seçin")
 
@@ -4444,8 +4516,168 @@ class AylikReceteSorguGUI:
             # başlığını güncelle (kullanıcı tam ekranda kimi kontrol
             # ettiğini her zaman görsün)
             self._sema_tam_bilgi_guncelle(satir)
+            # Diğer yolaklar paneli (toggle açıksa veya kapalıyken bile veri
+            # ön belleğe alınır — açılırsa liste hazır olsun)
+            self._diger_yolaklar_doldur(satir)
         except Exception as e:
             self._sema_temizle(f"Hata: {e}")
+
+    # ─────────────────────────────────────────────────────────────────
+    # DİĞER YOLAKLAR PANELİ — dispatcher'ın elediği yolakları göster
+    # ─────────────────────────────────────────────────────────────────
+    def _diger_yolaklar_toggle(self) -> None:
+        """🔍 toggle: alt paneli pack/forget."""
+        if getattr(self, '_diger_yolak_panel_acik', False):
+            try:
+                self._diger_yolak_frame.pack_forget()
+            except Exception:
+                pass
+            self._diger_yolak_panel_acik = False
+            try:
+                self._diger_yolak_btn.configure(fg="#FFCC80")
+            except Exception:
+                pass
+        else:
+            try:
+                self._diger_yolak_frame.pack(side="bottom", fill="x",
+                                              padx=4, pady=(4, 4))
+            except Exception:
+                pass
+            self._diger_yolak_panel_acik = True
+            try:
+                self._diger_yolak_btn.configure(fg="#FFEB3B")
+            except Exception:
+                pass
+
+    def _diger_yolaklar_doldur(self, satir: Optional[Dict]) -> None:
+        """Aktif satırın `verdict_detaylar` JSON'undan diger_yolaklar listesini
+        çıkar ve Listbox'ı doldur. Hepatit dışı kontroller için liste boş —
+        panel 'desteklenmiyor' mesajı gösterir."""
+        self._diger_yolak_aktif_satir = satir
+        self._diger_yolak_aktif_liste = []
+        lb = getattr(self, '_diger_yolak_listbox', None)
+        tx = getattr(self, '_diger_yolak_text', None)
+        if not lb or not tx:
+            return
+        try:
+            lb.delete(0, tk.END)
+            tx.configure(state="normal")
+            tx.delete("1.0", tk.END)
+        except Exception:
+            return
+
+        if not satir:
+            tx.insert("1.0", "(Reçete seçili değil)")
+            tx.configure(state="disabled")
+            return
+
+        # verdict_detaylar JSON'ında diger_yolaklar var mı?
+        det_json = satir.get("verdict_detaylar") or ""
+        diger = []
+        aktif_meta = None
+        try:
+            if det_json:
+                det = json.loads(det_json) if isinstance(det_json, str) else det_json
+                diger = det.get("diger_yolaklar") or []
+                aktif_meta = det.get("aktif_yolak_meta")
+        except Exception:
+            diger = []
+
+        if not diger:
+            tx.insert("1.0",
+                       "Bu kontrol modülü 'diğer yolaklar' API'sini henüz "
+                       "desteklemiyor. Şimdilik sadece hepatit (HBV/HCV/HDV) "
+                       "kontrollerinde aktif.\n\n"
+                       "Hepatit reçetesi seçerseniz dispatcher'ın elediği "
+                       "11 pasif yolak burada listelenir.")
+            tx.configure(state="disabled")
+            return
+
+        self._diger_yolak_aktif_liste = diger
+        # Başlık satırı (aktif yolak)
+        if aktif_meta:
+            tx.insert(
+                "1.0",
+                f"✅ AKTİF YOLAK: {aktif_meta.get('ad','?')} "
+                f"(SUT {aktif_meta.get('sut','?')})\n\n"
+                "Sol listede pasif yolak başlıklarına tıklayınca "
+                "o yolağın atomik şartları LAZY hesaplanır ve burada "
+                "görüntülenir.")
+        else:
+            tx.insert("1.0", "Sol listeden bir pasif yolak seçin.")
+        tx.configure(state="disabled")
+
+        # Listbox'ı doldur
+        for d in diger:
+            ad = d.get("ad") or d.get("kod") or "?"
+            sut = d.get("sut") or "?"
+            sebep = d.get("eleme_nedeni") or ""
+            satir_metin = f"{d.get('kod','?')} {ad} (SUT {sut})"
+            if sebep:
+                satir_metin += f"  ⟵ {sebep[:70]}"
+            lb.insert(tk.END, satir_metin)
+
+    def _diger_yolaklar_secim(self, _event=None) -> None:
+        """Listbox'tan seçim → lazy yolak hesapla → atomları metin olarak göster."""
+        lb = getattr(self, '_diger_yolak_listbox', None)
+        tx = getattr(self, '_diger_yolak_text', None)
+        if not lb or not tx:
+            return
+        sel = lb.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        if idx >= len(self._diger_yolak_aktif_liste):
+            return
+        secilen = self._diger_yolak_aktif_liste[idx]
+        kod = secilen.get("kod")
+        ad = secilen.get("ad") or kod
+        satir = self._diger_yolak_aktif_satir
+        if not satir or not kod:
+            return
+
+        tx.configure(state="normal")
+        tx.delete("1.0", tk.END)
+        tx.insert("1.0",
+                   f"⏳ {kod} {ad} — atomlar hesaplanıyor (lazy)...\n")
+        tx.configure(state="disabled")
+        tx.update_idletasks()
+
+        # Hepatit için lazy hesap
+        try:
+            from recete_kontrol.hepatit_kontrol import hepatit_yolak_hesapla
+            ilac_sonuc = self._ilac_sonuc_olustur_hepatit(satir)
+            rapor = hepatit_yolak_hesapla(ilac_sonuc, kod)
+        except Exception as e:
+            tx.configure(state="normal")
+            tx.delete("1.0", tk.END)
+            tx.insert("1.0", f"❌ Hesap hatası: {e}")
+            tx.configure(state="disabled")
+            return
+
+        # Sonucu metin olarak ekrana yaz
+        tx.configure(state="normal")
+        tx.delete("1.0", tk.END)
+        tx.insert(tk.END, f"📋 {kod} — {ad}\n")
+        tx.insert(tk.END, f"   Eleme nedeni: {secilen.get('eleme_nedeni','—')}\n\n")
+        tx.insert(tk.END, f"➡ HESAPLANAN SONUÇ: {rapor.sonuc.value.upper()}\n")
+        if rapor.mesaj:
+            tx.insert(tk.END, f"   {rapor.mesaj}\n")
+        tx.insert(tk.END, "\n── ATOMİK ŞARTLAR ─────────────────\n")
+        gruplar_dict: Dict[str, List] = {}
+        for s in (rapor.sartlar or []):
+            g = getattr(s, 'grup', '') or '(grupsuz)'
+            gruplar_dict.setdefault(g, []).append(s)
+        for grup_ad, atomlar in gruplar_dict.items():
+            tx.insert(tk.END, f"\n● {grup_ad}\n")
+            for a in atomlar:
+                dur = a.durum.value if hasattr(a.durum, 'value') else str(a.durum)
+                sym = {'var': '✓', 'yok': '✗',
+                        'kontrol_edilemedi': '?'}.get(dur, '·')
+                tx.insert(tk.END, f"   {sym} {a.ad}\n")
+                if a.neden:
+                    tx.insert(tk.END, f"      └─ {a.neden}\n")
+        tx.configure(state="disabled")
 
     def _sema_heyet_brans_listesi(self, rapor_ana_id) -> list:
         """Verilen RaporAnaId için heyet doktorlarının branş listesi.
@@ -6275,6 +6507,9 @@ class AylikReceteSorguGUI:
         'or_yok': ('#F5F5F5', '#9E9E9E'),  # OR-içi YOK → soluk gri (bu kol pasif)
         'ke':     ('#FFE082', '#E65100'),  # sarı şüpheli
         'bilgi':  ('#ECEFF1', '#90A4AE'),  # bilgi
+        'bypass': ('#80CBC4', '#00695C'),  # ℹ DİĞER RAPOR — turkuaz/mint
+                                            # (aktif raporda yoktu, geçmiş
+                                            # raporda bulundu)
     }
     # ALT kutu fill — daha açık ton (veri katmanı, görsel ayrım için)
     _KLASIK_ALT_FILL = {
@@ -6283,6 +6518,7 @@ class AylikReceteSorguGUI:
         'or_yok': '#FAFAFA',  # neredeyse beyaz
         'ke':     '#E0F2F1',  # çok açık turkuaz
         'bilgi':  '#F5F5F5',
+        'bypass': '#B2DFDB',  # çok açık mint — bypass alt kutu
     }
     _KLASIK_KABLO_VAR = '#2E7D32'    # akan yol — kalın yeşil
     _KLASIK_KABLO_YOK = '#BDBDBD'    # akmayan — ince gri
@@ -6303,7 +6539,13 @@ class AylikReceteSorguGUI:
         Returns: atom durumu str.
         """
         d = atom.get("durum", "na")
-        if d == "var":
+        # Bypass: aktif raporda eksik şart geçmiş raporda bulunduysa VAR'a
+        # yükseltildi + bypass_kaynak set edildi. Görsel olarak ayrı renk
+        # (turkuaz/mint) ve ℹ ikon kullan.
+        bypass_kaynak = atom.get("bypass_kaynak") or None
+        if d == "var" and bypass_kaynak:
+            key = "bypass"
+        elif d == "var":
             key = "var"
         elif d == "yok":
             key = "or_yok" if veya_uye else "yok"
@@ -6327,7 +6569,9 @@ class AylikReceteSorguGUI:
         alt_rect = c.create_rectangle(x, y + h_yari, x + w, y + h,
                                         fill=alt_fill, outline=outline_,
                                         width=2, tags=('klasik',))
-        sembol = ("✓" if d == "var" else
+        # Sembol — bypass varsa ℹ (diğer rapor), yoksa standart ✓/✗/?
+        sembol = ("ℹ" if key == "bypass" else
+                   "✓" if d == "var" else
                    "✗" if d == "yok" else
                    "?" if d == "kontrol_edilemedi" else "·")
         ad = atom.get("ad", "") or ""
@@ -9211,7 +9455,8 @@ class AylikReceteSorguGUI:
                  "kaynak": getattr(p, "kaynak", ""),
                  "grup": getattr(p, "grup", ""),
                  "veya_grubu": bool(getattr(p, "veya_grubu", False)),
-                 "alt_liste": getattr(p, "alt_liste", None)}
+                 "alt_liste": getattr(p, "alt_liste", None),
+                 "bypass_kaynak": getattr(p, "bypass_kaynak", None)}
                 for p in sartlar_obj
             ], ensure_ascii=False)
         except Exception:
@@ -17676,7 +17921,8 @@ class AylikReceteSorguGUI:
                      "grup": getattr(p, "grup", ""),
                      "veya_grubu": bool(getattr(p, "veya_grubu", False)),
                      "alt_liste": getattr(p, "alt_liste", None),
-                     "sartli_atom": bool(getattr(p, "sartli_atom", False))}
+                     "sartli_atom": bool(getattr(p, "sartli_atom", False)),
+                     "bypass_kaynak": getattr(p, "bypass_kaynak", None)}
                     for p in sartlar_obj
                 ], ensure_ascii=False)
             except Exception:
@@ -19747,7 +19993,8 @@ class AylikReceteSorguGUI:
                      "grup": getattr(p, "grup", ""),
                      "veya_grubu": bool(getattr(p, "veya_grubu", False)),
                      "alt_liste": getattr(p, "alt_liste", None),
-                     "sartli_atom": bool(getattr(p, "sartli_atom", False))}
+                     "sartli_atom": bool(getattr(p, "sartli_atom", False)),
+                     "bypass_kaynak": getattr(p, "bypass_kaynak", None)}
                     for p in sartlar_obj
                 ], ensure_ascii=False)
             except Exception:
@@ -23672,7 +23919,8 @@ class AylikReceteSorguGUI:
                      "grup": getattr(p, "grup", ""),
                      "veya_grubu": bool(getattr(p, "veya_grubu", False)),
                      "alt_liste": getattr(p, "alt_liste", None),
-                     "sartli_atom": bool(getattr(p, "sartli_atom", False))}
+                     "sartli_atom": bool(getattr(p, "sartli_atom", False)),
+                     "bypass_kaynak": getattr(p, "bypass_kaynak", None)}
                     for p in sartlar_obj
                 ], ensure_ascii=False)
             except Exception:
@@ -24231,7 +24479,8 @@ class AylikReceteSorguGUI:
                      "grup": getattr(p, "grup", ""),
                      "veya_grubu": bool(getattr(p, "veya_grubu", False)),
                      "alt_liste": getattr(p, "alt_liste", None),
-                     "sartli_atom": bool(getattr(p, "sartli_atom", False))}
+                     "sartli_atom": bool(getattr(p, "sartli_atom", False)),
+                     "bypass_kaynak": getattr(p, "bypass_kaynak", None)}
                     for p in sartlar_obj
                 ], ensure_ascii=False)
             except Exception:
