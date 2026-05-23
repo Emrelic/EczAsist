@@ -4652,8 +4652,9 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
         f'Kutu: {kutu:g}', 'kutu_sayisi', grup=g_y4))
 
     # ── DİĞER RAPOR BYPASS — Y-3 monoterapi atomu için ────────────────
-    # Aktif raporda ibare yok ama hastanın geçmiş raporlarından birinde
-    # varsa → atom VAR + bypass_kaynak. Y-3 yolağı bu sayede tamamlanabilir.
+    # Aktif raporda ibare yok ama hastanın diğer reçetelerine ilintili
+    # raporlardan birinde varsa → atom VAR + bypass_kaynak.
+    # ÖNCELİK: Botanik EOS (RaporAnaAciklamalar), sonra cache fallback.
     bypass_kaydi = None
     if not mono_ibare_var:
         bypass_tc = (ilac_sonuc.get('hasta_tc') or '').strip()
@@ -4661,11 +4662,18 @@ def kontrol_arb_ek4f_m51(ilac_sonuc: Dict) -> KontrolRaporu:
         if bypass_tc:
             try:
                 from recete_kontrol.diger_rapor_bypass import (
-                    gecmis_raporlarda_ibare_ara, IBARELER_ARB_MONOTERAPI)
-                bypass_kaydi = gecmis_raporlarda_ibare_ara(
+                    eos_raporlarda_ibare_ara, gecmis_raporlarda_ibare_ara,
+                    IBARELER_ARB_MONOTERAPI)
+                # 1) Botanik EOS önce
+                bypass_kaydi = eos_raporlarda_ibare_ara(
                     bypass_tc, list(IBARELER_ARB_MONOTERAPI),
-                    aktif_rapor_takip_no=bypass_tno,
-                    kategori='HIPERTANSIYON')
+                    aktif_rapor_aciklama=tum_metin)
+                # 2) Cache fallback
+                if bypass_kaydi is None:
+                    bypass_kaydi = gecmis_raporlarda_ibare_ara(
+                        bypass_tc, list(IBARELER_ARB_MONOTERAPI),
+                        aktif_rapor_takip_no=bypass_tno,
+                        kategori='HIPERTANSIYON')
             except Exception as e:
                 logger.debug("ARB monoterapi bypass sorgu hatası: %s", e)
         if bypass_kaydi:

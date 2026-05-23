@@ -236,6 +236,121 @@ IBARELER_P2Y12_ANJIYO = (
 
 
 # ═════════════════════════════════════════════════════════════════════════
+# 3b. BOTANİK EOS KAYNAĞI — hastanın TÜM rapor açıklamalarını oku + ibare ara
+# ═════════════════════════════════════════════════════════════════════════
+# CACHE değil — Botanik EOS DB'sinde RaporAna.RaporAnaAciklamalar zaten dolu.
+# Kullanıcı kuralı (2026-05-23): MEDULA cache'ine bakmaya gerek yok, hasta'nın
+# diğer reçetelerine ilintili raporlarının açıklamaları zaten Botanik EOS'ta
+# parse edilebilir formatta var. Bypass için bu öncelikli kaynak.
+
+def eos_raporlarda_ibare_ara(
+        hasta_tc: str,
+        ibareler: List[str],
+        aktif_rapor_aciklama: str = "",
+) -> Optional[Dict]:
+    """Botanik EOS'tan hastanın TÜM rapor açıklamalarını çekip ibare ara.
+
+    Args:
+        hasta_tc: 11 haneli TC.
+        ibareler: aranan ibare listesi (case-insensitive, Türkçe karakter
+            güvenli).
+        aktif_rapor_aciklama: aktif (ilintilenen) rapor açıklaması — bu metin
+            eşleşmesi hariç tutulur (kendisinde arayıp bulmasın). İlk 50
+            karakter eşleşmesi yeterli.
+
+    Returns:
+        None — bulunamadı (cache boş, ibare yok, ya da hasta TC boş).
+        Dict — eşleşme:
+          {
+            'rapor_tarihi': '15/03/2024',
+            'aciklama_uzunluk': 245,
+            'bulunan_ibare': 'monoterapi',
+            'snippet': '... monoterapi ile yeterli kontrol sağlanamadı ...',
+            'ozet': 'Botanik EOS raporu (15/03/2024): "monoterapi" bulundu',
+            'taranan_rapor_sayisi': 7,
+            'kaynak': 'botanik_eos',
+          }
+    """
+    if not hasta_tc or not hasta_tc.strip():
+        return None
+
+    n_ibareler = [_normalize(ib) for ib in ibareler if ib and ib.strip()]
+    if not n_ibareler:
+        return None
+
+    # Aktif raporun ilk 80 karakterini hash gibi kullan (kendini hariç tut)
+    aktif_imza = (aktif_rapor_aciklama or '').strip()[:80].lower()
+
+    try:
+        from botanik_db import get_botanik_db
+        db = get_botanik_db()
+        # Bağlantı zaten yoksa kur (BotanikDB() __init__ otomatik baglan değil)
+        if not getattr(db, 'baglanti', None):
+            try:
+                db.baglan()
+            except Exception as _e:
+                logger.debug("Botanik DB bağlanma hatası: %s", _e)
+                return None
+        # TC → MusteriId → RaporAna.RaporAnaAciklamalar (tüm tarihli raporlar)
+        sql = """
+            SELECT
+                rap.RaporAnaRaporTarihi AS rapor_tarihi,
+                rap.RaporAnaAciklamalar AS aciklama
+            FROM RaporAna rap
+            JOIN Musteri m ON rap.RaporAnaMusteriId = m.MusteriId
+            WHERE m.MusteriTCKN = ?
+              AND (rap.RaporAnaSilme IS NULL OR rap.RaporAnaSilme = 0)
+              AND rap.RaporAnaAciklamalar IS NOT NULL
+              AND LEN(LTRIM(RTRIM(rap.RaporAnaAciklamalar))) > 0
+            ORDER BY rap.RaporAnaRaporTarihi DESC
+        """
+        rows = db.sorgu_calistir(sql, (hasta_tc.strip(),))
+    except Exception as e:
+        logger.debug("Botanik EOS rapor sorgu hatası (TC=%s): %s",
+                       hasta_tc, e)
+        return None
+
+    if not rows:
+        return None
+
+    taranan = 0
+    for r in rows:
+        ack = (r.get('aciklama') or '').strip()
+        if not ack:
+            continue
+        # Aktif raporu hariç tut (ilk 80 char eşleşmesiyle)
+        if aktif_imza and ack[:80].lower() == aktif_imza:
+            continue
+        taranan += 1
+        n_ack = _normalize(ack)
+        for orig_ibare, n_ibare in zip(ibareler, n_ibareler):
+            if not n_ibare:
+                continue
+            if n_ibare in n_ack:
+                snippet = _snippet_cikar(ack, orig_ibare) or _snippet_cikar(
+                    ack, n_ibare)
+                tarih_raw = r.get('rapor_tarihi')
+                tarih = (tarih_raw.strftime('%d/%m/%Y')
+                         if hasattr(tarih_raw, 'strftime')
+                         else str(tarih_raw or '?'))
+                ozet = (f'Botanik EOS raporu ({tarih}): '
+                        f'"{orig_ibare}" bulundu')
+                return {
+                    'rapor_tarihi': tarih,
+                    'aciklama_uzunluk': len(ack),
+                    'bulunan_ibare': orig_ibare,
+                    'snippet': snippet,
+                    'ozet': ozet,
+                    'taranan_rapor_sayisi': len(rows),
+                    'kaynak': 'botanik_eos',
+                }
+
+    logger.debug("Botanik EOS: TC=%s için %d rapor tarandı, ibare bulunamadı",
+                  hasta_tc, taranan)
+    return None
+
+
+# ═════════════════════════════════════════════════════════════════════════
 # 4. GENERIC ATOMIK BYPASS — atomların adına bakarak otomatik bypass uygular
 # ═════════════════════════════════════════════════════════════════════════
 
@@ -280,6 +395,13 @@ def atomlari_otomatik_bypass(sartlar: list,
     bypass_sayisi = 0
     bypass_ortak = None  # ilk bulunan bypass kaydı — sonraki atomlarda da
                           # aynısını kullan (her atom için DB taraması yapma)
+    bypass_arandi = False  # tek seferlik arama bayrağı
+
+    # Aktif rapor açıklaması (kendi raporunda arayıp bulmasın)
+    aktif_rap_ack = ''
+    rap_acklari = ilac_sonuc.get('rapor_aciklamalari') or []
+    if rap_acklari:
+        aktif_rap_ack = ' '.join(str(x) for x in rap_acklari)
 
     for sart in sartlar:
         if sart.durum == SartDurumu.VAR:
@@ -287,14 +409,23 @@ def atomlari_otomatik_bypass(sartlar: list,
         n_ad = _normalize(sart.ad or '')
         if not any(k in n_ad for k in n_anahtar):
             continue
-        # Eşleşen atom — bypass dene
-        if bypass_ortak is None:
-            bypass_ortak = gecmis_raporlarda_ibare_ara(
+        # Eşleşen atom — bypass dene (sadece bir kez)
+        if not bypass_arandi:
+            bypass_arandi = True
+            # 1) ÖNCELİK: Botanik EOS (hastanın diğer reçetelerine ilintili
+            #    raporların RaporAnaAciklamalar'ında ibare ara). Kullanıcı kuralı
+            #    2026-05-23: MEDULA cache'i değil, Botanik EOS asıl kaynak.
+            bypass_ortak = eos_raporlarda_ibare_ara(
                 hasta_tc, list(ibareler),
-                aktif_rapor_takip_no=aktif_tno,
-                kategori=kategori)
+                aktif_rapor_aciklama=aktif_rap_ack)
+            # 2) FALLBACK: yerel MEDULA cache (hasta_rapor_gecmisi.db)
             if bypass_ortak is None:
-                # İlk denemede bulunamadı — diğer atomlar için de boş
+                bypass_ortak = gecmis_raporlarda_ibare_ara(
+                    hasta_tc, list(ibareler),
+                    aktif_rapor_takip_no=aktif_tno,
+                    kategori=kategori)
+            if bypass_ortak is None:
+                # Her iki kaynakta da bulunamadı — diğer atomlar için de boş
                 return 0
         # Atomu bypass ile VAR'a yükselt
         sart.durum = SartDurumu.VAR
@@ -341,7 +472,8 @@ def sonuc_bypass_uygula_genel(rapor, sartlar: list):
 
 
 __all__ = [
-    'gecmis_raporlarda_ibare_ara',
+    'eos_raporlarda_ibare_ara',        # ÖNCELİK: Botanik EOS kaynağı
+    'gecmis_raporlarda_ibare_ara',     # FALLBACK: MEDULA cache kaynağı
     'atomlari_otomatik_bypass',
     'sonuc_bypass_uygula_genel',
     'IBARELER_ARB_MONOTERAPI',
