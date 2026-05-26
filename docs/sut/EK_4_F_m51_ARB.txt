@@ -1,0 +1,130 @@
+═══════════════════════════════════════════════════════════════════════════
+EK-4/F Madde 51 (Karşıtödeme Listesi 1300/51)
+ANJİOTENSİN RESEPTÖR BLOKERLERİ VE KOMBİNASYONLARI
+═══════════════════════════════════════════════════════════════════════════
+
+Kaynak    : SGK SUT eki EK-4/F (Ayakta Tedavide Sağlık Raporu / Uzman Hekim
+            Raporu / Sağlık Kurulu Raporu ile Verilebilecek İlaçlar Listesi),
+            Madde 51 (kod 1300/51).
+            NOT: EK-4/F listesi SUT ana metninde değil, SGK'nın eki olarak
+            ayrı dosya hâlinde yayınlanır. Bu metin TEB ve eczacı odası
+            duyuruları (https://www.teb.org.tr/news/11072, BEO, İzmir EO,
+            Kocaeli EO, SEO, Gaziantep EO ortak metin) ile
+            recete_kontrol/sut_kontrolleri.py:4454 docstring'i (proje sahibi
+            onaylı) birleştirilerek çıkarılmıştır.
+            Resmî PDF temin edildiğinde bu dosya güncellenmelidir.
+
+İndirme/onay tarihi : 2026-05-21
+Onaylayan          : emremre07@gmail.com (proje sahibi)
+
+───────────────────────────────────────────────────────────────────────────
+KAPSAM (ETKEN MADDELER)
+───────────────────────────────────────────────────────────────────────────
+- İrbesartan
+- Kandesartan
+- Losartan
+- Telmisartan
+- Valsartan
+- Olmesartan
+- Eprosartan Mesilat
+- Rilmeniden (santral etkili antihipertansif — m.51 kapsamında)
+- Moksonidin   (santral etkili antihipertansif — m.51 kapsamında)
+- Yukarıdakilerin DİĞER ANTİHİPERTANSİFLERLE KOMBİNASYONLARI:
+    * ARB + KKB (örn. Valsartan/Amlodipin)
+    * ARB + ACE-i (nadir)
+    * ARB + HCT (diüretik)               ← SGK 17.10.2016 istisnası altında
+    * ARB + KKB + HCT (3'lü)             ← 3'lü kombi, istisna geçersiz
+    * ARB + ACE + HCT (3'lü)             ← 3'lü kombi, istisna geçersiz
+
+───────────────────────────────────────────────────────────────────────────
+MADDE 51 — RESMÎ LAFIZ (TEB doğrulamalı)
+───────────────────────────────────────────────────────────────────────────
+
+"Anjiotensin reseptör blokerleri (İrbesartan, Kandesartan, Losartan,
+Telmisartan, Valsartan, Rilmeniden, Moksonidin, Olmesartan, Eprosartan
+Mesilat) ve kombinasyonları.
+
+(1) Raporda, ayrıca ilaç/ilaçların kullanım dozu, uygulama planı ve
+    süresinin belirtilmesi zorunluluğu BULUNMAMAKTADIR.
+
+(2) Anjiotensin reseptör blokerlerinin diğer antihipertansifler ile
+    kombinasyonlarının kullanılmasında, hastanın MONOTERAPİ İLE KAN
+    BASINCININ YETERLİ ORANDA KONTROL ALTINA ALINAMADIĞININ raporda
+    belirtilmesi gerekmektedir.
+
+(3) Bu ilaçlar AYDA EN FAZLA BİR KUTU olmak üzere AİLE HEKİMLERİNCE
+    raporsuz reçete edilebilir."
+
+───────────────────────────────────────────────────────────────────────────
+SGK 17.10.2016 TARİHLİ DUYURU — DİÜRETİK KOMBİ İSTİSNASI
+───────────────────────────────────────────────────────────────────────────
+
+SGK Genel Sağlık Sigortası Genel Müdürlüğü'nün 17.10.2016 tarihli duyurusu
+ile:
+
+"Diüretikli kombinasyonların bu kapsamda bulunmadığı"
+→ Yani ARB + HCT (hidroklorotiazid) sabit kombinasyonları 1300/51 (EK-4/F
+   m.51) kapsamı DIŞINDADIR. Raporlu kullanımda "monoterapi yetersizliği"
+   ibaresi ARANMAZ.
+
+İSTİSNANIN GEÇERLİ OLMADIĞI DURUMLAR:
+- ARB + KKB + HCT (3'lü kombi): CCB içerdiği için istisna geçersiz,
+  monoterapi ibaresi aranır.
+- ARB + ACE-i + HCT (3'lü kombi): ACE-i içerdiği için istisna geçersiz,
+  monoterapi ibaresi aranır.
+
+UYARI: Bazı SGK il müdürlükleri istisnayı uygulamayıp kesinti yapabilir
+(bölgesel uygulama farklılığı).
+
+───────────────────────────────────────────────────────────────────────────
+RAPORSUZ KULLANIM — "AİLE HEKİMİ" TANIMI (proje pratik tespiti)
+───────────────────────────────────────────────────────────────────────────
+
+Aile hekimi yetkisi 4 yoldan tespit edilir (kontrol_arb_ek4f_m51):
+  1. doktor_uzmanligi alanında "AİLE HEKİMLİĞİ" sertifikası
+  2. kurum_adi alanında "AİLE SAĞLIĞI MERKEZİ / AHM / ASM" geçmesi
+  3. tesis_kodu AILE_HEKIMLIGI_TESIS_KODLARI sabitinde
+  4. Kronik Hastalık Hekimi (doktor_adi + KRONIK_HASTALIK_HEKIMI_TESIS_KODLARI)
+
+Raporsuz reçete sınırı: AYDA EN FAZLA 1 KUTU.
+1 kutu üstü → UYGUN_DEĞİL (raporsuz aşıldı).
+
+───────────────────────────────────────────────────────────────────────────
+GENEL SUT HÜKÜMLERİ (mono antihipertansif — m.51 dışı)
+───────────────────────────────────────────────────────────────────────────
+
+ACE-i / KKB / Beta bloker / Diüretik / Alfa bloker MONOTERAPİSİ:
+- SUT'ta özel madde YOK (EK-4/F m.51'in dışı).
+- SUT 4.1.8 genel hükmü gereği RAPORSUZ serbest reçete edilir.
+- Kontrendikasyon: ACE-i + ARB AYNI REÇETEDE birlikte kullanılmamalıdır
+  (klinik kontrendikasyon — SUT lafzı yok ama tıbbi kabul).
+- Doz sınırları (üretim ruhsatına göre):
+    Ramipril    : maks 10 mg/gün
+    Enalapril   : maks 40 mg/gün
+    Lisinopril  : maks 40 mg/gün
+    Perindopril : maks 10 mg/gün
+    Valsartan   : maks 320 mg/gün
+    Losartan    : maks 100 mg/gün
+    İrbesartan  : maks 300 mg/gün
+    Telmisartan : maks 80 mg/gün
+    Kandesartan : maks 32 mg/gün
+    Amlodipin   : maks 10 mg/gün
+    Metoprolol  : maks 200 mg/gün
+    Bisoprolol  : maks 10 mg/gün
+    Nebivolol   : maks 5 mg/gün
+
+───────────────────────────────────────────────────────────────────────────
+ARB-DIŞI KOMBİNE ANTİHİPERTANSİFLER (ACE+HCT, BB+HCT, KKB+HCT vb.)
+───────────────────────────────────────────────────────────────────────────
+
+EK-4/F m.51 ARB ve kombinasyonlarını düzenler. ARB içermeyen kombi
+(örn. ACE-i + diüretik, ACE-i + KKB, BB + diüretik) için EK-4/F'de özel
+madde YOKTUR; SUT genel hükmü geçerlidir.
+
+Mevcut kodda kontrol_kombine_antihipertansif (4.2.12.B etiketi) bu grubu
+hedefler ancak 4.2.12.B SUT'ta İMMÜNGLOBULIN maddesidir; etiket yanlış
+kullanılmış. Doğru kategori adı: "KOMBI_ANTIHT_GENEL".
+
+═══════════════════════════════════════════════════════════════════════════
+SON
+═══════════════════════════════════════════════════════════════════════════

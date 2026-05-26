@@ -4704,6 +4704,185 @@ class BotanikDB:
             })
         return temiz
 
+    def hasta_ilk_recete_etken_bazli(
+        self,
+        hasta_tc: str,
+        urun_keywords: tuple,
+        limit: int = 5,
+    ) -> List[Dict]:
+        """Hastanın belirli etken/marka keyword listesiyle eşleşen
+        İLK reçetelerini (en eskiden) döndür — başlangıç rapor tespiti için.
+
+        Aktif reçetenin etken maddesini içeren UrunAdi'lı ilk reçete
+        bulunur (örn. VEMLIDY/VIREAD/TENOFOVIR keyword'leriyle). Rapor
+        bilgileri (RaporAna + RaporAnaAciklamalar) JOIN'le getirilir;
+        eski reçetede SecilenRapor cache'i varsa o rapora bağlanır.
+
+        Args:
+            hasta_tc: MusteriTCKN (string, 11 haneli)
+            urun_keywords: keyword tuple — UPPER(UrunAdi) LIKE '%kw%' OR ...
+                örn: ('VEMLIDY', 'VIREAD', 'TENOFOVIR', ...)
+            limit: dönecek satır sayısı (default 5 — en eski 5 reçete)
+
+        Returns:
+            List[Dict] — boş liste = hiç eşleşme yok (hasta_tc/keyword/EOS
+            sorununda); her satır:
+                RxId, RxIslemTarihi, RxReceteTarihi, RxEReceteNo,
+                UrunId, UrunAdi, ATCKodu, RIRaporNo,
+                RaporAnaId, RaporAnaRaporNo, RaporAnaRaporTakipNo,
+                RaporAnaRaporTarihi, RaporAnaAciklamalar,
+                MusteriTCKN, MusteriAdiSoyadi
+            En eski tarih en başta.
+        """
+        if not hasta_tc or not urun_keywords:
+            return []
+        # Keyword sayısı kadar `?` placeholder — SQL injection-safe
+        like_clauses = ' OR '.join(
+            ['UPPER(u.UrunAdi) LIKE UPPER(?)' for _ in urun_keywords])
+        like_params = [f'%{kw}%' for kw in urun_keywords]
+        sql = f"""
+        SELECT TOP {int(limit)}
+            ra.RxId, ra.RxIslemTarihi, ra.RxReceteTarihi, ra.RxEReceteNo,
+            u.UrunId, u.UrunAdi,
+            atc.ATCKodu,
+            ri.RIRaporNo, ri.RIRaporKodId,
+            rap.RaporAnaId, rap.RaporAnaRaporNo,
+            rap.RaporAnaRaporTakipNo, rap.RaporAnaRaporTarihi,
+            rap.RaporAnaAciklamalar,
+            m.MusteriTCKN, m.MusteriAdiSoyadi
+        FROM ReceteAna ra
+        INNER JOIN ReceteIlaclari ri ON ri.RIRxId = ra.RxId
+                                      AND ri.RISilme = 0
+        INNER JOIN Urun u ON u.UrunId = ri.RIUrunId
+        INNER JOIN Musteri m ON m.MusteriId = ra.RxMusteriId
+        LEFT JOIN ATC atc ON atc.ATCId = u.UrunATCId
+        OUTER APPLY (
+            SELECT TOP 1
+                rap2.RaporAnaId, rap2.RaporAnaRaporNo,
+                rap2.RaporAnaRaporTakipNo, rap2.RaporAnaRaporTarihi,
+                rap2.RaporAnaAciklamalar
+            FROM SecilenRapor sr
+            INNER JOIN RaporAna rap2
+                    ON rap2.RaporAnaMusteriId = ra.RxMusteriId
+                   AND (rap2.RaporAnaSilme IS NULL OR rap2.RaporAnaSilme = 0)
+                   AND (CAST(rap2.RaporAnaRaporNo AS NVARCHAR(50))
+                        = sr.SRRaporNo
+                     OR CAST(rap2.RaporAnaRaporTakipNo AS NVARCHAR(50))
+                        = sr.SRRaporNo
+                     OR CAST(rap2.RaporAnaProtokolNo AS NVARCHAR(50))
+                        = sr.SRRaporNo)
+            WHERE sr.SRRxId = ra.RxId
+              AND sr.SRUrunId = ri.RIUrunId
+        ) rap
+        WHERE ra.RxSilme = 0
+          AND m.MusteriTCKN = ?
+          AND ({like_clauses})
+        ORDER BY ra.RxIslemTarihi ASC, ra.RxId ASC
+        """
+        params = tuple([hasta_tc] + like_params)
+        try:
+            return self.sorgu_calistir(sql, params)
+        except Exception as e:
+            logger.error('hasta_ilk_recete_etken_bazli sorgu hatasi: %s', e)
+            return []
+
+    def hasta_etken_rapor_listesi(
+        self,
+        hasta_tc: str,
+        urun_keywords: tuple,
+        limit: int = 50,
+    ) -> List[Dict]:
+        """Hastanın belirli etken/marka keyword listesiyle eşleşen
+        TÜM DISTINCT raporları (tarih sıralı, eskiden yeniye) döndür.
+
+        Devam/başlangıç tespiti için: 'Bu hastanın bu etken için kaç
+        rapor RaporAna'da var? Aktif rapor en eskisi mi?'
+
+        Args:
+            hasta_tc: 11 haneli TC
+            urun_keywords: ('LAMIVUDIN','TENOFOVIR','VEMLIDY','VIREAD',...)
+            limit: max distinct rapor sayısı (default 50)
+
+        Returns:
+            List[Dict] (en eski en başta):
+                RaporAnaId, RaporAnaRaporNo, RaporAnaRaporTakipNo,
+                RaporAnaRaporTarihi, ilk_recete_tarihi,
+                bu_rapora_bagli_recete_sayisi
+            Boş liste = eşleşme yok / EOS bağlantı hatası.
+        """
+        if not hasta_tc or not urun_keywords:
+            return []
+        like_clauses = ' OR '.join(
+            ['UPPER(u.UrunAdi) LIKE UPPER(?)' for _ in urun_keywords])
+        like_params = [f'%{kw}%' for kw in urun_keywords]
+        # DISTINCT RaporAna — SecilenRapor üzerinden bağ + RaporAna metadata
+        sql = f"""
+        SELECT TOP {int(limit)}
+            rap.RaporAnaId,
+            rap.RaporAnaRaporNo,
+            rap.RaporAnaRaporTakipNo,
+            rap.RaporAnaRaporTarihi,
+            MIN(ra.RxIslemTarihi) AS ilk_recete_tarihi,
+            COUNT(DISTINCT ra.RxId) AS bu_rapora_bagli_recete_sayisi
+        FROM ReceteAna ra
+        INNER JOIN ReceteIlaclari ri ON ri.RIRxId = ra.RxId
+                                      AND ri.RISilme = 0
+        INNER JOIN Urun u ON u.UrunId = ri.RIUrunId
+        INNER JOIN Musteri m ON m.MusteriId = ra.RxMusteriId
+        INNER JOIN SecilenRapor sr ON sr.SRRxId = ra.RxId
+                                    AND sr.SRUrunId = ri.RIUrunId
+        INNER JOIN RaporAna rap
+                ON rap.RaporAnaMusteriId = ra.RxMusteriId
+               AND (rap.RaporAnaSilme IS NULL OR rap.RaporAnaSilme = 0)
+               AND (CAST(rap.RaporAnaRaporNo AS NVARCHAR(50))
+                    = sr.SRRaporNo
+                 OR CAST(rap.RaporAnaRaporTakipNo AS NVARCHAR(50))
+                    = sr.SRRaporNo
+                 OR CAST(rap.RaporAnaProtokolNo AS NVARCHAR(50))
+                    = sr.SRRaporNo)
+        WHERE ra.RxSilme = 0
+          AND m.MusteriTCKN = ?
+          AND ({like_clauses})
+        GROUP BY rap.RaporAnaId, rap.RaporAnaRaporNo,
+                 rap.RaporAnaRaporTakipNo, rap.RaporAnaRaporTarihi
+        ORDER BY MIN(ra.RxIslemTarihi) ASC, rap.RaporAnaId ASC
+        """
+        params = tuple([hasta_tc] + like_params)
+        try:
+            return self.sorgu_calistir(sql, params)
+        except Exception as e:
+            logger.error('hasta_etken_rapor_listesi sorgu hatasi: %s', e)
+            return []
+
+    def hasta_tum_rapor_takip_nolari(self, hasta_tc: str) -> set:
+        """Hastanın EOS'taki TÜM aktif raporlarının RaporTakipNo set'ini
+        döndür — MEDULA tarama sırasında 'bu rapor zaten EOS'ta var,
+        atlayalım' kontrolü için.
+
+        Args:
+            hasta_tc: MusteriTCKN (11 haneli string)
+
+        Returns:
+            set[str] — boş set = EOS'ta hiç rapor yok ya da sorgu hatası
+        """
+        if not hasta_tc or len(hasta_tc) != 11:
+            return set()
+        sql = """
+        SELECT DISTINCT CAST(rap.RaporAnaRaporTakipNo AS NVARCHAR(50)) AS tn
+        FROM RaporAna rap
+        INNER JOIN Musteri m ON m.MusteriId = rap.RaporAnaMusteriId
+        WHERE (rap.RaporAnaSilme IS NULL OR rap.RaporAnaSilme = 0)
+          AND m.MusteriTCKN = ?
+          AND rap.RaporAnaRaporTakipNo IS NOT NULL
+        """
+        try:
+            rows = self.sorgu_calistir(sql, (hasta_tc,))
+            return {(r.get('tn') or '').strip() for r in rows
+                    if (r.get('tn') or '').strip()}
+        except Exception as e:
+            logger.error('hasta_tum_rapor_takip_nolari sorgu hatasi: %s', e)
+            return set()
+
 
 # Singleton instance
 _db_instance = None

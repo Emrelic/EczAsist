@@ -233,50 +233,54 @@ SUTUNLAR = [
     ("hasta_tip",  "Hasta Tipi",   90,  "Yeşil Kart/SSK/Emekli/Çalışan"),
     ("doktor",     "Doktor",       130, "Doktor adı"),
     ("brans",      "Branş",        110, "Doktor branşı"),
-    ("ilac",       "İlaç",         180, "İlaç adı"),
-    ("etkin",      "Etken Madde",  130, "Etken madde"),
+    ("ilac",       "İlaç",         150, "İlaç adı"),
+    ("etkin",      "Etken Madde",  110, "Etken madde"),
     ("atc",        "ATC",          70,  "ATC kodu"),
     ("esdeger",    "Eşdeğer",      70,  "Eşdeğer grubu"),
     ("kutu",       "Kutu",         42,  "Kutu sayısı (kaç kutu verildiği)"),
-    ("sut",        "SUT Maddesi",  130, "SUT 4.2.x kategorisi"),
+    ("sut",        "SUT Maddesi",  110, "SUT 4.2.x kategorisi"),
     ("rap_kod",    "Rapor Kod",    65,  "Rapor kodu"),
-    ("rap_tesh_tak", "Rap.Teşhis/Rap.Tak.No", 145,
+    ("rap_tesh_tak", "Rap.Teşhis/Rap.Tak.No", 130,
      "Rapor teşhis kodu - Rapor takip numarası "
      "(ör: '04.05 - 512432126'). Tak.No önceliği RIRaporNo, "
      "boşsa eşleşen rapordan RaporAnaRaporNo."),
     ("rec_doz",    "Reçete Doz",   90,  "Reçete dozu"),
     ("rap_doz",    "Rapor Doz",    80,  "Rapor dozu"),
     ("msj",        "Msj",          35,  "İlaç mesaj durumu"),
-    ("uyari",      "Uyarı Kod",    150, "Bu ilaç için reçeteye girilen uyarı kodları (ReceteTeshis)"),
-    ("medula_msj", "Medula Msj",   220, "Medula provizyon yanıt metni (RxUyarilari)"),
-    ("rec_tesh",   "Reç.Teşhis",   150, "Reçete teşhisleri"),
-    ("rap_tesh",   "Rap.Teşhis",   150, "Rapor teşhisleri"),
-    ("rec_ack",    "Reç.Açk",      180, "Reçete açıklamaları"),
-    ("rap_ack",    "Rap.Açk",      180, "Rapor açıklamaları"),
-    ("verdict_doz", "Doz Karş.",   100,
+    ("uyari",      "Uyarı Kod",    100,
+     "Bu ilaç için reçeteye girilen uyarı kodları (ReceteTeshis). "
+     "Tam metin için hücreye tıkla → sağ panel."),
+    ("medula_msj", "Medula Msj",   120,
+     "Medula provizyon yanıt metni (RxUyarilari). "
+     "Tam metin için hücreye tıkla → sağ panel."),
+    ("rec_tesh",   "Reç.Teşhis",   110, "Reçete teşhisleri (tam metin: tıkla)"),
+    ("rap_tesh",   "Rap.Teşhis",   110, "Rapor teşhisleri (tam metin: tıkla)"),
+    ("rec_ack",    "Reç.Açk",      120, "Reçete açıklamaları (tam metin: tıkla)"),
+    ("rap_ack",    "Rap.Açk",      120, "Rapor açıklamaları (tam metin: tıkla)"),
+    ("verdict_doz", "Doz Karş.",   90,
      "DOZ KARŞILAŞTIR butonu çalıştırıldığında doldurulur: "
      "UYGUN / UYGUN DEĞİL / ŞÜPHELİ / ATLANDI — Reçete günlük dozu rapor günlük dozunu geçiyor mu?"),
-    ("verdict_uyari_kontrol", "Uyarı Kod Karş.", 130,
+    ("verdict_uyari_kontrol", "Uyarı Karş.", 110,
      "UYARI KODU KONTROL butonu doldurur: reçete uyarı kodlarının "
      "teşhis/açıklamayla eşleşmesi → UYGUN / UYGUN DEĞİL / ŞÜPHELİ"),
-    ("verdict",    "SONUÇ",        130,
-     "STATİN KONTROL butonu çalıştırıldığında doldurulur: "
-     "UYGUN / UYGUN DEĞİL / ŞÜPHELİ / ATLANDI"),
+    ("verdict",    "SONUÇ",        120,
+     "Kontrol butonu çalıştırıldığında doldurulur: "
+     "UYGUN / UYGUN DEĞİL / ŞÜPHELİ / ŞARTLI UYGUN / MANUEL / DİĞER RAPOR / TIBBEN UD"),
     ("renkli_rr",  "Renkli RR",    85,
      "RENKLİ REÇETE butonu doldurur: Kırmızı/Yeşil/Mor reçetelerin "
      "renkli reçete sisteminde kaydı VAR / YOK / — (kapsam dışı)"),
-    ("ai_kars",    "AI Karş.",     120,
+    ("ai_kars",    "AI Karş.",     100,
      "🤖 AI KONTROL butonu doldurur: Anthropic Claude'un SUT uygunluk "
      "değerlendirmesi — UYGUN / UYGUN DEĞİL / ŞÜPHELİ / KONTROL EDİLEMEDİ / "
      "YETERSİZ VERİ / MANUEL KONTROL"),
-    ("ai_aciklama", "AI Açıklama", 280,
+    ("ai_aciklama", "AI Açıklama", 110,
      "🤖 AI'ın özet açıklaması — sağlanan/sağlanmayan/kontrol edilemeyen "
-     "şartlar ve SUT referansı. Hücreye tıklayınca tam metin sağdaki "
-     "hücre içeriği panelinde görüntülenir."),
-    ("verdict_sart_raporu", "Şart Raporu", 460,
+     "şartlar ve SUT referansı. Tam metin için hücreye tıkla → sağdaki "
+     "hücre içeriği panelinde tam görüntülenir."),
+    ("verdict_sart_raporu", "Şart Raporu", 130,
      "SUT kontrolü sonrası şart raporu: kullanılan SUT maddesi, ana mesaj, "
-     "aranan/bulunan ibareler ve uyarılar. Excel kontrol raporundaki "
-     "özetin tablo görünümü."),
+     "aranan/bulunan ibareler ve uyarılar. Tam metin için hücreye tıkla → "
+     "sağ panel (uzun metin orada okunur)."),
 ]
 SUTUN_KOD = [s[0] for s in SUTUNLAR]
 
@@ -1919,48 +1923,46 @@ class AylikReceteSorguGUI:
         #                      Sıra B → Göster + Filtreleri Sıfırla
         # Sağ kolon (2 sıra yüksekliğinde): Hücre içeriği göstergesi
         # ════════════════════════════════════════════════════════════════
-        # ust_alan — yatay 50/50 bölünür: sol_kol (kontrol panelleri) | sag_kol
-        # (hücre içeriği). Kullanıcı isteği 2026-05-23: hücre içeriği panelini
-        # pencerenin yarısı kadar geniş tut (uzun rapor/açıklama metinleri için).
+        # ust_alan — yatay bölünür: sol_kol (kontrol panelleri içeriği kadar)
+        # | sag_kol (hücre içeriği, kalan tüm alan).
+        #
+        # Esnek genişlik: sol_kol içeriği ne kadar genişse o kadar yer kaplar
+        # (etiket sayımı "(0)" eklendiğinde checkbox'lar genişler → panel de
+        # genişler); sag_kol "expand=True" ile kalan tüm alanı doldurur, hiçbir
+        # zaman kontrollerin üstüne binmez. (Önceki sabit 50/50 grid yaklaşımı
+        # checkbox sayımları eklenince son etiketleri sarı panelin arkasına
+        # itmişti — 2026-05-23 fix.)
         ust_alan = tk.Frame(self.root, bg="#FAFAFA")
         ust_alan.pack(fill="x", padx=4, pady=(2, 2))
 
         sol_kol = tk.Frame(ust_alan, bg="#FAFAFA")
         sol_kol.pack(side="left", fill="y")
-        sol_kol.pack_propagate(False)  # genişliği iç widget'lar belirlemesin
+
+        sag_kol = tk.Frame(ust_alan, bg="#FAFAFA")
+        sag_kol.pack(side="left", fill="both", expand=True, padx=(4, 0))
 
         # Satır sırası (kullanıcı mockup 2026-05-23 — bilimsel akış):
-        #   row2:        Renkler (Boyama + Renk filtresi alt alta hizalı) — en sık eylem
-        #   row_verdict: ✓ Sonuç (motorun verdict'i, 7 etiket) — sürekli görünür filtre
-        #   row_teyit:   🖉 Teyit (eczacının manuel teyiti, 7 etiket) — sürekli görünür filtre
-        #   row3:        Seçim + Filtrelemeler + Kontrol Butonları + AI — başlangıç aksiyonları
+        #   row2:        Renkler (Boyama + Renk filtresi alt alta hizalı) + AI — en sık eylem
+        #   row_etiket:  ✓ Sonuç + 🖉 Teyit aynı panelde alt alta hizalı 2 sıra grid
+        #                (her etiket sütunu birebir aynı X koordinatında)
+        #   row3:        Seçim + Filtrelemeler + Kontrol Butonları — başlangıç aksiyonları
         row2 = tk.Frame(sol_kol, bg="#FAFAFA")
         row2.pack(fill="x", pady=(0, 2))
 
-        row_verdict = tk.Frame(sol_kol, bg="#FAFAFA")
-        row_verdict.pack(fill="x", pady=(0, 2))
+        # Tek frame — Verdict (Sonuç) ve Teyit aynı panel/grid içinde,
+        # böylece UYGUN/UYGUN DEĞİL/ŞÜPHELİ/ŞARTLI UYGUN/MANUEL/DİĞER/TIBBEN
+        # sütunları kesin aynı pixel pozisyonunda hizalanır.
+        row_etiket = tk.Frame(sol_kol, bg="#FAFAFA")
+        row_etiket.pack(fill="x", pady=(0, 2))
 
-        row_teyit = tk.Frame(sol_kol, bg="#FAFAFA")
-        row_teyit.pack(fill="x", pady=(0, 2))
+        # Geriye dönük uyumluluk için row_verdict ve row_teyit aynı frame'i
+        # işaret eder — kod aşağıda p_etiket içinde grid satır=0/satır=1 olarak
+        # yerleştirir; mevcut çağrı yerleri (varsa) None değil bir Frame görür.
+        row_verdict = row_etiket
+        row_teyit = row_etiket
 
         row3 = tk.Frame(sol_kol, bg="#FAFAFA")
         row3.pack(fill="x", pady=(0, 0))
-
-        sag_kol = tk.Frame(ust_alan, bg="#FAFAFA")
-        sag_kol.pack(side="left", fill="both", expand=True, padx=(2, 0))
-
-        # 50/50 split: pencere genişledikçe sol_kol da yarısı kadar büyür.
-        # sag_kol "expand=True" ile geri kalan yarıyı doldurur. Bind <Configure>
-        # her yeniden boyutlandırmada genişliği oran olarak korur.
-        def _ust_alan_split(event=None):
-            try:
-                w = ust_alan.winfo_width()
-                if w > 200:
-                    sol_kol.configure(width=w // 2)
-            except Exception:
-                pass
-        ust_alan.bind("<Configure>", _ust_alan_split)
-        self.root.after(80, _ust_alan_split)
 
         def _panel_olustur(parent, baslik, baslik_fg, panel_bg):
             """Renkli arka planlı, başlık etiketli kompakt panel."""
@@ -2136,17 +2138,23 @@ class AylikReceteSorguGUI:
         # 🧹 Sıfırla — Göster panelinin içine taşındı (yukarıda)
 
         # ═══════════════════════════════════════════════════════════════════
-        # PANEL: SONUÇ ETİKETİ FİLTRESİ (row_verdict — kontrol butonları üstü)
-        # Kontrol sonrası gelen verdict etiketlerine göre tabloyu filtreler.
+        # PANEL: SONUÇ + TEYIT ETİKETİ FİLTRESİ — TEK panel, 2 sıra grid hizalı
+        # Üst sıra (row=0): ✓ Sonuç — motor verdict'i (UYGUN/UYGUN DEĞİL/...)
+        # Alt sıra (row=1): 🖉 Teyit — eczacının manuel teyit ettiği etiket
+        # Aynı etiket (UYGUN/UYGUN DEĞİL/ŞARTLI UYGUN/...) iki sırada AYNI
+        # sütunda → kullanıcı dikey hizada bağlam karşılaştırması yapabilir
+        # (kullanıcı isteği 2026-05-23 — "birebir aynı hizada").
         # ═══════════════════════════════════════════════════════════════════
         P_VRD_BG = "#FAFAFA"
-        p_verdict = tk.Frame(row_verdict, bg=P_VRD_BG, bd=1, relief="solid")
-        p_verdict.pack(side="left", padx=2, pady=1, fill="y")
-        tk.Label(p_verdict, text="✓ Sonuç:",
-                 bg=P_VRD_BG, fg="#1A237E",
-                 font=FONT_GROUP).pack(side="left", padx=(6, 4), pady=2)
+        p_etiket = tk.Frame(row_etiket, bg=P_VRD_BG, bd=1, relief="solid")
+        p_etiket.pack(side="left", padx=2, pady=1, fill="y")
+        # Geriye dönük uyumluluk shim'leri (mevcut başka yerler p_verdict/p_teyit
+        # referansı kullanabilir):
+        p_verdict = p_etiket
+        p_teyit = p_etiket
 
-        # Etiket → (renk, kısa-ad) eşlemesi (sırası önemli — soldan sağa)
+        # Etiket → (anahtar, renk, kısa-ad) — sırası önemli (Verdict ve Teyit
+        # arasında AYNI sütun = AYNI etiket olmalı, hizalama için).
         _VRD_RENKLERI = [
             ("UYGUN",              "#2E7D32", "✓ UYGUN"),
             ("UYGUN DEĞİL",        "#C62828", "✗ UYGUN DEĞİL"),
@@ -2157,100 +2165,92 @@ class AylikReceteSorguGUI:
             ("TIBBEN UYGUN DEĞİL", "#4A148C", "⚕ TIBBEN UD"),
             ("",                   "#546E7A", "○ Boş"),
         ]
-        # Checkbox referansları + temel etiket metni → _filtre_sayimlarini_guncelle
-        # her yenilemede butona "(N)" ekleyebilsin
-        self._verdict_filtre_cbs = {}
-        self._verdict_filtre_temel = {}
-        for etiket, renk, gosterim in _VRD_RENKLERI:
-            cb = tk.Checkbutton(
-                p_verdict, text=gosterim,
-                variable=self.var_verdict_filtre[etiket],
-                bg=P_VRD_BG, fg=renk,
-                activeforeground=renk,
-                selectcolor="#FFFFFF",
-                font=("Segoe UI", 8, "bold"),
-                bd=0, padx=2,
-                command=self._tabloyu_yenile)
-            cb.pack(side="left", padx=2, pady=2)
-            self._verdict_filtre_cbs[etiket] = cb
-            self._verdict_filtre_temel[etiket] = gosterim
-        # Tümü / Hiçbiri kısayolları
-        def _verdict_filtre_topluset(deger: bool):
-            for v in self.var_verdict_filtre.values():
-                v.set(deger)
-            self._tabloyu_yenile()
-        tk.Frame(p_verdict, bg=P_VRD_BG, width=8).pack(side="left")
-        b_hep = tk.Button(p_verdict, text="Tümü",
-                           bg="#E8EAF6", bd=1,
-                           command=lambda: _verdict_filtre_topluset(True),
-                           padx=6, pady=1, font=("Segoe UI", 8))
-        b_hep.pack(side="left", padx=1, pady=2)
-        b_hic = tk.Button(p_verdict, text="Hiçbiri",
-                           bg="#E8EAF6", bd=1,
-                           command=lambda: _verdict_filtre_topluset(False),
-                           padx=6, pady=1, font=("Segoe UI", 8))
-        b_hic.pack(side="left", padx=1, pady=2)
-        _Tooltip(p_verdict,
-                 "Kontrol sonrası tabloda hangi sonuç etiketleri görünsün?\n"
-                 "Sadece işaretli etiketlere sahip satırlar gösterilir.\n"
-                 "'Boş' = henüz kontrol edilmemiş satırlar.")
-
-        # ═══════════════════════════════════════════════════════════════════
-        # PANEL: MANUEL TEYIT FİLTRESİ — Sonuç filtresinin ALTINDAKİ satırda
-        # Eczacının teyit ettiği reçeteleri (yeşil/sarı/kırmızı) filtreler.
-        # ═══════════════════════════════════════════════════════════════════
-        P_TYT_BG = "#F5F5F5"
-        p_teyit = tk.Frame(row_teyit, bg=P_TYT_BG, bd=1, relief="solid")
-        p_teyit.pack(side="left", padx=2, pady=1, fill="y")
-        tk.Label(p_teyit, text="🖉 Teyit:",
-                 bg=P_TYT_BG, fg="#1A237E",
-                 font=FONT_GROUP).pack(side="left", padx=(6, 4), pady=2)
-
         _TYT_RENKLERI = [
             ("UYGUN",              "#2E7D32", "✓ UYGUN"),
             ("UYGUN_DEGIL",        "#C62828", "✗ UYGUN DEĞİL"),
             ("SUPHELI",            "#EF6C00", "? ŞÜPHELİ"),
-            ("SARTLI_UYGUN",       "#1565C0", "≈ ŞARTLI"),
+            ("SARTLI_UYGUN",       "#1565C0", "≈ ŞARTLI UYGUN"),
             ("MANUEL_KONTROL",     "#6A1B9A", "⚠ MANUEL"),
             ("DIGER_RAPOR_UYGUN",  "#00695C", "ℹ DİĞER RAPOR"),
             ("TIBBEN_UYGUN_DEGIL", "#4A148C", "⚕ TIBBEN UD"),
             ("",                   "#546E7A", "○ Teyitsiz"),
         ]
-        self._teyit_filtre_cbs = {}
-        self._teyit_filtre_temel = {}
-        for sonuc, renk, gosterim in _TYT_RENKLERI:
+
+        # ─── ÜST SIRA (row=0): VERDICT (Sonuç) ───
+        tk.Label(p_etiket, text="✓ Sonuç:", bg=P_VRD_BG, fg="#1A237E",
+                 font=FONT_GROUP).grid(row=0, column=0, padx=(6, 4), pady=2,
+                                        sticky="w")
+        self._verdict_filtre_cbs = {}
+        self._verdict_filtre_temel = {}
+        for i, (etiket, renk, gosterim) in enumerate(_VRD_RENKLERI):
             cb = tk.Checkbutton(
-                p_teyit, text=gosterim,
-                variable=self.var_teyit_filtre[sonuc],
-                bg=P_TYT_BG, fg=renk,
+                p_etiket, text=gosterim,
+                variable=self.var_verdict_filtre[etiket],
+                bg=P_VRD_BG, fg=renk,
                 activeforeground=renk,
                 selectcolor="#FFFFFF",
                 font=("Segoe UI", 8, "bold"),
-                bd=0, padx=2,
+                bd=0, padx=2, anchor="w",
                 command=self._tabloyu_yenile)
-            cb.pack(side="left", padx=2, pady=2)
+            cb.grid(row=0, column=1 + i, padx=2, pady=2, sticky="ew")
+            self._verdict_filtre_cbs[etiket] = cb
+            self._verdict_filtre_temel[etiket] = gosterim
+
+        def _verdict_filtre_topluset(deger: bool):
+            for v in self.var_verdict_filtre.values():
+                v.set(deger)
+            self._tabloyu_yenile()
+        b_hep = tk.Button(p_etiket, text="Tümü",
+                           bg="#E8EAF6", bd=1, width=7,
+                           command=lambda: _verdict_filtre_topluset(True),
+                           padx=4, pady=1, font=("Segoe UI", 8))
+        b_hep.grid(row=0, column=9, padx=(6, 1), pady=2)
+        b_hic = tk.Button(p_etiket, text="Hiçbiri",
+                           bg="#E8EAF6", bd=1, width=7,
+                           command=lambda: _verdict_filtre_topluset(False),
+                           padx=4, pady=1, font=("Segoe UI", 8))
+        b_hic.grid(row=0, column=10, padx=(1, 6), pady=2)
+
+        # ─── ALT SIRA (row=1): TEYİT (Manuel teyit) ───
+        tk.Label(p_etiket, text="🖉 Teyit:", bg=P_VRD_BG, fg="#1A237E",
+                 font=FONT_GROUP).grid(row=1, column=0, padx=(6, 4), pady=2,
+                                        sticky="w")
+        self._teyit_filtre_cbs = {}
+        self._teyit_filtre_temel = {}
+        for i, (sonuc, renk, gosterim) in enumerate(_TYT_RENKLERI):
+            cb = tk.Checkbutton(
+                p_etiket, text=gosterim,
+                variable=self.var_teyit_filtre[sonuc],
+                bg=P_VRD_BG, fg=renk,
+                activeforeground=renk,
+                selectcolor="#FFFFFF",
+                font=("Segoe UI", 8, "bold"),
+                bd=0, padx=2, anchor="w",
+                command=self._tabloyu_yenile)
+            cb.grid(row=1, column=1 + i, padx=2, pady=2, sticky="ew")
             self._teyit_filtre_cbs[sonuc] = cb
             self._teyit_filtre_temel[sonuc] = gosterim
-        # Tümü / Hiçbiri kısayolları
+
         def _teyit_filtre_topluset(deger: bool):
             for v in self.var_teyit_filtre.values():
                 v.set(deger)
             self._tabloyu_yenile()
-        tk.Frame(p_teyit, bg=P_TYT_BG, width=8).pack(side="left")
-        b_tyt_hep = tk.Button(p_teyit, text="Tümü",
-                                bg="#E8EAF6", bd=1,
+        b_tyt_hep = tk.Button(p_etiket, text="Tümü",
+                                bg="#E8EAF6", bd=1, width=7,
                                 command=lambda: _teyit_filtre_topluset(True),
-                                padx=6, pady=1, font=("Segoe UI", 8))
-        b_tyt_hep.pack(side="left", padx=1, pady=2)
-        b_tyt_hic = tk.Button(p_teyit, text="Hiçbiri",
-                                bg="#E8EAF6", bd=1,
+                                padx=4, pady=1, font=("Segoe UI", 8))
+        b_tyt_hep.grid(row=1, column=9, padx=(6, 1), pady=2)
+        b_tyt_hic = tk.Button(p_etiket, text="Hiçbiri",
+                                bg="#E8EAF6", bd=1, width=7,
                                 command=lambda: _teyit_filtre_topluset(False),
-                                padx=6, pady=1, font=("Segoe UI", 8))
-        b_tyt_hic.pack(side="left", padx=1, pady=2)
-        _Tooltip(p_teyit,
-                 "Manuel teyit sonucuna göre filtre:\n"
-                 "✓ UYGUN = teyitli yeşil, ✗ UYGUN DEĞİL = teyitli kırmızı,\n"
-                 "? ŞÜPHELİ = teyitli sarı, ○ Teyitsiz = henüz teyit edilmemiş.")
+                                padx=4, pady=1, font=("Segoe UI", 8))
+        b_tyt_hic.grid(row=1, column=10, padx=(1, 6), pady=2)
+
+        _Tooltip(p_etiket,
+                 "✓ Sonuç (üst): kontrol motoru verdict filtresi.\n"
+                 "  'Boş' = henüz kontrol edilmemiş satırlar.\n\n"
+                 "🖉 Teyit (alt): eczacının manuel teyit ettiği etiketler.\n"
+                 "  'Teyitsiz' = henüz teyit edilmemiş.")
 
         # NOT: 🩺 MEDULA GEÇMİŞ TARA paneli buradan kaldırıldı (kullanıcı isteği
         # 2026-05-23). Şema panel toolbar'ında 🩺 butonu zaten mevcut
@@ -2294,14 +2294,15 @@ class AylikReceteSorguGUI:
                  "Bir kontrol seç → otomatik çalışır.\n\n"
                  "▢ 'Sadece seçilenler' işaretliyse SEÇİLİ satırlara uygulanır.")
 
-        # ─── PANEL: AI KONTROL (row3'te, Kontrol Butonları'nın sağında) ───
-        # Kullanıcı isteği 2026-05-23: sadeleştirilmiş tek satır eylem paneli.
-        # Görünür: ☑ Botanik DB | 🤖 AI KONTROL | 🔍 Önizle | 📸 SS(N) | ☐ F2 | ⚙
+        # ─── PANEL: AI KONTROL (row2'de, Renkler panelinin SAĞINDA — Sıfırla yanı) ───
+        # Kullanıcı isteği 2026-05-23 (2): AI paneli üst satıra, Sıfırla butonunun
+        # sağındaki boş alana taşındı. Sadeleştirilmiş tek satır eylem paneli.
+        # Görünür: ☑ Botanik | 🤖 AI KONTROL | 🔍 | 📸 SS(N) | ☐ F2 | ⚙
         # Gizli (⚙ ayarlar penceresinde): "Meduladan da" disabled checkbox, Model
         # combobox (varsayılan sonnet — Anthropic önerisi).
         P_AI_BG = "#E1F5FE"
-        p_ai = tk.Frame(row3, bg=P_AI_BG, bd=1, relief="solid")
-        p_ai.pack(side="left", padx=2, pady=1, fill="y")
+        p_ai = tk.Frame(row2, bg=P_AI_BG, bd=1, relief="solid")
+        p_ai.pack(side="left", padx=(8, 2), pady=1, fill="y")
         tk.Label(p_ai, text="🤖 AI:", bg=P_AI_BG, fg="#01579B",
                  font=FONT_GROUP).pack(side="left", padx=(6, 4), pady=4)
 
@@ -2928,6 +2929,14 @@ class AylikReceteSorguGUI:
         # değerine ayrıca ⚠ işareti eklenir).
         self.tv.tag_configure("fallback_kirmizi", foreground="#C62828")
 
+        # Rapor Botanik EOS'ta indirilmemiş (tier0_sr_no_rapana) — eczacı
+        # SecilenRapor kaydetmiş ama RaporAna kaydı yok, dolayısıyla
+        # rap_tesh / rap_ack alanları üretilemedi. Manuel Medula'dan
+        # rapor çekilmesi gerek. Açık sarı arka plan + koyu sarı yazı.
+        # BAKİ SOYIRGAZ pilot (TC 11399539088, 305ZQ8U) 2026-05-23.
+        self.tv.tag_configure("rapor_eos_eksik",
+                              background="#FFF9C4", foreground="#F57F17")
+
         # Olay bind'leri
         self.tv.bind("<Button-3>", self._sag_tik_dispatch)
         self.tv.bind("<Double-1>", self._satir_detay)
@@ -3029,91 +3038,107 @@ class AylikReceteSorguGUI:
                                      ▬ normal (380px, tablonun 1/3'ü) /
                                      ▲ büyüt (600px, tablonun 1/2'si)
         """
-        # Başlık + toggle butonları
-        baslik = tk.Frame(parent, bg="#37474F", height=30)
+        # Başlık + buton kümeleri (mini grup başlıklı — kullanıcı isteği
+        # 2026-05-25: butonların ne işe yaradığı tek bakışta anlaşılsın).
+        # Yükseklik 30 → 48 px (~18 px artış; üst etiket 7pt italic).
+        baslik = tk.Frame(parent, bg="#37474F", height=48)
         baslik.pack(side="top", fill="x")
         baslik.pack_propagate(False)
         tk.Label(baslik, text="📋",
                  bg="#37474F", fg="white",
                  font=("Segoe UI", 11, "bold")).pack(side="left", padx=(8, 4))
 
-        # ── NAVİGASYON: ⬅ | X/Y | ➡ (kompakt) ─────────────────────────
+        # Yardımcı: mini başlıklı grup container (panel için kompakt sürüm).
+        # Üstte 7pt italic etiket (#90A4AE — yumuşak gri), altta inner frame.
+        def _pgrup(parent, baslik_text, side="left", padx=(4, 4)):
+            f = tk.Frame(parent, bg="#37474F")
+            f.pack(side=side, padx=padx, pady=(1, 2))
+            tk.Label(f, text=baslik_text,
+                      bg="#37474F", fg="#90A4AE",
+                      font=("Segoe UI", 7, "italic")).pack(
+                          side="top", anchor="center")
+            inner = tk.Frame(f, bg="#37474F")
+            inner.pack(side="top")
+            return inner
+
+        # ── REÇETE: ⬅ | X/Y | ➡ ───────────────────────────────────────
+        nav_grup = _pgrup(baslik, "REÇETE")
         nav_btn_prev = tk.Button(
-            baslik, text="⬅", bg="#455A64", fg="white",
+            nav_grup, text="⬅", bg="#455A64", fg="white",
             font=("Segoe UI", 9, "bold"),
             relief="flat", bd=0, padx=5, pady=1, cursor="hand2",
             command=lambda: self._sema_nav_recete(-1))
-        nav_btn_prev.pack(side="left", padx=1, pady=3)
+        nav_btn_prev.pack(side="left", padx=1)
         _Tooltip(nav_btn_prev,
                   "Önceki reçete (filtrelenmiş satır üzerinde)\n"
                   "Kısayol: PageUp veya Alt+Sol")
         self._sema_panel_nav_lbl = tk.Label(
-            baslik, text="—", bg="#37474F", fg="white",
+            nav_grup, text="—", bg="#37474F", fg="white",
             font=("Segoe UI", 9, "bold"), width=7)
         self._sema_panel_nav_lbl.pack(side="left", padx=1)
         nav_btn_next = tk.Button(
-            baslik, text="➡", bg="#455A64", fg="white",
+            nav_grup, text="➡", bg="#455A64", fg="white",
             font=("Segoe UI", 9, "bold"),
             relief="flat", bd=0, padx=5, pady=1, cursor="hand2",
             command=lambda: self._sema_nav_recete(+1))
-        nav_btn_next.pack(side="left", padx=1, pady=3)
+        nav_btn_next.pack(side="left", padx=1)
         _Tooltip(nav_btn_next,
                   "Sonraki reçete (filtrelenmiş satır üzerinde)\n"
                   "Kısayol: PageDown veya Alt+Sağ")
 
-        # ── TEYİT: ✓ | ✗ | ? (kompakt sembol butonlar) ───────────────
-        tk.Label(baslik, text="│", bg="#37474F", fg="#78909C",
-                  font=("Segoe UI", 10)).pack(side="left", padx=(5, 2))
+        # ── TEYİT KAYDI: ✓ | ✗ | ? | ⌫ ────────────────────────────────
+        teyit_grup = _pgrup(baslik, "TEYİT KAYDI")
         btn_t1 = tk.Button(
-            baslik, text="✓", bg="#2E7D32", fg="white",
+            teyit_grup, text="✓", bg="#2E7D32", fg="white",
             font=("Segoe UI", 10, "bold"),
             relief="flat", bd=0, padx=7, pady=1, cursor="hand2",
             command=lambda: self._ana_teyit_kaydet(
                 recete_teyit_db.TEYIT_UYGUN))
-        btn_t1.pack(side="left", padx=1, pady=3)
+        btn_t1.pack(side="left", padx=1)
         _Tooltip(btn_t1,
                   "Seçili reçeteleri UYGUN olarak manuel teyit eder.\n"
                   "Tablodaki satır kalın yazı + ✓ rozeti ile işaretlenir.")
         btn_t2 = tk.Button(
-            baslik, text="✗", bg="#B71C1C", fg="white",
+            teyit_grup, text="✗", bg="#B71C1C", fg="white",
             font=("Segoe UI", 10, "bold"),
             relief="flat", bd=0, padx=7, pady=1, cursor="hand2",
             command=lambda: self._ana_teyit_kaydet(
                 recete_teyit_db.TEYIT_UYGUN_DEGIL))
-        btn_t2.pack(side="left", padx=1, pady=3)
+        btn_t2.pack(side="left", padx=1)
         _Tooltip(btn_t2,
                   "Seçili reçeteleri UYGUN DEĞİL olarak manuel teyit eder.\n"
                   "Tablodaki satır kalın yazı + ✗ rozeti ile işaretlenir.")
         btn_t3 = tk.Button(
-            baslik, text="?", bg="#F9A825", fg="white",
+            teyit_grup, text="?", bg="#F9A825", fg="white",
             font=("Segoe UI", 10, "bold"),
             relief="flat", bd=0, padx=7, pady=1, cursor="hand2",
             command=lambda: self._ana_teyit_kaydet(
                 recete_teyit_db.TEYIT_SUPHELI))
-        btn_t3.pack(side="left", padx=1, pady=3)
+        btn_t3.pack(side="left", padx=1)
         _Tooltip(btn_t3,
                   "Seçili reçeteleri ŞÜPHELİ olarak manuel teyit eder.\n"
                   "Tablodaki satır kalın yazı + ? rozeti ile işaretlenir.")
-        # ⌫ — Tüm görünen satırların teyidini topluca sıfırla (kullanıcı isteği 2026-05-17)
+        # ⌫ — Tüm görünen satırların teyidini topluca sıfırla
         btn_t4 = tk.Button(
-            baslik, text="⌫", bg="#546E7A", fg="white",
+            teyit_grup, text="⌫", bg="#546E7A", fg="white",
             font=("Segoe UI", 10, "bold"),
             relief="flat", bd=0, padx=7, pady=1, cursor="hand2",
             command=self._ana_teyit_kaldir_tumu)
-        btn_t4.pack(side="left", padx=(4, 1), pady=3)
+        btn_t4.pack(side="left", padx=(4, 1))
         _Tooltip(btn_t4,
                   "Görünen TÜM reçete satırlarının teyidini sıfırlar "
                   "(UYGUN / UYGUN DEĞİL / ŞÜPHELİ rozetlerini siler).\n"
                   "Filtre dışı satırlar etkilenmez.\n"
                   "İşlem öncesi onay sorulur.")
 
-        # 🩺 MEDULA geçmiş rapor tarama — teyit butonlarının sağında
+        # ── MEDULA: 🩺 geçmiş rapor tarama ────────────────────────────
+        medula_grup = _pgrup(baslik, "MEDULA")
         btn_t_gecmis = tk.Button(
-            baslik, text="🩺", bg="#4527A0", fg="white",
+            medula_grup, text="🩺", bg="#4527A0", fg="white",
             font=("Segoe UI", 10, "bold"),
             relief="flat", bd=0, padx=7, pady=1, cursor="hand2",
             command=self._medula_gecmis_rapor_tara_baslat)
-        btn_t_gecmis.pack(side="left", padx=(6, 1), pady=3)
+        btn_t_gecmis.pack(side="left", padx=1)
         _Tooltip(btn_t_gecmis,
                   "🩺 MEDULA Geçmiş Raporlarını Tara\n\n"
                   "Seçili reçete satırındaki hastanın MEDULA'daki TÜM geçmiş\n"
@@ -3121,18 +3146,72 @@ class AylikReceteSorguGUI:
                   "KOAH kontrollerinde 'başlangıç raporu hangi tarihte' sorgusu\n"
                   "için kullanılır. SALT OKUMA.")
 
-        # 🔍 Diğer Yolaklar toggle — dispatcher'ın elediği yolakları göster/gizle
-        # NOT: Başlık çubuğu sıkışmasın diye SAĞ tarafta + sadece emoji.
-        # (Önceden side="left" + uzun text idi; "Tam Ekran" / ▼▬▲ butonlarını
-        #  ekran dışına itiyordu — 2026-05-23 düzeltmesi.)
+        # ── BAŞLANGIÇ: 📜▶ rapor kontrolü | 📊 etken tablosu ──────────
+        bas_grup = _pgrup(baslik, "BAŞLANGIÇ")
+        btn_t_bas = tk.Button(
+            bas_grup, text="📜▶", bg="#1565C0", fg="white",
+            font=("Segoe UI", 10, "bold"),
+            relief="flat", bd=0, padx=7, pady=1, cursor="hand2",
+            command=self._baslangic_butonu_basildi)
+        btn_t_bas.pack(side="left", padx=1)
+        _Tooltip(btn_t_bas,
+                  "📜 Başlangıç Rapor Kontrolünü Çalıştır\n\n"
+                  "DMN / Klasik Akım tab'larında iken bile kullanılabilir.\n"
+                  "Aktif satırdaki hasta için başlangıç raporu bulunur ve\n"
+                  "başlangıç kriterleriyle yeniden kontrol edilir.\n"
+                  "Sonuç şeması DMN/Klasik tab'larına çizilir.")
+        btn_t_tablo = tk.Button(
+            bas_grup, text="📊", bg="#E65100", fg="white",
+            font=("Segoe UI", 10, "bold"),
+            relief="flat", bd=0, padx=7, pady=1, cursor="hand2",
+            command=self._baslangic_etken_tablosu_ac)
+        btn_t_tablo.pack(side="left", padx=1)
+        _Tooltip(btn_t_tablo,
+                  "📊 Raporlu Etken Maddeler Tablosu\n\n"
+                  "Hastanın tüm raporlarındaki etken maddeleri × tarih tablosu.\n"
+                  "Her etken için ilk tarihteki satır vurgulu = başlangıç raporu.")
+
+        # Teyit durum etiketi (mevcut kayıt göstergesi — italik sarı)
+        self._sema_panel_teyit_lbl = tk.Label(
+            baslik, text="", bg="#37474F", fg="#FFEB3B",
+            font=("Segoe UI", 8, "italic"))
+        self._sema_panel_teyit_lbl.pack(side="left", padx=(6, 0))
+
+        # ── TAM EKRAN: ⛶ pencere ───────────────────────────── (en sağ)
+        tam_grup = _pgrup(baslik, "TAM EKRAN", side="right", padx=(4, 4))
+        tam_btn = tk.Button(tam_grup, text="⛶ Tam Ekran",
+                              bg="#1565C0", fg="white",
+                              font=("Segoe UI", 9, "bold"),
+                              relief="flat", bd=0, padx=10, pady=2,
+                              cursor="hand2",
+                              command=self._sema_tam_ekran_toggle)
+        tam_btn.pack(side="left", padx=2)
+
+        # ── BOYUT: ▼ ▬ ▲ ──────────────────────────────────────────────
+        boyut_grup = _pgrup(baslik, "BOYUT", side="right", padx=(4, 4))
+        for sembol, durum, ipucu in [("▼", "kucuk", "Küçült (sadece başlık)"),
+                                       ("▬", "normal", "Normal (1/3)"),
+                                       ("▲", "buyuk", "Büyüt (1/2)")]:
+            btn = tk.Button(boyut_grup, text=sembol,
+                             bg="#455A64", fg="white",
+                             font=("Segoe UI", 10, "bold"),
+                             relief="flat", bd=0, padx=8, pady=2,
+                             cursor="hand2",
+                             command=lambda d=durum: self._sema_boyut_degistir(d))
+            btn.pack(side="left", padx=1)
+            _Tooltip(btn, ipucu)
+
+        # ── YOLAK: 🔍 diğer yolakları göster/gizle ────────────────────
+        # Hepatit modülünde aktif — dispatcher'ın elediği 11 yolak listesi
+        yolak_grup = _pgrup(baslik, "YOLAK", side="right", padx=(4, 4))
         self._diger_yolak_panel_acik = False
         self._diger_yolak_btn = tk.Button(
-            baslik, text="🔍",
+            yolak_grup, text="🔍",
             bg="#37474F", fg="#FFCC80",
             font=("Segoe UI", 10, "bold"),
             relief="flat", bd=0, padx=7, pady=1, cursor="hand2",
             command=self._diger_yolaklar_toggle)
-        self._diger_yolak_btn.pack(side="right", padx=(2, 4), pady=3)
+        self._diger_yolak_btn.pack(side="left", padx=2)
         _Tooltip(self._diger_yolak_btn,
                   "🔍 Dispatcher'ın elediği diğer yolakları göster/gizle.\n\n"
                   "Aktif yolak şu an çizilen şemadır. Diğer 11 yolak için\n"
@@ -3140,32 +3219,6 @@ class AylikReceteSorguGUI:
                   "tıklayınca o yolağın atomları lazy hesaplanır ve\n"
                   "panelde görüntülenir.\n\n"
                   "Sadece hepatit modülünde aktif (diğer modüller için yapım aşamasında).")
-
-        self._sema_panel_teyit_lbl = tk.Label(
-            baslik, text="", bg="#37474F", fg="#FFEB3B",
-            font=("Segoe UI", 8, "italic"))
-        self._sema_panel_teyit_lbl.pack(side="left", padx=(4, 0))
-
-        # Toggle butonları (sağda)
-        for sembol, durum, ipucu in [("▼", "kucuk", "Küçült (sadece başlık)"),
-                                       ("▬", "normal", "Normal (1/3)"),
-                                       ("▲", "buyuk", "Büyüt (1/2)")]:
-            btn = tk.Button(baslik, text=sembol,
-                             bg="#455A64", fg="white",
-                             font=("Segoe UI", 10, "bold"),
-                             relief="flat", bd=0, padx=8, pady=2,
-                             cursor="hand2",
-                             command=lambda d=durum: self._sema_boyut_degistir(d))
-            btn.pack(side="right", padx=2, pady=4)
-
-        # Tam ekran toggle butonu (sağda, ilk sırada — daha belirgin renkte)
-        tam_btn = tk.Button(baslik, text="⛶ Tam Ekran",
-                              bg="#1565C0", fg="white",
-                              font=("Segoe UI", 9, "bold"),
-                              relief="flat", bd=0, padx=10, pady=2,
-                              cursor="hand2",
-                              command=self._sema_tam_ekran_toggle)
-        tam_btn.pack(side="right", padx=(8, 4), pady=4)
 
         # Üst özet bandı — YATAY tek satır (yolak | sayım | sonuç)
         self._sema_ozet = tk.Frame(parent, bg="#FAFBFC", height=44)
@@ -3260,6 +3313,115 @@ class AylikReceteSorguGUI:
         self._klasik_canvas.bind("<MouseWheel>", _klasik_on_wheel)
         self._klasik_canvas.bind("<Shift-MouseWheel>", _klasik_on_shift_wheel)
 
+        # ── TAB BR: Başlangıç Rapor Kontrolü (📜) ─────────────────────
+        # Hasta aktif ilacı (etken bazlı) ilk aldığı tarihteki rapor →
+        # başlangıç kriterleri ile yeniden kontrol → bu sekmede gösterilir.
+        # Pilot kapsam: hepatit (B/C/D). Diğer modüllere genişlerken
+        # baslangic_rapor_bulucu._MODUL_WRAPPER_MAP'e ekle.
+        tab_bas = tk.Frame(nb, bg="#FAFBFC")
+        nb.add(tab_bas, text="📜 Başlangıç Rapor")
+
+        # Toolbar: ▶ buton + hazır etiket
+        bas_toolbar = tk.Frame(tab_bas, bg="#FAFBFC")
+        bas_toolbar.pack(side="top", fill="x", padx=4, pady=(4, 2))
+        self._baslangic_calistir_btn = tk.Button(
+            bas_toolbar, text="▶ Başlangıç Kontrolünü Çalıştır",
+            bg="#1565C0", fg="white",
+            font=("Segoe UI", 9, "bold"),
+            activebackground="#0D47A1", activeforeground="white",
+            relief="flat", bd=0, padx=14, pady=6, cursor="hand2",
+            command=self._baslangic_butonu_basildi)
+        self._baslangic_calistir_btn.pack(side="left")
+        _Tooltip(self._baslangic_calistir_btn,
+                  "Aktif satır için başlangıç raporunu bul + "
+                  "başlangıç kriterleriyle yeniden kontrol et.\n\n"
+                  "Akış:\n"
+                  "  Aşama 1: aktif rapor metninde takip no lafzı ara\n"
+                  "  Aşama 2: Botanik EOS'ta etken bazlı en eski reçete\n"
+                  "  Sonuç bu sekmede gösterilir.")
+        # 📊 Raporlu Etken Maddeler Tablosu butonu — yan yana
+        self._baslangic_tablo_btn = tk.Button(
+            bas_toolbar, text="📊 Raporlu Etken Maddeler Tablosu",
+            bg="#E65100", fg="white",
+            font=("Segoe UI", 9, "bold"),
+            activebackground="#BF360C", activeforeground="white",
+            relief="flat", bd=0, padx=14, pady=6, cursor="hand2",
+            command=self._baslangic_etken_tablosu_ac)
+        self._baslangic_tablo_btn.pack(side="left", padx=(8, 0))
+        _Tooltip(self._baslangic_tablo_btn,
+                  "Hastanın TÜM raporlarındaki etken maddeleri × tarih "
+                  "tablosu (Medula taraması sonrası yerel DB'den).\n"
+                  "Her etken için ilk tarihteki satır vurgulu = başlangıç "
+                  "raporu. Çift tıkla → o etkenin başlangıç kontrolünü çalıştır.")
+        # Aktif satır hazır etiketi
+        self._baslangic_hazir_lbl = tk.Label(
+            bas_toolbar, text="(Reçete seçin, sonra butona basın)",
+            bg="#FAFBFC", fg="#90A4AE",
+            font=("Segoe UI", 8, "italic"))
+        self._baslangic_hazir_lbl.pack(side="left", padx=(12, 0))
+
+        # Üst bilgi şeridi (sonuç sonrası dolar)
+        self._baslangic_info_lbl = tk.Label(
+            tab_bas, text="(Butona basınca başlangıç kontrolü çalışır)",
+            bg="#FFF8E1", fg="#5D4037",
+            font=("Segoe UI", 9, "bold"),
+            anchor="w", justify="left", wraplength=900, padx=8, pady=6)
+        self._baslangic_info_lbl.pack(side="top", fill="x", padx=4, pady=(2, 2))
+
+        # Önbellek: butona basılınca okunacak aktif satır
+        self._baslangic_aktif_satir = None
+
+        # PanedWindow — üst: mini klasik akım canvas, alt: scrolled text
+        # Kullanıcı isteği 2026-05-25: akım şeması mantığını başlangıç tab'ında
+        # da göster (DMN tab'a geçişe bağlı kalmadan)
+        pw = tk.PanedWindow(tab_bas, orient="vertical",
+                              sashrelief="raised", sashwidth=6, bg="#ECEFF1")
+        pw.pack(side="top", fill="both", expand=True, padx=4, pady=(2, 4))
+
+        # Üst pane — mini canvas (klasik akım şeması)
+        canvas_frame = tk.Frame(pw, bg="white")
+        self._baslangic_canvas = tk.Canvas(
+            canvas_frame, bg="white", highlightthickness=0)
+        bas_xsb = ttk.Scrollbar(canvas_frame, orient="horizontal",
+                                  command=self._baslangic_canvas.xview)
+        bas_xsb.pack(side="bottom", fill="x")
+        bas_ysb = ttk.Scrollbar(canvas_frame, orient="vertical",
+                                  command=self._baslangic_canvas.yview)
+        bas_ysb.pack(side="right", fill="y")
+        self._baslangic_canvas.pack(side="left", fill="both", expand=True)
+        self._baslangic_canvas.configure(
+            xscrollcommand=bas_xsb.set, yscrollcommand=bas_ysb.set)
+        pw.add(canvas_frame, minsize=200, height=400)
+
+        # Alt pane — atom listesi metni
+        from tkinter.scrolledtext import ScrolledText
+        text_frame = tk.Frame(pw)
+        self._baslangic_text = ScrolledText(
+            text_frame, font=("Consolas", 9), bg="#FAFBFC",
+            wrap="word", relief="solid", bd=1)
+        self._baslangic_text.pack(side="top", fill="both", expand=True)
+        pw.add(text_frame, minsize=120, height=200)
+        # Renk tag'leri
+        self._baslangic_text.tag_configure(
+            "var", foreground="#1B5E20",
+            font=("Consolas", 9, "bold"))
+        self._baslangic_text.tag_configure(
+            "yok", foreground="#B71C1C",
+            font=("Consolas", 9, "bold"))
+        self._baslangic_text.tag_configure(
+            "ke", foreground="#E65100",
+            font=("Consolas", 9, "bold"))
+        self._baslangic_text.tag_configure(
+            "grup", foreground="#0D47A1",
+            font=("Segoe UI", 9, "bold"), spacing1=6, spacing3=2)
+        self._baslangic_text.tag_configure(
+            "header", foreground="#1A237E",
+            font=("Segoe UI", 10, "bold"), spacing1=6)
+        self._baslangic_text.tag_configure(
+            "info", foreground="#37474F",
+            font=("Consolas", 8, "italic"))
+        self._baslangic_text.configure(state="disabled")
+
         # ── DİĞER YOLAKLAR PANELİ (varsayılan gizli, toggle ile açılır) ──
         # Üst panel'in altında ayrı bir frame; 🔍 toggle butonu pack/forget
         # eder. İçerik: sol Listbox (pasif yolak başlıkları + gerekçe) +
@@ -3281,6 +3443,17 @@ class AylikReceteSorguGUI:
                    font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                    padx=8, pady=0, cursor="hand2",
                    command=self._diger_yolaklar_toggle).pack(side="right")
+        # ⛶ Tam ekran — paneli Toplevel'e taşı + zoomed
+        self._dy_tam_ekran = False
+        self._dy_tam_btn = tk.Button(
+            dy_baslik, text="⛶", bg="#FFA000", fg="white",
+            font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+            padx=8, pady=0, cursor="hand2",
+            command=self._diger_yolaklar_tam_ekran_toggle)
+        self._dy_tam_btn.pack(side="right", padx=(0, 4))
+        _Tooltip(self._dy_tam_btn,
+                  "⛶ Diğer Yolaklar panelini tam ekran yap.\n"
+                  "Aynı butona tekrar tıklayınca panel'e geri döner.")
 
         # İçerik: sol liste, sağ atomlar metni
         dy_govde = tk.Frame(self._diger_yolak_frame, bg="#FFFDE7")
@@ -3598,8 +3771,11 @@ class AylikReceteSorguGUI:
         top.protocol("WM_DELETE_WINDOW", self._sema_tam_ekran_toggle)
         self._sema_tam_top = top
 
-        # Üst banner — başlık + zoom kontrolleri + kapat butonu
-        header = tk.Frame(top, bg="#1565C0", height=44)
+        # Üst banner — mini grup başlıklı, simetrik buton kümeleri.
+        # Her grubun üstünde küçük italik etiket: REÇETE / TEYİT KAYDI /
+        # MEDULA / GÖRÜNÜM / ÇIK. Böylece butonların ne işe yaradığı tek
+        # bakışta anlaşılır; yükseklik 44 → 58 px (~14 px artış).
+        header = tk.Frame(top, bg="#1565C0", height=58)
         header.pack(side="top", fill="x")
         header.pack_propagate(False)
         tk.Label(header,
@@ -3607,9 +3783,22 @@ class AylikReceteSorguGUI:
                   bg="#1565C0", fg="white",
                   font=("Segoe UI", 11, "bold")).pack(side="left", padx=(14, 8))
 
-        # ── NAVİGASYON: ⬅ Önceki | sayaç | Sonraki ➡ ──────────────────
-        nav_frame = tk.Frame(header, bg="#1565C0")
-        nav_frame.pack(side="left", padx=(8, 6))
+        # Yardımcı: mini başlıklı grup container.
+        # Üstte 8pt italic açıklayıcı başlık (#BBDEFB — yumuşak mavi),
+        # altta butonların paketleneceği inner frame.
+        def _grup(parent, baslik, side="left", padx=(8, 6)):
+            f = tk.Frame(parent, bg="#1565C0")
+            f.pack(side=side, padx=padx, pady=(2, 4))
+            tk.Label(f, text=baslik,
+                      bg="#1565C0", fg="#BBDEFB",
+                      font=("Segoe UI", 8, "italic")).pack(
+                          side="top", anchor="center")
+            inner = tk.Frame(f, bg="#1565C0")
+            inner.pack(side="top")
+            return inner
+
+        # ── 📋 REÇETE: ⬅ Önceki | sayaç | Sonraki ➡ ──────────────────
+        nav_frame = _grup(header, "📋 REÇETE")
         tk.Button(nav_frame, text="⬅ Önceki",
                    bg="#0D47A1", fg="white",
                    font=("Segoe UI", 10, "bold"),
@@ -3636,20 +3825,14 @@ class AylikReceteSorguGUI:
         top.bind('<Alt-Right>', lambda e: self._sema_nav_recete(+1))
 
         # Sağ tık: tam ekran şemada da ana tablodaki context menüsü açılır.
-        # _sag_tik_menu zaten event.x_root/y_root kullandığı için ve aktif
-        # satırı self.tv.selection() üzerinden okuduğu için ekstra düzenleme
-        # gerekmez — şema açıkken zaten o satır seçilidir.
         top.bind('<Button-3>', self._sag_tik_menu_tam_ekran)
 
-        # ── TEYİT: ✓ UYGUN | ✗ UYGUN DEĞİL | ? ŞÜPHELİ ────────────────
-        ayrac = tk.Label(header, text="│", bg="#1565C0", fg="#90CAF9",
-                          font=("Segoe UI", 14))
-        ayrac.pack(side="left", padx=(6, 6))
-        tk.Label(header, text="Teyit:",
-                  bg="#1565C0", fg="white",
-                  font=("Segoe UI", 10, "bold")).pack(side="left", padx=(0, 4))
-        teyit_frame = tk.Frame(header, bg="#1565C0")
-        teyit_frame.pack(side="left", padx=2)
+        # Ayraç dikey çubuk (REÇETE ↔ TEYİT arası)
+        tk.Label(header, text="│", bg="#1565C0", fg="#90CAF9",
+                  font=("Segoe UI", 14)).pack(side="left", padx=(6, 6))
+
+        # ── ✓ TEYİT KAYDI: UYGUN | UYGUN DEĞİL | ŞÜPHELİ ──────────────
+        teyit_frame = _grup(header, "✓ TEYİT KAYDI")
         tk.Button(teyit_frame, text="✓ UYGUN",
                    bg="#2E7D32", fg="white",
                    font=("Segoe UI", 10, "bold"),
@@ -3674,43 +3857,46 @@ class AylikReceteSorguGUI:
                    command=lambda: self._sema_teyit_kaydet(
                        recete_teyit_db.TEYIT_SUPHELI)
                    ).pack(side="left", padx=2)
-        # 🩺 MEDULA geçmiş rapor tarama — teyit butonlarının sağında
-        btn_gecmis_tam = tk.Button(teyit_frame, text="🩺 GEÇMİŞ TARA",
+
+        # Teyit durum etiketi (mevcut kayıt göstergesi — "Şu an: ✓" gibi)
+        self._sema_tam_teyit_lbl = tk.Label(
+            header, text="", bg="#1565C0", fg="#FFEB3B",
+            font=("Segoe UI", 9, "italic"))
+        self._sema_tam_teyit_lbl.pack(side="left", padx=(8, 0))
+
+        # ── 🩺 MEDULA: geçmiş rapor tarama ────────────────────────────
+        medula_frame = _grup(header, "🩺 MEDULA", padx=(10, 6))
+        btn_gecmis_tam = tk.Button(medula_frame, text="GEÇMİŞ TARA",
                    bg="#4527A0", fg="white",
                    activebackground="#311B92",
                    font=("Segoe UI", 10, "bold"),
                    relief="flat", bd=0, padx=10, pady=4,
                    cursor="hand2",
                    command=self._medula_gecmis_rapor_tara_baslat)
-        btn_gecmis_tam.pack(side="left", padx=(10, 2))
+        btn_gecmis_tam.pack(side="left", padx=2)
         _Tooltip(btn_gecmis_tam,
                   "Seçili hastanın MEDULA'daki TÜM geçmiş raporlarını yerel\n"
                   "SQLite DB'ye tarar. Hepatit / diyabet / KOAH kontrolleri\n"
                   "'başlangıç raporu hangi tarihte' sorgusu için kullanır.\n\n"
                   "CLAUDE.md: SALT OKUMA — MEDULA verisi değiştirilmez.")
-        # Teyit durum etiketi (mevcut kayıt göstergesi)
-        self._sema_tam_teyit_lbl = tk.Label(
-            header, text="", bg="#1565C0", fg="#FFEB3B",
-            font=("Segoe UI", 9, "italic"))
-        self._sema_tam_teyit_lbl.pack(side="left", padx=(8, 0))
 
-        # ── ZOOM KONTROLLERİ (Sığdır / 1:1 / + / − / zoom göstergesi) ──
-        tk.Button(header, text="✕  Kapat",
+        # ── ÇIK: pencereyi kapat (en sağda) ──────────────────────────
+        cikis_frame = _grup(header, "ÇIK", side="right", padx=(4, 10))
+        tk.Button(cikis_frame, text="✕  Kapat",
                    bg="#B71C1C", fg="white",
                    font=("Segoe UI", 10, "bold"),
                    relief="flat", bd=0, padx=14, pady=4,
                    cursor="hand2",
                    command=self._sema_tam_ekran_toggle
-                   ).pack(side="right", padx=10, pady=6)
+                   ).pack(side="left", padx=2)
 
-        # Zoom buton kümesi (sağdan başlayarak)
-        # Zoom göstergesi label
-        zoom_lbl_full = tk.Label(header, text="(1.4x)",
+        # ── 🔍 GÖRÜNÜM: Sığdır | 1:1 | − | ＋ | zoom göstergesi ──────
+        zoom_frame = _grup(header, "🔍 GÖRÜNÜM", side="right", padx=(4, 6))
+        # Zoom göstergesi label — pack sırası: butonlardan sonra (en sağda)
+        zoom_lbl_full = tk.Label(zoom_frame, text="(1.4x)",
                                    bg="#1565C0", fg="white",
                                    font=("Segoe UI", 10, "bold"))
-        zoom_lbl_full.pack(side="right", padx=(6, 12), pady=8)
 
-        # +/- butonları (zoom adım: ±0.15)
         def _zoom_adim(d):
             yeni = max(0.4, min(3.0, self._klasik_zoom + d))
             self._klasik_zoom = yeni
@@ -3720,22 +3906,6 @@ class AylikReceteSorguGUI:
                 pass
             self.root.after(50, self._sema_secim_guncelle)
 
-        tk.Button(header, text="＋",
-                   bg="#0D47A1", fg="white",
-                   font=("Segoe UI", 11, "bold"),
-                   relief="flat", bd=0, padx=10, pady=2,
-                   cursor="hand2",
-                   command=lambda: _zoom_adim(+0.15)
-                   ).pack(side="right", padx=2, pady=6)
-        tk.Button(header, text="−",
-                   bg="#0D47A1", fg="white",
-                   font=("Segoe UI", 11, "bold"),
-                   relief="flat", bd=0, padx=12, pady=2,
-                   cursor="hand2",
-                   command=lambda: _zoom_adim(-0.15)
-                   ).pack(side="right", padx=2, pady=6)
-
-        # 1:1 Yakınlaştır (zoom 1.0x)
         def _zoom_birebir_full():
             self._klasik_zoom = 1.0
             try:
@@ -3743,15 +3913,7 @@ class AylikReceteSorguGUI:
             except Exception:
                 pass
             self.root.after(50, self._sema_secim_guncelle)
-        tk.Button(header, text="1:1",
-                   bg="#0D47A1", fg="white",
-                   font=("Segoe UI", 10, "bold"),
-                   relief="flat", bd=0, padx=10, pady=4,
-                   cursor="hand2",
-                   command=_zoom_birebir_full
-                   ).pack(side="right", padx=2, pady=6)
 
-        # Sığdır — fullscreen canvas içine içeriği sığdır
         def _zoom_sigdir_full():
             # Mevcut _klasik_zoom_sigdir mantığı (Toplevel canvas'a uyumlu)
             c = self._klasik_canvas  # şu an Toplevel'in canvas'ı (swap edildi)
@@ -3777,18 +3939,40 @@ class AylikReceteSorguGUI:
                 self.root.after(50, self._sema_secim_guncelle)
             except Exception:
                 pass
-        tk.Button(header, text="🔍 Sığdır",
+
+        tk.Button(zoom_frame, text="🔍 Sığdır",
                    bg="#0D47A1", fg="white",
                    font=("Segoe UI", 10, "bold"),
                    relief="flat", bd=0, padx=12, pady=4,
                    cursor="hand2",
                    command=_zoom_sigdir_full
-                   ).pack(side="right", padx=(12, 4), pady=6)
+                   ).pack(side="left", padx=2)
+        tk.Button(zoom_frame, text="1:1",
+                   bg="#0D47A1", fg="white",
+                   font=("Segoe UI", 10, "bold"),
+                   relief="flat", bd=0, padx=10, pady=4,
+                   cursor="hand2",
+                   command=_zoom_birebir_full
+                   ).pack(side="left", padx=2)
+        tk.Button(zoom_frame, text="−",
+                   bg="#0D47A1", fg="white",
+                   font=("Segoe UI", 11, "bold"),
+                   relief="flat", bd=0, padx=12, pady=2,
+                   cursor="hand2",
+                   command=lambda: _zoom_adim(-0.15)
+                   ).pack(side="left", padx=2)
+        tk.Button(zoom_frame, text="＋",
+                   bg="#0D47A1", fg="white",
+                   font=("Segoe UI", 11, "bold"),
+                   relief="flat", bd=0, padx=10, pady=2,
+                   cursor="hand2",
+                   command=lambda: _zoom_adim(+0.15)
+                   ).pack(side="left", padx=2)
+        zoom_lbl_full.pack(side="left", padx=(6, 4))
 
         # Fullscreen-local zoom label'ı saklayıp orijinal _klasik_zoom_lbl ile
         # eşitleyelim — böylece _klasik_zoom_sigdir/birebir çağrıları da
-        # fullscreen label'ı günceller (orijinal label da güncellenir ama
-        # gizli olduğu için sorun değil).
+        # fullscreen label'ı günceller.
         self._sema_tam_zoom_lbl = zoom_lbl_full
 
         # ── Hasta/reçete/rapor bilgi şeridi (kullanıcı isteği 2026-05-17:
@@ -4427,6 +4611,30 @@ class AylikReceteSorguGUI:
                 self._klasik_neden_map = {}
             except Exception:
                 pass
+        # 📜 Başlangıç Rapor sekmesi
+        if hasattr(self, '_baslangic_text'):
+            try:
+                self._baslangic_text.configure(state="normal")
+                self._baslangic_text.delete("1.0", tk.END)
+                self._baslangic_text.configure(state="disabled")
+            except Exception:
+                pass
+        if hasattr(self, '_baslangic_info_lbl'):
+            try:
+                self._baslangic_info_lbl.configure(
+                    text="(Butona basınca başlangıç kontrolü çalışır)",
+                    bg="#FFF8E1", fg="#5D4037")
+            except Exception:
+                pass
+        # Hazır etiketi + önbellek
+        if hasattr(self, '_baslangic_hazir_lbl'):
+            try:
+                self._baslangic_hazir_lbl.configure(
+                    text="(Reçete seçin, sonra butona basın)",
+                    fg="#90A4AE")
+            except Exception:
+                pass
+        self._baslangic_aktif_satir = None
         if mesaj:
             tk.Label(self._sema_ozet, text=mesaj, bg="#FAFBFC",
                      fg="#90A4AE",
@@ -4523,6 +4731,19 @@ class AylikReceteSorguGUI:
             # Diğer yolaklar paneli (toggle açıksa veya kapalıyken bile veri
             # ön belleğe alınır — açılırsa liste hazır olsun)
             self._diger_yolaklar_doldur(satir)
+            # 📜 Başlangıç Rapor sekmesi — sadece aktif satırı önbelleğe al
+            # (otomatik render YOK; eczacı "▶ Başlangıç Kontrolünü Çalıştır"
+            # butonuna basınca _baslangic_rapor_doldur tetiklenir).
+            self._baslangic_aktif_satir = satir
+            self._baslangic_hazir_etiket_guncelle(satir)
+            # Rapor Botanik EOS'ta indirilmemiş ise eczacıyı uyar.
+            if satir.get("rapor_secim_kaynagi") == "tier0_sr_no_rapana":
+                rap_kod = (satir.get("rap_kod") or "").strip()
+                rap_kod_str = f" (rapor kodu {rap_kod})" if rap_kod else ""
+                self._durum_yaz(
+                    f"⚠ Rapor Botanik EOS'a indirilmemiş{rap_kod_str} "
+                    f"— rapor teşhisi/açıklaması üretilemedi. Medula'dan "
+                    f"manuel olarak rapor çekilmesi gerek.")
         except Exception as e:
             self._sema_temizle(f"Hata: {e}")
 
@@ -4530,7 +4751,23 @@ class AylikReceteSorguGUI:
     # DİĞER YOLAKLAR PANELİ — dispatcher'ın elediği yolakları göster
     # ─────────────────────────────────────────────────────────────────
     def _diger_yolaklar_toggle(self) -> None:
-        """🔍 toggle: alt paneli pack/forget."""
+        """🔍 toggle: alt paneli pack/forget.
+
+        Tam ekran modundayken ✕'a basılırsa önce wm forget yapılır, sonra
+        embedded paneli kapatılır.
+        """
+        if getattr(self, '_dy_tam_ekran', False):
+            try:
+                fr = self._diger_yolak_frame
+                fr.tk.call('wm', 'forget', fr._w)
+                fr.configure(height=200)
+                self._dy_tam_ekran = False
+                try:
+                    self._dy_tam_btn.configure(text="⛶", fg="white")
+                except Exception:
+                    pass
+            except Exception:
+                pass
         if getattr(self, '_diger_yolak_panel_acik', False):
             try:
                 self._diger_yolak_frame.pack_forget()
@@ -4552,6 +4789,724 @@ class AylikReceteSorguGUI:
                 self._diger_yolak_btn.configure(fg="#FFEB3B")
             except Exception:
                 pass
+
+    def _diger_yolaklar_tam_ekran_toggle(self) -> None:
+        """⛶ Diğer Yolaklar panelini Toplevel'e çıkar (zoomed) / geri al.
+
+        `wm manage` ile embedded Frame'i bağımsız bir pencereye dönüştürür;
+        `wm forget` ile tekrar inline panele döner. Widget'lar yeniden
+        oluşturulmaz — aynı Listbox + Canvas + bağlamalar korunur.
+        """
+        fr = getattr(self, '_diger_yolak_frame', None)
+        if fr is None:
+            return
+        # Panel kapalıyken tam ekran açma denemesinde önce aç
+        if not getattr(self, '_diger_yolak_panel_acik', False) \
+                and not getattr(self, '_dy_tam_ekran', False):
+            self._diger_yolaklar_toggle()
+        if not getattr(self, '_dy_tam_ekran', False):
+            # Embedded → Toplevel
+            try:
+                fr.pack_forget()
+                fr.configure(height=600)
+                fr.pack_propagate(True)
+                fr.tk.call('wm', 'manage', fr._w)
+                fr.tk.call(
+                    'wm', 'title', fr._w,
+                    "🔍 Diğer Yolaklar — Tam Ekran "
+                    "(⛶ veya pencereyi kapatınca panele döner)")
+                fr.tk.call('wm', 'state', fr._w, 'zoomed')
+                cb_name = fr.register(self._diger_yolaklar_tam_ekran_toggle)
+                fr.tk.call(
+                    'wm', 'protocol', fr._w, 'WM_DELETE_WINDOW', cb_name)
+                self._dy_tam_ekran = True
+                try:
+                    self._dy_tam_btn.configure(text="🔙", fg="#FFEB3B")
+                except Exception:
+                    pass
+            except Exception as e:
+                try:
+                    from tkinter import messagebox
+                    messagebox.showwarning(
+                        "Tam Ekran", f"Tam ekran açılamadı: {e}",
+                        parent=self.root)
+                except Exception:
+                    pass
+        else:
+            # Toplevel → Embedded
+            try:
+                fr.tk.call('wm', 'forget', fr._w)
+                fr.pack_propagate(False)
+                fr.configure(height=200)
+                if getattr(self, '_diger_yolak_panel_acik', False):
+                    fr.pack(side="bottom", fill="x", padx=4, pady=(4, 4))
+                self._dy_tam_ekran = False
+                try:
+                    self._dy_tam_btn.configure(text="⛶", fg="white")
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    # ─────────────────────────────────────────────────────────────────
+    # 📜 BAŞLANGIÇ RAPOR SEKMESİ — etken bazlı ilk reçete + yeniden kontrol
+    # ─────────────────────────────────────────────────────────────────
+    def _baslangic_hazir_etiket_guncelle(self,
+                                            satir: Optional[Dict]) -> None:
+        """Toolbar'daki hazır etiketini günceller (aktif satır bilgisi)."""
+        lbl = getattr(self, '_baslangic_hazir_lbl', None)
+        if not lbl:
+            return
+        try:
+            if satir:
+                ilac = (satir.get("ilac") or "?")[:40]
+                tc = (satir.get("tc") or "?")
+                lbl.configure(
+                    text=f"Hazır: {ilac}  (TC: {tc})  — butona basın",
+                    fg="#37474F")
+            else:
+                lbl.configure(
+                    text="(Reçete seçin, sonra butona basın)",
+                    fg="#90A4AE")
+        except Exception:
+            pass
+
+    def _baslangic_canvas_ciz(self, sartlar: list, detaylar: dict,
+                                  verdict: str, satir: dict) -> None:
+        """📜 Başlangıç Rapor tab içindeki canvas'a Klasik Akım Şeması
+        render'ını uygula — ana paneldeki Klasik Akım tab'ı ile **aynı
+        mantık** ve **aynı formül görselini** (seri/paralel grup, ⊕/⊖ pil,
+        ampul, ∧/∨ operatör legendi, üst-VEYA çiftleri, mantık formülü
+        bandı) başlangıç sekmesinin mini canvas'ında gösterir.
+
+        Yöntem: `_klasik_ciz_canvas` zaten `self._klasik_canvas`'a çizecek
+        şekilde yazılı; geçici olarak `self._klasik_canvas`'ı başlangıç
+        canvas'ına yönlendir, render'ı çağır, sonra orijinale döndür. Tam
+        ekran modunda (`_sema_tam_orig_klasik` swap'ı) kullanılan aynı
+        pattern — kanıtlanmış.
+
+        `_klasik_neden_map` da yedeklenir/restore edilir; aksi halde ana
+        panel hover'ı başlangıç renderini gösterir (sıra: ana panel ÖNCE
+        çizildi, başlangıç canvas SONRA — restore zorunlu).
+        """
+        canvas = getattr(self, '_baslangic_canvas', None)
+        if canvas is None:
+            return
+        try:
+            canvas.delete("all")
+        except Exception:
+            pass
+        if not sartlar:
+            try:
+                canvas.create_text(
+                    20, 20, anchor="nw",
+                    text="(Başlangıç sartları yok — kontrol başlatılmadı)",
+                    fill="#90A4AE", font=("Segoe UI", 10, "italic"))
+            except Exception:
+                pass
+            return
+
+        # SartSonuc objelerinden gelen sartlar JSON-dict formatında — bu
+        # zaten `_klasik_ciz_canvas`'ın beklediği format (caller burada
+        # json.loads sonrası dict listesi geçiriyor; bkz. 5572 civarı).
+        orig_canvas = getattr(self, '_klasik_canvas', None)
+        orig_neden = getattr(self, '_klasik_neden_map', None)
+        # Geçici redirect: Klasik Akım render hedefi başlangıç canvas
+        self._klasik_canvas = canvas
+        try:
+            self._klasik_ciz_canvas(
+                sartlar, detaylar=detaylar or {},
+                verdict=verdict, satir=satir)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                '_baslangic_canvas_ciz: Klasik Akım render hatası')
+            try:
+                canvas.create_text(
+                    20, 20, anchor="nw",
+                    text="(Şema render hatası — Klasik Akım sekmesine bakın)",
+                    fill="#B71C1C", font=("Segoe UI", 9, "italic"))
+            except Exception:
+                pass
+        finally:
+            # Orijinal Klasik Akım hedefini geri yükle; aksi halde sonraki
+            # render başlangıç canvas'ına gider.
+            if orig_canvas is not None:
+                self._klasik_canvas = orig_canvas
+            # Hover neden_map — ana canvas için doğru olanı geri ata.
+            if orig_neden is not None:
+                self._klasik_neden_map = orig_neden
+
+    def _baslangic_etken_tablosu_ac(self) -> None:
+        """📊 Raporlu Etken Maddeler Tablosu — popup pencere açar.
+
+        Aktif satırın hastasının TÜM raporlarındaki etken maddeleri × tarih
+        tablosu (yerel hasta_rapor_gecmisi.db'den parse). Her etken için ilk
+        tarihteki satır vurgulu = başlangıç raporu. Çift tıklama o etkenin
+        başlangıç kontrolünü tetikler.
+        """
+        from tkinter import messagebox
+        satir = getattr(self, '_baslangic_aktif_satir', None)
+        if not satir:
+            try:
+                messagebox.showinfo(
+                    "Etken Madde Tablosu",
+                    "Önce bir reçete satırı seçin.",
+                    parent=self.root)
+            except Exception:
+                pass
+            return
+        tc = (satir.get("tc") or "").strip()
+        hasta_adi = (satir.get("hasta") or "?").strip()
+        if not tc or len(tc) != 11:
+            messagebox.showwarning(
+                "Etken Madde Tablosu",
+                f"Hastanın TC'si geçersiz: {tc!r}",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.rapor_etken_madde_tablosu import (
+                hasta_etken_tablo)
+        except Exception as e:
+            messagebox.showerror(
+                "Modül Hatası", f"Tablo modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        satirlar = hasta_etken_tablo(tc)
+        if not satirlar:
+            messagebox.showinfo(
+                "Etken Madde Tablosu",
+                f"Hasta: {hasta_adi} ({tc})\n\n"
+                "Yerel rapor DB'sinde bu hastaya ait rapor bulunamadı.\n\n"
+                "🩺 GEÇMİŞ RAPOR TARA butonuna basıp önce Medula'dan "
+                "raporları indirin.",
+                parent=self.root)
+            return
+
+        # Toplevel pencere
+        top = tk.Toplevel(self.root)
+        top.title(f"📊 Raporlu Etken Maddeler — {hasta_adi} ({tc})")
+        top.geometry("1400x600")
+        top.transient(self.root)
+
+        # Üst bilgi şeridi
+        info_frame = tk.Frame(top, bg="#FFF3E0")
+        info_frame.pack(side="top", fill="x", padx=4, pady=(4, 0))
+        # Benzersiz etken sayısı
+        etkenler = {s.etken_madde.upper() for s in satirlar
+                     if s.etken_madde and s.etken_madde != '(parse edilemedi)'}
+        tk.Label(info_frame,
+                  text=(f"Hasta: {hasta_adi} ({tc})  |  "
+                        f"Toplam {len(satirlar)} rapor satırı  |  "
+                        f"{len(etkenler)} farklı etken madde  |  "
+                        f"★ = etken bazlı ilk rapor (başlangıç)"),
+                  bg="#FFF3E0", fg="#E65100",
+                  font=("Segoe UI", 10, "bold"),
+                  anchor="w").pack(side="left", padx=8, pady=6)
+
+        # Treeview
+        cols = ("baslangic", "etken", "tarih", "doz", "form",
+                "rapor_kodu", "icd", "tani", "rapor_no", "rapor_takip_no",
+                "aciklama")
+        tv = ttk.Treeview(top, columns=cols, show="headings", height=20)
+        tv.heading("baslangic", text="★")
+        tv.heading("etken", text="Etken Madde")
+        tv.heading("tarih", text="Tarih")
+        tv.heading("doz", text="Doz")
+        tv.heading("form", text="Form")
+        tv.heading("rapor_kodu", text="Rapor Kodu")
+        tv.heading("icd", text="ICD")
+        tv.heading("tani", text="Teşhis")
+        tv.heading("rapor_no", text="Rapor No")
+        tv.heading("rapor_takip_no", text="Takip No")
+        tv.heading("aciklama", text="Açıklama (ilk 200 char)")
+        tv.column("baslangic", width=30, anchor="center")
+        tv.column("etken", width=220)
+        tv.column("tarih", width=85, anchor="center")
+        tv.column("doz", width=140)
+        tv.column("form", width=100)
+        tv.column("rapor_kodu", width=70, anchor="center")
+        tv.column("icd", width=60, anchor="center")
+        tv.column("tani", width=130)
+        tv.column("rapor_no", width=90, anchor="center")
+        tv.column("rapor_takip_no", width=90, anchor="center")
+        tv.column("aciklama", width=400)
+
+        # Stil — başlangıç satırı vurgulu
+        tv.tag_configure("baslangic", background="#FFF3E0",
+                          font=("Segoe UI", 9, "bold"))
+        tv.tag_configure("normal", background="white")
+
+        for s in satirlar:
+            tag = "baslangic" if s.is_baslangic else "normal"
+            bas_sembol = "★" if s.is_baslangic else ""
+            tv.insert("", "end",
+                       values=(bas_sembol, s.etken_madde, s.tarih, s.doz,
+                               s.form, s.rapor_kodu, s.icd_kodu, s.tani,
+                               s.rapor_no, s.rapor_takip_no, s.aciklama),
+                       tags=(tag,))
+
+        # Scrollbar
+        ysb = ttk.Scrollbar(top, orient="vertical", command=tv.yview)
+        xsb = ttk.Scrollbar(top, orient="horizontal", command=tv.xview)
+        tv.configure(yscrollcommand=ysb.set, xscrollcommand=xsb.set)
+        ysb.pack(side="right", fill="y")
+        xsb.pack(side="bottom", fill="x")
+        tv.pack(side="left", fill="both", expand=True, padx=4, pady=4)
+
+        # Çift tıklama → o satırı başlangıç olarak işleyip kontrolü tetikle
+        def _on_double_click(event):
+            sel = tv.selection()
+            if not sel:
+                return
+            vals = tv.item(sel[0], "values")
+            if not vals:
+                return
+            # vals = (sembol, etken, tarih, doz, form, kod, icd, tani, rno, takip, aciklama)
+            takip_no = vals[9]
+            etken = vals[1]
+            # Aktif satırı koru — _baslangic_aktif_satir'a override info ekle
+            satir_ovr = dict(self._baslangic_aktif_satir or {})
+            satir_ovr['_override_baslangic_takip_no'] = takip_no
+            satir_ovr['_override_baslangic_etken'] = etken
+            self._baslangic_aktif_satir = satir_ovr
+            top.destroy()
+            # Otomatik başlangıç kontrolünü tetikle — ▶ butonu çağrısıyla
+            # aynı akış (sema panel başlangıç sartlarıyla render edilir,
+            # DMN tab'ına otomatik geçilir)
+            try:
+                self._baslangic_butonu_basildi()
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception(
+                    'Çift tıklama sonrası başlangıç tetikleme hatası')
+        tv.bind("<Double-Button-1>", _on_double_click)
+
+    def _baslangic_butonu_basildi(self) -> None:
+        """▶ Başlangıç Kontrolünü Çalıştır — eczacı tıklayınca çalışır."""
+        # Görsel feedback — buton tıklandı, akış başladı
+        try:
+            self._durum_yaz("⏳ Başlangıç rapor kontrolü başlatılıyor...")
+        except Exception:
+            pass
+        satir = getattr(self, '_baslangic_aktif_satir', None)
+        if not satir:
+            try:
+                from tkinter import messagebox
+                self._durum_yaz("⚠ Başlangıç kontrolü: aktif satır yok")
+                messagebox.showinfo(
+                    "Başlangıç Kontrolü",
+                    "Önce listeden bir reçete satırı seçin.\n\n"
+                    "Sema panelindeki 📜▶ butonu seçili satır için çalışır.",
+                    parent=self.root)
+            except Exception:
+                pass
+            return
+        # Hangi hasta için çalıştığını duruma yaz — kullanıcı görsün
+        try:
+            hasta = (satir.get("hasta") or "?")[:30]
+            ilac = (satir.get("ilac") or "?")[:30]
+            self._durum_yaz(
+                f"⏳ Başlangıç kontrol: {hasta} — {ilac}")
+        except Exception:
+            pass
+        # NOT: Tab geçişi _baslangic_rapor_doldur sema render sonrası
+        # after() ile yapılır — burada tab değiştirme yok (çakışma önleme).
+        # Butonu kısa süre devre dışı bırak (mükerrer tıklama önleme)
+        btn = getattr(self, '_baslangic_calistir_btn', None)
+        if btn:
+            try:
+                btn.configure(state="disabled", text="⏳ Çalışıyor...")
+                btn.update_idletasks()
+            except Exception:
+                pass
+        try:
+            self._baslangic_rapor_doldur(satir)
+        finally:
+            if btn:
+                try:
+                    btn.configure(
+                        state="normal",
+                        text="▶ Başlangıç Kontrolünü Çalıştır")
+                except Exception:
+                    pass
+
+    def _baslangic_rapor_doldur(self, satir: Optional[Dict]) -> None:
+        """Aktif satırın hastasına bu ilacın etken muadilini ilk yazıldığı
+        tarihteki rapor (BAŞLANGIÇ raporu) bulunur, BAŞLANGIÇ kriterleriyle
+        yeniden kontrol edilir ve atomlar 📜 sekmesinde gösterilir.
+
+        Pilot: hepatit (B/C/D). Diğer modüller için baslangic_rapor_bulucu
+        modülünde wrapper eklenmeli.
+        """
+        info = getattr(self, '_baslangic_info_lbl', None)
+        text = getattr(self, '_baslangic_text', None)
+        if not info or not text:
+            return
+        try:
+            text.configure(state="normal")
+            text.delete("1.0", tk.END)
+        except Exception:
+            return
+
+        def _yaz(satir_metin: str, tag: str = "") -> None:
+            try:
+                text.insert(tk.END, satir_metin, tag)
+            except Exception:
+                pass
+
+        def _kapat() -> None:
+            try:
+                text.configure(state="disabled")
+            except Exception:
+                pass
+
+        if not satir:
+            info.configure(
+                text="(Reçete seçili değil)",
+                bg="#FFF8E1", fg="#5D4037")
+            _kapat()
+            return
+
+        # Modül tespiti — şimdilik sadece hepatit
+        ilac_adi = (satir.get("ilac") or "").upper()
+        etkin = (satir.get("etkin") or "").upper()
+        try:
+            from recete_kontrol.hepatit_kontrol import (
+                _hep_etken_tip, kontrol_hepatit_atomik, SUT_KURALI_HEPATIT)
+            from recete_kontrol.baslangic_rapor_bulucu import (
+                hepatit_baslangic_raporu_bul)
+        except ImportError as e:
+            info.configure(
+                text=f"❌ Modül yüklenemedi: {e}",
+                bg="#FFEBEE", fg="#B71C1C")
+            _kapat()
+            return
+
+        etkin_tip = _hep_etken_tip(ilac_adi, etkin)
+        if etkin_tip == 'NONE':
+            info.configure(
+                text=("📜 Başlangıç rapor kontrolü şimdilik sadece hepatit "
+                      "(B/C/D) ilaçları için aktif. Bu reçete hepatit ilacı "
+                      "değil — kontrol atlanıyor."),
+                bg="#FFF8E1", fg="#5D4037")
+            _yaz(
+                "Diğer SUT modülleri (diyabet, ARB, statin, vs.) için bu "
+                "altyapı baslangic_rapor_bulucu._MODUL_WRAPPER_MAP'e "
+                "eklendiğinde aktif olacak.\n",
+                "info")
+            _kapat()
+            return
+
+        hasta_tc = (satir.get("tc") or "").strip()
+        if not hasta_tc:
+            info.configure(
+                text="❌ Hasta TC yok — başlangıç raporu sorgulanamaz.",
+                bg="#FFEBEE", fg="#B71C1C")
+            _kapat()
+            return
+
+        # ilac_sonuc + hasta_tc + aktif takip no
+        try:
+            ilac_sonuc = self._ilac_sonuc_olustur_hepatit(satir)
+        except Exception as e:
+            info.configure(
+                text=f"❌ ilac_sonuc oluşturulamadı: {e}",
+                bg="#FFEBEE", fg="#B71C1C")
+            _kapat()
+            return
+        ilac_sonuc['hasta_tc'] = hasta_tc
+        ilac_sonuc['rapor_takip_no'] = (
+            satir.get("rap_tak_no") or "").strip()
+        try:
+            ilac_sonuc['RxId'] = int(satir.get("rx_id") or 0) or None
+        except Exception:
+            ilac_sonuc['RxId'] = None
+
+        info.configure(
+            text=(f"⏳ Başlangıç raporu Botanik EOS'tan aranıyor "
+                  f"(etken tipi: {etkin_tip}, hasta TC: {hasta_tc})..."),
+            bg="#E3F2FD", fg="#0D47A1")
+        info.update_idletasks()
+
+        try:
+            sonuc = hepatit_baslangic_raporu_bul(ilac_sonuc)
+        except Exception as e:
+            info.configure(
+                text=f"❌ Başlangıç sorgu hatası: {e}",
+                bg="#FFEBEE", fg="#B71C1C")
+            _kapat()
+            return
+
+        if not sonuc:
+            info.configure(
+                text=(f"❌ EOS'ta {ilac_adi} (etken tipi: {etkin_tip}) için "
+                      "bu hastaya yazılmış geçmiş reçete YOK.\n"
+                      "Hasta ilacı başka eczaneden başlamış olabilir — "
+                      "🩺 GEÇMİŞ RAPOR TARA ile Medula geçmişini tara, "
+                      "tekrar dene."),
+                bg="#FFF3E0", fg="#E65100")
+            _kapat()
+            return
+
+        durum = sonuc['durum']
+        if durum == 'AKTIF_ZATEN_BASLANGIC':
+            info.configure(
+                text=(f"✅ Aktif reçete ZATEN başlangıç raporudur "
+                      f"({sonuc['recete_tarihi']} — {sonuc['urun_adi']}). "
+                      f"Şema panelinde gösterilen aktif kontrol = "
+                      f"başlangıç kontrolü. Ayrı kontrole gerek yok."),
+                bg="#E8F5E9", fg="#1B5E20")
+            _yaz(f"İlk reçete tarihi: {sonuc['recete_tarihi']}\n", "header")
+            _yaz(f"İlk ürün: {sonuc['urun_adi']}\n", "info")
+            _yaz(f"Rapor: {sonuc['rapor_takip_no']} "
+                 f"({sonuc['rapor_tarihi']})\n", "info")
+            _yaz(f"Toplam eşleşen geçmiş reçete: "
+                 f"{sonuc['toplam_eski_sayi']}\n", "info")
+            _kapat()
+            return
+
+        if durum == 'LAFIZ_TAKIP_NO_VAR_CACHE_YOK':
+            info.configure(
+                text=(f"🔎 Aktif rapor metninde başlangıç raporu LAFZEN "
+                      f"referans veriliyor:\n"
+                      f"    📌 Takip No: {sonuc.get('lafiz_takip_no','')}  "
+                      f"Tarih: {sonuc.get('lafiz_tarih','')}\n"
+                      f"Bu rapor henüz yerel hasta_rapor_gecmisi DB'sinde "
+                      f"yok. 🩺 GEÇMİŞ RAPOR TARA basın → MEDULA'dan bu "
+                      f"hastanın tüm raporları (bu takip no dahil) "
+                      f"indirilecek; sonra tekrar tıklayın."),
+                bg="#FFF3E0", fg="#E65100")
+            _yaz("📌 Doktor aktif raporda başlangıç raporunu referans veriyor:\n",
+                 "header")
+            _yaz(f"   Takip No: {sonuc.get('lafiz_takip_no','')}\n", "info")
+            _yaz(f"   Tarih: {sonuc.get('lafiz_tarih','')}\n", "info")
+            _yaz("\nAncak bu rapor yerel cache'de yok — MEDULA'dan "
+                 "indirilmesi gerek.\n", "ke")
+            _yaz("\n→ Sema panelindeki 🩺 butonuna basıp tarama tamamlanınca "
+                 "bu sekmeyi tekrar açın.\n", "info")
+            _kapat()
+            return
+
+        if durum == 'METIN_BOS':
+            info.configure(
+                text=(f"⚠ Başlangıç reçetesi bulundu "
+                      f"({sonuc['recete_tarihi']} — {sonuc['urun_adi']}) "
+                      f"ama RaporAna açıklama metni BOŞ "
+                      f"(Takip: {sonuc['rapor_takip_no']}).\n"
+                      f"🩺 GEÇMİŞ RAPOR TARA ile Medula'dan başlangıç rapor "
+                      f"metnini çek, tekrar dene."),
+                bg="#FFF3E0", fg="#E65100")
+            _yaz(f"İlk reçete tarihi: {sonuc['recete_tarihi']}\n", "header")
+            _yaz(f"İlk ürün: {sonuc['urun_adi']}\n", "info")
+            _yaz(f"Rapor takip no: {sonuc['rapor_takip_no']}  "
+                 f"(metni Medula'da, indirilmesi gerek)\n", "info")
+            _kapat()
+            return
+
+        # BULUNDU — başlangıç rapor metniyle BAŞLANGIÇ kriterleriyle kontrol
+        baslangic_ilac_sonuc = dict(ilac_sonuc)
+        baslangic_ilac_sonuc['rapor_aciklamalari'] = [sonuc['rapor_metni']]
+        # Manuel override: tip tespiti atla, başlangıç koluna git. Aksi halde
+        # _hep_recete_tipi_tespit EOS sinyaliyle hâlâ DEVAM döner (aktif rapor
+        # sıra>1 değişmedi) ve başlangıç şartları çalışmazdı.
+        baslangic_ilac_sonuc['_force_recete_tipi'] = 'BASLANGIC'
+        # Başlangıç raporu tarihi — aktif raporun değil, eski başlangıç
+        # raporunun tarihleri (rapor süresi atomu /8 için)
+        if sonuc.get('rapor_tarihi'):
+            baslangic_ilac_sonuc['rapor_baslangic_tarihi'] = (
+                sonuc.get('rapor_tarihi'))
+        # rapor_kodu eskide farklı olabilir — boş bırak, dispatcher etken
+        # tipiyle yolak seçer
+        try:
+            rapor = kontrol_hepatit_atomik(baslangic_ilac_sonuc)
+        except Exception as e:
+            info.configure(
+                text=(f"⚠ Başlangıç rapor bulundu ama yeniden kontrol "
+                      f"sırasında hata: {e}"),
+                bg="#FFEBEE", fg="#B71C1C")
+            _yaz(f"Hata: {e}\n", "yok")
+            _kapat()
+            return
+
+        # Renk + özet
+        son = rapor.sonuc.value if hasattr(rapor.sonuc, 'value') else str(
+            rapor.sonuc)
+        son_renk_map = {
+            'uygun': ("#E8F5E9", "#1B5E20"),
+            'uygun_degil': ("#FFEBEE", "#B71C1C"),
+            'kontrol_edilemedi': ("#FFF8E1", "#E65100"),
+            'sartli_uygun': ("#E3F2FD", "#1565C0"),
+            'atlandi': ("#ECEFF1", "#546E7A"),
+            'diger_rapor_uygun': ("#E0F2F1", "#006064"),
+        }
+        bg_, fg_ = son_renk_map.get(son, ("#FFF8E1", "#37474F"))
+        # Kaynak'a göre prefix
+        if durum == 'BULUNDU_TABLO':
+            kaynak_prefix = (
+                f"📜 MEDULA TABLO: Etken bazlı EN ESKİ tarihli rapor "
+                f"(Takip: {sonuc['rapor_takip_no']}, "
+                f"Tarih: {sonuc['rapor_tarihi']}, "
+                f"Ürün: {sonuc['urun_adi']})  "
+                f"|  {sonuc['toplam_eski_sayi']} eşleşen rapor  "
+                f"|  Kaynak: {sonuc['kaynak']} (Medula nihai)")
+        elif durum == 'BULUNDU_LAFIZ':
+            kaynak_prefix = (
+                f"📌 LAFIZ→DB: Aktif raporda referans verilen başlangıç "
+                f"raporu  (Takip: {sonuc['rapor_takip_no']}, "
+                f"Tarih: {sonuc['rapor_tarihi']})  "
+                f"|  Kaynak: {sonuc['kaynak']}")
+        else:
+            kaynak_prefix = (
+                f"📜 BAŞLANGIÇ RAPOR: {sonuc['recete_tarihi']} — "
+                f"{sonuc['urun_adi']}  |  Takip: {sonuc['rapor_takip_no']} "
+                f"({sonuc['rapor_tarihi']})  |  Kaynak: {sonuc['kaynak']}")
+        info.configure(
+            text=(f"{kaynak_prefix}\n"
+                  f"➡ BAŞLANGIÇ KRİTERLERİ SONUCU: {son.upper()}  "
+                  f"({rapor.mesaj or ''})"),
+            bg=bg_, fg=fg_)
+
+        # Atomik şartlar listesi
+        _yaz(f"📜 BAŞLANGIÇ RAPOR KONTROLÜ ({sonuc['recete_tarihi']})\n",
+             "header")
+        _yaz(f"Ürün: {sonuc['urun_adi']}\n", "info")
+        _yaz(f"Rapor: {sonuc['rapor_takip_no']} "
+             f"({sonuc['rapor_tarihi']})\n", "info")
+        _yaz(f"Eşleşen geçmiş reçete sayısı: "
+             f"{sonuc['toplam_eski_sayi']}\n", "info")
+        _yaz(f"Kaynak: {sonuc['kaynak']}\n\n", "info")
+
+        _yaz(f"SONUÇ: {son.upper()}\n",
+             "var" if son == 'uygun' else
+             "yok" if son == 'uygun_degil' else "ke")
+        if rapor.mesaj:
+            _yaz(f"Mesaj: {rapor.mesaj}\n", "info")
+        if rapor.detaylar and rapor.detaylar.get('yolak'):
+            _yaz(f"Yolak: {rapor.detaylar.get('yolak')}  "
+                 f"({rapor.detaylar.get('dispatcher_gerekce','')})\n", "info")
+        _yaz("\n", "")
+
+        # Şartlar gruplandırılmış (sırayı koru)
+        grup_idx_map: Dict[str, list] = {}
+        grup_sira: list = []
+        for s in (rapor.sartlar or []):
+            g = getattr(s, 'grup', '') or '(grupsuz)'
+            if g not in grup_idx_map:
+                grup_idx_map[g] = []
+                grup_sira.append(g)
+            grup_idx_map[g].append(s)
+
+        for g in grup_sira:
+            _yaz(f"▸ {g}\n", "grup")
+            for s in grup_idx_map[g]:
+                durum_val = s.durum.value if hasattr(s.durum, 'value') \
+                    else str(s.durum)
+                if durum_val == 'var':
+                    sembol, tag = "  ✓", "var"
+                elif durum_val == 'yok':
+                    sembol, tag = "  ✗", "yok"
+                else:
+                    sembol, tag = "  ?", "ke"
+                _yaz(f"{sembol} {getattr(s, 'ad', '') or ''}\n", tag)
+                if s.neden:
+                    _yaz(f"      ↳ {s.neden}\n", "info")
+            _yaz("\n", "")
+
+        # ── ANA SEMA PANELİNİ BAŞLANGIÇ SARTLARI İLE YENİDEN ÇİZ ──
+        # Kullanıcı isteği 2026-05-25: "tıpkı akım şeması mantığında yap"
+        # rapor.sartlar (SartSonuc[]) → JSON serialize → geçici satir dict →
+        # _sema_render_devre çağrısı. Ana paneldeki DMN Karar Modeli +
+        # Klasik Akım sekmeleri başlangıç kontrol sonucunu gösterir.
+        try:
+            sartlar_obj = getattr(rapor, "sartlar", None) or []
+            sartlar_json = json.dumps([
+                {"ad": p.ad,
+                 "durum": (p.durum.value if hasattr(p.durum, "value")
+                            else str(p.durum)),
+                 "neden": p.neden,
+                 "kaynak": getattr(p, "kaynak", ""),
+                 "grup": getattr(p, "grup", ""),
+                 "veya_grubu": bool(getattr(p, "veya_grubu", False)),
+                 "alt_liste": getattr(p, "alt_liste", None),
+                 "bypass_kaynak": getattr(p, "bypass_kaynak", None)}
+                for p in sartlar_obj
+            ], ensure_ascii=False)
+            detaylar_json = ''
+            try:
+                if getattr(rapor, "detaylar", None):
+                    detaylar_json = json.dumps(rapor.detaylar,
+                                                ensure_ascii=False,
+                                                default=str)
+            except Exception:
+                detaylar_json = ''
+            sema_satir = dict(satir)
+            sema_satir["verdict"] = son
+            sema_satir["verdict_sartlar"] = sartlar_json
+            sema_satir["verdict_detaylar"] = detaylar_json
+            # Mod işareti — sema panel üst bandı buradan bilgi alır
+            sema_satir["_baslangic_modu"] = True
+            sema_satir["_baslangic_kaynak"] = (
+                f"📜 Başlangıç Raporu (Takip: {sonuc.get('rapor_takip_no','?')}"
+                f", Tarih: {sonuc.get('rapor_tarihi','?')})")
+            try:
+                self._sema_render_devre(sema_satir)
+                # 📜 Başlangıç tab içindeki mini canvas'a da çiz — tab
+                # değişimine bağlı kalmadan kullanıcı şemayı orada görsün
+                try:
+                    sartlar_obj_local = json.loads(sartlar_json) \
+                        if sartlar_json else []
+                    detaylar_obj_local = json.loads(detaylar_json) \
+                        if detaylar_json else {}
+                except Exception:
+                    sartlar_obj_local = []
+                    detaylar_obj_local = {}
+                self._baslangic_canvas_ciz(
+                    sartlar_obj_local, detaylar_obj_local, son, sema_satir)
+                # Otomatik KLASIK AKIM tab'ına geç — başlangıç şeması orada
+                # daha sade görünür (DMN daha karmaşık). after() + idle ile
+                # render bitince tab geçişini garantile.
+                def _klasik_tab_a_gec():
+                    try:
+                        nb = getattr(self, '_sema_notebook', None)
+                        if nb is not None and len(nb.tabs()) >= 2:
+                            nb.select(nb.tabs()[1])  # 1 = Klasik Akım
+                            try:
+                                nb.update_idletasks()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                try:
+                    self.root.after(200, _klasik_tab_a_gec)
+                except Exception:
+                    pass
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception(
+                    'Başlangıç sema render hatası')
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                'Başlangıç sartlar serialize hatası')
+
+        # En son: eşleşen 5 geçmiş reçete listesi (kullanıcı için kanıt)
+        eski_listesi = sonuc.get('eski_5_recete') or []
+        if eski_listesi:
+            _yaz("\n📋 EŞLEŞEN GEÇMİŞ REÇETELER (en eski 5):\n", "grup")
+            for r in eski_listesi:
+                _yaz(f"  • {r.get('tarih','?')} — {r.get('urun','?')}"
+                     f"  (Takip: {r.get('rapor_takip','?')})\n", "info")
+
+        _yaz("\n👉 🎯 DMN KARAR MODELİ ve 🔆 KLASİK AKIM sekmelerinde "
+             "başlangıç kontrol şeması çizildi (otomatik geçiş yapıldı).\n"
+             "   Bu metne dönmek için 📜 Başlangıç Rapor sekmesine tıklayın.\n"
+             "   Aktif (devam) raporuna dönmek için listede satıra "
+             "tekrar tıklayın.\n",
+             "info")
+
+        _kapat()
 
     def _diger_yolaklar_doldur(self, satir: Optional[Dict]) -> None:
         """Aktif satırın `verdict_detaylar` JSON'undan diger_yolaklar listesini
@@ -5466,6 +6421,14 @@ class AylikReceteSorguGUI:
         renk_fg, renk_bg = self._SEMA_SONUC_RENK.get(
             verdict.upper(), ("#37474F", "#ECEFF1"))
 
+        # Başlangıç modu işareti — 📜 sekmesi tarafından set edilir
+        if satir.get("_baslangic_modu"):
+            tk.Label(self._sema_ozet,
+                     text=(f"📜 BAŞLANGIÇ RAPORU MODU  "
+                           f"{satir.get('_baslangic_kaynak','')}"),
+                     bg="#FFF3E0", fg="#E65100",
+                     font=("Segoe UI", 10, "bold")
+                     ).pack(side="left", padx=(8, 12), pady=8)
         if yolak_text:
             tk.Label(self._sema_ozet, text=yolak_text,
                      bg="#FAFBFC", fg="#1565C0",
@@ -7420,7 +8383,8 @@ class AylikReceteSorguGUI:
             # ARB EK-4/F m.51: 4 alternatif ödeme yolu (Y1∨Y2∨Y3∨Y4)
             # SUT lafzı + SGK 17.10.2016 duyurusu + aile hek raporsuz 1 kutu
             # genel hükmü → 4 paralel yol, en az 1 tam ise UYGUN.
-            (('Y-1:', 'Y-2:', 'Y-3:', 'Y-4:'),
+            # Prefix JSON'daki grup adına göre: "Y1 — Mono ARB...", "Y2 — ARB+HCT..."
+            (('Y1 ', 'Y2 ', 'Y3 ', 'Y4 '),
              'ARB ödeme yolu Y1∨Y2∨Y3∨Y4'),
         ]
         nway_eslesme = {}
@@ -7435,9 +8399,16 @@ class AylikReceteSorguGUI:
                                          yol_keys, baslik, idx)
 
         # ─── BAŞLIK ────────────────────────────────────────────
+        # Başlangıç modu (📜 Başlangıç Rapor sekmesi tarafından set edilir)
+        # → başlığa "📜 Başlangıç" prefix'i eklenir; ana panelin Klasik Akım
+        # sekmesi ile başlangıç mini canvas'ı aynı görsel + aynı formül.
+        _baslangic_mod = bool(satir and satir.get("_baslangic_modu"))
+        baslik_prefix = ("📜 Başlangıç Rapor · " if _baslangic_mod
+                          else "🔆 ")
         y = margin
         c.create_text(margin, y, anchor="nw",
-                       text=f"🔆 Klasik Akım Şeması · {yolak_baslik}",
+                       text=f"{baslik_prefix}Klasik Akım Şeması · "
+                            f"{yolak_baslik}",
                        fill="#1A237E", font=("Segoe UI", 11, "bold"))
         y += 22
         c.create_text(margin, y, anchor="nw",
@@ -9611,6 +10582,11 @@ class AylikReceteSorguGUI:
             # Kod+tarih fallback ise rapor kod/teşhis hücrelerini ⚠ ile işaretle
             fallback_kod_tarih = (
                 s.get("rapor_secim_kaynagi") == "tier0_kod_tarih_fallback")
+            # SR var ama RaporAna yok — rapor Botanik EOS'a indirilmemiş.
+            # rap_kod RIRaporKodId üzerinden dolar ama rap_tesh / rap_ack
+            # boş kalır. Satırı görsel olarak işaretle.
+            rapor_eos_eksik = (
+                s.get("rapor_secim_kaynagi") == "tier0_sr_no_rapana")
             if fallback_kod_tarih:
                 values_list = []
                 for k in SUTUN_KOD:
@@ -9626,6 +10602,8 @@ class AylikReceteSorguGUI:
                 tags.append("teyit_bold")
             if fallback_kod_tarih:
                 tags.append("fallback_kirmizi")
+            if rapor_eos_eksik:
+                tags.append("rapor_eos_eksik")
             self.tv.insert("", "end", iid=iid, values=values, tags=tuple(tags))
             self.gosterilen_iids.add(iid)
 
@@ -10771,8 +11749,13 @@ class AylikReceteSorguGUI:
             m.add_command(
                 label=f"📚 Hastanın Reçete ve Rapor Dökümü{ek}",
                 command=self._hasta_dokum_goster)
+            m.add_command(
+                label=f"💊 Hastanın İlaç Geçmişi (DB){ek}",
+                command=self._hasta_ilac_gecmisi_goster)
         else:
             m.add_command(label="📚 Hastanın Reçete ve Rapor Dökümü (hasta kimliği yok)",
+                          state="disabled")
+            m.add_command(label="💊 Hastanın İlaç Geçmişi (hasta kimliği yok)",
                           state="disabled")
         # 🩺 MEDULA Geçmiş Raporlarını Tara — TC varsa aktif, yoksa disabled
         if tc_aktif and len(tc_aktif) == 11 and tc_aktif.isdigit():
@@ -10963,11 +11946,13 @@ class AylikReceteSorguGUI:
             f"({len(kopyalanan)} karakter)")
 
     def _kunye_metni_olustur(self, s: dict) -> str:
-        """Bir satır sözlüğünden 6-satırlık künye bloğu üretir."""
+        """Bir satır sözlüğünden 8-satırlık künye bloğu üretir."""
         tc        = (s.get("tc")               or "").strip()
         hasta     = (s.get("hasta")            or "").strip()
         rec_tar   = (s.get("rec_tar")          or "").strip()
         sistem_no = (s.get("sistem_recete_no") or "").strip()
+        ilac      = (s.get("ilac")             or "").strip()
+        etkin     = (s.get("etkin")            or "").strip()
         rap_ack   = (s.get("rap_ack")          or "").strip().replace(" | ", " / ")
         rec_ack   = (s.get("rec_ack")          or "").strip().replace(" | ", " / ")
         satirlar = [
@@ -10975,6 +11960,8 @@ class AylikReceteSorguGUI:
             f"Hasta: {hasta}",
             f"Reçete Tarihi: {rec_tar}",
             f"Sistem Reçete No: {sistem_no}",
+            f"İlaç: {ilac}",
+            f"Etken Madde: {etkin}",
             f"Rapor Açıklaması: {rap_ack}",
             f"Reçete Açıklaması: {rec_ack}",
         ]
@@ -10992,7 +11979,7 @@ class AylikReceteSorguGUI:
         self._panoya_yaz(kunye)
         logger.info(f"Tüm künye panoya kopyalandı (TC: {tc})")
         self._durum_yaz(
-            f"🪪 Künye panoya kopyalandı ({len(kunye)} karakter, 6 satır)")
+            f"🪪 Künye panoya kopyalandı ({len(kunye)} karakter, 8 satır)")
 
     def _kopyala_secilen_kunyeler(self):
         """Sağ tık → tabloda seçili TÜM satırların künyelerini panoya kopyala.
@@ -12652,6 +13639,217 @@ class AylikReceteSorguGUI:
                 pass
         win.after(100, _sash_ayarla)
 
+    def _hasta_ilac_gecmisi_goster(self):
+        """Sağ tık → aktif satırdaki hastanın Botanik EOS'taki TÜM ilaç geçmişini
+        (reçete bazında, tarihe göre azalan) tek tabloda göster.
+        SADECE SELECT — Botanik DB'ye yazma YOK (CLAUDE.md §2)."""
+        s = self._aktif_satir()
+        if not s:
+            return
+        tc = (s.get("tc") or "").strip()
+        if not s.get("musteri_id") and not tc:
+            messagebox.showwarning(
+                "Uyarı",
+                "Bu satırda hasta kimliği yok (musteri_id ve TC eksik).",
+                parent=self.root)
+            return
+        if not self.db:
+            messagebox.showerror("Hata", "Botanik EOS bağlantısı yok.",
+                                 parent=self.root)
+            return
+        try:
+            musteri_id = self._hasta_musteri_id_coz(s.get("musteri_id"), tc)
+            if not musteri_id:
+                messagebox.showinfo(
+                    "Bulunamadı",
+                    f"Bu TC ({tc}) Botanik EOS Musteri tablosunda bulunamadı.",
+                    parent=self.root)
+                return
+            ilaclar = self.db.sorgu_calistir(
+                """SELECT TOP 1000
+                          ra.RxId                       AS rx_id,
+                          ra.RxReceteTarihi             AS recete_tarihi,
+                          ra.RxEReceteNo                AS e_recete_no,
+                          ra.RxSgkIslemNo               AS sgk_islem_no,
+                          LTRIM(RTRIM(u.UrunAdi))       AS urun_adi,
+                          ri.RIAdet                     AS adet,
+                          ri.RIDoz                      AS doz,
+                          ri.RIBitisTarihi              AS bitis_tarihi,
+                          ri.RIRaporNo                  AS rapor_no,
+                          ri.RIRaporKodId               AS rapor_kod_id,
+                          STUFF((
+                              SELECT N', ' + LTRIM(RTRIM(em2.EMLAdi))
+                              FROM UrunEtkMad uem2
+                              LEFT JOIN EtkenMaddeListesi em2
+                                     ON em2.EMLId = uem2.UEMEMLId
+                              WHERE uem2.UEMUrunId = ri.RIUrunId
+                                AND em2.EMLAdi IS NOT NULL
+                              FOR XML PATH(''), TYPE
+                          ).value('.', 'NVARCHAR(MAX)'), 1, 2, '')
+                                                       AS etken_madde,
+                          atc.ATCKodu                  AS atc_kodu,
+                          atc.ATCTurkce                AS atc_aciklama
+                   FROM ReceteAna ra
+                   INNER JOIN ReceteIlaclari ri ON ri.RIRxId = ra.RxId
+                   LEFT  JOIN Urun u ON u.UrunId = ri.RIUrunId
+                   LEFT  JOIN ATC atc ON atc.ATCId = u.UrunATCId
+                   WHERE ra.RxMusteriId = ?
+                     AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)
+                     AND (ri.RISilme IS NULL OR ri.RISilme = 0)
+                     AND (ri.RIIade IS NULL OR ri.RIIade = 0)
+                   ORDER BY ra.RxReceteTarihi DESC, ra.RxId DESC""",
+                (musteri_id,))
+        except Exception as e:
+            logger.exception("Hasta ilaç geçmişi sorgu hatası")
+            messagebox.showerror("Sorgu Hatası",
+                f"İlaç geçmişi çekilemedi:\n{e}", parent=self.root)
+            return
+        self._hasta_ilac_gecmisi_pencere_olustur(
+            (s.get("hasta") or "").strip(), tc, ilaclar)
+
+    def _hasta_ilac_gecmisi_pencere_olustur(self, hasta_ad, tc, ilaclar):
+        """İlaç geçmişi penceresi: Treeview (tarih / ürün / etken madde / ATC
+        kod / ATC açıklama / adet / doz / bitiş / rapor / e-reçete no).
+        Üstte canlı filtre kutusu (boşlukla ayrılmış terimler → 'içerir' VEYA),
+        altta Kapat."""
+        win = tk.Toplevel(self.root)
+        baslik = hasta_ad or (f"TC: {tc}" if tc else "(hasta bilinmiyor)")
+        win.title(f"Hastanın İlaç Geçmişi — {baslik}")
+        win.geometry("1500x720")
+        win.minsize(1000, 520)
+        win.configure(bg="#1E3A5F")
+        win.transient(self.root)
+
+        # Üst başlık
+        ust = tk.Frame(win, bg="#1E3A5F")
+        ust.pack(fill="x", padx=8, pady=(8, 0))
+        tk.Label(ust,
+                 text=f"💊 {baslik}   (TC: {tc or '-'})   —   "
+                      f"{len(ilaclar)} ilaç satırı (Botanik EOS)",
+                 bg="#1E3A5F", fg="white",
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w")
+        tk.Label(ust,
+                 text="Reçete bazında tarihe göre azalan. SADECE OKUMA — "
+                      "hiçbir Botanik kaydı değiştirilmez.",
+                 bg="#1E3A5F", fg="#B0BEC5",
+                 font=("Segoe UI", 8)).pack(anchor="w")
+
+        # Filtre satırı
+        filtre_bar = tk.Frame(win, bg="#1E3A5F")
+        filtre_bar.pack(fill="x", padx=8, pady=(6, 0))
+        tk.Label(filtre_bar, text="🔎 Filtre:", bg="#1E3A5F", fg="white",
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(0, 6))
+        filtre_var = tk.StringVar()
+        filtre_entry = tk.Entry(filtre_bar, textvariable=filtre_var,
+                                 font=("Segoe UI", 10),
+                                 bg="#FFFFFF", fg="#000000",
+                                 relief="solid", bd=1)
+        filtre_entry.pack(side="left", fill="x", expand=True, ipady=2)
+        bilgi_lbl = tk.Label(filtre_bar, text=f"{len(ilaclar)} / {len(ilaclar)}",
+                              bg="#1E3A5F", fg="#B0BEC5",
+                              font=("Segoe UI", 9))
+        bilgi_lbl.pack(side="left", padx=(8, 0))
+        tk.Button(filtre_bar, text="Temizle",
+                  font=("Segoe UI", 9), fg="white",
+                  bg="#455A64", activebackground="#37474F", bd=0,
+                  padx=10, pady=2,
+                  command=lambda: filtre_var.set("")).pack(side="left",
+                                                            padx=(6, 0))
+        tk.Label(filtre_bar,
+                 text="(birden çok terim boşlukla → VEYA / içerir)",
+                 bg="#1E3A5F", fg="#90A4AE",
+                 font=("Segoe UI", 8, "italic")).pack(side="left", padx=(8, 0))
+
+        # Tablo
+        tablo_frame = tk.LabelFrame(win, text="📋 İlaç Geçmişi",
+                                     bg="#FAFAFA", fg="#0D47A1",
+                                     font=("Segoe UI", 9, "bold"),
+                                     bd=1, relief="solid")
+        tablo_frame.pack(fill="both", expand=True, padx=8, pady=8)
+        kolonlar = ("tarih", "urun", "etken", "atc_kod", "atc_aciklama",
+                    "adet", "doz", "bitis", "rapor_no", "e_recete_no")
+        baslik_w = {
+            "tarih":        ("Reçete Tarihi",  100),
+            "urun":         ("Ürün Adı",       280),
+            "etken":        ("Etken Madde",    200),
+            "atc_kod":      ("ATC Kodu",        85),
+            "atc_aciklama": ("ATC Açıklaması", 200),
+            "adet":         ("Adet",            55),
+            "doz":          ("Doz",            110),
+            "bitis":        ("Bitiş Tarihi",  100),
+            "rapor_no":     ("Rapor No",      100),
+            "e_recete_no":  ("E-Reçete No",   140),
+        }
+        # Yatay scroll için container
+        ic = tk.Frame(tablo_frame, bg="#FAFAFA")
+        ic.pack(fill="both", expand=True)
+        tv = ttk.Treeview(ic, columns=kolonlar, show="headings",
+                           selectmode="extended")
+        for kod, (b, w) in baslik_w.items():
+            tv.heading(kod, text=b)
+            anchor = "center" if kod in ("adet", "tarih", "bitis",
+                                          "atc_kod") else "w"
+            tv.column(kod, width=w, anchor=anchor)
+        sb_y = ttk.Scrollbar(ic, orient="vertical", command=tv.yview)
+        sb_x = ttk.Scrollbar(ic, orient="horizontal", command=tv.xview)
+        tv.configure(yscrollcommand=sb_y.set, xscrollcommand=sb_x.set)
+        sb_y.pack(side="right", fill="y")
+        sb_x.pack(side="bottom", fill="x")
+        tv.pack(side="left", fill="both", expand=True)
+
+        # Alternatif satır rengi
+        tv.tag_configure("odd",  background="#FFFFFF")
+        tv.tag_configure("even", background="#F1F8E9")
+
+        # Satırları indeksli sakla — filtre uygulandığında yeniden doldurmak için
+        def _satir_degerleri(r):
+            tarih = r.get("recete_tarihi") or ""
+            bitis = r.get("bitis_tarihi") or ""
+            return (
+                str(tarih)[:10] if tarih else "",
+                (r.get("urun_adi") or "")[:80],
+                (r.get("etken_madde") or "")[:120],
+                r.get("atc_kodu") or "",
+                (r.get("atc_aciklama") or "")[:120],
+                r.get("adet") if r.get("adet") is not None else "",
+                r.get("doz") or "",
+                str(bitis)[:10] if bitis else "",
+                r.get("rapor_no") or "",
+                r.get("e_recete_no") or "",
+            )
+
+        # Filtre için her satırın "birleşik metin" hâli (lower-case) önbelleğe alınır
+        hazir = []  # list of (values_tuple, birlesik_lower)
+        for r in ilaclar:
+            v = _satir_degerleri(r)
+            birlesik = " ".join(str(x) for x in v if x is not None).lower()
+            hazir.append((v, birlesik))
+
+        def _tabloyu_doldur(*_):
+            q = filtre_var.get().strip().lower()
+            terimler = [t for t in q.split() if t]
+            tv.delete(*tv.get_children())
+            gosterilen = 0
+            for idx, (v, birlesik) in enumerate(hazir):
+                if terimler and not any(t in birlesik for t in terimler):
+                    continue
+                tv.insert("", "end", values=v,
+                          tags=("even" if gosterilen % 2 else "odd",))
+                gosterilen += 1
+            bilgi_lbl.config(text=f"{gosterilen} / {len(hazir)}")
+
+        _tabloyu_doldur()
+        filtre_var.trace_add("write", _tabloyu_doldur)
+
+        # Alt buton şeridi
+        alt = tk.Frame(win, bg="#1E3A5F")
+        alt.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Button(alt, text="Kapat", font=("Segoe UI", 10, "bold"),
+                  fg="white", bg="#455A64", activebackground="#37474F",
+                  bd=0, padx=14, pady=4, command=win.destroy).pack(side="right")
+        win.bind("<Escape>", lambda e: win.destroy())
+        filtre_entry.focus_set()
+
     def _dokum_detay_hata_yaz(self, txt: "tk.Text", mesaj: str):
         """Hasta dökümü detay paneline kırmızı hata mesajı yaz."""
         txt.configure(state="normal")
@@ -13510,6 +14708,8 @@ class AylikReceteSorguGUI:
             "recete_aciklamalari": _bol(s.get("rec_ack")),
             "mesaj_metni": "",
             "doktor_uzmanligi": s.get("brans") or "",
+            "rapor_doktor_brans": s.get("rapor_doktor_brans") or "",
+            "rapor_dr_brans": s.get("rapor_doktor_brans") or "",  # alias
             "hasta_yasi": s.get("yas") or "",
             "recete_dozu": s.get("rec_doz") or "",
             "recete_ilaclari": [{"ad": x} for x in (diger_ilac_adlari or []) if x],
@@ -17272,6 +18472,9 @@ class AylikReceteSorguGUI:
             return
         tc = (satir.get("tc") or "").strip()
         hasta_adi = (satir.get("hasta") or "").strip() or "?"
+        # Aktif reçetenin rapor kodu — sadece ilgili kodun eski raporları
+        # detaylı taransın (kullanıcı kararı 2026-05-25).
+        aktif_rapor_kodu = (satir.get("rapor_kodu") or "").strip()
         if not tc or len(tc) != 11 or not tc.isdigit():
             messagebox.showwarning(
                 "Geçmiş Rapor Tara",
@@ -17281,12 +18484,17 @@ class AylikReceteSorguGUI:
             return
 
         # Onay
+        rapor_kodu_metni = (f"Sadece '{aktif_rapor_kodu}' kodlu eski raporlar"
+                            if aktif_rapor_kodu
+                            else "TÜM rapor kodları (aktif satırda kod yok)")
         cevap = messagebox.askyesno(
             "MEDULA Tarama Onayı",
-            f"Hasta: {hasta_adi}\nTC: {tc}\n\n"
-            "MEDULA'ya bağlanıp bu hastanın TÜM geçmiş raporlarını "
+            f"Hasta: {hasta_adi}\nTC: {tc}\n"
+            f"Filtre: {rapor_kodu_metni}\n\n"
+            "MEDULA'ya bağlanıp bu hastanın geçmiş raporlarını "
             "(bitmiş + aktif, B grubu reçete üzerinden) yerel DB'ye "
-            "yazacak.\n\n"
+            "yazacak. EOS'ta zaten olan raporlar atlanır; "
+            "eksik+filtre-uyumlu olanlar detaylı okunur.\n\n"
             "MEDULA penceresi öne gelir, navigasyon otomatik yapılır. "
             "Bu sırada Medula'da manuel işlem yapmayın.\n\n"
             "Devam edilsin mi?",
@@ -17319,7 +18527,11 @@ class AylikReceteSorguGUI:
         def _worker():
             try:
                 toplam, kaydedilen = hasta_raporlarini_tara_ve_kaydet(
-                    tc=tc, kategori_filtre=None, detayli_oku=True,
+                    tc=tc,
+                    kategori_filtre=None,
+                    rapor_kodu_filtre=(aktif_rapor_kodu or None),
+                    detayli_oku=True,
+                    eos_skip=True,
                     cb=_status_cb)
                 if toplam == 0 and kaydedilen == 0:
                     # Bailout — sebebi son status mesajlarından göster

@@ -1,0 +1,76 @@
+{
+  "_aciklama": "Mono Antihipertansif (genel hüküm) — ACE-i / KKB / Beta bloker / Diüretik / Alfa bloker monoterapisi. SUT'ta özel madde YOK (EK-4/F m.51 dışı); SUT 4.1.8 genel hükmü gereği raporsuz serbest. Kontrendikasyon: aynı reçetede ACE+ARB birlikte (klinik). Doz aşımı: üretim ruhsatı maks dozları.",
+  "_kaynak": "docs/sut/EK_4_F_m51_ARB.txt (mono bölümü) + klinik kabul",
+  "_boolean_formul": "MONO_UYGUN ⇔ ¬C_ACE_ARB ∧ ¬C_DOZ. C_ACE_ARB → UYGUN_DEGIL (kontrendikasyon kesin). C_DOZ → KE (doz uyarı, manuel).",
+  "sut_kodu": "SUT 4.1.8 (genel)",
+  "adi": "Mono Antihipertansif",
+  "sut_kurali_etiketi": "Mono antihipertansif (genel hüküm — raporsuz serbest, kontrendikasyon/doz kontrolü)",
+  "aranan_ibare": "ACE+ARB birlikteliği yok + doz tablo üstünde değil",
+  "sut_metni": "Mono ACE-i / ARB / KKB / Beta bloker / Diüretik / Alfa bloker monoterapisi:\n  - SUT'ta özel madde yok; SUT 4.1.8 genel hükmü gereği RAPORSUZ serbest reçete edilir.\n  - KONTRENDİKASYON (klinik): ACE-i + ARB AYNI REÇETEDE birlikte kullanılmamalıdır.\n  - DOZ AŞIMI: Üretim ruhsatına göre maks dozlar aşılmamalı (Ramipril ≤10mg, Valsartan ≤320mg vb.).\n\nNOT: ARB ve kombinasyonları EK-4/F m.51 kapsamındadır (ayrı kural dosyası).",
+  "sut_metni_kaynak": "docs/sut/EK_4_F_m51_ARB.txt",
+  "on_kontrol": [
+    {
+      "ad": "ACE+ARB birlikte kontrendikasyonu — UYGUN_DEGIL",
+      "kosul": {
+        "tip": "AND",
+        "alt": [
+          {
+            "_yorum": "Bu kalemin etkeni ACE-i ise diğer kalemde ARB (SARTAN) var mı? Ya da tersi.",
+            "tip": "OR",
+            "alt": [
+              {
+                "tip": "AND",
+                "alt": [
+                  {
+                    "atom": "etkin_madde_iceriyor",
+                    "params": {"anahtarlar": ["PRIL"]}
+                  },
+                  {
+                    "atom": "ayni_recete_etken_iceriyor",
+                    "params": {"anahtarlar": ["SARTAN", "RILMENIDEN", "MOKSONIDIN"]}
+                  }
+                ]
+              },
+              {
+                "tip": "AND",
+                "alt": [
+                  {
+                    "atom": "etkin_madde_iceriyor",
+                    "params": {"anahtarlar": ["SARTAN"]}
+                  },
+                  {
+                    "atom": "ayni_recete_etken_iceriyor",
+                    "params": {"anahtarlar": ["PRIL"]}
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sonuc": "TIBBEN_UYGUN_DEGIL",
+      "mesaj": "ACE-i + ARB aynı reçetede — klinik kontrendikasyon (SUT ödüyor ama tıbben birlikte kullanılmamalı: hiperkalemi + AKI riski, ONTARGET 2008)",
+      "aranan_ibare": "ACE-i + ARB ayrı kalemlerde",
+      "sartlar_ekle": [
+        {"ad": "Aynı reçetede ACE-i + ARB", "durum": "VAR", "neden": "Birlikte yazılmış (klinik kontrendikasyon)", "kaynak": "diger_etken_maddeler", "grup": "Kontrendikasyon"}
+      ]
+    }
+  ],
+  "formul": {
+    "_yorum": "Mono antihipertansif SUT 4.1.8 genel hüküm — raporsuz serbest, ek şart YOK. Tek kontrendikasyon ACE+ARB on_kontrol'de TIBBEN_UYGUN_DEGIL ile ele alınır. Buraya düştüyse SUT açısından UYGUN. Doz aşımı klinik bir kontrol; SUT motoru kapsamında değildir (gerekirse ayrı uyarı modülü).",
+    "tip": "AND",
+    "alt": [
+      {
+        "tip": "AND",
+        "grup": "Mono antihipertansif raporsuz (SUT 4.1.8)",
+        "alt": [
+          {
+            "ad": "SUT 4.1.8 genel hüküm — raporsuz mono antihipertansif serbest",
+            "atom": "her_zaman_var",
+            "kaynak": "SUT 4.1.8"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -4356,6 +4356,15 @@ _ARB_HCT_KEYS = (
     'HIDROKLOROTIAZID', 'HİDROKLOROTİAZİD', 'HIDROKLORTIAZID',
     'HYDROCHLOROTHIAZID', 'HCTZ',
 )
+# Diüretik (genel) — Botanik EOS ATC.ATCTurkce alanı C09DA* grubu için
+# "VALSARTAN VE DİÜRETİKLER" gibi yazıyor. SGK 17.10.2016 — diüretikli
+# kombiler 1300/51 kapsamı DIŞINDA (HCT'ye özel değil). Pilot 2026-05-23
+# (NADİDE ASLAN/FERAYİ KAYA + 24 vaka).
+_ARB_DIURETIK_GENEL_KEYS = (
+    'DIURETIK', 'DİÜRETİK', 'DIURETIKLER', 'DİÜRETİKLER',
+    'KLORTALIDON', 'KLORTALİDON', 'CHLORTHALIDONE',
+    'INDAPAMID', 'İNDAPAMİD', 'INDAPAMIDE',
+)
 _ARB_CCB_KEYS = (
     'AMLODIPIN', 'AMLODIPINE', 'LERKANIDIPIN', 'LERKANIDIPINE',
     'FELODIPIN', 'FELODIPINE', 'NIFEDIPIN', 'NIFEDIPINE',
@@ -4384,6 +4393,7 @@ def _arb_atom_kombi_tipi(ilac_adi: str, etkin_madde: str
         any(k in aday for k in _ARB_HCT_KEYS)
         or ' HCT' in (' ' + aday + ' ')
         or '/HCT' in aday
+        or any(k in aday for k in _ARB_DIURETIK_GENEL_KEYS)
     )
     ccb_var = any(k in aday for k in _ARB_CCB_KEYS)
     ace_var = any(k in aday for k in _ARB_ACE_KEYS)
@@ -5075,41 +5085,20 @@ def _diy_bmi_esik_buyuk(val: Optional[float], op: Optional[str],
 
 
 def kontrol_diyabet_dpp4_sglt2(ilac_sonuc: Dict) -> KontrolRaporu:
-    """SUT 4.2.38 — şart-bazlı raporlama wrapper'ı (CLAUDE.md disiplini).
+    """SUT 4.2.38 + 4.2.74 — Wrapper/alias (S8=A, 2026-05-24).
 
-    İç implementasyon `_kontrol_diyabet_dpp4_sglt2_impl` şart listesini akış
-    sırasında doldurur; rapor üretildikten sonra wrapper bu listeyi rapora
-    bağlar (sartlar zaten doluysa dokunmaz).
+    Bu fonksiyon artık `recete_kontrol.diyabet_4_2_38.diyabet_kontrol_4_2_38`
+    atomik motoruna yönlendirir. Yeni motor:
+      • SUT 4.2.38'in tüm 9 yolağını (Y1–Y9) tam atomik kontrol eder
+      • SUT 4.2.74 KY (Y_KY) ve KBH (Y_KBH) ek yolaklarını içerir
+      • Glisemik ibare bypass + diğer rapor bypass kalıpları korunur
 
-    Reçete bağlamı (rec rap_kod + ilintili rapor metni) ana sonucu belirler.
-    Hastanın diğer aktif raporlarındaki ICD'ler (`diger_raporlar_icd`) ana
-    karara karışmaz; UYGUN_DEGIL/KONTROL_EDILEMEDI sonuçlarda eczacının
-    manuel doğrulamasını kolaylaştırmak için uyarıya bilgi notu eklenir.
+    Eski `_kontrol_diyabet_dpp4_sglt2_impl` ve yardımcıları, geriye dönük
+    olarak dosyada kalır ama bu wrapper artık onları **çağırmaz**. Doğrudan
+    çağıran tüm kodlar yeni motorla çalışır.
     """
-    sartlar: List[SartSonuc] = []
-    rapor = _kontrol_diyabet_dpp4_sglt2_impl(ilac_sonuc, sartlar)
-    if not rapor.sartlar:
-        rapor.sartlar = list(sartlar)
-
-    # GUI 'Diğer Yolaklar' accordion paneli için metadata enjeksiyonu —
-    # diyabet_4_2_38 atomik motorun dispatcher mantığını kullanır.
-    try:
-        from recete_kontrol.diyabet_4_2_38 import (
-            yolak_belirle, DIYABET_YOLAK_METADATA, _dia_diger_yolaklar)
-        aktif = yolak_belirle(ilac_sonuc)
-        if aktif:
-            if rapor.detaylar is None:
-                rapor.detaylar = {}
-            rapor.detaylar.setdefault('yolak', aktif)
-            rapor.detaylar['diger_yolaklar'] = _dia_diger_yolaklar(
-                aktif, ilac_sonuc)
-            rapor.detaylar['aktif_yolak_meta'] = DIYABET_YOLAK_METADATA.get(
-                aktif, {'ad': aktif, 'sut': '?'})
-            rapor.detaylar['kontrol_modulu'] = 'diyabet'
-    except Exception:
-        pass
-
-    return rapor
+    from recete_kontrol.diyabet_4_2_38 import diyabet_kontrol_4_2_38
+    return diyabet_kontrol_4_2_38(ilac_sonuc)
 
 
 def _kontrol_diyabet_dpp4_sglt2_impl(ilac_sonuc: Dict, sartlar: List[SartSonuc]) -> KontrolRaporu:

@@ -138,6 +138,39 @@ def main():
                      rapor='Tip 2 DM. Pankreatit yok. Met max yet.'),
               'Y5', KontrolSonucu.SARTLI_UYGUN):
         basarili += 1
+    # 2026-05-25: Y5 ilk reçete vs devam alt-dispatcher (BYETTA hasta_ilac_gecmisi)
+    toplam += 1
+    if _test('Y5 İLK reçete: BYETTA hasta gecmisi yok, endo hekim, rapor yok -> UYGUN',
+              _ilac(ad='BYETTA', etkin='EKSENATID',
+                     teshis=['E11.9'], brans='endokrinoloji',
+                     hasta_kilo=110, hasta_boy=170,
+                     rapor=('Tip 2 DM. Akut pankreatit oykusu yok. '
+                            'Metformin maksimum tolere doz yetersiz glisemik '
+                            'kontrol saglanamamistir. BMI 38 tedavi baslangicinda.')),
+              'Y5', KontrolSonucu.UYGUN):
+        basarili += 1
+    toplam += 1
+    if _test('Y5 DEVAM reçete: BYETTA hasta gecmisinde, ic hast, rapor endo -> UYGUN',
+              _ilac(ad='BYETTA', etkin='EKSENATID',
+                     teshis=['E11.9'], brans='ic hastaliklari',
+                     rapor_brans='endokrinoloji',
+                     hasta_kilo=110, hasta_boy=170,
+                     hasta_ilac_gecmisi=['BYETTA'],
+                     rapor=('Tip 2 DM. Akut pankreatit oykusu yok. '
+                            'Metformin maksimum tolere doz yetersiz glisemik '
+                            'kontrol saglanamamistir. BMI 38 tedavi baslangicinda.')),
+              'Y5', KontrolSonucu.UYGUN):
+        basarili += 1
+    toplam += 1
+    if _test('Y5 İLK reçete: ic hast hekim (endo değil!) -> UYGUN_DEGIL',
+              _ilac(ad='BYETTA', etkin='EKSENATID',
+                     teshis=['E11.9'], brans='ic hastaliklari',
+                     hasta_kilo=110, hasta_boy=170,
+                     rapor=('Tip 2 DM. Akut pankreatit oykusu yok. '
+                            'Metformin maksimum tolere doz yetersiz glisemik '
+                            'kontrol saglanamamistir. BMI 38 tedavi baslangicinda.')),
+              'Y5', KontrolSonucu.UYGUN_DEGIL):
+        basarili += 1
 
     print('\n=== Y6 - SGLT-2 DM (Fikra 6) ===')
     toplam += 1
@@ -147,16 +180,24 @@ def main():
                      rapor='Metformin maksimum tolere doz yetersiz glisemik kontrol'),
               'Y6', KontrolSonucu.UYGUN):
         basarili += 1
-    # 2026-05-24 demote kuralı: rapor metni klinik şart ibaresini içermiyor
-    # ve hastanın geçmiş raporlarında da yok (cache boş, EOS test ortamında
-    # erişilemez → None) → atom KE'den YOK'a düşer → sonuç UYGUN_DEGIL.
-    # RUKEN AVCI/CELAL HAKAN/FİDAN DOĞAN tipi pilot vakalar buraya düşer.
+    # 2026-05-25 PARALEL-YOL kalıbı: hekim ENDOKRINOLOJI ise raporsuz yol VAR
+    # → UYGUN (klinik şart hekim sorumluluğunda, sistem doğrulayamaz).
+    # Önceki "demote → UYGUN_DEGIL" davranışı kaldırıldı: SUT 4.2.38(6) lafzı
+    # raporsuz Endo/IH reçetelemesine izin verir.
     toplam += 1
-    if _test('Y6 dapa endo, rapor klinik ibare yok, gecmis bos -> UYGUN_DEGIL',
+    if _test('Y6 dapa endo, rapor klinik ibare yok -> UYGUN (raporsuz yol)',
               _ilac(ad='FORZIGA', etkin='DAPAGLIFLOZIN',
                      teshis=['E11.9'], brans='endokrinoloji',
                      rapor='Tip 2 diabetes mellitus. HbA1c %8.5. Tedaviye devam.',
                      hasta_tc='99999999998'),  # bypass cache'te yok
+              'Y6', KontrolSonucu.UYGUN):
+        basarili += 1
+    # Hekim Endo/IH değil VE rapor branşı da Endo/IH değil → her iki yol YOK → UYGUN_DEGIL
+    toplam += 1
+    if _test('Y6 dapa aile hek + rapor branşı boş -> UYGUN_DEGIL (her iki yol YOK)',
+              _ilac(ad='FORZIGA', etkin='DAPAGLIFLOZIN',
+                     teshis=['E11.9'], brans='aile hekimligi',
+                     rapor_brans='', rapor=''),
               'Y6', KontrolSonucu.UYGUN_DEGIL):
         basarili += 1
 

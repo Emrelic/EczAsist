@@ -3448,7 +3448,10 @@ class ReceteRaporKontrolGUI:
                 ri.RIId, ri.RIUrunId, ri.RIRaporKodId, ri.RIRaporNo,
                 ri.RIAdet, ri.RIDoz, ri.RITekrar, ri.RIAralik, ri.RIPeriyotId,
                 ri.RIToplam, ri.RIFiyatFarki,
-                u.UrunAdi, u.UrunBarkodu,
+                u.UrunAdi,
+                (SELECT TOP 1 b.BarkodAdi FROM Barkod b
+                  WHERE b.BarkodUrunId = u.UrunId
+                  ORDER BY b.BarkodSilme ASC) AS UrunBarkodu,
                 atc.ATCKodu, atc.ATCTurkce
             FROM ReceteAna ra
             LEFT JOIN Musteri m ON m.MusteriId = ra.RxMusteriId

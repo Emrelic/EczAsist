@@ -22,11 +22,34 @@ class Baglam:
 
         self.ham: Dict = ilac_sonuc or {}
         self.ilac_adi: str = (self.ham.get('ilac_adi') or '').upper()
+        self.etkin_madde: str = (self.ham.get('etkin_madde') or '').upper()
+        self.atc_kodu: str = (self.ham.get('atc_kodu') or '').upper().strip()
         self.rapor_kodu: str = (self.ham.get('rapor_kodu') or '').strip()
         self.doktor_uzm: str = (self.ham.get('doktor_uzmanligi') or '').strip()
+        self.doktor_adi: str = (self.ham.get('doktor_adi') or '').strip()
+        self.kurum_adi: str = (self.ham.get('kurum_adi') or '').strip()
+        self.tesis_kodu: str = str(self.ham.get('tesis_kodu') or '').strip()
         self.recete_teshisleri: List[str] = self.ham.get('recete_teshisleri', []) or []
         self.teshis_metin: str = (' '.join(self.recete_teshisleri).upper()
                                   if self.recete_teshisleri else '')
+
+        # Kutu sayısı — float parse (virgül/nokta desteği). Yoksa 0.0.
+        kutu_raw = self.ham.get('kutu_sayisi')
+        if kutu_raw is None:
+            kutu_raw = self.ham.get('miktar', '')
+        try:
+            self.kutu_sayisi: float = (float(str(kutu_raw).replace(',', '.'))
+                                       if str(kutu_raw).strip() else 0.0)
+        except (ValueError, TypeError):
+            self.kutu_sayisi = 0.0
+
+        # Aynı reçetenin diğer satırları (kontrendikasyon / kombi tespiti için)
+        self.diger_etken_maddeler: List[str] = [
+            (s or '').upper() for s in (self.ham.get('diger_etken_maddeler') or [])
+            if s]
+        self.diger_ilac_adlari: List[str] = [
+            (s or '').upper() for s in (self.ham.get('diger_ilac_adlari') or [])
+            if s]
 
         self.tum_metin: str = _sk._tum_metinleri_birlesir(self.ham) or ''
         self.birlesik_metin: str = (self.tum_metin + ' ' + self.teshis_metin).strip()

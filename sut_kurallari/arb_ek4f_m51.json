@@ -1,0 +1,104 @@
+{
+  "_aciklama": "EK-4/F Madde 51 (1300/51) — Anjiotensin Reseptör Blokerleri ve Kombinasyonları. Atomik şema deklaratif kural. Mevcut recete_kontrol.sut_kontrolleri.kontrol_arb_ek4f_m51() fonksiyonunun motor muadili (2026-05-21 — antihipertansif JSON motoru ilk pilot).",
+  "_kaynak": "docs/sut/EK_4_F_m51_ARB.txt (TEB doğrulamalı + proje sahibi onaylı)",
+  "_boolean_formul": "ARB_UYGUN ⇔ Y1 (¬KOMBI ∧ R) ∨ Y2 (KOMBI ∧ HCT_ONLY ∧ R) ∨ Y3 (KOMBI ∧ ¬HCT_ONLY ∧ R ∧ M_IBARE) ∨ Y4 (¬R ∧ D_AH ∧ K1) — M_IBARE 3-yönlü (sessiz→KE→şüpheli)",
+  "sut_kodu": "EK-4/F m.51",
+  "adi": "ARB ve Kombinasyonları",
+  "sut_kurali_etiketi": "SUT EK-4/F Madde 51 (1300/51) — ARB ve kombinasyonları (atomik şema, motor)",
+  "aranan_ibare": "Mono ARB / ARB+HCT (SGK 17.10.16) / Kombi+monoterapi ibaresi / Raporsuz aile hekimi ≤1 kutu",
+  "sut_metni": "EK-4/F Madde 51 (1300/51) — Anjiotensin reseptör blokerleri (İrbesartan, Kandesartan, Losartan, Telmisartan, Valsartan, Rilmeniden, Moksonidin, Olmesartan, Eprosartan Mesilat) ve kombinasyonları:\n  (1) Raporda, ayrıca ilaç/ilaçların kullanım dozu, uygulama planı ve süresinin belirtilmesi zorunluluğu BULUNMAMAKTADIR.\n  (2) Anjiotensin reseptör blokerlerinin diğer antihipertansifler ile kombinasyonlarının kullanılmasında, hastanın MONOTERAPİ İLE KAN BASINCININ YETERLİ ORANDA KONTROL ALTINA ALINAMADIĞININ raporda belirtilmesi gerekmektedir.\n  (3) Bu ilaçlar AYDA EN FAZLA BİR KUTU olmak üzere AİLE HEKİMLERİNCE raporsuz reçete edilebilir.\n\nSGK 17.10.2016: 'Diüretikli kombinasyonların bu kapsamda bulunmadığı' — ARB+HCT (yalnız) 1300/51 kapsamı DIŞINDA; raporlu kullanımda monoterapi ibaresi aranmaz. 3'lü kombide (ARB+CCB+HCT veya ARB+ACE+HCT) istisna geçersiz.",
+  "sut_metni_kaynak": "docs/sut/EK_4_F_m51_ARB.txt",
+  "on_kontrol": [],
+  "formul": {
+    "_yorum": "Üst-VEYA: 4 yol. En az 1 yol VAR → UYGUN. Hiçbir yol VAR değilse: KE varsa ŞÜPHELİ, hepsi YOK ise UYGUN_DEGIL.",
+    "tip": "USTOR",
+    "ozet_grup": "Karar yolu [(1)∨(2)∨(3) raporsuz]",
+    "yollar": [
+      {
+        "grup": "Y1 — Mono ARB raporlu [(1)]",
+        "tip": "AND",
+        "alt": [
+          {
+            "ad": "Rapor kodu VAR",
+            "atom": "rapor_kodu_var",
+            "kaynak": "rapor_kodu"
+          },
+          {
+            "ad": "Mono ARB (kombi DEĞİL)",
+            "atom": "arb_kombi_mi",
+            "negatif": true,
+            "kaynak": "etkin_madde/ilac_adi"
+          }
+        ]
+      },
+      {
+        "grup": "Y2 — ARB+HCT raporlu (SGK 17.10.2016 istisnası) [(1)]",
+        "tip": "AND",
+        "alt": [
+          {
+            "ad": "Rapor kodu VAR",
+            "atom": "rapor_kodu_var",
+            "kaynak": "rapor_kodu"
+          },
+          {
+            "ad": "Sadece ARB+HCT diüretik kombi (1300/51 kapsamı DIŞI)",
+            "atom": "arb_kombi_tipi",
+            "params": {"tip": "HCT_ONLY"},
+            "kaynak": "etkin_madde/ilac_adi"
+          }
+        ]
+      },
+      {
+        "grup": "Y3 — Kombi ARB (CCB/ACE/3'lü) + monoterapi yetersizliği [(2)]",
+        "tip": "AND",
+        "alt": [
+          {
+            "ad": "Rapor kodu VAR",
+            "atom": "rapor_kodu_var",
+            "kaynak": "rapor_kodu"
+          },
+          {
+            "ad": "ARB kombi (mono değil)",
+            "atom": "arb_kombi_mi",
+            "kaynak": "etkin_madde/ilac_adi"
+          },
+          {
+            "ad": "Sadece-HCT kombi değil (CCB/ACE içeriyor veya 3'lü)",
+            "atom": "arb_kombi_tipi",
+            "params": {"tip": "HCT_ONLY"},
+            "negatif": true,
+            "kaynak": "etkin_madde/ilac_adi"
+          },
+          {
+            "ad": "Raporda 'monoterapi ile kan basıncı kontrol altına alınamadığı' ibaresi",
+            "atom": "arb_monoterapi_ibaresi",
+            "kaynak": "rapor_metni"
+          }
+        ]
+      },
+      {
+        "grup": "Y4 — Raporsuz + aile hekimi + ≤1 kutu [(3)]",
+        "tip": "AND",
+        "alt": [
+          {
+            "ad": "Rapor kodu YOK (raporsuz)",
+            "atom": "rapor_kodu_var",
+            "negatif": true,
+            "kaynak": "rapor_kodu"
+          },
+          {
+            "ad": "Aile hekimi yetkisi (branş ∨ kurum ∨ tesis ∨ KHH ≥1)",
+            "atom": "aile_hekimi_yetkisi",
+            "kaynak": "doktor_uzmanligi/kurum/tesis"
+          },
+          {
+            "ad": "Aylık kutu sayısı ≤ 1",
+            "atom": "kutu_sayisi_op",
+            "params": {"op": "<=", "deger": 1},
+            "kaynak": "kutu_sayisi"
+          }
+        ]
+      }
+    ]
+  }
+}

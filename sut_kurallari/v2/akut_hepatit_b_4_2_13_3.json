@@ -1,0 +1,230 @@
+{
+  "schema_version": "v2",
+  "sut_kodu": "4.2.13(3)",
+  "adi": "Akut Hepatit B",
+  "sut_kurali_etiketi": "SUT 4.2.13(3) — Akut Hepatit B (atomik şema, motor v2 pilot)",
+  "sut_metni_kaynak": "docs/sut/SUT_tam_metin.txt:5457-5460",
+  "sut_metni": "(3) (Ek:RG-2/11/2024-32710)(115) Akut Hepatit B tedavisi\n  a) Akut hepatit B nedeniyle izlenen hastalarda ciddi akut HBV kliniği ve laboratuvar bulguları olan (İNR >= 1,5 veya PT normalin üst sınırından 4 saniyeden daha uzun olanlar ve sarılık dönemi > 4 hafta olanlar) hastalarda 4 hafta arayla iki kere HBsAg negatifliği elde edilene kadar Sağlık Bakanlığınca onaylı endikasyonu bulunan antiviral ilaçların bedeli Kurumca karşılanır.",
+  "_yorum": "AI SUT→JSON Protokol v1 ÜRETİM PİLOTU (2026-05-23). docs/SUT_AI_PROTOKOL_v1.md çalışılmış örneği. Lafız muğlak — Yorum 1 seçildi: 'ciddi laboratuvar bulguları' üst başlık, B1/B2/B3 alternatif kriterler (>=1 yeterli). Diğer yorumlar: (B1 ∨ B2) ∧ B3 (lafzi katı), ya da B1/B2 (INR/PT bağımlı) + B3 bağımsız (King's College).",
+  "_boolean_formul_aciklama": "AKUT_HBV_UYGUN ⇔ (A1 ∨ A2) ∧ (B1 ∨ B2 ∨ B3) ∧ C1. D1 bilgi atomu (matematik dışı; şemada görünür, eczacı doğrulayınca SARTLI_UYGUN). Mülga ibare yok; (3) maddesi 2024 eklenmiş.",
+
+  "atomlar": {
+    "A1": {
+      "ad": "Akut hepatit B teşhisi — ICD B16",
+      "tip": "icd_in",
+      "params": {"prefixler": ["B16"]},
+      "kaynak": "teshis",
+      "grup": "(1) Akut HBV endikasyon",
+      "veya_grubu": true,
+      "sessizlik_default": "YOK"
+    },
+    "A2": {
+      "ad": "Akut hepatit B ibaresi (rapor metni)",
+      "tip": "regex",
+      "params": {
+        "desenler": [
+          "akut\\s*hepatit\\s*b",
+          "akut\\s*hbv",
+          "fulminant\\s*hepatit"
+        ],
+        "etiket": "Akut HBV lafzı"
+      },
+      "kaynak": "rapor_metni",
+      "grup": "(1) Akut HBV endikasyon",
+      "veya_grubu": true,
+      "sessizlik_default": "YOK"
+    },
+
+    "B1": {
+      "ad": "INR ≥ 1,5",
+      "tip": "lab_olcum",
+      "params": {
+        "ibare": "inr",
+        "alternatif_ibareler": ["i.n.r", "internasyonel"],
+        "op": ">=",
+        "deger": 1.5
+      },
+      "kaynak": "rapor_metni",
+      "grup": "(2) Ciddi laboratuvar bulguları [≥1 yeterli]",
+      "veya_grubu": true,
+      "sessizlik_default": "KE"
+    },
+    "B2": {
+      "ad": "PT > normalin üst sınırı + 4 sn",
+      "tip": "regex",
+      "params": {
+        "desenler": [
+          "pt[^.\\d]{0,30}\\d+\\s*(saniye|sn|sn\\.?)\\s*(daha)?\\s*(uzun|fazla)",
+          "protrombin[^.\\d]{0,30}\\d+\\s*(saniye|sn)\\s*(daha)?\\s*(uzun|fazla)",
+          "pt\\s*(uzam|uzun|prolonge)",
+          "protrombin\\s*(uzam|uzun|prolonge)"
+        ],
+        "etiket": "PT uzaması"
+      },
+      "kaynak": "rapor_metni",
+      "grup": "(2) Ciddi laboratuvar bulguları [≥1 yeterli]",
+      "veya_grubu": true,
+      "sessizlik_default": "KE"
+    },
+    "B3": {
+      "ad": "Sarılık dönemi > 4 hafta",
+      "tip": "regex",
+      "params": {
+        "desenler": [
+          "sarılık[^.]{0,40}(4|dört|dort|5|6|7|8|9|10)\\s*hafta",
+          "ikterus[^.]{0,40}(4|dört|dort|5|6|7|8|9|10)\\s*hafta",
+          "(uzamış|uzun\\s*süren)\\s*sarılık",
+          "(uzamış|uzun\\s*süren)\\s*ikterus"
+        ],
+        "etiket": "Sarılık süresi >4 hafta"
+      },
+      "kaynak": "rapor_metni",
+      "grup": "(2) Ciddi laboratuvar bulguları [≥1 yeterli]",
+      "veya_grubu": true,
+      "sessizlik_default": "KE"
+    },
+
+    "C1": {
+      "ad": "SB onaylı HBV antiviral ilaç",
+      "tip": "etken_iceriyor",
+      "params": {
+        "anahtarlar": [
+          "LAMIVUDIN", "LAMIVUDINE",
+          "TELBIVUDIN", "TELBIVUDINE",
+          "ENTEKAVIR", "ENTECAVIR",
+          "TENOFOVIR",
+          "ADEFOVIR"
+        ]
+      },
+      "kaynak": "etken_madde",
+      "grup": "(3) Antiviral ilaç (SB onaylı endikasyon)",
+      "veya_grubu": false,
+      "sessizlik_default": "YOK"
+    },
+
+    "D1": {
+      "ad": "Tedavi süresi: 4 hafta arayla 2× HBsAg(-)",
+      "tip": "manuel_kontrol",
+      "params": {
+        "neden": "Tedavi süresi şartı (4 hafta arayla 2 kez HBsAg negatifliği elde edilmesi) sistem tarafından otomatik sorgulanamaz — eczacı manuel doğrulamalı (rapor yenileme zamanı kontrolü)"
+      },
+      "kaynak": "rapor_metni",
+      "grup": "(bilgi) Tedavi süresi şartı",
+      "veya_grubu": false,
+      "sessizlik_default": "KE",
+      "bilgi": true,
+      "sartli_atom": true
+    }
+  },
+
+  "formul": "(A1 ∨ A2) ∧ (B1 ∨ B2 ∨ B3) ∧ C1",
+
+  "ust_or_ciftleri": [],
+
+  "verdict_eslemesi": {
+    "VAR": "UYGUN",
+    "VAR_with_sartli": "SARTLI_UYGUN",
+    "YOK": "UYGUN_DEGIL",
+    "KE": "KONTROL_EDILEMEDI",
+    "KE_sadece_sartli": "SARTLI_UYGUN"
+  },
+
+  "on_kontrol": [],
+
+  "senaryolar": [
+    {
+      "ad": "S1 — Tam UYGUN: ICD B16 + INR 2.1 + tenofovir",
+      "_aciklama": "Tüm zorunlu şartlar tam: teşhis ICD, lab B1=VAR, ilaç C1=VAR",
+      "ilac_sonuc": {
+        "etken_madde": "TENOFOVIR DISOPROKSIL",
+        "ilac_adi": "VIREAD 245 MG 30 FT",
+        "rapor_kodu": "04.13.03",
+        "recete_teshisleri": ["B16.9"],
+        "tum_metin": "Akut hepatit B, fulminant seyirli, INR: 2.1, ALT 1200, total bilirubin 18 mg/dl",
+        "kutu_sayisi": 1,
+        "doktor_uzmanligi": "GASTROENTEROLOJI"
+      },
+      "beklenen_verdict": "ŞARTLI_UYGUN",
+      "_beklenti_notu": "D1 bilgi atomu KE olduğu için ŞARTLI_UYGUN bekleniyor (verdict_eslemesi.VAR_with_sartli)"
+    },
+    {
+      "ad": "S2 — UYGUN_DEGIL: Teşhis yok (kronik hepatit)",
+      "_aciklama": "Kronik HBV (B18) — akut değil; A1/A2 ikisi de YOK → grup YOK → formül YOK",
+      "ilac_sonuc": {
+        "etken_madde": "TENOFOVIR",
+        "ilac_adi": "VIREAD 245 MG TB",
+        "rapor_kodu": "04.13.01",
+        "recete_teshisleri": ["B18.1"],
+        "tum_metin": "Kronik hepatit B, HBV DNA 50000 IU/ml",
+        "doktor_uzmanligi": "GASTROENTEROLOJI"
+      },
+      "beklenen_verdict": "UYGUN_DEGIL"
+    },
+    {
+      "ad": "S3 — ŞÜPHELİ: Sessiz lab (B1/B2/B3 hepsi KE)",
+      "_aciklama": "ICD B16 var, akut hepatit B yazıyor ama hiçbir lab değer ya da sarılık süresi metinde yok → B grubu KE → formül KE → ŞÜPHELİ. B grubu atomları sartli_atom değil (sistem parse edemedi, eczacının doğrulayacağı 'manuel' atom da değil) — bu yüzden SARTLI_UYGUN'a düşmez. Gerçek davranış: ŞÜPHELİ (KONTROL_EDILEMEDI).",
+      "ilac_sonuc": {
+        "etken_madde": "ENTEKAVIR",
+        "ilac_adi": "BARACLUDE 0.5 MG",
+        "rapor_kodu": "04.13.03",
+        "recete_teshisleri": ["B16.9"],
+        "tum_metin": "Akut hepatit B teşhisi konulan hasta, antiviral tedavi başlandı.",
+        "doktor_uzmanligi": "ENFEKSIYON HASTALIKLARI"
+      },
+      "beklenen_verdict": "KONTROL_EDILEMEDI"
+    },
+    {
+      "ad": "S4 — UYGUN: Sarılık >4 hafta var (VEYA tek dal yeterli)",
+      "_aciklama": "B3 VAR olduğu için B grubu VAR; INR yok ama gerek yok",
+      "ilac_sonuc": {
+        "etken_madde": "TENOFOVIR ALAFENAMID",
+        "ilac_adi": "VEMLIDY 25 MG",
+        "rapor_kodu": "04.13.03",
+        "recete_teshisleri": ["B16.2"],
+        "tum_metin": "Akut hepatit B, uzamış sarılık dönemi 6 hafta, total bilirubin yüksek, antiviral tedavi başlandı",
+        "doktor_uzmanligi": "ENFEKSIYON HASTALIKLARI"
+      },
+      "beklenen_verdict": "ŞARTLI_UYGUN",
+      "_beklenti_notu": "B3=VAR, A1=VAR, C1=VAR → formül VAR; D1 bilgi KE → SARTLI_UYGUN"
+    },
+    {
+      "ad": "S5 — UYGUN_DEGIL: Yanlış ilaç (ribavirin)",
+      "_aciklama": "Akut HBV + INR yüksek ama ilaç HBV antiviral değil; C1 YOK",
+      "ilac_sonuc": {
+        "etken_madde": "RIBAVIRIN",
+        "ilac_adi": "RIBAVIN 200 MG",
+        "rapor_kodu": "04.13.03",
+        "recete_teshisleri": ["B16.9"],
+        "tum_metin": "Akut hepatit B, INR 1.8, tedavi planlandı",
+        "doktor_uzmanligi": "GASTROENTEROLOJI"
+      },
+      "beklenen_verdict": "UYGUN_DEGIL"
+    },
+    {
+      "ad": "S6 — UYGUN: PT uzaması (B2)",
+      "_aciklama": "PT > normal + 4 sn ibaresi (B2=VAR); INR/sarılık yok",
+      "ilac_sonuc": {
+        "etken_madde": "ENTEKAVIR",
+        "ilac_adi": "BARACLUDE 0.5 MG",
+        "rapor_kodu": "04.13.03",
+        "recete_teshisleri": ["B16.9"],
+        "tum_metin": "Akut hepatit B, PT normalin üst sınırından 5 saniye daha uzun, ciddi klinik bulgu",
+        "doktor_uzmanligi": "ENFEKSIYON HASTALIKLARI"
+      },
+      "beklenen_verdict": "ŞARTLI_UYGUN"
+    },
+    {
+      "ad": "S7 — Edge: Boş rapor metni + ICD B16",
+      "_aciklama": "Sadece ICD eşleşir, metin boş → A1=VAR, A2=KE (metin boş, regex aranamadı), B grubu KE, C1=VAR. Formül: A grubu VAR (A1 yeterli), B grubu KE → formül KE → ŞÜPHELİ.",
+      "ilac_sonuc": {
+        "etken_madde": "LAMIVUDIN",
+        "ilac_adi": "ZEFFIX 100 MG",
+        "rapor_kodu": "04.13.03",
+        "recete_teshisleri": ["B16.9"],
+        "tum_metin": "",
+        "doktor_uzmanligi": "GASTROENTEROLOJI"
+      },
+      "beklenen_verdict": "KONTROL_EDILEMEDI"
+    }
+  ]
+}

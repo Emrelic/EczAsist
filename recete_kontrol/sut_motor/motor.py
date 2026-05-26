@@ -105,6 +105,7 @@ _SONUC_HARITA = {
     'KE': KontrolSonucu.KONTROL_EDILEMEDI,
     'MANUEL_KONTROL': KontrolSonucu.MANUEL_KONTROL,
     'SARTLI_UYGUN': KontrolSonucu.SARTLI_UYGUN,
+    'TIBBEN_UYGUN_DEGIL': KontrolSonucu.TIBBEN_UYGUN_DEGIL,
     'ATLANDI': KontrolSonucu.ATLANDI,
 }
 

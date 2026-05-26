@@ -34,6 +34,8 @@ import logging
 import re
 from typing import Dict, List, Optional
 
+from recete_kontrol.tr_normalize import norm_tr_lower
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,18 +44,11 @@ logger = logging.getLogger(__name__)
 # ═════════════════════════════════════════════════════════════════════════
 
 def _normalize(s: str) -> str:
-    """Türkçe karakter güvenli lowercase + ASCII'ye indirgenmiş eşleme.
+    """Geriye dönük uyumluluk — yeni kod doğrudan `norm_tr_lower` kullansın.
 
-    'İ→i, I→ı→i, Ş→s, Ğ→g, Ü→u, Ö→o, Ç→c' — parser'ı bozan İ/I tuzaklarını
-    önler. Memory: feedback_tr_lower_parser_tuzagi.md.
+    Memory: feedback_tr_lower_parser_tuzagi.md.
     """
-    if not s:
-        return ""
-    s = s.replace("İ", "i").replace("I", "ı")
-    s = s.lower()
-    s = (s.replace("ı", "i").replace("ş", "s").replace("ğ", "g")
-          .replace("ü", "u").replace("ö", "o").replace("ç", "c"))
-    return s
+    return norm_tr_lower(s or '')
 
 
 def _snippet_cikar(metin: str, ibare: str, oncesi: int = 60,
@@ -208,17 +203,29 @@ IBARELER_ARB_MONOTERAPI = (
 
 # Diyabet 4.2.38 / 4.2.74 — "metformin ve sülfonilürelerin maks tolere
 # edilebilir dozlarında yeterli glisemik kontrol sağlanamamıştır"
+# NOT: 2026-05-24 — halk yazımı varyantları eklendi (max/maxımum/maximum,
+# "kontrolu saglanama" suffix, "kan şekeri yeterince düşürülemedi" eşdeğer)
 IBARELER_DIYABET_GLISEMIK = (
     "metformin ve sülfonilüre",
     "metformin ve sulfonilure",
     "metformin+sülfonilüre",
     "metformin+sulfonilure",
     "maksimum tolere edilebilir",
+    "maximum tolere edilebilir",
+    "maxımum tolere edilebilir",
     "yeterli glisemik kontrol sağlanamadı",
     "yeterli glisemik kontrol saglanamadi",
+    "yeterli glisemik kontrolu",
+    "yeterli glisemik kontrolu saglanama",
     "glisemik kontrol sağlanamamıştır",
     "glisemik kontrol saglanamamistir",
+    "glisemik kontrolu saglanama",
     "metformin yetersiz",
+    # MUZAFFER ŞAHİN varyantı — tıbben eşdeğer lafz (kullanıcı onayı 2026-05-24)
+    "kan şekeri yeterince düşürülemedi",
+    "kan sekeri yeterince dusurulemedi",
+    "kan şekeri düşürülemedi",
+    "kan sekeri dusurulemedi",
 )
 
 # P2Y12 (Klopidogrel/Prasugrel/Tikagrelor) — "anjiyografi tarihi"

@@ -29,6 +29,12 @@ class KontrolSonucu(Enum):
                                               # Örn: ARB monoterapi ibaresi aktif raporda
                                               # yok ama eski raporda var; Diyabet metformin
                                               # yetersizliği ibaresi; P2Y12 anjiyo tarihi.
+    TIBBEN_UYGUN_DEGIL = "tibben_uygun_degil"  # SUT açısından sorun yok ama
+                                                # KLİNİK/TIBBEN kontrendikasyon var.
+                                                # Örn: ACE-i + ARB aynı reçetede
+                                                # (hiperkalemi+AKI riski), iki BB
+                                                # birlikte, iki NSAII vb. SUT ödüyor
+                                                # olabilir ama hekime uyarı gerekli.
     ATLANDI = "atlandi"       # Bu reçete için kontrol gerekmiyor
 
 
@@ -46,6 +52,7 @@ VERDICT_ETIKET = {
     KontrolSonucu.SARTLI_UYGUN:      "ŞARTLI UYGUN",
     KontrolSonucu.MANUEL_KONTROL:    "MANUEL KONTROL",
     KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+    KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
     KontrolSonucu.ATLANDI:           "ATLANDI",
 }
 
@@ -58,6 +65,9 @@ VERDICT_RENK = {
     "MANUEL KONTROL":     ("#0D47A1", "#BBDEFB"),
     "DİĞER RAPOR UYGUN":  ("#00695C", "#B2DFDB"),  # turkuaz-mint (UYGUN'a yakın
                                                     # ama açıkça ayırt edilebilir)
+    "TIBBEN UYGUN DEĞİL": ("#4A148C", "#E1BEE7"),   # mor — SUT yönünden ödenir
+                                                    # ama hekime klinik uyarı
+                                                    # (ACE+ARB, çift BB, vb.)
     "ATLANDI":            ("#546E7A", "#ECEFF1"),
 }
 

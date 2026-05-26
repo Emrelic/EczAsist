@@ -1,0 +1,607 @@
+<HTML><HEAD><TITLE>Medula Eczane</TITLE>
+<META content="text/html; charset=ISO-8859-9" http-equiv=Content-Type>
+<META name=GENERATOR content="Rational Software Architect"><LINK title=Style rel=stylesheet type=text/css href="/eczane/theme/stylesheet.css"><LINK rel=stylesheet type=text/css href="/eczane/theme/styles.css">
+<SCRIPT type=text/javascript>
+var deg1=0; var deg2=0; var deg3=0; var deg4=0;
+var aktifTextId;
+function karekodOku(thisObj, thisEvent) {
+	onkeydawn();
+    var ua = navigator.userAgent.toLowerCase();
+    if ( ua.indexOf( "msie" ) != -1 ) {
+		if (thisEvent.keyCode==29 || thisEvent.keyCode==119) { document.getElementById(aktifTextId).value += '-'; deg1 = 0; deg2 = 0; deg3 = 0; deg4 = 0;
+		} else if(thisEvent.keyCode == 17) { deg1 = 17; deg2 = 0; deg3 = 0; deg4 = 0;
+		} else if(thisEvent.keyCode == 18) { deg1 = 18; deg2 = 0; deg3 = 0; deg4 = 0;
+		} else if(thisEvent.keyCode == 96 && deg1 == 18) { deg2 = 96; deg3 = 0; deg4 = 0;
+		} else if(thisEvent.keyCode == 98 && deg1 == 18 && deg2 == 96) { deg3 = 98;
+		} else if(thisEvent.keyCode == 105 && deg1 == 18 && deg2 == 96 && deg3 == 98) { deg4 = 105;
+		} else if(thisEvent.keyCode == 221) { if(deg1 == 17) { document.getElementById(aktifTextId).value += '-'; } deg1 = 0; deg2 = 0; deg3 = 0; deg4 = 0; }
+		if(deg1 == 18 && deg2 == 96 && deg3 == 98 && deg4 == 105) { document.getElementById(aktifTextId).value += '-'; deg1 = 0; deg2 = 0; deg3 = 0; deg4 = 0; }
+	} else {
+		if (thisEvent.which==29 || thisEvent.which==119) { document.getElementById(aktifTextId).value += '-'; deg1 = 0; deg2 = 0; deg3 = 0; deg4 = 0;
+		} else if(thisEvent.which == 17) { deg1 = 17; deg2 = 0; deg3 = 0; deg4 = 0;
+		} else if(thisEvent.which == 18) { deg1 = 18; deg2 = 0; deg3 = 0; deg4 = 0;
+		} else if(thisEvent.which == 96 && deg1 == 18) { deg2 = 96; deg3 = 0; deg4 = 0;
+		} else if(thisEvent.which == 98 && deg1 == 18 && deg2 == 96) { deg3 = 98;
+		} else if(thisEvent.which == 105 && deg1 == 18 && deg2 == 96 && deg3 == 98) { deg4 = 105;
+		} else if(thisEvent.which == 221) { if(deg1 == 17) { document.getElementById(aktifTextId).value += '-'; } deg1 = 0; deg2 = 0; deg3 = 0; deg4 = 0; }
+		if(deg1 == 18 && deg2 == 96 && deg3 == 98 && deg4 == 105) { document.getElementById(aktifTextId).value += '-'; deg1 = 0; deg2 = 0; deg3 = 0; deg4 = 0; }	
+	}
+}
+function func_1(thisObj, thisEvent) {
+	newwindow=window.open("/eczane/HtmlReportServlet",'name','height=1024,width=768');
+	if (window.focus) {newwindow.focus()}
+	return false;
+}
+function func_2(thisObj, thisEvent) {
+//use 'thisObj' to refer directly to this component instead of keyword 'this'
+//use 'thisEvent' to refer to the event generated instead of keyword 'event'
+aktifTextId = thisObj.id;
+}
+
+function checkBox(selectOneCheckBox) {
+      var id = selectOneCheckBox.name.substring(selectOneCheckBox.name.lastIndexOf(':'));
+      var el = selectOneCheckBox.form.elements;
+      for (var i = 0; i < el.length; i++) {
+            if (el[i].name.substring(el[i].name.lastIndexOf(':')) == id) {
+                  el[i].checked = false;
+            }
+      }
+      selectOneCheckBox.checked = true;
+}
+
+(function () {
+    var interval = 240000;
+    var timer = setInterval(function () {
+
+        fetch('/eczane/sessionCheck', {
+            method: 'GET',
+            credentials: 'same-origin'
+        }).then(function (resp) {
+
+            if (resp.status !== 204) {
+                clearInterval(timer);
+            }
+
+        }).catch(function () {
+            clearInterval(timer);
+        });
+
+    }, interval);
+})();
+
+</SCRIPT>
+
+<SCRIPT language=javascript src="/eczane/scripts/medula.js"></SCRIPT>
+
+<SCRIPT>function endDisiDokuman(id){
+                                 jsf.util.chain(document.getElementById(id), event,'', 'return myfaces.oam.submitForm(\'form1\',\''+id+'\',\'\',[]);');
+                                 }</SCRIPT>
+</HEAD>
+<BODY onkeydown="return karekodOku(this, event);" text=#000000 bgColor=#ffffff leftMargin=0 background=/eczane/images/background.gif topMargin=5 marginwidth="0" bodyUnloadEventNum="1">
+<FORM id=f class=form method=post name=f action=/eczane/faces/pages/recete/ReceteIslem2.jsp>
+<TABLE height=450 cellSpacing=0 cellPadding=0 width="100%" border=0>
+<TBODY>
+<TR>
+<TD class=paragraph style="PADDING-BOTTOM: 10px; PADDING-TOP: 10px; PADDING-LEFT: 10px; PADDING-RIGHT: 10px" bgColor=#eeeeee vAlign=top align=center><BR>
+<TABLE cellSpacing=0 cellPadding=5 width=960 bgColor=#f5f5f5 border=0>
+<TBODY>
+<TR height=20>
+<TD class=menuHeader>Reçete</TD></TR>
+<TR>
+<TD>
+<TABLE class=borderTable cellSpacing=1 cellPadding=1 width="100%">
+<TBODY>
+<TR class=row1>
+<TD class=label colSpan=11>
+<TABLE id=f:box20 class=panelBox>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=0 id=f:buttonGeriDon class=commandExButton type=submit value="Geri Dön" name=f:buttonGeriDon></TD>
+<TD><INPUT tabIndex=1 id=f:buttonAnaSayfa class=commandExButton type=submit value="Ana Sayfa" name=f:buttonAnaSayfa></TD>
+<TD><INPUT tabIndex=2 id=f:buttonIlacListesi class=commandExButton style="WIDTH: 75px" type=submit value=İlaç name=f:buttonIlacListesi></TD>
+<TD><INPUT tabIndex=3 id=f:buttonRaporListesi class=commandExButton style="WIDTH: 75px" type=submit value=Rapor name=f:buttonRaporListesi></TD>
+<TD><INPUT tabIndex=4 id=f:buttonMuayeneListesi class=commandExButton type=submit value=Muayene name=f:buttonMuayeneListesi></TD>
+<TD><INPUT tabIndex=5 id=f:buttonEndikasyonDisiSorgu class=commandExButton type=submit value=End.Dışı name=f:buttonEndikasyonDisiSorgu></TD>
+<TD><INPUT tabIndex=6 id=f:buttonKisiEndikasyonDisiSorgu class=commandExButton type=submit value="End.Dışı (Yeni)" name=f:buttonKisiEndikasyonDisiSorgu></TD>
+<TD><SPAN id=f:t12 class=outputText style="FONT-SIZE: 10px">Reçete No:</SPAN></TD>
+<TD><SPAN id=f:t13 class=outputText style="FONT-SIZE: 10px; COLOR: blue">3N0GCQG</SPAN></TD>
+<TD><SPAN id=f:text20 class=outputText style="FONT-SIZE: 10px">Karekod Durumu:</SPAN></TD>
+<TD><SPAN id=f:text21 class=outputText style="FONT-SIZE: 10px; COLOR: blue">Reçete Sonlandırıldı</SPAN></TD>
+<TD><SPAN id=f:t19 class=outputText style="FONT-SIZE: 10px">Kapsam:</SPAN></TD>
+<TD><SPAN id=f:text29 class=outputText style="FONT-SIZE: 10px; COLOR: blue">4A Sigortalı (S.S.K.)</SPAN></TD>
+<TD><SPAN id=f:text32 class=outputText style="FONT-SIZE: 10px; COLOR: blue">Emekli</SPAN></TD>
+<TD><SPAN id=f:text52 class=outputText style="FONT-SIZE: 10px; COLOR: blue"></SPAN></TD>
+<TD><SPAN id=f:t192 class=outputText style="FONT-SIZE: 10px">Fat.Türü:</SPAN></TD>
+<TD><SPAN id=f:t193 class=outputText style="FONT-SIZE: 10px; COLOR: blue">B Grubu</SPAN></TD></TR></TBODY></TABLE></TD></TR>
+<TR class=row2>
+<TD class=label style="CURSOR: pointer" width=160>&nbsp;<SPAN id=f:t17 class=outputText>Reçete Sahibi T.C. (*)</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label>
+<SCRIPT language=JavaScript type=text/JavaScript src="/eczane/.ibmjsfres/hxclient_core_v3_1_21.js"></SCRIPT>
+
+<SCRIPT language=JavaScript type=text/JavaScript src="/eczane/.ibmjsfres/hxclient_S_v3_1_21_tr.js?viewLocale=tr_TR"></SCRIPT>
+
+<SCRIPT language=JavaScript type=text/JavaScript>
+if (hX_6) hX_6.setResourceServer("/eczane/.ibmjsfres");
+if(hX_6 && hX_6.setLocale) hX_6.setLocale("tr_TR");
+
+</SCRIPT>
+<INPUT tabIndex=7 id=f:t18 class=inputText maxLength=11 value=64714040028 name=f:t18></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label style="CURSOR: pointer" width=160>&nbsp;<SPAN id=f:text36 class=outputText>Teslim Alan T.C. (*)</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label><INPUT tabIndex=8 id=f:text37 class=inputText value=64714040028 name=f:text37></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;<SPAN id=f:text25 class=outputText>İlaçları Teslim Alan</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label>&nbsp;<SELECT tabIndex=9 id=f:menu4 class=selectOneMenu size=1 name=f:menu4> <OPTION value=0>Seçiniz</OPTION> <OPTION selected value=K>Kendisi</OPTION> <OPTION value=Y>Yakını</OPTION> <OPTION value=D>Diğer</OPTION></SELECT></TD></TR>
+<TR class=row1>
+<TD class=label width=160>&nbsp;<SPAN id=f:text38 title="HIGİ Hasta reçeteleri " class=outputText style="CURSOR: pointer">Reçete Sahibi Adı/Soy.</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label>
+<TABLE id=f:box34 title="Tıklanırsa; Sizden alınan ilaç bilgisi getirilir" class=panelBox style="CURSOR: pointer">
+<TBODY>
+<TR>
+<TD><SPAN id=f:t15 class=outputText style="COLOR: blue">DURMUŞ</SPAN></TD>
+<TD><SPAN id=f:t16 class=outputText style="COLOR: blue">YETGİN</SPAN></TD></TR></TBODY></TABLE></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;<SPAN id=f:text23 title="HIGİ Alan reçeteleri " class=outputText style="CURSOR: pointer">Teslim Alan Adı/Soy.</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label>
+<TABLE id=f:box43 class=panelBox>
+<TBODY>
+<TR>
+<TD><SPAN id=f:text40 class=outputText style="COLOR: blue">DURMUŞ</SPAN></TD>
+<TD><SPAN id=f:text39 class=outputText style="COLOR: blue">YETGİN</SPAN></TD></TR></TBODY></TABLE></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;</TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label>&nbsp;</TD></TR>
+<TR class=row2>
+<TD class=label width=160>&nbsp;<SPAN id=f:text17 class=outputText>Provizyon Tipi</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label><SELECT tabIndex=10 id=f:menu2 class=selectOneMenu size=1 name=f:menu2> <OPTION selected value=1>Normal</OPTION> <OPTION value=2>Trafik Kazası</OPTION> <OPTION value=3>Doğal Afet</OPTION> <OPTION value=4>Adli Vaka</OPTION> <OPTION value=5>İş Kazası</OPTION> <OPTION value=6>Meslek Hastalığı</OPTION> <OPTION value=7>Analık Hali</OPTION> <OPTION value=8>3713/21</OPTION></SELECT></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;<SPAN id=f:t23 class=outputText>Protokol No (*)</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label><INPUT tabIndex=11 id=f:t24 class=inputText maxLength=50 value=13373712 name=f:t24></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;<SPAN id=f:t32 class=outputText>Tesis Kodu (*)</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label>
+<TABLE id=f:box33 class=panelBox>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=12 id=f:t33 class=inputText maxLength=8 size=9 value=11349940 name=f:t33></TD>
+<TD><INPUT tabIndex=13 id=f:button1 class=commandExButton type=submit value=Ara name=f:button1></TD>
+<TD><INPUT tabIndex=14 id=f:buttonBolumler class=commandExButton style="WIDTH: 60px" type=submit value=Bölümler name=f:buttonBolumler></TD></TR></TBODY></TABLE></TD></TR>
+<TR class=row1>
+<TD onclick="" class=label width=160>&nbsp;<SPAN id=f:t28 class=outputText>Reçete Tarihi (*)</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label><INPUT tabIndex=15 id=f:t29 class=inputText style="BACKGROUND-COLOR: yellow" value=01/05/2026 name=f:t29></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;<SPAN id=f:t30 class=outputText>İlaç Alım Tarihi (*)</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label><INPUT tabIndex=16 id=f:t31 class=inputText value=02/05/2026 name=f:t31></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;<SPAN id=f:text42 class=outputText>e-Reçete No</SPAN> </TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label>&nbsp;<SPAN id=f:text45 class=outputText style="COLOR: blue"></SPAN> </TD></TR>
+<TR class=row2>
+<TD class=label width=160>&nbsp;<SPAN id=f:t34 class=outputText>Reçete Türü</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label><SELECT tabIndex=17 id=f:m4 class=selectOneMenu size=1 name=f:m4> <OPTION selected value=1>Normal</OPTION> <OPTION value=2>Kırmızı</OPTION> <OPTION value=3>Turuncu</OPTION> <OPTION value=4>Mor</OPTION> <OPTION value=5>Yeşil</OPTION></SELECT></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;<SPAN id=f:t35 class=outputText>Reçete Alt Türü</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label><SELECT tabIndex=18 id=f:m8 class=selectOneMenu size=1 name=f:m8> <OPTION selected value=1>Ayaktan</OPTION> <OPTION value=2>Yatan</OPTION> <OPTION value=3>Taburcu</OPTION> <OPTION value=4>Günübirlik</OPTION> <OPTION value=5>Acil</OPTION> <OPTION value=6>Yeşil Alan</OPTION> <OPTION value=7>Evde Bakım</OPTION> <OPTION value=8>Gezici Sağlık Hizmeti</OPTION></SELECT></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;<SPAN id=f:t36 class=outputText>Hasta Türü</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label>&nbsp;<SPAN id=f:text33 class=outputText style="COLOR: blue">Normal</SPAN></TD></TR>
+<TR class=row1>
+<TD class=label colSpan=11>
+<TABLE id=f:box27 class=panelBox>
+<TBODY>
+<TR>
+<TD><SPAN id=f:t37 class=outputText>Dip.Tesc.No :</SPAN></TD>
+<TD><INPUT tabIndex=19 id=f:t43 title="Doktor'un üniversiteden mezun olurken aldığı ilk tescil numarası girilmelidir. " class=inputText maxLength=16 size=10 value=155212 name=f:t43></TD>
+<TD><SELECT tabIndex=20 id=f:m6 class=selectOneMenu size=1 name=f:m6> <OPTION selected value=1>Hekim</OPTION> <OPTION value=2>Diş Hekimi</OPTION></SELECT></TD>
+<TD><INPUT tabIndex=21 id=f:buttonDoktorArama class=commandExButton style="WIDTH: 60px" type=submit value=Ara name=f:buttonDoktorArama></TD>
+<TD><SPAN id=f:t38 class=outputText>Dr.Dip.No/Dip.Tesc.No (*) :</SPAN></TD>
+<TD><INPUT tabIndex=22 id=f:t39 class=inputText maxLength=20 size=12 value=11-311-007 name=f:t39></TD>
+<TD><SPAN id=f:t40 class=outputText>Dr. Ad/Soyad (*) :</SPAN></TD>
+<TD><INPUT tabIndex=23 id=f:t41 class=inputText maxLength=30 size=12 value=MUSTAFA name=f:t41></TD>
+<TD><INPUT tabIndex=24 id=f:t42 class=inputText maxLength=30 size=12 value=SOYTAŞ name=f:t42></TD></TR></TBODY></TABLE></TD></TR>
+<TR class=row2>
+<TD class=label colSpan=11>
+<TABLE id=f:box26 class=panelBox>
+<TBODY>
+<TR>
+<TD><SPAN id=f:t44 class=outputText>Branş (*) :</SPAN></TD>
+<TD><SPAN id=f:t45 class=outputText style="COLOR: blue">Üroloji (Ana Branş)</SPAN></TD>
+<TD><INPUT tabIndex=25 id=f:buttonBransSec class=commandExButton style="WIDTH: 50px" type=submit value=Seç name=f:buttonBransSec></TD>
+<TD><SPAN id=f:t46 class=outputText>Sertifika (*) :</SPAN></TD>
+<TD><SELECT tabIndex=26 id=f:m7 class=selectOneMenu size=1 name=f:m7> <OPTION selected value=0>Yok</OPTION> <OPTION value=56>Hemodiyaliz</OPTION> <OPTION value=109>Aile Hekimliği</OPTION></SELECT></TD>
+<TD><INPUT tabIndex=27 id=f:buttonUyariKodu class=commandExButton type=submit value="Uyarı Kodu" name=f:buttonUyariKodu></TD>
+<TD><SPAN id=f:t47 class=outputText style="COLOR: blue"></SPAN></TD>
+<TD><SPAN id=f:t49 class=outputText>Karekodlu :</SPAN></TD>
+<TD><INPUT tabIndex=28 id=f:checkbox1 class=selectBooleanCheckbox type=checkbox value=true name=f:checkbox1></TD>
+<TD><SPAN id=f:text35 class=outputText>Sıralı dağıtım reçetesi :</SPAN></TD>
+<TD><INPUT tabIndex=29 id=f:checkbox2 class=selectBooleanCheckbox type=checkbox value=true name=f:checkbox2></TD></TR></TBODY></TABLE></TD></TR></TBODY></TABLE></TD></TR>
+<TR>
+<TD>
+<TABLE class=borderTable cellSpacing=1 cellPadding=1 width="100%">
+<TBODY>
+<TR class=headerRow>
+<TD colSpan=7>İlaç Bilgileri</TD></TR>
+<TR class=row1>
+<TD class=label colSpan=7>
+<TABLE>
+<TBODY>
+<TR>
+<TD><SPAN title="Duruma göre sayfaya ilaç EKLER." style="FONT-SIZE: 10px; CURSOR: pointer; HEIGHT: 18px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: white; BORDER-BOTTOM-COLOR: threedshadow; TEXT-ALIGN: center; MARGIN-LEFT: 5px; BORDER-RIGHT-COLOR: threedshadow; BACKGROUND-COLOR: #4e96b2">&nbsp;Sayfaya İlaç Ekle </SPAN><SPAN title="BotRAS üzerinden incelemek için işaretler/işaretleme iptal eder" style="FONT-SIZE: 10px; CURSOR: pointer; HEIGHT: 18px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: white; BORDER-BOTTOM-COLOR: threedshadow; TEXT-ALIGN: center; MARGIN-LEFT: 5px; BORDER-RIGHT-COLOR: threedshadow; BACKGROUND-COLOR: #4e96b2">&nbsp;İncelemeye Ekle/Kaldır </SPAN><SPAN title="BotRAS üzerinden sormak için ilaç listesi getirir" style="FONT-SIZE: 10px; CURSOR: pointer; HEIGHT: 18px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: white; BORDER-BOTTOM-COLOR: threedshadow; TEXT-ALIGN: center; MARGIN-LEFT: 5px; BORDER-RIGHT-COLOR: threedshadow; BACKGROUND-COLOR: #4e96b2">&nbsp;Botrastan İlaç Sor </SPAN></TD></TR></TBODY></TABLE>
+<TABLE id=f:box21 class=panelBox>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=30 id=f:buttonOzelDurum class=commandExButton type=submit value="Özel Durum" name=f:buttonOzelDurum></TD>
+<TD><INPUT tabIndex=31 id=f:buttonIlacEsdeger class=commandExButton type=submit value=Eşdeğer name=f:buttonIlacEsdeger></TD>
+<TD><INPUT tabIndex=32 id=f:buttonIlacBilgiGorme class=commandExButton type=submit value="İlaç Bilgi" name=f:buttonIlacBilgiGorme></TD>
+<TD><INPUT tabIndex=33 id=f:buttonIlacSil class=commandExButton style="WIDTH: 80px" type=submit value=Sil name=f:buttonIlacSil></TD>
+<TD><INPUT tabIndex=34 id=f:buttonIlacArama class=commandExButton style="WIDTH: 80px" type=submit value="İlaç Ara" name=f:buttonIlacArama></TD>
+<TD><INPUT tabIndex=35 id=f:buttonIlacEkle class=commandExButton style="WIDTH: 80px" type=submit value="İlaç Ekle" name=f:buttonIlacEkle></TD>
+<TD><INPUT tabIndex=36 id=f:buttonRaporGoruntule class=commandExButton style="WIDTH: 80px" type=submit value=Rapor name=f:buttonRaporGoruntule></TD>
+<TD><SPAN id=f:text34 class=outputText>||</SPAN></TD>
+<TD><INPUT tabIndex=37 id=f:buttonIlacTedaviSema class=commandExButton type=submit value=Ted.Şema name=f:buttonIlacTedaviSema></TD>
+<TD><INPUT tabIndex=38 id=f:buttonReceteTeshis class=commandExButton type=submit value="Uyarı Kodu (Yeni)" name=f:buttonReceteTeshis></TD>
+<TD><INPUT tabIndex=39 id=f:buttonMajistralIlacEkle class=commandExButton type=submit value=Maj.İlaç name=f:buttonMajistralIlacEkle></TD>
+<TD><INPUT tabIndex=40 id=f:buttonRaporSecim class=commandExButton type=submit value="Rapor Seç" name=f:buttonRaporSecim></TD></TR></TBODY></TABLE></TD></TR></TBODY></TABLE></TD></TR>
+<TR>
+<TD height="100%"></TD></TR>
+<TR>
+<TD>
+<TABLE class=borderTable height="100%" cellSpacing=1 cellPadding=1 width="100%">
+<TBODY>
+<TR class=row1>
+<TD colSpan=7>
+<TABLE id=f:tbl1 class=dataTableEx cellSpacing=0 cellPadding=2 width="100%" border=0>
+<THEAD>
+<TR>
+<TH class=headerClass scope=col><SPAN id=f:tbl1:text48 class=outputText>&nbsp;</SPAN></TH>
+<TH class=headerClass scope=col align=center><SPAN id=f:tbl1:t52 class=outputText>Barkod</SPAN></TH>
+<TH class=headerClass scope=col align=center><SPAN id=f:tbl1:t53 class=outputText>Adet / Periyot / Doz</SPAN></TH>
+<TH style="FONT-SIZE: 8px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: white; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow; BACKGROUND-COLOR: #637595">Stk/Raf</TH>
+<TH class=headerClass scope=col align=center><SPAN id=f:tbl1:t54 class=outputText>Adı</SPAN></TH>
+<TH class=headerClass scope=col align=center><SPAN id=f:tbl1:t55 class=outputText>Tutar</SPAN></TH>
+<TH class=headerClass scope=col align=center><SPAN id=f:tbl1:t56 class=outputText>Fark</SPAN></TH>
+<TH class=headerClass scope=col align=center><SPAN id=f:tbl1:t57 class=outputText>Rapor</SPAN></TH>
+<TH class=headerClass scope=col align=center><SPAN id=f:tbl1:t58 class=outputText>Verilebileceği</SPAN></TH>
+<TH class=headerClass scope=col align=center><SPAN id=f:tbl1:t59 class=outputText>Msj</SPAN></TH>
+<TH style="FONT-SIZE: 9px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: white; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow; BACKGROUND-COLOR: #637595">S</TH>
+<TH style="FONT-SIZE: 9px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: white; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow; BACKGROUND-COLOR: #637595">sip</TH></TR></THEAD>
+<TBODY>
+<TR class=rowClass1>
+<TD><INPUT onclick=checkBox(this); tabIndex=41 id=f:tbl1:0:checkbox7 class=selectBooleanCheckbox type=checkbox value=true name=f:tbl1:0:checkbox7></TD>
+<TD align=center><INPUT tabIndex=42 onfocus="return func_2(this, event);" id=f:tbl1:0:t1 class=inputText size=15 value=8699540091054 name=f:tbl1:0:t1></TD>
+<TD align=center>
+<TABLE id=f:tbl1:0:box32 class=panelBox>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=43 id=f:tbl1:0:t2 class=inputText size=4 value=1 name=f:tbl1:0:t2></TD>
+<TD urunid="1274" sira="0"><SPAN id=f:tbl1:0:text24 class=outputText style="CURSOR: pointer">/ </SPAN></TD>
+<TD><INPUT tabIndex=44 id=f:tbl1:0:t5 class=inputText size=4 value=1 name=f:tbl1:0:t5></TD>
+<TD><SELECT tabIndex=45 id=f:tbl1:0:m1 class=selectOneMenu size=1 name=f:tbl1:0:m1> <OPTION selected value=3>Günde</OPTION> <OPTION value=4>Haftada</OPTION> <OPTION value=5>Ayda</OPTION> <OPTION value=6>Yılda</OPTION></SELECT></TD>
+<TD><SPAN id=f:tbl1:0:text22 class=outputText>/ </SPAN></TD>
+<TD><INPUT tabIndex=46 id=f:tbl1:0:t3 class=inputText size=4 value=2 name=f:tbl1:0:t3></TD>
+<TD urunid="1274" sira="0"><SPAN id=f:tbl1:0:text150 class=outputText style="CURSOR: pointer">x</SPAN></TD>
+<TD><INPUT tabIndex=47 id=f:tbl1:0:t4 class=inputText size=8 value=1,0 name=f:tbl1:0:t4><BR><SPAN style="FONT-SIZE: 9px; FONT-FAMILY: Arial, Verdana, Geneva, Helvetica, sans-serif; COLOR: blue; TEXT-ALIGN: center">1, Adet</SPAN></TD></TR></TBODY></TABLE></TD>
+<TD style="FONT-SIZE: 10px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: black; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow">6<BR>E.1(16)</TD>
+<TD style="CURSOR: pointer" align=center urunid="0" barkodkutusuadi="f:tbl1:0:t1" urunadedikutusuadi="f:tbl1:0:t2" urunkutusuadi="f:tbl1:0:t6" urunsecimkutusuadi="f:tbl1:0:checkbox7"><SPAN id=f:tbl1:0:t6 class=outputText urunid="1274" barkodkutusuadi="f:tbl1:0:t1" urunkutusuadi="f:tbl1:0:t6" urunsecimkutusuadi="f:tbl1:0:checkbox7" atcid="2710">AKSEF 500 MG 14 FILM TABLET</SPAN></TD>
+<TD style="CURSOR: pointer" align=center urunid="0" barkodkutusuadi="f:tbl1:0:t1" urunadedikutusuadi="f:tbl1:0:t2" urunkutusuadi="f:tbl1:0:t6" urunsecimkutusuadi="f:tbl1:0:checkbox7"><SPAN id=f:tbl1:0:t7 class=outputText>237,59</SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:0:t8 class=outputText>0,00</SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:0:t9 class=outputText></SPAN></TD>
+<TD style="CURSOR: pointer" align=center><SPAN id=f:tbl1:0:t10 class=outputText urunid="1274">09/05/2026</SPAN></TD>
+<TD align=center urunid="1274"><SPAN id=f:tbl1:0:t11 class=outputText style="CURSOR: pointer">yok</SPAN></TD>
+<TD style="FONT-SIZE: 10px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: black; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow"><IMG style="CURSOR: pointer" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAAQCAYAAADNo/U5AAAABGdBTUEAALGPC/xhBQAAAAlwSFlzAAAOwgAADsIBFShKgAAAAv5JREFUOE9FkmtIU3EYxo9kX6x0ze2cnfvOdnZ21F28zLWcc1OnZqVGyyLLzPxkQ62sD14SSVG7QEhBBEIX7IsQihCKHwolRSoxCrx0s8jCuzm1i9n+/c80euDwwuH9nfd5n/cg/2RX4NwRJV1YTvAPqkjheaWKH5VqOa6971FSeYkoSWy2bshJcfEVRutAb3n1z3cWN5g1usCiKTlQ30baQRcft1qMqrsyRAMXABxylVgbZRlebmkFi55ToFtnWb5ORwzV0WL/bdYwNiTa1lbMKeCLIQmUYOqeJJwhkDwlc/Jx+sG11cw80K6J/pWLsV4HRmmzDGYyQYGbizGuYxxOW4bgQ03MolOGpiBeQlv36kIN8MVngGbWMO2Sq/iAhU3tozVMPal/PwbBO6xxOnknloQUYeqypwY7WIlOAS9Em79IyXQmKAhPlilGLkFOgg0+hLEHzlFCWx7KFjtwZgdiD8dNVyjx9QxcWvI+b3KBXl08aKbEHxU4P+jFNU2pMizNSaqxwGhJbl6/1R2G5lyjxNk30IIESo+0w7TRCV6Ku/3tmph5L8b12MJVu240NAZtovBOKEW5ZNjFKoLva9NET/YJ1nUpgG8weukj0gma6civ2RizH7HjVHBcaLguUzTgBel7gqAN3CZDE47hXOFZQnsPxj83CeOWQMlJKa5tR/Ix9moLE/W7gRA+p4ahaRn6iP/joVxKkm8k9eMz0KoE1pLCPHKe5Iem4IvRCLu/FFPftYYpQjb7A3Kg1PYaSt/xMcoBfBCqoYQFGDl7c1C0+qXF4XHXPXKixIHTVK49MdSOEmS2kipoVZuWluBOI5EJ4DTOdSKp4bijnhYmpkxOsADjfqSN9V0ihYEzKk13HaHr74R/gZTinNkFbqkjF/cqiMPIUWcKYgmRuatI7UiPPu7PB2MimDFvNM3C+snoAE9Ei7+JESZs2+T5sSFhwQHf1d4SJFlBxB5XMbWlBPesgtb5qkktqKR138sIbviEirmcLMcSc+KsWxAEQf4CAkEd/tQ65wYAAAAASUVORK5CYII="></TD>
+<TD style="FONT-SIZE: 10px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: black; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow"><IMG style="CURSOR: pointer" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAARCAYAAADZsVyDAAAABGdBTUEAALGPC/xhBQAAAAlwSFlzAAAOwwAADsMBx2+oZAAAAVxJREFUOE+t1M0rBGEAx/HxTlEOuCrFRVyd5OBCXrIXN3JwIa27g92SckBOLq4u4mJTrv6AbbXtJgelvBQSOazU1vL9PbXbY+ysmeFXn8PzPDPPPG/zOP+UagxhA6eYxZ+jTndQwCfyWIdp6ER3CF2Ygzq8wjRUXwdnGG94x0cIxZG+og+lDEKNDzgOIQF1qoH1opRW3CCLBlUETBs0qHPUq8LOEbTo36biMyPQUmybkiuLUOOCKQXLFvTuqCm50g+N+NCU/EdTT+ERHapwpwkX0Fo3q8JneqCTcWJKHtmDprSLGOK/WMUB9M4yPBNB8UwGkUPFTa/FPuyX9N+PYxITOIPdrhEPoAqeaUQGT5jHHfSbav0Vnfd7qE7tL0iiBhWjjrWB2mHdTre4RguUduijl9Cd8Iw0fvwU5RKFPdUV2NmE3b4EX9FNN4Y1TME9TY1uBvqA1l3Pl4njfAGua3hM7bMmxQAAAABJRU5ErkJggg=="></TD></TR>
+<TR urunid="6712" sirano="0">
+<TD style="FONT-SIZE: 11px; CURSOR: pointer; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; FONT-WEIGHT: bold; COLOR: red" colSpan=12>Öncelik=&gt;CEFAKS 500MG 10 FİLM TABLET(Stk:10)</TD></TR>
+<TR class=rowClass2>
+<TD><INPUT onclick=checkBox(this); tabIndex=48 id=f:tbl1:1:checkbox7 class=selectBooleanCheckbox type=checkbox value=true name=f:tbl1:1:checkbox7></TD>
+<TD align=center><INPUT tabIndex=49 onfocus="return func_2(this, event);" id=f:tbl1:1:t1 class=inputText size=15 value=8699717010093 name=f:tbl1:1:t1></TD>
+<TD align=center>
+<TABLE id=f:tbl1:1:box32 class=panelBox>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=50 id=f:tbl1:1:t2 class=inputText size=4 value=1 name=f:tbl1:1:t2></TD>
+<TD urunid="26241" sira="1"><SPAN id=f:tbl1:1:text24 class=outputText style="CURSOR: pointer">/ </SPAN></TD>
+<TD><INPUT tabIndex=51 id=f:tbl1:1:t5 class=inputText size=4 value=1 name=f:tbl1:1:t5></TD>
+<TD><SELECT tabIndex=52 id=f:tbl1:1:m1 class=selectOneMenu size=1 name=f:tbl1:1:m1> <OPTION selected value=3>Günde</OPTION> <OPTION value=4>Haftada</OPTION> <OPTION value=5>Ayda</OPTION> <OPTION value=6>Yılda</OPTION></SELECT></TD>
+<TD><SPAN id=f:tbl1:1:text22 class=outputText>/ </SPAN></TD>
+<TD><INPUT tabIndex=53 id=f:tbl1:1:t3 class=inputText size=4 value=3 name=f:tbl1:1:t3></TD>
+<TD urunid="26241" sira="1"><SPAN id=f:tbl1:1:text150 class=outputText style="CURSOR: pointer">x</SPAN></TD>
+<TD><INPUT tabIndex=54 id=f:tbl1:1:t4 class=inputText size=8 value=1,0 name=f:tbl1:1:t4><BR><SPAN style="FONT-SIZE: 9px; FONT-FAMILY: Arial, Verdana, Geneva, Helvetica, sans-serif; COLOR: blue; TEXT-ALIGN: center">1, Adet</SPAN></TD></TR></TBODY></TABLE></TD>
+<TD style="FONT-SIZE: 10px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: black; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow">26<BR>F.6(1)</TD>
+<TD style="CURSOR: pointer" align=center urunid="0" barkodkutusuadi="f:tbl1:1:t1" urunadedikutusuadi="f:tbl1:1:t2" urunkutusuadi="f:tbl1:1:t6" urunsecimkutusuadi="f:tbl1:1:checkbox7"><SPAN id=f:tbl1:1:t6 class=outputText urunid="26241" barkodkutusuadi="f:tbl1:1:t1" urunkutusuadi="f:tbl1:1:t6" urunsecimkutusuadi="f:tbl1:1:checkbox7" atcid="3887">PAROL 500 MG.30 TB.</SPAN></TD>
+<TD style="CURSOR: pointer" align=center urunid="0" barkodkutusuadi="f:tbl1:1:t1" urunadedikutusuadi="f:tbl1:1:t2" urunkutusuadi="f:tbl1:1:t6" urunsecimkutusuadi="f:tbl1:1:checkbox7"><SPAN id=f:tbl1:1:t7 class=outputText>105,16</SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:1:t8 class=outputText>0,00</SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:1:t9 class=outputText></SPAN></TD>
+<TD style="CURSOR: pointer" align=center><SPAN id=f:tbl1:1:t10 class=outputText urunid="26241">12/05/2026</SPAN></TD>
+<TD align=center urunid="26241"><SPAN id=f:tbl1:1:t11 class=outputText style="CURSOR: pointer">yok</SPAN></TD>
+<TD style="FONT-SIZE: 10px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: black; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow"><IMG style="CURSOR: pointer" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAAQCAYAAADNo/U5AAAABGdBTUEAALGPC/xhBQAAAAlwSFlzAAAOwgAADsIBFShKgAAAAv5JREFUOE9FkmtIU3EYxo9kX6x0ze2cnfvOdnZ21F28zLWcc1OnZqVGyyLLzPxkQ62sD14SSVG7QEhBBEIX7IsQihCKHwolRSoxCrx0s8jCuzm1i9n+/c80euDwwuH9nfd5n/cg/2RX4NwRJV1YTvAPqkjheaWKH5VqOa6971FSeYkoSWy2bshJcfEVRutAb3n1z3cWN5g1usCiKTlQ30baQRcft1qMqrsyRAMXABxylVgbZRlebmkFi55ToFtnWb5ORwzV0WL/bdYwNiTa1lbMKeCLIQmUYOqeJJwhkDwlc/Jx+sG11cw80K6J/pWLsV4HRmmzDGYyQYGbizGuYxxOW4bgQ03MolOGpiBeQlv36kIN8MVngGbWMO2Sq/iAhU3tozVMPal/PwbBO6xxOnknloQUYeqypwY7WIlOAS9Em79IyXQmKAhPlilGLkFOgg0+hLEHzlFCWx7KFjtwZgdiD8dNVyjx9QxcWvI+b3KBXl08aKbEHxU4P+jFNU2pMizNSaqxwGhJbl6/1R2G5lyjxNk30IIESo+0w7TRCV6Ku/3tmph5L8b12MJVu240NAZtovBOKEW5ZNjFKoLva9NET/YJ1nUpgG8weukj0gma6civ2RizH7HjVHBcaLguUzTgBel7gqAN3CZDE47hXOFZQnsPxj83CeOWQMlJKa5tR/Ix9moLE/W7gRA+p4ahaRn6iP/joVxKkm8k9eMz0KoE1pLCPHKe5Iem4IvRCLu/FFPftYYpQjb7A3Kg1PYaSt/xMcoBfBCqoYQFGDl7c1C0+qXF4XHXPXKixIHTVK49MdSOEmS2kipoVZuWluBOI5EJ4DTOdSKp4bijnhYmpkxOsADjfqSN9V0ihYEzKk13HaHr74R/gZTinNkFbqkjF/cqiMPIUWcKYgmRuatI7UiPPu7PB2MimDFvNM3C+snoAE9Ei7+JESZs2+T5sSFhwQHf1d4SJFlBxB5XMbWlBPesgtb5qkktqKR138sIbviEirmcLMcSc+KsWxAEQf4CAkEd/tQ65wYAAAAASUVORK5CYII="></TD>
+<TD style="FONT-SIZE: 10px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: black; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow"><IMG style="CURSOR: pointer" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAARCAYAAADZsVyDAAAABGdBTUEAALGPC/xhBQAAAAlwSFlzAAAOwgAADsIBFShKgAAAAXJJREFUOE+d1L8rRlEcx/HjZxT1DFhNJrGaZLCQH7HYyGCS2A0oKQMyWawWsZCy+gNEIhmU8qOQyEDqKY/35+Y+vve4x4/nU6+ezvmec+659zn3ukKSc5lc7LOrGG2Yxy6G8JWUCanxxmnRZbxHJeeymENUqEeDnRDij6M9DP2eY0B1lMG14xmveCtAvNMnNCGfVqh4i60CbEOLamONyCeDS5zYWwzRBK9dA23qEOVIZBNZOyFEg712R9Tl3JJqfkaRWCBEg732YtTlXKdqfpqhY7IRtYidbPk1mge4Q51qfipxCj3rKnXYyZZfo6mTsaP+UFahgSuYxswvprAOzZlAMP2Iz+R/vCBxfv2UYg12kt77bvSiB3uwde24BUUIpgLHuMcIrqHXVM9f0Xm/gfpUf8Q+SvBjtLD+QP3D+jpd4QLVUGqhi55B34QHHOHbS5GWcdhbnYTNAmx9DH+KvnRdmEUf/NvU7gahC+i5a3xKnPsALLUP89oIQasAAAAASUVORK5CYII="></TD></TR>
+<TR class=rowClass1>
+<TD><INPUT onclick=checkBox(this); tabIndex=55 id=f:tbl1:2:checkbox7 class=selectBooleanCheckbox type=checkbox value=true name=f:tbl1:2:checkbox7></TD>
+<TD align=center><INPUT tabIndex=56 onfocus="return func_2(this, event);" id=f:tbl1:2:t1 class=inputText size=15 name=f:tbl1:2:t1></TD>
+<TD align=center>
+<TABLE id=f:tbl1:2:box32 class=panelBox>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=57 id=f:tbl1:2:t2 class=inputText size=4 value=0 name=f:tbl1:2:t2></TD>
+<TD><SPAN id=f:tbl1:2:text24 class=outputText>/ </SPAN></TD>
+<TD><INPUT tabIndex=58 id=f:tbl1:2:t5 class=inputText size=4 value=0 name=f:tbl1:2:t5></TD>
+<TD><SELECT tabIndex=59 id=f:tbl1:2:m1 class=selectOneMenu size=1 name=f:tbl1:2:m1> <OPTION selected value=3>Günde</OPTION> <OPTION value=4>Haftada</OPTION> <OPTION value=5>Ayda</OPTION> <OPTION value=6>Yılda</OPTION></SELECT></TD>
+<TD><SPAN id=f:tbl1:2:text22 class=outputText>/ </SPAN></TD>
+<TD><INPUT tabIndex=60 id=f:tbl1:2:t3 class=inputText size=4 value=0 name=f:tbl1:2:t3></TD>
+<TD><SPAN id=f:tbl1:2:text150 class=outputText>x</SPAN></TD>
+<TD><INPUT tabIndex=61 id=f:tbl1:2:t4 class=inputText size=8 value=0,0 name=f:tbl1:2:t4></TD></TR></TBODY></TABLE></TD>
+<TD style="FONT-SIZE: 10px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: black; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow"></TD>
+<TD style="CURSOR: pointer" align=center urunid="0" barkodkutusuadi="f:tbl1:2:t1" urunadedikutusuadi="f:tbl1:2:t2" urunkutusuadi="f:tbl1:2:t6" urunsecimkutusuadi="f:tbl1:2:checkbox7"><SPAN id=f:tbl1:2:t6 class=outputText></SPAN></TD>
+<TD style="CURSOR: pointer" align=center urunid="0" barkodkutusuadi="f:tbl1:2:t1" urunadedikutusuadi="f:tbl1:2:t2" urunkutusuadi="f:tbl1:2:t6" urunsecimkutusuadi="f:tbl1:2:checkbox7"><SPAN id=f:tbl1:2:t7 class=outputText>0,00</SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:2:t8 class=outputText>0,00</SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:2:t9 class=outputText></SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:2:t10 class=outputText></SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:2:t11 class=outputText></SPAN></TD></TR>
+<TR class=rowClass2>
+<TD><INPUT onclick=checkBox(this); tabIndex=62 id=f:tbl1:3:checkbox7 class=selectBooleanCheckbox type=checkbox value=true name=f:tbl1:3:checkbox7></TD>
+<TD align=center><INPUT tabIndex=63 onfocus="return func_2(this, event);" id=f:tbl1:3:t1 class=inputText size=15 name=f:tbl1:3:t1></TD>
+<TD align=center>
+<TABLE id=f:tbl1:3:box32 class=panelBox>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=64 id=f:tbl1:3:t2 class=inputText size=4 value=0 name=f:tbl1:3:t2></TD>
+<TD><SPAN id=f:tbl1:3:text24 class=outputText>/ </SPAN></TD>
+<TD><INPUT tabIndex=65 id=f:tbl1:3:t5 class=inputText size=4 value=0 name=f:tbl1:3:t5></TD>
+<TD><SELECT tabIndex=66 id=f:tbl1:3:m1 class=selectOneMenu size=1 name=f:tbl1:3:m1> <OPTION selected value=3>Günde</OPTION> <OPTION value=4>Haftada</OPTION> <OPTION value=5>Ayda</OPTION> <OPTION value=6>Yılda</OPTION></SELECT></TD>
+<TD><SPAN id=f:tbl1:3:text22 class=outputText>/ </SPAN></TD>
+<TD><INPUT tabIndex=67 id=f:tbl1:3:t3 class=inputText size=4 value=0 name=f:tbl1:3:t3></TD>
+<TD><SPAN id=f:tbl1:3:text150 class=outputText>x</SPAN></TD>
+<TD><INPUT tabIndex=68 id=f:tbl1:3:t4 class=inputText size=8 value=0,0 name=f:tbl1:3:t4></TD></TR></TBODY></TABLE></TD>
+<TD style="FONT-SIZE: 10px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: black; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow"></TD>
+<TD style="CURSOR: pointer" align=center urunid="0" barkodkutusuadi="f:tbl1:3:t1" urunadedikutusuadi="f:tbl1:3:t2" urunkutusuadi="f:tbl1:3:t6" urunsecimkutusuadi="f:tbl1:3:checkbox7"><SPAN id=f:tbl1:3:t6 class=outputText></SPAN></TD>
+<TD style="CURSOR: pointer" align=center urunid="0" barkodkutusuadi="f:tbl1:3:t1" urunadedikutusuadi="f:tbl1:3:t2" urunkutusuadi="f:tbl1:3:t6" urunsecimkutusuadi="f:tbl1:3:checkbox7"><SPAN id=f:tbl1:3:t7 class=outputText>0,00</SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:3:t8 class=outputText>0,00</SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:3:t9 class=outputText></SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:3:t10 class=outputText></SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:3:t11 class=outputText></SPAN></TD></TR>
+<TR class=rowClass1>
+<TD><INPUT onclick=checkBox(this); tabIndex=69 id=f:tbl1:4:checkbox7 class=selectBooleanCheckbox type=checkbox value=true name=f:tbl1:4:checkbox7></TD>
+<TD align=center><INPUT tabIndex=70 onfocus="return func_2(this, event);" id=f:tbl1:4:t1 class=inputText size=15 name=f:tbl1:4:t1></TD>
+<TD align=center>
+<TABLE id=f:tbl1:4:box32 class=panelBox>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=71 id=f:tbl1:4:t2 class=inputText size=4 value=0 name=f:tbl1:4:t2></TD>
+<TD><SPAN id=f:tbl1:4:text24 class=outputText>/ </SPAN></TD>
+<TD><INPUT tabIndex=72 id=f:tbl1:4:t5 class=inputText size=4 value=0 name=f:tbl1:4:t5></TD>
+<TD><SELECT tabIndex=73 id=f:tbl1:4:m1 class=selectOneMenu size=1 name=f:tbl1:4:m1> <OPTION selected value=3>Günde</OPTION> <OPTION value=4>Haftada</OPTION> <OPTION value=5>Ayda</OPTION> <OPTION value=6>Yılda</OPTION></SELECT></TD>
+<TD><SPAN id=f:tbl1:4:text22 class=outputText>/ </SPAN></TD>
+<TD><INPUT tabIndex=74 id=f:tbl1:4:t3 class=inputText size=4 value=0 name=f:tbl1:4:t3></TD>
+<TD><SPAN id=f:tbl1:4:text150 class=outputText>x</SPAN></TD>
+<TD><INPUT tabIndex=75 id=f:tbl1:4:t4 class=inputText size=8 value=0,0 name=f:tbl1:4:t4></TD></TR></TBODY></TABLE></TD>
+<TD style="FONT-SIZE: 10px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; BORDER-TOP-COLOR: threedshadow; BORDER-LEFT-COLOR: threedshadow; FONT-WEIGHT: bold; COLOR: black; BORDER-BOTTOM-COLOR: threedshadow; BORDER-RIGHT-COLOR: threedshadow"></TD>
+<TD style="CURSOR: pointer" align=center urunid="0" barkodkutusuadi="f:tbl1:4:t1" urunadedikutusuadi="f:tbl1:4:t2" urunkutusuadi="f:tbl1:4:t6" urunsecimkutusuadi="f:tbl1:4:checkbox7"><SPAN id=f:tbl1:4:t6 class=outputText></SPAN></TD>
+<TD style="CURSOR: pointer" align=center urunid="0" barkodkutusuadi="f:tbl1:4:t1" urunadedikutusuadi="f:tbl1:4:t2" urunkutusuadi="f:tbl1:4:t6" urunsecimkutusuadi="f:tbl1:4:checkbox7"><SPAN id=f:tbl1:4:t7 class=outputText>0,00</SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:4:t8 class=outputText>0,00</SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:4:t9 class=outputText></SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:4:t10 class=outputText></SPAN></TD>
+<TD align=center><SPAN id=f:tbl1:4:t11 class=outputText></SPAN></TD></TR></TBODY></TABLE></TD></TR>
+<TR class=row1>
+<TD class=label height="100%" colSpan=7>
+<TABLE id=f:box30 class=panelBox>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=76 id=f:buttonEkle class=commandExButton style="WIDTH: 100px" type=submit value=Ekle name=f:buttonEkle></TD>
+<TD><INPUT tabIndex=77 id=f:text15 class=inputText maxLength=10 name=f:text15></TD>
+<TD><INPUT tabIndex=78 id=f:buttonIcd10Sorgula class=commandExButton type=submit value="ICD-10 Sorgula" name=f:buttonIcd10Sorgula></TD>
+<TD><SPAN id=f:text9 class=outputText>(Maksimum 50 kayıt geri döner)</SPAN></TD>
+<TD style="FONT-SIZE: 9px; CURSOR: pointer; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; WIDTH: 10%; FONT-WEIGHT: bold; TEXT-ALIGN: left; BACKGROUND-COLOR: lightblue" colSpan=3>Topl=435,15TL</TD>
+<TD style="FONT-SIZE: 10px; FONT-FAMILY: Verdana, Geneva, Arial, Helvetica, sans-serif; WIDTH: 25%; FONT-WEIGHT: bold; TEXT-ALIGN: right; BACKGROUND-COLOR: lightyellow" colSpan=2>2 KALEM, 2 KUTU GETİRİN</TD></TR></TBODY></TABLE></TD></TR>
+<TR class=row1>
+<TD class=label height="100%" colSpan=7>
+<TABLE id=f:tableEx1 class=dataTableEx cellSpacing=0 cellPadding=2 border=0>
+<THEAD>
+<TR>
+<TH class=headerClass scope=col align=left><SPAN id=f:tableEx1:text5 class=outputText>ICD-10</SPAN></TH>
+<TH class=headerClass width="100%" scope=col align=left>
+<DIV style="WIDTH: 100%; OVERFLOW-X: hidden"><SPAN id=f:tableEx1:text2 class=outputText>Tanılar</SPAN></DIV></TH></TR></THEAD>
+<TBODY>
+<TR class=rowClass1>
+<TD align=left><INPUT tabIndex=79 id=f:tableEx1:0:text7 class=inputText maxLength=10 size=12 value=N30.0 name=f:tableEx1:0:text7></TD>
+<TD width="100%" align=left>
+<DIV style="WIDTH: 100%; OVERFLOW-X: hidden"><INPUT tabIndex=80 id=f:tableEx1:0:text3 class=inputText maxLength=150 size=150 value="AKUT SİSTİT" name=f:tableEx1:0:text3></DIV></TD></TR>
+<TR class=rowClass2>
+<TD align=left><INPUT tabIndex=81 id=f:tableEx1:1:text7 class=inputText maxLength=10 size=12 value=N39.0 name=f:tableEx1:1:text7></TD>
+<TD width="100%" align=left>
+<DIV style="WIDTH: 100%; OVERFLOW-X: hidden"><INPUT tabIndex=82 id=f:tableEx1:1:text3 class=inputText maxLength=150 size=150 value="ÜRİNER SİSTEM ENFEKSİYONU, YERİ TANIMLANMAMIŞ" name=f:tableEx1:1:text3></DIV></TD></TR>
+<TR class=rowClass1>
+<TD align=left><INPUT tabIndex=83 id=f:tableEx1:2:text7 class=inputText maxLength=10 size=12 value=N40 name=f:tableEx1:2:text7></TD>
+<TD width="100%" align=left>
+<DIV style="WIDTH: 100%; OVERFLOW-X: hidden"><INPUT tabIndex=84 id=f:tableEx1:2:text3 class=inputText maxLength=150 size=150 value="BENİGN PROSTAT HİPERPLAZİSİ" name=f:tableEx1:2:text3></DIV></TD></TR></TBODY></TABLE></TD></TR>
+<TR class=row1>
+<TD class=label colSpan=7></TD></TR>
+<TR class=row1>
+<TD class=label colSpan=7 align=center>
+<TABLE id=f:box25 class=panelBox width="100%" align=center>
+<TBODY>
+<TR>
+<TD>
+<TABLE id=f:box42 class=panelBox width="100%">
+<TBODY>
+<TR>
+<TD>
+<TABLE class=borderTable cellSpacing=1 cellPadding=1 width="100%">
+<TBODY>
+<TR>
+<TD>
+<TABLE class=borderTable cellSpacing=1 cellPadding=1 width="100%">
+<TBODY>
+<TR class=headerRow>
+<TD colSpan=15>Reçete Tutarları <SPAN id=f:text122 class=outputText style="COLOR: white">(İlaç katılım payı maaştan tahsil edilecek)</SPAN></TD></TR>
+<TR class=row1>
+<TD class=label width=160>&nbsp;<SPAN id=f:text6 class=outputText>Reç.Kat.Payı (Elden)</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right><SPAN id=f:text831 class=outputText style="COLOR: blue">0,00</SPAN>&nbsp;</TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;</TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;</TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;</TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right>&nbsp;</TD></TR>
+<TR class=row2>
+<TD class=label width=160>&nbsp;<SPAN id=f:text26 class=outputText>Reç.Kat.Payı (Maaştan)</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right><SPAN id=f:text27 class=outputText style="COLOR: blue">3,76</SPAN>&nbsp;</TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;<SPAN id=f:text58 class=outputText>İl.Kat.Payı Tutarı</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right><SPAN id=f:text63 class=outputText style="COLOR: blue">34,28</SPAN></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;<SPAN id=f:text28 class=outputText>Toplam Tutar</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right><SPAN id=f:text65 class=outputText style="COLOR: blue">342,75</SPAN></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160><SPAN id=f:text59 class=outputText>Ödenecek Tutar</SPAN>&nbsp;</TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right><SPAN id=f:text64 class=outputText style="COLOR: blue">308,47</SPAN>&nbsp;</TD></TR>
+<TR class=row1>
+<TD class=label width=160>&nbsp;<SPAN id=f:text13 class=outputText>Mua.Kat.Payı (Elden)</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right><SPAN id=f:text83 class=outputText style="COLOR: blue">0,00</SPAN>&nbsp;</TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;<SPAN id=f:text97 class=outputText>Fiyat Farkı</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right><SPAN id=f:text98 class=outputText style="COLOR: blue">0,00</SPAN></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;</TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right></TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label width=160>&nbsp;</TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right>&nbsp;</TD></TR>
+<TR class=row2>
+<TD class=label width=160>&nbsp;<SPAN id=f:text53 class=outputText>Mua.Kat.Payı (Maaştan)</SPAN></TD>
+<TD width=5 align=center><STRONG>:</STRONG></TD>
+<TD class=label align=right><SPAN id=f:text82 class=outputText style="COLOR: blue">52,00</SPAN>&nbsp;</TD>
+<TD width=5 align=center><STRONG></STRONG></TD>
+<TD class=label colSpan=11 align=right>
+<TABLE id=f:box28 class=panelBox>
+<TBODY>
+<TR>
+<TD><SPAN id=f:text10 class=outputText>Hastanın eczaneye ödemesi gereken toplam tutar :</SPAN></TD>
+<TD><SPAN id=f:text16 class=outputText style="COLOR: blue">0,00</SPAN></TD></TR></TBODY></TABLE></TD></TR></TBODY></TABLE></TD></TR></TBODY></TABLE></TD></TR></TBODY></TABLE></TD></TR>
+<TR>
+<TD>
+<TABLE id=f:box23 class=panelBox align=center>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=85 id=f:buttonReceteKaydet class=commandExButton style="WIDTH: 100px" type=submit value=Kaydet name=f:buttonReceteKaydet></TD>
+<TD><INPUT tabIndex=86 id=f:buttonReceteSil class=commandExButton style="WIDTH: 100px" type=submit value=Sil name=f:buttonReceteSil></TD>
+<TD><INPUT tabIndex=87 id=f:buttonReceteYazdir class=commandExButton style="WIDTH: 100px" type=submit value=Yazdır name=f:buttonReceteYazdir></TD>
+<TD><INPUT tabIndex=88 id=f:buttonReceteBilgi class=commandExButton style="WIDTH: 100px" type=submit value=Bilgi name=f:buttonReceteBilgi></TD>
+<TD><INPUT tabIndex=89 id=f:buttonYeniRecete class=commandExButton type=submit value="Yeni Reçete" name=f:buttonYeniRecete></TD>
+<TD><INPUT tabIndex=90 id=f:buttonEreceteSorgu class=commandExButton type=submit value="E-Reçete Sorgu" name=f:buttonEreceteSorgu></TD></TR></TBODY></TABLE></TD></TR>
+<TR>
+<TD>
+<TABLE id=f:box24 class=panelBox align=center>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=91 id=f:buttonKarekodIslemleri class=commandExButton type=submit value="ITS Karekod İşlemleri" name=f:buttonKarekodIslemleri></TD>
+<TD><INPUT tabIndex=92 id=f:buttonKarekodIptal class=commandExButton type=submit value="Karekod Sonlandırma İptal" name=f:buttonKarekodIptal></TD>
+<TD><INPUT tabIndex=93 id=f:buttonDokumanEkle class=commandExButton style="WIDTH: 180px" type=submit value="Reçeteye Doküman Ekle" name=f:buttonDokumanEkle></TD></TR></TBODY></TABLE></TD></TR>
+<TR>
+<TD>
+<TABLE id=f:box22 class=panelBox align=center>
+<TBODY>
+<TR>
+<TD><INPUT tabIndex=94 id=f:buttonOncekiRecete class=commandExButton type=submit value="Önceki Reçete" name=f:buttonOncekiRecete></TD>
+<TD><INPUT tabIndex=95 id=f:buttonSonraki class=commandExButton type=submit value="Sonraki Reçete" name=f:buttonSonraki></TD>
+<TD><SPAN id=f:text173 class=outputText style="FONT-SIZE: 10px; COLOR: blue"></SPAN></TD></TR></TBODY></TABLE></TD></TR></TBODY></TABLE></TD></TR>
+<TR class=row1>
+<TD class=label colSpan=7 align=left>
+<TABLE id=f:box31 class=panelBox>
+<TBODY>
+<TR>
+<TD>
+<TABLE id=f:box44 class=panelBox>
+<TBODY>
+<TR>
+<TD><SPAN id=f:text79 class=outputText>Müstehaklık sorgusunu aynı gün için tekrar yap :</SPAN></TD>
+<TD><INPUT tabIndex=96 id=f:checkbox4 title="Hak Sahibi gün içinde bilgilerini güncellettiyse bu seçeneği kullanınız." class=selectBooleanCheckbox type=checkbox value=true name=f:checkbox4></TD></TR></TBODY></TABLE></TD></TR>
+<TR>
+<TD>
+<TABLE id=f:box45 class=panelBox>
+<TBODY>
+<TR>
+<TD><SPAN id=f:text41 class=outputText style="COLOR: blue">Bilgi güvenliği nedeniyle yapmış olduğunuz sorgulamalar kayıt altına alınmaktadır.</SPAN></TD></TR></TBODY></TABLE></TD></TR></TBODY></TABLE></TD></TR></TBODY></TABLE></TD></TR></TBODY></TABLE></TD></TR></TBODY></TABLE><SPAN class=outputText style="PADDING-LEFT: 5px">Son Şifre Güncelleme Tarihi: </SPAN><SPAN class=outputText style="FONT-WEIGHT: normal">25/05/2017</SPAN> 
+<TABLE style="MARGIN-TOP: 1px" height=23 cellSpacing=0 cellPadding=0 width="100%" bgColor=#333333 border=0>
+<TBODY>
+<TR>
+<TD align=right></TD></TR>
+<TR>
+<TD style="COLOR: #333333" width=200>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; UYGMEDECZY7 </TD>
+<TD class=footerText align=center>Sosyal Güvenlik Kurumu © 2010-2026</TD>
+<TD class=footerText width=200 align=right>Sürüm : 1.1222&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TD></TR></TBODY></TABLE><BR><INPUT id=f:hiddenOdak type=hidden value=0 name=f:hiddenOdak><INPUT type=hidden value=1 name=f_SUBMIT><INPUT id=j_id__v_0:javax.faces.ViewState:1 type=hidden value=G7xdJDsmGsrKsQ5+XnS6TPBVfgTj//cwZ/cGxRSEz8UzToLlgLwaD4Ibsp0FnEFPLATdYQ== name=javax.faces.ViewState autocomplete="off"></FORM>
+<SCRIPT type=text/javascript src="/eczane/.ibmjsfres/hxclient_be_v3_1_21.js"></SCRIPT>
+
+<SCRIPT type=text/javascript src="/eczane/.ibmjsfres/hxclient_im_v3_1_21.js"></SCRIPT>
+
+<SCRIPT type=text/javascript src="/eczane/.ibmjsfres/hxclient_S_v3_1_21_tr.js?viewLocale=tr"></SCRIPT>
+
+<SCRIPT type=text/javascript>
+hX_6.addConverter("a", new hX_6.NumberConverter("ICU4J", "strict:1", "pattern:#######0", "locale:.,%\u2030-\u20ba"));
+hX_6.addBehavior("f:t33", "oninput", new hX_6.JSFBehaviorAssist("converter:a", "auto-tab:0", "prompt-char:default"));
+hX_6.addConverter("7", new hX_6.NumberConverter("ICU4J", "strict:1", "pattern:##########0", "locale:.,%\u2030-\u20ba"));
+hX_6.addBehavior("f:text37", "oninput", new hX_6.JSFBehaviorAssist("converter:7", "auto-tab:0", "prompt-char:default"));
+hX_6.addConverter("5", new hX_6.DateTimeConverter("strict:1", "format:dd/MM/yyyy", "locale:tr"));
+hX_6.addBehavior("f:t29", "oninput", new hX_6.JSFBehaviorAssist("converter:5", "auto-tab:0", "prompt-char:default"));
+hX_6.addBehavior("f:t18", "oninput", new hX_6.JSFBehaviorAssist("converter:7", "auto-tab:0", "prompt-char:default"));
+hX_6.addBehavior("f:t31", "oninput", new hX_6.JSFBehaviorAssist("converter:5", "auto-tab:0", "prompt-char:default"));
+hX_6.addConverter("6", new hX_6.NumberConverter("ICU4J", "strict:1", "pattern:##0", "locale:.,%\u2030-\u20ba"));
+hX_6.addBehavior("f:tbl1:0:t2", "oninput", new hX_6.JSFBehaviorAssist("converter:6", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:0:t5", "oninput", new hX_6.JSFBehaviorAssist("converter:6", "prompt-char:default"));
+hX_6.addConverter("8", new hX_6.NumberConverter("ICU4J", "strict:1", "pattern:###0", "locale:.,%\u2030-\u20ba"));
+hX_6.addBehavior("f:tbl1:0:t3", "oninput", new hX_6.JSFBehaviorAssist("converter:8", "prompt-char:default"));
+hX_6.addConverter("9", new hX_6.NumberConverter("ICU4J", "strict:1", "pattern:####0.0###", "locale:.,%\u2030-\u20ba"));
+hX_6.addBehavior("f:tbl1:0:t4", "oninput", new hX_6.JSFBehaviorAssist("converter:9", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:1:t2", "oninput", new hX_6.JSFBehaviorAssist("converter:6", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:1:t5", "oninput", new hX_6.JSFBehaviorAssist("converter:6", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:1:t3", "oninput", new hX_6.JSFBehaviorAssist("converter:8", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:1:t4", "oninput", new hX_6.JSFBehaviorAssist("converter:9", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:2:t2", "oninput", new hX_6.JSFBehaviorAssist("converter:6", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:2:t5", "oninput", new hX_6.JSFBehaviorAssist("converter:6", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:2:t3", "oninput", new hX_6.JSFBehaviorAssist("converter:8", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:2:t4", "oninput", new hX_6.JSFBehaviorAssist("converter:9", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:3:t2", "oninput", new hX_6.JSFBehaviorAssist("converter:6", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:3:t5", "oninput", new hX_6.JSFBehaviorAssist("converter:6", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:3:t3", "oninput", new hX_6.JSFBehaviorAssist("converter:8", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:3:t4", "oninput", new hX_6.JSFBehaviorAssist("converter:9", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:4:t2", "oninput", new hX_6.JSFBehaviorAssist("converter:6", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:4:t5", "oninput", new hX_6.JSFBehaviorAssist("converter:6", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:4:t3", "oninput", new hX_6.JSFBehaviorAssist("converter:8", "prompt-char:default"));
+hX_6.addBehavior("f:tbl1:4:t4", "oninput", new hX_6.JSFBehaviorAssist("converter:9", "prompt-char:default"));
+hX_6.addBehavior("f:buttonReceteKaydet", "onclick", new hX_6.JSFBehaviorGeneric("action:confirm","target:Receteyi kaydetmek istediginizden emin misiniz?"));
+
+hX_6.addBehavior("f:buttonReceteSil", "onclick", new hX_6.JSFBehaviorGeneric("action:confirm","target:Receteyi silmek istediginizden emin misiniz?"));
+
+hX_6.addBehavior("f:buttonKarekodIptal", "onclick", new hX_6.JSFBehaviorGeneric("action:confirm","target:Karekod sonlandirma iptali yapmak istediginize emin misiniz? Tusa bastiktan sonra lutfen bekleyiniz."));
+
+hX_6.onPageLoad();</SCRIPT>
+</BODY></HTML>

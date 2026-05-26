@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
 from recete_kontrol.base_kontrol import SartDurumu
+from recete_kontrol.tr_normalize import norm_tr_upper
 
 
 @dataclass
@@ -308,12 +309,12 @@ def atom_doktor_brans_in(baglam, *, anahtarlar: List[str],
             if rk.startswith(str(p)):
                 return AtomSonuc(SartDurumu.VAR,
                                  f"Rapor kodu {rk} medula otoritesi")
-    du = baglam.doktor_uzm.upper()
+    du = norm_tr_upper(baglam.doktor_uzm or '')
     if not du:
         return AtomSonuc(SartDurumu.KONTROL_EDILEMEDI,
                          "Doktor uzmanlığı bilgisi yok")
     for a in anahtarlar:
-        if a.upper() in du:
+        if norm_tr_upper(a) in du:
             return AtomSonuc(SartDurumu.VAR,
                              f"Doktor uzmanlığı: {du} (eşleşen: {a})")
     return AtomSonuc(SartDurumu.YOK,
@@ -561,3 +562,402 @@ def atom_kv_karotid(baglam) -> AtomSonuc:
         return AtomSonuc(SartDurumu.VAR, f"Karotid ({gs2})")
     return AtomSonuc(SartDurumu.YOK,
                      "Karotid bulunamadı (aktif + geçmiş raporlar tarandı)")
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# ANTİHİPERTANSİF ATOMLARI (EK-4/F m.51 + mono + ARB-dışı kombi)
+# Kaynak: docs/sut/EK_4_F_m51_ARB.txt (2026-05-21 proje sahibi onaylı)
+# ═════════════════════════════════════════════════════════════════════════
+
+# Kombi tespiti — etken/ticari isim markerları
+_ARB_KOMBI_TICARI = (
+    'EXFORGE', 'SEVIKAR', 'TWYNSTA', 'MICARDISPLUS', 'MICARDIS PLUS',
+    'CO-DIOVAN', 'CO-APROVEL', 'CO-OLMETEC', 'HYZAAR', 'KARVEZIDE',
+    'COSAAR PLUS', 'FORZATEN', 'TRIVERAM', 'AVALOX',
+)
+_ARB_HCT_KEYS = (
+    'HIDROKLOROTIAZID', 'HİDROKLOROTİAZİD', 'HIDROKLORTIAZID',
+    'HYDROCHLOROTHIAZID', 'HCTZ',
+)
+# Diüretik (genel) — Botanik EOS ATC.ATCTurkce alanında C09DA* grubu için
+# "VALSARTAN VE DİÜRETİKLER" / "KANDESARTAN VE DİÜRETİKLER" gibi yazılır.
+# SGK 17.10.2016 duyurusu: "diüretikli kombinasyonlar 1300/51 kapsamı DIŞINDA"
+# — HCT'ye özel değil, tüm ARB+diüretik kombi. ARB+HCT'nin yanı sıra
+# klortalidon, indapamid içeren ARB kombileri de Y2 yoluna düşmeli.
+# Pilot 2026-05-23 (NADİDE ASLAN/FERAYİ KAYA/... 26 vaka): etken
+# "VE DİÜRETİKLER" yazınca hct_var=False kalıyordu → Y2 atlanıp Y3 KE → ŞÜPHELİ.
+_ARB_DIURETIK_GENEL_KEYS = (
+    'DIURETIK', 'DİÜRETİK', 'DIURETIKLER', 'DİÜRETİKLER',
+    'KLORTALIDON', 'KLORTALİDON', 'CHLORTHALIDONE',
+    'INDAPAMID', 'İNDAPAMİD', 'INDAPAMIDE',
+)
+_ARB_CCB_KEYS = (
+    'AMLODIPIN', 'AMLODIPINE', 'LERKANIDIPIN', 'LERKANIDIPINE',
+    'FELODIPIN', 'FELODIPINE', 'NIFEDIPIN', 'NIFEDIPINE',
+    'NITRENDIPIN', 'BARNIDIPIN', 'NIKARDIPIN', 'ISRADIPIN',
+)
+_ARB_ACE_KEYS = (
+    'PERINDOPRIL', 'ENALAPRIL', 'LISINOPRIL', 'RAMIPRIL',
+    'KAPTOPRIL', 'KAPTOPRİL', 'BENAZEPRIL', 'KILAZAPRIL', 'KİLAZAPRİL',
+    'TRANDOLAPRIL', 'KINAPRIL', 'KİNAPRİL', 'FOSINOPRIL', 'FOSİNOPRİL',
+    'DELAPRIL', 'MOEKSIPRIL', 'MOEKSİPRİL', 'SPIRAPRIL', 'SPİRAPRİL',
+    'IMIDAPRIL', 'İMİDAPRİL', 'ZOFENOPRIL',
+)
+_ARB_ETKEN_KEYS = (
+    'IRBESARTAN', 'İRBESARTAN', 'VALSARTAN', 'LOSARTAN', 'TELMISARTAN',
+    'TELMİSARTAN', 'OLMESARTAN', 'KANDESARTAN', 'CANDESARTAN',
+    'EPROSARTAN', 'AZILSARTAN', 'RILMENIDEN', 'RİLMENİDEN',
+    'MOKSONIDIN', 'MOKSONİDİN',
+)
+
+
+def _arb_kombi_analiz(baglam):
+    """Tek geçişte kombi analizi yapar. Dönen sözlük:
+      is_kombi, hct_var, ccb_var, ace_var, hct_only
+
+    Türkçe karakter güvenli (_tr_lower normalize): AMLODİPİN ↔ AMLODIPIN,
+    PERİNDOPRİL ↔ PERINDOPRIL gibi İ/I varyantları otomatik eşleşir.
+    Pilot 2026-05-23: EXFORGE/VALSARTAN+AMLODİPİN için CCB tespit
+    edilemeyince 3'lü kombiler yanlışlıkla HCT_ONLY sayılıyordu.
+    """
+    _trl = baglam._sk._tr_lower
+    aday = _trl(baglam.etkin_madde + ' ' + baglam.ilac_adi)
+    et = baglam.etkin_madde
+    is_kombi = ('/' in et) or (' VE ' in f' {et} ')
+    if not is_kombi and any(_trl(t) in _trl(baglam.ilac_adi)
+                             for t in _ARB_KOMBI_TICARI):
+        is_kombi = True
+    hct_var = (any(_trl(k) in aday for k in _ARB_HCT_KEYS)
+               or ' hct' in (' ' + aday + ' ') or '/hct' in aday
+               or any(_trl(k) in aday for k in _ARB_DIURETIK_GENEL_KEYS))
+    ccb_var = any(_trl(k) in aday for k in _ARB_CCB_KEYS)
+    ace_var = any(_trl(k) in aday for k in _ARB_ACE_KEYS)
+    hct_only = is_kombi and hct_var and not ccb_var and not ace_var
+    return {
+        'is_kombi': is_kombi, 'hct_var': hct_var,
+        'ccb_var': ccb_var, 'ace_var': ace_var, 'hct_only': hct_only,
+    }
+
+
+@atom("arb_kombi_mi")
+def atom_arb_kombi_mi(baglam) -> AtomSonuc:
+    """ARB etken maddesi başka bir antihipertansifle kombi mi?
+
+    `/` ya da kombi ticari isim (Exforge, Sevikar vb.) varsa VAR.
+    Mono ARB ise YOK.
+    """
+    a = _arb_kombi_analiz(baglam)
+    if a['is_kombi']:
+        bilesen = []
+        if a['hct_var']: bilesen.append('HCT')
+        if a['ccb_var']: bilesen.append('CCB')
+        if a['ace_var']: bilesen.append('ACE-i')
+        return AtomSonuc(SartDurumu.VAR,
+                         f"ARB kombi (içerik: {'+'.join(bilesen) or 'belirsiz'})")
+    return AtomSonuc(SartDurumu.YOK, f"Mono ARB: {baglam.etkin_madde}")
+
+
+@atom("arb_kombi_tipi")
+def atom_arb_kombi_tipi(baglam, *, tip: str) -> AtomSonuc:
+    """Kombi tipi sorgu. tip ∈ {'HCT_ONLY', 'CCB_ICEREN', 'ACE_ICEREN'}.
+
+    HCT_ONLY: SGK 17.10.2016 istisnası kapsamı (sadece ARB+HCT).
+    CCB_ICEREN / ACE_ICEREN: 3'lü kombide istisna geçersiz.
+    """
+    a = _arb_kombi_analiz(baglam)
+    t = tip.upper()
+    if t == 'HCT_ONLY':
+        if a['hct_only']:
+            return AtomSonuc(SartDurumu.VAR,
+                             "ARB+HCT diüretik kombi (SGK 17.10.2016 istisnası)")
+        return AtomSonuc(SartDurumu.YOK,
+                         "Sadece-HCT kombi değil (mono ya da CCB/ACE içeriyor)")
+    if t == 'CCB_ICEREN':
+        if a['ccb_var']:
+            return AtomSonuc(SartDurumu.VAR, "Kombide CCB var")
+        return AtomSonuc(SartDurumu.YOK, "Kombide CCB yok")
+    if t == 'ACE_ICEREN':
+        if a['ace_var']:
+            return AtomSonuc(SartDurumu.VAR, "Kombide ACE-i var")
+        return AtomSonuc(SartDurumu.YOK, "Kombide ACE-i yok")
+    return AtomSonuc(SartDurumu.KONTROL_EDILEMEDI, f"Bilinmeyen tip: {tip}")
+
+
+@atom("arb_monoterapi_ibaresi")
+def atom_arb_monoterapi_ibaresi(baglam) -> AtomSonuc:
+    """Raporda "monoterapi ile kan basıncı kontrol altına alınamadığı"
+    ibaresi (2-yönlü: VAR / YOK).
+
+    SUT EK-4/F m.51 (2): bu ibare RAPORDA belirtilmesi gerekir; YOKSA şart
+    sağlanmamış demektir. Sessizlik KE değil YOK döner — kullanıcı kuralı
+    (2026-05-23): "monoterapi ibaresi YOK → UYGUN_DEĞİL etiketi basılır;
+    diğer raporlarda varsa bypass devreye girer ve DİĞER RAPOR UYGUN olur".
+    ŞÜPHELİ etiketi monoterapi atomu için kullanılmaz.
+
+    POZ ibareler (VAR): monoterapi yetersiz, kombi gerekli, tek ilaç
+        kontrol edemiyor.
+    NEG ibareler (YOK): monoterapi yeterli, tek ilaç başarılı (kontrendikasyon).
+    Sessiz (YOK): metin var ama ibare yok — şart sağlanmamış.
+    Rapor metni TAMAMEN BOŞ (YOK): aktif raporda hiç metin yok — yine YOK
+        kabul (post-process bypass diğer raporlara bakar).
+    """
+    ml = (baglam.tum_metin or '')
+    if not ml.strip():
+        return AtomSonuc(SartDurumu.YOK,
+                         "Rapor/mesaj metni boş — monoterapi ibaresi yok")
+    ml = ml.replace('İ', 'i').replace('I', 'i').replace('ı', 'i').lower()
+
+    poz_ibareler = (
+        'monoterapiye dirençli', 'monoterapiye direncli',
+        'monoterapiye yanit', 'monoterapi yetersiz', 'monoterapi yeter siz',
+        'kombine terapi endikasyon', 'kombine tedavi endikasyon',
+        'kombine tedavi gerek', 'kombine tedavi şart', 'kombine tedavi sart',
+        'kombine tedavi endike', 'kombinasyon tedavi gerek',
+        'ikili tedavi gerek', 'üçlü tedavi gerek', 'uclu tedavi gerek',
+    )
+    for ib in poz_ibareler:
+        if ib in ml:
+            return AtomSonuc(SartDurumu.VAR, f'İbare bulundu: "{ib}"')
+
+    # 'monoterapi' tek başına geçiyorsa POZ kabul (mevcut kod kalıbı)
+    if 'monoterapi' in ml:
+        return AtomSonuc(SartDurumu.VAR, 'İbare: "monoterapi"')
+
+    kompozit = (
+        (('tek ilaç', 'tek ilac', 'tek antihipertansif'),
+         ('yeter', 'kontrol', 'sağlanama', 'saglanama',
+          'yanit', 'alinama')),
+        (('kan basinci', 'tansiyon'),
+         ('kontrol altina alinama',
+          'yeterli kontrol sağlanama', 'yeterli kontrol saglanama',
+          'kontrol edilemem')),
+        (('kombinasyon',), ('gerek', 'şart', 'sart', 'endike')),
+        (('yeterli',), ('kontrol sağlanama', 'kontrol saglanama')),
+    )
+    for anchors, helpers in kompozit:
+        if (any(a in ml for a in anchors)
+                and any(h in ml for h in helpers)):
+            anc = next(a for a in anchors if a in ml)
+            return AtomSonuc(SartDurumu.VAR,
+                             f'Kompozit ibare: "{anc}" + yetersiz çağrışım')
+
+    # NEG ibareler (nadir): "monoterapi yeterli" — buraya gelene kadar
+    # "monoterapi" zaten yakalanırdı; bu kol sadece NEG kalıpları için.
+    neg_ibareler = (
+        'monoterapi yeterli', 'tek ilaç kontrol altinda',
+        'tek ilac kontrol altinda',
+    )
+    for ib in neg_ibareler:
+        if ib in ml:
+            return AtomSonuc(SartDurumu.YOK,
+                             f'NEG ibare: "{ib}" — kombi endikasyonu yok')
+
+    return AtomSonuc(SartDurumu.YOK,
+                     'Monoterapi/yetersizlik ibaresi raporda geçmiyor '
+                     '— şart sağlanmamış')
+
+
+# Aile hekimliği yetkisi için sabit tesis kodları
+# (kontrol_arb_ek4f_m51 ile aynı liste — tek kaynak için ileride taşınmalı)
+_AILE_HEKIMLIGI_TESIS_KODLARI = frozenset({'11349904'})
+_KRONIK_HASTALIK_HEKIMI_TESIS_KODLARI = frozenset({'11990099'})
+
+
+@atom("aile_hekimi_yetkisi")
+def atom_aile_hekimi_yetkisi(baglam) -> AtomSonuc:
+    """Aile hekimi reçete yazma yetkisi — 4 yoldan ≥1 sağlanmalı.
+
+    Yollar (OR):
+      1. doktor_uzmanligi 'AİLE HEK' içeriyor (sertifika)
+      2. kurum_adi ASM/AHM/Aile Sağlığı içeriyor
+      3. tesis_kodu sabit listede
+      4. Kronik Hastalık Hekimi (doktor_adi + tesis_kodu)
+
+    Üç-yönlü:
+      VAR : yetki tespit edildi (en az 1 yol)
+      KE  : pratisyen branşı ama sertifika/ASM kaydı yok (manuel)
+      YOK : yetkili branş (uzman) ya da kesin uygunsuz
+    """
+    du = baglam.doktor_uzm.upper()
+    ku = baglam.kurum_adi.upper()
+    tk = baglam.tesis_kodu
+    da = baglam.doktor_adi
+    nedenler = []
+
+    if 'AILE HEK' in du or 'AİLE HEK' in du:
+        nedenler.append('branş: aile hekimliği')
+    if ku and (
+            'AILE SAGLIGI' in ku or 'AİLE SAĞLIĞI' in ku
+            or 'AILE SAĞLIĞI' in ku or 'AİLE SAGLIGI' in ku
+            or 'AILE HEKIMLIGI' in ku or 'AİLE HEKİMLİĞİ' in ku
+            or any(tok in ku.split() for tok in ('ASM', 'AHM'))):
+        nedenler.append(f'kurum: {baglam.kurum_adi[:40]}')
+    if tk and tk in _AILE_HEKIMLIGI_TESIS_KODLARI:
+        nedenler.append(f'tesis kodu: {tk}')
+    if tk and tk in _KRONIK_HASTALIK_HEKIMI_TESIS_KODLARI:
+        if 'kronik hastalik hekimi' in baglam._sk._tr_lower(da or ''):
+            nedenler.append(f'kronik hastalık hekimi (tesis {tk})')
+
+    if nedenler:
+        return AtomSonuc(SartDurumu.VAR, ' + '.join(nedenler))
+
+    # Pratisyen hekim + sertifika/ASM/tesis kanıtı yok → YOK
+    # (Gerçekten sertifikalı pratisyenler için kullanıcı tesis kodunu listeye
+    # ekleyebilir; default davranış raporsuz ARB kombiyi UYGUN_DEGIL'e sürer.)
+    if 'PRATISYEN' in du or 'PRATİSYEN' in du:
+        return AtomSonuc(SartDurumu.YOK,
+                         f'Pratisyen hekim — aile hekimliği sertifikası/ASM '
+                         f'kaydı tespit edilemedi (tesis: {baglam.tesis_kodu or "?"})')
+
+    # Branş bilgisi tamamen yoksa KE
+    if not du:
+        return AtomSonuc(SartDurumu.KONTROL_EDILEMEDI,
+                         'Doktor branş bilgisi yok — manuel doğrulama')
+
+    return AtomSonuc(SartDurumu.YOK,
+                     f'Aile hekimi yetkisi yok (branş: {du})')
+
+
+@atom("kutu_sayisi_op")
+def atom_kutu_sayisi_op(baglam, *, op: str, deger: float) -> AtomSonuc:
+    """Kutu sayısı karşılaştırması.
+
+    op ∈ {'<=', '<', '>=', '>', '='}
+    deger: eşik (örn. 1.0 → "ayda 1 kutu" sınırı).
+    """
+    k = baglam.kutu_sayisi
+    karsilastir = {
+        '<=': lambda a, b: a <= b, '<':  lambda a, b: a < b,
+        '>=': lambda a, b: a >= b, '>':  lambda a, b: a > b,
+        '=':  lambda a, b: a == b,
+    }.get(op)
+    if karsilastir is None:
+        return AtomSonuc(SartDurumu.KONTROL_EDILEMEDI,
+                         f'Geçersiz operatör: {op}')
+    if karsilastir(k, float(deger)):
+        return AtomSonuc(SartDurumu.VAR,
+                         f'Kutu={k:g} {op} {deger:g}')
+    return AtomSonuc(SartDurumu.YOK,
+                     f'Kutu={k:g} {op} {deger:g} sağlanmıyor')
+
+
+@atom("ayni_recete_etken_iceriyor")
+def atom_ayni_recete_etken_iceriyor(baglam, *, anahtarlar: List[str]
+                                     ) -> AtomSonuc:
+    """Aynı reçetenin DİĞER kalemlerinde verilen etken/ilaç markerlarından
+    biri geçiyor mu? (ACE+ARB kontrendikasyon kontrolü için.)
+
+    anahtarlar: ['PRIL', 'SARTAN', 'AMLODIPIN', ...]. Substring eşleşme.
+    Bu satırın kendi etken/ilaç adına BAKMAZ — sadece diğer satırlara.
+    Türkçe karakter güvenli (PERİNDOPRİL ↔ PRIL).
+    """
+    if not baglam.diger_etken_maddeler and not baglam.diger_ilac_adlari:
+        return AtomSonuc(SartDurumu.YOK,
+                         'Aynı reçetede başka kalem yok')
+    hep = baglam._sk._tr_lower(
+        ' '.join(baglam.diger_etken_maddeler + baglam.diger_ilac_adlari))
+    bulunanlar = [a for a in anahtarlar
+                  if baglam._sk._tr_lower(a) in hep]
+    if bulunanlar:
+        return AtomSonuc(SartDurumu.VAR,
+                         f'Diğer kalemde: {bulunanlar} — '
+                         f'aynı reçete kombinasyonu')
+    return AtomSonuc(SartDurumu.YOK,
+                     f'Diğer kalemlerde {anahtarlar} yok')
+
+
+# Mono antihipertansif maksimum doz tablosu (etken bazlı, mg/gün)
+# Kaynak: ilaç prospektüs ruhsat maks dozları. Eksik etken eklemek için
+# prospektüsten ruhsat dozu doğrulanmalı.
+_MONO_AHT_MAKS_DOZ = {
+    # ACE inhibitörleri (C09A)
+    'RAMIPRIL': 10, 'ENALAPRIL': 40, 'LISINOPRIL': 40, 'PERINDOPRIL': 10,
+    'KAPTOPRIL': 150, 'FOSINOPRIL': 40, 'TRANDOLAPRIL': 4,
+    'KINAPRIL': 80, 'QUINAPRIL': 80, 'BENAZEPRIL': 80, 'SILAZAPRIL': 5,
+    'ZOFENOPRIL': 60, 'IMIDAPRIL': 20,
+    # ARB (C09C) — ARB dispatcher'ı kullanır ama mono fallback için
+    'VALSARTAN': 320, 'LOSARTAN': 100, 'IRBESARTAN': 300,
+    'TELMISARTAN': 80, 'KANDESARTAN': 32, 'CANDESARTAN': 32,
+    'OLMESARTAN': 40, 'EPROSARTAN': 800,
+    # Kalsiyum kanal blokerleri (C08)
+    'AMLODIPIN': 10, 'NIFEDIPIN': 60, 'FELODIPIN': 10, 'LERKANIDIPIN': 20,
+    'LASIDIPIN': 6, 'BARNIDIPIN': 20, 'MANIDIPIN': 20, 'NISOLDIPIN': 60,
+    'BENIDIPIN': 16,  # BENIPIN markası — max 16 mg/gün (TR ruhsat)
+    'VERAPAMIL': 480, 'DILTIAZEM': 360,
+    # Beta blokerler (C07)
+    'METOPROLOL': 200, 'BISOPROLOL': 10, 'NEBIVOLOL': 5, 'ATENOLOL': 100,
+    'KARVEDILOL': 50, 'CARVEDILOL': 50, 'PROPRANOLOL': 320,
+    'SOTALOL': 320, 'TALINOLOL': 100, 'CELIPROLOL': 600,
+    # Alfa blokerler (C02C)
+    'DOKSAZOSIN': 16, 'DOXAZOSIN': 16, 'TERAZOSIN': 20, 'PRAZOSIN': 20,
+    # Santral etkili (C02AC)
+    'RILMENIDEN': 2, 'RILMENIDIN': 2, 'MOKSONIDIN': 0.6, 'MOXONIDIN': 0.6,
+    'KLONIDIN': 0.9, 'CLONIDIN': 0.9, 'METILDOPA': 3000, 'METHYLDOPA': 3000,
+    # Diüretikler (C03)
+    'HIDROKLOROTIAZID': 50, 'INDAPAMID': 2.5, 'FUROSEMID': 80,
+    'SPIRONOLAKTON': 100, 'TORASEMID': 200, 'EPLERENON': 50,
+    'AMILORID': 20, 'KLORTALIDON': 100,
+    # Vasodilatörler
+    'HIDRALAZIN': 200, 'MINOKSIDIL': 100,
+}
+
+
+@atom("doz_asimi_kontrol")
+def atom_doz_asimi_kontrol(baglam) -> AtomSonuc:
+    """İlaç adından mg parse + etken bazlı maks doz tablosu karşılaştırma.
+
+    VAR: doz aşımı tespit edildi (UYGUN_DEGIL'e yol açar — formülde negatif
+         kullanılır, ¬doz_asimi → VAR).
+    YOK: doz tablo sınırında veya altında.
+    KE : mg parse edilemedi ya da etken tablo dışı.
+    """
+    mg_match = re.search(r'(\d+(?:[.,]\d+)?)\s*MG', baglam.ilac_adi)
+    if not mg_match:
+        return AtomSonuc(SartDurumu.KONTROL_EDILEMEDI,
+                         'İlaç adından mg bilgisi parse edilemedi')
+    try:
+        doz_mg = float(mg_match.group(1).replace(',', '.'))
+    except ValueError:
+        return AtomSonuc(SartDurumu.KONTROL_EDILEMEDI,
+                         f'mg parse hatası: {mg_match.group(0)}')
+    # Türkçe karakter güvenli karşılaştırma (ENALAPRİL ↔ ENALAPRIL)
+    etkin_norm = baglam._sk._tr_lower(baglam.etkin_madde)
+    for madde, maks in _MONO_AHT_MAKS_DOZ.items():
+        if baglam._sk._tr_lower(madde) in etkin_norm:
+            if doz_mg > maks:
+                # Mono antihipertansif raporsuz serbest → SUT ödüyor;
+                # doz aşımı tespitinde sertifikalı klinik karar gerekir.
+                # KE döndür → sartli_atom ile SARTLI_UYGUN (eczacı uyarısı).
+                return AtomSonuc(SartDurumu.KONTROL_EDILEMEDI,
+                                 f'POSSIBLE DOZ AŞIMI: {madde} {doz_mg}mg > '
+                                 f'maks {maks}mg/gün (etken parse/ruhsat farkı '
+                                 f'olabilir; eczacı manuel doğrula)')
+            return AtomSonuc(SartDurumu.YOK,
+                             f'{madde} {doz_mg}mg ≤ maks {maks}mg/gün')
+    return AtomSonuc(SartDurumu.KONTROL_EDILEMEDI,
+                     f'{baglam.etkin_madde} maks doz tablosunda yok '
+                     f'— manuel doğrulama')
+
+
+@atom("her_zaman_var")
+def atom_her_zaman_var(baglam) -> AtomSonuc:
+    """Her zaman VAR döner. Trivial formül kompozisyonu için
+    (örn. mono antihipertansif SUT 4.1.8 — ek şart yok, raporsuz serbest)."""
+    return AtomSonuc(SartDurumu.VAR, 'SUT genel hüküm — ek şart yok')
+
+
+@atom("etkin_madde_iceriyor")
+def atom_etkin_madde_iceriyor(baglam, *, anahtarlar: List[str]) -> AtomSonuc:
+    """Etken madde / ilaç adı verilen substring listesinden ≥1 içeriyor mu?
+
+    Genel amaçlı sınıflandırma atomu (ARB / ACE / KKB / BB tespiti vs.).
+    Türkçe karakter güvenli (PERİNDOPRİL ↔ PRIL, AMLODİPİN ↔ DIPIN).
+    """
+    aday = baglam._sk._tr_lower(baglam.etkin_madde + ' ' + baglam.ilac_adi)
+    bulunanlar = [a for a in anahtarlar
+                  if baglam._sk._tr_lower(a) in aday]
+    if bulunanlar:
+        return AtomSonuc(SartDurumu.VAR,
+                         f'Etken/ad markeri eşleşti: {bulunanlar[0]}')
+    return AtomSonuc(SartDurumu.YOK,
+                     f'Markerlardan hiçbiri yok ({anahtarlar[:3]}...)')

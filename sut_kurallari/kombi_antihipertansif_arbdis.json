@@ -1,0 +1,30 @@
+{
+  "_aciklama": "ARB-DIŞI Kombi Antihipertansif (genel hüküm) — ACE+HCT, BB+HCT, KKB+HCT, ACE+KKB gibi ARB içermeyen sabit kombiler. SUT'ta özel madde YOK (EK-4/F m.51 sadece ARB içeren kombileri kapsar). SUT 4.1.8 genel hükmü gereği raporsuz serbest. NOT: Mevcut kodda 'KOMBINE_ANTIHIPERTANSIF' kategorisi 4.2.12.B etiketiyle çalışır; 4.2.12.B SUT'ta İMMÜNGLOBULIN maddesidir, etiket yanlış kullanılmış. Bu kural dosyası doğru etiketi kullanır.",
+  "_kaynak": "docs/sut/EK_4_F_m51_ARB.txt (ARB-dışı kombi bölümü)",
+  "_boolean_formul": "KOMBI_ARBDIS_UYGUN ⇔ TRUE (genel hüküm — kombi etken zaten kanıt)",
+  "sut_kodu": "SUT 4.1.8 (genel) — ARB-dışı kombi",
+  "adi": "Kombi Antihipertansif (ARB-dışı)",
+  "sut_kurali_etiketi": "Kombi antihipertansif ARB-dışı (genel hüküm — kombi etken monoterapi yetersizliğinin örtük göstergesi)",
+  "aranan_ibare": "Kombi etken madde (ACE+HCT / BB+HCT / KKB+HCT vb.)",
+  "sut_metni": "ARB içermeyen kombi antihipertansifler (örn. ACE-i + diüretik, BB + diüretik, KKB + diüretik):\n  - SUT'ta özel madde yok; SUT 4.1.8 genel hükmü gereği raporsuz serbest reçete edilir.\n  - Kombi etken madde varlığı zaten 'monoterapi yetersizliği'nin somut göstergesidir (hekim mono → kombi geçişi yapmış).\n  - Raporlu da yazılabilir (04.05 antihipertansiyon raporu).\n\nFARK: EK-4/F m.51 (ARB+kombi) için raporda 'monoterapi yetersizliği' ibaresi şart; ARB-DIŞI kombi için bu şart YOK.",
+  "sut_metni_kaynak": "docs/sut/EK_4_F_m51_ARB.txt",
+  "on_kontrol": [],
+  "formul": {
+    "_yorum": "Genel hüküm: kombi etken madde varsa UYGUN (kombi varlığı zaten kanıt). Rapor durumu bilgi olarak detaylar'da görünür ama formülde değil — raporsuz da raporlu da UYGUN.",
+    "tip": "AND",
+    "alt": [
+      {
+        "tip": "AND",
+        "grup": "Kombi tespit",
+        "alt": [
+          {
+            "ad": "Kombi etken madde (ACE/KKB/BB/Diüretik markerlarından ≥1)",
+            "atom": "etkin_madde_iceriyor",
+            "params": {"anahtarlar": ["/", "PRIL", "OLOL", "DIPIN", "TIAZID", "INDAPAMID"]},
+            "kaynak": "etkin_madde"
+          }
+        ]
+      }
+    ]
+  }
+}

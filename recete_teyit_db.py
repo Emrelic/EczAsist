@@ -41,9 +41,16 @@ TEYIT_SUPHELI = "SUPHELI"
 # raporundan tamamlandı; eczacı kontrol edip "bypass'i kabul ediyorum"
 # diye manuel işaretleyebilir (otomatik kontrol verdict'ine ek olarak).
 TEYIT_DIGER_RAPOR = "DIGER_RAPOR_UYGUN"
+# Eczacının "şartlı kabul" (örn. 6 ay ara şartı manuel doğrulandı sayılır)
+TEYIT_SARTLI_UYGUN = "SARTLI_UYGUN"
+# Eczacının "elimle inceledim, otomatik motorun verdict'ini onaylamıyorum"
+TEYIT_MANUEL_KONTROL = "MANUEL_KONTROL"
+# SUT ödüyor ama klinik kontrendikasyon var (ACE+ARB, çift BB, vb.)
+TEYIT_TIBBEN_UYGUN_DEGIL = "TIBBEN_UYGUN_DEGIL"
 
 GECERLI_SONUCLAR = {TEYIT_UYGUN, TEYIT_UYGUN_DEGIL, TEYIT_SUPHELI,
-                     TEYIT_DIGER_RAPOR}
+                     TEYIT_DIGER_RAPOR, TEYIT_SARTLI_UYGUN,
+                     TEYIT_MANUEL_KONTROL, TEYIT_TIBBEN_UYGUN_DEGIL}
 
 
 def _db_yolu() -> Path:
@@ -242,6 +249,9 @@ ROZET = {
     TEYIT_UYGUN_DEGIL: "✗",
     TEYIT_SUPHELI: "?",
     TEYIT_DIGER_RAPOR: "ℹ",
+    TEYIT_SARTLI_UYGUN: "≈",
+    TEYIT_MANUEL_KONTROL: "⚠",
+    TEYIT_TIBBEN_UYGUN_DEGIL: "⚕",
 }
 
 ETIKET = {
@@ -249,6 +259,9 @@ ETIKET = {
     TEYIT_UYGUN_DEGIL: "UYGUN DEĞİL (teyit)",
     TEYIT_SUPHELI: "ŞÜPHELİ (teyit)",
     TEYIT_DIGER_RAPOR: "DİĞER RAPOR UYGUN (teyit)",
+    TEYIT_SARTLI_UYGUN: "ŞARTLI UYGUN (teyit)",
+    TEYIT_MANUEL_KONTROL: "MANUEL KONTROL (teyit)",
+    TEYIT_TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL (teyit)",
 }
 
 

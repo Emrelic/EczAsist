@@ -235,7 +235,10 @@ Bu kural ezbere kontrol yazımını engeller; SUT'taki güncel "Ek ibare/Değiş
 
 ## Detaylı Dokümanlar (gerektiğinde oku)
 - `docs/sut/SUT_tam_metin.txt` — ⚠️ **Resmî SUT lafzı** (mevzuat.gov.tr, MevzuatNo=17229). Yeni ilaç grubu / SUT maddesi kontrolüne başlamadan **önce** ilgili madde buradan grep edilip kullanıcıya gösterilir (bkz. Atomik Devre Şeması Prensipleri §11). PDF orijinal: `docs/sut/SUT_tam_metin.pdf`.
-- `docs/SUT_MANTIK_SEMA_PROTOKOLU.md` — ⚠️ **SUT kontrol implementasyonu için ZORUNLU metodoloji** (7-adım + YOAK çalışılmış örnek). Yeni SUT/ilaç grubu işlerinde mutlaka oku.
+- `docs/SUT_MANTIK_SEMA_PROTOKOLU.md` — ⚠️ **SUT kontrol implementasyonu için ZORUNLU metodoloji** (7-adım + YOAK çalışılmış örnek, insan-eli akış). Yeni SUT/ilaç grubu işlerinde mutlaka oku.
+- `docs/SUT_AI_PROTOKOL_v1.md` — ⚠️ **AI-eli SUT→JSON v2→şema protokolü** (12-adım + Akut Hep B çalışılmış örnek, 2026-05-23). AI'nın SUT lafzını çözümleyip atomik JSON ürettiği ve sistemin **kod dokunmadan** şemayı otomatik çizdiği yeni pipeline. Yeni SUT kontrolü Python kodu yazmak yerine JSON üretmekle başlar.
+- `sut_kurallari/v2/SCHEMA.md` — JSON v2 şema referansı (inline atom tipleri, dispatcher, üst-VEYA çiftleri, senaryolar).
+- `recete_kontrol/sut_motor/motor_v2.py` — v2 motor (atomlar+formül string → SartSonuc). Pilot: `sut_kurallari/v2/akut_hepatit_b_4_2_13_3.json`. Test: `python test_hepatit_v2_pilot.py` (13/13 PASS). Demo: `python demo_v2_pipeline.py`.
 - `KALDIGI_YER.md` — aktif modül geliştirme durumları (reçete kontrol, MF analiz, vs.)
 - `MF_ANALIZ_MODULU_SPEC.md` — MF analiz modülü detayları
 - `RECETE_ISLEME_SEMASI.md` — reçete işleme akışı

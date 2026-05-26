@@ -3,9 +3,10 @@
 
 > Kaynak: mevzuat.gov.tr, MevzuatNo=17229 (SGK SUT) — `docs/sut/SUT_tam_metin.txt:5452-5646`.
 > Çalışılmış pilot: YOAK 4.2.15.D (bkz. `docs/SUT_MANTIK_SEMA_PROTOKOLU.md`).
-> Bu belge `recete_kontrol/hepatit_kontrol.py` (2561 satır) implementasyonunun
+> Bu belge `recete_kontrol/hepatit_kontrol.py` (3381 satır) implementasyonunun
 > **donmuş tasarım belgesi**dir. Mevzuat değişirse buradan başlanır.
-> Versiyon: 2026-05-17 (revize 2 — kullanıcı onaylı 10 karar uygulandı)
+> Versiyon: 2026-05-23 (revize 3 — başlangıç/devam dallanması + Y1 PIF üst-VEYA fix + ASCII akım şemaları)
+> Test sayısı: `test_hepatit_atomik.py` 16/16 ∧ `test_hepatit_baslangic_devam.py` 21/21 = 37/37 pass
 
 ---
 
@@ -38,6 +39,48 @@
 4. Yaş (çocuk <18 / erişkin)
 5. Önceki HCV tedavisi (naive vs deneyimli — rapor metni + DB)
 
+### 1.1 Yolak seçim akım şeması (ASCII)
+
+```
+                         ┌──────────────────────────────┐
+                         │  ETKEN TİP TESPİTİ           │
+                         │  (_hep_etken_tip → HBV_ORAL/ │
+                         │   HCV_DAA/PEG_IFN/IFN/RBV/   │
+                         │   NONE)                      │
+                         └─────────────┬────────────────┘
+                                       │
+                            NONE? ─Y──▶ ATLANDI (HIV vs.)
+                                       │ N
+                                       ▼
+                        ┌──────────────────────────────┐
+                        │ ENDİKASYON SİNYALLERİ        │
+                        │ ICD+metin: akut B / akut C / │
+                        │  Delta / transplant / imsup /│
+                        │  siroz                       │
+                        └─────────────┬────────────────┘
+                                      │
+        ┌─────────────────────────────┼─────────────────────────────┐
+        │                             │                             │
+        ▼ HBV_ORAL                    ▼ PEG_IFN                     ▼ HCV_DAA / IFN(¬akutC) / RBV
+   ┌─────────────────┐         ┌──────────────────┐         ┌──────────────────────┐
+   │ Akut B?  ─Y▶ Y6│         │ Akut C? ─Y▶ Y8   │         │ Önceki HCV tedavi?   │
+   │ Delta?   ─Y▶ Y7│         │ Delta?  ─Y▶ Y7   │         │ (hep_onceki_hcv_*    │
+   │ Transp.? ─Y▶ Y5│         │ Y1 (PIF aday)*   │         │  metin + DB)         │
+   │ İmsup?   ─Y▶ Y4│         └──────────────────┘         └──────────┬───────────┘
+   │ Siroz?   ─Y▶ Y3│                                                 │
+   │ Yaş<18?  ─Y▶ Y2│                                  ┌──────────────┴──────────────┐
+   │ Default ───▶ Y1│                                  ▼ Yaş <18                     ▼ Erişkin
+   └─────────────────┘                          ┌─────────────────┐         ┌─────────────────┐
+                                                │ Deneyimli? ─Y▶12│         │ Deneyimli? ─Y▶10│
+                                                │ Default ─────▶11│         │ Default ──────▶9│
+                                                └─────────────────┘         └─────────────────┘
+
+* Y1'de etken=PEG_IFN ise PIF kolu üst-VEYA çiftine alternatif olarak katılır
+  (SUT 4.2.13.1(2)(a) — 2026-05-23 fix, bkz. §3 Boolean formül).
+```
+
+### 1.2 Sözel dispatcher (kod ile birebir)
+
 ```
 ETKİN_TİP=NONE                           → KAPSAM DIŞI (ATLANDI)
 Akut B (ICD B16 ∨ "akut hepatit B") ∧ HBV_ORAL  → Y6
@@ -48,8 +91,8 @@ HBV_ORAL ∨ PEG_IFN:
    • immünsüpresif/kemo/monoklonal/rituximab → Y4
    • siroz ibaresi → Y3
    • yaş < 18 → Y2
-   • aksi → Y1 (default)
-HCV_DAA ∨ (IFN ∧ ¬akut C):
+   • aksi → Y1 (default; PEG_IFN ise Y1 içinde PIF kolu da çalışır)
+HCV_DAA ∨ (IFN ∧ ¬akut C) ∨ RIBAVIRIN:
    • yaş < 18:
        önceki HCV tedavi VAR → Y12, aksi Y11
    • erişkin:
@@ -57,6 +100,45 @@ HCV_DAA ∨ (IFN ∧ ¬akut C):
 ```
 
 **Belirsiz**: Etkin madde tanınıyor ama hiçbir endikasyon eşleşmiyor → `BELIRSIZ` yolak, KE+manuel.
+
+### 1.3 Başlangıç/devam dallanması (2026-05-21, tüm HBV yolaklarında)
+
+Y1/Y2/Y3 (ve Y4/Y5/Y7 helper çağrısı ile) reçete tipi tespit eder ve atom setini buna göre filtreler:
+
+```
+        ┌────────────────────────────────────────────────────┐
+        │ _hep_recete_tipi_tespit(ilac_sonuc, metin)         │
+        │ Sinyaller:                                         │
+        │   • Metin: "başlanması"/"ilk tedavi" → BASLANGIC   │
+        │   • Metin: "tedavinin devamı"/"yenileme" → DEVAM   │
+        │   • DB (oturum_raporlari.db): aynı etken/hasta     │
+        │     önceki reçete VAR → DEVAM güvenli              │
+        │   • Çelişki → DEVAM (güvenli karar)                │
+        │   • Hiçbiri → BELİRSİZ (atomlar (bilgi) suffix'li) │
+        └─────────────────────┬──────────────────────────────┘
+                              │
+            ┌─────────────────┼─────────────────┐
+            ▼ BASLANGIC       ▼ DEVAM           ▼ BELİRSİZ
+   ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+   │ /1 HBV DNA+yol-a │ │ /4 etken değişim │ │ İkisi de (bilgi) │
+   │ /1.b 40+ DNA≥20k │ │   gerekçe        │ │ → matematiğe     │
+   │ /3 erişkin doz   │ │ /6.a HBsAg/AntiHBs│ │   girmez         │
+   │ /2 PIF (opsiyon) │ │ /6.b ≤12 ay son  │ │ → SARTLI_UYGUN   │
+   │                  │ │ /7 HBsAg+ devam  │ │                  │
+   └──────────────────┘ └──────────────────┘ └──────────────────┘
+            │                 │                 │
+            └────────┬────────┴─────────────────┘
+                     ▼
+            ┌──────────────────────────────────────┐
+            │ Ortak atomlar (her tip için aktif):  │
+            │   • R1 uzman raporu                  │
+            │   • R2 reçete yetkili branş          │
+            │   • /8 rapor süresi (6 ay/1 yıl)     │
+            │   • Geçmiş rapor DB (MEDULA)         │
+            └──────────────────────────────────────┘
+```
+
+Helper: `_hep_y_baslangic_devam_uygula(ilac_sonuc, metin, kat, etkin_tip, sartlar, detaylar)` — Y1/Y2/Y3/Y7 başında çağrılır, atomları ortak `sartlar` listesine ekler.
 
 ---
 
@@ -112,17 +194,46 @@ Y1_UYGUN ⇔ R1 ∧ R2 ∧ E1 ∧ [
     ∨
     YOL-B : B1 ∧ B2 ∧ B3
     ∨
-    YOL-PIF : P1 ∧ (P2 ∨ P3)   ⟵ etkin=PEG_IFN ise
+    YOL-PIF : P1 ∧ P_eag   ⟵ etkin=PEG_IFN ise (üst-VEYA'ya eklenir)
+              P_eag = (HBeAg(-)∧DNA≤10⁷) ∨ (HBeAg(+)∧DNA≤10⁹)
+              (POZ/NEG ayrı atom değil — tek birleşik atom, atom içinde
+               OR mantığı durumda çözülür → grup saf AND kalır)
 ]
 ```
 
-### Mevcut kod uyum
-✅ `_hep_yolak1_eriskin_b` (line 1080–1263): atomlar oluşturuluyor, `ust_or_ciftleri=[('(1)(a) HBV DNA','(1)(b) ≥40 yaş'), ('(1)(a)(1) Histoloji','(1)(a)(2) ALT yüksek','(1)(a)(2) FIB-4')]` — üst-VEYA aggregator parametresi mevcut.
+### Mini akım şeması (Y1 — kronik B erişkin)
 
-⚠ **Olası iyileştirmeler:**
-1. PIF (pegile IFN) yolu üst-VEYA çiftine eklenmiyor — etkin_tip=PEG_IFN ise PIF kolu da geçerli alternatiftir.
-2. "3 ay arayla 2 ölçüm" ibaresi tek atomda kontrol ediliyor; ölçüm tarih farkı parser eklenebilir (low priority).
-3. Yol-a-alt'ta: ALT yüksek atomu ve FIB-4/APRI grubu ayrı `grup` adında — bu doğru, ama "A4 ∧ (A5∨A6)" iç AND bağı için aggregator'da iki grubun **ikisi de** doğru olmalı; mevcut kod (a-alt) ve (a-alt-iç) ayrı grup → AND otomatik mi? Doğrulanmalı.
+```
+    ⊕──[R1: Uzman rapor]──[R2: Reçete yetki]──[E1: HBV tanı]──┐
+                                                              │
+                                            ┌─────────────────┼─────────────────┐
+                                            │                 │                 │
+                                            ▼ YOL-A           ▼ YOL-B           ▼ YOL-PIF (etken=PEG_IFN)
+                                  ┌───────────────────┐ ┌──────────┐ ┌──────────────────┐
+                                  │ A1: HBV DNA≥2000  │ │ B1: Yaş  │ │ P1: ALT>2×ÜS     │
+                                  │ ∧ (hist ∨ ALT yol)│ │  >40     │ │ ∧ (HBeAg+DNA     │
+                                  │                   │ │ ∧ B2: DNA│ │   eşik VAR)      │
+                                  │ hist: HAI≥6 ∨    │ │  ≥20.000 │ │                  │
+                                  │       fibr≥2     │ │ ∧ B3: po │ │ (HBeAg(-)∧≤10⁷)  │
+                                  │ ALT yol: ALT yük │ │  oral    │ │  veya            │
+                                  │       ∧ (FIB-4>  │ │  antivir │ │ (HBeAg(+)∧≤10⁹)  │
+                                  │     1.45∨APRI>0.5│ │          │ │                  │
+                                  └─────────┬─────────┘ └────┬─────┘ └────────┬─────────┘
+                                            │  ∨               │  ∨            │
+                                            └──────────────────┴───────────────┘
+                                                              │
+                                                              ▼
+                                                          ⊖ (UYGUN)
+```
+
+### Mevcut kod uyum (2026-05-23)
+✅ `_hep_yolak1_eriskin_b` (line 1631–1875): tüm atomlar üretiliyor, **PIF kolu üst-VEYA çiftine dahil edildi** (`ust_or` listesine etkin=PEG_IFN ise `'(2)(a) Pegile interferon'` prefix'i eklenir).
+✅ HBeAg POZ/NEG iki ayrı atom yerine **tek birleşik atom** (POZ/NEG mantığı atom durumunda çözülür) → PIF grubu saf AND, aggregator doğru hesaplar.
+✅ Üst-VEYA çiftleri: `[('(1)(a) HBV DNA', '(1)(b) ≥40 yaş', ['(2)(a) Pegile interferon' opt]), ('(1)(a)(1) Histoloji', '(1)(a)(2) ALT yüksek', '(1)(a)(2) FIB-4')]`.
+
+⚠ **Kalan iyileştirme adayları (low priority):**
+1. "3 ay arayla 2 ölçüm" ibaresi tek atomda kontrol ediliyor; ölçüm tarih farkı parser eklenebilir.
+2. Yol-a-alt'ta `(a-alt)` ALT atomu ve `(a-alt-iç)` FIB-4/APRI ayrı gruplar; aggregator otomatik AND'lerken iç-iç-OR doğru çözülüyor (test #16 ile yansıması doğrulandı).
 
 ---
 
@@ -149,9 +260,30 @@ Y1_UYGUN ⇔ R1 ∧ R2 ∧ E1 ∧ [
 Y2_UYGUN ⇔ R1 ∧ R2 ∧ Y1 ∧ E1 ∧ A1 ∧ (C1 ∨ C2) ∧ D1
 ```
 
+### Mini akım şeması (Y2 — çocuk B 2-18)
+
+```
+    ⊕──[R1 uzman]──[R2 yetki]──[Y1: yaş 2-18]──[E1: HBV]──[A1: DNA≥2000]──┐
+                                                                          │
+                                                ┌─────────────────────────┼──────────────────┐
+                                                ▼ ALT yolu                ▼ Fibrozis yolu
+                                       ┌──────────────────┐      ┌──────────────────┐
+                                       │ C1: ALT>2×ÜS     │      │ C2: Fibrozis≥2   │
+                                       │     ∧ HAI≥4      │      │ (ALT bakılmaks.) │
+                                       └────────┬─────────┘      └────────┬─────────┘
+                                                │       ∨                  │
+                                                └──────────┬───────────────┘
+                                                           ▼
+                                                  [D1: yaş-doz uyumu (bilgi)]
+                                                           │
+                                                           ▼
+                                                       ⊖ (UYGUN)
+```
+
 ### Mevcut kod uyum
-✅ `_hep_yolak2_cocuk_b` (line 1270+) — atomlar mevcut.
-⚠ D1 yaş-ilaç uyumu (LAM 2-18, TDF/TAF 12-18, ETV 16-18) atomu eklenmiş mi kontrol edilmeli (sonraki adımda dosyaya bakacağım).
+✅ `_hep_yolak2_cocuk_b` (line 1882–1971) — atomlar mevcut, üst-VEYA çifti `[('(1)(a)(1) ALT>2×ÜS', '(1)(a)(1) Fibrozis ≥ 2')]`.
+✅ D1 yaş-doz uyumu **bilgi atomu** olarak eklendi (LAM 3mg/kg 2-18, TDF/TAF 245mg/25mg 12-18, ETV 0.5mg 16-18) — matematiği bozmaz, eczacı doğrular.
+✅ Başlangıç/devam helper çağrılıyor (`ekle_eriskin_doz=False` — çocuk için /3 erişkin doz tablosu uygulanmaz).
 
 ---
 
@@ -179,9 +311,27 @@ Y3_UYGUN ⇔ R1 ∧ R2 ∧ E1 ∧ E2 ∧ A1 ∧ [ B1 ∨ (B2 ∨ B3) ]
                                        ⟵ biyopsi varsa veya biyopsisiz şartlar
 ```
 
+### Mini akım şeması (Y3 — B + siroz)
+
+```
+    ⊕──[R1]──[R2]──[E1: siroz]──[E2: HBV ICD]──[A1: HBV DNA+]──┐
+                                                               │
+                                          ┌────────────────────┼─────────────────────┐
+                                          ▼ Yol-A: Biyopsi VAR ▼ Yol-B: Biyopsi YOK
+                                  ┌──────────────────┐ ┌──────────────────────┐
+                                  │ B1: HAI/fibrozis │ │ B2: Trombo<150.000   │
+                                  │     raporlanmış  │ │   ∨ B3: PT≥3sn       │
+                                  └────────┬─────────┘ └──────────┬───────────┘
+                                           │       ∨               │
+                                           └───────┬───────────────┘
+                                                   ▼
+                                              ⊖ (UYGUN)
+```
+
 ### Mevcut kod uyum
-✅ `_hep_yolak3_b_siroz` (line 1339+) mevcut.
-⚠ "Biyopsi kanıtı olmayan hastalarda" → biyopsi varsa B2/B3 koşulu aranmıyor; bu çift atomu kodda ayrı tutuluyor mu doğrulanmalı.
+✅ `_hep_yolak3_b_siroz` (line 1978–2063) mevcut, üst-VEYA çifti `[('(1)(A) Biyopsi VAR', '(1)(B) Biyopsi YOK')]`.
+✅ Biyopsi VAR sinyali: HAI/fibrozis sayısal değer + metin ibareleri ("biyopsi yapıldı/kanıt/sonuc/metavir/ishak skor").
+✅ Başlangıç/devam helper çağrılıyor (siroz hastasında oral antiviral devamı için /4/6/7 atomları geçerli).
 
 ---
 
@@ -216,9 +366,26 @@ Y4_UYGUN ⇔ R1 ∧ R2 ∧ I1 ∧ D1 ∧ [
 ]
 ```
 
+### Mini akım şeması (Y4 — B + immünsüpresif)
+
+```
+    ⊕──[R1]──[R2]──[I1: immünsüp/kemo/monoklonal]──[D1: HBV oral]──┐
+                                                                   │
+                                          ┌────────────────────────┼──────────────────────────┐
+                                          ▼ Yol (1): HBsAg(+)      ▼ Yol (3): HBsAg(−)
+                                  ┌──────────────────┐    ┌─────────────────────────────┐
+                                  │ S1: HBsAg(+)     │    │ S2: HBsAg(−) ∧             │
+                                  │  (lab koşulu     │    │     (S3: HBV DNA+ ∨        │
+                                  │   aranmaz)       │    │      S4: Anti-HBc+)         │
+                                  └────────┬─────────┘    └──────────┬──────────────────┘
+                                           │     ∨                    │
+                                           └─────┬────────────────────┘
+                                                 ▼
+                                            ⊖ (UYGUN)
+```
+
 ### Mevcut kod uyum
-✅ `_hep_yolak4_b_immunsup` (line 1396+).
-⚠ İki ayrı yol (HBsAg+ tek başına vs HBsAg− + DNA/Anti-HBc) üst-VEYA olarak ayrıştırılmış mı doğrulanmalı.
+✅ `_hep_yolak4_b_immunsup` (line 2070–2164), üst-VEYA çifti `[('(1) HBsAg(+) yolu', '(3) HBsAg(-) ∧ (DNA+ ∨ AntiHBc+)')]`.
 
 ---
 
@@ -243,8 +410,17 @@ Y5_UYGUN ⇔ R1 ∧ R2 ∧ (T1 ∨ T2) ∧ D1
 
 Lab/biyopsi şartı **YOK** (SUT açıkça "bakılmaksızın" diyor).
 
+### Mini akım şeması (Y5 — transplant)
+
+```
+    ⊕──[R1]──[R2]──┬─[T1: KC nakli (HBV)]─┐
+                   │                       │ ∨
+                   └─[T2: Anti-HBc(+) donör KC]──┘──[D1: HBV oral]──⊖
+                            (lab/biyopsi/HBV DNA aranmaz)
+```
+
 ### Mevcut kod uyum
-✅ `_hep_yolak5_b_transplant` (line 1482+).
+✅ `_hep_yolak5_b_transplant` (line 2166–2212). Lab/biyopsi atomu yok (SUT lafzına uygun).
 
 ---
 
@@ -275,8 +451,23 @@ Lab/biyopsi şartı **YOK** (SUT açıkça "bakılmaksızın" diyor).
 Y6_UYGUN ⇔ R1 ∧ R2 ∧ E1 ∧ (C1 ∨ C2 ∨ C3)
 ```
 
+### Mini akım şeması (Y6 — Akut B)
+
+```
+    ⊕──[R1]──[R2]──[E1: Akut B (B16 ∨ "akut hepatit B")]──┐
+                                                          │
+                              ┌───────────────────────────┼───────────────────┐
+                              ▼ C1                        ▼ C2                ▼ C3
+                       [INR≥1.5]              [PT>ÜS+4sn]         [Sarılık>4 hf]
+                              │      ∨                   │      ∨           │
+                              └──────────────────────────┴──────────────────┘
+                                                          │
+                                          [SB onaylı antiviral ilaç]──⊖
+                                          [Bitiş kriteri (bilgi): 4hf×2 HBsAg(−)]
+```
+
 ### Mevcut kod uyum
-✅ `_hep_yolak6_akut_b` (line 1520+). SUT lafzındaki "ve/veya" parsing'in nasıl yapıldığı doğrulanmalı.
+✅ `_hep_yolak6_akut_b` (line 2214–2267). 3-OR çiddi klinik grubu (kullanıcı onaylı yorum, 2026-05-17).
 
 ---
 
@@ -300,12 +491,34 @@ Y6_UYGUN ⇔ R1 ∧ R2 ∧ E1 ∧ (C1 ∨ C2 ∨ C3)
 ```
 Y7_UYGUN ⇔ R1 ∧ R2 ∧ E1 ∧ A1 ∧ D1
    (∧ A2 bilgi)
-   (∧ Y1-atomları, sadece etkin=HBV_ORAL ise → "Kronik B tedavi koşullarını taşıyanlar")
+   (∧ etkin=HBV_ORAL ise: KB-A-hist ∨ KB-A-alt-iç)   ⟵ Kronik B tedavi koşulları
+```
+
+### Mini akım şeması (Y7 — Delta/HDV)
+
+```
+    ⊕──[R1]──[R2]──[E1: Anti-HDV(+)]──[HBV DNA raporda]──[D1: PEG-IFN ∨ HBV oral]──┐
+                                                                                   │
+                              ┌─ etkin=PEG_IFN: doğrudan UYGUN ────────────────────┤
+                              │                                                    │
+                              └─ etkin=HBV_ORAL: + Kronik B koşulları──────────────┤
+                                 ┌──────────────────────┐                          │
+                                 │ KB-A-hist:           │      ∨                   │
+                                 │   HAI≥6 ∨ fibroz≥2  │ ────────────┐             │
+                                 │ KB-A-alt-iç:         │             ├─────────────┘
+                                 │   FIB-4>1.45 ∨ APRI  │             │
+                                 │     >0.5             │ ────────────┘
+                                 └──────────────────────┘
+                                                                       │
+                                                                       ▼
+                                          [EK-4E 11/A/10: Enf Uzm yokluğunda yetki devri (bilgi)]
+                                                                       ▼
+                                                                  ⊖ (UYGUN)
 ```
 
 ### Mevcut kod uyum
-✅ `_hep_yolak7_kronik_d` (line 1577+).
-⚠ "Oral antiviral eklenebilir" yan-şartı (kronik B koşulu) etkin=HBV_ORAL ise atomik olarak eklenmeli; aksi takdirde PEG_IFN ile tek başına yeterli.
+✅ `_hep_yolak7_kronik_d` (line 2274–2388). HBV_ORAL ise Y1 atomları inline (KB-A-hist ∨ KB-A-alt-iç) eklenip üst-VEYA çiftine alınıyor.
+✅ EK-4E 11/A/10 yetki devri bilgi atomu (reçete açıklamasında "Enf Uzm yok" regex'i kontrol ediliyor).
 
 ---
 
@@ -334,8 +547,27 @@ Y8_UYGUN ⇔ R1 ∧ R2 ∧ E1 ∧ A1 ∧ D1 ∧ B1
 
 **B1 NEGATİF atom — DeMorgan disiplini:** Reçetede Ribavirin görünürse şart YOK → UYGUN_DEĞİL. Reçete kalemleri biliniyorsa VAR (yok ise) ya da YOK (varsa). Reçete `recete_ilaclari` listesinde "RIBAVIRIN/COPEGUS/REBETOL/VIRAZOLE" sorgulanır.
 
+### Mini akım şeması (Y8 — Akut C, Ribavirin YASAK)
+
+```
+    ⊕──[R1]──[R2]──[E1: Akut C (B17.1)]──[A1: HCV RNA+]──[D1: PEG-IFN monoterapi]──┐
+                                                                                   │
+                                                                                   ▼
+                                                                ┌──────────────────────────┐
+                                                                │ B1: Reçetede Ribavirin   │
+                                                                │     YOK (negatif atom)   │
+                                                                │  (RIBAVIRIN/COPEGUS/     │
+                                                                │   REBETOL/VIRAZOLE       │
+                                                                │   diger_ilaclar'da yok)  │
+                                                                └────────────┬─────────────┘
+                                                                             │
+                                                                             ▼
+                                                                         ⊖ (UYGUN)
+                                                  (B1 YOK → UYGUN_DEĞİL — Ribavirin yasağı ihlali)
+```
+
 ### Mevcut kod uyum
-✅ `_hep_yolak8_akut_c` (line 1630+). Test #6 başarılı: "Akut C + Ribavirin → UYGUN_DEĞİL".
+✅ `_hep_yolak8_akut_c` (line 2395–2480). Test #6 başarılı: "Akut C + Ribavirin → UYGUN_DEĞİL".
 
 ---
 
@@ -387,9 +619,29 @@ Y9_UYGUN ⇔ R1 ∧ R2 ∧ R3 ∧ E1 ∧ E2 ∧ E3 ∧ [
 ]
 ```
 
+### Mini akım şeması (Y9 — HCV erişkin naive)
+
+```
+    ⊕──[R1/R2/R3]──[E1: kronik C]──[E2: HCV RNA+]──[E3: erişkin]──┐
+                                                                  │
+              ┌───────────────────────────┬──────────────────────┴──────────────────────┐
+              ▼ N (Nonsirotik)            ▼ KA (Kompanse Child-A)                       ▼ DA (Dekompanse)
+       ┌──────────────────┐        ┌────────────────────────┐              ┌──────────────────────────┐
+       │ N1: nonsirotik   │        │ KA1: kompanse (Child A)│              │ DA1: dekompanse (B/C)    │
+       │ N2: SVV ∨ GP     │        │ KA2: (trombo<150k ∨    │              │ DA2: asit ∨ enseph ∨     │
+       │  8 hafta         │        │       PT≥3sn) eğer     │              │       sarılık ∨ varis    │
+       │                  │        │       biyopsi yok      │              │ DA3: Genotip 1a/1b/4/5/6 │
+       │                  │        │ KA3: SVV ∨ GP          │              │ DA4: SOF+LED+RBV 12 hf   │
+       └────────┬─────────┘        └──────────┬─────────────┘              └──────────┬───────────────┘
+                │        ∨                    │           ∨                            │
+                └──────────────────────────────┴────────────────────────────────────────┘
+                                                          │
+                                                          ▼
+                                                      ⊖ (UYGUN)
+```
+
 ### Mevcut kod uyum
-✅ `_hep_yolak9_kronik_c_eriskin_naive` (line 1766+).
-⚠ Üst-VEYA çiftleri (Nonsirotik / Kompanse / Dekompanse) `_hep_genel_sonuc` aggregator parametresine eklenmeli — yoksa "üçü de YOK" gibi yanlış sonuç çıkar.
+✅ `_hep_yolak9_kronik_c_eriskin_naive` (line 2534–2684). 3 alt-yol üst-VEYA çiftinde aggregator'a verildi.
 
 ---
 
@@ -431,16 +683,35 @@ Y9_UYGUN ⇔ R1 ∧ R2 ∧ R3 ∧ E1 ∧ E2 ∧ E3 ∧ [
 
 ```
 Y10_UYGUN ⇔ R1 ∧ R2 ∧ R3 ∧ E1 ∧ E2 ∧ E3 ∧ H1 ∧ [
-    (Y1a ∧ Y1b ∧ Y1c)   ⟵ (1)
-    ∨ (Y2a ∧ Y2b ∧ Y2c) ⟵ (2)
-    ∨ (Y3a ∧ Y3b ∧ Y3c) ⟵ (3)
-    ∨ (Y4a ∧ Y4b ∧ Y4c ∧ Y4d) ⟵ (4)
+    (Y1a ∧ Y1b ∧ Y1c)   ⟵ (1) NS5A−/proteaz− nonsirotik
+    ∨ (Y2a ∧ Y2b ∧ Y2c) ⟵ (2) NS5A−/proteaz− kompanse
+    ∨ (Y3a ∧ Y3b ∧ Y3c) ⟵ (3) NS5A+/proteaz+ nonsirot/kompans
+    ∨ (Y4a ∧ Y4b ∧ Y4c ∧ Y4d) ⟵ (4) NS5A+/proteaz+ dekomp G1a/1b/4/5/6
 ]
 ```
 
+### Mini akım şeması (Y10 — HCV erişkin deneyimli, 4 alt-yol)
+
+```
+    ⊕──[R1/R2/R3]──[E1-E3]──[H1: deneyimli]──┐
+                                              │
+        ┌────────────────┬────────────────────┼─────────────────┬──────────────────┐
+        ▼ (1) EX1        ▼ (2) EX2            ▼ (3) EX3         ▼ (4) EX4
+   ┌───────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌────────────────────┐
+   │ NS5A−/PI−     │ │ NS5A−/PI−       │ │ NS5A+ ∨ PI+     │ │ NS5A+ ∨ PI+        │
+   │ ∧ nonsirot    │ │ ∧ kompanse      │ │ ∧ nonsirot/komp │ │ ∧ dekompanse       │
+   │ ∧ (SVV ∨ GP)  │ │ ∧ (SVV ∨ GP)    │ │ ∧ (SVV ∨ GP±RBV)│ │ ∧ G1a/1b/4/5/6     │
+   │   12hf/8hf    │ │   12hf/12hf     │ │   12hf/16hf+SBon│ │ ∧ SOF+LED+RBV 24hf │
+   └───────┬───────┘ └────────┬────────┘ └────────┬────────┘ └─────────┬──────────┘
+           │   ∨               │      ∨            │      ∨             │
+           └───────────────────┴───────────────────┴────────────────────┘
+                                                  │
+                                                  ▼
+                                              ⊖ (UYGUN)
+```
+
 ### Mevcut kod uyum
-✅ `_hep_yolak10_kronik_c_eriskin_exp` (line 1920+).
-⚠ 4 alt-yol üst-VEYA aggregator'a eklenmiş mi doğrulanmalı.
+✅ `_hep_yolak10_kronik_c_eriskin_exp` (line 2691–2839). 4 alt-yol üst-VEYA çiftinde aggregator'a verildi.
 
 ---
 
@@ -481,9 +752,33 @@ Y11_UYGUN ⇔ R1 ∧ R2 ∧ R3 ∧ E1 ∧ E2 ∧ E3 ∧ Z1 ∧ [
 ]
 ```
 
+### Mini akım şeması (Y11 — HCV çocuk naive)
+
+```
+    ⊕──[R1/R2/R3]──[E1: kronik C]──[E2: HCV RNA+]──[E3: yaş 3-18]──[Genotip raporda]──┐
+                                                                                       │
+                                                                                       ▼
+                                                              ┌─ Z1: Tek başına Rib YASAĞI ─┐
+                                                              │ (RBV var ∧ partner yok ─    │
+                                                              │   UYGUN_DEĞİL)              │
+                                                              └─────────────┬───────────────┘
+                                                                            │
+                                            ┌───────────────────────────────┼────────────────────────────────┐
+                                            ▼ Yol-A klasik                  ▼ Yol-B yeni (12-18 GP)
+                                  ┌──────────────────────────┐  ┌─────────────────────────────┐
+                                  │ A1: IFN+RBV ∨ peg-IFN+   │  │ B1: yaş 12-18               │
+                                  │   RBV ∨ (RBV kontrend. → │  │ B2: Reçete = GLE+PIB        │
+                                  │   tek IFN/peg-IFN)       │  │ B3: naive (önceki HCV YOK)  │
+                                  │ (+RBV dozu 15mg/kg bilgi)│  │     8 hafta                 │
+                                  └────────────┬─────────────┘  └────────────┬────────────────┘
+                                               │     ∨                        │
+                                               └──────────────┬───────────────┘
+                                                              ▼
+                                                          ⊖ (UYGUN)
+```
+
 ### Mevcut kod uyum
-✅ `_hep_yolak11_kronik_c_cocuk_naive` (line 2071+).
-⚠ "Tek başına Ribavirin yasağı" atomu eklenmeli (Akut C Y8'deki gibi).
+✅ `_hep_yolak11_kronik_c_cocuk_naive` (line 2846–2964). Tek başına Ribavirin yasağı atomu (SUT 4.2.13.3.2.B(2)) ve üst-VEYA çifti eklendi.
 
 ---
 
@@ -515,15 +810,35 @@ Y11_UYGUN ⇔ R1 ∧ R2 ∧ R3 ∧ E1 ∧ E2 ∧ E3 ∧ Z1 ∧ [
 
 ```
 Y12_UYGUN ⇔ R1 ∧ R2 ∧ R3 ∧ E1 ∧ E2 ∧ Y12 ∧ H1 ∧ G1 ∧ [
-    (SLA ∧ SLB ∧ SLC)
+    (SLA ∧ SLB ∧ SLC)   ⟵ SOF+LED yolu
     ∨
-    (GPA ∧ GPB)
+    (GPA ∧ GPB)         ⟵ GLE+PIB yolu (alt-varyantlar bilgi atomu)
 ]
 ```
 
+### Mini akım şeması (Y12 — HCV çocuk deneyimli 12-18)
+
+```
+    ⊕──[R1/R2/R3]──[E1-E2]──[Y12: yaş 12-18]──[H1: deneyimli]──[G1: Genotip raporda]──┐
+                                                                                       │
+                              ┌────────────────────────────────────────────────────────┴────┐
+                              ▼ Yol-A SOF+LED                                               ▼ Yol-B GLE+PIB
+                       ┌─────────────────────────────┐                          ┌─────────────────────────────┐
+                       │ SLA: Rejim = SOF+LED        │                          │ GPA: Rejim = GLE+PIB         │
+                       │ SLB: Genotip ∈ {1, 4, 5, 6}│                          │ GPB: NS5A/PI geçmiş + sirot   │
+                       │ SLC: nonsirot ∨ kompanse    │                          │   alt-varyant (bilgi)        │
+                       │   (G1 nonsirot 12hf,       │                          │   8/12/16 hafta tablosu     │
+                       │    G1 komp 24hf,           │                          │   eczacı doğrular           │
+                       │    G4/5/6 her ikisi 12hf) │                          │                              │
+                       └────────────┬────────────────┘                          └────────────┬─────────────────┘
+                                    │      ∨                                                  │
+                                    └────────────────────────┬─────────────────────────────────┘
+                                                             ▼
+                                                         ⊖ (UYGUN)
+```
+
 ### Mevcut kod uyum
-✅ `_hep_yolak12_kronik_c_cocuk_exp` (line 2159+).
-⚠ GLE+PIB için NS5A/Proteaz geçmiş kombinasyonları çok karmaşık — kodun bu alt-varyantları hepsini cover ediyor mu doğrulanmalı; etmiyorsa basitleştirilebilir (KE + bilgi yaklaşımı).
+✅ `_hep_yolak12_kronik_c_cocuk_exp` (line 2971–3112). 4 ana atom (rejim+genotip+sirotik+geçmiş) + GLE+PIB alt-varyantları (bilgi) — kullanıcı onaylı (2026-05-17, karar #4).
 
 ---
 
@@ -552,22 +867,22 @@ Y12_UYGUN ⇔ R1 ∧ R2 ∧ R3 ∧ E1 ∧ E2 ∧ Y12 ∧ H1 ∧ G1 ∧ [
 
 ---
 
-## 17. SUT lafzından kod uyum özeti (✓/⚠/✗)
+## 17. SUT lafzından kod uyum özeti (✓/⚠/✗) — 2026-05-23 güncel
 
-| Yolak | SUT ↔ Kod | Bulgu |
-|---|---|---|
-| Y1 Kronik B Erişkin | ✅ + ⚠ | PIF kolu üst-VEYA çiftine eklenmeli |
-| Y2 Kronik B Çocuk | ✅ + ⚠ | Yaş-ilaç doz uyumu atomu (LAM/TDF/TAF/ETV yaş aralıkları) |
-| Y3 B + Siroz | ✅ + ⚠ | Biyopsi VAR/YOK üst-VEYA çifti netleştirilmeli |
-| Y4 B + İmmünsüpresif | ✅ + ⚠ | HBsAg+ / HBsAg− üst-VEYA çifti netleştirilmeli |
-| Y5 Transplant | ✅ | Şartlar SUT ile birebir (lab aranmaz) |
-| Y6 Akut B | ✅ | "Ciddi klinik" 3-OR ile cover ediyor — yorum kullanıcı onayı ile kesinleşir |
-| Y7 Delta | ✅ + ⚠ | HBV oral eklendiyse kronik B koşullarının aranması (yan-şart) |
-| Y8 Akut C | ✅ | Ribavirin yasağı çalışıyor (test #6 pass) |
-| Y9 HCV Erişkin Naive | ✅ + ⚠ | 3 alt-yol (Nonsirot/Kompanse/Dekompanse) üst-VEYA aggregator parametresi |
-| Y10 HCV Erişkin Exp | ✅ + ⚠ | 4 alt-yol (NS5A var/yok × sirotik durumu) üst-VEYA aggregator |
-| Y11 HCV Çocuk Naive | ✅ + ⚠ | Tek başına Ribavirin yasağı atomu eksik |
-| Y12 HCV Çocuk Exp | ✅ + ⚠ | GLE+PIB NS5A/Proteaz kombinasyonları basitleştirme adayı |
+| Yolak | SUT ↔ Kod | Durum | Not |
+|---|---|---|---|
+| Y1 Kronik B Erişkin | ✅ | TAM | PIF kolu üst-VEYA çiftine eklendi (2026-05-23 fix); HBeAg POZ/NEG tek birleşik atom |
+| Y2 Kronik B Çocuk | ✅ | TAM | Yaş-doz uyumu bilgi atomu; biyopsi kontrendikasyon bilgi atomu |
+| Y3 B + Siroz | ✅ | TAM | Biyopsi VAR/YOK üst-VEYA çifti aktif; biyopsi sinyal regex'i sağlıklı |
+| Y4 B + İmmünsüpresif | ✅ | TAM | HBsAg(+) ↔ HBsAg(−)∧(DNA+∨AntiHBc+) üst-VEYA çifti |
+| Y5 Transplant | ✅ | TAM | Lab/biyopsi atomu yok (SUT lafzına uygun) |
+| Y6 Akut B | ✅ | TAM | "Ciddi klinik" 3-OR; kullanıcı onaylı yorum (2026-05-17) |
+| Y7 Delta | ✅ | TAM | HBV oral varsa Y1 atomları inline + üst-VEYA çifti; EK-4E yetki devri bilgi atomu |
+| Y8 Akut C | ✅ | TAM | Ribavirin yasağı çalışıyor (test #6 pass) |
+| Y9 HCV Erişkin Naive | ✅ | TAM | 3 alt-yol (Nonsirot/Kompanse/Dekompanse) üst-VEYA aggregator |
+| Y10 HCV Erişkin Exp | ✅ | TAM | 4 alt-yol (NS5A var/yok × sirotik durumu) üst-VEYA aggregator |
+| Y11 HCV Çocuk Naive | ✅ | TAM | Tek başına Ribavirin yasağı atomu (test #15 pass) |
+| Y12 HCV Çocuk Exp | ✅ | TAM | 4 ana atom + GLE+PIB alt-varyantları bilgi (kullanıcı onaylı, 2026-05-17 karar #4) |
 
 ---
 
@@ -610,10 +925,40 @@ Y12_UYGUN ⇔ R1 ∧ R2 ∧ R3 ∧ E1 ∧ E2 ∧ Y12 ∧ H1 ∧ G1 ∧ [
 
 ---
 
-## 20. Test sonuçları (2026-05-17)
+## 20. Test sonuçları (2026-05-23)
 
-`test_hepatit_atomik.py` — **15/15 senaryo başarılı**:
+### `test_hepatit_atomik.py` — **16/16 senaryo başarılı**
 - Test 1-12: Mevcut senaryolar regresyon korundu
-- **Test 13** (yeni): Aile hekimi Y1 raporlu → SARTLI_UYGUN (aile hekimi yetkili)
-- **Test 14** (yeni): Aile hekimi HCV → UYGUN_DEĞİL (HCV'de aile hekimi yetkisiz, SUT 4.1.1/8 sadece 4.2.13.1/4.2.13.2)
-- **Test 15** (yeni): Y11 tek başına Ribavirin → UYGUN_DEĞİL (SUT 4.2.13.3.2.B(2) yasağı)
+- **Test 13**: Aile hekimi Y1 raporlu → SARTLI_UYGUN (aile hekimi yetkili)
+- **Test 14**: Aile hekimi HCV → UYGUN_DEĞİL (HCV'de aile hekimi yetkisiz, SUT 4.1.1/8 sadece 4.2.13.1/4.2.13.2)
+- **Test 15**: Y11 tek başına Ribavirin → UYGUN_DEĞİL (SUT 4.2.13.3.2.B(2) yasağı)
+- **Test 16** (2026-05-23): Y1 PEG_IFN PIF kolu — yol-a/yol-b atomları YOK olsa bile PIF kolu (ALT>2×ÜS + HBeAg+DNA eşik) tam ise UYGUN/SARTLI_UYGUN olduğunu doğrular (PIF üst-VEYA fix regresyon koruması)
+
+### `test_hepatit_baslangic_devam.py` — **21/21 senaryo başarılı** (2026-05-21)
+SUT 4.2.13.1 Y1 başlangıç ↔ devam ayrımı:
+- Tespit: BASLANGIC / DEVAM / BELIRSIZ + çelişki çözümü (DEVAM güvenli)
+- Atom testleri: /3 erişkin doz (LAM/TBV/TDF/TAF/ETV), /6.a HBsAg/AntiHBs raporda, /6.b ≤12 ay sonlandırma, /7 HBsAg(+) devam, /4 etken değişim gerekçesi
+- Entegrasyon: Y1-BASLANGIC, Y1-DEVAM, Y1-BELIRSIZ, Y1-DEVAM gerekçesiz senaryoları
+
+**Toplam: 37/37 pass.**
+
+---
+
+## 21. 2026-05-23 Revizyon — PIF üst-VEYA fix + başlangıç/devam belgeye işleme
+
+### Yapılanlar
+
+| # | Değişiklik | Dosya/Yer | Test |
+|---|---|---|---|
+| 1 | Y1 PIF kolu (`'(2)(a) Pegile interferon'` prefix) üst-VEYA çiftine eklendi | `hepatit_kontrol.py:1856-1865` | test #16 |
+| 2 | HBeAg POZ/NEG iki ayrı atom → **tek birleşik atom** (atom durumunda OR çözümü) | `hepatit_kontrol.py:1816-1834` | test #16 (regresyon: test #1, #2 korundu) |
+| 3 | Belgeye dispatcher ASCII akım şeması (§1.1) | `docs/sut/SUT_4_2_13_HEPATIT_ANALIZ.md` | — |
+| 4 | Belgeye başlangıç/devam dallanması ASCII şeması (§1.3) | aynı belge | — |
+| 5 | 12 yolak için mini ASCII boolean şeması (§3-14) | aynı belge | — |
+| 6 | Versiyon tagı 2026-05-17 → 2026-05-23 | aynı belge başlığı | — |
+
+### Neden PIF kolu kritikti
+SUT 4.2.13.1: "Tedaviye pegile interferonlar **VEYA** oral antiviraller ile başlanabilir." → PIF yol-a/yol-b'nin alternatifidir. Eski kodda `ust_or_ciftleri` sadece `[('(1)(a) HBV DNA', '(1)(b) ≥40 yaş')]` içerirken PIF kolu bağımsız AND-grup olarak hesaplanıyordu. Bu, PEG_IFN reçetelerinde yol-a/yol-b atomları YOK ise (HBV DNA <2000 ∨ yaş <40) PIF kolu uygun olsa bile **yanlış UYGUN_DEĞİL** üretiyordu.
+
+### HBeAg birleştirme gerekçesi
+`_hep_grup_durumu` herhangi bir atomun `veya_grubu=True` olması durumunda tüm grubu OR olarak değerlendirir. PIF kolunda ALT > 2×ÜS (AND mantığı) ve HBeAg+DNA eşik (POZ/NEG arası OR) atomları **aynı PIF grubunda** olmalıydı (SUT lafzı: "ALT > 2×ÜS **VE** [HBeAg eşik]"). İki ayrı atom (POZ ∨ NEG) `veya_grubu=True` kullanılırsa ALT atomu da OR sayılırdı → matematik bozulurdu. Çözüm: HBeAg POZ/NEG mantığını **tek atomun durumunda** çöz (atom durumunda VAR/YOK/KE üretiliyor, grup saf AND kalıyor).

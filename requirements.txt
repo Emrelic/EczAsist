@@ -31,3 +31,9 @@ webdriver-manager>=4.0.1
 # Surukle-birak (Excel dosyalarini ekstre alanlarina birakmak icin)
 windnd>=1.0.7
 
+# AI Kontrol (Anthropic Claude API - opsiyonel, kullanici kendi key girer)
+anthropic>=0.40.0
+
+# Screenshot ile AI Sorgu — Global F9 hotkey (Medula odaktayken bile yakalanır)
+keyboard>=0.13.5
+

@@ -58,6 +58,11 @@ class MedulaSettings:
             # MEDULA Program Yolu (SABİT)
             "medula_exe_path": r"C:\BotanikEczane\BotanikMedula.exe",
 
+            # Rapor Tarayıcı modülünde BotanikMedula login combobox'ında
+            # seçilecek kullanıcı index'i (0-based). 3 = 4. item ('botan').
+            # Farklı bir eczanede sıra farklıysa burayı değiştir.
+            "medula_kullanici_index": 3,
+
             # UI Element Tanımlamaları (Varsayılan)
             "giris_pencere_title": "BotanikEOS 2.1.199.0 (T)",
             "giris_pencere_automation_id": "SifreSorForm",

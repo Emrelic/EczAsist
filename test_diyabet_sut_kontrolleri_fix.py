@@ -167,10 +167,14 @@ def _eksenatid_ilac(rapor_metni: str, rapor_kodu: str = '1234',
         'etkin_madde': 'EKSENATID',
         'atc_kodu': 'A10BJ01',
         'doktor_uzmanligi': 'Endokrinoloji ve Metabolizma Hastalıkları',
+        'rapor_doktor_uzmanligi': 'Endokrinoloji ve Metabolizma Hastalıkları',
         'recete_teshisleri': teshisler or ['E11 - Tip 2 Diabetes Mellitus'],
         'rapor_aciklamalari': [rapor_metni],
+        'rapor_metni': rapor_metni,  # Yeni motor bu alanı okuyor
         'rapor_kodu': rapor_kodu,
         'hasta_yasi': 55,
+        'hasta_kilo': 110,
+        'hasta_boy': 170,
     }
 
 
@@ -280,22 +284,36 @@ def test_eksenatid_bmi_sayisal_42() -> None:
 def _dpp4_ilac(doktor: str, rapor_kodu: str, glisemik_var: bool = True) -> dict:
     rapor_metni = ('Metformin maksimum tolere dozda yeterli glisemik kontrol '
                     'sağlanamamıştır') if glisemik_var else 'Diyabet teşhisi mevcut'
+    # Raporlu yol testlerinde rapor_kodu varsa branşı da Endo olarak set et,
+    # aksi halde atom KE+sartli döner ve test SARTLI_UYGUN beklemesi gerekir.
+    rapor_brans = 'Endokrinoloji ve Metabolizma Hastalıkları' if rapor_kodu else ''
     return {
         'ilac_adi': 'JANUVIA 100MG',
         'etkin_madde': 'SITAGLIPTIN FOSFAT',
         'atc_kodu': 'A10BH01',
         'doktor_uzmanligi': doktor,
+        'rapor_doktor_uzmanligi': rapor_brans,
         'recete_teshisleri': ['E11.9 - Tip 2 DM'],
         'rapor_aciklamalari': [rapor_metni],
+        'rapor_metni': rapor_metni,
         'rapor_kodu': rapor_kodu,
     }
 
 
 def _dpp4_paralel_atomlari(rapor) -> tuple:
-    """Y4 yetki paralel-VEYA grubundaki iki atomu çek."""
-    grup_ad = 'SUT 4.2.38(4) — Yetki (Endo/IH uzmanı VEYA raporu)'
-    atomlar = [s for s in (rapor.sartlar or []) if s.grup == grup_ad]
-    return tuple(atomlar)
+    """Y4 paralel-yol gruplarındaki hekim ve rapor atomlarını çek.
+
+    2026-05-25 paralel-yol kalıbı: hekim ‖Y4‖ Raporsuz Yol grubunda,
+    rapor branşı ‖Y4‖ Raporlu Yol grubunda. Her grup AND (tek-atom + klinik).
+    """
+    hekim_atomu = next((s for s in (rapor.sartlar or [])
+                        if '‖Y4‖ Raporsuz Yol' in s.grup
+                        and 'rapor' not in s.ad.lower()), None)
+    rapor_atomu = next((s for s in (rapor.sartlar or [])
+                        if '‖Y4‖ Raporlu Yol' in s.grup
+                        and ('rapor' in s.ad.lower()
+                             or 'uzman' in s.ad.lower())), None)
+    return (hekim_atomu, rapor_atomu)
 
 
 def test_dpp4_endo_raporsuz() -> None:
@@ -304,14 +322,9 @@ def test_dpp4_endo_raporsuz() -> None:
         _dpp4_ilac('Endokrinoloji ve Metabolizma Hastalıkları', ''))
     _ok('Sonuç UYGUN', rapor.sonuc == KontrolSonucu.UYGUN,
         f'({rapor.sonuc.value})')
-    atomlar = _dpp4_paralel_atomlari(rapor)
-    _ok('Paralel-VEYA grubu 2 atom üretti', len(atomlar) == 2,
-        f'(gerçek: {len(atomlar)})')
-    _ok('Atom adları veya_grubu=True',
-        all(a.veya_grubu for a in atomlar))
-    yol_a = next((a for a in atomlar if 'endokrin' in a.ad.lower()
-                  or 'iç has' in a.ad.lower()), None)
-    yol_b = next((a for a in atomlar if 'rapor' in a.ad.lower()), None)
+    yol_a, yol_b = _dpp4_paralel_atomlari(rapor)
+    _ok('Raporsuz yol atomu (hekim) bulundu', yol_a is not None)
+    _ok('Raporlu yol atomu (rapor) bulundu', yol_b is not None)
     _ok('Yol-a (hekim): VAR',
         yol_a is not None and yol_a.durum == SartDurumu.VAR)
     _ok('Yol-b (rapor): YOK',
@@ -323,10 +336,9 @@ def test_dpp4_pratisyen_raporlu() -> None:
     rapor = kontrol_diyabet_dpp4_sglt2(_dpp4_ilac('Pratisyen Hekim', '5678'))
     _ok('Sonuç UYGUN', rapor.sonuc == KontrolSonucu.UYGUN,
         f'({rapor.sonuc.value})')
-    atomlar = _dpp4_paralel_atomlari(rapor)
-    _ok('Paralel-VEYA 2 atom', len(atomlar) == 2)
-    yol_a = next((a for a in atomlar if 'değil' in a.ad.lower()), None)
-    yol_b = next((a for a in atomlar if 'rapor' in a.ad.lower()), None)
+    yol_a, yol_b = _dpp4_paralel_atomlari(rapor)
+    _ok('Raporsuz yol atomu (hekim) bulundu', yol_a is not None)
+    _ok('Raporlu yol atomu (rapor) bulundu', yol_b is not None)
     _ok('Yol-a (hekim): YOK',
         yol_a is not None and yol_a.durum == SartDurumu.YOK)
     _ok('Yol-b (rapor): VAR',
@@ -339,10 +351,13 @@ def test_dpp4_pratisyen_raporsuz() -> None:
     _ok('Sonuç UYGUN_DEĞİL',
         rapor.sonuc == KontrolSonucu.UYGUN_DEGIL,
         f'({rapor.sonuc.value})')
-    atomlar = _dpp4_paralel_atomlari(rapor)
-    _ok('Paralel-VEYA 2 atom', len(atomlar) == 2)
+    yol_a, yol_b = _dpp4_paralel_atomlari(rapor)
+    _ok('İki paralel yol atomu bulundu',
+        yol_a is not None and yol_b is not None)
     _ok('Her iki yol da YOK',
-        all(a.durum == SartDurumu.YOK for a in atomlar))
+        yol_a is not None and yol_b is not None
+        and yol_a.durum == SartDurumu.YOK
+        and yol_b.durum == SartDurumu.YOK)
 
 
 # ═══════════════════════════════════════════════════════════════════════

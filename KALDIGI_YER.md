@@ -1,3 +1,37 @@
+# 📍 KALDIĞIMIZ YER — 2026-05-26 (Hepatit Başlangıç Şema = Klasik Akım)
+
+## 🔑 YARIN AÇTIĞINDA İLK BAKILACAK YER
+
+📜 **Başlangıç Rapor sekmesi mini canvas'ı artık Klasik Akım Şeması ile birebir aynı** mantık + görsel render kullanır (kullanıcı isteği: "akım şemasıyla aynı mantıkda + mantık formülasyonu akım şemadaki gibi").
+
+### Bu turn'de yapılan değişiklikler (aylik_recete_sorgu_gui.py)
+
+1. **`_baslangic_canvas_ciz` (~satır 4874)** — eski basit `⊕→atom kart→⊖` seri-şerit çizimi **kaldırıldı**. Yerine **swap pattern**: `self._klasik_canvas` geçici olarak başlangıç canvas'a yönlendirilir → `_klasik_ciz_canvas(sartlar, detaylar, verdict, satir)` çağrılır → render bitince orijinal canvas + `_klasik_neden_map` restore edilir. (Tam ekran modu `_sema_tam_orig_klasik` ile aynı kanıtlanmış pattern.)
+
+2. **`_klasik_ciz_canvas` başlığı (~satır 8508)** — `satir.get("_baslangic_modu")` flag'i kontrol edildi: True ise başlığa `📜 Başlangıç Rapor · Klasik Akım Şeması · {yolak_baslik}` prefix'i konur. Ana panel Klasik Akım sekmesinde + başlangıç mini canvas'ta tutarlı.
+
+3. **`_baslangic_rapor_doldur` (~satır 5412)** — runtime `AttributeError: 'SartSonuc' object has no attribute 'aciklama'` bug fix. `s.aciklama` → `getattr(s, 'ad', '')`. (Atom listesi metni; canvas/şema değişikliğiyle ilgisi yok, aynı handler içinden çağrıldığı için patlıyordu.)
+
+### Test durumu
+- ✅ Syntax kontrolü PASS (`python -c "import ast; ast.parse(...)"`)
+- ✅ Uygulama açılıyor (`python ana_menu.py`)
+- ⏳ **Henüz gerçek bir hepatit reçetesi ile ▶ Başlangıç Kontrol akışı end-to-end test edilmedi** — yarın açtığında ilk iş bunu test et:
+  1. Hepatit reçetesi seç (örn. SOVALDI / HARVONI / VEMLIDY / VIREAD)
+  2. ▶ Başlangıç Rapor butonuna bas
+  3. 📜 Başlangıç Rapor sekmesi üst canvas'ında **tam Klasik Akım Şeması** görünmeli (⊕/⊖ pil + ampuller + seri/paralel gruplar + ∧/∨ operatör legendi + üst-VEYA çiftleri)
+  4. Başlığında "📜 Başlangıç Rapor · Klasik Akım Şeması · {yolak}" prefix'i olmalı
+  5. Otomatik Klasik Akım tab'ına geçişte ana panelde de aynı görünmeli
+
+### Eğer test başarılı ise
+- Memory güncelle: `project_baslangic_sema_klasik_akim_aynileme.md`
+- Bu KALDIĞI YER bölümü silinebilir
+
+### Bilinen olası riskler
+- `_klasik_ciz_canvas` `self._klasik_zoom`'u kullanır — mini canvas dar olabilir, zoom level başlangıç için ayrı tutulmadı. Görsel taşma olursa `_klasik_zoom` için başlangıç-özel override eklenir.
+- `_klasik_canvas_hover` binding'i sadece ana canvas'ta — başlangıç mini canvas'ta hover yok (sorun değil, ana panelde zaten var).
+
+---
+
 # Kaldığımız Yer - 6 Aralık 2025 (Güncelleme 8)
 
 ## Son Yapılan Düzeltmeler (Bu Oturum)

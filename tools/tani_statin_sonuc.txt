@@ -1,0 +1,344 @@
+======================================================================
+STATIN ŞÜPHELİ vs ŞARTLI_UYGUN — ATOM-BAZLI DETAY
+======================================================================
+
+[  1] TC=13856626232 Rx=3MG5YOR YASEMİN KARTAL         İlaç=TARDEN 40MG 30 FİLM  Yaş=32 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); ≥2 ek risk faktörü; ≥3 ek risk faktörü; ≥1 yüksek KV hastalık; ≥1 yüksek
+
+[  2] TC=49321848762 Rx=3MCGBZL SERDAR YAVUZ           İlaç=ATOR 20MG 30 FİLM TA Yaş=29 Verdict=SARTLI_UYGUN KATEGORİ=A_SADECE_6AY_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; ≥2 ek risk faktörü; ≥3 ek risk faktörü; ≥1 yüksek KV hastalık; ≥1 yüksek KV hastalık; Diabetes mellitus; Akut ko
+
+[  3] TC=40246498018 Rx=3M9WTTU CENGİZ PEHLİVAN        İlaç=ATOR 20MG 30 FİLM TA Yaş=56 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; LDL > 100 mg/dL; ≥1 y
+
+[  4] TC=10289473082 Rx=3M99S4D DÜRİYE KİBAR           İlaç=ALVASTIN 20MG 30 FİL Yaş=56 Verdict=SARTLI_UYGUN KATEGORİ=A_SADECE_6AY_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk f
+
+[  5] TC=40777802162 Rx=3M5HM7G YAĞMUR DOĞAN           İlaç=ATOR 20MG 30 FİLM TA Yaş=39 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara)
+
+[  6] TC=24685400740 Rx=3LXJRA0 HÜSEYİN HERGÜL         İlaç=COLNAR 10MG 28 FİLM  Yaş=69 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥3 ek risk faktörü; 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Akut koroner sendrom; Geçirilmiş Mİ; Geçirilmiş
+
+[  7] TC=29558199592 Rx=3LRNTUL MEHMET ÇITAK           İlaç=LIPITOR 40MG 30 FİLM Yaş=63 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara)
+
+[  8] TC=24088991876 Rx=3LQ879Z HASAN KINCIR           İlaç=LIPITOR 10MG 90 FİLM Yaş=63 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Aile öyküsü (erken KV); ≥65 yaş; 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); ≥2 ek risk faktörü; ≥3 ek risk faktörü; ≥1 yüksek KV hastalık; ≥1 yüksek KV hastalık; Diabet
+
+[  9] TC=22517614198 Rx=3LDD88W FATMA BEHREM           İlaç=TARDEN 10MG 30 FİLM  Yaş=77 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom; Geçirilm
+
+[ 10] TC=35974793894 Rx=3KN8GA6 FADİM YÜKSEL           İlaç=CRESTOR 10MG 28 FİLM Yaş=71 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; LDL > 100 mg/dL; ≥1 yüksek KV 
+
+[ 11] TC=17939225794 Rx=3KE8YAB VAHDETTİN TEMUR        İlaç=TARDEN 40MG 30 FİLM  Yaş=42 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Diabetes mellitus; Ge
+
+[ 12] TC=10289473082 Rx=3KAYIH5 DÜRİYE KİBAR           İlaç=ALVASTIN 20MG 30 FİL Yaş=56 Verdict=SARTLI_UYGUN KATEGORİ=A_SADECE_6AY_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk f
+
+[ 13] TC=40777802162 Rx=3K6QROK YAĞMUR DOĞAN           İlaç=ATOR 20MG 30 FİLM TA Yaş=38 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara)
+
+[ 14] TC=51487562468 Rx=3K2L6GN SİNAN DEMİRHAN         İlaç=ATOR 40MG 30 FİLM TA Yaş=51 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Nöroloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk faktörü; 2 ölçüm > 130 (
+
+[ 15] TC=17378785422 Rx=3JZP2AY AYŞE BUDAK             İlaç=LIVERCOL 10MG 28 FİL Yaş=49 Verdict=SARTLI_UYGUN KATEGORİ=A_SADECE_6AY_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; ≥2 ek risk faktörü; ≥3 ek risk faktörü; ≥1 yüksek KV hastalık; ≥1 yüksek KV hastalık; Diabetes mellitus; Akut ko
+
+[ 16] TC=18436737728 Rx=3JAHW0G HALİME ERKANAT         İlaç=TARDEN 20MG 30 FİLM  Yaş=47 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; (b) Eski rapor tarihi belirtilmiş; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek 
+
+[ 17] TC=22517614198 Rx=3J3CP44 FATMA BEHREM           İlaç=TARDEN 10MG 30 FİLM  Yaş=77 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom; Geçirilm
+
+[ 18] TC=43534008210 Rx=3J3O69S RUKEN AVCI             İlaç=PRATIN 2MG 30 FİLM T Yaş=33 Verdict=SARTLI_UYGUN KATEGORİ=A_SADECE_6AY_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; (b) Eski rapor tarihi belirtilmiş; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); ≥2 ek risk faktörü; 2 ölçüm > 160 (so
+
+[ 19] TC=13203069026 Rx=3IEY1T9 LATİF KARTAL           İlaç=TARDEN 10MG 30 FİLM  Yaş=69 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom; Geçirilm
+
+[ 20] TC=22517614198 Rx=3IDVCRE FATMA BEHREM           İlaç=TARDEN 10MG 30 FİLM  Yaş=77 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom; Geçirilm
+
+[ 21] TC=31558181798 Rx=3I8HS3H EDİBE KILIÇLI          İlaç=LIPITOR 10MG 30 FİLM Yaş=51 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom;
+
+[ 22] TC=17378785422 Rx=3HV3I3T AYŞE BUDAK             İlaç=LIVERCOL 10MG 28 FİL Yaş=49 Verdict=SARTLI_UYGUN KATEGORİ=A_SADECE_6AY_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; ≥2 ek risk faktörü; ≥3 ek risk faktörü; ≥1 yüksek KV hastalık; ≥1 yüksek KV hastalık; Diabetes mellitus; Akut ko
+
+[ 23] TC=44173703436 Rx=3HPNSHH HAMZA ŞİRİN            İlaç=TARDEN 40MG 30 FİLM  Yaş=68 Verdict=SARTLI_UYGUN KATEGORİ=A_SADECE_6AY_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; (b) Eski rapor tarihi belirtilmiş; Hipertansiyon (HT); Aile öyküsü (erken KV); 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥
+
+[ 24] TC=40777802162 Rx=3HLD63A YAĞMUR DOĞAN           İlaç=ATOR 20MG 30 FİLM TA Yaş=38 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara)
+
+[ 25] TC=38323610286 Rx=3HKE8ER GÜLDANE AKÇADAĞ        İlaç=ATOR 10MG 30 FİLM TA Yaş=57 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk faktörü; 2 ölçüm > 130 (
+
+[ 26] TC=51487562468 Rx=3HKETUW SİNAN DEMİRHAN         İlaç=LIPITOR 20MG 30 FİLM Yaş=51 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk faktörü; 2 ölçüm > 130 (
+
+[ 27] TC=35974793894 Rx=3HHDQC7 FADİM YÜKSEL           İlaç=CRESTOR 10MG 28 FİLM Yaş=71 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; LDL > 100 mg/dL; ≥1 yüksek KV 
+
+[ 28] TC=31705518460 Rx=3GGGZ8Z HÜSEYİN ZİREK          İlaç=PRATIN 4MG 30 FİLM T Yaş=56 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; (b) Eski rapor tarihi belirtilmiş; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ö
+
+[ 29] TC=22456642900 Rx=3GGL550 AFİFE ODABAŞIOĞLU      İlaç=TARDEN 20MG 30 FİLM  Yaş=48 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom;
+
+[ 30] TC=69844191350 Rx=3FUD0CI SABİRE YILDIZ          İlaç=LIPITOR 10MG 30 FİLM Yaş=88 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; LDL > 130 mg/dL; ≥3 ek risk faktörü; Diabetes mellitus; Akut koroner sendrom; Geçirilmiş Mİ; Geçirilmiş inm
+
+[ 31] TC=40777802162 Rx=3FNDAXV YAĞMUR DOĞAN           İlaç=ATOR 20MG 30 FİLM TA Yaş=38 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara)
+
+[ 32] TC=29195149752 Rx=3FIHC6Y GÜRKAN KARAKURT        İlaç=ATOR 40MG 30 FİLM TA Yaş=27 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Nöroloji RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk faktörü; 2 ölçüm > 130 (
+
+[ 33] TC=13203069026 Rx=3F395KX LATİF KARTAL           İlaç=TARDEN 10MG 30 FİLM  Yaş=69 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom; Geçirilm
+
+[ 34] TC=35974793894 Rx=3EWJHJV FADİM YÜKSEL           İlaç=CRESTOR 10MG 28 FİLM Yaş=71 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; LDL > 100 mg/dL; ≥1 yüksek KV 
+
+[ 35] TC=30656316842 Rx=3ETC553 AHMET KILIÇALP       → STATIN_YOK (ilaçlar: BENEXOL B12 30 FİLM , PULCET 40MG 28 ENTER, ETOL FORT 400MG 14 F, NITROLINGUAL PUMP 0., FASTJEL %2.5 50GR JE, KLOGEL-A 75/75MG 30 , HIRUDOID FORTE 40GR )
+
+[ 36] TC=60049442728 Rx=3EQW5WE MUZAFFER ŞAHİN         İlaç=ALIPZA 4MG FİLM TABL Yaş=64 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk faktörü; 2 ölçüm > 130 (
+
+[ 37] TC=22517614198 Rx=3E53FNC FATMA BEHREM           İlaç=TARDEN 10MG 30 FİLM  Yaş=77 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom; Geçirilm
+
+[ 38] TC=19157464894 Rx=3D918EA MÜRVET ÖZDURAN         İlaç=ATOR 20MG 30 FİLM TA Yaş=72 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Nöroloji RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Diabetes mellitus; Akut korone
+
+[ 39] TC=69844191350 Rx=3CZHVST SABİRE YILDIZ          İlaç=LIPITOR 10MG 30 FİLM Yaş=87 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; LDL > 130 mg/dL; ≥3 ek risk faktörü; Diabetes mellitus; Akut koroner sendrom; Geçirilmiş Mİ; Geçirilmiş inm
+
+[ 40] TC=13203069026 Rx=3CNV0FH LATİF KARTAL           İlaç=TARDEN 10MG 30 FİLM  Yaş=69 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom; Geçirilm
+
+[ 41] TC=19157464894 Rx=3CE71TF MÜRVET ÖZDURAN         İlaç=ATOR 20MG 30 FİLM TA Yaş=72 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Nöroloji RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Diabetes mellitus; Akut korone
+
+[ 42] TC=13203069026 Rx=3BUSBWY LATİF KARTAL           İlaç=TARDEN 10MG 30 FİLM  Yaş=69 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom; Geçirilm
+
+[ 43] TC=44173703436 Rx=3BCL756 HAMZA ŞİRİN            İlaç=TARDEN 40MG 30 FİLM  Yaş=67 Verdict=SARTLI_UYGUN KATEGORİ=A_SADECE_6AY_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; (b) Eski rapor tarihi belirtilmiş; Hipertansiyon (HT); Aile öyküsü (erken KV); 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥
+
+[ 44] TC=19403025138 Rx=39OJ381 ERDAL KAHRAMAN         İlaç=TARDEN 10MG 30 FİLM  Yaş=55 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Akut koroner sendr
+
+[ 45] TC=35974793894 Rx=39A2KSH FADİM YÜKSEL           İlaç=CRESTOR 10MG 28 FİLM Yaş=70 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; LDL > 100 mg/dL; ≥1 yüksek KV 
+
+[ 46] TC=19570738886 Rx=3824NW2 BAYRAM KARABAYIR       İlaç=TARDEN 10MG 30 FİLM  Yaş=60 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; (b) Eski rapor tarihi belirtilmiş; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek 
+
+[ 47] TC=17369785578 Rx=35R8YS9 HAVVA OYAN             İlaç=ATOR 10MG 30 FİLM TA Yaş=56 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk faktörü; 2 ölçüm > 130 (
+
+[ 48] TC=11509840738 Rx=35P04HH YAŞAR YILMAZ           İlaç=LIPITOR 10MG 30 FİLM Yaş=37 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Aile Hekimliği Uzmanı RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara)
+
+[ 49] TC=22517614198 Rx=358Q3SN FATMA BEHREM           İlaç=TARDEN 10MG 30 FİLM  Yaş=76 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom; Geçirilm
+
+[ 50] TC=10556897146 Rx=34OY9UF ÜMMÜGÜLSÜM AKBAL       İlaç=TARDEN 20MG 30 FİLM  Yaş=18 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom;
+
+[ 51] TC=22517614198 Rx=34IJVDW FATMA BEHREM           İlaç=TARDEN 10MG 30 FİLM  Yaş=76 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Akut koroner sendrom; Geçirilm
+
+[ 52] TC=45481579980 Rx=336NPF7 OSMAN NURİ ODABAŞI     İlaç=TARDEN 20MG 30 FİLM  Yaş=38 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Nöroloji RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk faktörü; 2 ölçüm > 130 (
+
+[ 53] TC=34084524886 Rx=3349C2X DURSUN ESA             İlaç=PRATIN 4MG 30 FİLM T Yaş=63 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=Kardiyoloji RaporKod=04.08
+        KE: LDL > 190 mg/dL; LDL > 160 mg/dL; LDL > 130 mg/dL; LDL > 100 mg/dL; LDL > 70 mg/dL
+        YOK: (c) Başlangıç LDL ölçüm değeri yazılı; LDL sayısal değer raporda VAR; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; ≥2 ek risk faktörü; ≥3 ek risk faktörü; Diabetes mellitus; Akut koroner sendr
+
+[ 54] TC=26267459450 Rx=32NNT1P BASRİ ASLAN            İlaç=ATOR 40MG 30 FİLM TA Yaş=52 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Nöroloji RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; LDL > 190 mg/dL; ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk faktörü; 2 ölçüm > 130 (
+
+[ 55] TC=34084524886 Rx=30PAD23 DURSUN ESA             İlaç=PRATIN 4MG 30 FİLM T Yaş=63 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=Kardiyoloji RaporKod=04.08
+        KE: LDL > 190 mg/dL; LDL > 160 mg/dL; LDL > 130 mg/dL; LDL > 100 mg/dL; LDL > 70 mg/dL
+        YOK: (c) Başlangıç LDL ölçüm değeri yazılı; LDL sayısal değer raporda VAR; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; ≥2 ek risk faktörü; ≥3 ek risk faktörü; Diabetes mellitus; Akut koroner sendr
+
+[ 56] TC=44674534232 Rx=2Z0W7FW HATİCE KÖSE            İlaç=ULTROX 10MG 28 FİLM  Yaş=83 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; LDL > 100 mg/dL; ≥1 yüksek KV 
+
+[ 57] TC=18919593780 Rx=2YG6NNT HURŞİT KARABAŞ         İlaç=COLNAR 20MG 28 FİLM  Yaş=83 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; (b) Eski rapor tarihi belirtilmiş; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ölçüm > 13
+
+[ 58] TC=44674534232 Rx=2VR4ZYO HATİCE KÖSE            İlaç=ULTROX 10MG 28 FİLM  Yaş=83 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; LDL > 100 mg/dL; ≥1 yüksek KV 
+
+[ 59] TC=18919593780 Rx=2UWWXRP HURŞİT KARABAŞ         İlaç=COLNAR 20MG 28 FİLM  Yaş=83 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; (b) Eski rapor tarihi belirtilmiş; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ölçüm > 13
+
+[ 60] TC=17165081188 Rx=2TLLPDC KAMİL KAPIYOLDAŞ       İlaç=LIPITOR 40MG 30 FİLM Yaş=72 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; Diabetes mellitus; Geçirilmiş 
+
+[ 61] TC=44674534232 Rx=2SFVBQ0 HATİCE KÖSE            İlaç=ULTROX 10MG 28 FİLM  Yaş=82 Verdict=UYGUN_DEGIL KATEGORİ=E_UYGUN_DEGIL
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; LDL > 130 mg/dL; ≥3 ek risk faktörü; LDL > 100 mg/dL; ≥1 yüksek KV 
+
+[ 62] TC=18919593780 Rx=2RY3MNA HURŞİT KARABAŞ         İlaç=COLNAR 20MG 28 FİLM  Yaş=82 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; (b) Eski rapor tarihi belirtilmiş; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ölçüm > 13
+
+[ 63] TC=12373979258 Rx=2RQ85MG RECEP ERTEN            İlaç=ATOR 40MG 30 FİLM TA Yaş=52 Verdict=SARTLI_UYGUN KATEGORİ=A_SADECE_6AY_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk f
+
+[ 64] TC=53245806722 Rx=2RB94JW EMEL CENGİZ            İlaç=ALVASTIN 20MG 30 FİL Yaş=33 Verdict=SARTLI_UYGUN KATEGORİ=A_SADECE_6AY_KE
+        Branş=İç Hastalıkları (Ana Branş) RaporKod=04.08
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; (b) Eski rapor tarihi belirtilmiş; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; ≥2 ek risk faktörü; ≥3 ek risk faktörü; ≥1 yüksek KV hastalık; ≥1 yüksek KV h
+
+[ 65] TC=61900066480 Rx=2R8W2UK REFİKA SARIGÜL         İlaç=CRESTOR 10MG 28 FİLM Yaş=70 Verdict=SARTLI_UYGUN KATEGORİ=B_6AY_VE_BASKA_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); LDL > 190 mg/dL; LDL > 160 mg/dL; ≥2 ek risk faktörü; ≥3 ek risk faktörü; 2 ölçüm > 130 (son 6 ay, ≥1 hafta ara); Diabete
+
+[ 66] TC=12373979258 Rx=2PPCPUZ RECEP ERTEN            İlaç=ATOR 40MG 30 FİLM TA Yaş=51 Verdict=SARTLI_UYGUN KATEGORİ=A_SADECE_6AY_KE
+        Branş=Kardiyoloji RaporKod=04.02
+        KE: Tedaviye 6+ ay ara verilmedi (NEGATIF: ¬X1)
+        YOK: (a) İdame/istinaden/devam ibaresi; Hipertansiyon (HT); Aile öyküsü (erken KV); ≥65 yaş; 2 ölçüm > 190 (son 6 ay, ≥1 hafta ara); ≥2 ek risk faktörü; 2 ölçüm > 160 (son 6 ay, ≥1 hafta ara); ≥3 ek risk f
+
+
+======================================================================
+ÖZET
+======================================================================
+  A_SADECE_6AY_KE           :  11 (%16.7)
+  B_6AY_VE_BASKA_KE         :  42 (%63.6)
+  C_BASKA_KE_6AY_VAR        :   0 (%0.0)
+  D_UYGUN                   :   0 (%0.0)
+  E_UYGUN_DEGIL             :  12 (%18.2)
+  X_DIGER                   :   0 (%0.0)
+  RECETE_YOK                :   0 (%0.0)
+  STATIN_YOK                :   1 (%1.5)
+  TOPLAM                    :  66

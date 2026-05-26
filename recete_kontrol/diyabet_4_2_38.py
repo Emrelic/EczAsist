@@ -544,14 +544,18 @@ Y2_IZINLI = {'endokrin', 'ic', 'pediatri', 'kardiyo', 'aile_hek'}
 def y2_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
     """Y2: Repaglinid/Nateglinid/OAD kombi.
 
-    `endo, IH, pediatri, kardiyo, aile hekimi` uzmanı reçete eder
-    VEYA aynı branşlardan birinin uzman hekim raporu varsa tüm hekimler.
+    PARALEL-YOL kalıbı (üst-VEYA çifti, klinik şart yok):
+      Y2_UYGUN ⇔ [ Y2.1 ] ∨ [ Y2.2 ]
     """
     sartlar: List[SartSonuc] = []
-    sartlar.append(atom_hekim_brans_uygun(ilac_sonuc, Y2_IZINLI,
-                                          grup='Fıkra (2) — yetki (≥1)'))
-    sartlar.append(atom_uzman_raporu_brans(ilac_sonuc, Y2_IZINLI,
-                                            grup='Fıkra (2) — yetki (≥1)'))
+    grup_raporsuz = '‖Y2‖ Raporsuz Yol — Hekim Endo/IH/Pediatri/Kardio/AileHek'
+    grup_raporlu = '‖Y2‖ Raporlu Yol — Rapor Endo/IH/Pediatri/Kardio/AileHek'
+    hekim_atomu = atom_hekim_brans_uygun(ilac_sonuc, Y2_IZINLI, grup=grup_raporsuz)
+    hekim_atomu.veya_grubu = False
+    sartlar.append(hekim_atomu)
+    rapor_atomu = atom_uzman_raporu_brans(ilac_sonuc, Y2_IZINLI, grup=grup_raporlu)
+    rapor_atomu.veya_grubu = False
+    sartlar.append(rapor_atomu)
     return sartlar
 
 
@@ -574,7 +578,15 @@ def atom_metformin_sulfo_max_yetersiz(ilac_sonuc: Dict,
     'max KULLANIM doz' gibi arada kelime, tıbben eşdeğer 'kan şekeri
     yeterince düşürülemedi' lafzı. Bulunmazsa KE.
     """
+    # `_rapor_metni` helper rapor_metni VEYA rapor_aciklamalari fallback yapar
+    # (eski wrapper/test'lerle uyumluluk için).
     metin_raw = ilac_sonuc.get('rapor_metni') or ''
+    if not metin_raw:
+        rap_acklari = ilac_sonuc.get('rapor_aciklamalari') or []
+        if isinstance(rap_acklari, (list, tuple)):
+            metin_raw = ' '.join(str(x) for x in rap_acklari if x)
+        else:
+            metin_raw = str(rap_acklari)
     if not metin_raw:
         return SartSonuc(
             ad='Metformin/sülfonilüre max doz yetersiz glisemik kontrol',
@@ -588,62 +600,134 @@ def atom_metformin_sulfo_max_yetersiz(ilac_sonuc: Dict,
     # tire ve takip eden boşluğu sil.
     metin = norm_tr_lower(re.sub(r'-\s*', '', metin_raw))
 
-    # Anahtar lafız desenleri
-    # Typo toleransı: "metrformin" (fazladan 'r' — SABRİYE ERBAŞ raporu
-    # 2026-05-24) → r opsiyonel
-    pat_met = re.compile(r'metr?formin', re.IGNORECASE)
-    # Typo toleransı: "sulfonure" (orta 'il' düşmüş — SABRİYE ERBAŞ raporu
-    # 2026-05-24) → (?:[ıi]l)? opsiyonel
-    pat_sulfo = re.compile(
-        r'(?:s[uü]lfon(?:[ıi]l)?[uü]re|gliklazid|glimepirid|glibenklamid|glipizid)',
+    # ─── METFORMİN — standart + typo varyantları ───────────────────────
+    # Hedef yazımlar: metformin, metrformin (extra r), metfomrin / metfromin
+    # (r ↔ m yer değiştirmesi — FATMA KAHRAMAN 2LONLCP, BAYRAM KARABAYIR
+    # 2USHOJ3 raporları 2026-05-24).
+    pat_met = re.compile(
+        r'(?:metformin|metrformin|metfomrin|metfromin|metoformin)',
         re.IGNORECASE)
-    # "maksimum tolere edilebilir doz" / "max. KULLANIM dozunda" /
-    # "maximum oranda doz" / "max dozda" / "maxsimimum tolera edilebilecek"
-    # — uzun form (mum suffix) + kısa form (max./maks.) + typo toleransı
-    pat_max = re.compile(
+
+    # ─── SÜLFONİLÜRE — geniş varyant ──────────────────────────────────
+    # Hedef: sülfonilüre, sülfanilüre, sülfanülüre, sülfanüre, sülfonure,
+    # sulfoniure (i var l yok — SEVİM MERCAN 37PBI31), sülfanülüre
+    # (ŞEVKET OKUMUŞ 3A83JP4), sülfanüre (PERİZADE AKGÜN 2P3ZIME,
+    # NAHİDE ÇELİK 32JX9E8). [oa]=ön ünlü, [ıiuü]?l?=ara hece esnek.
+    pat_sulfo = re.compile(
+        r'(?:s[uü]lf[oa]n[ıiuü]?l?[uü]re'
+        r'|gliklazid|glimepirid|glibenklamid|glipizid)',
+        re.IGNORECASE)
+
+    # ─── MAX DOZ — 4 ayrı pattern (OR ile birleşir) ───────────────────
+    # (A) Standart: "maks/max/maksimum/maksimun + ... + (tolere ed*)? + doz"
+    #     - "MAKSIMUN" typo: mu[mn] suffix (SEZAİ ÖZKAN 39LP3E1,
+    #       AYŞEGÜL TELLİ 3GO3CGD)
+    #     - "MAKSIMAL/MAXIMAL" (MEHMET ÇITAK 3A0MDCJ, FATMA KAHRAMAN
+    #       2LONLCP, BAYRAM KARABAYIR 2USHOJ3)
+    #     - "EDILEN" suffix (bil eksik — SİNAN DEMİRHAN 3HKETUW,
+    #       HALİL ÇEVİK 3GTF6YY): ed\w* daha esnek
+    #     - "KULLANIM DOZUNDA" (tolere ile doz arası kelime — AYŞEGÜL
+    #       TELLİ 3GO3CGD): tolere sonrası 0-3 kelime
+    pat_max_a = re.compile(
         r'(?:'
-        # Uzun form: maksimum/maximum/maxsimimum (3 prefix × 0-3 ara char + mum)
-        r'(?:maks?|max|maxs?)\w{0,3}mum'
-        # Kısa form: "max" / "maks" / "max." / "maks." (kelime sınırı zorunlu)
-        r'|\b(?:maks?|max)\b'
-        r')\.?\s*'
-        r'(?:\w+\s+){0,2}'
-        # "tolere edilebilir" sonrası bazı raporlarda yanlışlıkla noktalama
-        # (nokta/virgül/iki nokta) gelebiliyor — "EDİLEBİLİR. DOZLARINDA"
-        # gibi (SATU KILIÇALP / VAHİT YAMAN pilot, 2026-05-24). Tolere et.
-        r'(?:toler[ae]\s*(?:ed(?:il)?(?:e|m)bil\w*[\s\.,;:]*)?)?\s*'
-        # "doz" VEYA "düzey/duzey" — tıbben eşdeğer (SABRİYE ERBAŞ raporu
-        # 2026-05-24: "tolere edilebilir maksimum düzeyde")
+        r'(?:maks?|max|maxs?)\w{0,3}mu[mn]'   # maksimum/maximum/maksimun/maxsimum
+        r'|\b(?:maks?|max)\b'                 # kısa form
+        r'|\b(?:maks|max)imal\w*'             # maksimal/maximal
+        r')'
+        r'\.?\s*(?:\w+\s+){0,3}'              # max ile (tolere|doz) arası 0-3 sözcük
+        r'(?:toler[ae]\s+ed\w*[\s\.,;:]*(?:\w+\s+){0,3})?'  # tolere ed* + 0-3 söz
         r'(?:doz|d[uü]zey)',
         re.IGNORECASE)
-    # "yeterli glisemik kontrol sağlanama" / "kontrolu saglanama" /
-    # "kontrolda saglanama" + "yetersiz glisemik kontrol" (tek başına) +
-    # tıbben eşdeğer "kan şekeri (yeterince) düşürülemedi" (MUZAFFER
-    # ŞAHİN vakası — SUT lafzı değil ama eşdeğer, kullanıcı onayı 2026-05-24)
+    # (B) Reverse order: "tolere ed* + ... + maks + ... + doz"
+    #     - FADİM YÜKSEL 3NC6FI8, 2UGGHWN ("tolere edebilecek maksimum doz")
+    #     - CENNET ÇAĞLAR 2R8LQZT ("tolere edilebilir maksimum doz")
+    pat_max_b_reverse = re.compile(
+        r'toler[ae]\s+ed\w*\s+(?:\w+\s+){0,3}'
+        r'(?:(?:maks?|max|maxs?)\w{0,3}mu[mn]|\b(?:maks|max)imal\w*)'
+        r'\.?\s*(?:\w+\s+){0,3}(?:doz|d[uü]zey)',
+        re.IGNORECASE)
+    # (C) Implicit max: "tolere ed* + doz" (max ibaresi yok ama klinik
+    #     eşdeğer — hekim 'tolere edilebilir doz' yazdığında max'i ima eder)
+    #     - AYŞE KÜÇÜK 3FCXSUL/3BSRW37 ("tolere edilebilir dozunda yetersiz")
+    pat_max_c_implicit = re.compile(
+        r'toler[ae]\s+ed\w*\s+(?:\w+\s+){0,2}(?:doz|d[uü]zey)',
+        re.IGNORECASE)
+    # (D) "tolere ed* + maks + (ilaç/kullanım)" — doz lafzı yok (ŞEVKET
+    #     OKUMUŞ 3A83JP4: "tolera edebilecegi maksimum metformin ve
+    #     sulfanulure kullanmis"). max+kullan/tedavi/uygula bağlamı.
+    pat_max_d_no_doz = re.compile(
+        r'(?:'
+        r'toler[ae]\s+ed\w+\s+(?:\w+\s+){0,3}'
+        r'(?:(?:maks?|max|maxs?)\w{0,3}mu[mn]|\b(?:maks|max)imal\w*)'
+        r'|(?:(?:maks?|max|maxs?)\w{0,3}mu[mn]|\b(?:maks|max)imal\w*)'
+        r'\s+(?:\w+\s+){0,5}(?:kullan|tedavi|uygula)'
+        r')',
+        re.IGNORECASE)
+
+    # ─── YETERSİZ KONTROL — kapsamlı lafız listesi ────────────────────
     pat_yet = re.compile(
         r'(?:'
-        # "yetersiz [glisemik] kontrol" — tek başına yeterli (negatif sıfat)
+        # "yetersiz [glisemik] kontrol" — tek başına yeterli
         r'yetersiz\s*(?:glisemik\s*)?kontrol'
-        # "yeterli [glisemik] kontrol(u/un/...) sağlanam/sağlanma" — negasyon şart
-        r'|yeterli\s*(?:glisemik\s*)?'
-        r'kontrol(?:u|un|undan|larda|lerde|ler|leri)?\s*sa[gğ]lan(?:am|ma)'
-        # "kontrol(u/...) sağlanama" — sıfat olmadan
+        # "yeterli + (0-2 söz) + kontrol(...) + (0-2 söz) + sağla(nam/nma/yam)"
+        #  - "yeterli oranda glisemik kontrol saglanam" (MELİKE DAĞ 2TYB4GA,
+        #    MEHMET KILIÇALP 30RRUTR, FATMA BEHREM 2YK7HF2)
+        #  - "yeterli glisemik kontrol HASTADA saglanam" (SEZAİ ÖZKAN 39LP3E1)
+        #  - "yeterli duzeyde kontrol saglanam" (EMİNE UZUN 3JVSGG2)
+        #  - "yeterli glisemik kontrolu SAGLAYAMAMIS" (FADİM YÜKSEL —
+        #    sağlay variant: yam)
+        #  - typo toleransı: "yeterli glismeik/glismik kontrol" (FATMA
+        #    KAHRAMAN, BAYRAM KARABAYIR — 0-2 ara sözcük yakalar)
+        r'|yeterli\s*(?:\w+\s+){0,2}'
+        r'kontrol(?:u|un|undan|larda|lerde|ler|leri)?\s*(?:\w+\s+){0,2}'
+        r'sa[gğ]la(?:nam|nma|yam|yama)'
+        # "kontrol(u/...)? sağlanama" — bare (yeterli prefix yok, ELIF gibi)
         r'|kontrol(?:u|un|undan|larda|lerde|ler|leri)?\s*sa[gğ]lanama'
-        # "glisemik regülasyon" / "kan şekeri regülasyonu" sağlanam (MEHMET SIDDIK)
-        r'|(?:glisemik|kan\s*sekeri)\s*reg[uü]lasyon(?:u|un|unu|undan)?\s*sa[gğ]lanam'
+        # "kontrol edilem(eyen/edi)" — HALİL ÇEVİK 3GTF6YY
+        r'|kontrol(?:u|un|larda|lerde)?\s*edil(?:em|m)e'
+        # "(glisemik|kan seker(i)?|glukoz|glikoz|ks) regülasyon(u) ...
+        #  saglanam" — kelime arası 0-3 söz (EMİNE UZUN: regulasyonu
+        #  YETERLİ DÜZEYDE saglanam)
+        #  - HAMDULLAH AKSU 33CUC0E, HAVVA KARAARSLAN 2Q0279X: "kan seker
+        #    regulasyonu" (i eksik)
+        #  - PERİZADE AKGÜN 2P3ZIME: "glukoz regulasyon"
+        #  - EMİN ERARSLAN 2SRQD0J: "kan sekeri regulasyonu"
+        r'|(?:glisemik|kan\s*seker[ıi]?|glukoz|glikoz|\bks)\s*'
+        r'reg[uü]lasyon(?:u|un|unu|undan)?'
+        r'\s*(?:\w+\s+){0,3}sa[gğ]lanam'
+        # "regule (olm/edil(em)/degil)" — tek başına yeterli
+        #  - "regule olmayan/olmamis" (MEHMET ÇITAK 3A0MDCJ, FATMA YILMAZ
+        #    3MTPNTP, MAKBULE TEKİN 2NPHE6Z, NAHİDE ÇELİK 32JX9E8)
+        #  - "regule edilemedi/edilememis" (CENNET ÇAĞLAR 2R8LQZT,
+        #    PERİZADE AKGÜN 2P3ZIME)
+        #  - "regule degil" (SİNAN DEMİRHAN 3HKETUW)
+        #  - Typo "reugle" (MAKBULE TEKİN 2NPHE6Z): re[uü]gle
+        r'|re(?:g[uü]|[uü]g)le\s*(?:olm|edil(?:em|m)e|de[gğ]il)'
+        # "normoglisemi saglanam" — SEVİM MERCAN 37PBI31
+        r'|normoglisemi\s*sa[gğ]lanam'
         # "glisemik kontrol elde edilm" — KUDUSE GÜLER 2 varyantı
         r'|glisemik\s*kontrol(?:u)?\s*(?:elde\s*)?edil(?:em|m)'
-        # "kan şekeri (yeterince) düşürülemedi" — tıbben eşdeğer (MUZAFFER ŞAHİN)
+        # "kan şekeri (yeterince) düşürülemedi" — MUZAFFER ŞAHİN
         r'|kan\s*sekeri\s*(?:yeterince\s*)?dusurul\w*'
-        # "yeterli [glisemik] yanıt alınama" — tıbben eşdeğer (SABRİYE ERBAŞ
-        # raporu 2026-05-24: "yeterli glisemik yanıt alınamamıştır")
+        # "yeterli [glisemik] yanıt alınama" — SABRİYE ERBAŞ
         r'|yeterli\s*(?:glisemik\s*)?yan[ıi]t\s*al[ıi]nam'
         r')',
         re.IGNORECASE)
+
     var_met = bool(pat_met.search(metin))
-    var_sulfo = bool(pat_sulfo.search(metin))
-    var_max = bool(pat_max.search(metin))
+    # EMİNE UZUN 3JVSGG2 özel: "METFORMİN VE SÜ İLE KŞ REGÜLASYONU..."
+    # — "SÜ" kısaltma = sülfonilüre. Bağlama bağlı, sadece "metformin ve sü"
+    # kombinasyonunda kabul et (yalnız 'su' kelimesi başka anlamda olabilir).
+    var_sulfo = bool(pat_sulfo.search(metin)) or bool(re.search(
+        r'metformin\s+ve\s+s[uü]\b\s*(?:ile|tedavi|grub|kombin)',
+        metin, re.IGNORECASE))
+    var_max = (bool(pat_max_a.search(metin))
+               or bool(pat_max_b_reverse.search(metin))
+               or bool(pat_max_c_implicit.search(metin))
+               or bool(pat_max_d_no_doz.search(metin)))
     var_yet = bool(pat_yet.search(metin))
+
+    # (1) Max ibaresi + yetersiz kontrol + en az bir ilaç → VAR (kesin SUT)
     if (var_met or var_sulfo) and var_max and var_yet:
         return SartSonuc(
             ad='Metformin/sülfonilüre max doz yetersiz glisemik kontrol',
@@ -652,8 +736,25 @@ def atom_metformin_sulfo_max_yetersiz(ilac_sonuc: Dict,
             kaynak='rapor_metni',
             grup=grup,
         )
+    # (2) Hem metformin hem sülfonilüre AÇIKÇA isimlendirilmiş + yetersiz
+    # kontrol → VAR (max ibaresi olmasa bile). Klinik gerekçe: hekim her
+    # iki ilacı da yazıp "kontrol saglanmadi" diyorsa SUT'un istediği
+    # kombinasyon tedavisi yetersizliği lafzen ifade edilmiş demektir.
+    #  - MELİKE DAĞ 2TYB4GA, MEHMET KILIÇALP 30RRUTR, FATMA BEHREM 2YK7HF2:
+    #    "metformin ve sulfonilurelerin yeterli oranda kontrol saglanam"
+    #  - EMİN ERARSLAN 2SRQD0J: "3 aydan fazla sulfonilurele ve metformin
+    #    kullanimina ragmen kan sekeri regulasyonu saglanam"
+    if var_met and var_sulfo and var_yet:
+        return SartSonuc(
+            ad='Metformin/sülfonilüre max doz yetersiz glisemik kontrol',
+            durum=SartDurumu.VAR,
+            neden='Hem metformin hem sülfonilüre + yetersiz kontrol — '
+                  'kombi tedavi başarısızlığı lafzen ifade edilmiş',
+            kaynak='rapor_metni',
+            grup=grup,
+        )
     if var_yet and (var_met or var_sulfo):
-        # Max doz ibaresi yok ama yetersiz kontrol var — şartlı (KE)
+        # Max doz ibaresi yok, tek ilaç + yetersiz kontrol — şartlı (KE)
         return SartSonuc(
             ad='Metformin/sülfonilüre max doz yetersiz glisemik kontrol',
             durum=SartDurumu.KONTROL_EDILEMEDI,
@@ -675,19 +776,46 @@ def atom_metformin_sulfo_max_yetersiz(ilac_sonuc: Dict,
 def y6_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
     """Y6: SGLT-2 inhibitörleri (dapa/empa) + kombineleri.
 
-    Şartlar:
+    PARALEL-YOL kalıbı (2026-05-25, üst-VEYA çifti):
+      Y6_UYGUN ⇔ [ Y6.2 ]               ; RAPORSUZ YOL
+                 ∨
+                 [ Y6.3 ∧ Y6.1 ]         ; RAPORLU YOL
+
       Y6.1 = Met VE/VEYA Sulfo max doz yetersiz glisemik kontrol
       Y6.2 = reçete hekimi ∈ {Endo, IH}
       Y6.3 = uzman raporu (Endo/IH)
-      Y6_UYGUN ⇔ Y6.1 ∧ (Y6.2 ∨ Y6.3)
+
+    Klinik şart (Y6.1) RAPORSUZ yolda hekim sorumluluğunda kalır → bilgi
+    atomu olarak görünür, matematiğe katmaz.
     """
     sartlar: List[SartSonuc] = []
-    sartlar.append(atom_metformin_sulfo_max_yetersiz(
-        ilac_sonuc, grup='Fıkra (6) — klinik şart'))
-    sartlar.append(atom_hekim_brans_uygun(
-        ilac_sonuc, Y6_IZINLI, grup='Fıkra (6) — yetki (≥1)'))
-    sartlar.append(atom_uzman_raporu_brans(
-        ilac_sonuc, Y6_IZINLI, grup='Fıkra (6) — yetki (≥1)'))
+    grup_raporsuz = '‖Y6‖ Raporsuz Yol — Hekim Endo/IH'
+    grup_raporsuz_bilgi = '‖Y6‖ Raporsuz Yol — Klinik şart hekim sorumluluğu (bilgi)'
+    grup_raporlu = '‖Y6‖ Raporlu Yol — Rapor Endo/IH + Klinik şart'
+
+    # RAPORSUZ YOL: tek atom (hekim Endo/IH)
+    hekim_atomu = atom_hekim_brans_uygun(
+        ilac_sonuc, Y6_IZINLI, grup=grup_raporsuz)
+    hekim_atomu.veya_grubu = False  # tek-atom AND
+    sartlar.append(hekim_atomu)
+    # Raporsuz yolda klinik şart bilgi olarak gösterilsin (matematiğe katmaz)
+    sartlar.append(SartSonuc(
+        ad='Klinik şart (Met/Sulfo max yetersiz) — raporsuz yolda hekim sorumluluğunda',
+        durum=SartDurumu.KONTROL_EDILEMEDI,
+        neden='Endo/IH uzmanı raporsuz yazma yetkisine sahip; klinik şart '
+              'hekim sorumluluğunda (eczacı/sistem doğrulayamaz)',
+        kaynak='hekim_sorumluluk', grup=grup_raporsuz_bilgi,
+        sartli_atom=True))
+
+    # RAPORLU YOL: rapor branşı Endo/IH + klinik şart (AND, aynı grupta)
+    rapor_atomu = atom_uzman_raporu_brans(
+        ilac_sonuc, Y6_IZINLI, grup=grup_raporlu)
+    rapor_atomu.veya_grubu = False  # raporlu yolda AND
+    sartlar.append(rapor_atomu)
+    klinik_atomu = atom_metformin_sulfo_max_yetersiz(
+        ilac_sonuc, grup=grup_raporlu)
+    klinik_atomu.veya_grubu = False
+    sartlar.append(klinik_atomu)
     return sartlar
 
 
@@ -697,8 +825,21 @@ def y6_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
 # ═══════════════════════════════════════════════════════════════════════
 
 def _rapor_metni(ilac_sonuc: Dict) -> str:
-    """Rapor metni TR→ASCII lower-case (regex search için)."""
-    return norm_tr_lower(ilac_sonuc.get('rapor_metni') or '')
+    """Rapor metni TR→ASCII lower-case (regex search için).
+
+    Alan öncelikleri (GUI/wrapper farklılığı için tolerans):
+      1. rapor_metni — yeni motor standart alanı
+      2. rapor_aciklamalari (list) — eski wrapper ve bazı testlerin alanı,
+         birleşik metin olarak okunur
+    """
+    raw = ilac_sonuc.get('rapor_metni') or ''
+    if not raw:
+        rap_acklari = ilac_sonuc.get('rapor_aciklamalari') or []
+        if isinstance(rap_acklari, (list, tuple)):
+            raw = ' '.join(str(x) for x in rap_acklari if x)
+        else:
+            raw = str(rap_acklari)
+    return norm_tr_lower(raw)
 
 
 def _diger_kalemler_iceriyor(ilac_sonuc: Dict, kume: Set[str]) -> bool:
@@ -796,9 +937,14 @@ def atom_bmi_35_ustu(ilac_sonuc: Dict, grup: str) -> SartSonuc:
     onu kullan; yoksa hasta kilo/boy → BMI hesapla.
     """
     metin = _rapor_metni(ilac_sonuc)
-    # Rapor lafzı öncelikli
+    # Rapor lafzı öncelikli — 3 varyant:
+    # 1) "BMI/VKİ X" sayısal (kısa form)
+    # 2) "VÜCUT KİTLE/KÜTLE İNDEKSİ X" sayısal (uzun form)
+    # 3) "X KG/M² ÜZERİNDE OLAN" lafzı (SUT ibaresi alıntısı — AYNUR YILMAZ)
     m = re.search(
-        r'(?:tedavi\s*ba[sş]lang[ıi]c[ıi]nda)?\s*(?:bmi|vk[ıi])\s*[:=]?\s*(\d+(?:[.,]\d+)?)',
+        r'(?:tedavi\s*ba[sş]lang[ıi]c[ıi]nda)?\s*'
+        r'(?:bmi|vk[ıi]|v[uü]c[uü]t\s*k[ıi]t(?:le|tle)?\s*[ıi]ndeks[ıi])'
+        r'\s*[:=]?\s*(\d+(?:[.,]\d+)?)',
         metin)
     if m:
         try:
@@ -812,6 +958,30 @@ def atom_bmi_35_ustu(ilac_sonuc: Dict, grup: str) -> SartSonuc:
                 ad=f'BMI > 35 (rapor: {bmi_rapor:.1f})', durum=SartDurumu.YOK,
                 neden=f'Rapor lafzı BMI={bmi_rapor:.1f} ≤ 35',
                 kaynak='rapor', grup=grup)
+        except ValueError:
+            pass
+
+    # 2026-05-24: SUT lafzı alıntısı — "35 KG/M² ÜZERİNDE/ÜSTÜNDE OLAN"
+    # AYNUR YILMAZ pilot: "...VÜCUT KİTLE İNDEKSİ TEDAVİ BAŞLANGICINDA
+    # 35 KG/M2 NİN ÜZERİNDE OLAN VE... TİP 2 DİYABET HASTASI" — doktor
+    # bu hastanın eşik üstü olduğunu beyan ediyor → VAR (≥35 ise).
+    # 2026-05-24 ek: "35 KG/M'NİN ÜZERİNDE" varyantı — m ile NİN arasında
+    # apostrof (' veya unicode ’/‘) bulunuyor; \w word char değil, possessive
+    # eki yakalanmıyordu. AYNUR YILMAZ 3BYHF7H (15.02.2025) pilot.
+    m_eshik = re.search(
+        r'(\d+(?:[.,]\d+)?)\s*kg\s*/?\s*m\s*[²2\^]?\s*'
+        r"['’‘]?\s*\w{0,5}\s*"
+        r'(?:[uü]zerinde|[uü]st[uü]nde|[uü]zeri\b|[uü]st[uü]\b)',
+        metin)
+    if m_eshik:
+        try:
+            eshik = float(m_eshik.group(1).replace(',', '.'))
+            if eshik >= 35:
+                return SartSonuc(
+                    ad=f'BMI > 35 (rapor lafzı: ≥{eshik:.0f} kg/m²)',
+                    durum=SartDurumu.VAR,
+                    neden=f'Rapor "{eshik:.0f} kg/m² üzerinde" beyan ediyor',
+                    kaynak='rapor', grup=grup)
         except ValueError:
             pass
 
@@ -860,9 +1030,21 @@ def atom_akut_pankreatit_yok_neg(ilac_sonuc: Dict, grup: str) -> SartSonuc:
     pat_var = re.compile(
         r'(?:akut\s*pankreatit|pankreatit\s*[öo]yk[üu]s[üu]?|pankreatit\s*ge[çc]i)',
         re.IGNORECASE)
+    # 2026-05-24: rapor lafzı varyantları — "geçirilme/geçirme" arada kelime,
+    # "bulunmayan/bulunmamaktadır/olmayan" eki, "negatif/saptanmamış" eşdeğerleri.
+    # Önceki pattern sadece "bulunmama/olmama" yakalıyordu — "bulunmayan"
+    # substring değildi, yanlış pozitif VAR'a düşüyordu (AYNUR YILMAZ vakası).
     pat_yok = re.compile(
-        r'(?:akut\s*pankreatit\s*(?:[öo]yk[üu]s[üu]?\s*)?(?:yok|bulunmama|olmama)|'
-        r'pankreatit\s*(?:[öo]yk[üu]s[üu]?\s*)?yok)',
+        r'(?:akut\s*pankreatit\s*(?:ge[çc]ir(?:il)?\w*\s*)?'
+        r'(?:[öo]yk[üu]s[üu]?\s*)?'
+        r'(?:yok(?:tur|sa|mus|m[ıi][şs])?|bulunma\w*|olmama\w*|olmayan\w*'
+        r'|saptanma\w*|tespit\s*edilme\w*|g[öo]r[uü]lme\w*'
+        r'|me?vcut\s*de[gğ]il|negatif)'
+        r'|pankreatit\s*(?:ge[çc]ir(?:il)?\w*\s*)?'
+        r'(?:[öo]yk[üu]s[üu]?\s*)?'
+        r'(?:yok(?:tur|sa|mus|m[ıi][şs])?|bulunma\w*|olmama\w*|olmayan\w*'
+        r'|saptanma\w*|tespit\s*edilme\w*|g[öo]r[uü]lme\w*'
+        r'|me?vcut\s*de[gğ]il|negatif))',
         re.IGNORECASE)
     pos = bool(pat_var.search(metin))
     neg = bool(pat_yok.search(metin))
@@ -1762,13 +1944,17 @@ Y3_IZINLI = {'endokrin', 'ic', 'pediatri', 'kardiyo'}  # Aile hek YOK!
 def y3_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
     """Y3: Analog insülin / Pioglitazon / Pio kombi.
 
-    Y2'den tek farkı: Aile hekimi yetkili DEĞİL.
+    PARALEL-YOL kalıbı (üst-VEYA çifti, Y2'den tek farkı Aile hek yok).
     """
     sartlar: List[SartSonuc] = []
-    sartlar.append(atom_hekim_brans_uygun(
-        ilac_sonuc, Y3_IZINLI, grup='Fıkra (3) — yetki (≥1)'))
-    sartlar.append(atom_uzman_raporu_brans(
-        ilac_sonuc, Y3_IZINLI, grup='Fıkra (3) — yetki (≥1)'))
+    grup_raporsuz = '‖Y3‖ Raporsuz Yol — Hekim Endo/IH/Pediatri/Kardio'
+    grup_raporlu = '‖Y3‖ Raporlu Yol — Rapor Endo/IH/Pediatri/Kardio'
+    hekim_atomu = atom_hekim_brans_uygun(ilac_sonuc, Y3_IZINLI, grup=grup_raporsuz)
+    hekim_atomu.veya_grubu = False
+    sartlar.append(hekim_atomu)
+    rapor_atomu = atom_uzman_raporu_brans(ilac_sonuc, Y3_IZINLI, grup=grup_raporlu)
+    rapor_atomu.veya_grubu = False
+    sartlar.append(rapor_atomu)
     return sartlar
 
 
@@ -1821,21 +2007,39 @@ def atom_dpp4_dusuk_doz_kby(ilac_sonuc: Dict,
 def y4_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
     """Y4: DPP-4 antagonistleri + kombineleri.
 
-    Şartlar:
-      Y4.1 = Met VE/VEYA Sulfo max doz yetersiz
-      Y4.2 = reçete hekimi ∈ {Endo, IH}
-      Y4.3 = uzman raporu (Endo/IH)
-      Y4.4 = (saksa 2.5mg) → KBY VAR
-      Y4.5 = (alo 12.5mg) → KBY VAR
-      KY4.1 = aynı reçetede GLP-1 analoğu YOK  (çapraz kombi'de işlenir)
+    PARALEL-YOL kalıbı (2026-05-25, üst-VEYA çifti):
+      Y4_UYGUN ⇔ [ Y4.2 ] ∨ [ Y4.3 ∧ Y4.1 ]
+               ∧ (saksa2.5 → Y4.4) ∧ (alo12.5 → Y4.5) ∧ KY4.1
     """
     sartlar: List[SartSonuc] = []
-    sartlar.append(atom_metformin_sulfo_max_yetersiz(
-        ilac_sonuc, grup='Fıkra (4) — klinik şart'))
-    sartlar.append(atom_hekim_brans_uygun(
-        ilac_sonuc, Y4_IZINLI, grup='Fıkra (4) — yetki (≥1)'))
-    sartlar.append(atom_uzman_raporu_brans(
-        ilac_sonuc, Y4_IZINLI, grup='Fıkra (4) — yetki (≥1)'))
+    grup_raporsuz = '‖Y4‖ Raporsuz Yol — Hekim Endo/IH'
+    grup_raporsuz_bilgi = '‖Y4‖ Raporsuz Yol — Klinik şart hekim sorumluluğu (bilgi)'
+    grup_raporlu = '‖Y4‖ Raporlu Yol — Rapor Endo/IH + Klinik şart'
+
+    # RAPORSUZ YOL
+    hekim_atomu = atom_hekim_brans_uygun(
+        ilac_sonuc, Y4_IZINLI, grup=grup_raporsuz)
+    hekim_atomu.veya_grubu = False
+    sartlar.append(hekim_atomu)
+    sartlar.append(SartSonuc(
+        ad='Klinik şart (Met/Sulfo max yetersiz) — raporsuz yolda hekim sorumluluğunda',
+        durum=SartDurumu.KONTROL_EDILEMEDI,
+        neden='Endo/IH uzmanı raporsuz yazma yetkisine sahip; klinik şart '
+              'hekim sorumluluğunda (eczacı/sistem doğrulayamaz)',
+        kaynak='hekim_sorumluluk', grup=grup_raporsuz_bilgi,
+        sartli_atom=True))
+
+    # RAPORLU YOL
+    rapor_atomu = atom_uzman_raporu_brans(
+        ilac_sonuc, Y4_IZINLI, grup=grup_raporlu)
+    rapor_atomu.veya_grubu = False
+    sartlar.append(rapor_atomu)
+    klinik_atomu = atom_metformin_sulfo_max_yetersiz(
+        ilac_sonuc, grup=grup_raporlu)
+    klinik_atomu.veya_grubu = False
+    sartlar.append(klinik_atomu)
+
+    # Saksa/Alo düşük doz şartı (paralel yol dışında, hep gerekli)
     dusuk_doz = atom_dpp4_dusuk_doz_kby(ilac_sonuc)
     if dusuk_doz is not None:
         sartlar.append(dusuk_doz)
@@ -1929,26 +2133,33 @@ def y3b_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
 # ═══════════════════════════════════════════════════════════════════════
 
 Y5_DEVAM_IZINLI = {'endokrin', 'ic'}
+Y5_ILK_IZINLI = {'endokrin'}  # ilk reçete sadece endokrin uzmanı yazar (SUT 5/c)
 
 
-def y5_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
-    """Y5: Eksenatid (Byetta/Bydureon)."""
+def _y5_alt_dispatcher(ilac_sonuc: Dict) -> str:
+    """Y5 alt-yolak: hasta_ilac_gecmisi'nde BYETTA/Eksenatid varsa devam, yoksa ilk reçete.
+
+    Kullanıcı kuralı 2026-05-25: SUT 4.2.38(5)/c "başlangıç dozu rapor şartı
+    aranmaksızın (2x5mcg) (1 kutu) olarak endokrinoloji uzman hekimlerince
+    reçete edilir" — ilk reçete; "Tedaviye devam edilecekse... rapor..." — devam.
+    """
+    if _hasta_ilac_gecmisi_iceriyor(ilac_sonuc, GLP1_EKSENATID):
+        return 'devam'
+    return 'ilk'
+
+
+def _y5_ortak_klinik_atomlari(ilac_sonuc: Dict,
+                                 grup_klinik: str,
+                                 grup_yolu: str) -> List[SartSonuc]:
+    """Y5 ortak klinik şartlar — ilk ve devam yolu için aynı:
+       Tip 2 DM + BMI>35 + Pankreatit yok + (Y5.4a ∨ Y5.4b)."""
     sartlar: List[SartSonuc] = []
-    grup_klinik = 'Fıkra (5) — Hasta/Klinik şart'
-    grup_yolu = 'Fıkra (5) — Tedavi yolu (a∨b)'
-    grup_yetki = 'Fıkra (5) — Devam reçete yetkisi'
-    grup_kombi = 'Fıkra (5)(ç) — Kombi yasağı'
-
-    # Y5.1 Tip 2 DM
     sartlar.append(atom_tip2_dm_var(ilac_sonuc, grup_klinik))
-    # Y5.2 BMI > 35
     sartlar.append(atom_bmi_35_ustu(ilac_sonuc, grup_klinik))
-    # Y5.3 Akut pankreatit YOK (NEG)
     sartlar.append(atom_akut_pankreatit_yok_neg(ilac_sonuc, grup_klinik))
 
     # Y5.4a/b — Met/Sulfo max yetersiz VEYA Met/Pio+bazal yetersiz
     sartlar.append(atom_metformin_sulfo_max_yetersiz(ilac_sonuc, grup=grup_yolu))
-    # Y5.4b daha çok rapor lafzı; basitleştirilmiş atom
     metin = _rapor_metni(ilac_sonuc)
     if re.search(
             r'(?:pioglitazon|bazal\s*ins[uü]lin).{0,40}?(?:yetersiz|sa[gğ]lanam)',
@@ -1964,22 +2175,16 @@ def y5_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
             durum=SartDurumu.KONTROL_EDILEMEDI,
             neden='Rapor metninde b-yolu klinik lafzı bulunamadı',
             kaynak='rapor', grup=grup_yolu, veya_grubu=True, sartli_atom=True))
-    # (Y5.4a atom_metformin_sulfo_max_yetersiz veya_grubu false döner;
-    #  yukarıda eklediğimiz Y5.4b veya_grubu=True ile aynı gruba düşer →
-    #  _genel_sonuc grupta veya_grubu=True görünce OR mantığı uygular.
-    #  Y5.4a'yı veya_grubu=True olarak override edelim:)
     for s in sartlar:
         if s.grup == grup_yolu and 'Metformin/sülfonilüre max' in s.ad:
             s.veya_grubu = True
+    return sartlar
 
-    # Y5.7-Y5.9 devam reçete yetkisi (devam yolu varsayımı — ilk reçete dispatcher
-    # şu an için yapılmıyor; her zaman devam yolu kontrolü yapılır)
-    sartlar.append(atom_hekim_brans_uygun(
-        ilac_sonuc, Y5_DEVAM_IZINLI, grup=grup_yetki))
-    sartlar.append(atom_uzman_raporu_brans(
-        ilac_sonuc, Y5_DEVAM_IZINLI, grup=grup_yetki))
 
-    # KY5.1 — DPP-4 YOK
+def _y5_kombi_yasak_atomlari(ilac_sonuc: Dict,
+                                grup_kombi: str) -> List[SartSonuc]:
+    """KY5.1 DPP-4 yok + KY5.2 aktif tedavi sırasında pankreatit yok."""
+    sartlar: List[SartSonuc] = []
     if _diger_kalemler_iceriyor(ilac_sonuc, DPP4):
         sartlar.append(SartSonuc(
             ad='Aynı reçetede DPP-4 YOK', durum=SartDurumu.YOK,
@@ -1991,7 +2196,7 @@ def y5_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
             neden='Reçete DPP-4 içermiyor',
             kaynak='recete_ilaclari', grup=grup_kombi))
 
-    # KY5.2 — aktif tedavi sırasında pankreatit YOK (rapor lafzı)
+    metin = _rapor_metni(ilac_sonuc)
     if re.search(r'(?:tedavi.{0,15}pankreatit|pankreatit.{0,15}geli[şs])', metin):
         sartlar.append(SartSonuc(
             ad='Aktif tedavi sırasında pankreatit YOK', durum=SartDurumu.YOK,
@@ -2002,8 +2207,74 @@ def y5_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
             ad='Aktif tedavi sırasında pankreatit YOK', durum=SartDurumu.VAR,
             neden='Rapor sessiz — pankreatit gelişim belirtilmemiş',
             kaynak='rapor', grup=grup_kombi))
-
     return sartlar
+
+
+def _y5_ilk_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
+    """Y5 İLK REÇETE — SUT 4.2.38(5)/c:
+       "başlangıç dozu rapor şartı aranmaksızın (2x5mcg) (1 kutu) olarak
+        endokrinoloji uzman hekimlerince reçete edilir."
+
+    Yetki tek-atom: reçete hekimi endokrinoloji (iç hast DAHİL DEĞİL ilk reçetede).
+    Rapor şartı YOK. 1 kutu sınırı kontrol edilemez (kutu sayısı motorda yok) →
+    (bilgi) atomu olarak görünür, matematiğe katmaz.
+    """
+    sartlar: List[SartSonuc] = []
+    grup_klinik = 'Fıkra (5/c) İlk Reçete —Klinik şart'
+    grup_yolu = 'Fıkra (5/c) İlk Reçete —Tedavi yolu (a∨b)'
+    grup_yetki = 'Fıkra (5/c) İlk Reçete —Hekim Endokrinoloji (rapor şartı yok)'
+    grup_kutu_bilgi = 'Fıkra (5/c) İlk Reçete —1 kutu sınırı (bilgi)'
+    grup_kombi = 'Fıkra (5)(ç) — Kombi yasağı'
+
+    sartlar.extend(_y5_ortak_klinik_atomlari(ilac_sonuc, grup_klinik, grup_yolu))
+
+    # Yetki: sadece endokrinoloji (iç hast değil)
+    sartlar.append(atom_hekim_brans_uygun(
+        ilac_sonuc, Y5_ILK_IZINLI, grup=grup_yetki))
+
+    # 1 kutu sınırı — motor görünmüyor, bilgi atomu
+    sartlar.append(SartSonuc(
+        ad='İlk reçete: 1 kutu (2x5mcg) sınırı',
+        durum=SartDurumu.KONTROL_EDILEMEDI,
+        neden='Kutu sayısı motora gelmiyor — manuel doğrulanmalı (bilgi)',
+        kaynak='recete', grup=grup_kutu_bilgi, sartli_atom=True))
+
+    sartlar.extend(_y5_kombi_yasak_atomlari(ilac_sonuc, grup_kombi))
+    return sartlar
+
+
+def _y5_devam_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
+    """Y5 DEVAM REÇETE — 6 ay (ilk devam) veya 1 yıl (sonraki) endo
+    uzman hekim raporuna dayanılarak endo/iç uzman hekimlerince yazılır."""
+    sartlar: List[SartSonuc] = []
+    grup_klinik = 'Fıkra (5) Devam Reçete —Klinik şart'
+    grup_yolu = 'Fıkra (5) Devam Reçete —Tedavi yolu (a∨b)'
+    grup_yetki = 'Fıkra (5) Devam Reçete —Hekim Endo/IH VEYA Rapor Endo/IH'
+    grup_kombi = 'Fıkra (5)(ç) — Kombi yasağı'
+
+    sartlar.extend(_y5_ortak_klinik_atomlari(ilac_sonuc, grup_klinik, grup_yolu))
+
+    # Yetki: hekim Endo/IH VEYA rapor Endo/IH (paralel-yol yetki kalıbı)
+    sartlar.append(atom_hekim_brans_uygun(
+        ilac_sonuc, Y5_DEVAM_IZINLI, grup=grup_yetki))
+    sartlar.append(atom_uzman_raporu_brans(
+        ilac_sonuc, Y5_DEVAM_IZINLI, grup=grup_yetki))
+
+    sartlar.extend(_y5_kombi_yasak_atomlari(ilac_sonuc, grup_kombi))
+    return sartlar
+
+
+def y5_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
+    """Y5: Eksenatid (Byetta/Bydureon) — alt-dispatcher ile ilk vs devam.
+
+    Mutually exclusive yapı (paralel-OR değil): hasta_ilac_gecmisi'nde
+    BYETTA varsa devam yolu; yoksa ilk reçete yolu kontrol edilir. SUT
+    4.2.38(5)/c lafzı ilk/devam ayrımını açıkça yapıyor (kullanıcı kuralı
+    2026-05-25).
+    """
+    if _y5_alt_dispatcher(ilac_sonuc) == 'ilk':
+        return _y5_ilk_kontrol(ilac_sonuc)
+    return _y5_devam_kontrol(ilac_sonuc)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2106,21 +2377,43 @@ Y8_IZINLI = {'endokrin', 'ic'}
 
 
 def y8_kontrol(ilac_sonuc: Dict) -> List[SartSonuc]:
-    """Y8: Empa+Lina kombi (Glyxambi)."""
+    """Y8: Empa+Lina kombi (Glyxambi).
+
+    PARALEL-YOL kalıbı (2026-05-25, üst-VEYA çifti):
+      Y8_UYGUN ⇔ Y8.1 ∧ Y8.2 ∧
+                 ( [ Y8.4 ] ∨ [ Y8.5 ∧ Y8.3 ] )
+                 ∧ KY8.1 ∧ KY8.2 ∧ KY8.3
+    """
     sartlar: List[SartSonuc] = []
     grup_altyapi = 'Fıkra (8) — Önceki tedavi altyapısı'
-    grup_klinik = 'Fıkra (8) — Yetersiz kontrol'
-    grup_yetki = 'Fıkra (8) — Reçete yetkisi (≥1)'
+    grup_raporsuz = '‖Y8‖ Raporsuz Yol — Hekim Endo/IH'
+    grup_raporsuz_bilgi = '‖Y8‖ Raporsuz Yol — Klinik şart hekim sorumluluğu (bilgi)'
+    grup_raporlu = '‖Y8‖ Raporlu Yol — Rapor Endo/IH + Klinik şart'
 
-    # Y8.1 Önceki Met/Sulfo
+    # Y8.1 Önceki Met/Sulfo (hep gerekli)
     sartlar.append(atom_onceden_met_veya_sulfo_y8(ilac_sonuc, grup_altyapi))
-    # Y8.2 Önceki Empa/Lina
+    # Y8.2 Önceki Empa/Lina (hep gerekli)
     sartlar.append(atom_onceden_empa_veya_lina_y8(ilac_sonuc, grup_altyapi))
-    # Y8.3 Bu altyapıya rağmen yetersiz kontrol
-    sartlar.append(atom_yetersiz_glisemik_kontrol(ilac_sonuc, grup_klinik))
-    # Y8.4/Y8.5 reçete hekimi VEYA uzman raporu
-    sartlar.append(atom_hekim_brans_uygun(ilac_sonuc, Y8_IZINLI, grup=grup_yetki))
-    sartlar.append(atom_uzman_raporu_brans(ilac_sonuc, Y8_IZINLI, grup=grup_yetki))
+
+    # RAPORSUZ YOL
+    hekim_atomu = atom_hekim_brans_uygun(ilac_sonuc, Y8_IZINLI, grup=grup_raporsuz)
+    hekim_atomu.veya_grubu = False
+    sartlar.append(hekim_atomu)
+    sartlar.append(SartSonuc(
+        ad='Yetersiz glisemik kontrol — raporsuz yolda hekim sorumluluğunda',
+        durum=SartDurumu.KONTROL_EDILEMEDI,
+        neden='Endo/IH uzmanı raporsuz yazma yetkisine sahip; klinik şart '
+              'hekim sorumluluğunda (eczacı/sistem doğrulayamaz)',
+        kaynak='hekim_sorumluluk', grup=grup_raporsuz_bilgi,
+        sartli_atom=True))
+
+    # RAPORLU YOL
+    rapor_atomu = atom_uzman_raporu_brans(ilac_sonuc, Y8_IZINLI, grup=grup_raporlu)
+    rapor_atomu.veya_grubu = False
+    sartlar.append(rapor_atomu)
+    klinik_atomu = atom_yetersiz_glisemik_kontrol(ilac_sonuc, grup_raporlu)
+    klinik_atomu.veya_grubu = False
+    sartlar.append(klinik_atomu)
     return sartlar
 
 
@@ -2331,6 +2624,61 @@ def capraz_kombi_yasak(ilac_sonuc: Dict, aktif_yolak: str) -> List[SartSonuc]:
 # Genel sonuç hesaplama (CLAUDE.md disiplini)
 # ═══════════════════════════════════════════════════════════════════════
 
+_PARALEL_MARKER_RE = re.compile(r'‖([^‖]+)‖')
+
+
+def _paralel_yolak_marker(grup_adi: str) -> str:
+    """Grup adında `‖<yolak>‖` marker'ı varsa yolak kodunu döndür, yoksa ''.
+
+    Konvansiyon: ‖Y4‖ Raporsuz Yol  ↔  ‖Y4‖ Raporlu Yol  → aynı çift
+    (bkz. docs/sut/SUT_4_2_38_DIYABET_ANALIZ.md §3b)
+    """
+    if not grup_adi:
+        return ''
+    m = _PARALEL_MARKER_RE.search(grup_adi)
+    return m.group(1) if m else ''
+
+
+def _grup_degerlendir(grup_sartlar: List[SartSonuc]) -> Tuple[str, bool]:
+    """Tek bir grubun durumunu hesapla.
+
+    Döner: ('var'|'yok'|'ke', sadece_sartli_ke_mi)
+    """
+    veya = any(s.veya_grubu for s in grup_sartlar)
+    durumlar = [s.durum for s in grup_sartlar]
+
+    if veya:
+        if SartDurumu.VAR in durumlar:
+            return 'var', True
+        if all(d == SartDurumu.YOK for d in durumlar):
+            return 'yok', False
+        # KE var
+        sadece_sartli = all(s.sartli_atom for s in grup_sartlar
+                            if s.durum == SartDurumu.KONTROL_EDILEMEDI)
+        return 'ke', sadece_sartli
+    # AND
+    if SartDurumu.YOK in durumlar:
+        return 'yok', False
+    if all(d == SartDurumu.VAR for d in durumlar):
+        return 'var', True
+    sadece_sartli = all(s.sartli_atom for s in grup_sartlar
+                        if s.durum == SartDurumu.KONTROL_EDILEMEDI)
+    return 'ke', sadece_sartli
+
+
+def _ust_or_birlestir(a: str, b: str) -> str:
+    """Üst-VEYA çiftinin sonucu (paralel-yol kalıbı, bkz. §3b tablo).
+
+    a, b ∈ {'var','yok','ke'}.
+    VAR/* → VAR; YOK/YOK → YOK; aksi (KE içeren) → KE
+    """
+    if a == 'var' or b == 'var':
+        return 'var'
+    if a == 'yok' and b == 'yok':
+        return 'yok'
+    return 'ke'
+
+
 def _genel_sonuc(sartlar: List[SartSonuc]) -> KontrolSonucu:
     """SartSonuc listesinden genel sonucu hesapla.
 
@@ -2340,49 +2688,57 @@ def _genel_sonuc(sartlar: List[SartSonuc]) -> KontrolSonucu:
       - Şartlı atomlar (sartli_atom=True) KE iken diğer her şey VAR → SARTLI_UYGUN
       - Bir grup bile YOK varsa → UYGUN_DEGIL
       - KE varsa ve diğerleri VAR → ŞÜPHELİ (MANUEL_KONTROL ya da KONTROL_EDILEMEDI)
+
+    PARALEL-YOL kalıbı (§3b):
+      - Grup adında ‖<yolak>‖ marker'ı taşıyan gruplar üst-VEYA çifti olarak
+        birleştirilir. Çiftin biri VAR ise üst-VEYA VAR. İkisi de YOK ise YOK.
+        Aksi KE.
     """
     # Grup bazlı topla
     gruplar: Dict[str, List[SartSonuc]] = {}
     for s in sartlar:
         gruplar.setdefault(s.grup, []).append(s)
 
-    grup_sonuclari: List[str] = []  # 'var' / 'yok' / 'ke'
-    sadece_sartli_ke = True
+    # Marker'lı grupları yolak kodlarına göre kümelendir
+    paralel_gruplar: Dict[str, List[Tuple[str, bool]]] = {}
+    normal_grup_sonuclari: List[Tuple[str, bool]] = []
 
     for grup_adi, grup_sartlar in gruplar.items():
-        # CLAUDE.md §4: grup adında "(bilgi)" geçen gruplar hesaplama dışıdır
-        # (parser zayıf / dispatcher belirsiz / manuel doğrulama notu).
-        # Verdict'i bozmaz, sadece şemada/raporda görsel olarak görünür.
         if '(bilgi)' in (grup_adi or ''):
             continue
-        veya = any(s.veya_grubu for s in grup_sartlar)
-        durumlar = [s.durum for s in grup_sartlar]
-
-        if veya:
-            # OR — en az 1 VAR yeterli
-            if SartDurumu.VAR in durumlar:
-                grup_sonuclari.append('var')
-            elif all(d == SartDurumu.YOK for d in durumlar):
-                grup_sonuclari.append('yok')
-                sadece_sartli_ke = False
-            else:
-                # KE'ler var
-                grup_sonuclari.append('ke')
-                if not all(s.sartli_atom for s in grup_sartlar
-                           if s.durum == SartDurumu.KONTROL_EDILEMEDI):
-                    sadece_sartli_ke = False
+        marker = _paralel_yolak_marker(grup_adi)
+        durum, sartli = _grup_degerlendir(grup_sartlar)
+        if marker:
+            paralel_gruplar.setdefault(marker, []).append((durum, sartli))
         else:
-            # AND — hepsi VAR olmalı
-            if SartDurumu.YOK in durumlar:
-                grup_sonuclari.append('yok')
-                sadece_sartli_ke = False
-            elif all(d == SartDurumu.VAR for d in durumlar):
-                grup_sonuclari.append('var')
-            else:
-                grup_sonuclari.append('ke')
-                if not all(s.sartli_atom for s in grup_sartlar
-                           if s.durum == SartDurumu.KONTROL_EDILEMEDI):
-                    sadece_sartli_ke = False
+            normal_grup_sonuclari.append((durum, sartli))
+
+    grup_sonuclari: List[str] = []
+    sadece_sartli_ke = True
+
+    # Normal gruplar
+    for durum, sartli in normal_grup_sonuclari:
+        grup_sonuclari.append(durum)
+        if durum == 'yok':
+            sadece_sartli_ke = False
+        elif durum == 'ke' and not sartli:
+            sadece_sartli_ke = False
+
+    # Paralel-yol grupları (üst-VEYA çiftleri)
+    for marker, durum_listesi in paralel_gruplar.items():
+        # Çift olabilir (Raporsuz + Raporlu) veya tek (raporsuz/raporlu yok)
+        # Soldan sağa fold ile üst-OR birleştir
+        birlesik_durum = durum_listesi[0][0]
+        for d, _s in durum_listesi[1:]:
+            birlesik_durum = _ust_or_birlestir(birlesik_durum, d)
+        # sartli_ke bayrağı: paralel grupta KE varsa, KE üreten tüm atomlar
+        # sartli_atom=True ise birleşik şartlı sayılır
+        birlesik_sartli = all(s for d, s in durum_listesi if d == 'ke')
+        grup_sonuclari.append(birlesik_durum)
+        if birlesik_durum == 'yok':
+            sadece_sartli_ke = False
+        elif birlesik_durum == 'ke' and not birlesik_sartli:
+            sadece_sartli_ke = False
 
     if 'yok' in grup_sonuclari:
         return KontrolSonucu.UYGUN_DEGIL

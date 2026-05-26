@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from . import ayarlar, sonuc_parser
+from . import ayarlar, prompt_sablonlari, sonuc_parser
 from .claude_code_subprocess import (
     ClaudeCodeYok, SubprocessHata, _SUBPROCESS_KWARGS,
     _model_alias, claude_komutu_bul,
@@ -64,9 +64,37 @@ gönderiyor (reçete detayı, hasta raporu, ilaç geçmişi, vs.). Görevin:
 - Hasta TC kimlik numarasını cevapta TEKRAR ETME (görselde varsa bile).
 - Türkçe cevap ver, JSON dışı metin / markdown fence KOYMA.
 
+🎯 EN ÖNEMLİ KURAL — "ozet_aciklama" alanı:
+Bu alan raporun EN BAŞINDA gösterilir. Eczacı tek bakışta reçetenin
+durumunu anlamalı. Bu yüzden:
+  • TAM 1-2 CÜMLE olacak (asla 3'ten fazla).
+  • Mutlaka "ŞU SEBEPLE → UYGUNDUR / UYGUN DEĞİLDİR / ŞÜPHELİDİR"
+    formatında verdict + gerekçe içerecek.
+  • "Genel olarak", "değerlendirildiğinde", "incelendi" gibi dolgu
+    kelimeleri YASAK; DOĞRUDAN gerekçeye gir.
+  • Şart listeleri burada TEKRAR EDİLMEZ — bu sadece bir cümlelik
+    SONUÇ ÖZETİ; detaylar zaten alttaki listelerde.
+
+İyi örnek:
+  "Hasta diyabet tanılı, aktif raporda HbA1c=8.2 ve metformin direnci
+   var, eklenen empagliflozin SUT 4.2.74'ün şartlarını karşılıyor →
+   UYGUNDUR."
+
+  "Rapor süresi 2025-12 itibarıyla dolmuş, yeni rapor yok →
+   UYGUN DEĞİLDİR."
+
+  "Aktif raporda KAH lafzı geçiyor ancak ICD'de I25 yok, kanıtlanmamış
+   atomik şart → ŞÜPHELİDİR (manuel doğrulama)."
+
+Kötü örnek (YASAK):
+  "Görseller incelendi, hasta raporu mevcut, ilaç eşleşmesi var,
+   teşhisler tutarlı, dozaj uygun, doktor branşı yeterli, sonuç
+   olarak değerlendirildiğinde reçete uygun bulunmuştur." ← TOO LONG
+
 ÇIKTI FORMATI — sadece JSON, başka hiçbir şey yok:
 {
   "sonuc": "UYGUN" | "UYGUN_DEGIL" | "SUPHELI" | "KONTROL_EDILEMEDI" | "YETERSIZ_VERI",
+  "ozet_aciklama": "1-2 CÜMLE: 'X sebepten dolayı UYGUN/UYGUN DEĞİL/ŞÜPHELİ.'",
   "guven_skoru": 0.0-1.0,
   "sut_referans": "SUT madde no (örn. 4.2.13.A)",
   "saglanan_sartlar": ["şart1", "şart2", ...],
@@ -79,8 +107,7 @@ gönderiyor (reçete detayı, hasta raporu, ilaç geçmişi, vs.). Görevin:
     },
     ...
   },
-  "ozet_aciklama": "Eczacıya 2-3 cümle özet.",
-  "detay_rapor": "Teknik analiz (opsiyonel, uzun).",
+  "detay_rapor": "Teknik analiz, atomik şartların değerlendirme zinciri.",
   "klinik_yorum": "Bütünsel klinik değerlendirme (opsiyonel)."
 }
 """

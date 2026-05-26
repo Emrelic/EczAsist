@@ -72,29 +72,63 @@ def kontrol_arb_ek4f_m51_motor(ilac_sonuc: Dict):
 
 
 def _arb_monoterapi_bypass_dene(rapor, ilac_sonuc: Dict):
-    """Motor sonucu UYGUN_DEGIL ve sebebi monoterapi ibaresi ise bypass dene.
+    """Motor sonucu UYGUN_DEGIL veya ŞÜPHELİ ve sebebi Y3'ün monoterapi atomu
+    ise bypass dene (paralel-OR semantiği).
 
-    Mevcut Python kontrol fonksiyonundaki bypass mantığının motor varyantı.
-    Sadece Y3 başarısızlığında devreye girer (kombi ARB raporlu + ibare yok).
+    Atomik şemada Y3'ün monoterapi atomu:
+       monoterapi_yetersiz := aktif_rapor_ibaresi  ∨  diger_raporda_ibare
+    Aktif raporda ibare yoksa (VEYA aktif metin sessizse) hastanın diğer
+    reçetelerine ilintili raporlarda bakılır; bulunursa monoterapi atomu VAR
+    sayılır ve Y3'ün diğer atomları zaten VAR ise sonuç DIGER_RAPOR_UYGUN.
+
+    Önceki bug (2026-05-23 TAMAM KARTAL / FAZİLE KULAN pilot):
+      1. Trigger sadece UYGUN_DEGIL idi — Y3 monoterapi atomu KE olunca motor
+         ŞÜPHELİ üretiyor, bypass hiç denenmiyordu.
+      2. Sadece yerel cache (gecmis_raporlarda_ibare_ara) sorgulanıyordu —
+         Botanik EOS'taki RaporAnaAciklamalar atlanmıştı. Kullanıcı kuralı
+         (project_diger_rapor_uygun_bypass.md, 2026-05-23): EOS asıl kaynak,
+         cache fallback.
     """
     from recete_kontrol.base_kontrol import KontrolSonucu, SartDurumu
-    if rapor.sonuc != KontrolSonucu.UYGUN_DEGIL:
+    # 1) Trigger genişletildi: UYGUN_DEGIL VEYA ŞÜPHELİ
+    if rapor.sonuc not in (KontrolSonucu.UYGUN_DEGIL,
+                           KontrolSonucu.KONTROL_EDILEMEDI):
         return rapor
-    mesaj_l = (rapor.mesaj or '').lower()
-    if 'monoterapi' not in mesaj_l and 'kombi' not in mesaj_l:
+
+    # 2) Sartlar listesinde monoterapi atomunu bul. VAR ise zaten Y3 geçmiş,
+    #    bypass anlam taşımaz (başka bir atom başarısız demektir).
+    mono_sart = None
+    for s in (rapor.sartlar or []):
+        if 'monoterapi' in (s.ad or '').lower():
+            mono_sart = s
+            break
+    if mono_sart is None or mono_sart.durum == SartDurumu.VAR:
         return rapor
 
     hasta_tc = (ilac_sonuc.get('hasta_tc') or '').strip()
     if not hasta_tc:
         return rapor
 
+    # Aktif rapor metni — kendi metinde arayıp bulmasın diye hariç tut
+    rap_acklari = ilac_sonuc.get('rapor_aciklamalari') or []
+    aktif_rap_ack = (' '.join(str(x) for x in rap_acklari)
+                     if rap_acklari else '')
+
     try:
         from recete_kontrol.diger_rapor_bypass import (
-            gecmis_raporlarda_ibare_ara, IBARELER_ARB_MONOTERAPI)
-        bypass = gecmis_raporlarda_ibare_ara(
+            eos_raporlarda_ibare_ara, gecmis_raporlarda_ibare_ara,
+            IBARELER_ARB_MONOTERAPI)
+        # 3) ÖNCELİK: Botanik EOS — RaporAna.RaporAnaAciklamalar
+        bypass = eos_raporlarda_ibare_ara(
             hasta_tc, list(IBARELER_ARB_MONOTERAPI),
-            aktif_rapor_takip_no=(ilac_sonuc.get('rapor_takip_no') or '').strip(),
-            kategori='HIPERTANSIYON')
+            aktif_rapor_aciklama=aktif_rap_ack)
+        # 4) FALLBACK: yerel MEDULA cache (hasta_rapor_gecmisi.db)
+        if bypass is None:
+            bypass = gecmis_raporlarda_ibare_ara(
+                hasta_tc, list(IBARELER_ARB_MONOTERAPI),
+                aktif_rapor_takip_no=(ilac_sonuc.get('rapor_takip_no')
+                                       or '').strip(),
+                kategori='HIPERTANSIYON')
     except Exception as e:
         logger.debug("ARB motor bypass sorgu hatası: %s", e)
         return rapor
@@ -102,17 +136,33 @@ def _arb_monoterapi_bypass_dene(rapor, ilac_sonuc: Dict):
     if not bypass:
         return rapor
 
-    # Monoterapi atomu durumunu bypass'a yükselt
-    for sart in (rapor.sartlar or []):
-        if 'monoterapi' in (sart.ad or '').lower():
-            sart.durum = SartDurumu.VAR
-            sart.neden = f'Diğer rapor bypass: {bypass["ozet"]}'
-            sart.bypass_kaynak = bypass["ozet"]
-            break
+    # 5) Monoterapi atomunu bypass ile VAR'a yükselt
+    mono_sart.durum = SartDurumu.VAR
+    mono_sart.neden = f'Diğer rapor bypass: {bypass["ozet"]}'
+    mono_sart.bypass_kaynak = bypass["ozet"]
+
+    # 6) Y3 yolu bypass sonrası tam mı? Mono atomunun grubundaki diğer
+    #    atomların hepsinin VAR olması gerek. Aksi halde Y3 hala başarısız —
+    #    sonucu değiştirmiyoruz, atom durumu yine de güncellendi (görsel
+    #    şema panelinde bypass_kaynak görünür).
+    y3_grup = mono_sart.grup or ''
+    if y3_grup:
+        y3_atomlar = [s for s in (rapor.sartlar or [])
+                      if (s.grup or '') == y3_grup]
+        y3_tam = all(s.durum == SartDurumu.VAR for s in y3_atomlar)
+    else:
+        y3_tam = True  # Grup yoksa tek mono atomu — bypass yeterli
+
+    if not y3_tam:
+        # Y3'ün başka atomları da kırık — bypass sonucu değiştiremez
+        logger.debug("ARB bypass: monoterapi VAR'a yükseldi ama Y3 hala "
+                     "tam değil — sonuç değişmedi")
+        return rapor
 
     rapor.sonuc = KontrolSonucu.DIGER_RAPOR_UYGUN
-    rapor.mesaj = (f'{rapor.mesaj} | BYPASS: hastanın diğer raporunda '
-                    f'monoterapi ibaresi bulundu — {bypass["ozet"]}')
+    rapor.mesaj = (f'{rapor.mesaj} | BYPASS: aktif raporda monoterapi '
+                   f'ibaresi yok; hastanın diğer raporunda bulundu — '
+                   f'{bypass["ozet"]}')
     rapor.bulunan_metin = bypass.get('snippet', '') or rapor.bulunan_metin
     if rapor.detaylar is None:
         rapor.detaylar = {}

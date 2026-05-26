@@ -217,6 +217,74 @@ def mevcut_rapor_takipleri(hasta_tc: str) -> Set[str]:
             (hasta_tc,)).fetchall()}
 
 
+def takip_no_ile_oku(rapor_takip_no: str,
+                       hasta_tc: Optional[str] = None
+                       ) -> Optional[RaporKaydi]:
+    """Verilen rapor_takip_no için kayıt döndür.
+
+    hasta_tc verilirse o hastaya ait olanı, verilmezse herhangi birini
+    (sistem genelinde tek kayıt olmalı normalde) — 📜 Başlangıç Rapor
+    sekmesinde aktif rapor lafzından çıkarılan takip no lookup için.
+    """
+    if not rapor_takip_no:
+        return None
+    sql = 'SELECT * FROM hasta_rapor_gecmisi WHERE rapor_takip_no=?'
+    params: list = [str(rapor_takip_no).strip()]
+    if hasta_tc:
+        sql += ' AND hasta_tc=?'
+        params.append(hasta_tc)
+    sql += ' LIMIT 1'
+    with _baglanti() as conn:
+        r = conn.execute(sql, params).fetchone()
+        return _row_to_kayit(r) if r else None
+
+
+def takip_no_veya_tarih_ile_oku(
+        rapor_takip_no: str,
+        hasta_tc: str,
+        tarih_str: Optional[str] = None) -> Optional[RaporKaydi]:
+    """Takip no exact eşleşmesi, yoksa tarih+hasta bazlı fallback.
+
+    Why: Doktor rapor metninde takip no yıl prefix'iyle birleşik yazmış
+    olabilir ('2017909867' yerine '270909867' DB'de) — yıllar içinde
+    Medula format değişimi. Tarih + hasta TC genellikle tek bir raporu
+    işaret eder, bu fallback parse hatalarını tolere eder.
+
+    Args:
+        rapor_takip_no: lafızdan çıkarılan takip no (örn. '2017909867')
+        hasta_tc: 11 haneli hasta TC (zorunlu — fallback için)
+        tarih_str: 'DD.MM.YYYY' veya 'DD/MM/YYYY' formatında lafız tarihi
+
+    Returns:
+        RaporKaydi — exact takip no, yoksa tek-eşleşen tarih bazlı kayıt.
+        None — hiçbiri eşleşmediyse veya tarihte birden fazla rapor varsa
+        (belirsiz, otomatik eşleştirme yapılmaz).
+    """
+    # 1) Exact takip no eşleşmesi
+    kayit = takip_no_ile_oku(rapor_takip_no, hasta_tc=hasta_tc)
+    if kayit:
+        return kayit
+
+    # 2) Tarih + hasta_tc fallback
+    if not (tarih_str and hasta_tc):
+        return None
+    # Tarih normalize — '17.09.2018' / '17/09/2018' / '17-09-2018' → standartlar
+    tarih_norm = re.sub(r'[.\-]', '/', tarih_str.strip())
+    if not re.match(r'^\d{1,2}/\d{1,2}/\d{4}$', tarih_norm):
+        return None
+    # DB'de iki format da olabilir — DD/MM/YYYY (görmüş) ve DD.MM.YYYY
+    tarih_nokta = tarih_norm.replace('/', '.')
+    with _baglanti() as conn:
+        rows = conn.execute(
+            'SELECT * FROM hasta_rapor_gecmisi WHERE hasta_tc=? '
+            'AND (baslangic_tarihi=? OR baslangic_tarihi=?)',
+            (hasta_tc, tarih_norm, tarih_nokta)).fetchall()
+    if len(rows) == 1:
+        return _row_to_kayit(rows[0])
+    # 0 ya da >1: belirsiz, otomatik eşleştirme yapma
+    return None
+
+
 def sil(hasta_tc: str, rapor_takip_no: Optional[str] = None) -> int:
     """Hasta raporu sil. rapor_takip_no None ise tüm hasta silinir."""
     sql = 'DELETE FROM hasta_rapor_gecmisi WHERE hasta_tc=?'
@@ -275,4 +343,5 @@ __all__ = [
     'sema_olustur', 'kaydet', 'sil',
     'hasta_raporlarini_oku', 'en_eski_baslangic_raporu',
     'mevcut_rapor_takipleri', 'rapor_kodu_metnini_parcala',
+    'takip_no_ile_oku', 'takip_no_veya_tarih_ile_oku',
 ]

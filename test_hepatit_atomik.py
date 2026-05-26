@@ -410,6 +410,33 @@ def test_14_aile_hekimi_hcv_yetkisiz():
         f"HCV'de aile hekimi UYGUN_DEGIL bekleniyor: {mesaj}"
 
 
+def test_16_y1_pegile_ifn_ust_or_kolu():
+    """SUT 4.2.13.1(2)(a) — PIF kolu üst-VEYA çiftinin alternatifi olarak
+    çalışmalı: yol-a/yol-b atomları YOK olsa bile PIF kolu (ALT>2×ÜS +
+    HBeAg+DNA eşik) tam ise UYGUN/SARTLI_UYGUN. Bug fix doğrulama testi."""
+    ilac_sonuc = {
+        'ilac_adi': 'PEGASYS 180 MCG',
+        'etkin_madde': 'PEGINTERFERON ALFA-2A',
+        'rapor_kodu': '06.01',
+        'hasta_yasi': 35,
+        'doktor_uzmanligi': 'GASTROENTEROLOJI',
+        'rapor_aciklamalari': [
+            'Kronik Hepatit B. ALT 220 U/L (normalin üst sınırı 40 U/L, '
+            'oranı 5.5×). HBeAg negatif. HBV DNA: 1.500.000 IU/ml '
+            '(7.5×10⁶ kopya/ml — 10⁷ eşik altı). Pegile interferon '
+            'tedavisi başlanması uygundur. Gastroenteroloji uzmanı raporu.'],
+        'recete_teshisleri': ['B18.1 Diğer kronik viral hepatit'],
+    }
+    sonuc, mesaj, yolak, sn = _calistir_ozet("Senaryo 16", ilac_sonuc)
+    print(f"\n[16] Y1 Pegile IFN PIF kolu: {sonuc.value} | yolak={yolak}")
+    print(f"    Mesaj: {mesaj}")
+    assert yolak == 'YOLAK1', f"Y1 bekleniyor, geldi: {yolak}"
+    # PIF kolu üst-VEYA içinde olduğu için yol-a/yol-b YOK olsa bile UYGUN
+    # ya da SARTLI_UYGUN çıkmalı (UYGUN_DEGIL OLMAMALI)
+    assert sonuc != KontrolSonucu.UYGUN_DEGIL, \
+        f"PIF kolu yol-a/yol-b alternatifi — UYGUN_DEGIL olmamalı: {mesaj}"
+
+
 def test_15_y11_tek_basina_ribavirin_yasak():
     """SUT 4.2.13.3.2.B(2): Tek başına Ribavirin endikasyonu YOKTUR.
     Çocuk + sadece Ribavirin (IFN/PegIFN/DAA yok) → UYGUN_DEGIL."""
@@ -462,6 +489,7 @@ if __name__ == '__main__':
         test_13_aile_hekimi_y1_raporlu,
         test_14_aile_hekimi_hcv_yetkisiz,
         test_15_y11_tek_basina_ribavirin_yasak,
+        test_16_y1_pegile_ifn_ust_or_kolu,
     ]
     basarili = 0
     basarisiz = []

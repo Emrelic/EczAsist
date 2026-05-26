@@ -153,6 +153,13 @@ class AnaMenu:
             "renk": "#1565C0",  # Mavi
             "hover": "#0D47A1"
         },
+        "kdv_analiz": {
+            "baslik": "KDV Analiz",
+            "icon": "💰",
+            "aciklama": "Aylık KDV tahmini beyan: oran bazlı matrah/KDV, alış indirimi, fiş kontrol",
+            "renk": "#1A237E",  # Indigo
+            "hover": "#0D1340"
+        },
         "hasta_takip": {
             "baslik": "Hasta Takip & WA",
             "icon": "📲",
@@ -472,7 +479,7 @@ class AnaMenu:
             "aylik_recete_sorgu", "t_cetvel", "ek_raporlar", "mf_analiz",
             "mf_hizli", "siparis_verme", "fatih_siparisci", "hibrit_siparisci",
             "min_stok_analiz", "stok_maliyet_analiz",
-            "prim_raporlama", "satis_raporlari", "hasta_takip", "yedek_temizlik", "kullanici_yonetimi"
+            "prim_raporlama", "satis_raporlari", "kdv_analiz", "hasta_takip", "yedek_temizlik", "kullanici_yonetimi"
         ]
 
         # Grid ayarları: uniform parametresi ile tum hucreler ayni boyut.
@@ -653,6 +660,8 @@ class AnaMenu:
             self.prim_raporlama_ac()
         elif modul_key == "satis_raporlari":
             self.satis_raporlari_ac()
+        elif modul_key == "kdv_analiz":
+            self.kdv_analiz_ac()
         elif modul_key == "hasta_takip":
             self.hasta_takip_ac()
         elif modul_key == "yedek_temizlik":
@@ -1098,6 +1107,32 @@ class AnaMenu:
         except Exception as e:
             logger.error(f"Hasta Takip açma hatası: {e}")
             messagebox.showerror("Hata", f"Hasta Takip modülü açılamadı:\n{e}")
+            if pencere is not None:
+                try: pencere.destroy()
+                except Exception: pass
+
+    def kdv_analiz_ac(self):
+        """KDV Analiz modülünü aç"""
+        pencere = None
+        try:
+            pencere = self._modul_pencere_al("kdv_analiz", zoomed=True)
+            if pencere is None:
+                return
+
+            self._yeniden_yukle("kdv_analiz_motoru", "kdv_analiz_gui")
+            from kdv_analiz_gui import KDVAnalizGUI
+
+            KDVAnalizGUI(pencere, ana_menu_callback=lambda: None)
+
+        except ImportError as e:
+            logger.error(f"KDV Analiz import hatası: {e}")
+            messagebox.showerror("Hata", f"KDV Analiz modülü yüklenemedi:\n{e}")
+            if pencere is not None:
+                try: pencere.destroy()
+                except Exception: pass
+        except Exception as e:
+            logger.error(f"KDV Analiz açma hatası: {e}", exc_info=True)
+            messagebox.showerror("Hata", f"KDV Analiz açılamadı:\n{e}")
             if pencere is not None:
                 try: pencere.destroy()
                 except Exception: pass
