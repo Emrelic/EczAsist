@@ -5305,6 +5305,29 @@ class AylikReceteSorguGUI:
             _kapat()
             return
 
+        if durum == 'BASKA_ECZANE_RISKI':
+            # 2026-05-29: EOS + yerel tablo + lafız hepsi boş
+            info.configure(
+                text=(f"⚠ {ilac_adi} (etken tipi: {etkin_tip}) için "
+                      f"Botanik EOS'ta VE yerel Medula tablosunda bu hastaya "
+                      f"yazılmış geçmiş rapor/reçete YOK.\n"
+                      f"• Hasta ilacı başka eczaneden başlamış olabilir\n"
+                      f"• Ya da etken değiştirilmiş (örn. TDF→TAF) — eski "
+                      f"etken farklı isimle yazılmış olabilir\n"
+                      f"→ 🩺 GEÇMİŞ RAPOR TARA ile Medula geçmişini tara, "
+                      f"sonra tekrar dene."),
+                bg="#FFF3E0", fg="#E65100")
+            _yaz("BAŞLANGIÇ RAPORU TESPİT EDİLEMEDİ\n", "header")
+            _yaz(f"Etken-spesifik arama: {etkin_tip}\n", "info")
+            _yaz("\nKaynaklar:\n", "info")
+            _yaz("  • Botanik EOS reçete kayıtları — BOŞ\n", "yok")
+            _yaz("  • Yerel hasta_rapor_gecmisi.db — BOŞ\n", "yok")
+            _yaz("  • Aktif rapor lafzı — referans yok\n", "yok")
+            _yaz("\nManuel doğrulama gerekli — hasta ile konuşun ya da "
+                 "🩺 Medula taraması yapın.\n", "info")
+            _kapat()
+            return
+
         # BULUNDU — başlangıç rapor metniyle BAŞLANGIÇ kriterleriyle kontrol
         baslangic_ilac_sonuc = dict(ilac_sonuc)
         baslangic_ilac_sonuc['rapor_aciklamalari'] = [sonuc['rapor_metni']]
@@ -5451,9 +5474,10 @@ class AylikReceteSorguGUI:
                 f"📜 Başlangıç Raporu (Takip: {sonuc.get('rapor_takip_no','?')}"
                 f", Tarih: {sonuc.get('rapor_tarihi','?')})")
             try:
-                self._sema_render_devre(sema_satir)
-                # 📜 Başlangıç tab içindeki mini canvas'a da çiz — tab
-                # değişimine bağlı kalmadan kullanıcı şemayı orada görsün
+                # 2026-05-29: Ana paneldeki Klasik Akım + DMN şemaları aktif
+                # reçetenin (DEVAM) sonucunu göstermeye devam eder. Başlangıç
+                # kontrolü SADECE 📜 sekmesinin kendi mini canvas'ında
+                # render edilir; ana panel ezilmez, tab geçişi yapılmaz.
                 try:
                     sartlar_obj_local = json.loads(sartlar_json) \
                         if sartlar_json else []
@@ -5464,24 +5488,6 @@ class AylikReceteSorguGUI:
                     detaylar_obj_local = {}
                 self._baslangic_canvas_ciz(
                     sartlar_obj_local, detaylar_obj_local, son, sema_satir)
-                # Otomatik KLASIK AKIM tab'ına geç — başlangıç şeması orada
-                # daha sade görünür (DMN daha karmaşık). after() + idle ile
-                # render bitince tab geçişini garantile.
-                def _klasik_tab_a_gec():
-                    try:
-                        nb = getattr(self, '_sema_notebook', None)
-                        if nb is not None and len(nb.tabs()) >= 2:
-                            nb.select(nb.tabs()[1])  # 1 = Klasik Akım
-                            try:
-                                nb.update_idletasks()
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                try:
-                    self.root.after(200, _klasik_tab_a_gec)
-                except Exception:
-                    pass
             except Exception:
                 import logging
                 logging.getLogger(__name__).exception(

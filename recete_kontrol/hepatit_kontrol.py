@@ -71,6 +71,48 @@ HBV_ORAL_TICARI = (
     'HEPSERA', 'TENOF', 'EPIVIR HBV',
 )
 
+# HBV oral antiviral ETKEN-SPESİFİK keyword listeleri (2026-05-29 Yalçın
+# Durdağı VEMLIDY bug fix). Kullanıcı kararı: "Sadece aynı etken" —
+# VEMLIDY için sadece TAF aranır, BARACLUDE/VIREAD dahil edilmez.
+# DİKKAT: "TENOFOVIR" tek başına ambiguous (TDF + TAF ortak); bu nedenle
+# alt-tip key'lerinde "TENOFOVIR" yalın YOK — sadece "TENOFOVIR DISOPROKSIL"
+# (TDF) veya "TENOFOVIR ALAFENAMID" (TAF).
+HBV_ALT_TIP_KW = {
+    'TAF': ('TENOFOVIR ALAFENAMID', 'TENOFOVIR ALAFENAMIDE', 'VEMLIDY'),
+    'TDF': ('TENOFOVIR DISOPROKSIL', 'TENOFOVIR DISOPROXIL',
+            'VIREAD', 'TENOFAR', 'HIVERAC', 'TENOF'),
+    'ETV': ('ENTECAVIR', 'ENTEKAVIR', 'BARACLUDE'),
+    'LAM': ('LAMIVUDIN', 'LAMIVUDINE', 'ZEFFIX', 'EPIVIR HBV'),
+    'TLB': ('TELBIVUDIN', 'TELBIVUDINE', 'SEBIVO', 'TYZEKA'),
+    'ADV': ('ADEFOVIR', 'HEPSERA'),
+}
+
+
+def _hbv_oral_etken_alt_tip(ilac_adi: str, etkin_madde: str) -> str:
+    """HBV oral antiviral aktif ilacın alt-tipini döndür.
+
+    Returns: 'TAF' | 'TDF' | 'ETV' | 'LAM' | 'TLB' | 'ADV' | ''
+    """
+    ilac = (ilac_adi or '').upper()
+    etkin = (etkin_madde or '').upper()
+    if 'VEMLIDY' in ilac or 'ALAFENAMID' in etkin:
+        return 'TAF'
+    if ('VIREAD' in ilac or 'TENOFAR' in ilac or 'HIVERAC' in ilac
+            or 'DISOPROKSIL' in etkin or 'DISOPROXIL' in etkin):
+        return 'TDF'
+    if 'BARACLUDE' in ilac or 'ENTECAVIR' in etkin or 'ENTEKAVIR' in etkin:
+        return 'ETV'
+    if ('ZEFFIX' in ilac or 'EPIVIR' in ilac
+            or 'LAMIVUDIN' in etkin or 'LAMIVUDINE' in etkin):
+        return 'LAM'
+    if ('SEBIVO' in ilac or 'TYZEKA' in ilac
+            or 'TELBIVUDIN' in etkin or 'TELBIVUDINE' in etkin):
+        return 'TLB'
+    if 'HEPSERA' in ilac or 'ADEFOVIR' in etkin:
+        return 'ADV'
+    return ''
+
+
 # HCV DAA ilaçları (4.2.13.3.2)
 HCV_DAA_ETKEN = (
     'SOFOSBUVIR', 'LEDIPASVIR', 'VELPATASVIR', 'VOXILAPREVIR',
@@ -673,10 +715,102 @@ def _hep_gecmis_db_sorgu(hasta_tc: Optional[str],
             except sqlite3.Error:
                 continue
         conn.close()
-        return (False, 'yerel DB tarandı — bulunamadı (başka eczaneden olabilir)')
+        # ──────────────────────────────────────────────────────────────────
+        # 2026-05-29: Yerel oturum_raporlari.db boş → Botanik EOS fallback.
+        # Yalçın Durdağı bug: 2019-2023 BARACLUDE reçeteleri yerel DB'de
+        # YOK (EczAsist 2024 öncesi yoktu) ama EOS'ta 13 reçete var → /4
+        # etken değişim atomları "drug history sorgulanamadı" yerine
+        # gerçek geçmişi görmeli.
+        eos_sonuc = _hep_eos_gecmis_sorgu(hasta_tc, etken_keywords)
+        if eos_sonuc[0] is True:
+            return eos_sonuc
+        return (False, 'yerel DB + EOS tarandı — bulunamadı (başka eczane riski)')
     except Exception as e:
         logger.debug('Hepatit DB sorgu hatası: %s', e)
         return (None, f'DB sorgu hatası: {e}')
+
+
+# ATC kodu → etken adı ve alt-tip eşlemesi (HBV oral antiviraller).
+# Bu eşleme `_hep_eos_gecmis_sorgu` sonucunda etken keyword'ünü ürün adına
+# eklemek için kullanılır — `_hep_etken_degisim_atomlari` substring
+# eşleşmesi için etken keyword'üne (örn. ENTECAVIR) ihtiyaç duyar.
+_ATC_HBV_ORAL_ETKEN = {
+    'J05AF05': 'LAMIVUDIN',
+    'J05AF06': 'ENTECAVIR',
+    'J05AF07': 'TENOFOVIR DISOPROKSIL',
+    'J05AF08': 'ADEFOVIR',
+    'J05AF10': 'ENTECAVIR',  # BARACLUDE
+    'J05AF11': 'TELBIVUDIN',
+    'J05AF13': 'TENOFOVIR ALAFENAMID',
+}
+
+
+def _eos_urun_etken_cikar(urun_adi: str, atc_kodu: str) -> str:
+    """Ürün adı + ATC kodundan HBV oral etken keyword'ünü çıkar.
+
+    Önce ATC eşleme, sonra ürün adı substring (HBV_ALT_TIP_KW kullanır).
+    Returns: 'ENTECAVIR', 'TENOFOVIR ALAFENAMID', ... veya boş.
+    """
+    if atc_kodu:
+        kod_temiz = atc_kodu.strip().upper()
+        if kod_temiz in _ATC_HBV_ORAL_ETKEN:
+            return _ATC_HBV_ORAL_ETKEN[kod_temiz]
+    alt_tip = _hbv_oral_etken_alt_tip(urun_adi or '', '')
+    alt_tip_etken = {
+        'TAF': 'TENOFOVIR ALAFENAMID',
+        'TDF': 'TENOFOVIR DISOPROKSIL',
+        'ETV': 'ENTECAVIR',
+        'LAM': 'LAMIVUDIN',
+        'TLB': 'TELBIVUDIN',
+        'ADV': 'ADEFOVIR',
+    }
+    return alt_tip_etken.get(alt_tip, '')
+
+
+def _hep_eos_gecmis_sorgu(hasta_tc: str,
+                            etken_keywords: Tuple[str, ...]
+                            ) -> Tuple[Optional[bool], str]:
+    """Botanik EOS'ta hastanın etken-eş keyword'lerle önceki reçetelerini
+    tara. En eski reçeteyi döndür — substring eşleşmesi için etken
+    keyword'ü ürün adına eklenir.
+
+    CLAUDE.md §2: SADECE SELECT (BotanikDB guard).
+
+    Returns:
+        (True, 'eos:YYYY-MM-DD URUN (ETKEN)') — en eski reçete bulundu
+        (False, '...')                          — EOS'ta da bulunamadı
+        (None, '...')                           — EOS hatası
+    """
+    if not hasta_tc or not etken_keywords:
+        return (False, '')
+    try:
+        from botanik_db import get_botanik_db
+        db = get_botanik_db()
+        if not db.baglan():
+            return (None, 'EOS bağlanamadı')
+        recs = db.hasta_ilk_recete_etken_bazli(
+            hasta_tc, etken_keywords, limit=30)
+        if not recs:
+            return (False, 'EOS\'ta bu etken için reçete yok')
+        # En eski (liste tarih artan sıralı)
+        ilk = recs[0]
+        tarih_raw = ilk.get('RxIslemTarihi') or ilk.get('RxReceteTarihi')
+        tarih_str = ''
+        if tarih_raw:
+            try:
+                tarih_str = tarih_raw.strftime('%Y-%m-%d')
+            except AttributeError:
+                tarih_str = str(tarih_raw)[:10]
+        urun = (ilk.get('UrunAdi') or '').strip()
+        atc = (ilk.get('ATCKodu') or '').strip()
+        etken_keyword = _eos_urun_etken_cikar(urun, atc)
+        gerekce = f'eos:{tarih_str} {urun}'
+        if etken_keyword:
+            gerekce += f' ({etken_keyword})'
+        return (True, gerekce)
+    except Exception as e:
+        logger.debug('EOS geçmiş sorgu hatası: %s', e)
+        return (None, f'EOS sorgu hatası: {e}')
 
 
 def hep_onceki_hcv_tedavi_var_mi(metin_lower: str,
@@ -802,17 +936,24 @@ def hep_atom_uzman_rapor(metin_lower: str, rapor_kodu: str,
             SartDurumu.VAR,
             f'Rapor kodu {rapor_kodu} + metinde uzman branşı tespit edildi',
             'rapor_kodu/rapor_metni', grup='(R) Uzman raporu')
-    # Rapor pragmatik kabul (Medula 06.01 / B kodlarını yetkili branşla geçirir)
+    # Rapor pragmatik kabul (Medula 06.01 / 14.x / B kodları)
+    # 2026-05-29: Eskiden KE+sartli idi, kullanıcı geri bildirimi ile VAR
+    # yapıldı. Mantık: Medula 06.01 kodunu vermeden önce uzman branş
+    # onayını yapar — RaporAna tablosunda doktor branş alanı yok ama
+    # Medula rapor kodu vermek için uzman branş onayını zaten zorunlu
+    # tutar. Yani 06.01/14.x/B kodları SUT 4.2.13(1) "gastroenteroloji
+    # veya enfeksiyon uzman hekimi tarafından düzenlenen rapor" şartını
+    # Medula garantisi ile karşılar.
     rapor_pragmatik = (rapor_kodu.startswith('06.01')
                        or rapor_kodu.startswith('14.')
                        or rapor_kodu.startswith('B'))
     if rapor_pragmatik:
         return SartSonuc(
             'Uzman raporu (gastroenteroloji/enfeksiyon)',
-            SartDurumu.KONTROL_EDILEMEDI,
-            f'Rapor kodu {rapor_kodu} (Medula uzman branş kontrolünü yapar) '
-            f'ama metinde branş ibaresi tespit edilemedi — manuel doğrulanmalı',
-            'rapor_kodu', grup='(R) Uzman raporu', sartli_atom=True)
+            SartDurumu.VAR,
+            f'Rapor kodu {rapor_kodu} — Medula uzman branş kontrolünü '
+            f'rapor verme aşamasında yapar (SUT 4.2.13(1) garantisi)',
+            'rapor_kodu', grup='(R) Uzman raporu')
     return SartSonuc(
         'Uzman raporu (gastroenteroloji/enfeksiyon)',
         SartDurumu.KONTROL_EDILEMEDI,
@@ -1149,14 +1290,19 @@ def _hep_recete_tipi_tespit(ilac_sonuc: Dict, kategori: str,
             break
 
     # Sinyal 3: hasta drug history (sadece HBV/HCV için anlamlı)
-    # Mevcut _hep_gecmis_db_sorgu fonksiyonunu kullan
+    # Mevcut _hep_gecmis_db_sorgu fonksiyonunu kullan.
+    # 2026-05-29: Etken adı + MARKA adı birlikte aranır — EOS UrunAdi
+    # field'ı marka adını içerir (örn. BARACLUDE, VEMLIDY). Sadece etken
+    # adı ile sorgu BARACLUDE'u bulamazdı (Yalçın Durdağı bug).
     etken_anahtarlari: Tuple[str, ...] = ()
     if kategori == 'HEPATIT_B':
-        etken_anahtarlari = HBV_ORAL_ETKEN
+        etken_anahtarlari = HBV_ORAL_ETKEN + HBV_ORAL_TICARI
     elif kategori == 'HEPATIT_C':
-        etken_anahtarlari = HCV_DAA_ETKEN + PEG_IFN_ETKEN
+        etken_anahtarlari = (HCV_DAA_ETKEN + HCV_DAA_TICARI
+                              + PEG_IFN_ETKEN + PEG_IFN_TICARI)
     elif kategori == 'HEPATIT_D':
-        etken_anahtarlari = HBV_ORAL_ETKEN + PEG_IFN_ETKEN
+        etken_anahtarlari = (HBV_ORAL_ETKEN + HBV_ORAL_TICARI
+                              + PEG_IFN_ETKEN + PEG_IFN_TICARI)
     if etken_anahtarlari:
         bulundu, gerekce = _hep_gecmis_db_sorgu(hasta_tc, etken_anahtarlari)
         if bulundu is True:

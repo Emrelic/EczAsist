@@ -1,6 +1,16 @@
-# 📍 KALDIĞIMIZ YER — 2026-05-26 (Hepatit Başlangıç Şema = Klasik Akım)
+# 📍 KALDIĞIMIZ YER — 2026-05-29 (Başlangıç Bulucu Yalçın Bug Fix)
 
 ## 🔑 YARIN AÇTIĞINDA İLK BAKILACAK YER
+
+📜 **Başlangıç rapor bulucu refactor TAMAMLANDI** — Yalçın Durdağı VEMLIDY bug'ı çözüldü.
+- **Bug**: Yerel `hasta_rapor_gecmisi.db` yarı taramada eksik kalınca kod "tek aktif rapor = en eski" sanıyordu (`AKTIF_ZATEN_BASLANGIC` yanlış pozitif).
+- **Fix**: `baslangic_rapor_bulucu.py` akış sırası DEĞİŞTİ — Aşama 1 EOS, Aşama 2 lafız, Aşama 3 yerel tablo (eskiden tersti). Yeni `BASKA_ECZANE_RISKI` durumu eklendi. Detay metni EOS'ta boşsa yerel DB'den zenginleştiriliyor.
+- **Etken-spesifik kw** (`hepatit_kontrol.py:HBV_ALT_TIP_KW` + `_hbv_oral_etken_alt_tip`): VEMLIDY için sadece TAF aranır, BARACLUDE/TDF/LAM dahil edilmez. Kullanıcı kararı: "Sadece aynı etken" (2026-05-29).
+- **Yalçın testi PASS**: durum=BULUNDU, takip=460288163, tarih=2024-05-22 (gerçek başlangıç). Eskiden 560498149 (aktif=bu ay) çıkıyordu.
+- **Devam**: Mimari kararlar (4 soruluk anket) alındı — "tüm modüller" scope'una geçilecek. Her SUT kontrolü (diyabet, ARB, statin, YOAK, KOAH, vb.) için etken-spesifik keyword listesi + wrapper + `_force_recete_tipi='BASLANGIC'` flag desteği gerekir.
+- **Flag fallback davranışı kullanıcıdan teyit alınmadı** — sonraki turn'de sorulacak.
+
+## ESKİ NOT — 2026-05-26 (Hepatit Başlangıç Şema = Klasik Akım, koruma)
 
 📜 **Başlangıç Rapor sekmesi mini canvas'ı artık Klasik Akım Şeması ile birebir aynı** mantık + görsel render kullanır (kullanıcı isteği: "akım şemasıyla aynı mantıkda + mantık formülasyonu akım şemadaki gibi").
 

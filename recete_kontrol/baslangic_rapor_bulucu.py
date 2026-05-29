@@ -325,70 +325,36 @@ def _lafiz_yolu_dene(hasta_tc: str,
     }
 
 
-def baslangic_raporu_bul(
+def _eos_yolu_dene(
     hasta_tc: str,
     urun_keywords: Tuple[str, ...],
-    aktif_recete_rxid: Optional[int] = None,
-    aktif_rapor_takip_no: Optional[str] = None,
-    aktif_rapor_metni: Optional[str] = None,
+    aktif_recete_rxid: Optional[int],
+    aktif_rapor_takip_no: Optional[str],
 ) -> Optional[Dict]:
-    """Genel API — hastanın bu ilaç grubundaki başlangıç raporunu bul.
+    """Aşama 1 — Botanik EOS'tan etken-spesifik en eski reçete + RaporAna.
 
-    Akış (sıralı, kullanıcı kararı 2026-05-25):
-        Aşama 0: Yerel hasta_rapor_gecmisi.db tablosunda etken bazlı EN ESKİ
-                 tarihli rapor — **MEDULA NİHAİ KAYNAKTIR**. Doktorun aktif
-                 rapor metnindeki açıklama lafzı (Aşama 1) yanıltıcı olabilir.
-        Aşama 1: Aktif rapor metninde "X tarihli NNNNNN takip no" lafzı
-                 yakala → hasta_rapor_gecmisi.db'de ara (fallback).
-        Aşama 2: Botanik EOS'ta etken keyword'le en eski reçete + bağlı
-                 RaporAna metni (fallback).
+    EOS Botanik eczanesinin kesin kayıt kaynağı; etken-spesifik keyword
+    daraltıldığında (örn. VEMLIDY için sadece TAF) en eski reçete = ilacın
+    bu hastadaki gerçek başlangıcıdır.
 
-    Args:
-        hasta_tc: 11 haneli TC
-        urun_keywords: ilacın etken/marka eş keyword tuple'ı
-        aktif_recete_rxid: aktif reçetenin RxId'si (varsa)
-        aktif_rapor_takip_no: aktif raporun takip no (varsa)
-        aktif_rapor_metni: aktif rapor metni — Aşama 1 lafız parse için
-
-    Returns:
-        None — hiçbir kanalda eşleşme yok (başka eczane riski)
-        Dict:
-            'durum': 'BULUNDU_TABLO' | 'BULUNDU_LAFIZ' |
-                     'LAFIZ_TAKIP_NO_VAR_CACHE_YOK' |
-                     'BULUNDU' | 'AKTIF_ZATEN_BASLANGIC' | 'METIN_BOS'
-            'kaynak': 'medula_tablo' | 'rapor_lafzi+gecmis_db' |
-                      'rapor_lafzi' | 'eos' | 'eos+gecmis_cache'
-            'rapor_metni': str (durum BULUNDU* ise dolu)
-            ... (diğer alanlar: rxid, recete_tarihi, urun_adi, ATC, takip,
-                 rapor_tarihi, aktif_recete_mi, ayni_rapor_mi,
-                 toplam_eski_sayi, lafiz_takip_no, lafiz_tarih,
-                 eski_5_recete)
+    Hangi reçete "ilk" sayılır? RaporTakipNo'su olan en eski reçete
+    (raporsuz çok eski reçeteler vardı — 2019 öncesi Medula sistemi)
+    çünkü başlangıç KRİTERLERİNİ uygulayabilmemiz için rapor metni şart.
     """
-    # Aşama 0: Yerel Medula tablosu — etken bazlı en eski tarih (MEDULA GERÇEĞİ)
-    if hasta_tc and urun_keywords:
-        tablo_sonuc = _yerel_tablo_yolu_dene(
-            hasta_tc, urun_keywords, aktif_rapor_takip_no or '')
-        if tablo_sonuc:
-            return tablo_sonuc
-
-    # Aşama 1: lafız parse (yerel tabloda eşleşme yoksa)
-    lafiz_sonuc = _lafiz_yolu_dene(
-        hasta_tc or '', aktif_rapor_metni or '',
-        aktif_rapor_takip_no or '')
-    if lafiz_sonuc and lafiz_sonuc.get('durum') == 'BULUNDU_LAFIZ':
-        return lafiz_sonuc
-    # Lafız yakalandı ama DB'de yoksa, EOS'ta ara — başarısız olursa
-    # lafız bulgusunu döndür (eczacıya 🩺 öner)
-    lafiz_fallback = lafiz_sonuc  # None ya da LAFIZ_TAKIP_NO_VAR_CACHE_YOK
-
-    # Aşama 2: EOS sorgusu
-    if not hasta_tc or not urun_keywords:
-        return lafiz_fallback
-    eski_receteler = _eos_ilk_recete_getir(hasta_tc, urun_keywords, limit=5)
+    eski_receteler = _eos_ilk_recete_getir(
+        hasta_tc, urun_keywords, limit=10)
     if not eski_receteler:
-        return lafiz_fallback
-    ilk = eski_receteler[0]
-    toplam = len(eski_receteler)
+        return None
+    # İlk raporlu reçeteyi bul (RaporTakipNo dolu)
+    ilk: Optional[Dict] = None
+    for r in eski_receteler:
+        if (r.get('RaporAnaRaporTakipNo') or '').strip():
+            ilk = r
+            break
+    if ilk is None:
+        # Hiçbir reçetede rapor yok → başlangıç tespit edilemez
+        return None
+
     rxid_eski = ilk.get('RxId')
     recete_tarihi_raw = ilk.get('RxIslemTarihi') or ilk.get('RxReceteTarihi')
     recete_tarihi = ''
@@ -408,7 +374,6 @@ def baslangic_raporu_bul(
             rapor_tarihi = str(rapor_tarihi_raw)[:10]
     rapor_metni = (ilk.get('RaporAnaAciklamalar') or '').strip()
 
-    # Aktif reçete ile aynı mı?
     aktif_zaten_baslangic = bool(
         aktif_recete_rxid and rxid_eski
         and int(aktif_recete_rxid) == int(rxid_eski))
@@ -416,14 +381,6 @@ def baslangic_raporu_bul(
         aktif_rapor_takip_no
         and rapor_takip
         and str(aktif_rapor_takip_no).strip() == rapor_takip)
-
-    # Rapor metni EOS'ta boş ise → Medula geçmiş cache'i dene (placeholder)
-    kaynak = 'eos'
-    if not rapor_metni and rapor_takip:
-        cache_metin = _gecmis_db_rapor_metni(rapor_takip)
-        if cache_metin:
-            rapor_metni = cache_metin
-            kaynak = 'eos+gecmis_cache'
 
     if aktif_zaten_baslangic:
         durum = 'AKTIF_ZATEN_BASLANGIC'
@@ -443,9 +400,11 @@ def baslangic_raporu_bul(
         'rapor_metni': rapor_metni,
         'aktif_recete_mi': aktif_zaten_baslangic,
         'ayni_rapor_mi': ayni_rapor,
-        'toplam_eski_sayi': toplam,
-        'kaynak': kaynak,
+        'toplam_eski_sayi': len(eski_receteler),
+        'kaynak': 'eos',
         'durum': durum,
+        'lafiz_takip_no': '',
+        'lafiz_tarih': '',
         'eski_5_recete': [
             {
                 'tarih': (
@@ -455,9 +414,127 @@ def baslangic_raporu_bul(
                 'urun': r.get('UrunAdi') or '',
                 'rapor_takip': r.get('RaporAnaRaporTakipNo') or '',
             }
-            for r in eski_receteler
+            for r in eski_receteler[:5]
         ],
     }
+
+
+def _yerel_db_detay_metni(rapor_takip_no: str, hasta_tc: str) -> str:
+    """Yerel hasta_rapor_gecmisi.db'den verilen takip no için detay metni."""
+    if not rapor_takip_no:
+        return ''
+    try:
+        from recete_kontrol.hasta_rapor_gecmisi_db import (
+            takip_no_ile_oku, sema_olustur)
+        sema_olustur()
+        kayit = takip_no_ile_oku(rapor_takip_no, hasta_tc=hasta_tc or '')
+        if kayit:
+            return kayit.detay_metni or ''
+    except Exception as e:
+        logger.debug('Yerel detay metni okuma hatası: %s', e)
+    return ''
+
+
+def _baska_eczane_riski_sonuc() -> Dict:
+    """EOS + yerel tablo + lafız hepsi boş → başlangıç tespit edilemedi."""
+    return {
+        'rxid': None,
+        'recete_tarihi': '',
+        'urun_adi': '',
+        'atc_kodu': '',
+        'rapor_takip_no': '',
+        'rapor_no': '',
+        'rapor_tarihi': '',
+        'rapor_metni': '',
+        'aktif_recete_mi': False,
+        'ayni_rapor_mi': False,
+        'toplam_eski_sayi': 0,
+        'kaynak': 'eos_yerel_bos',
+        'durum': 'BASKA_ECZANE_RISKI',
+        'lafiz_takip_no': '',
+        'lafiz_tarih': '',
+        'eski_5_recete': [],
+    }
+
+
+def baslangic_raporu_bul(
+    hasta_tc: str,
+    urun_keywords: Tuple[str, ...],
+    aktif_recete_rxid: Optional[int] = None,
+    aktif_rapor_takip_no: Optional[str] = None,
+    aktif_rapor_metni: Optional[str] = None,
+) -> Optional[Dict]:
+    """Genel API — hastanın bu ilaç (etken-spesifik) başlangıç raporunu bul.
+
+    Akış (2026-05-29 refactor — Yalçın Durdağı VEMLIDY bug fix):
+        Aşama 1: Botanik EOS — etken-spesifik keyword'le en eski raporlu
+                 reçete + bağlı RaporAna metni. NİHAİ KRONOLOJİ KAYNAĞI.
+                 EOS Botanik eczanesinin kesin kayıtları olduğu için
+                 "hasta bu eczanede bu etkeni ne zaman almaya başladı"
+                 sorusunun cevabı buradadır. Detay metni boşsa yerel DB
+                 takip_no_ile_oku ile zenginleştirilir.
+        Aşama 2: Aktif rapor lafzında "DD.MM.YYYY tarihli NNNN takip no"
+                 parse (fallback — EOS boşsa). Doktorun referans verdiği
+                 başlangıç takip no'su yerel DB'de aranır.
+        Aşama 3: Yerel hasta_rapor_gecmisi.db etken tablosu (son çare).
+                 EOS boş ama Medula taramasında bu hastanın bu etkenle
+                 rapor bulunduysa "başka eczane geçmişi" olarak gösterilir.
+        BASKA_ECZANE_RISKI: tüm aşamalar boş → 🩺 GEÇMİŞ RAPOR TARA önerisi.
+
+    Önemli (2026-05-29): Yerel tablo Aşama 0 değil Aşama 3 olarak konuldu.
+    Eski sıralama yarım Medula taramasında yanlış pozitif veriyordu —
+    eczacı sadece son raporu indirdiyse yerel tabloda tek aktif rapor
+    görünür, kod onu "en eski" sanırdı. EOS daima paralel sorgulanır.
+
+    Returns:
+        Dict:
+            'durum': 'BULUNDU' | 'AKTIF_ZATEN_BASLANGIC' | 'METIN_BOS' |
+                     'BULUNDU_LAFIZ' | 'LAFIZ_TAKIP_NO_VAR_CACHE_YOK' |
+                     'BULUNDU_TABLO' | 'BASKA_ECZANE_RISKI'
+            'kaynak': 'eos' | 'eos+yerel_metin' | 'rapor_lafzi+gecmis_db' |
+                      'rapor_lafzi' | 'medula_tablo_eos_bos' |
+                      'eos_yerel_bos'
+            ... (diğer alanlar — eski API ile aynı)
+    """
+    # ─ Aşama 1: EOS kronoloji (NİHAİ) ─────────────────────────────────────
+    if hasta_tc and urun_keywords:
+        eos_sonuc = _eos_yolu_dene(
+            hasta_tc, urun_keywords,
+            aktif_recete_rxid, aktif_rapor_takip_no)
+        if eos_sonuc:
+            # Detay metni zenginleştir — yerel Medula taramasından
+            if (not eos_sonuc.get('rapor_metni')
+                    and eos_sonuc.get('rapor_takip_no')):
+                yerel_metin = _yerel_db_detay_metni(
+                    eos_sonuc['rapor_takip_no'], hasta_tc)
+                if yerel_metin:
+                    eos_sonuc['rapor_metni'] = yerel_metin
+                    eos_sonuc['kaynak'] = 'eos+yerel_metin'
+                    if eos_sonuc.get('durum') == 'METIN_BOS':
+                        eos_sonuc['durum'] = 'BULUNDU'
+            return eos_sonuc
+
+    # ─ Aşama 2: Aktif rapor lafzı (fallback) ──────────────────────────────
+    lafiz_sonuc = _lafiz_yolu_dene(
+        hasta_tc or '', aktif_rapor_metni or '',
+        aktif_rapor_takip_no or '')
+    if lafiz_sonuc and lafiz_sonuc.get('durum') == 'BULUNDU_LAFIZ':
+        return lafiz_sonuc
+
+    # ─ Aşama 3: Yerel tablo son çare ──────────────────────────────────────
+    if hasta_tc and urun_keywords:
+        yerel_sonuc = _yerel_tablo_yolu_dene(
+            hasta_tc, urun_keywords, aktif_rapor_takip_no or '')
+        if yerel_sonuc:
+            yerel_sonuc['kaynak'] = 'medula_tablo_eos_bos'
+            return yerel_sonuc
+
+    # ─ Lafız parse buldu ama DB'de yok → eczacıya 🩺 öner ─────────────────
+    if lafiz_sonuc:  # LAFIZ_TAKIP_NO_VAR_CACHE_YOK
+        return lafiz_sonuc
+
+    # ─ Hepsi boş → BAŞKA ECZANE RİSKİ ─────────────────────────────────────
+    return _baska_eczane_riski_sonuc()
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -609,8 +686,18 @@ def recete_tipi_eos_bazli(
 # MODÜL-SPESİFİK KEYWORD HELPER'LARI
 # ═════════════════════════════════════════════════════════════════════════
 
-def hepatit_keyword_listesi(etkin_tip: str) -> Tuple[str, ...]:
+def hepatit_keyword_listesi(etkin_tip: str,
+                              ilac_adi: str = '',
+                              etkin_madde: str = '') -> Tuple[str, ...]:
     """Etken tipine göre uygun keyword tuple'ı döndür.
+
+    HBV oral için ilac_adi+etkin_madde verilirse ETKEN-SPESİFİK
+    (TAF/TDF/ETV/LAM/TLB/ADV) dar liste döner. Verilmezse geniş HBV oral
+    havuzu (eski davranış, backwards compat).
+
+    HCV/PEG/IFN/RIBAVIRIN için etken bazlı daralma yapılmaz çünkü tedavi
+    kombinasyon olarak yazılır ve "antiviral tedavi başlangıcı" SUT
+    açısından grup bazlıdır.
 
     etkin_tip değerleri _hep_etken_tip()'ten gelir:
         HBV_ORAL, HCV_DAA, PEG_IFN, IFN, RIBAVIRIN, NONE
@@ -618,6 +705,7 @@ def hepatit_keyword_listesi(etkin_tip: str) -> Tuple[str, ...]:
     try:
         from recete_kontrol.hepatit_kontrol import (
             HBV_ORAL_ETKEN, HBV_ORAL_TICARI,
+            HBV_ALT_TIP_KW, _hbv_oral_etken_alt_tip,
             HCV_DAA_ETKEN, HCV_DAA_TICARI,
             PEG_IFN_ETKEN, PEG_IFN_TICARI,
             INTERFERON_ETKEN, RIBAVIRIN_ETKEN, RIBAVIRIN_TICARI)
@@ -625,6 +713,12 @@ def hepatit_keyword_listesi(etkin_tip: str) -> Tuple[str, ...]:
         logger.warning('hepatit_kontrol import hatası: %s', e)
         return ()
     if etkin_tip == 'HBV_ORAL':
+        # Etken-spesifik dar liste (2026-05-29 Yalçın Durdağı bug fix)
+        if ilac_adi or etkin_madde:
+            alt_tip = _hbv_oral_etken_alt_tip(ilac_adi, etkin_madde)
+            if alt_tip and alt_tip in HBV_ALT_TIP_KW:
+                return HBV_ALT_TIP_KW[alt_tip]
+        # Backwards-compat fallback
         return HBV_ORAL_ETKEN + HBV_ORAL_TICARI
     if etkin_tip == 'HCV_DAA':
         return HCV_DAA_ETKEN + HCV_DAA_TICARI
@@ -651,14 +745,16 @@ def hepatit_baslangic_raporu_bul(ilac_sonuc: Dict) -> Optional[Dict]:
     except Exception as e:
         logger.warning('Hepatit etkin_tip tespit hatası: %s', e)
         return None
-    keywords = hepatit_keyword_listesi(etkin_tip)
+    # HBV oral için etken-spesifik (TAF/TDF/ETV/LAM/...) dar keyword
+    keywords = hepatit_keyword_listesi(
+        etkin_tip, ilac_adi=ilac_adi, etkin_madde=etkin)
     if not keywords:
         return None
     aktif_rxid = ilac_sonuc.get('RxId') or ilac_sonuc.get('rxid')
     aktif_takip = (ilac_sonuc.get('rapor_takip_no')
                    or ilac_sonuc.get('RaporAnaRaporTakipNo')
                    or '')
-    # Aktif rapor metnini birleştir — Aşama 1 lafız parse için
+    # Aktif rapor metnini birleştir — Aşama 2 lafız parse için
     rapor_aciklamalari = ilac_sonuc.get('rapor_aciklamalari') or []
     if isinstance(rapor_aciklamalari, list):
         aktif_rapor_metni = ' '.join(str(x) for x in rapor_aciklamalari)
