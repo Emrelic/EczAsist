@@ -249,17 +249,24 @@ def _kullanilan_ilac_sayfasi_mi(doc) -> bool:
 
 
 def tc_yaz_ve_ilac_listesi_ac(tc: str, medula_hwnd: int = None) -> tuple:
-    """Kullanıcı 5-adım akışı:
+    """TC yaz + İlaç Listesi aç akışı:
 
     A) "Kullanılan İlaç Listesi" sayfası AÇIK ise:
-       1) form1:buttonGeriDon tıkla
+       1) form1:buttonGeriDon tıkla (reçeteye dön)
        2) btnSonraki (Sonra >) tıkla
        3) f:t18 textbox'ını temizle
        4) f:t18'e TC yaz
        5) f:buttonIlacListesi tıkla
 
-    B) "Kullanılan İlaç Listesi" AÇIK DEĞİLSE:
-       3. adımdan başla (temizle → yaz → İlaç butonu).
+    B) Reçete detay sayfası açık ise (kullanıcı isteği):
+       2) VAR OLAN reçetede btnSonraki (Sonra >) tıkla — SONRA TC yaz
+       3) f:t18 textbox'ını temizle
+       4) f:t18'e TC yaz
+       5) f:buttonIlacListesi tıkla
+
+    Her iki akışta 'Sonra >' butonu pasif/bulunamadı ise (örn. listedeki
+    son reçetedeyiz) mevcut reçeteye yapıştırmaya düşülür (fallback) —
+    böylece buton her durumda iş görür.
 
     Dönüş: (basarili: bool, mesaj: str)
     """
@@ -291,7 +298,36 @@ def tc_yaz_ve_ilac_listesi_ac(tc: str, medula_hwnd: int = None) -> tuple:
 
     akis_log = []
 
-    # A) Kullanılan İlaç Listesi açıksa: Geri Dön + Sonra >
+    def _sonraki_ve_bekle():
+        """btnSonraki ('Sonra >') tıkla, sonraki reçete sayfası
+        (f:t18 + f:buttonIlacListesi) hazır olana dek bekle.
+
+        Başarılı → (doc, tc_input). 'Sonra >' pasif/bulunamadı veya yeni
+        sayfa 20sn'de yüklenmediyse → (None, None) — çağıran mevcut
+        reçeteye yapıştırmaya düşer (fallback)."""
+        if not _btnsonraki_tikla(medula_hwnd):
+            return None, None
+        time.sleep(0.3)  # WinForms postback'in başlaması için minimum
+        # readyState=complete + f:t18 + f:buttonIlacListesi var olana dek
+        # bekle. Koşul sağlanır sağlanmaz döner — 20s güvenlik timeout'u.
+        deadline = time.monotonic() + 20.0
+        while time.monotonic() < deadline:
+            d = html_doc_bul(medula_hwnd)
+            if d is not None:
+                try:
+                    rs = str(getattr(d, "readyState", "complete") or "complete").lower()
+                    if rs == "complete":
+                        t = element_by_id(d, "f:t18")
+                        ilac = element_by_id(d, "f:buttonIlacListesi")
+                        if t is not None and ilac is not None:
+                            akis_log.append("Sonra")
+                            return d, t
+                except Exception:
+                    pass
+            time.sleep(0.05)
+        return None, None
+
+    # A) Kullanılan İlaç Listesi açıksa: Geri Dön → Sonra >
     if _kullanilan_ilac_sayfasi_mi(doc):
         # 1) Geri Dön
         geri = element_by_id(doc, "form1:buttonGeriDon")
@@ -306,51 +342,33 @@ def tc_yaz_ve_ilac_listesi_ac(tc: str, medula_hwnd: int = None) -> tuple:
         # Geri click'in postback başlatması için minimum bekleme
         time.sleep(0.3)
 
-        # Sayfa yüklensin — f:t18 ile TC görünene kadar polling (timeout 20s,
-        # koşul sağlanır sağlanmaz döner)
-        doc, _ = _f_t18_bekle(20.0)
+        # Reçete sayfası yüklensin — f:t18 görünene kadar polling
+        doc, tc_input = _f_t18_bekle(20.0)
         if doc is None:
             return False, "1) Geri Dön sonrası sayfa 20sn'de yüklenmedi."
 
-        # 2) Sonra > (btnSonraki)
-        if not _btnsonraki_tikla(medula_hwnd):
-            return False, "2) 'Sonra >' butonuna (btnSonraki) tıklanamadı."
-        akis_log.append("Sonra")
-        time.sleep(0.3)  # WinForms postback'in başlaması için minimum
-
-        # Sonraki reçete sayfasının hazır olmasını bekle:
-        #   readyState=complete + f:t18 var + f:buttonIlacListesi var
-        # Koşul sağlanır sağlanmaz döner — 20s sadece güvenlik timeout'u.
-        deadline = time.monotonic() + 20.0
-        tc_input = None
-        while time.monotonic() < deadline:
-            d = html_doc_bul(medula_hwnd)
-            if d is not None:
-                try:
-                    rs = str(getattr(d, "readyState", "complete") or "complete").lower()
-                    if rs == "complete":
-                        t = element_by_id(d, "f:t18")
-                        ilac = element_by_id(d, "f:buttonIlacListesi")
-                        if t is not None and ilac is not None:
-                            doc = d
-                            tc_input = t
-                            break
-                except Exception:
-                    pass
-            time.sleep(0.05)
-        if tc_input is None:
-            return False, (
-                "2) Sonraki tıklandı ama yeni reçete sayfası 20sn'de "
-                "yüklenmedi (f:t18 / f:buttonIlacListesi bulunamadı)."
-            )
+        # 2) Mevcut reçetede 'Sonra >' tıkla. Yeni reçete gelirse onu kullan;
+        #    pasif/son reçete ise mevcut reçeteye yapıştırmaya düş (fallback).
+        yeni_doc, yeni_tc = _sonraki_ve_bekle()
+        if yeni_tc is not None:
+            doc, tc_input = yeni_doc, yeni_tc
+        else:
+            akis_log.append("Sonra(atlandı)")
     else:
-        # B) Direkt 3. adımdan başla
+        # B) Reçete detay sayfası açık. Kullanıcı isteği: önce VAR OLAN
+        #    reçetede 'Sonra >' tıkla, SONRA TC yapıştır. 'Sonra >' pasifse
+        #    (örn. son reçete) mevcut reçeteye yapıştırmaya düş (fallback).
         tc_input = element_by_id(doc, "f:t18")
         if tc_input is None:
             return False, (
                 "f:t18 (Reçete Sahibi T.C.) bulunamadı. MEDULA'da "
                 "reçete detay sayfası (ReceteIslem2) açık olmalı."
             )
+        yeni_doc, yeni_tc = _sonraki_ve_bekle()
+        if yeni_tc is not None:
+            doc, tc_input = yeni_doc, yeni_tc
+        else:
+            akis_log.append("Sonra(atlandı)")
 
     # 3) TC textbox temizle
     try:

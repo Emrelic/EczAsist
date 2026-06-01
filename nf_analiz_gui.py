@@ -92,6 +92,8 @@ class MFAnalizGUI:
         "ilac_farki": "0.00",
         "alim_adet": "100",
         "mf_bedava": "10",
+        "oto_alim_ana": "1",
+        "oto_alim_mf": "0",
         "vade_gun": "75",
         "zam_orani": "0",
         "mevduat_faizi": "40",
@@ -348,7 +350,9 @@ class MFAnalizGUI:
             'alim_tarihi': tk.StringVar(value=datetime.now().strftime("%d.%m.%Y")),
             'vade_gun': tk.StringVar(value=ayar.get("vade_gun", "90")),
             'otomatik_alim': tk.BooleanVar(value=False),  # Mal bitince otomatik alim
-            'bir_sifir_alim': tk.BooleanVar(value=False),  # 1+0 alim (aylik bazda, sarkitmasiz)
+            'bir_sifir_alim': tk.BooleanVar(value=False),  # Oranli alim (aylik bazda, sarkitmasiz)
+            'oto_alim_ana': tk.StringVar(value=ayar.get("oto_alim_ana", "1")),  # Oto-alim ana mal adedi (varsayilan 1)
+            'oto_alim_mf': tk.StringVar(value=ayar.get("oto_alim_mf", "0")),    # Oto-alim MF bedava (varsayilan 0)
 
             # D) Dis Etkenler
             'zam_tarihi': tk.StringVar(value=""),
@@ -564,11 +568,23 @@ class MFAnalizGUI:
                       activebackground=self.colors['card_bg'],
                       activeforeground=self.colors['success'],
                       cursor='hand2').pack(side=tk.LEFT)
-        tk.Label(row4, text="(Mal bitince tekrar al)",
+        tk.Label(row4, text="(Mal bitince al)",
                 font=('Segoe UI', 8), fg=self.colors['text_dim'],
-                bg=self.colors['card_bg']).pack(side=tk.LEFT, padx=5)
+                bg=self.colors['card_bg']).pack(side=tk.LEFT, padx=(5, 8))
+        # Otomatik alım oranı: ana mal + MF (varsayılan 1+0). Ör: 50+5
+        tk.Entry(row4, textvariable=vars['oto_alim_ana'], font=('Segoe UI', 10),
+                bg=self.colors['entry_bg'], fg=self.colors['text'],
+                relief='flat', width=5, justify='center').pack(side=tk.LEFT, padx=(0, 2))
+        tk.Label(row4, text="+", font=('Segoe UI', 11, 'bold'),
+                fg=self.colors['success'], bg=self.colors['card_bg']).pack(side=tk.LEFT)
+        tk.Entry(row4, textvariable=vars['oto_alim_mf'], font=('Segoe UI', 10),
+                bg=self.colors['entry_bg'], fg=self.colors['text'],
+                relief='flat', width=5, justify='center').pack(side=tk.LEFT, padx=(2, 0))
+        tk.Label(row4, text="(ana mal + MF)",
+                font=('Segoe UI', 8), fg=self.colors['text_dim'],
+                bg=self.colors['card_bg']).pack(side=tk.LEFT, padx=4)
 
-        # 1+0 Alım Checkbox (ayın sonuna kadar yetecek kadar)
+        # 1+0 Alım Checkbox (MF'yi yok say, sadece ana mal — ay sonuna yetecek kadar)
         row5 = tk.Frame(content, bg=self.colors['card_bg'])
         row5.pack(fill=tk.X, pady=4)
         tk.Checkbutton(row5, text="1+0 Alim",
@@ -579,7 +595,7 @@ class MFAnalizGUI:
                       activebackground=self.colors['card_bg'],
                       activeforeground='#e67e22',
                       cursor='hand2').pack(side=tk.LEFT)
-        tk.Label(row5, text="(Ay sonuna yetecek kadar)",
+        tk.Label(row5, text="(işaretliyse MF yok, ay sonuna yetecek kadar)",
                 font=('Segoe UI', 8), fg=self.colors['text_dim'],
                 bg=self.colors['card_bg']).pack(side=tk.LEFT, padx=5)
 
@@ -1930,6 +1946,54 @@ class MFAnalizGUI:
         self.son_simulasyon_tarihi = None
         return True
 
+    def _otomatik_alim_uygula(self, idx, d, senaryo, mevcut_tarih):
+        """Otomatik alım yapar. Ay sonuna yetecek kadar, ana mal + MF tam paketleri halinde.
+        - "1+0 Alim" işaretliyse MF yok sayılır (sadece ana mal, eski mantık korunur).
+        - değilse "Otomatik Alım" yanındaki oran (ör. 50+5) tam paketler halinde alınır.
+        Stok ekler, depo borcuna SADECE ödenen (ana mal) kısmı yazar, uyarı bayraklarını sıfırlar.
+        Eklenen toplam stok adedini döndürür (0 ise alım yapılamadı)."""
+        vars = self.senaryo_vars[idx]
+
+        if vars['bir_sifir_alim'].get():
+            # 1+0 Alım: MF'siz, sadece ana mal (bozulmadan korunan eski davranış)
+            ana_oran, mf_oran = 1, 0
+        else:
+            try:
+                ana_oran = self._int_parse(vars['oto_alim_ana'].get())
+                mf_oran = self._int_parse(vars['oto_alim_mf'].get())
+            except (ValueError, TypeError):
+                ana_oran, mf_oran = 1, 0  # Bozuk metin → güvenli 1+0
+            if ana_oran <= 0:
+                ana_oran, mf_oran = 1, 0  # Geçersiz girdi → güvenli 1+0
+            if mf_oran < 0:
+                mf_oran = 0
+        paket_stok = ana_oran + mf_oran  # Bir pakette eklenecek toplam stok
+
+        # Ay sonuna kadar gereken stok
+        ayin_son_gunu = calendar.monthrange(mevcut_tarih.year, mevcut_tarih.month)[1]
+        kalan_gun = ayin_son_gunu - mevcut_tarih.day + 1  # Bugün dahil
+        gereken_stok = kalan_gun * d['gunluk_sarf']
+        eksik = gereken_stok - d['stok']
+
+        if eksik > 0:
+            paket_sayisi = math.ceil(eksik / paket_stok)  # Tam paket (yukarı yuvarla)
+            alim_adet = paket_sayisi * ana_oran   # Ödenen (depo borcu bunun üzerinden)
+            mf_bedava = paket_sayisi * mf_oran    # Bedava mal fazlası
+        else:
+            alim_adet = mf_bedava = 0
+        toplam_alim = alim_adet + mf_bedava
+
+        if toplam_alim > 0:
+            d['stok'] += toplam_alim
+            depo_borc = alim_adet * d['depocu_fiyat']
+            ay_key = mevcut_tarih.strftime("%Y-%m")
+            if ay_key not in senaryo.depo_acik_hesap:
+                senaryo.depo_acik_hesap[ay_key] = 0
+            senaryo.depo_acik_hesap[ay_key] += depo_borc
+            self.stok_uyari_gosterildi[idx] = False
+            self.senaryo_duraklatildi[idx] = False
+        return toplam_alim
+
     def _bir_gun_hesapla(self, idx):
         """Tek senaryo icin bir gun hesapla - Yeni hesaplama mantigi"""
         senaryo = self.senaryolar[idx]
@@ -2026,21 +2090,45 @@ class MFAnalizGUI:
         # ============ STOK KONTROLÜ VE SATIŞ ============
         tarih_str = mevcut_tarih.strftime("%d.%m.%Y")
 
-        # Stok sıfır veya altındaysa satış YAPMA, uyarı ver ve DUR
+        # Stok sıfır veya altındaysa: otomatik alım açıksa satıştan ÖNCE al, değilse dur
         if d['stok'] <= 0:
             d['stok'] = 0  # Eksiye düşmesin
+            vars = self.senaryo_vars[idx]
+            otomatik_alim = vars['otomatik_alim'].get()
+            # "Mal bitişine kadar" modunda bu senaryo durdurulacaksa alım yapma
+            durdurulacak = self.mal_bitis_modu and self.mal_bitis_senaryosu == idx
+
+            if otomatik_alim and not durdurulacak:
+                # Mal bitti ama otomatik alım açık → hemen alım yap, gün satışa devam etsin
+                self._otomatik_alim_uygula(idx, d, senaryo, mevcut_tarih)
+
+        if d['stok'] <= 0:
+            # Hâlâ stok yok (otomatik alım kapalı / durdurulacak / 0 aldı) → dur ve uyar
+            d['stok'] = 0
             satis_miktari = 0
-            # Simülasyonu durdur - kullanıcı mal almalı
             self.simulasyon_calisyor = False
             self.uyari_bekliyor = True
-            messagebox.showwarning(
-                f"Senaryo {idx+1} - STOK BİTTİ!",
-                f"🛑 STOK BİTTİ - DEPODAN MAL AL!\n\n"
-                f"Tarih: {tarih_str}\n"
-                f"Gün: {gun + 1}\n\n"
-                f"Simülasyon durdu!\n"
-                f"Alım tarihi ve miktarı girin, sonra tekrar OYNAT'a basın."
-            )
+            if self.mal_bitis_modu and self.mal_bitis_senaryosu == idx:
+                # MAL BİTİŞİ modunda seçilen senaryo: bu beklenen durdurma
+                if not self.stok_uyari_gosterildi.get(idx, False):
+                    self.stok_uyari_gosterildi[idx] = True
+                    self.senaryo_duraklatildi[idx] = True
+                    messagebox.showinfo(
+                        f"Senaryo {idx+1} - MAL BİTTİ",
+                        f"🛑 SENARYO {idx+1} MALI BİTTİ!\n\n"
+                        f"Tarih: {tarih_str}\n"
+                        f"Simülasyon durduruldu."
+                    )
+            else:
+                messagebox.showwarning(
+                    f"Senaryo {idx+1} - STOK BİTTİ!",
+                    f"🛑 STOK BİTTİ - DEPODAN MAL AL!\n\n"
+                    f"Tarih: {tarih_str}\n"
+                    f"Gün: {gun + 1}\n\n"
+                    f"Simülasyon durdu!\n"
+                    f"Alım tarihi ve miktarı girin (veya Otomatik Alım'ı açın),\n"
+                    f"sonra tekrar OYNAT'a basın."
+                )
             self.uyari_bekliyor = False
             self.root.after(0, lambda: self._butonlari_ayarla(False))
         else:
@@ -2074,38 +2162,8 @@ class MFAnalizGUI:
                         self.uyari_bekliyor = False
                         self.root.after(0, lambda: self._butonlari_ayarla(False))
                 elif otomatik_alim:
-                    # Otomatik alım yap
-                    bir_sifir_modu = vars['bir_sifir_alim'].get()
-
-                    if bir_sifir_modu:
-                        # 1+0 Alım: Ayın sonuna kadar yetecek kadar al
-                        ayin_son_gunu = calendar.monthrange(mevcut_tarih.year, mevcut_tarih.month)[1]
-                        kalan_gun = ayin_son_gunu - mevcut_tarih.day + 1  # Bugün dahil
-                        gereken_stok = kalan_gun * d['gunluk_sarf']
-                        eksik = gereken_stok - d['stok']
-                        alim_adet = math.ceil(eksik) if eksik > 0 else 0
-                        mf_bedava = 0  # 1+0'da bedava mal yok
-                        toplam_alim = alim_adet
-                    else:
-                        # Normal alım: Ayarlardaki miktar
-                        alim_adet = self._int_parse(vars['alim_adet'].get())
-                        mf_bedava = self._int_parse(vars['mf_bedava'].get())
-                        toplam_alim = alim_adet + mf_bedava
-
-                    if toplam_alim > 0:
-                        # Stok ekle
-                        d['stok'] += toplam_alim
-
-                        # Depo borcuna ekle
-                        depo_borc = alim_adet * d['depocu_fiyat']
-                        ay_key = mevcut_tarih.strftime("%Y-%m")
-                        if ay_key not in senaryo.depo_acik_hesap:
-                            senaryo.depo_acik_hesap[ay_key] = 0
-                        senaryo.depo_acik_hesap[ay_key] += depo_borc
-
-                        # Uyarı durumunu sıfırla
-                        self.stok_uyari_gosterildi[idx] = False
-                        self.senaryo_duraklatildi[idx] = False
+                    # Otomatik alım yap (oran/1+0 mantığı tek merkezde — _otomatik_alim_uygula)
+                    self._otomatik_alim_uygula(idx, d, senaryo, mevcut_tarih)
                 else:
                     # Otomatik alım yok - duruma göre uyarı ver
                     if not self.stok_uyari_gosterildi.get(idx, False):
@@ -2619,18 +2677,29 @@ class MFAnalizGUI:
 
             # Herhangi bir senaryoda stok bittiyse veya duraklatıldıysa dur
             # (1 gün önceden uyarı _bir_gun_hesapla içinde verilir ve simülasyon durdurulur)
+            # NOT: Otomatik alımlı senaryolar HARİÇ — onlar mal bitince kendileri alım yapar,
+            # bu yüzden stok=0 olsalar bile akış durmaz (alım _bir_gun_hesapla içinde yapılır).
+            # İstisna: MAL BİTİŞİ modunda seçilen senaryo (otomatik alımı kapalı) durma sebebidir.
             stok_bitti = False
             for idx in range(self.aktif_senaryo_sayisi):
                 d = self.senaryolar[idx].durum
-                if d:
-                    # Stok tamamen bittiyse
-                    if d.get('stok', 0) <= 0:
-                        stok_bitti = True
-                        break
-                    # Senaryo duraklatıldıysa (1 gün önceden uyarı verildi)
-                    if self.senaryo_duraklatildi.get(idx, False):
-                        stok_bitti = True
-                        break
+                if not d:
+                    continue
+                vars = self.senaryo_vars.get(idx, {})
+                oto_var = vars.get('otomatik_alim')
+                oto_acik = bool(oto_var and oto_var.get())
+                durdurulacak = self.mal_bitis_modu and self.mal_bitis_senaryosu == idx
+                # Otomatik alımlı ve durdurulmayacak senaryoyu atla (kendini toparlar)
+                if oto_acik and not durdurulacak:
+                    continue
+                # Stok tamamen bittiyse
+                if d.get('stok', 0) <= 0:
+                    stok_bitti = True
+                    break
+                # Senaryo duraklatıldıysa (1 gün önceden uyarı verildi)
+                if self.senaryo_duraklatildi.get(idx, False):
+                    stok_bitti = True
+                    break
 
             if stok_bitti:
                 self.simulasyon_calisyor = False
@@ -3115,6 +3184,8 @@ class MFAnalizGUI:
             ("C) Satin Alma", [
                 ("alim_adet", "Alim Adet"),
                 ("mf_bedava", "MF Bedava"),
+                ("oto_alim_ana", "Oto-Alim Ana Mal (oran)"),
+                ("oto_alim_mf", "Oto-Alim MF (oran)"),
                 ("vade_gun", "Vade (gun)")
             ]),
             ("D) Dis Etkenler", [

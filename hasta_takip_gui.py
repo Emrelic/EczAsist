@@ -94,6 +94,7 @@ class HastaTakipGUI:
         self.sekme_devamlilik = self._sekme_devamlilik_olustur()
         self.sekme_rapor_bitis = self._sekme_rapor_bitis_olustur()
         self.sekme_dogum_gunu = self._sekme_dogum_gunu_olustur()
+        self.sekme_isaretli = self._sekme_isaretli_olustur()
         self.sekme_log = self._sekme_log_olustur()
 
         self.notebook.add(self.sekme_yazdirma, text="📬 Yazdırma Günü Gelen")
@@ -101,6 +102,7 @@ class HastaTakipGUI:
         self.notebook.add(self.sekme_devamlilik, text="📅 Devamlılık")
         self.notebook.add(self.sekme_rapor_bitis, text="📑 Rapor Bitiş Takibi")
         self.notebook.add(self.sekme_dogum_gunu, text="🎂 Doğum Günü")
+        self.notebook.add(self.sekme_isaretli, text="🚫 İşaretliler")
         self.notebook.add(self.sekme_ayarlar, text="⚙ Ayarlar")
         self.notebook.add(self.sekme_log, text="🧾 Gönderim Log")
 
@@ -123,6 +125,7 @@ class HastaTakipGUI:
 
         # Tüm sekmeler oluştuktan sonra kuyruğu ekrana yükle
         self._kuyruktan_yukle()
+        self._isaretli_yenile()
 
         # Ayarda açıksa oturum canlı tutmayı otomatik başlat
         if getattr(self.ayarlar, "oturum_canli_tut", False):
@@ -390,6 +393,21 @@ class HastaTakipGUI:
                                   command=self._medulada_ilac_listesi_ac)
         self.menu_yaz.add_command(label="👤 Başka Hastaya At...",
                                   command=self._farkli_kisiye_gonder)
+        self.menu_yaz.add_separator()
+        # Hastayı işaretle (artık mesaj atılmaz)
+        menu_hasta = tk.Menu(self.menu_yaz, tearoff=0)
+        menu_hasta.add_command(label="💀 Öldü",
+                               command=lambda: self._hasta_isaretle("oldu"))
+        menu_hasta.add_command(label="🚚 Göçtü",
+                               command=lambda: self._hasta_isaretle("goctu"))
+        menu_hasta.add_command(label="😠 Küstü",
+                               command=lambda: self._hasta_isaretle("kustu"))
+        menu_hasta.add_command(label="📵 Aranmak İstemiyor",
+                               command=lambda: self._hasta_isaretle("aranmasin"))
+        self.menu_yaz.add_cascade(label="🚫 Hastayı İşaretle (mesaj atma)",
+                                  menu=menu_hasta)
+        self.menu_yaz.add_command(label="💊 İlacı İşaretle (bu ilaç gelmesin)...",
+                                  command=self._ilac_isaretle_dialog)
         self.tv_yaz.bind("<Button-3>", self._yaz_sagtik)
 
         # ALT: mesaj hazırlık mini-bar + önizleme
@@ -2117,6 +2135,222 @@ class HastaTakipGUI:
 
     def _ad_kopyala(self, *_):
         self._kopyala_yardimci("hasta_adi", "Hasta adı")
+
+    # ---- İşaretleme: hasta / ilaç hariç tutma -------------------------
+    def _hasta_isaretle(self, durum: str):
+        """Seçili hastayı işaretle (öldü/göçtü/küstü/aranmasın);
+        artık mesaj atılmaz, bekleyen kaydı listeden düşer."""
+        m = self._aktif_mesaj()
+        if not m:
+            return
+        etiket = MesajKuyrugu.HASTA_DURUMLARI.get(durum, durum)
+        ad = m.get("hasta_adi") or ""
+        if not messagebox.askyesno(
+            "Hastayı İşaretle",
+            f"{ad}\n\n'{etiket}' olarak işaretlensin mi?\n\n"
+            "Bu hastaya artık mesaj atılmayacak ve bekleyen kaydı listeden "
+            "düşürülecek.\n(🚫 İşaretliler sekmesinden geri alabilirsiniz.)",
+        ):
+            return
+        try:
+            self.kuyruk.hasta_durum_ayarla(
+                int(m.get("musteri_id") or 0), durum,
+                tckn=(m.get("tckn") or ""), hasta_adi=ad,
+            )
+        except Exception as e:
+            messagebox.showerror("Hata", f"İşaretlenemedi: {e}")
+            return
+        self.durum_bar.config(text=f"🚫 {ad} → {etiket} olarak işaretlendi.")
+        self._kuyruktan_yukle()
+        self._isaretli_yenile()
+
+    def _ilac_isaretle_dialog(self):
+        """Seçili hastanın ilaç(lar)ını işaretle (bıraktı/değişti/getirme);
+        sadece o ilaç(lar) listeye gelmez, diğer ilaçları gelmeye devam eder."""
+        m = self._aktif_mesaj()
+        if not m:
+            return
+        ilaclar = m.get("ilaclar") or []
+        if not ilaclar:
+            messagebox.showinfo("İlaç Yok", "Bu hastanın listesinde ilaç yok.")
+            return
+        ad = m.get("hasta_adi") or ""
+        mid = int(m.get("musteri_id") or 0)
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("İlacı İşaretle")
+        dlg.transient(self.root)
+        dlg.grab_set()
+        dlg.configure(bg="white")
+
+        tk.Label(dlg, text=f"{ad} — işaretlenecek ilaç(lar):",
+                 bg="white", font=("Arial", 10, "bold")).pack(
+                     anchor="w", padx=12, pady=(12, 6))
+
+        secimler = []
+        cer = tk.Frame(dlg, bg="white")
+        cer.pack(fill="x", padx=12)
+        for il in ilaclar:
+            ua = (il.get("urun_adi") or "").strip()
+            if not ua:
+                continue
+            v = tk.BooleanVar(value=False)
+            tk.Checkbutton(cer, text=ua, variable=v, bg="white",
+                           anchor="w", font=("Arial", 9)).pack(fill="x", anchor="w")
+            secimler.append((ua, v))
+
+        tk.Label(dlg, text="Sebep:", bg="white",
+                 font=("Arial", 10, "bold")).pack(anchor="w", padx=12, pady=(10, 2))
+        durum_var = tk.StringVar(value="getirme")
+        for kod, etiket in MesajKuyrugu.ILAC_DURUMLARI.items():
+            tk.Radiobutton(dlg, text=etiket, variable=durum_var, value=kod,
+                           bg="white", anchor="w", font=("Arial", 9)).pack(
+                               fill="x", anchor="w", padx=20)
+
+        def uygula():
+            secili = [ua for ua, v in secimler if v.get()]
+            if not secili:
+                messagebox.showwarning("Seçim Yok", "En az bir ilaç seçin.",
+                                       parent=dlg)
+                return
+            durum = durum_var.get()
+            try:
+                for ua in secili:
+                    self.kuyruk.hasta_ilac_durum_ayarla(
+                        mid, ua, durum, hasta_adi=ad)
+            except Exception as e:
+                messagebox.showerror("Hata", f"İşaretlenemedi: {e}", parent=dlg)
+                return
+            etiket = MesajKuyrugu.ILAC_DURUMLARI.get(durum, durum)
+            self.durum_bar.config(
+                text=f"💊 {ad}: {len(secili)} ilaç → {etiket} işaretlendi.")
+            dlg.destroy()
+            self._kuyruktan_yukle()
+            self._isaretli_yenile()
+
+        btn = tk.Frame(dlg, bg="white")
+        btn.pack(fill="x", padx=12, pady=12)
+        tk.Button(btn, text="İşaretle", command=uygula, bg="#C62828",
+                  fg="white", bd=0, padx=14, pady=6,
+                  font=("Arial", 9, "bold")).pack(side="right")
+        tk.Button(btn, text="Vazgeç", command=dlg.destroy, bg="#90A4AE",
+                  fg="white", bd=0, padx=14, pady=6).pack(side="right", padx=(0, 6))
+
+    # ============================================================= SEKME: İŞARETLİLER
+    def _sekme_isaretli_olustur(self) -> tk.Frame:
+        """İşaretli hasta ve ilaçları gösterip geri almayı sağlayan yönetim
+        sekmesi. İşaretliler mesaj algoritmasından çıkarılır."""
+        f = tk.Frame(self.notebook, bg="white")
+
+        ust = tk.Frame(f, bg="white")
+        ust.pack(fill="x", padx=10, pady=(10, 4))
+        tk.Button(ust, text="🔄 Yenile", command=self._isaretli_yenile,
+                  bg="#1976D2", fg="white", bd=0, padx=10, pady=5,
+                  font=("Arial", 9, "bold")).pack(side="left")
+        tk.Label(ust,
+                 text="İşaretli hastalar/ilaçlar mesaj algoritmasından çıkarılır. "
+                      "Geri almak için sağ tık → İşareti Geri Al.",
+                 bg="white", fg="#607D8B", font=("Arial", 9)).pack(
+                     side="left", padx=10)
+
+        # --- İşaretli hastalar ---
+        tk.Label(f, text="🚫 İşaretli Hastalar (hiç mesaj atılmaz)",
+                 bg="white", font=("Arial", 10, "bold"), anchor="w").pack(
+                     fill="x", padx=10, pady=(6, 2))
+        self.tv_is_hasta = ttk.Treeview(
+            f, columns=("ad", "tc", "durum", "not", "tarih"),
+            show="headings", selectmode="browse", height=8)
+        for k, b, w, a in [
+            ("ad", "Hasta", 200, "w"), ("tc", "T.C.", 110, "center"),
+            ("durum", "Durum", 160, "center"), ("not", "Not", 200, "w"),
+            ("tarih", "İşaret Tarihi", 140, "center"),
+        ]:
+            self.tv_is_hasta.heading(k, text=b)
+            self.tv_is_hasta.column(k, width=w, anchor=a)
+        self.tv_is_hasta.pack(fill="both", expand=True, padx=10, pady=(0, 6))
+        self.menu_is_hasta = tk.Menu(self.tv_is_hasta, tearoff=0)
+        self.menu_is_hasta.add_command(label="✅ İşareti Geri Al",
+                                       command=self._isaretli_hasta_geri_al)
+        self.tv_is_hasta.bind(
+            "<Button-3>",
+            lambda e: self._tv_sagtik(e, self.tv_is_hasta, self.menu_is_hasta))
+
+        # --- İşaretli ilaçlar ---
+        tk.Label(f, text="💊 İşaretli İlaçlar (sadece bu ürün gelmez)",
+                 bg="white", font=("Arial", 10, "bold"), anchor="w").pack(
+                     fill="x", padx=10, pady=(6, 2))
+        self.tv_is_ilac = ttk.Treeview(
+            f, columns=("ad", "urun", "durum", "not", "tarih"),
+            show="headings", selectmode="browse", height=8)
+        for k, b, w, a in [
+            ("ad", "Hasta", 180, "w"), ("urun", "Ürün", 240, "w"),
+            ("durum", "Durum", 160, "center"), ("not", "Not", 160, "w"),
+            ("tarih", "İşaret Tarihi", 140, "center"),
+        ]:
+            self.tv_is_ilac.heading(k, text=b)
+            self.tv_is_ilac.column(k, width=w, anchor=a)
+        self.tv_is_ilac.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.menu_is_ilac = tk.Menu(self.tv_is_ilac, tearoff=0)
+        self.menu_is_ilac.add_command(label="✅ İşareti Geri Al",
+                                      command=self._isaretli_ilac_geri_al)
+        self.tv_is_ilac.bind(
+            "<Button-3>",
+            lambda e: self._tv_sagtik(e, self.tv_is_ilac, self.menu_is_ilac))
+        return f
+
+    @staticmethod
+    def _tv_sagtik(event, tv, menu):
+        rid = tv.identify_row(event.y)
+        if not rid:
+            return
+        tv.selection_set(rid)
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _isaretli_yenile(self):
+        """İşaretliler sekmesindeki iki tabloyu DB'den tazeler."""
+        if not hasattr(self, "tv_is_hasta"):
+            return
+        self.tv_is_hasta.delete(*self.tv_is_hasta.get_children())
+        for h in self.kuyruk.isaretli_hastalar_listele():
+            durum = MesajKuyrugu.HASTA_DURUMLARI.get(h["durum"], h["durum"])
+            self.tv_is_hasta.insert(
+                "", "end", iid=str(h["musteri_id"]),
+                values=(h.get("hasta_adi") or "-", h.get("tckn") or "-",
+                        durum, h.get("not_metni") or "",
+                        (h.get("guncelleme") or "")[:16].replace("T", " ")))
+        self.tv_is_ilac.delete(*self.tv_is_ilac.get_children())
+        for il in self.kuyruk.isaretli_ilaclar_listele():
+            durum = MesajKuyrugu.ILAC_DURUMLARI.get(il["durum"], il["durum"])
+            iid = f"{il['musteri_id']}||{il['urun_adi']}"
+            self.tv_is_ilac.insert(
+                "", "end", iid=iid,
+                values=(il.get("hasta_adi") or "-", il.get("urun_adi") or "-",
+                        durum, il.get("not_metni") or "",
+                        (il.get("guncelleme") or "")[:16].replace("T", " ")))
+
+    def _isaretli_hasta_geri_al(self):
+        sec = self.tv_is_hasta.selection()
+        if not sec:
+            return
+        self.kuyruk.hasta_durum_kaldir(int(sec[0]))
+        self.durum_bar.config(text="✅ Hasta işareti geri alındı (tekrar mesaj atılabilir).")
+        self._isaretli_yenile()
+
+    def _isaretli_ilac_geri_al(self):
+        sec = self.tv_is_ilac.selection()
+        if not sec:
+            return
+        try:
+            mid_str, urun = sec[0].split("||", 1)
+            mid = int(mid_str)
+        except (ValueError, IndexError):
+            return
+        self.kuyruk.hasta_ilac_durum_kaldir(mid, urun)
+        self.durum_bar.config(text="✅ İlaç işareti geri alındı.")
+        self._isaretli_yenile()
 
     def _yaz_sagtik(self, event):
         rid = self.tv_yaz.identify_row(event.y)

@@ -109,9 +109,10 @@ class HastaTakipAyarlari:
 
     # Mesaj şablonu (placeholders: {hasta_adi}, {ilac_listesi}, {eczane_adi}, {eczane_tel})
     mesaj_sablonu: str = (
-        "Sayın {hasta_adi}\n"
-        "{ilac_listesi}\n"
-        " ilacınızı DOKTORA yazdırma günü gelmiştir. {eczane_adi}  {eczane_tel}"
+        "Sayın {hasta_adi}\n\n"
+        "{ilac_listesi}\n\n"
+        " ilacınızı DOKTORA yazdırma günü gelmiştir.\n\n"
+        "{eczane_adi}  {eczane_tel}"
     )
 
     # İlaç listesinde her satırın formatı
@@ -299,6 +300,32 @@ class MesajKuyrugu:
                     zaman         TEXT NOT NULL,
                     tur           TEXT NOT NULL DEFAULT 'rapor_bitis',
                     sonuc         TEXT
+                );
+
+                -- Hasta bazlı hariç tutma: bu hastalara HİÇ mesaj atılmaz.
+                -- durum: oldu | goctu | kustu | aranmasin
+                CREATE TABLE IF NOT EXISTS hasta_durum (
+                    musteri_id    INTEGER PRIMARY KEY,
+                    tckn          TEXT,
+                    hasta_adi     TEXT,
+                    durum         TEXT NOT NULL,
+                    not_metni     TEXT,
+                    guncelleme    TEXT NOT NULL
+                );
+
+                -- İlaç bazlı hariç tutma: bu (hasta, ürün) çifti listeye gelmez,
+                -- ama hastanın diğer ilaçları gelmeye devam eder.
+                -- durum: birakti | degisti | getirme
+                -- urun_adi normalize edilmiş (strip+upper) saklanır.
+                CREATE TABLE IF NOT EXISTS hasta_ilac_durum (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    musteri_id    INTEGER NOT NULL,
+                    hasta_adi     TEXT,
+                    urun_adi      TEXT NOT NULL,
+                    durum         TEXT NOT NULL,
+                    not_metni     TEXT,
+                    guncelleme    TEXT NOT NULL,
+                    UNIQUE(musteri_id, urun_adi)
                 );
                 """
             )
@@ -720,6 +747,31 @@ class MesajKuyrugu:
             if not hasta_satirlari:
                 return 0
 
+        # Hasta bazlı hariç tutma (öldü/göçtü/küstü/aranmasın):
+        # işaretli hastalara hiç mesaj atılmaz.
+        haric_hastalar = self.haric_hasta_seti()
+        if haric_hastalar:
+            hasta_satirlari = [
+                s for s in hasta_satirlari
+                if int(s.get("musteri_id") or 0) not in haric_hastalar
+            ]
+            if not hasta_satirlari:
+                return 0
+
+        # İlaç bazlı hariç tutma (bıraktı/değişti/artık getirme):
+        # işaretli (hasta, ürün) çiftleri listeye girmez.
+        haric_ilaclar = self.haric_ilac_seti()
+        if haric_ilaclar:
+            hasta_satirlari = [
+                s for s in hasta_satirlari
+                if (
+                    int(s.get("musteri_id") or 0),
+                    (s.get("urun_adi") or "").strip().upper(),
+                ) not in haric_ilaclar
+            ]
+            if not hasta_satirlari:
+                return 0
+
         # musteri_id bazlı grupla
         gruplu: Dict[int, Dict] = {}
         for s in hasta_satirlari:
@@ -799,6 +851,147 @@ class MesajKuyrugu:
                          row["id"]),
                     )
         return yeni
+
+    # -----------------------------------------------------------------
+    # İşaretleme: hasta / ilaç bazlı hariç tutma
+    # -----------------------------------------------------------------
+    # Hasta durumları: bu hastalara hiç mesaj atılmaz
+    HASTA_DURUMLARI = {
+        "oldu": "Öldü",
+        "goctu": "Göçtü",
+        "kustu": "Küstü",
+        "aranmasin": "Aranmak İstemiyor",
+    }
+    # İlaç durumları: sadece o (hasta, ürün) listeye gelmez
+    ILAC_DURUMLARI = {
+        "birakti": "İlacı Bıraktı",
+        "degisti": "İlacı Değişti",
+        "getirme": "Bu İlacı Artık Getirme",
+    }
+
+    def haric_hasta_seti(self) -> set:
+        """İşaretli (mesaj atılmayacak) hastaların musteri_id kümesi."""
+        with self._conn() as c:
+            rows = c.execute("SELECT musteri_id FROM hasta_durum").fetchall()
+        return {int(r["musteri_id"]) for r in rows}
+
+    def haric_ilac_seti(self) -> set:
+        """İşaretli (listeye gelmeyecek) (musteri_id, ÜRÜN_ADI_UPPER) kümesi."""
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT musteri_id, urun_adi FROM hasta_ilac_durum"
+            ).fetchall()
+        return {
+            (int(r["musteri_id"]), (r["urun_adi"] or "").strip().upper())
+            for r in rows
+        }
+
+    def hasta_durum_ayarla(
+        self, musteri_id: int, durum: str,
+        tckn: str = "", hasta_adi: str = "", not_metni: str = "",
+    ) -> None:
+        """Hastayı işaretle (öldü/göçtü/küstü/aranmasın) ve bekleyen
+        kuyruk kaydını sil — böylece anında listeden düşer."""
+        if durum not in self.HASTA_DURUMLARI:
+            raise ValueError(f"Geçersiz hasta durumu: {durum}")
+        simdi = datetime.now().isoformat(timespec="seconds")
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO hasta_durum"
+                "(musteri_id, tckn, hasta_adi, durum, not_metni, guncelleme) "
+                "VALUES (?,?,?,?,?,?) "
+                "ON CONFLICT(musteri_id) DO UPDATE SET "
+                "tckn=excluded.tckn, hasta_adi=excluded.hasta_adi, "
+                "durum=excluded.durum, not_metni=excluded.not_metni, "
+                "guncelleme=excluded.guncelleme",
+                (int(musteri_id), tckn, hasta_adi, durum, not_metni, simdi),
+            )
+            # Bekleyen kuyruk kaydını anında düşür
+            c.execute(
+                "DELETE FROM mesaj_kuyrugu WHERE musteri_id=? AND durum='bekliyor'",
+                (int(musteri_id),),
+            )
+
+    def hasta_durum_kaldir(self, musteri_id: int) -> None:
+        """Hasta işaretini geri al (tekrar mesaj algoritmasına girer)."""
+        with self._conn() as c:
+            c.execute(
+                "DELETE FROM hasta_durum WHERE musteri_id=?", (int(musteri_id),)
+            )
+
+    def hasta_ilac_durum_ayarla(
+        self, musteri_id: int, urun_adi: str, durum: str,
+        hasta_adi: str = "", not_metni: str = "",
+    ) -> None:
+        """İlacı işaretle (bıraktı/değişti/getirme) ve bekleyen kuyruktaki
+        o ilacı düşür; hastanın başka ilacı kalmazsa kaydı tamamen sil."""
+        if durum not in self.ILAC_DURUMLARI:
+            raise ValueError(f"Geçersiz ilaç durumu: {durum}")
+        urun_norm = (urun_adi or "").strip().upper()
+        if not urun_norm:
+            raise ValueError("Ürün adı boş olamaz")
+        simdi = datetime.now().isoformat(timespec="seconds")
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO hasta_ilac_durum"
+                "(musteri_id, hasta_adi, urun_adi, durum, not_metni, guncelleme) "
+                "VALUES (?,?,?,?,?,?) "
+                "ON CONFLICT(musteri_id, urun_adi) DO UPDATE SET "
+                "hasta_adi=excluded.hasta_adi, durum=excluded.durum, "
+                "not_metni=excluded.not_metni, guncelleme=excluded.guncelleme",
+                (int(musteri_id), hasta_adi, urun_norm, durum, not_metni, simdi),
+            )
+            # Bekleyen kuyruktan bu ilacı düşür
+            row = c.execute(
+                "SELECT id, ilac_json FROM mesaj_kuyrugu "
+                "WHERE musteri_id=? AND durum='bekliyor'",
+                (int(musteri_id),),
+            ).fetchone()
+            if row is not None:
+                try:
+                    ilaclar = json.loads(row["ilac_json"] or "[]")
+                except (ValueError, TypeError):
+                    ilaclar = []
+                kalan = [
+                    il for il in ilaclar
+                    if (il.get("urun_adi") or "").strip().upper() != urun_norm
+                ]
+                if not kalan:
+                    c.execute(
+                        "DELETE FROM mesaj_kuyrugu WHERE id=?", (row["id"],)
+                    )
+                elif len(kalan) != len(ilaclar):
+                    c.execute(
+                        "UPDATE mesaj_kuyrugu SET ilac_json=? WHERE id=?",
+                        (json.dumps(kalan, ensure_ascii=False), row["id"]),
+                    )
+
+    def hasta_ilac_durum_kaldir(self, musteri_id: int, urun_adi: str) -> None:
+        """İlaç işaretini geri al (tekrar listeye gelebilir)."""
+        urun_norm = (urun_adi or "").strip().upper()
+        with self._conn() as c:
+            c.execute(
+                "DELETE FROM hasta_ilac_durum WHERE musteri_id=? AND urun_adi=?",
+                (int(musteri_id), urun_norm),
+            )
+
+    def isaretli_hastalar_listele(self) -> List[Dict]:
+        """Yönetim ekranı için: tüm işaretli hastalar."""
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT musteri_id, tckn, hasta_adi, durum, not_metni, guncelleme "
+                "FROM hasta_durum ORDER BY guncelleme DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def isaretli_ilaclar_listele(self) -> List[Dict]:
+        """Yönetim ekranı için: tüm işaretli (hasta, ilaç) çiftleri."""
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT musteri_id, hasta_adi, urun_adi, durum, not_metni, guncelleme "
+                "FROM hasta_ilac_durum ORDER BY guncelleme DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     @staticmethod
     def _planli_gonderim_tarihi(
