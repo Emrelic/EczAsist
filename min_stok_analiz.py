@@ -75,7 +75,8 @@ def talep_pattern_analiz(db, urun_id: int, ay_sayisi: int = 12) -> dict:
             'cv': 0,
             'adi': 999,
             'sinif': 'NO_DEMAND',
-            'parti_std': 0
+            'parti_std': 0,
+            'aylik_dokum': [0.0] * ay_sayisi
         }
 
     # Tarihe gore birlestir (UNION'dan dolayi ayni gun 2 kez gelebilir)
@@ -89,6 +90,23 @@ def talep_pattern_analiz(db, urun_id: int, ay_sayisi: int = 12) -> dict:
             parti_dict[tarih] = adet
 
     parti_buyuklukleri = list(parti_dict.values())
+
+    # Ay-be-ay dokum (takvim ayi bazli; index 0 = bu ay, geriye dogru)
+    # aylik_dokum[0] = bu ay (orn. Haziran), aylik_dokum[1] = onceki ay (Mayis), ...
+    aylik_dokum = [0.0] * ay_sayisi
+    for tarih_key, adet in parti_dict.items():
+        try:
+            if isinstance(tarih_key, datetime):
+                d = tarih_key.date()
+            elif isinstance(tarih_key, str):
+                d = datetime.strptime(tarih_key[:10], '%Y-%m-%d').date()
+            else:
+                d = tarih_key  # datetime.date
+            ay_index = (bugun.year - d.year) * 12 + (bugun.month - d.month)
+            if 0 <= ay_index < ay_sayisi:
+                aylik_dokum[ay_index] += adet
+        except Exception:
+            continue
 
     # Istatistikler
     toplam_miktar = sum(parti_buyuklukleri)
@@ -145,7 +163,8 @@ def talep_pattern_analiz(db, urun_id: int, ay_sayisi: int = 12) -> dict:
         'parti_std': std_sapma,
         'gunluk_ort': gunluk_ort,
         'gunluk_std': gunluk_std,
-        'toplam_gun': toplam_gun
+        'toplam_gun': toplam_gun,
+        'aylik_dokum': aylik_dokum
     }
 
 
@@ -826,6 +845,8 @@ def tum_ilaclari_analiz_et(
                 'MevcutMin': ilac.get('MevcutMin', 0) or 0,
                 'Stok': ilac.get('Stok', 0) or 0,
                 'AylikOrt': round(analiz['aylik_ort'], 1),
+                'AylikDokum': analiz.get('aylik_dokum', []),
+                'AnalizAy': 24,
                 'TalepSayisi': fin_sonuc['talep_sayisi'],
                 'OrtParti': fin_sonuc['ort_parti'],
                 'CV': round(analiz['cv'], 2),
@@ -852,6 +873,8 @@ def tum_ilaclari_analiz_et(
                 'MevcutMin': ilac.get('MevcutMin', 0) or 0,
                 'Stok': ilac.get('Stok', 0) or 0,
                 'AylikOrt': round(analiz['aylik_ort'], 1),
+                'AylikDokum': analiz.get('aylik_dokum', []),
+                'AnalizAy': ay_sayisi,
                 'TalepSayisi': analiz['talep_sayisi'],
                 'OrtParti': round(analiz['ort_parti'], 1),
                 'CV': round(analiz['cv'], 2),
@@ -877,6 +900,8 @@ def tum_ilaclari_analiz_et(
                 'MevcutMin': ilac.get('MevcutMin', 0) or 0,
                 'Stok': ilac.get('Stok', 0) or 0,
                 'AylikOrt': round(analiz['aylik_ort'], 1),
+                'AylikDokum': analiz.get('aylik_dokum', []),
+                'AnalizAy': ay_sayisi,
                 'TalepSayisi': analiz['talep_sayisi'],
                 'OrtParti': round(analiz['ort_parti'], 1),
                 'CV': round(analiz['cv'], 2),

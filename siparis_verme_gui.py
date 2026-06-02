@@ -5472,36 +5472,59 @@ class SiparisVermeGUI:
         tablo_frame = tk.Frame(analiz_win, bg='#ECEFF1')
         tablo_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        # Treeview
-        columns = ('adi', 'stok', 'mevcut_min', 'aylik', 'talep', 'parti', 'cv', 'adi_col', 'sinif',
-                  'min_bil', 'min_fin', 'min_oner')
-        tree = ttk.Treeview(tablo_frame, columns=columns, show='headings', height=20)
+        # Treeview - temel sütunlar + sağda ay-be-ay "Aylık Gidiş" sütunları (dinamik)
+        TR_AY_KISA = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz',
+                      'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
+        TEMEL_SUTUNLAR = ('adi', 'stok', 'mevcut_min', 'aylik', 'talep', 'parti', 'cv',
+                          'adi_col', 'sinif', 'min_bil', 'min_fin', 'min_oner')
+        tree = ttk.Treeview(tablo_frame, columns=TEMEL_SUTUNLAR, show='headings', height=20)
 
-        tree.heading('adi', text='İlaç Adı')
-        tree.heading('stok', text='Stok')
-        tree.heading('mevcut_min', text='Mevcut Min')
-        tree.heading('aylik', text='Aylık Ort')
-        tree.heading('talep', text='Talep Sayısı')
-        tree.heading('parti', text='Ort Parti')
-        tree.heading('cv', text='CV')
-        tree.heading('adi_col', text='ADI (gün)')
-        tree.heading('sinif', text='Sınıf')
-        tree.heading('min_bil', text='Min (Bilim)')
-        tree.heading('min_fin', text='Min (Finans)')
-        tree.heading('min_oner', text='ÖNERİLEN')
+        # ── Excel benzeri başlık filtre/sıralama durumu ──
+        SAYISAL_OLMAYAN = {'adi', 'sinif'}      # geri kalan tüm sütunlar sayısal
+        sutun_temel_baslik = {}                 # col_id -> indikatörsüz temel başlık
+        aktif_filtreler = {}                    # col_id -> {'izinli': set|None, 'min': float|None, 'max': float|None}
+        siralama_durum = {'col': None, 'yon': 'asc'}
+        analiz_satirlari = []                   # [{'values': tuple, 'tag': str}] - filtre/sıralama kaynağı
+        taban_durum = {'metin': ''}             # durum etiketinin filtre eklenmeden önceki metni
 
-        tree.column('adi', width=250, anchor='w')
-        tree.column('stok', width=60, anchor='center')
-        tree.column('mevcut_min', width=70, anchor='center')
-        tree.column('aylik', width=70, anchor='center')
-        tree.column('talep', width=70, anchor='center')
-        tree.column('parti', width=70, anchor='center')
-        tree.column('cv', width=50, anchor='center')
-        tree.column('adi_col', width=70, anchor='center')
-        tree.column('sinif', width=100, anchor='center')
-        tree.column('min_bil', width=70, anchor='center')
-        tree.column('min_fin', width=70, anchor='center')
-        tree.column('min_oner', width=80, anchor='center')
+        TEMEL_BASLIK = {
+            'adi': ('İlaç Adı', 250, 'w'),
+            'stok': ('Stok', 55, 'center'),
+            'mevcut_min': ('Mevcut Min', 70, 'center'),
+            'aylik': ('Aylık Ort', 65, 'center'),
+            'talep': ('Talep Sayısı', 70, 'center'),
+            'parti': ('Ort Parti', 65, 'center'),
+            'cv': ('CV', 45, 'center'),
+            'adi_col': ('ADI (gün)', 65, 'center'),
+            'sinif': ('Sınıf', 95, 'center'),
+            'min_bil': ('Min (Bilim)', 70, 'center'),
+            'min_fin': ('Min (Finans)', 70, 'center'),
+            'min_oner': ('ÖNERİLEN', 75, 'center'),
+        }
+
+        def _sutunlari_kur(analiz_ay):
+            """Temel sütunlar + analiz_ay kadar ay-be-ay sütunu kur (Haziran→geriye)."""
+            ay_sutunlar = tuple(f'ay_{i}' for i in range(analiz_ay))
+            tree.configure(columns=TEMEL_SUTUNLAR + ay_sutunlar)
+            sutun_temel_baslik.clear()
+
+            for col, (etiket, gen, hiza) in TEMEL_BASLIK.items():
+                sutun_temel_baslik[col] = etiket
+                tree.heading(col, text=etiket, command=lambda c=col: _baslik_tikla(c))
+                tree.column(col, width=gen, anchor=hiza)
+
+            # Ay-be-ay başlıklar: ay_0 = bu ay (Haziran), ay_1 = önceki ay (Mayıs)...
+            bugun = datetime.now()
+            for i in range(analiz_ay):
+                col = f'ay_{i}'
+                ay_tarihi = bugun - relativedelta(months=i)
+                etiket = f"{TR_AY_KISA[ay_tarihi.month - 1]}{str(ay_tarihi.year)[2:]}"
+                sutun_temel_baslik[col] = etiket
+                tree.heading(col, text=etiket, command=lambda c=col: _baslik_tikla(c))
+                tree.column(col, width=48, anchor='center')
+
+        # Başlangıç: varsayılan analiz dönemi (12 ay) ile kur
+        _sutunlari_kur(ay_var.get())
 
         # Tag renkleri
         tree.tag_configure('degisecek', background='#FFF9C4')  # Sarı - değişecek
@@ -5513,8 +5536,225 @@ class SiparisVermeGUI:
         scrollbar_x = ttk.Scrollbar(tablo_frame, orient='horizontal', command=tree.xview)
         tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
 
-        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Çok sayıda ay sütunu olabileceği için yatay kaydırma çubuğu da gerekli
+        scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
         scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # ════════════════ Excel benzeri başlık filtre + sıralama ════════════════
+        def _hucre_sayi(v):
+            try:
+                if v is None or v == '':
+                    return 0.0
+                return float(str(v).replace(',', '.'))
+            except (ValueError, TypeError):
+                return 0.0
+
+        def _basliklari_guncelle():
+            """Başlıklara filtre (⛛) ve sıralama (▲/▼) göstergesi ekle."""
+            for col, temel in sutun_temel_baslik.items():
+                ek = ''
+                if col in aktif_filtreler:
+                    ek += ' ⛛'
+                if siralama_durum['col'] == col:
+                    ek += ' ▲' if siralama_durum['yon'] == 'asc' else ' ▼'
+                try:
+                    tree.heading(col, text=temel + ek)
+                except tk.TclError:
+                    pass
+
+        def _satir_gecer(values, cols):
+            for col, spec in aktif_filtreler.items():
+                if col not in cols:
+                    continue
+                idx = cols.index(col)
+                val = values[idx] if idx < len(values) else ''
+                sval = '' if val is None else str(val)
+                izinli = spec.get('izinli')
+                if izinli is not None and sval not in izinli:
+                    return False
+                mn, mx = spec.get('min'), spec.get('max')
+                if mn is not None or mx is not None:
+                    num = _hucre_sayi(val)
+                    if mn is not None and num < mn:
+                        return False
+                    if mx is not None and num > mx:
+                        return False
+            return True
+
+        def _tabloyu_yenile():
+            cols = list(tree['columns'])
+            satirlar = [r for r in analiz_satirlari if _satir_gecer(r['values'], cols)]
+            scol = siralama_durum['col']
+            if scol and scol in cols:
+                idx = cols.index(scol)
+                sayisal = scol not in SAYISAL_OLMAYAN
+                def anahtar(r):
+                    v = r['values'][idx] if idx < len(r['values']) else ''
+                    return _hucre_sayi(v) if sayisal else str(v).lower()
+                satirlar = sorted(satirlar, key=anahtar,
+                                  reverse=(siralama_durum['yon'] == 'desc'))
+            for item in tree.get_children():
+                tree.delete(item)
+            for r in satirlar:
+                tree.insert('', 'end', values=r['values'], tags=(r['tag'],))
+            _basliklari_guncelle()
+            ek = ''
+            if aktif_filtreler or siralama_durum['col']:
+                ek = f" | gösterilen: {len(satirlar)}/{len(analiz_satirlari)}"
+            durum_label.config(text=taban_durum['metin'] + ek)
+
+        def _filtreleri_temizle():
+            aktif_filtreler.clear()
+            siralama_durum['col'] = None
+            siralama_durum['yon'] = 'asc'
+            _tabloyu_yenile()
+
+        def _baslik_tikla(col):
+            if not analiz_satirlari:
+                return
+            _filtre_popup(col, tree.winfo_pointerx(), tree.winfo_pointery())
+
+        def _filtre_popup(col, x, y):
+            cols = list(tree['columns'])
+            if col not in cols:
+                return
+            idx = cols.index(col)
+            sayisal = col not in SAYISAL_OLMAYAN
+            baslik = sutun_temel_baslik.get(col, col)
+
+            ham = []
+            for r in analiz_satirlari:
+                v = r['values'][idx] if idx < len(r['values']) else ''
+                ham.append('' if v is None else str(v))
+            if sayisal:
+                benzersiz = sorted(set(ham), key=lambda s: _hucre_sayi(s))
+            else:
+                benzersiz = sorted(set(ham), key=lambda s: s.lower())
+
+            spec = aktif_filtreler.get(col, {})
+            izinli0 = spec.get('izinli')
+            secili = set(benzersiz) if izinli0 is None else set(izinli0)
+
+            pop = tk.Toplevel(analiz_win)
+            pop.title(f"{baslik} - Filtre / Sırala")
+            pop.transient(analiz_win)
+            pop.configure(bg='#FAFAFA')
+            pop.geometry(f"270x440+{x}+{y}")
+
+            # Sıralama
+            sf = tk.Frame(pop, bg='#FAFAFA')
+            sf.pack(fill=tk.X, padx=8, pady=(8, 4))
+            def sirala(yon):
+                siralama_durum['col'] = col
+                siralama_durum['yon'] = yon
+                _tabloyu_yenile()
+                pop.destroy()
+            tk.Button(sf, text='▲ A→Z', command=lambda: sirala('asc'),
+                      bg='#E3F2FD', relief='groove').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+            tk.Button(sf, text='▼ Z→A', command=lambda: sirala('desc'),
+                      bg='#E3F2FD', relief='groove').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+
+            # Sayı filtresi (sayısal sütunlar)
+            min_var = tk.StringVar(value='' if spec.get('min') is None else str(spec['min']))
+            max_var = tk.StringVar(value='' if spec.get('max') is None else str(spec['max']))
+            if sayisal:
+                nf = tk.LabelFrame(pop, text='Sayı filtresi', bg='#FAFAFA',
+                                   font=('Arial', 8, 'bold'))
+                nf.pack(fill=tk.X, padx=8, pady=4)
+                row = tk.Frame(nf, bg='#FAFAFA')
+                row.pack(fill=tk.X, pady=3)
+                tk.Label(row, text='Min:', bg='#FAFAFA').pack(side=tk.LEFT)
+                ttk.Entry(row, textvariable=min_var, width=8).pack(side=tk.LEFT, padx=(2, 8))
+                tk.Label(row, text='Max:', bg='#FAFAFA').pack(side=tk.LEFT)
+                ttk.Entry(row, textvariable=max_var, width=8).pack(side=tk.LEFT, padx=2)
+
+            # Çoktan seçme değer listesi + arama
+            vf = tk.LabelFrame(pop, text='Değerler (çoktan seçme)', bg='#FAFAFA',
+                               font=('Arial', 8, 'bold'))
+            vf.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+            arama_var = tk.StringVar()
+            ttk.Entry(vf, textvariable=arama_var).pack(fill=tk.X, padx=4, pady=3)
+            lb_frame = tk.Frame(vf, bg='#FAFAFA')
+            lb_frame.pack(fill=tk.BOTH, expand=True, padx=4)
+            lb_sb = ttk.Scrollbar(lb_frame, orient='vertical')
+            lb = tk.Listbox(lb_frame, selectmode=tk.MULTIPLE, yscrollcommand=lb_sb.set,
+                            activestyle='none', exportselection=False)
+            lb_sb.config(command=lb.yview)
+            lb_sb.pack(side=tk.RIGHT, fill=tk.Y)
+            lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+            gosterilen = []
+            def doldur(*_):
+                nonlocal gosterilen
+                f = arama_var.get().lower()
+                gosterilen = [v for v in benzersiz if f in v.lower()]
+                lb.delete(0, tk.END)
+                for i, v in enumerate(gosterilen):
+                    lb.insert(tk.END, v if v != '' else '(boş)')
+                    if v in secili:
+                        lb.selection_set(i)
+            def secim_guncelle(*_):
+                sel = set(gosterilen[i] for i in lb.curselection())
+                for v in gosterilen:
+                    secili.discard(v)
+                secili.update(sel)
+            lb.bind('<<ListboxSelect>>', secim_guncelle)
+            arama_var.trace_add('write', doldur)
+            doldur()
+
+            tsf = tk.Frame(vf, bg='#FAFAFA')
+            tsf.pack(fill=tk.X, pady=2)
+            def tumu():
+                secim_guncelle()
+                secili.update(gosterilen)
+                doldur()
+            def hicbiri():
+                secim_guncelle()
+                for v in gosterilen:
+                    secili.discard(v)
+                doldur()
+            tk.Button(tsf, text='Tümü', command=tumu, font=('Arial', 8)).pack(
+                side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+            tk.Button(tsf, text='Hiçbiri', command=hicbiri, font=('Arial', 8)).pack(
+                side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+
+            # Alt butonlar
+            bf = tk.Frame(pop, bg='#FAFAFA')
+            bf.pack(fill=tk.X, padx=8, pady=8)
+            def uygula():
+                secim_guncelle()
+                yeni = {}
+                if set(secili) != set(benzersiz):
+                    yeni['izinli'] = set(secili)
+                def parse(s):
+                    s = s.strip().replace(',', '.')
+                    try:
+                        return float(s) if s != '' else None
+                    except ValueError:
+                        return None
+                mn, mx = parse(min_var.get()), parse(max_var.get())
+                if mn is not None:
+                    yeni['min'] = mn
+                if mx is not None:
+                    yeni['max'] = mx
+                if yeni:
+                    aktif_filtreler[col] = yeni
+                else:
+                    aktif_filtreler.pop(col, None)
+                _tabloyu_yenile()
+                pop.destroy()
+            def temizle():
+                aktif_filtreler.pop(col, None)
+                _tabloyu_yenile()
+                pop.destroy()
+            tk.Button(bf, text='Uygula', command=uygula, bg='#4CAF50', fg='white',
+                      font=('Arial', 9, 'bold')).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+            tk.Button(bf, text='Temizle', command=temizle, bg='#FFB74D',
+                      font=('Arial', 9)).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+            tk.Button(bf, text='İptal', command=pop.destroy,
+                      font=('Arial', 9)).pack(side=tk.LEFT, padx=2)
+            pop.grab_set()
 
         # Alt butonlar
         btn_frame = tk.Frame(analiz_win, bg='#ECEFF1')
@@ -5564,22 +5804,25 @@ class SiparisVermeGUI:
                 except Exception as e:
                     logger.warning(f"Reçete ile sipariş filtresi uygulanamadı: {e}")
 
-                # Mod bazlı sütun başlıkları güncelle
+                # Analiz dönemine göre ay-be-ay sütunları yeniden kur (finansal=24, diğer=ay_var)
                 modu = hesaplama_modu_var.get()
+                analiz_ay = 24 if modu == 'finansal' else ay_var.get()
+                _sutunlari_kur(analiz_ay)
+                # Mod başlıklarını _sutunlari_kur sıfırladığı için tekrar uygula + temel başlığa işle
                 if modu == 'rop':
-                    tree.heading('min_bil', text='Em.Stok (SS)')
-                    tree.heading('min_fin', text='ROP')
-                elif modu == 'finansal':
-                    tree.heading('min_bil', text='Min (Bilim)')
-                    tree.heading('min_fin', text='Min (Finans)')
-                else:
-                    tree.heading('min_bil', text='Min (Frekans)')
-                    tree.heading('min_fin', text='-')
+                    sutun_temel_baslik['min_bil'] = 'Em.Stok (SS)'
+                    sutun_temel_baslik['min_fin'] = 'ROP'
+                elif modu == 'frekans':
+                    sutun_temel_baslik['min_bil'] = 'Min (Frekans)'
+                    sutun_temel_baslik['min_fin'] = '-'
 
-                # Tabloyu temizle ve doldur
-                for item in tree.get_children():
-                    tree.delete(item)
+                # Yeni analiz: önceki filtre/sıralama temizlenir
+                aktif_filtreler.clear()
+                siralama_durum['col'] = None
+                siralama_durum['yon'] = 'asc'
 
+                # Satırları hazırla (filtre/sıralama kaynağı)
+                analiz_satirlari.clear()
                 degisecek_sayisi = 0
                 for s in analiz_sonuclari:
                     mevcut = s['MevcutMin']
@@ -5588,30 +5831,31 @@ class SiparisVermeGUI:
                     # Tag belirle
                     if mevcut != onerilen:
                         degisecek_sayisi += 1
-                        if onerilen > mevcut:
-                            tag = 'artacak'
-                        else:
-                            tag = 'azalacak'
+                        tag = 'artacak' if onerilen > mevcut else 'azalacak'
                     else:
                         tag = ''
 
-                    tree.insert('', 'end', values=(
-                        s['UrunAdi'][:40],
-                        s['Stok'],
-                        mevcut,
-                        s['AylikOrt'],
-                        s['TalepSayisi'],
-                        s['OrtParti'],
-                        s['CV'],
-                        s['ADI'],
-                        s['Sinif'],
-                        s['MinBilimsel'],
-                        s['MinFinansal'],
-                        s['MinOnerilen']
-                    ), tags=(tag,))
+                    # Ay-be-ay değerler (ay_0 = bu ay ... ay_{N-1} = en eski)
+                    dokum = s.get('AylikDokum', []) or []
+                    ay_degerleri = [
+                        (int(round(dokum[i])) if i < len(dokum) and dokum[i] else '')
+                        for i in range(analiz_ay)
+                    ]
+
+                    analiz_satirlari.append({
+                        'values': (
+                            s['UrunAdi'][:40], s['Stok'], mevcut, s['AylikOrt'],
+                            s['TalepSayisi'], s['OrtParti'], s['CV'], s['ADI'],
+                            s['Sinif'], s['MinBilimsel'], s['MinFinansal'],
+                            s['MinOnerilen'], *ay_degerleri
+                        ),
+                        'tag': tag
+                    })
 
                 hareket_bilgi = f"Son {hareket_yili_var.get()} yıl hareket görmüş"
-                durum_label.config(text=f"✓ {len(analiz_sonuclari)} ilaç ({hareket_bilgi}), {degisecek_sayisi} değişecek")
+                taban_durum['metin'] = (f"✓ {len(analiz_sonuclari)} ilaç ({hareket_bilgi}), "
+                                        f"{degisecek_sayisi} değişecek")
+                _tabloyu_yenile()
 
             except Exception as e:
                 messagebox.showerror("Hata", f"Analiz hatası: {e}")
@@ -5679,10 +5923,15 @@ class SiparisVermeGUI:
             relief='raised', bd=2, padx=20, pady=5
         ).pack(side=tk.LEFT, padx=(0, 20))
 
+        tk.Button(
+            btn_frame, text="Filtreleri Temizle", command=_filtreleri_temizle,
+            bg='#FFB74D', font=('Arial', 10), relief='raised', bd=2, padx=12, pady=5
+        ).pack(side=tk.LEFT, padx=(0, 20))
+
         # Açıklama
         tk.Label(
             btn_frame,
-            text="Sarı: Değişecek | Kırmızı: Artacak | Yeşil: Azalacak",
+            text="Başlığa tıkla → sırala/filtrele | Sarı: Değişecek | Kırmızı: Artacak | Yeşil: Azalacak",
             font=('Arial', 9), bg='#ECEFF1', fg='#666'
         ).pack(side=tk.RIGHT, padx=10)
 
