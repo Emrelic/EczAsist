@@ -10182,12 +10182,6 @@ def _statin_atom_dm(metin_lower: str, teshis_metin: str,
     """
     if any(k in teshis_metin for k in ['E10', 'E11', 'E12', 'E13', 'E14']):
         return (True, 'aktif_teshis')
-    patterns = [r'\bdiyabet', r'\bdiabet', r'\bdm\b', r'\bt[12]dm\b',
-                r'\bniddm\b', r'\biddm\b',
-                r'tip\s*[12]\s*(?:dm|diyabet|diabet)',
-                r'şeker\s*hastal', r'seker\s*hastal']
-    if any(re.search(p, metin_lower) for p in patterns):
-        return (True, 'aktif_metin')
     # Antidiyabetik ilaç adları → hasta DM tedavisi alıyor (lafzen DM ima)
     ilac_pattern = (
         r'\bmetformin\w*|\bsulfonil[uüy]re\w*|\binsul[iı]n\w*|\binsülin\w*|'
@@ -10228,6 +10222,15 @@ def _statin_atom_dm(metin_lower: str, teshis_metin: str,
         diger_icd, ('E10', 'E11', 'E12', 'E13', 'E14'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
+    # ZAYIF: aktif rapor serbest metninde 'diyabet/DM/şeker hast.' (somut
+    # ICD/lab/ilaç yok) — strict kaynaklardan SONRA değerlendirilir, ki
+    # geçmiş raporun E11 ICD'si "aktif_metin (zayıf)" tarafından gölgelenmesin.
+    patterns = [r'\bdiyabet', r'\bdiabet', r'\bdm\b', r'\bt[12]dm\b',
+                r'\bniddm\b', r'\biddm\b',
+                r'tip\s*[12]\s*(?:dm|diyabet|diabet)',
+                r'şeker\s*hastal', r'seker\s*hastal']
+    if any(re.search(p, metin_lower) for p in patterns):
+        return (True, 'aktif_metin')
     return (False, '')
 
 
@@ -10238,8 +10241,7 @@ def _statin_atom_aks(metin_lower: str, teshis_metin: str,
     """SUT 4.2.28.A(1)(ç) — Akut koroner sendrom."""
     if any(k in teshis_metin for k in ['I20', 'I21', 'I22', 'I23', 'I24']):
         return (True, 'aktif_teshis')
-    if re.search(r'akut\s*koroner|\baks\b', metin_lower):
-        return (True, 'aktif_metin')
+    # SIKI kaynaklar önce (gecmis_icd/gecmis_metin), zayıf aktif_metin sonra.
     gv, gs = _lipid_gecmis_icd_var(
         diger_icd, ('I20', 'I21', 'I22', 'I23', 'I24'))
     if gv:
@@ -10251,6 +10253,8 @@ def _statin_atom_aks(metin_lower: str, teshis_metin: str,
     )
     if gv2:
         return (True, gs2)
+    if re.search(r'akut\s*koroner|\baks\b', metin_lower):
+        return (True, 'aktif_metin')
     return (False, '')
 
 
@@ -10265,11 +10269,7 @@ def _statin_atom_mi(metin_lower: str, teshis_metin: str,
     # bu yüzden "STEMI" → "stemı", "NSTEMI" → "nstemı", "MIyokard" → "mıyokard"
     # olur. Hem "i" hem "ı" varyantlarını kapsa. Bonus: "enfaktusu" gibi yaygın
     # halk yazımı için "enfa(kt|rk)" eklendi (RECEP ERTEN 2RQ85MG, 2026-05-22).
-    if re.search(
-        r'm[iı]yokard\s*[iı]nfar|m[iı]yokard\s*enfa(?:rk|kt)|'
-        r'geçirilmiş\s*m[iı]\b|\bstem[iı]\b|\bnstem[iı]\b',
-            metin_lower):
-        return (True, 'aktif_metin')
+    # SIKI kaynaklar önce (gecmis_icd/gecmis_metin), zayıf aktif_metin sonra.
     gv, gs = _lipid_gecmis_icd_var(diger_icd, ('I21', 'I22', 'I25.2'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
@@ -10281,6 +10281,11 @@ def _statin_atom_mi(metin_lower: str, teshis_metin: str,
     )
     if gv2:
         return (True, gs2)
+    if re.search(
+        r'm[iı]yokard\s*[iı]nfar|m[iı]yokard\s*enfa(?:rk|kt)|'
+        r'geçirilmiş\s*m[iı]\b|\bstem[iı]\b|\bnstem[iı]\b',
+            metin_lower):
+        return (True, 'aktif_metin')
     return (False, '')
 
 
@@ -10292,10 +10297,7 @@ def _statin_atom_inme(metin_lower: str, teshis_metin: str,
     if any(k in teshis_metin for k in
            ['I60', 'I61', 'I62', 'I63', 'I64', 'I65', 'I66', 'I69']):
         return (True, 'aktif_teshis')
-    if re.search(
-        r'\binme\b|\bstroke\b|serebrovask|\bsvo\b|geçirilmiş\s*inme',
-            metin_lower):
-        return (True, 'aktif_metin')
+    # SIKI kaynaklar önce (gecmis_icd/gecmis_metin), zayıf aktif_metin sonra.
     gv, gs = _lipid_gecmis_icd_var(
         diger_icd, ('I60', 'I61', 'I62', 'I63', 'I64', 'I65', 'I66', 'I69'))
     if gv:
@@ -10307,6 +10309,10 @@ def _statin_atom_inme(metin_lower: str, teshis_metin: str,
     )
     if gv2:
         return (True, gs2)
+    if re.search(
+        r'\binme\b|\bstroke\b|serebrovask|\bsvo\b|geçirilmiş\s*inme',
+            metin_lower):
+        return (True, 'aktif_metin')
     return (False, '')
 
 
@@ -10333,6 +10339,25 @@ def _statin_atom_kah(metin_lower: str, teshis_metin: str,
     if any(k in teshis_metin for k in
            ['I20', 'I21', 'I22', 'I23', 'I24', 'I25']):
         return (True, 'aktif_teshis')
+    # ── SIKI KAYNAKLAR ÖNCE (REFİKA kuralı, MEHMET ÖZDEMİR 3NPN3NN
+    # 2026-06-03): Geçmiş/bağlı raporun ICD'si (I20-25) sıkı kanıttır ve
+    # zayıf "aktif rapor serbest metni" kontrolünden ÖNCE değerlendirilmeli.
+    # Aksi halde rapor metninde "koroner arter" lafzı geçtiğinde atom strict
+    # ICD'ye (I25.0) hiç bakmadan aktif_metin (zayıf) dönüp ŞÜPHELİ üretiyordu.
+    gv, gs = _lipid_gecmis_icd_var(
+        diger_icd, ('I20', 'I21', 'I22', 'I23', 'I24', 'I25'))
+    if gv:
+        return (True, f'gecmis_icd:{gs}')
+    # Geçmiş rapor metinleri — KAG/anjiyo dahil sekonder koruma kanıtları
+    gv2, gs2 = _lipid_gecmis_metin_ara(
+        diger_rapor_metinleri,
+        r'\bkah\b|koroner\s*arter|iskemik\s*kalp|\bkabg\b|by[-\s]?pass|'
+        r'\bstent\b|\bkag\b|anjio(?:graf|plast)',
+        aile_oykusu_redder=True,
+    )
+    if gv2:
+        return (True, gs2)
+    # ── ZAYIF: aktif rapor serbest metni (somut ICD/belge yok) ──
     # 'koroner arter' her oluşumunu kontrol et — öncesinde aile/öykü/ailesel
     # varsa AKIL hastanın kendisinde değil
     for m in re.finditer(r'koroner\s*arter', metin_lower):
@@ -10348,19 +10373,6 @@ def _statin_atom_kah(metin_lower: str, teshis_metin: str,
             r'\bkag\b|anj[iı]y?o(?:graf|plast)?',
             metin_lower):
         return (True, 'aktif_metin')
-    gv, gs = _lipid_gecmis_icd_var(
-        diger_icd, ('I20', 'I21', 'I22', 'I23', 'I24', 'I25'))
-    if gv:
-        return (True, f'gecmis_icd:{gs}')
-    # Geçmiş rapor metinleri — KAG/anjiyo dahil sekonder koruma kanıtları
-    gv2, gs2 = _lipid_gecmis_metin_ara(
-        diger_rapor_metinleri,
-        r'\bkah\b|koroner\s*arter|iskemik\s*kalp|\bkabg\b|by[-\s]?pass|'
-        r'\bstent\b|\bkag\b|anjio(?:graf|plast)',
-        aile_oykusu_redder=True,
-    )
-    if gv2:
-        return (True, gs2)
     return (False, '')
 
 
@@ -10371,8 +10383,7 @@ def _statin_atom_pah(metin_lower: str, teshis_metin: str,
     """SUT 4.2.28.A(1)(ç) — Periferik arter hastalığı."""
     if any(k in teshis_metin for k in ['I70', 'I73', 'I74']):
         return (True, 'aktif_teshis')
-    if re.search(r'periferik\s*arter|\bpah\b|\bpaod\b', metin_lower):
-        return (True, 'aktif_metin')
+    # SIKI kaynaklar önce (gecmis_icd/gecmis_metin), zayıf aktif_metin sonra.
     gv, gs = _lipid_gecmis_icd_var(diger_icd, ('I70', 'I73', 'I74'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
@@ -10383,6 +10394,8 @@ def _statin_atom_pah(metin_lower: str, teshis_metin: str,
     )
     if gv2:
         return (True, gs2)
+    if re.search(r'periferik\s*arter|\bpah\b|\bpaod\b', metin_lower):
+        return (True, 'aktif_metin')
     return (False, '')
 
 
@@ -10393,10 +10406,7 @@ def _statin_atom_aaa(metin_lower: str, teshis_metin: str = '',
     """SUT 4.2.28.A(1)(ç) — Abdominal aort anevrizması."""
     if teshis_metin and any(k in teshis_metin for k in ['I71']):
         return (True, 'aktif_teshis')
-    if re.search(
-            r'abdominal\s*aort\s*anevrizm|\baaa\b|aort\s*diseks',
-            metin_lower):
-        return (True, 'aktif_metin')
+    # SIKI kaynaklar önce (gecmis_icd/gecmis_metin), zayıf aktif_metin sonra.
     gv, gs = _lipid_gecmis_icd_var(diger_icd, ('I71',))
     if gv:
         return (True, f'gecmis_icd:{gs}')
@@ -10407,6 +10417,10 @@ def _statin_atom_aaa(metin_lower: str, teshis_metin: str = '',
     )
     if gv2:
         return (True, gs2)
+    if re.search(
+            r'abdominal\s*aort\s*anevrizm|\baaa\b|aort\s*diseks',
+            metin_lower):
+        return (True, 'aktif_metin')
     return (False, '')
 
 
@@ -10417,8 +10431,7 @@ def _statin_atom_karotid(metin_lower: str, teshis_metin: str = '',
     """SUT 4.2.28.A(1)(ç) — Karotid arter hastalığı."""
     if teshis_metin and any(k in teshis_metin for k in ['I65', 'I63.2']):
         return (True, 'aktif_teshis')
-    if re.search(r'karotid|karotis', metin_lower):
-        return (True, 'aktif_metin')
+    # SIKI kaynaklar önce (gecmis_icd/gecmis_metin), zayıf aktif_metin sonra.
     gv, gs = _lipid_gecmis_icd_var(diger_icd, ('I65', 'I63.2'))
     if gv:
         return (True, f'gecmis_icd:{gs}')
@@ -10429,6 +10442,8 @@ def _statin_atom_karotid(metin_lower: str, teshis_metin: str = '',
     )
     if gv2:
         return (True, gs2)
+    if re.search(r'karotid|karotis', metin_lower):
+        return (True, 'aktif_metin')
     return (False, '')
 
 
@@ -12178,8 +12193,7 @@ def _fibrat_atom_aks(metin_lower: str, teshis_metin: str,
     """SUT 4.2.28.B(1)(b) — Akut koroner sendrom (4-katmanlı kanıt)."""
     if any(k in teshis_metin for k in ['I20', 'I21', 'I22', 'I23', 'I24']):
         return (True, 'aktif_teshis')
-    if re.search(r'akut\s*koroner|\baks\b', metin_lower):
-        return (True, 'aktif_metin')
+    # SIKI kaynaklar önce (gecmis_icd/gecmis_metin), zayıf aktif_metin sonra.
     gv, gs = _lipid_gecmis_icd_var(
         diger_icd, ('I20', 'I21', 'I22', 'I23', 'I24'))
     if gv:
@@ -12191,6 +12205,8 @@ def _fibrat_atom_aks(metin_lower: str, teshis_metin: str,
     )
     if gv2:
         return (True, gs2)
+    if re.search(r'akut\s*koroner|\baks\b', metin_lower):
+        return (True, 'aktif_metin')
     return (False, '')
 
 
@@ -12351,6 +12367,8 @@ def _fibrat_atom_karotid(metin_lower: str,
     )
     if gv2:
         return (True, gs2)
+    if re.search(r'karotid|karotis', metin_lower):
+        return (True, 'aktif_metin')
     return (False, '')
 
 
@@ -13965,7 +13983,8 @@ def _yoak_atom_f1_24ay_doldu(ilac_sonuc: Dict) -> Tuple['SartDurumu', str]:
         KONTROL_EDILEMEDI: hasta DB geçmişi yok / tarih parse edilemedi
     """
     from datetime import datetime
-    ilk_t = ilac_sonuc.get('hasta_yoak_ilk_recete_tarihi')
+    ilk_recete_t = ilac_sonuc.get('hasta_yoak_ilk_recete_tarihi')
+    ilk_rapor_t = ilac_sonuc.get('hasta_yoak_ilk_rapor_tarihi')
     aktif_t = ilac_sonuc.get('recete_tarihi')
 
     def _parse(t):
@@ -13987,19 +14006,31 @@ def _yoak_atom_f1_24ay_doldu(ilac_sonuc: Dict) -> Tuple['SartDurumu', str]:
                 continue
         return None
 
-    if not ilk_t:
-        return (SartDurumu.KONTROL_EDILEMEDI,
-                'Hasta YOAK geçmişi DB\'de bulunamadı '
-                '— manuel doğrulama gerekli')
     if not aktif_t:
         return (SartDurumu.KONTROL_EDILEMEDI,
                 'Aktif reçete tarihi okunamadı — manuel doğrulama')
 
-    ilk_dt = _parse(ilk_t)
-    aktif_dt = _parse(aktif_t)
-    if not ilk_dt or not aktif_dt:
+    # En eski YOAK kanıtı: reçete VEYA rapor — hangisi DAHA ESKİ ise o.
+    # Rapor genelde reçeteden eskidir (Medula'da YOAK tedavisi raporla
+    # başlar); etken-bazlı çekildiği için yalnız YOAK raporu sayılır
+    # (varfarin/HT raporları süreyi şişirmez). NAZIMA ULAŞ 3NPMF0E pilotu.
+    adaylar = []
+    _rdt = _parse(ilk_recete_t)
+    if _rdt:
+        adaylar.append((_rdt, 'reçete'))
+    _pdt = _parse(ilk_rapor_t)
+    if _pdt:
+        adaylar.append((_pdt, 'rapor'))
+    if not adaylar:
         return (SartDurumu.KONTROL_EDILEMEDI,
-                f'Tarih parse hatası (ilk={ilk_t!r}, aktif={aktif_t!r})')
+                'Hasta YOAK geçmişi (reçete/rapor) DB\'de bulunamadı '
+                '— manuel doğrulama gerekli')
+
+    ilk_dt, kaynak = min(adaylar, key=lambda x: x[0])
+    aktif_dt = _parse(aktif_t)
+    if not aktif_dt:
+        return (SartDurumu.KONTROL_EDILEMEDI,
+                f'Aktif reçete tarihi parse hatası ({aktif_t!r})')
 
     ay_farki = ((aktif_dt.year - ilk_dt.year) * 12
                  + (aktif_dt.month - ilk_dt.month))
@@ -14009,10 +14040,12 @@ def _yoak_atom_f1_24ay_doldu(ilac_sonuc: Dict) -> Tuple['SartDurumu', str]:
     ilk_str = ilk_dt.strftime('%d.%m.%Y')
     if ay_farki >= 24:
         return (SartDurumu.VAR,
-                f'İlk YOAK reçetesi: {ilk_str} → {ay_farki} ay geçmiş (≥24)')
+                f'İlk YOAK {kaynak} tarihi: {ilk_str} → kullanım süresi '
+                f'{ay_farki} ay (≥24) — aile hekimi/uzman yetkili')
+    kalan = 24 - ay_farki
     return (SartDurumu.YOK,
-            f'İlk YOAK reçetesi: {ilk_str} → sadece {ay_farki} ay '
-            '(24 ay tamamlanmadı, SK raporu zorunlu)')
+            f'İlk YOAK {kaynak} tarihi: {ilk_str} → kullanım süresi '
+            f'{ay_farki} ay (24 aya {kalan} ay var) — henüz SK raporu zorunlu')
 
 
 def _yoak_atom_f_aile_hekimi(ilac_sonuc: Dict) -> Tuple[bool, str]:
@@ -22356,12 +22389,38 @@ def kontrol_potasyum_sitrat(ilac_sonuc: Dict) -> KontrolRaporu:
     rapor_kodu = ilac_sonuc.get('rapor_kodu', '')
     metin = _tum_metinleri_birlesir(ilac_sonuc)
 
+    # Reçeteyi yazan hekimin branşı (raporsuz durumda kritik):
+    # EK-4/F → "Nefroloji veya üroloji uzman hekimlerince RAPORSUZ reçetelenir."
+    doktor_uzm = (ilac_sonuc.get('doktor_uzmanligi') or '').strip()
+    _du = doktor_uzm.replace('İ', 'i').lower()
+    recete_uroloji_nefroloji = bool(
+        re.search(r'üroloji|uroloji|nefroloji', _du))
+
     # Rapor kodu yoksa - raporsuz yazılmış
     if not rapor_kodu:
+        # EK-4/F: üroloji/nefroloji UZMANI raporsuz yazabilir → reçeteyi yazan
+        # bu branşsa UYGUN (MEHMET ... UROCIT-K pilotu: 27y N20.0 üroloji
+        # uzmanı raporsuz → kuralın tam karşılığı, eskiden yanlış ŞÜPHELİ idi).
+        if recete_uroloji_nefroloji:
+            return KontrolRaporu(
+                KontrolSonucu.UYGUN,
+                f"Potasyum sitrat raporsuz — reçeteyi yazan {doktor_uzm} "
+                f"uzmanı (EK-4/F: üroloji/nefroloji uzmanı raporsuz yazabilir)",
+                sut_kurali="SUT EK-4/F — Potasyum Sitrat (üroloji/nefroloji "
+                           "uzmanı raporsuz reçeteleyebilir)",
+                detaylar={'raporsuz_uzman_recete': True,
+                          'recete_brans': doktor_uzm}
+            )
+        # Reçeteyi yazan üroloji/nefroloji DEĞİL (veya branş bilinmiyor) +
+        # rapor yok → diğer hekimler için 6 ay süreli uzman raporu zorunlu.
         return KontrolRaporu(
             KontrolSonucu.KONTROL_EDILEMEDI,
-            "Potasyum sitrat raporsuz yazılmış",
-            uyari="EK-4/F: Üroloji/Nefroloji uzmanı raporsuz yazabilir, diğer hekimler 6 ay süreli uzman raporu ile yazabilir"
+            f"Potasyum sitrat raporsuz yazılmış; reçeteyi yazan hekim "
+            f"üroloji/nefroloji uzmanı değil "
+            f"(branş: {doktor_uzm or 'bilinmiyor'})",
+            uyari="EK-4/F: Üroloji/Nefroloji uzmanı raporsuz yazabilir; "
+                  "diğer hekimler için 6 ay süreli uzman hekim raporu gerekli "
+                  "— rapor yok, manuel doğrula"
         )
 
     # Rapor kodu var - metin kontrolü

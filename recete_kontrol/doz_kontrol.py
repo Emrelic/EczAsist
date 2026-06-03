@@ -113,9 +113,13 @@ def birim_uyumlu_mu(rec_birim: str, rap_birim: str) -> bool:
 def _norm(s: str) -> str:
     if not s:
         return ""
+    # x ↔ ks yazım toleransı: reçete etken adı "EDOXABAN" (x), rapor metni
+    # "EDOKSABAN" (ks) yazmış olabilir. Her iki taraf da _norm'dan geçtiği
+    # için X→KS dönüşümü simetriktir (yalnız temsili birleştirir).
     return (str(s).upper()
             .replace("İ", "I").replace("Ş", "S").replace("Ç", "C")
             .replace("Ğ", "G").replace("Ü", "U").replace("Ö", "O")
+            .replace("X", "KS")
             .strip())
 
 
@@ -157,7 +161,7 @@ def etken_madde_eslestir(rec_etkin: str, rec_atc: str,
 # ── Serbest metin doz parser (RaporEkBilgi açıklamasından) ───────────
 _DOZ_RE = re.compile(
     r"(?:(?P<periyot>g[uü]nde|haftada|ayda|y[ıi]lda)\s+)?"
-    r"(?P<tekrar>\d+)\s*[xX×]\s*(?P<doz>\d+(?:[.,]\d+)?)",
+    r"(?P<tekrar>\d+)\s*[xX×*]\s*(?P<doz>\d+(?:[.,]\d+)?)",
     re.IGNORECASE,
 )
 _PERIYOT_TXT_ID = {
@@ -187,6 +191,19 @@ def parse_serbest_metin(metin: str, ilac_adi: str = "",
         for parca in re.split(r"[\s+,/]+", etkin):
             if len(parca) >= 4:
                 aday_anahtarlar.append(parca)
+
+    # x ↔ ks yazım toleransı (EDOXABAN ↔ EDOKSABAN): her çıpa için 'x'→'ks'
+    # ve 'ks'→'x' varyantını da aday yap. Çıpa eşleşmesini etkiler; doz
+    # regex'i orijinal pencere üzerinde çalıştığı için "1x1" bozulmaz.
+    genis = []
+    for ah in aday_anahtarlar:
+        genis.append(ah)
+        al = ah.lower()
+        if "x" in al:
+            genis.append(al.replace("x", "ks"))
+        if "ks" in al:
+            genis.append(al.replace("ks", "x"))
+    aday_anahtarlar = genis
 
     metin_low = metin_n.lower()
     pos = -1

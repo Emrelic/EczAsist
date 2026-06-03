@@ -24,6 +24,7 @@ import pyodbc
 import logging
 import json
 import os
+import threading
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
 
@@ -100,6 +101,12 @@ class BotanikDB:
         self.conn = None
         self.cursor = None
         self.son_sorgu_hatasi = None  # son SQL hata metni (tanilama icin)
+        # 🔒 Thread güvenliği: pyodbc bağlantısı/cursor'ı thread-safe DEĞİL.
+        # Paylaşılan self.cursor iki thread'den eşzamanlı kullanılınca C
+        # seviyesinde "access violation" (segfault) oluşuyordu (2026-06-03,
+        # aylık reçete kontrolünde çift sorgu thread'i). Bu kilit tüm DB
+        # erişimini serileştirir — aynı anda yalnızca bir sorgu çalışır.
+        self._sorgu_kilidi = threading.RLock()
 
     def baglan(self) -> bool:
         """Veritabanına bağlan"""
@@ -226,33 +233,36 @@ class BotanikDB:
         Son hata mesajı self.son_sorgu_hatasi'na kaydedilir (boş sonuç tanılaması için).
         """
         self.son_sorgu_hatasi = None
-        try:
-            # GÜVENLİK KONTROLÜ
-            if not self._guvenlik_kontrolu(sql):
-                self.son_sorgu_hatasi = "Guvenlik kontrolu reddetti"
-                logger.error("SORGU REDDEDİLDİ: Güvenlik kontrolünden geçemedi!")
-                return []
-
-            if not self.conn:
-                if not self.baglan():
-                    self.son_sorgu_hatasi = "DB baglantisi kurulamadi"
+        # 🔒 Tek seferde tek thread — paylaşılan cursor'a eşzamanlı erişim
+        # pyodbc'de access violation (segfault) doğuruyor.
+        with self._sorgu_kilidi:
+            try:
+                # GÜVENLİK KONTROLÜ
+                if not self._guvenlik_kontrolu(sql):
+                    self.son_sorgu_hatasi = "Guvenlik kontrolu reddetti"
+                    logger.error("SORGU REDDEDİLDİ: Güvenlik kontrolünden geçemedi!")
                     return []
 
-            if params:
-                self.cursor.execute(sql, params)
-            else:
-                self.cursor.execute(sql)
+                if not self.conn:
+                    if not self.baglan():
+                        self.son_sorgu_hatasi = "DB baglantisi kurulamadi"
+                        return []
 
-            columns = [column[0] for column in self.cursor.description]
-            results = []
-            for row in self.cursor.fetchall():
-                results.append(dict(zip(columns, row)))
-            return results
+                if params:
+                    self.cursor.execute(sql, params)
+                else:
+                    self.cursor.execute(sql)
 
-        except Exception as e:
-            self.son_sorgu_hatasi = str(e)
-            logger.error(f"Sorgu hatası: {e}")
-            return []
+                columns = [column[0] for column in self.cursor.description]
+                results = []
+                for row in self.cursor.fetchall():
+                    results.append(dict(zip(columns, row)))
+                return results
+
+            except Exception as e:
+                self.son_sorgu_hatasi = str(e)
+                logger.error(f"Sorgu hatası: {e}")
+                return []
 
     def tum_hareketler_getir(
         self,
