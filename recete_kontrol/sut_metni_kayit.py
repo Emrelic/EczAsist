@@ -38,6 +38,23 @@ _MOTOR_KURAL_DOSYALARI: Dict[str, str] = {
 _FALLBACK_METINLER: Dict[str, str] = {
     # SUT 4.2.28.A — Statinler (özet — tam metin için docs/sut)
     # Eklenmesi planlanan; şimdilik boş, GUI fallback davranışı devreye girer.
+
+    # SUT 4.2.19 — Migrende ilaç kullanım ilkeleri
+    'MIGREN': (
+        "4.2.19 - Migrende ilaç kullanım ilkeleri\n"
+        "(1) Triptanlar, nöroloji uzman hekimleri tarafından reçete edilir. "
+        "Bu grup ilaçlardan yalnız bir etken madde reçete edilebilir ve ayda "
+        "en fazla 6 doz/adet yazılabilir. Aynı ilacın farklı farmasötik "
+        "formlarının aynı anda reçete edilmesi halinde birisinin bedeli ödenir.\n"
+        "(2) Topiramat tedavisine, diğer profilaktik migren ilaçlarının 6 ay "
+        "süreyle kullanılıp etkisiz kaldığı durumlarda nöroloji uzman hekimince "
+        "düzenlenen uzman hekim raporunda bu husus belirtilerek nöroloji uzman "
+        "hekimince başlanır.\n"
+        "(3) Uzman hekim raporu 1 yıl süreyle geçerlidir ve nöroloji uzman "
+        "hekimince düzenlenen uzman hekim raporuna dayanılarak diğer hekimler "
+        "tarafından en fazla birer aylık dozda reçete edilmesi halinde bedeli "
+        "ödenir."
+    ),
 }
 
 

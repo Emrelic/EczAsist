@@ -1721,7 +1721,7 @@ def _immunsupresif_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, tes
 
 
 def _biyolojik_tnf_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin=""):
-    """SUT 4.2.33 - Biyolojik/TNF inhibitörü detaylı kontrol.
+    """SUT 4.2.1.C - Biyolojik/TNF inhibitörü detaylı kontrol.
     Kriterler:
     - Basamak tedavi şartı: geleneksel DMARD / metotreksat / sulfasalazin denenmiş
     - Yetersiz yanıt / yan etki ibaresi
@@ -1729,7 +1729,7 @@ def _biyolojik_tnf_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, tes
     - Uzman branş (Romatoloji/Dermatoloji/Gastroenteroloji vb.)
     - Hastalık aktivitesi (DAS28, PASI, BASDAI vb. skorlar)
     """
-    sut_kurali = 'SUT 4.2.33 — Biyolojik/TNF ilaçları basamak tedavi + uzman raporu'
+    sut_kurali = 'SUT 4.2.1.C — Biyolojik ajanlar / Anti-TNF (4.2.1.C-1) basamak tedavi + uzman raporu'
     detaylar = {'alt_kategori': 'BIYOLOJIK_TNF', 'rapor_kodu': rapor_kodu}
 
     if not rapor_kodu:
@@ -1737,7 +1737,7 @@ def _biyolojik_tnf_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, tes
             KontrolSonucu.UYGUN_DEGIL,
             'Biyolojik ilaç RAPORSUZ yazılmış! Uzman raporu ZORUNLU',
             detaylar=detaylar,
-            uyari='SUT 4.2.33 - İlgili branş uzman raporu gerekli',
+            uyari='SUT 4.2.1.C - İlgili branş uzman raporu gerekli',
             sut_kurali=sut_kurali, aranan_ibare='rapor'
         )
 
@@ -1817,7 +1817,7 @@ def _biyolojik_tnf_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, tes
             KontrolSonucu.UYGUN_DEGIL,
             f"Biyolojik UYGUN DEĞİL: Eksik zorunlu bilgi ({', '.join(eksikler)})",
             detaylar=detaylar,
-            uyari=f"Mevcut: {' | '.join(bilgiler) if bilgiler else 'az'}. SUT 4.2.33: basamak tedavi + yetersiz yanıt + endikasyon ZORUNLU.",
+            uyari=f"Mevcut: {' | '.join(bilgiler) if bilgiler else 'az'}. SUT 4.2.1.C: basamak tedavi + yetersiz yanıt + endikasyon ZORUNLU.",
             sut_kurali=sut_kurali,
             aranan_ibare='basamak tedavi + yetersiz yanıt + endikasyon (hepsi zorunlu)'
         )
@@ -1826,7 +1826,7 @@ def _biyolojik_tnf_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, tes
         KontrolSonucu.UYGUN_DEGIL,
         'Biyolojik UYGUN DEĞİL: basamak tedavi/endikasyon/uzman bilgileri raporda bulunamadı',
         detaylar=detaylar,
-        uyari='SUT 4.2.33: DMARD/metotreksat denenmiş + yetersiz yanıt + endikasyon + uzman ZORUNLU',
+        uyari='SUT 4.2.1.C: DMARD/metotreksat denenmiş + yetersiz yanıt + endikasyon + uzman ZORUNLU',
         sut_kurali=sut_kurali,
         aranan_ibare='basamak tedavi + endikasyon + uzman (hepsi zorunlu)'
     )
@@ -18248,785 +18248,25 @@ def kontrol_psikiyatri(ilac_sonuc: Dict) -> KontrolRaporu:
 
 
 def kontrol_antiepileptik_4_2_25(ilac_sonuc: Dict) -> KontrolRaporu:
+    """SUT 4.2.25 — KALDIRILDI / yeniden yazıldı.
+
+    Eski yüzeysel implementasyon, atomik motora (``antiepileptik_4_2_25.py``)
+    taşındı. Bu shim geriye dönük uyumluluk için delege eder; yeni çağrılar
+    doğrudan ``antiepileptik_kontrol_4_2_25`` kullanmalıdır.
     """
-    SUT 4.2.25 — Antiepileptik İlaçların Kullanım İlkeleri
-
-    Alt gruplar (etken madde bazlı):
-      A) YENI_NESIL  : Lamotrijin, Topiramat, Vigabatrin, Levetirasetam
-                       → Nöroloji/Beyin Cerrahisi uzman raporu
-                       → Raporsuz: Nöroloji/Beyin Cerrahisi uzmanı yazabilir
-      B) ZONISAMIT   : Zonisamit
-                       → Nöroloji uzman hekim + 1 YIL süreli rapor
-      C) PREGABALIN  : Pregabalin (mono veya sabit doz kombinasyonları)
-                       → 2./3. basamak SHS + en az bir nöroloji uzmanının
-                         yer aldığı 1 yıl süreli SAĞLIK KURULU raporu
-                       → Reçete: Nöroloji uzman hekimi
-                       → Yaygın anksiyete bozukluğu (YAB) endikasyonunda
-                         BEDEL ÖDENMEZ → UYGUN_DEGIL
-                       → Gabapentin ile KOMBİNE KULLANILAMAZ → UYGUN_DEGIL
-      D) LAKOZAMID   : Lakozamid
-                       → 16 yaş ve üzeri + parsiyel başlangıçlı epilepsi
-                       → En az 2 antiepileptiğin 6 ay tek/kombine kullanımı
-                         sonrası tedaviye yanıt alınamayan hastalarda
-                         ek tedavi VEYA monoterapi olarak
-                       → Nöroloji uzman raporu (durumların belirtildiği)
-                       → Tüm uzman hekimlerce reçete edilebilir
-      E) GABAPENTIN  : Gabapentin
-                       → 2./3. basamak SHS + en az bir nöroloji uzmanının
-                         yer aldığı 1 yıl süreli SAĞLIK KURULU raporu
-                       → Reçete: Nöroloji uzman hekimi
-                       → Pregabalin ile KOMBİNE KULLANILAMAZ → UYGUN_DEGIL
-
-    Karar tablosu (ortak):
-      RAPORLU + uygun branş + alt grup şartı → UYGUN
-      RAPORLU + alt grup şartı eksik (kombi/yaş/2-aep/SK)→ ŞÜPHELİ
-      RAPORSUZ + nöroloji uzmanı yazımı (yeni nesil) → UYGUN (uyarı: rapor süresi)
-      RAPORSUZ + diğer durumlar → UYGUN_DEGIL veya ŞÜPHELİ
-
-    Not: Lamotrijin BİPOLAR endikasyonunda kontrol_psikiyatri'ye delege edilir
-    (psikiyatri butonu kapsar). Burada sadece EPILEPSI endikasyonu işlenir.
-    Sodyum valproat da aynı şekilde — bipolar → psikiyatri, epilepsi → bu fn.
-    """
-    ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
-    etkin_madde = (ilac_sonuc.get('etkin_madde') or '').upper()
-    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
-    doktor_brans = (ilac_sonuc.get('doktor_uzmanligi') or '').upper()
-    recete_teshisleri = ilac_sonuc.get('recete_teshisleri', []) or []
-    teshis_metin = ' '.join(recete_teshisleri).upper() if recete_teshisleri else ''
-    diger_etkenler = ilac_sonuc.get('diger_etken_maddeler', []) or []
-    diger_ilaclar = ilac_sonuc.get('diger_ilac_adlari', []) or []
-
-    # Yaş parse — string/int gelebilir
-    yas_raw = ilac_sonuc.get('yas')
-    try:
-        yas = int(str(yas_raw).strip()) if str(yas_raw).strip() else None
-    except (ValueError, TypeError):
-        yas = None
-
-    tum_metin = _tum_metinleri_birlesir(ilac_sonuc) or ''
-    sut_kurali = 'SUT 4.2.25 — Antiepileptik ilaçların kullanım ilkeleri'
-
-    # ── Alt grup tespiti ──
-    is_lamotrijin = ('LAMOTRIJIN' in etkin_madde or 'LAMOTRIGIN' in etkin_madde
-                     or 'LAMICTAL' in ilac_adi or 'LAMOTRIX' in ilac_adi)
-    is_topiramat = ('TOPIRAMAT' in etkin_madde or 'TOPAMAX' in ilac_adi
-                    or 'TOPAMAC' in ilac_adi)
-    is_vigabatrin = 'VIGABATRIN' in etkin_madde or 'SABRIL' in ilac_adi
-    is_levetirasetam = ('LEVETIRASETAM' in etkin_madde or 'LEVATIRASETAM' in etkin_madde
-                        or 'KEPPRA' in ilac_adi or 'LEVEBON' in ilac_adi
-                        or 'EPITERRA' in ilac_adi)
-    is_zonisamit = ('ZONISAMID' in etkin_madde or 'ZONISAMIT' in etkin_madde
-                    or 'ZONEGRAN' in ilac_adi)
-    is_pregabalin = ('PREGABALIN' in etkin_madde or 'LYRICA' in ilac_adi
-                     or 'PREGABA' in ilac_adi)
-    is_lakozamid = ('LAKOSAMID' in etkin_madde or 'LAKOZAMID' in etkin_madde
-                    or 'LACOSAMID' in etkin_madde or 'VIMPAT' in ilac_adi)
-    is_gabapentin = ('GABAPENTIN' in etkin_madde or 'NEURONTIN' in ilac_adi
-                     or 'GABANTIN' in ilac_adi)
-    is_valproat = ('VALPROAT' in etkin_madde or 'VALPROIK' in etkin_madde
-                   or 'DEPAKIN' in ilac_adi or 'CONVULEX' in ilac_adi)
-
-    # Bipolar endikasyonu — Lamotrijin/Valproat psikiyatri akışına aittir
-    bipolar = ('F31' in teshis_metin or _turkce_ara(tum_metin, 'bipolar')
-               or _turkce_ara(tum_metin, 'manik'))
-
-    # YAB (yaygın anksiyete bozukluğu) — pregabalin için ödenmez
-    yab = ('F41' in teshis_metin
-           or _turkce_ara(tum_metin, 'yaygin anksiyete')
-           or _turkce_ara(tum_metin, 'yaygın anksiyete')
-           or _turkce_ara(tum_metin, 'generalize anksiyete'))
-
-    # Alt grup adı
-    alt_grup = 'BILINMIYOR'
-    if is_lamotrijin and bipolar:
-        alt_grup = 'LAMOTRIJIN_BIPOLAR'
-    elif is_lamotrijin:
-        alt_grup = 'LAMOTRIJIN_EPILEPSI'
-    elif is_topiramat:
-        alt_grup = 'TOPIRAMAT'
-    elif is_vigabatrin:
-        alt_grup = 'VIGABATRIN'
-    elif is_levetirasetam:
-        alt_grup = 'LEVETIRASETAM'
-    elif is_zonisamit:
-        alt_grup = 'ZONISAMIT'
-    elif is_pregabalin:
-        alt_grup = 'PREGABALIN'
-    elif is_lakozamid:
-        alt_grup = 'LAKOZAMID'
-    elif is_gabapentin:
-        alt_grup = 'GABAPENTIN'
-    elif is_valproat and not bipolar:
-        alt_grup = 'VALPROAT_EPILEPSI'
-
-    detaylar = {
-        'ilac_adi': ilac_adi,
-        'etkin_madde': etkin_madde,
-        'rapor_kodu': rapor_kodu,
-        'doktor_brans': doktor_brans,
-        'alt_grup': alt_grup,
-        'yas': yas,
-        'bipolar': bipolar,
-        'yab': yab,
-    }
-
-    # ── Bipolar endikasyon → psikiyatri butonuna ait, burada UYGUN değil ATLA ──
-    if bipolar and (is_lamotrijin or is_valproat):
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.ATLANDI,
-            mesaj=(f'{alt_grup} bipolar endikasyonunda — '
-                   'psikiyatri butonu (SUT 4.2.2) kapsamında kontrol edilir'),
-            detaylar=detaylar,
-            sut_kurali='SUT 4.2.2 (Bipolar) — Psikiyatri butonuna delege',
-        )
-
-    # ── Doktor branş tespiti ──
-    doktor_noroloji = ('NORO' in doktor_brans or 'NÖRO' in doktor_brans)
-    doktor_beyin_cer = ('BEYIN CER' in doktor_brans or 'BEYİN CER' in doktor_brans
-                        or 'NÖROŞIRURJI' in doktor_brans
-                        or 'NOROSIRURJI' in doktor_brans)
-
-    # ── Rapor branş tespiti (rapor kodu ön ek) ──
-    # 10.* = Nöroloji, 12.* = Beyin Cerrahisi (Medula kod tablosuna göre yaklaşık)
-    rapor_noroloji = rapor_kodu.startswith('10.') if rapor_kodu else False
-    rapor_beyin_cer = rapor_kodu.startswith('12.') if rapor_kodu else False
-    rapor_uygun_brans = rapor_noroloji or rapor_beyin_cer
-
-    # ── Sağlık kurulu raporu ibaresi (Pregabalin/Gabapentin için zorunlu) ──
-    saglik_kurulu = (_turkce_ara(tum_metin, 'saglik kurulu')
-                     or _turkce_ara(tum_metin, 'sağlık kurulu')
-                     or _turkce_ara(tum_metin, 'heyet'))
-
-    # ── Pregabalin + Gabapentin kombine yasağı ──
-    diger_metin = ' '.join([str(x).upper() for x in diger_etkenler] +
-                            [str(x).upper() for x in diger_ilaclar])
-    pregab_var = is_pregabalin or 'PREGABALIN' in diger_metin or 'LYRICA' in diger_metin
-    gabap_var = is_gabapentin or 'GABAPENTIN' in diger_metin or 'NEURONTIN' in diger_metin
-    kombi_yasak = pregab_var and gabap_var
-
-    if kombi_yasak and (is_pregabalin or is_gabapentin):
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=('Pregabalin + Gabapentin KOMBİNE KULLANIM — '
-                   'SUT 4.2.25(3,5): kombine kullanılamaz'),
-            detaylar={**detaylar, 'kombi_yasak': True},
-            uyari='SUT 4.2.25: Pregabalin ve gabapentin kombine kullanılamaz',
-            sut_kurali=sut_kurali,
-            aranan_ibare='Aynı reçete/hasta — pregabalin VE gabapentin birlikte yok',
-        )
-
-    # ── A) Pregabalin ──
-    if is_pregabalin:
-        if yab:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN_DEGIL,
-                mesaj=('Pregabalin YAYGIN ANKSİYETE BOZUKLUĞU endikasyonunda — '
-                       'SUT 4.2.25(3): bedeli Kurumca KARŞILANMAZ'),
-                detaylar=detaylar,
-                uyari='Pregabalin YAB endikasyonunda ödenmez',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Teşhis: F41 / yaygın anksiyete bozukluğu YOK',
-            )
-        if not rapor_kodu:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN_DEGIL,
-                mesaj='Pregabalin RAPORSUZ — SUT 4.2.25(3): sağlık kurulu raporu ZORUNLU',
-                detaylar=detaylar,
-                uyari='2./3. basamak SHS + en az 1 nöroloji uzmanı + 1 yıl SK raporu',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Sağlık kurulu raporu (nöroloji uzmanı dahil)',
-            )
-        # Raporlu pregabalin
-        if not saglik_kurulu and not rapor_noroloji:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f'Pregabalin raporlu (rap.kod {rapor_kodu}) — '
-                       'sağlık kurulu raporu / nöroloji branşı tespit edilemedi'),
-                detaylar=detaylar,
-                uyari='SK raporu ve nöroloji uzmanının yer alması manuel doğrulanmalı',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Sağlık kurulu + nöroloji uzmanı (1 yıl)',
-            )
-        if not doktor_noroloji:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f'Pregabalin raporlu — yazan branş "{doktor_brans or "?"}", '
-                       'SUT: nöroloji uzmanı yazmalı'),
-                detaylar=detaylar,
-                uyari='Reçeteyi nöroloji uzmanı yazmalı (SK raporu olsa bile)',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Reçeteyi yazan: nöroloji uzmanı',
-            )
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN,
-            mesaj=(f'Pregabalin — nöroloji uzmanı + SK raporu (rap.kod {rapor_kodu})'),
-            detaylar=detaylar,
-            sut_kurali=sut_kurali,
-            aranan_ibare='Nöroloji uzmanı + 1 yıl SK raporu',
-            bulunan_metin=f'Branş: {doktor_brans} | Rapor: {rapor_kodu}',
-        )
-
-    # ── B) Gabapentin ──
-    if is_gabapentin:
-        if not rapor_kodu:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN_DEGIL,
-                mesaj='Gabapentin RAPORSUZ — SUT 4.2.25(5): sağlık kurulu raporu ZORUNLU',
-                detaylar=detaylar,
-                uyari='2./3. basamak SHS + en az 1 nöroloji uzmanı + 1 yıl SK raporu',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Sağlık kurulu raporu (nöroloji uzmanı dahil)',
-            )
-        if not saglik_kurulu and not rapor_noroloji:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f'Gabapentin raporlu (rap.kod {rapor_kodu}) — '
-                       'sağlık kurulu raporu / nöroloji branşı tespit edilemedi'),
-                detaylar=detaylar,
-                uyari='SK raporu ve nöroloji uzmanı manuel doğrulanmalı',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Sağlık kurulu + nöroloji uzmanı (1 yıl)',
-            )
-        if not doktor_noroloji:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f'Gabapentin raporlu — yazan branş "{doktor_brans or "?"}", '
-                       'SUT: nöroloji uzmanı yazmalı'),
-                detaylar=detaylar,
-                uyari='Reçeteyi nöroloji uzmanı yazmalı',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Reçeteyi yazan: nöroloji uzmanı',
-            )
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN,
-            mesaj=(f'Gabapentin — nöroloji uzmanı + SK raporu (rap.kod {rapor_kodu})'),
-            detaylar=detaylar,
-            sut_kurali=sut_kurali,
-            aranan_ibare='Nöroloji uzmanı + 1 yıl SK raporu',
-            bulunan_metin=f'Branş: {doktor_brans} | Rapor: {rapor_kodu}',
-        )
-
-    # ── C) Lakozamid ──
-    if is_lakozamid:
-        if yas is not None and yas < 16:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN_DEGIL,
-                mesaj=(f'Lakozamid {yas} yaş — SUT 4.2.25(4): 16 YAŞ VE ÜZERİ şartı'),
-                detaylar=detaylar,
-                uyari='Lakozamid 16 yaş altı endikasyon dışı',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Yaş ≥ 16',
-            )
-        if not rapor_kodu:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN_DEGIL,
-                mesaj='Lakozamid RAPORSUZ — SUT 4.2.25(4): nöroloji uzman raporu ZORUNLU',
-                detaylar=detaylar,
-                uyari='Rapor: 2 antiepileptik 6 ay yetersiz + ek tedavi/monoterapi belirtilmeli',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Nöroloji uzman raporu (parsiyel epilepsi + 2 AEP 6 ay yetersiz)',
-            )
-        # Raporlu — 2 antiepileptik 6 ay öyküsü ibaresi raporda olmalı
-        sart_metni = (_turkce_ara(tum_metin, 'iki antiepileptik')
-                      or _turkce_ara(tum_metin, '2 antiepileptik')
-                      or _turkce_ara(tum_metin, 'tedaviye yanit')
-                      or _turkce_ara(tum_metin, 'tedaviye yanıt')
-                      or _turkce_ara(tum_metin, '6 ay'))
-        parsiyel_metni = (_turkce_ara(tum_metin, 'parsiyel')
-                          or _turkce_ara(tum_metin, 'fokal'))
-        if not rapor_noroloji and not _turkce_ara(tum_metin, 'noroloji') \
-                and not _turkce_ara(tum_metin, 'nöroloji'):
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f'Lakozamid raporlu (rap.kod {rapor_kodu}) — '
-                       'nöroloji uzman raporu ibaresi tespit edilemedi'),
-                detaylar=detaylar,
-                uyari='Nöroloji uzman raporu olmalı (2 AEP 6 ay yetersiz şartıyla)',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Nöroloji uzmanı + parsiyel + 2 AEP 6 ay yetersiz',
-            )
-        if not (sart_metni and parsiyel_metni):
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f'Lakozamid raporlu (rap.kod {rapor_kodu}) — '
-                       'parsiyel epilepsi + 2 AEP 6 ay yetersizlik ibaresi eksik'),
-                detaylar=detaylar,
-                uyari='Raporda "parsiyel başlangıçlı" + "2 AEP 6 ay yetersiz" ibaresi şart',
-                sut_kurali=sut_kurali,
-                aranan_ibare='parsiyel/fokal + 2 antiepileptik 6 ay tedaviye yanıtsız',
-            )
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN,
-            mesaj=(f'Lakozamid — nöroloji raporu + parsiyel + 2 AEP 6 ay yetersiz '
-                   f'(rap.kod {rapor_kodu})'),
-            detaylar=detaylar,
-            sut_kurali=sut_kurali,
-            aranan_ibare='Nöroloji raporu + parsiyel + 2 AEP 6 ay yetersizlik',
-            bulunan_metin=f'Rapor: {rapor_kodu} | Yaş: {yas if yas is not None else "?"}',
-        )
-
-    # ── D) Zonisamit ──
-    if is_zonisamit:
-        if not rapor_kodu:
-            if doktor_noroloji:
-                return KontrolRaporu(
-                    sonuc=KontrolSonucu.UYGUN,
-                    mesaj=('Zonisamit raporsuz — nöroloji uzmanı yazmış '
-                           '(SUT: 1 yıl rapor süresi içinde manuel kontrol)'),
-                    detaylar=detaylar,
-                    uyari='SUT 4.2.25(2): 1 yıl süreli rapor şart — manuel kontrol',
-                    sut_kurali=sut_kurali,
-                    aranan_ibare='Nöroloji uzmanı + 1 yıl rapor',
-                )
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN_DEGIL,
-                mesaj='Zonisamit RAPORSUZ — SUT 4.2.25(2): nöroloji uzman raporu (1 yıl) ZORUNLU',
-                detaylar=detaylar,
-                uyari='Nöroloji uzmanı + 1 yıl rapor',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Nöroloji uzman raporu (1 yıl süreli)',
-            )
-        if not (rapor_noroloji or doktor_noroloji or
-                _turkce_ara(tum_metin, 'noroloji') or
-                _turkce_ara(tum_metin, 'nöroloji')):
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f'Zonisamit raporlu (rap.kod {rapor_kodu}) — '
-                       'nöroloji uzman raporu ibaresi tespit edilemedi'),
-                detaylar=detaylar,
-                uyari='SUT: Nöroloji uzman hekim raporu (1 yıl) gerekli',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Nöroloji uzmanı + 1 yıl rapor',
-            )
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN,
-            mesaj=f'Zonisamit — nöroloji raporu (rap.kod {rapor_kodu})',
-            detaylar=detaylar,
-            uyari='Rapor süresi 1 yıl — geçerlilik manuel kontrol edilmeli',
-            sut_kurali=sut_kurali,
-            aranan_ibare='Nöroloji uzmanı + 1 yıl rapor',
-            bulunan_metin=f'Rapor: {rapor_kodu} | Branş: {doktor_brans}',
-        )
-
-    # ── E) Yeni nesil (Lamotrijin epilepsi / Topiramat / Vigabatrin / Levetirasetam) ──
-    if is_lamotrijin or is_topiramat or is_vigabatrin or is_levetirasetam or is_valproat:
-        # Raporlu
-        if rapor_kodu:
-            if rapor_uygun_brans or _turkce_ara(tum_metin, 'noroloji') or \
-               _turkce_ara(tum_metin, 'nöroloji') or \
-               _turkce_ara(tum_metin, 'beyin cerrahisi') or \
-               _turkce_ara(tum_metin, 'norosirurji') or \
-               _turkce_ara(tum_metin, 'nöroşirurji'):
-                return KontrolRaporu(
-                    sonuc=KontrolSonucu.UYGUN,
-                    mesaj=(f'{alt_grup} — nöroloji/beyin cerrahisi raporu '
-                           f'(rap.kod {rapor_kodu})'),
-                    detaylar=detaylar,
-                    sut_kurali=sut_kurali,
-                    aranan_ibare='Nöroloji veya beyin cerrahisi uzman raporu',
-                    bulunan_metin=f'Rapor: {rapor_kodu} | Branş: {doktor_brans}',
-                )
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f'{alt_grup} raporlu (rap.kod {rapor_kodu}) — '
-                       'nöroloji/beyin cerrahisi branşı tespit edilemedi'),
-                detaylar=detaylar,
-                uyari='SUT 4.2.25(1): Nöroloji veya beyin cerrahisi uzman raporu',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Nöroloji / beyin cerrahisi uzmanı',
-            )
-        # Raporsuz — uzman yazımı yeterli (raporsuz da kabul)
-        if doktor_noroloji or doktor_beyin_cer:
-            brans_adi = 'nöroloji' if doktor_noroloji else 'beyin cerrahisi'
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.UYGUN,
-                mesaj=(f'{alt_grup} raporsuz — {brans_adi} uzmanı yazmış '
-                       '(SUT 4.2.25(1): uzman tarafından raporsuz da yazılabilir)'),
-                detaylar=detaylar,
-                uyari='Devam reçetelerinde rapor önerilir',
-                sut_kurali=sut_kurali,
-                aranan_ibare=f'Doktor branşı: {brans_adi}',
-                bulunan_metin=f'Branş: {doktor_brans}',
-            )
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=(f'{alt_grup} RAPORSUZ + branş "{doktor_brans or "?"}" — '
-                   'SUT 4.2.25(1): nöroloji/beyin cerrahisi uzmanı veya raporu ZORUNLU'),
-            detaylar=detaylar,
-            uyari='Nöroloji veya beyin cerrahisi uzmanı yazmalı veya raporu olmalı',
-            sut_kurali=sut_kurali,
-            aranan_ibare='Nöroloji/beyin cerrahisi uzmanı veya uzman raporu',
-        )
-
-    # ── Bilinmeyen antiepileptik — minimal kontrol ──
-    if not rapor_kodu:
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-            mesaj=(f'Antiepileptik ({etkin_madde or ilac_adi[:24]}) — '
-                   'SUT 4.2.25 alt grup belirlenemedi, raporsuz'),
-            detaylar=detaylar,
-            uyari='Etken madde tanınmadı — manuel kontrol önerilir',
-            sut_kurali=sut_kurali,
-        )
-    return KontrolRaporu(
-        sonuc=KontrolSonucu.UYGUN,
-        mesaj=(f'Antiepileptik raporlu (rap.kod {rapor_kodu}) — '
-               'alt grup belirlenemedi, manuel kontrol önerilir'),
-        detaylar=detaylar,
-        uyari='Etken madde tanınmadı — alt grup şartları manuel kontrol edilmeli',
-        sut_kurali=sut_kurali,
-    )
+    from recete_kontrol.antiepileptik_4_2_25 import antiepileptik_kontrol_4_2_25
+    return antiepileptik_kontrol_4_2_25(ilac_sonuc)
 
 
 def kontrol_noropatik_4_2_35(ilac_sonuc: Dict) -> KontrolRaporu:
+    """SUT 4.2.35 — KALDIRILDI / yeniden yazıldı.
+
+    Eski yüzeysel implementasyon, atomik motora (``noropatik_4_2_35.py``)
+    taşındı. Bu shim geriye dönük uyumluluk için delege eder; yeni çağrılar
+    doğrudan ``noropatik_kontrol_4_2_35`` kullanmalıdır.
     """
-    SUT 4.2.35 — Nöropatik ağrı (A) ve fibromiyalji (B) tedavisi.
-
-    Alt gruplar (etken madde + ticari isim):
-      A) PREGABALIN  : LYRICA, GABRICA, PREGALIN, PREGABEX
-      B) GABAPENTIN  : NEURONTIN, NERUDA, GABATEVA, GABALEPT, GABANTIN, GABAGAMMA
-      C) DULOKSETIN  : CYMBALTA, DUXET, DULOXIN, DULOX
-      D) ALFA_LIPOIK : tioktik / α-lipoik asit (THIOCTACID, NOREXIA)
-      E) KAPSAISIN   : krem (CAPSIN, ZOSTRIX)
-
-    Endikasyon ayrımı (rap_ack + teshisler birleşik metin):
-      - FIBROMIYALJI    : "fibromiyalji" / "M79.7"     → 4.2.35.B
-      - PHN             : "postherpetik" / "phn" / "zona sonrası"
-      - DIYABETIK_NORO  : "diyabetik nöropati" / "polinöropati" / "E11.4"
-      - NOROPATIK       : "nöropatik" / "nöropati"
-      - DEPRESYON       : (sadece Duloksetin için) "depresyon"/"F32"/"F33"
-                          → kontrol_psikiyatri'ye delege (ATLANDI)
-      - EPILEPSI        : (Pregabalin/Gabapentin) "G40"/"epilepsi"/"konvulsiy"
-                          → kontrol_antiepileptik_4_2_25'e delege (ATLANDI)
-
-    Kombi yasağı: Pregabalin + Gabapentin AYNI REÇETE → UYGUN_DEGIL
-                  (cross-reçete tarama YAPILMAZ — sadece aynı reçete içi)
-
-    Branş listeleri (4.2.35 metnine göre):
-      Pregabalin/Gabapentin: SK raporu (en az 1 nöroloji uzmanı dahil) — 4.2.25
-                             ile aynı şart, fakat 4.2.35'te endikasyon nöropatik/
-                             fibromiyalji olur
-      Duloksetin (4.2.35.A) : nöroloji / algoloji / FTR / psikiyatri / endokrin
-                              / dahiliye
-      Duloksetin (4.2.35.B) : romatoloji / FTR / nöroloji / algoloji / psikiyatri
-      Alfa lipoik           : endokrin / nöroloji / dahiliye / FTR
-      Kapsaisin             : nöroloji / algoloji / dermatoloji / FTR
-
-    Rapor süresi: en fazla 6 ay fibromiyalji için, 12 ay nöropatik için
-                  (regex `(\\d+)\\s*ay\\s*sür`)
-
-    Karar tablosu:
-      RAPORLU + uygun branş + endikasyon + ≤süre         → UYGUN
-      RAPORLU + endikasyon eksik                          → UYGUN_DEGIL
-      RAPORLU + branş eksik                               → KONTROL_EDILEMEDI
-      RAPORLU + süre aşımı                                → UYGUN_DEGIL
-      RAPORSUZ                                            → UYGUN_DEGIL
-      EPILEPSI/DEPRESYON → ATLANDI (başka butona delege)
-      Pregabalin+Gabapentin aynı reçete → UYGUN_DEGIL
-
-    Branş tespit edilemezse: "Manuel doğrulanmalı" uyarısı (KONTROL_EDILEMEDI).
-    """
-    ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
-    etkin_madde = (ilac_sonuc.get('etkin_madde') or '').upper()
-    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
-    doktor_brans = (ilac_sonuc.get('doktor_uzmanligi') or '').upper()
-    recete_teshisleri = ilac_sonuc.get('recete_teshisleri', []) or []
-    teshis_metin = ' '.join(recete_teshisleri).upper() if recete_teshisleri else ''
-    diger_etkenler = ilac_sonuc.get('diger_etken_maddeler', []) or []
-    diger_ilaclar = ilac_sonuc.get('diger_ilac_adlari', []) or []
-
-    tum_metin = _tum_metinleri_birlesir(ilac_sonuc) or ''
-    sut_kurali = 'SUT 4.2.35 — Nöropatik ağrı (A) / Fibromiyalji (B)'
-
-    # ── Alt grup tespiti ──
-    is_pregabalin = ('PREGABALIN' in etkin_madde
-                     or any(t in ilac_adi for t in
-                            ('LYRICA', 'GABRICA', 'PREGALIN', 'PREGABEX')))
-    is_gabapentin = ('GABAPENTIN' in etkin_madde
-                     or any(t in ilac_adi for t in
-                            ('NEURONTIN', 'NERUDA', 'GABATEVA', 'GABALEPT',
-                             'GABANTIN', 'GABAGAMMA')))
-    is_duloksetin = ('DULOKSETIN' in etkin_madde or 'DULOXETINE' in etkin_madde
-                     or any(t in ilac_adi for t in
-                            ('CYMBALTA', 'DUXET', 'DULOXIN', 'DULOX')))
-    is_alfa_lipoik = ('TIOKTIK' in etkin_madde or 'TİOKTİK' in etkin_madde
-                      or 'ALFA LIPOIK' in etkin_madde
-                      or 'ALFA-LIPOIK' in etkin_madde
-                      or 'ALPHA LIPOIC' in etkin_madde
-                      or any(t in ilac_adi for t in
-                             ('THIOCTACID', 'NOREXIA', 'LIPOIK', 'TIOXIDAL')))
-    is_kapsaisin = ('KAPSAISIN' in etkin_madde or 'KAPSAİSİN' in etkin_madde
-                    or 'CAPSAICIN' in etkin_madde
-                    or any(t in ilac_adi for t in ('CAPSIN', 'ZOSTRIX')))
-
-    alt_grup = 'BILINMIYOR'
-    if is_pregabalin:
-        alt_grup = 'PREGABALIN'
-    elif is_gabapentin:
-        alt_grup = 'GABAPENTIN'
-    elif is_duloksetin:
-        alt_grup = 'DULOKSETIN'
-    elif is_alfa_lipoik:
-        alt_grup = 'ALFA_LIPOIK'
-    elif is_kapsaisin:
-        alt_grup = 'KAPSAISIN'
-
-    # Hiçbir alt gruba uymuyorsa kapsam dışı
-    if alt_grup == 'BILINMIYOR':
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.ATLANDI,
-            mesaj='İlaç SUT 4.2.35 (nöropatik/fibromiyalji) kapsamında değil',
-            detaylar={'ilac_adi': ilac_adi, 'etkin_madde': etkin_madde},
-            sut_kurali=sut_kurali,
-        )
-
-    # ── Endikasyon tespiti (metin + teşhis) ──
-    birlesik = (tum_metin + ' ' + teshis_metin).replace('İ', 'i').replace(
-        'I', 'ı').lower()
-
-    is_fibromiyalji = ('fibromiyalji' in birlesik or 'fibromyalji' in birlesik
-                       or 'm79.7' in birlesik or 'm797' in birlesik)
-    is_phn = ('postherpetik' in birlesik or 'post-herpetik' in birlesik
-              or 'phn' in birlesik or 'zona sonrası' in birlesik
-              or 'zona sonrasi' in birlesik or 'b02.2' in birlesik
-              or 'g53.0' in birlesik)
-    is_diyabetik_noro = (
-        'diyabetik nöropati' in birlesik or 'diyabetik noropati' in birlesik
-        or 'diabetik nöropati' in birlesik or 'diabetik noropati' in birlesik
-        or 'polinöropati' in birlesik or 'polinoropati' in birlesik
-        or 'e10.4' in birlesik or 'e11.4' in birlesik or 'e12.4' in birlesik
-        or 'e13.4' in birlesik or 'e14.4' in birlesik or 'g63.2' in birlesik
-        or 'g62' in birlesik
-    )
-    is_noropatik = ('nöropatik' in birlesik or 'noropatik' in birlesik
-                    or 'nöropati' in birlesik or 'noropati' in birlesik
-                    or 'g50.0' in birlesik or 'g52' in birlesik
-                    or 'g53' in birlesik or 'g54' in birlesik
-                    or 'g56' in birlesik or 'g57' in birlesik
-                    or 'g58' in birlesik or 'g59' in birlesik
-                    or 'g60' in birlesik or 'g61' in birlesik)
-    is_depresyon = ('depresyon' in birlesik or 'depression' in birlesik
-                    or 'f32' in birlesik or 'f33' in birlesik
-                    or 'majör depresif' in birlesik
-                    or 'major depresif' in birlesik)
-    is_epilepsi = ('epilepsi' in birlesik or 'konvulsiy' in birlesik
-                   or 'g40' in birlesik or 'nöbet' in birlesik
-                   or 'nobet' in birlesik)
-
-    # ── Erken delege noktaları ──
-    # Duloksetin + sadece depresyon endikasyonu (nöropatik/fibromiyalji yok)
-    # → 4.2.2 psikiyatri butonu kapsasın
-    if is_duloksetin and is_depresyon and not (is_fibromiyalji or is_noropatik
-                                                or is_phn or is_diyabetik_noro):
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.ATLANDI,
-            mesaj=('Duloksetin depresyon endikasyonunda — '
-                   'psikiyatri butonu (SUT 4.2.2) kapsamında kontrol edilir'),
-            detaylar={'alt_grup': alt_grup, 'rapor_kodu': rapor_kodu,
-                      'is_depresyon': True},
-            sut_kurali='SUT 4.2.2 (Depresyon) — Psikiyatri butonuna delege',
-        )
-
-    # Pregabalin/Gabapentin + epilepsi endikasyonu → 4.2.25 antiepileptik butonu
-    if (is_pregabalin or is_gabapentin) and is_epilepsi and not (
-            is_fibromiyalji or is_noropatik or is_phn or is_diyabetik_noro):
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.ATLANDI,
-            mesaj=(f'{alt_grup} epilepsi endikasyonunda — '
-                   'antiepileptik butonu (SUT 4.2.25) kapsamında kontrol edilir'),
-            detaylar={'alt_grup': alt_grup, 'rapor_kodu': rapor_kodu,
-                      'is_epilepsi': True},
-            sut_kurali='SUT 4.2.25 (Epilepsi) — Antiepileptik butonuna delege',
-        )
-
-    # ── Pregabalin + Gabapentin kombi yasağı (aynı reçete) ──
-    diger_metin = ' '.join([str(x).upper() for x in diger_etkenler]
-                           + [str(x).upper() for x in diger_ilaclar])
-    pregab_var = is_pregabalin or 'PREGABALIN' in diger_metin or any(
-        t in diger_metin for t in ('LYRICA', 'GABRICA', 'PREGALIN', 'PREGABEX'))
-    gabap_var = is_gabapentin or 'GABAPENTIN' in diger_metin or any(
-        t in diger_metin for t in ('NEURONTIN', 'NERUDA', 'GABATEVA', 'GABALEPT'))
-    if (is_pregabalin or is_gabapentin) and pregab_var and gabap_var:
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=('Pregabalin + Gabapentin AYNI REÇETEDE — '
-                   'SUT: kombine kullanılamaz'),
-            detaylar={'alt_grup': alt_grup, 'rapor_kodu': rapor_kodu,
-                      'kombi_yasak': True},
-            uyari='Pregabalin ve gabapentin aynı reçetede birlikte yazılamaz',
-            sut_kurali=sut_kurali,
-            aranan_ibare='Aynı reçetede pregabalin VE gabapentin yok',
-        )
-
-    # ── Endikasyon kontrolü (en az birinin varlığı şart) ──
-    endikasyonlar = []
-    if is_fibromiyalji:
-        endikasyonlar.append('Fibromiyalji (4.2.35.B)')
-    if is_phn:
-        endikasyonlar.append('Post-herpetik nevralji')
-    if is_diyabetik_noro:
-        endikasyonlar.append('Diyabetik nöropati / polinöropati')
-    if is_noropatik:
-        endikasyonlar.append('Nöropatik ağrı')
-
-    detaylar = {
-        'alt_grup': alt_grup,
-        'rapor_kodu': rapor_kodu,
-        'doktor_brans': doktor_brans,
-        'endikasyonlar': endikasyonlar,
-        'kategori_4_2_35': '4.2.35.B' if is_fibromiyalji else '4.2.35.A',
-    }
-
-    # Alfa lipoik / Kapsaisin için fibromiyalji uygun değil; nöropatik/diyabetik
-    if alt_grup in ('ALFA_LIPOIK', 'KAPSAISIN') and is_fibromiyalji \
-            and not (is_noropatik or is_phn or is_diyabetik_noro):
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=(f'{alt_grup} fibromiyalji için SUT 4.2.35.B kapsamında değil '
-                   '— sadece nöropatik ağrı endikasyonunda ödenir'),
-            detaylar=detaylar,
-            uyari='Alfa lipoik / Kapsaisin: nöropatik ağrı endikasyonu gerekli',
-            sut_kurali=sut_kurali,
-            aranan_ibare='Nöropatik ağrı / diyabetik nöropati / PHN',
-        )
-
-    # ── Raporsuz ──
-    if not rapor_kodu:
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=(f'{alt_grup} RAPORSUZ — SUT 4.2.35: nöropatik/fibromiyalji '
-                   'endikasyonunda uzman raporu ZORUNLU'),
-            detaylar=detaylar,
-            uyari='SUT 4.2.35: Uzman raporu (1 yıl, fibromiyalji için 6 ay) gerekli',
-            sut_kurali=sut_kurali,
-            aranan_ibare='Uzman raporu varlığı',
-        )
-
-    # ── Endikasyon hiç bulunmadıysa ──
-    if not endikasyonlar:
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.UYGUN_DEGIL,
-            mesaj=(f'{alt_grup} raporlu (rap.kod {rapor_kodu}) — '
-                   'nöropatik ağrı / fibromiyalji endikasyonu raporda bulunamadı'),
-            detaylar=detaylar,
-            uyari='SUT 4.2.35: Endikasyon (nöropatik/fibromiyalji/PHN/'
-                  'diyabetik nöropati) raporda belirtilmeli',
-            sut_kurali=sut_kurali,
-            aranan_ibare='nöropatik ağrı / fibromiyalji / PHN / diyabetik nöropati',
-        )
-
-    # ── 6/12 ay süre kontrolü ──
-    sure_match = re.search(r'(\d{1,2})\s*ay\s*s[uü]r', birlesik)
-    if sure_match:
-        try:
-            sure_ay = int(sure_match.group(1))
-            if is_fibromiyalji and sure_ay > 6:
-                return KontrolRaporu(
-                    sonuc=KontrolSonucu.UYGUN_DEGIL,
-                    mesaj=(f'{alt_grup} fibromiyalji raporu {sure_ay} ay — '
-                           'SUT 4.2.35.B: en fazla 6 ay süreli rapor'),
-                    detaylar={**detaylar, 'rapor_suresi_ay': sure_ay},
-                    uyari='Fibromiyalji raporu 6 ayı aşamaz',
-                    sut_kurali=sut_kurali,
-                    aranan_ibare='Rapor süresi ≤ 6 ay',
-                )
-            elif sure_ay > 12:
-                return KontrolRaporu(
-                    sonuc=KontrolSonucu.UYGUN_DEGIL,
-                    mesaj=(f'{alt_grup} raporu {sure_ay} ay — '
-                           'SUT 4.2.35: en fazla 12 ay süreli rapor'),
-                    detaylar={**detaylar, 'rapor_suresi_ay': sure_ay},
-                    uyari='Nöropatik ağrı raporu 12 ayı aşamaz',
-                    sut_kurali=sut_kurali,
-                    aranan_ibare='Rapor süresi ≤ 12 ay',
-                )
-            detaylar['rapor_suresi_ay'] = sure_ay
-        except (ValueError, TypeError):
-            pass
-
-    # ── Branş kontrolü (alt gruba göre kabul edilen branşlar) ──
-    BRANS_HARITA = {
-        'PREGABALIN':  ('NORO', 'NÖRO', 'ALGOL', 'PSIKIYATR', 'PSİKİYATR',
-                        'ROMATOLOJ', 'FIZIK TEDAV', 'FIZ. TEDAV', 'FTR'),
-        'GABAPENTIN':  ('NORO', 'NÖRO', 'ALGOL', 'PSIKIYATR', 'PSİKİYATR',
-                        'ROMATOLOJ', 'FIZIK TEDAV', 'FIZ. TEDAV', 'FTR'),
-        'DULOKSETIN':  ('NORO', 'NÖRO', 'ALGOL', 'PSIKIYATR', 'PSİKİYATR',
-                        'ROMATOLOJ', 'FIZIK TEDAV', 'FIZ. TEDAV', 'FTR',
-                        'ENDOKRIN', 'ENDOKRİN', 'IÇ HASTALIK', 'İÇ HASTALIK',
-                        'DAHILIYE', 'DAHİLİYE'),
-        'ALFA_LIPOIK': ('NORO', 'NÖRO', 'ENDOKRIN', 'ENDOKRİN',
-                        'IÇ HASTALIK', 'İÇ HASTALIK', 'DAHILIYE', 'DAHİLİYE',
-                        'FIZIK TEDAV', 'FIZ. TEDAV', 'FTR'),
-        'KAPSAISIN':   ('NORO', 'NÖRO', 'ALGOL', 'DERMATOLOJ',
-                        'FIZIK TEDAV', 'FIZ. TEDAV', 'FTR'),
-    }
-
-    kabul_brans = BRANS_HARITA.get(alt_grup, ())
-    brans_metni_uyumlu = any(b in doktor_brans for b in kabul_brans) \
-        if doktor_brans else False
-    # Rapor metninde branş ibaresi (birlesik metin de _tr_lower edilmeli — bu modül
-    # nöropatik kontrolü, çağrı yerinden geliyor; güvenlik için arama tarafını da normalize ediyoruz)
-    _birlesik_norm = _tr_lower(birlesik) if birlesik else ''
-    rapor_brans_uyumlu = any(_tr_lower(b) in _birlesik_norm for b in kabul_brans)
-    # Rapor kodu prefix (10.* nöroloji, 11.* psikiyatri, 13.* FTR varsayılan)
-    rapor_kodu_uyumlu = False
-    if rapor_kodu:
-        if alt_grup in ('PREGABALIN', 'GABAPENTIN'):
-            rapor_kodu_uyumlu = rapor_kodu.startswith(('10.', '11.', '13.'))
-        elif alt_grup == 'DULOKSETIN':
-            rapor_kodu_uyumlu = rapor_kodu.startswith(
-                ('10.', '11.', '13.', '04.', '07.'))
-        elif alt_grup == 'ALFA_LIPOIK':
-            rapor_kodu_uyumlu = rapor_kodu.startswith(
-                ('10.', '04.', '07.', '13.'))
-        elif alt_grup == 'KAPSAISIN':
-            rapor_kodu_uyumlu = rapor_kodu.startswith(('10.', '13.', '14.'))
-
-    brans_uygun = brans_metni_uyumlu or rapor_brans_uyumlu or rapor_kodu_uyumlu
-
-    # ── Pregabalin/Gabapentin için ek SK raporu kontrolü ──
-    if alt_grup in ('PREGABALIN', 'GABAPENTIN'):
-        saglik_kurulu = bool(re.search(r'sa[ğg]l[ıi]k\s*kurul', birlesik)
-                              or 'heyet' in birlesik)
-        if not saglik_kurulu:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f'{alt_grup} raporlu (rap.kod {rapor_kodu}) — '
-                       'sağlık kurulu raporu ibaresi tespit edilemedi'),
-                detaylar={**detaylar, 'sk_raporu': False,
-                          'endikasyon_eslesti': True},
-                uyari='SUT 4.2.35: Pregabalin/Gabapentin için en az 1 nöroloji '
-                      'uzmanının yer aldığı sağlık kurulu raporu — manuel doğrulanmalı',
-                sut_kurali=sut_kurali,
-                aranan_ibare='Sağlık kurulu raporu (nöroloji uzmanı dahil)',
-            )
-
-    # ── Branş tespit edilemedi ──
-    if not brans_uygun:
-        return KontrolRaporu(
-            sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-            mesaj=(f'{alt_grup} raporlu (rap.kod {rapor_kodu}) — '
-                   f'yazan branş "{doktor_brans or "?"}", '
-                   'SUT 4.2.35 kabul edilen uzman branşı tespit edilemedi'),
-            detaylar={**detaylar, 'brans_uygun': False},
-            uyari='Manuel doğrulanmalı — uzman branşı raporda/reçetede belirsiz',
-            sut_kurali=sut_kurali,
-            aranan_ibare=f'Kabul edilen branşlar: {", ".join(kabul_brans[:5])}…',
-        )
-
-    # ── UYGUN ──
-    kategori_etiket = '4.2.35.B (fibromiyalji)' if is_fibromiyalji \
-        else '4.2.35.A (nöropatik)'
-    end_str = ', '.join(endikasyonlar) if endikasyonlar else '—'
-    return KontrolRaporu(
-        sonuc=KontrolSonucu.UYGUN,
-        mesaj=(f'{alt_grup} — {kategori_etiket} | endikasyon: {end_str} '
-               f'(rap.kod {rapor_kodu})'),
-        detaylar={**detaylar, 'brans_uygun': True},
-        sut_kurali=sut_kurali,
-        aranan_ibare='Endikasyon + uzman branş + rapor süresi',
-        bulunan_metin=f'Branş: {doktor_brans} | Rapor: {rapor_kodu}',
-    )
+    from recete_kontrol.noropatik_4_2_35 import noropatik_kontrol_4_2_35
+    return noropatik_kontrol_4_2_35(ilac_sonuc)
 
 
 def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
@@ -20077,7 +19317,7 @@ def kontrol_genel_raporlu(ilac_sonuc: Dict) -> KontrolRaporu:
     4. İmmünosüpresifler (SUT 4.2.32) - Mikofenolat, Takrolimus, Siklosporin
        - Transplantasyon / otoimmün endikasyon
        - Rapor kodu: 15.xx, 16.xx
-    5. TNF İnhibitörleri / Biyolojikler (SUT 4.2.33) - Adalimumab, Etanersept, İnfliksimab vb.
+    5. TNF İnhibitörleri / Biyolojikler (SUT 4.2.1.C) - Adalimumab, Etanersept, İnfliksimab vb.
        - İlgili branş uzman raporu, basamak tedavi şartı
        - Rapor kodu: 01.xx (romatoloji), 06.xx (dermatoloji), 09.xx
     6. İmmünglobulinler (SUT 4.2.6) - IVIG
@@ -20211,7 +19451,7 @@ def kontrol_genel_raporlu(ilac_sonuc: Dict) -> KontrolRaporu:
         teshis_metin_local = ' '.join(ilac_sonuc.get('recete_teshisleri', []) or [])
         return _immunsupresif_detayli_kontrol(ilac_adi, etkin_madde, rapor_kodu, metin, teshis_metin_local)
 
-    # ── 5. Biyolojik İlaçlar / TNF İnhibitörleri (SUT 4.2.33) ──
+    # ── 5. Biyolojik İlaçlar / TNF İnhibitörleri (SUT 4.2.1.C) ──
     biyolojik_etkin = ['ADALIMUMAB', 'ETANERSEPT', 'INFLIKSIMAB', 'GOLIMUMAB',
                        'SERTOLIZUMAB', 'SEKUKINUMAB', 'IKSEKIZUMAB', 'USTEKINUMAB',
                        'VEDOLIZUMAB', 'TOFASITINIB', 'BARICITINIB', 'UPADACITINIB',
@@ -22915,6 +22155,7 @@ KATEGORI_ISIMLERI = {
     'GENEL_RAPORLU': 'Genel Raporlu İlaç',
     'ONKOLOJI': 'Onkoloji İlaçları',
     'NOROLOJI': 'Nöroloji İlaçları',
+    'MULTIPL_SKLEROZ': 'Multipl Skleroz İlaçları (4.2.34)',
     'GOZ': 'Göz İlaçları',
     'ANTIVIRAL': 'Antiviral İlaçlar',
     'GIS': 'GİS İlaçları',
@@ -23135,11 +22376,15 @@ def _cesitli_alt_grup_tespit(ilac_adi: str, etkin_madde: str,
     """Satırın ÇEŞİTLİ kapsamına girip girmediğini ve hangi alt gruba ait
     olduğunu tespit eder.
 
-    Dönüş: 'URINER' / 'GOZYASI' / 'BPH' / 'RANOLAZIN' / 'HEMANJIYOM' / 'NONE'
+    Dönüş: 'URINER' / 'GOZYASI' / 'BPH' / 'RANOLAZIN' / 'HEMANJIYOM' /
+           'ALPROSTADIL' / 'APREPITANT' / 'NONE'
 
     ATC önceliği:
       - G04BD*  → URINER (üriner antispazmotik / Mirabegron)
+      - G04BE*  → ALPROSTADIL (EK-4/F 37.1 — erektil disfonksiyon)
+      - A04AD12 + APREPITANT/EMEND (fosaprepitant hariç) → APREPITANT (EK-4)
       - G04CA*  → BPH (α-bloker — BPH'da kullanılan)
+      - S01E*   → GLOKOM (SUT 4.2.11 — antiglokom)
       - S01XA / S01KA / S01X  → GOZYASI (oftalmoloji)
       - N06AX21 → URINER (Duloksetin — üriner endikasyonu için)
       - C01EB18 → RANOLAZIN (SUT 4.2.15.F — kronik stabil angina)
@@ -23153,10 +22398,142 @@ def _cesitli_alt_grup_tespit(ilac_adi: str, etkin_madde: str,
     if _cesitli_hemanjiyom_eslesti_mi(ad, et):
         return 'HEMANJIYOM'
 
+    # ALPROSTADIL (EK-4/F 37.1 — erektil disfonksiyon, ürolojik 10/20 mcg/ml)
+    if a.startswith('G04BE'):
+        return 'ALPROSTADIL'
+    if 'ALPROSTADIL' in (ad + ' ' + et) or any(
+            t in ad for t in ('CAVERJECT', 'KAVERJECT', 'VITAROS', 'VIRIDAL', 'MUSE')):
+        return 'ALPROSTADIL'
+
+    # APREPITANT (EK-4 — KT ilişkili bulantı/kusma; EMEND oral).
+    # Fosaprepitant (IVEMEND) AYNI ATC'yi paylaşır → ad ile ayrılır.
+    arama_ap = ad + ' ' + et
+    if 'FOSAPREPITANT' not in arama_ap and 'IVEMEND' not in arama_ap:
+        if 'APREPITANT' in arama_ap or 'EMEND' in ad:
+            return 'APREPITANT'
+
+    # ATOMOKSETIN (DEHB — N06BA09; yalnız atomoksetin, metilfenidat hariç)
+    if a.startswith('N06BA09'):
+        return 'ATOMOKSETIN'
+    if 'ATOMOKSETIN' in arama_ap or 'ATOMOXETIN' in arama_ap or any(
+            t in ad for t in ('STRATTERA', 'ATOMINEX', 'ATTENTROL', 'ATOMERA')):
+        return 'ATOMOKSETIN'
+
+    # DESMOPRESSIN (H01BA02 — enürezis nokturna / santral DI, raporsuz a şıkkı)
+    if a.startswith('H01BA02'):
+        return 'DESMOPRESSIN'
+    if 'DESMOPRESSIN' in arama_ap or 'DESMOPRESIN' in arama_ap or any(
+            t in ad for t in ('MINIRIN', 'MINIMELT', 'NOCDURNA', 'NOQDIRNA',
+                              'OCTOSTIM', 'DESMOSPRAY', 'DESMOMELT')):
+        return 'DESMOPRESSIN'
+
+    # DEMANS/ALS (EK-4/F m.7 — donepezil/galantamin/memantin/rivastigmin/riluzol)
+    if a.startswith('N06DA') or a.startswith('N06DX01') or a.startswith('N07XX02'):
+        return 'DEMANS_ALS'
+    if any(e in arama_ap for e in ('DONEPEZIL', 'GALANTAMIN', 'MEMANTIN',
+                                   'RIVASTIGMIN', 'RILUZOL')) or any(
+            t in ad for t in ('ARICEPT', 'REMINYL', 'EBIXA', 'AXURA',
+                              'EXELON', 'RILUTEK')):
+        return 'DEMANS_ALS'
+
+    # FLUDROKORTIZON (EK-4/F m.77 — adrenal / otonom nöropati) — ATC H02AA02
+    if a.startswith('H02AA02'):
+        return 'FLUDROKORTIZON'
+    if 'FLUDROKORTIZON' in arama_ap or 'FLUDROCORTISON' in arama_ap or any(
+            t in ad for t in ('ASTONIN', 'FLORINEF')):
+        return 'FLUDROKORTIZON'
+
+    # LEFLUNOMID (SUT 4.2.1.A — romatoid/psoriatik artrit) — ATC L04AA13.
+    # Anti-TNF (L04AB*) ile çakışmaz; konvansiyonel sentetik DMARD.
+    if a.startswith('L04AA13'):
+        return 'LEFLUNOMID'
+    if 'LEFLUNOMID' in arama_ap or 'LEFLUNOMIDE' in arama_ap or any(
+            t in ad for t in ('ARAVA', 'LEFNO', 'IMMULEF', 'REPSO', 'ARABLOCK',
+                              'LEFLAR', 'LUNAVA', 'ZALEF', 'ROFLON', 'LEFLODENK')):
+        return 'LEFLUNOMID'
+
+    # IVERMEKTIN (EK-4/F — strongiloidiyaz/filariasis + insan uyuzu) — ATC P02CF01
+    if a.startswith('P02CF01'):
+        return 'IVERMEKTIN'
+    if 'IVERMEKTIN' in arama_ap or 'IVERMECTIN' in arama_ap or any(
+            t in ad for t in ('STROMECTOL', 'IVEROTOX', 'IVERZINE', 'SCABO')):
+        return 'IVERMEKTIN'
+
+    # GINKGO (EK-4/F m.55 — demans, 65 yaş+) — ATC N06DX02 (memantin N06DX01 ≠)
+    if a.startswith('N06DX02'):
+        return 'GINKGO'
+    if 'GINKGO' in arama_ap or 'GINGKO' in arama_ap or any(
+            t in ad for t in ('TEBOKAN', 'TANAKAN', 'BILOBIL', 'GINGIUM',
+                              'GINKOR', 'MEMOPLANT')):
+        return 'GINKGO'
+
+    # SETRON (EK-4/F m.11 — 5-HT3 antiemetik doz limiti) — ATC A04AA01/02/03/05.
+    # Aprepitant (A04AD12, NK1) buraya düşmez (A04AA ≠ A04AD).
+    if a.startswith('A04AA'):
+        return 'SETRON'
+    if any(e in arama_ap for e in ('PALONOSETRON', 'GRANISETRON', 'ONDANSETRON',
+                                   'TROPISETRON')) or any(
+            t in ad for t in ('ALOXI', 'KYTRIL', 'ZOFER', 'ZOFRAN', 'EMESET',
+                              'NAVOBAN', 'ONDAVELL')):
+        return 'SETRON'
+
+    # MEKLOZIN (PRİZİN — gebelik/ameliyat/röntgen sonrası bulantı) — ATC R06AE05
+    if a.startswith('R06AE05') or a.startswith('R06AE55'):
+        return 'MEKLOZIN'
+    if 'MEKLOZIN' in arama_ap or 'MECLOZINE' in arama_ap or 'MECLIZINE' in arama_ap \
+            or 'PRIZIN' in ad or 'PRİZİN' in ad:
+        return 'MEKLOZIN'
+
+    # ORLISTAT (SUT 4.2.18 — obezite) — ATC A08AB01
+    if a.startswith('A08AB01'):
+        return 'ORLISTAT'
+    if 'ORLISTAT' in arama_ap or any(
+            t in ad for t in ('XENICAL', 'ORSLIM', 'REDUMED', 'ALLI')):
+        return 'ORLISTAT'
+
+    # PENTOSAN polisülfat (EK-4/F m.69 — interstisyel sistit, üroloji) — ATC G04BX15
+    if a.startswith('G04BX15'):
+        return 'PENTOSAN'
+    if 'PENTOSAN' in arama_ap or 'ELMIRON' in ad:
+        return 'PENTOSAN'
+
+    # PIMEKROLIMUS/TAKROLIMUS topikal (SUT 4.2.58, dermatoloji) — ATC D11AH01/02.
+    # Sistemik takrolimus (L04AD02, PROGRAF) HARİÇ.
+    if a.startswith('D11AH01') or a.startswith('D11AH02'):
+        return 'PIMTAK'
+    if not a.startswith('L04AD'):
+        if 'PIMEKROLIMUS' in arama_ap or 'PIMECROLIMUS' in arama_ap \
+                or 'ELIDEL' in ad or 'PROTOPIC' in ad:
+            return 'PIMTAK'
+
+    # ANTİFUNGAL (SUT 4.2.23 sistemik) — amfoterisin/kaspofungin/anidulafungin/
+    # vorikonazol/posakonazol/itrakonazol/mikafungin. Flukonazol (J02AC01) HARİÇ.
+    if a.startswith('J02AA01') or a.startswith('J02AX04') or a.startswith('J02AX05') \
+            or a.startswith('J02AX06') or a.startswith('J02AC02') \
+            or a.startswith('J02AC03') or a.startswith('J02AC04'):
+        return 'ANTIFUNGAL'
+    if any(e in arama_ap for e in (
+            'AMFOTERISIN', 'AMPHOTERICIN', 'KASPOFUNGIN', 'ANIDULAFUNGIN',
+            'ANIDILOFUNGIN', 'MIKAFUNGIN', 'MICAFUNGIN', 'VORIKONAZOL',
+            'VORIKANAZOL', 'POSAKONAZOL', 'ITRAKONAZOL')) or any(
+            t in ad for t in ('AMBISOME', 'ABELCET', 'CANCIDAS', 'ECALTA',
+                              'MYCAMINE', 'VFEND', 'NOXAFIL', 'SPORANOX')):
+        return 'ANTIFUNGAL'
+
     if a.startswith('G04BD'):
         return 'URINER'
+    # FINASTERID/DUTASTERID (BPH 5-ARI) — G04CB* + G04CA52 (dutasterid+tamsulosin
+    # = DUODART) + etken. G04CA→BPH'den ÖNCE: DUODART (G04CA52) bu gruba düşmeli.
+    if a.startswith('G04CB') or a.startswith('G04CA52') \
+            or 'FINASTERID' in arama_ap or 'DUTASTERID' in arama_ap or any(
+                t in ad for t in ('PROSCAR', 'PROPECIA', 'AVODART', 'DUODART',
+                                  'COMBODART')):
+        return 'FINDUT'
     if a.startswith('G04CA'):
         return 'BPH'
+    # GLOKOM (SUT 4.2.11 — antiglokom S01E*) — gözyaşı (S01XA) ile çakışmaz.
+    if a.startswith('S01E'):
+        return 'GLOKOM'
     if a.startswith('S01XA') or a.startswith('S01KA') or a.startswith('S01X'):
         return 'GOZYASI'
     if a.startswith('N06AX21'):
@@ -23183,6 +22560,13 @@ def _cesitli_alt_grup_tespit(ilac_adi: str, etkin_madde: str,
     if (any(e in arama for e in _CESITLI_RANOLAZIN_ETKEN)
             or any(t in ad for t in _CESITLI_RANOLAZIN_TICARI)):
         return 'RANOLAZIN'
+    # GLOKOM etken/ticari fallback (ATC yoksa)
+    try:
+        from recete_kontrol.glokom_4_2_11 import glokom_kapsami_mi
+        if glokom_kapsami_mi({'ilac_adi': ad, 'etkin_madde': et, 'atc_kodu': a}):
+            return 'GLOKOM'
+    except Exception:
+        pass
     return 'NONE'
 
 
@@ -24147,20 +23531,26 @@ def kontrol_cesitli_hemanjiyom_4_2_62(ilac_sonuc: Dict) -> KontrolRaporu:
     )
 
 
-def kontrol_cesitli(ilac_sonuc: Dict) -> KontrolRaporu:
-    """ÇEŞİTLİ İLAÇLAR dispatcher — alt grubu tespit edip ilgili kontrole
-    yönlendirir. 5 alt grup:
-      URINER     → kontrol_cesitli_madde_45_uriner
-      GOZYASI    → kontrol_cesitli_suni_gozyasi
-      BPH        → kontrol_cesitli_bph_alfa_bloker
-      RANOLAZIN  → kontrol_ranolazin (SUT 4.2.15.F, 2026-05-13 eklendi)
-      HEMANJIYOM → kontrol_cesitli_hemanjiyom_4_2_62 (SUT 4.2.62, 2026-05-23)
-    """
-    alt_grup = _cesitli_alt_grup_tespit(
-        ilac_sonuc.get('ilac_adi', '') or '',
-        ilac_sonuc.get('etkin_madde', '') or '',
-        ilac_sonuc.get('atc_kodu', '') or '',
-    )
+# ═══════════════════════════════════════════════════════════════════════
+# GRUP → alt_grup eşlemesi (2026-06-04 yeniden gruplama)
+# ═══════════════════════════════════════════════════════════════════════
+# ÇEŞİTLİ altındaki 15 alt-kontrol klinik alana göre müstakil butonlara
+# dağıtıldı. Modüller değişmedi; her grup dispatcher'ı _cesitli_alt_grup_tespit
+# ile alt_grup'u bulup üyelik kontrolünden sonra ortak _cesitli_route'a yönlendirir.
+GRUP_UROLOJI_ALT = {'BPH', 'FINDUT', 'ALPROSTADIL', 'URINER', 'DESMOPRESSIN',
+                    'PENTOSAN'}
+GRUP_GOZ_ALT = {'GLOKOM', 'GOZYASI'}
+GRUP_DEMANS_ALT = {'DEMANS_ALS', 'GINKGO'}
+GRUP_KT_ANTIEMETIK_ALT = {'APREPITANT', 'SETRON'}
+GRUP_CESITLI_KALAN_ALT = {'HEMANJIYOM', 'FLUDROKORTIZON', 'IVERMEKTIN', 'MEKLOZIN',
+                          'LEFLUNOMID', 'ORLISTAT', 'PIMTAK', 'ANTIFUNGAL'}
+# RANOLAZIN → ❤️ İSKEMİK KALP butonu; ATOMOKSETIN → 🧠 PSİKİYATRİ/NÖROLOJİ butonu
+# (bu iki alt_grup mevcut butonların akışında işlenir, grup setlerine konmaz).
+
+
+def _cesitli_route(alt_grup: str, ilac_sonuc: Dict) -> KontrolRaporu:
+    """Tek alt_grup → ilgili modül entrypoint'i. Tüm grup dispatcher'ları ve
+    ÇEŞİTLİ butonu bu ortak yönlendiriciyi kullanır."""
     if alt_grup == 'URINER':
         return kontrol_cesitli_madde_45_uriner(ilac_sonuc)
     if alt_grup == 'GOZYASI':
@@ -24171,12 +23561,110 @@ def kontrol_cesitli(ilac_sonuc: Dict) -> KontrolRaporu:
         return kontrol_ranolazin(ilac_sonuc)
     if alt_grup == 'HEMANJIYOM':
         return kontrol_cesitli_hemanjiyom_4_2_62(ilac_sonuc)
+    if alt_grup == 'ALPROSTADIL':
+        from recete_kontrol.alprostadil_ek4f_37_1 import (
+            alprostadil_kontrol_ek4f_37_1)
+        return alprostadil_kontrol_ek4f_37_1(ilac_sonuc)
+    if alt_grup == 'APREPITANT':
+        from recete_kontrol.aprepitant_kt_bulanti import (
+            aprepitant_kontrol_kt_bulanti)
+        return aprepitant_kontrol_kt_bulanti(ilac_sonuc)
+    if alt_grup == 'GLOKOM':
+        from recete_kontrol.glokom_4_2_11 import glokom_kontrol_4_2_11
+        return glokom_kontrol_4_2_11(ilac_sonuc)
+    if alt_grup == 'ATOMOKSETIN':
+        from recete_kontrol.atomoksetin_dehb import atomoksetin_kontrol_dehb
+        return atomoksetin_kontrol_dehb(ilac_sonuc)
+    if alt_grup == 'DESMOPRESSIN':
+        from recete_kontrol.desmopressin_kontrol import desmopressin_kontrol
+        return desmopressin_kontrol(ilac_sonuc)
+    if alt_grup == 'DEMANS_ALS':
+        from recete_kontrol.demans_als_ek4f_7 import demans_als_kontrol_ek4f_7
+        return demans_als_kontrol_ek4f_7(ilac_sonuc)
+    if alt_grup == 'FINDUT':
+        from recete_kontrol.finasterid_dutasterid_bph import (
+            finasterid_dutasterid_kontrol)
+        return finasterid_dutasterid_kontrol(ilac_sonuc)
+    if alt_grup == 'FLUDROKORTIZON':
+        from recete_kontrol.fludrokortizon_ek4f_77 import (
+            fludrokortizon_kontrol_ek4f_77)
+        return fludrokortizon_kontrol_ek4f_77(ilac_sonuc)
+    if alt_grup == 'LEFLUNOMID':
+        from recete_kontrol.leflunomid_4_2_1_a import leflunomid_kontrol_4_2_1_a
+        return leflunomid_kontrol_4_2_1_a(ilac_sonuc)
+    if alt_grup == 'IVERMEKTIN':
+        from recete_kontrol.ivermektin_ek4f import ivermektin_kontrol_ek4f
+        return ivermektin_kontrol_ek4f(ilac_sonuc)
+    if alt_grup == 'MEKLOZIN':
+        from recete_kontrol.meklozin_antiemetik import meklozin_kontrol
+        return meklozin_kontrol(ilac_sonuc)
+    if alt_grup == 'ORLISTAT':
+        from recete_kontrol.orlistat_4_2_18 import orlistat_kontrol_4_2_18
+        return orlistat_kontrol_4_2_18(ilac_sonuc)
+    if alt_grup == 'PENTOSAN':
+        from recete_kontrol.pentosan_ek4f_69 import pentosan_kontrol_ek4f_69
+        return pentosan_kontrol_ek4f_69(ilac_sonuc)
+    if alt_grup == 'PIMTAK':
+        from recete_kontrol.pimekrolimus_takrolimus_4_2_58 import pimtak_kontrol_4_2_58
+        return pimtak_kontrol_4_2_58(ilac_sonuc)
+    if alt_grup == 'ANTIFUNGAL':
+        from recete_kontrol.antifungal_4_2_23 import antifungal_kontrol_4_2_23
+        return antifungal_kontrol_4_2_23(ilac_sonuc)
+    if alt_grup == 'GINKGO':
+        from recete_kontrol.ginkgo_ek4f_55 import ginkgo_kontrol_ek4f_55
+        return ginkgo_kontrol_ek4f_55(ilac_sonuc)
+    if alt_grup == 'SETRON':
+        from recete_kontrol.setron_ek4f_11 import setron_kontrol_ek4f_11
+        return setron_kontrol_ek4f_11(ilac_sonuc)
     return KontrolRaporu(
         sonuc=KontrolSonucu.ATLANDI,
-        mesaj='ÇEŞİTLİ kapsamında olmayan ilaç',
+        mesaj='Kapsam dışı ilaç',
         detaylar={'alt_grup': 'NONE'},
-        sut_kurali='ÇEŞİTLİ İLAÇLAR (M.45 / M.2 / BPH α-bloker / Ranolazin / Hemanjiyom 4.2.62)',
+        sut_kurali='ÇEŞİTLİ / grup kontrolleri')
+
+
+def _grup_kontrol(ilac_sonuc: Dict, izinli_alt: set, grup_etiket: str) -> KontrolRaporu:
+    """Ortak grup gate: alt_grup izinli sette ise route et, değilse ATLANDI."""
+    alt_grup = _cesitli_alt_grup_tespit(
+        ilac_sonuc.get('ilac_adi', '') or '',
+        ilac_sonuc.get('etkin_madde', '') or '',
+        ilac_sonuc.get('atc_kodu', '') or '',
     )
+    if alt_grup not in izinli_alt:
+        return KontrolRaporu(
+            sonuc=KontrolSonucu.ATLANDI,
+            mesaj=f'{grup_etiket} kapsamında olmayan ilaç',
+            detaylar={'alt_grup': 'NONE'}, sut_kurali=grup_etiket)
+    return _cesitli_route(alt_grup, ilac_sonuc)
+
+
+def kontrol_cesitli(ilac_sonuc: Dict) -> KontrolRaporu:
+    """🧪 ÇEŞİTLİ butonu — kalan niş kontroller (Hemanjiyom 4.2.62 + Fludrokortizon
+    EK-4/F m.77 + İvermektin EK-4/F). Diğer eski alt-gruplar 2026-06-04'te müstakil
+    butonlara taşındı."""
+    return _grup_kontrol(ilac_sonuc, GRUP_CESITLI_KALAN_ALT, 'ÇEŞİTLİ')
+
+
+def kontrol_uroloji(ilac_sonuc: Dict) -> KontrolRaporu:
+    """🚹 ÜROLOJİ/GENİTOÜRİNER — BPH α-bloker + Finasterid/Dutasterid +
+    Alprostadil + Üriner inkontinans (M.45) + Desmopressin."""
+    return _grup_kontrol(ilac_sonuc, GRUP_UROLOJI_ALT, 'ÜROLOJİ')
+
+
+def kontrol_goz(ilac_sonuc: Dict) -> KontrolRaporu:
+    """👁️ GÖZ — Glokom (4.2.11) + Suni gözyaşı (M.2)."""
+    return _grup_kontrol(ilac_sonuc, GRUP_GOZ_ALT, 'GÖZ')
+
+
+def kontrol_demans(ilac_sonuc: Dict) -> KontrolRaporu:
+    """🧠 DEMANS/NÖRODEJENERATİF — Donepezil/Memantin/Rivastigmin/Galantamin/
+    Riluzol (m.7) + Ginkgo (m.55)."""
+    return _grup_kontrol(ilac_sonuc, GRUP_DEMANS_ALT, 'DEMANS')
+
+
+def kontrol_kt_antiemetik(ilac_sonuc: Dict) -> KontrolRaporu:
+    """🤮 KT ANTİEMETİK — Aprepitant (NK1) + Setron (5-HT3, m.11)."""
+    return _grup_kontrol(ilac_sonuc, GRUP_KT_ANTIEMETIK_ALT, 'KT ANTİEMETİK')
 
 
 # CESITLI_HEMANJIYOM (SUT 4.2.62) — KATEGORI dispatcher'a runtime'da bağlanır
