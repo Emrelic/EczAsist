@@ -22520,6 +22520,13 @@ def _cesitli_alt_grup_tespit(ilac_adi: str, etkin_madde: str,
                               'MYCAMINE', 'VFEND', 'NOXAFIL', 'SPORANOX')):
         return 'ANTIFUNGAL'
 
+    # RIFAKSIMIN (EK-4 — 200/550 mg endikasyon kısıtı) — ATC A07AA11
+    if a.startswith('A07AA11'):
+        return 'RIFAKSIMIN'
+    if 'RIFAKSIMIN' in arama_ap or 'RIFAXIMIN' in arama_ap or any(
+            t in ad for t in ('NORMIX', 'TARGAXAN', 'XIFAXAN', 'RIFACOL', 'COLIDUR')):
+        return 'RIFAKSIMIN'
+
     if a.startswith('G04BD'):
         return 'URINER'
     # FINASTERID/DUTASTERID (BPH 5-ARI) — G04CB* + G04CA52 (dutasterid+tamsulosin
@@ -23543,7 +23550,8 @@ GRUP_GOZ_ALT = {'GLOKOM', 'GOZYASI'}
 GRUP_DEMANS_ALT = {'DEMANS_ALS', 'GINKGO'}
 GRUP_KT_ANTIEMETIK_ALT = {'APREPITANT', 'SETRON'}
 GRUP_CESITLI_KALAN_ALT = {'HEMANJIYOM', 'FLUDROKORTIZON', 'IVERMEKTIN', 'MEKLOZIN',
-                          'LEFLUNOMID', 'ORLISTAT', 'PIMTAK', 'ANTIFUNGAL'}
+                          'LEFLUNOMID', 'ORLISTAT', 'PIMTAK', 'ANTIFUNGAL',
+                          'RIFAKSIMIN'}
 # RANOLAZIN → ❤️ İSKEMİK KALP butonu; ATOMOKSETIN → 🧠 PSİKİYATRİ/NÖROLOJİ butonu
 # (bu iki alt_grup mevcut butonların akışında işlenir, grup setlerine konmaz).
 
@@ -23610,6 +23618,9 @@ def _cesitli_route(alt_grup: str, ilac_sonuc: Dict) -> KontrolRaporu:
     if alt_grup == 'ANTIFUNGAL':
         from recete_kontrol.antifungal_4_2_23 import antifungal_kontrol_4_2_23
         return antifungal_kontrol_4_2_23(ilac_sonuc)
+    if alt_grup == 'RIFAKSIMIN':
+        from recete_kontrol.rifaksimin_ek4f import rifaksimin_kontrol
+        return rifaksimin_kontrol(ilac_sonuc)
     if alt_grup == 'GINKGO':
         from recete_kontrol.ginkgo_ek4f_55 import ginkgo_kontrol_ek4f_55
         return ginkgo_kontrol_ek4f_55(ilac_sonuc)

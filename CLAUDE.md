@@ -210,6 +210,7 @@ Aynı seviyede 2 grup VEYA bağlı ise (örn. (a) yolu VEYA (b) yolu):
 5. `_kontrol_raporunu_satira_yaz` veya inline çağrıda `verdict_sartlar` JSON'a yazıldığından emin ol
 6. `grup` alanı + `veya_grubu` flag doğru → sema panel otomatik render eder
 7. Akıl testi yaz: en az 5-10 senaryo (UYGUN / UYGUN_DEGIL / ŞÜPHELİ + edge case)
+8. **İKİ YÜZEY ZORUNLU (bkz. §12):** GUI butonu **ve** anlık kontrol kaydı — biri olmadan iş bitmiş sayılmaz
 
 ### 10. ⚠️ ZORUNLU: SUT mevzuat çözümleme protokolü
 Yeni SUT kontrol / ilaç grubu implementasyonuna başlamadan **önce** mutlaka `docs/SUT_MANTIK_SEMA_PROTOKOLU.md` belgesini oku. Bu belge 7-adımlık metodolojiyi (SUT metni → yolak dispatcher → atomik tablo → DeMorgan → boolean formül → kullanıcı onayı → kod) ve YOAK SUT 4.2.15.D çalışılmış örneğini içerir. Bu protokole uymadan koda geçilmez; özellikle adım 1–6 "kod öncesi" tasarım aşamasıdır ve kullanıcı onayı şarttır. Pilot: YOAK D-1+D-2+EK-4/F (2026-05-11).
@@ -229,6 +230,23 @@ Bir ilaç grubunun / SUT maddesinin kontrolünü yazmaya başlamadan **önce** m
 4. Sonra adım 10'daki protokol (atomik tablo → DeMorgan → boolean formül → kod) işletilir.
 
 Bu kural ezbere kontrol yazımını engeller; SUT'taki güncel "Ek ibare/Değişik/Mülga" değişiklikleri her zaman göz önündedir.
+
+### 12. ⚠️ ZORUNLU: Her kontrol İKİ YÜZEYDE birden çalışır (buton + anlık kontrol)
+Yeni bir SUT/ilaç grubu kontrolü yazıldığında **her zaman** iki yerde birden devreye alınır — kullanıcının ayrıca söylemesine gerek yoktur, bu **varsayılan kuraldır** (kullanıcı talebi 2026-06-05):
+
+1. **Aylık reçete kontrolü (sonradan / retrospektif):** `aylik_recete_sorgu_gui.py` içinde bir **buton** ile çalışır. Buton şu üç biçimden biri olabilir:
+   - **Kendi müstakil butonu** (ör. 🤧 4.2.3 ALERJİ AŞISI),
+   - **Ortak buton** (birkaç ilgili kontrolü tek butonda toplayan grup runner), veya
+   - **ÇEŞİTLİ butonu altında** (klinik alana göre gruplanmış alt-kontrol).
+   Gerekli yardımcılar: `_<kontrol>_kategori` (kapsam tespiti), `_ilac_sonuc_olustur_<kontrol>` (satır→ilac_sonuc; gereken enrichment'i `_kanser_gcsf_rapor_bilgi_topla` / `_rapor_heyet_doktor_topla` ile zenginleştir) ve `_<kontrol>_kontrol_baslat` (runner). Sonuç `_kontrol_raporunu_satira_yaz` ile satıra yazılır.
+
+2. **Anlık (canlı) kontrol:** `recete_kontrol/anlik_kontrol.py` içindeki `_EK_MODUL_DISPATCH` kayıt defterine bir satır eklenir:
+   `('KATEGORI', 'recete_kontrol.<modul>', '<tespit_fn>', '<kontrol_fn>')`.
+   Tespit fonksiyonu (`*_kapsami_mi` / `*_yolak_belirle` / `_ilac_sinifi`) ve giriş fonksiyonu **sadece `ilac_sonuc` argümanı alacak** imzada olmalı. Botanik'e yeni reçete kaydedildiğinde MAX(RxId) polling ile yakalanır, kapsam içiyse atomik motor çağrılır; UYGUN DEĞİL/ŞÜPHELİ ise öne gelen sesli uyarı çıkar. Kapsam dışı → motor `ATLANDI` döner → registry fall-through ile genel dispatcher'a düşer (hijack yok).
+   - Anlık bağlamda EOS enrichment (rapor_turu/heyet) bulunmayabilir → modül bu durumda KE+şartlı'ya düşmeli (sessizce UYGUN sayma — örtük kabul yasağı).
+   - İstisna: antiepileptik/nöropatik/hepatit/psikiyatri/solunum zaten genel dispatcher kategorilerinde; bunlar `_EK_MODUL_DISPATCH`'e **tekrar eklenmez** (çakışma riski).
+
+Kısacası: **buton olmadan ya da anlık kayıt olmadan kontrol "tamamlanmış" sayılmaz.** Memory'de "anlık'a eklendi mi" durumunu mutlaka not et. Bkz. `project_anlik_kontrol_tum_modul_registry.md`.
 
 ## Kullanıcı Kısaltmaları
 - **\*sss** = "Soracağın soru var ise sor". Bu kısaltma görüldüğünde sorularımı sormalıyım.

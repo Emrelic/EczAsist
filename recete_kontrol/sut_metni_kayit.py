@@ -55,6 +55,48 @@ _FALLBACK_METINLER: Dict[str, str] = {
         "tarafından en fazla birer aylık dozda reçete edilmesi halinde bedeli "
         "ödenir."
     ),
+
+    # SUT 4.2.14.C-(çç) — Ruksolitinib (Değişik:RG-19/10/2023-32344)
+    'RUKSOLITINIB': (
+        "4.2.14.C-(çç) Ruksolitinib\n"
+        "(1) Primer miyelofibrozis, post polistemik miyelofibrosis veya "
+        "esansiyel trombositemi sonrası ikincil miyelofibrosis tanılı "
+        "hastalarda splenomegaliye bağlı semptomların tedavisinde aşağıdaki "
+        "koşulların tümünü taşıyan hastalarda ilaca başlanır: "
+        "a) Semptomatik masif splenomegalisi bulunan, "
+        "b) DIPPS plus skorlama sistemine göre orta veya yüksek risk grubu olan, "
+        "c) En az bir seri tedavi almış ve uluslararası çalışma grubu uzlaşı "
+        "kriterlerine göre 8 haftadan fazla süren kot kavsi altında fizik "
+        "muayene ile ölçülen dalak boyutunda başlangıca göre ≥%50 (USG ile "
+        "ölçülen dalak hacminde ≥%35) azalma elde edilemeyen veya elde edilen "
+        "yanıtı kaybolan, "
+        "ç) Güncel kan sayım değerlerinde trombosit sayısının ≥100.000/mm3, "
+        "hemoglobin düzeyinin ≥8 g/dl, nötrofil sayısının ≥1000/mm3 ve çevresel "
+        "kan blast oranı <%10 olan, d) Kemik iliği nakline uygun olmayan.\n"
+        "(2) Tedaviye başlandıktan 6 ay sonra yapılan yanıt değerlendirmesinde "
+        "dalak boyutunda bir azalma yoksa veya konstitusyonel semptomlarda "
+        "(ateş, gece terlemesi, kilo kaybı veya kaşıntı) tedavinin başlangıcından "
+        "beri bir iyileşme görülmemişse tedavi kesilir.\n"
+        "(3) Kortikosteroidler veya diğer sistemik tedavilere yetersiz yanıt "
+        "veren; derece 2-4 akut Graft versus Host hastalığı (aGvHD) olan veya "
+        "orta-ağır kronik Graft versus Host hastalığı (kGvHD) olan 12 yaş ve "
+        "üzerindeki hastaların tedavisine ruxolitinib başlanabilir. aGvHD'de "
+        "14. günde, kGvHD'de 6. ayda tam veya kısmi yanıt alınan hastalarda "
+        "devam edilir.\n"
+        "(4) JAK 2 (V617F veya Exon 12) mutasyonlarının varlığı ile Polisitemi "
+        "Vera (PV) tanısı konulmuş olgularda; en az birini karşıladığı raporda "
+        "belirtilmek koşuluyla: 1- ≥2 g/gün veya maksimum dozda hidroksiüre ile "
+        "≥3 aylık tedaviye rağmen (a. Hct<%45 için ayda >1 flebotomi, b. "
+        "trombosit>400000 ve beyaz küre>10000, c. dalakta USG ile küçülme yok, "
+        "ç. yeni tromboz); 2- en düşük HÜ dozunda nötrofil<1000 ya da "
+        "trombosit<100000 ya da hemoglobin<10; 3- HÜ ilişkili bacak ülseri / "
+        "kontrol edilemeyen mukokutanöz belirti.\n"
+        "(5) PV tanılı hastaların 32 haftalık tedavi sonunda dalakta minimum "
+        "%35 küçülme ve tam kan sayımının normalize olması halinde devam edilir.\n"
+        "(6) Üçüncü basamak resmi sağlık hizmeti sunucularında en az bir "
+        "hematoloji uzmanının bulunduğu 3 ay süreli sağlık kurulu raporuna "
+        "dayanılarak hematoloji uzman hekimlerince reçete edilir."
+    ),
 }
 
 
