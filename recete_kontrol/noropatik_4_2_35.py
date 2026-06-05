@@ -180,11 +180,16 @@ def _rapor_brans_adaylar(ilac_sonuc: Dict) -> List[str]:
 
 
 def _3basamak(ilac_sonuc: Dict) -> Optional[bool]:
-    """Rapor/tesis 3. basamak mı? True/False/None(belirsiz)."""
+    """Rapor/tesis 2. veya 3. basamak mı? True/None(belirsiz).
+
+    SUT 4.2.35.A/B: 'ikinci veya üçüncü basamak SHS'de düzenlenen' → 2. basamak
+    (devlet hastanesi) da yeterli. Bu nedenle hem 2. hem 3. basamak ibareleri taranır.
+    """
     metin = _rapor_metni(ilac_sonuc)
     if any(k in metin for k in ('ucuncu basamak', '3. basamak', '3.basamak',
+                                'ikinci basamak', '2. basamak', '2.basamak',
                                 'egitim arastirma', 'universite hastane',
-                                'sehir hastane', 'tip fakultesi')):
+                                'sehir hastane', 'tip fakultesi', 'devlet hastane')):
         return True
     return None  # parse edilemedi
 
@@ -439,9 +444,13 @@ def atom_sure_6ay(ilac_sonuc: Dict, grup: str) -> SartSonuc:
                              kaynak='rapor_metni', grup=grup)
         except ValueError:
             pass
+    # Parse edilemedi → CLAUDE.md §6: rapor süresi gibi okunamayan yapısal şart
+    # (bilgi) grubuna alınır; matematiği bozmaz, görsel olarak görünür.
+    # (antiepileptik_4_2_25 süre atomu ile hizalı). Parse EDİLEN >6 ay ihlali
+    # ise yukarıda düz grupta YOK döner → UYGUN DEĞİL korunur.
     return SartSonuc(ad='Rapor süresi ≤ 6 ay', durum=SartDurumu.KONTROL_EDILEMEDI,
-                     neden='Rapor süresi metinden okunamadı — manuel',
-                     kaynak='rapor_metni', grup=grup, sartli_atom=True)
+                     neden='Rapor süresi metinden okunamadı — manuel (bilgi)',
+                     kaynak='rapor_metni', grup=f'{grup} (bilgi)', sartli_atom=True)
 
 
 # ── Endikasyon atomları ──
@@ -820,6 +829,20 @@ def _senaryolar() -> List[Tuple[str, Dict, KontrolSonucu]]:
             'etkin_madde': 'PREGABALIN', 'brans': 'Endokrinoloji',
             'recete_teshisleri': ['M79.7 FIBROMIYALJI'], 'rapor_kodu': '7',
             'heyet_doktorlari': [{'ad': 'A', 'brans': 'FTR'}],
+        }, KontrolSonucu.UYGUN_DEGIL),
+        # 2. basamak (devlet hastanesi) algılanmalı + süre okunamasa da (bilgi) → UYGUN
+        ("P_A2 UYGUN (pregabalin nöropatik, 2.basamak devlet hast., süre yok→bilgi)", {
+            'etkin_madde': 'PREGABALIN', 'brans': 'Nöroloji',
+            'recete_teshisleri': ['G62.9 NÖROPATİK AĞRI'], 'rapor_kodu': '8',
+            'heyet_doktorlari': [{'ad': 'A', 'brans': 'Nöroloji'}],
+            'rapor_metni': 'ikinci basamak devlet hastanesi saglik kurulu raporu',
+        }, KontrolSonucu.UYGUN),
+        # >6 ay süre parse EDİLEN ihlal → (bilgi) değil, düz grupta YOK → UYGUN DEĞİL
+        ("P_A2 UYGUN DEĞİL (pregabalin nöropatik, rapor 12 ay >6)", {
+            'etkin_madde': 'PREGABALIN', 'brans': 'Nöroloji',
+            'recete_teshisleri': ['G62.9 NÖROPATİK AĞRI'], 'rapor_kodu': '8',
+            'heyet_doktorlari': [{'ad': 'A', 'brans': 'Nöroloji'}],
+            'rapor_metni': 'ucuncu basamak 12 ay sureli saglik kurulu raporu',
         }, KontrolSonucu.UYGUN_DEGIL),
         # ── D — Duloksetin ──
         ("D_A3 UYGUN (duloksetin diyabetik nöropati, reçeteci endokrin)", {
