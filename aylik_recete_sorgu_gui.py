@@ -2990,8 +2990,8 @@ class AylikReceteSorguGUI:
         # ── 4.2.1.C-2…C-14 BİYOLOJİK butonu (anti-TNF dışı) ──
         # Rituksimab/abatasept/ustekinumab/tosilizumab/JAK inh./kanakinumab/
         # anakinra/vedolizumab/sekukinumab/iksekizumab/guselkumab/risankizumab/
-        # apremilast/bimekizumab. Arketip arketip implementasyon: şu an Arketip A
-        # (plak psöriazis / PASI 75 / dermatoloji SK rapor — C-4/9/10/11/12/13/14).
+        # apremilast/bimekizumab. Tüm endikasyonlar (psöriazis/RA/PsA/AS/Crohn/
+        # ÜK/JİA/otoinflamatuar/GPA/pemfigus/atopik/HS) atomik motorla denetlenir.
         # Atomik motor: recete_kontrol/biyolojik_4_2_1_c.py
         self.btn_biyolojik = tk.Button(
             row_diger2, text="🧬 4.2.1.C BİYOLOJİK",
@@ -26623,8 +26623,10 @@ class AylikReceteSorguGUI:
 
     def _biyolojik_kontrol_baslat(self):
         """SUT 4.2.1.C-2…C-14 KONTROL butonu — anti-TNF dışı biyolojik ajanlar.
-        Arketip arketip: şu an Arketip A (plak psöriazis / PASI 75 / dermatoloji
-        SK rapor). Diğer endikasyonlar sonraki turda eklenir (şimdilik manuel)."""
+        Tüm endikasyonlar: psöriazis/RA/PsA/AS/Crohn/ÜK/JİA/otoinflamatuar
+        (FMF/CAPS/TRAPS/Still/DHA)/GPA/pemfigus/atopik dermatit/hidradenit.
+        Yapısal şartlar net YOK → UYGUN DEĞİL; klinik şartlar parse-dene →
+        sessiz KE+şartlı (örtük kabul yasağı)."""
         if not self.tum_satirlar:
             messagebox.showinfo(
                 "4.2.1.C Biyolojik Kontrol",
@@ -26727,8 +26729,8 @@ class AylikReceteSorguGUI:
             f"  ✗ UYGUN DEĞİL     : {sayac['UYGUN DEĞİL']}\n"
             f"  ? ŞÜPHELİ         : {sayac['ŞÜPHELİ']}\n\n"
             f"Madde dağılımı:\n{madde_ozet}\n\n"
-            f"Not: Şu an Arketip A (plak psöriazis) tam; diğer endikasyonlar "
-            f"sonraki turda eklenecek.\n"
+            f"Kapsam: C-2…C-14 tüm endikasyonlar (psöriazis/RA/PsA/AS/Crohn/ÜK/"
+            f"JİA/otoinflamatuar/GPA/pemfigus/atopik/HS).\n"
             f"Kapsam dışı (atlanan)  : {sayac['_kapsam_disi']}",
             parent=self.root)
 

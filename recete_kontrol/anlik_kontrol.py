@@ -77,6 +77,11 @@ _EK_MODUL_DISPATCH: List[Tuple[str, str, str, str]] = [
      'melanom_yolak_belirle', 'melanom_kontrol_4_2_14_c_z'),
     ('LEFLUNOMID', 'recete_kontrol.leflunomid_4_2_1_a',
      'leflunomid_kapsami_mi', 'leflunomid_kontrol_4_2_1_a'),
+    # ── Biyolojik ajanlar (anti-TNF dışı) SUT 4.2.1.C-2…C-14 ──
+    # anti-TNF (L04AB*) C-1 genel dispatcher'da; bu kayıt L04AC/L04AF/L01FA/
+    # L04AA biyolojiklerini kapsar (çakışma yok). Kapsam dışı → ATLANDI → fall-through.
+    ('BIYOLOJIK_C', 'recete_kontrol.biyolojik_4_2_1_c',
+     'biyolojik_kapsami_mi', 'biyolojik_kontrol_4_2_1_c'),
     # ── Hematoloji / Nefroloji ──
     ('PARENTERAL_DEMIR', 'recete_kontrol.parenteral_demir_4_2_41',
      '_ilac_sinifi', 'parenteral_demir_kontrol_4_2_41'),

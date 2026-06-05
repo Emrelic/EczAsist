@@ -23,9 +23,10 @@ Resmî SUT lafzı: ``docs/sut/SUT_tam_metin.txt:4214-4710`` (+ genel ilkeler
 
 ═══════════════════════════════════════════════════════════════════════════
 ARKETİP TASARIMI (arketip arketip implementasyon — kullanıcı onayı 2026-06-05)
+TÜMÜ TAMAM (A–H), 34/34 akıl testi geçiyor.
 ═══════════════════════════════════════════════════════════════════════════
   A  Plak Psöriazis / PASI 75 / Dermatoloji  → C-4(1) C-9(2) C-10(1) C-11
-     C-12 C-13(2) C-14(1)                       [BU TURDA — TAMAM]
+     C-12 C-13(2) C-14(1)
   B  RA / DAS28 / Romatoloji                  → C-2(1) C-3(1) C-5(1) C-6(1,2)
   C  PsA / PSARC                              → C-4(2) C-6(3) C-9(3) C-10(2) C-13(1)
   D  AS / BASDAİ                              → C-6(4,5) C-9(1)
@@ -59,11 +60,17 @@ from recete_kontrol.tr_normalize import norm_tr_upper, norm_tr_lower
 # C-1 modülünden ortak yardımcı + atomları yeniden kullan (tek kaynak)
 from recete_kontrol.anti_tnf_4_2_1_c1 import (
     _arama_metni, _iceriyor, _rapor_metni, _teshis_birlesik, _icd_var,
-    _yas_oku, _lab_deger, _skor_atom,
+    _yas_oku, _lab_deger, _skor_atom, _akut_faz_veya_atom,
     atom_saglik_kurulu_raporu, atom_yas_op, atom_recete_brans,
     atom_heyet_brans, atom_ucuncu_basamak, _onceki_tedavi_atom, _genel_sonuc,
-    DERMATOLOJI, ROMATOLOJI, KLINIK_IMMUN, FTR, IC_HAST,
+    DERMATOLOJI, ROMATOLOJI, KLINIK_IMMUN, FTR, IC_HAST, COCUK_HAST,
+    GASTRO, GENEL_CERRAHI,
 )
+
+# C-1'de olmayan ek branş kümeleri (Arketip F/G/H)
+NEFROLOJI = ['nefroloji']
+COCUK_ROMATOLOJI = ['cocuk romatoloji', 'çocuk romatoloji', 'pediatrik romatoloji']
+IMMUN_ALERJI = ['immunoloji', 'immünoloji', 'immunoloj', 'alerji', 'alerjik']
 
 # Not: NEFROLOJI / çocuk romatoloji gibi ek branş kümeleri arketip F/G/H
 # turunda yerel olarak tanımlanacak.
@@ -112,10 +119,8 @@ MADDE_ATC: Dict[str, Tuple[str, ...]] = {
 
 HEPSI: Set[str] = set().union(*[e for _, e in MADDE_ETKEN])
 
-# ─── AKTİF kapsam (arketip eklendikçe genişler) ─────────────────────────
-# Arketip A (psöriazis): C4,C9,C10,C11,C12,C13,C14
-# Arketip B (RA/DAS28):  C2,C3,C5,C6
-AKTIF_MADDELER: Set[str] = {'C2', 'C3', 'C4', 'C5', 'C6',
+# ─── AKTİF kapsam (tüm maddeler — Arketip A–H) ──────────────────────────
+AKTIF_MADDELER: Set[str] = {'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8',
                             'C9', 'C10', 'C11', 'C12', 'C13', 'C14'}
 
 # Madde → kullanıcıya gösterilecek ad (GUI özet / mesaj)
@@ -131,6 +136,17 @@ MADDE_ADLARI: Dict[str, str] = {
 ICD_PSO = ('L40',)
 ICD_PSA = ('L40.5', 'M07')   # psöriyatik artrit — Arketip C (psöriazisten ayır)
 ICD_RA = ('M05', 'M06')      # romatoid artrit (erişkin)
+ICD_AS = ('M45', 'M46')      # ankilozan spondilit / aksiyel spondiloartrit
+ICD_CROHN = ('K50',)
+ICD_UK = ('K51',)
+ICD_JIA = ('M08',)           # juvenil idiyopatik artrit
+ICD_ATOPIK = ('L20',)        # atopik dermatit
+ICD_GPA = ('M31.3', 'M31.7')  # granülomatöz polianjit / mikroskopik polianjit
+ICD_PEMFIGUS = ('L10',)
+ICD_HS = ('L73.2', 'L73')
+ICD_FMF = ('E85.0', 'E85', 'M04.1')
+ICD_DHA = ('M31.5', 'M31.6')  # dev hücreli arterit
+ICD_STILL = ('M06.1',)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -172,12 +188,141 @@ RA_META: Dict[str, Dict] = {
            'rapor': '3 ay → 6 ay', 'mtx': False, 'ic_hast': True},
 }
 
+# Arketip C (PsA / PSARC) — branş listeleri SUT lafzına göre madde-bazlı
+RA_FTR = ROMATOLOJI + FTR
+PSA_META: Dict[str, Dict] = {
+    'C4':  {'ad': 'Ustekinumab', 'sut': '4.2.1.C-4 (2)', 'anti_tnf': True,
+            'heyet': RA_FTR, 'recete': RA_FTR, 'recete_ad': 'romatoloji/FTR'},
+    'C6':  {'ad': 'Tofa/Upadasitinib', 'sut': '4.2.1.C-6 (3)', 'anti_tnf': True,
+            'heyet': ROMATOLOJI, 'recete': ROMATOLOJI, 'recete_ad': 'romatoloji'},
+    'C9':  {'ad': 'Sekukinumab', 'sut': '4.2.1.C-9 (3)', 'anti_tnf': True,
+            'heyet': RA_FTR, 'recete': RA_FTR, 'recete_ad': 'romatoloji/FTR'},
+    'C10': {'ad': 'İksekizumab', 'sut': '4.2.1.C-10 (2)', 'anti_tnf': True,
+            'heyet': RA_FTR, 'recete': RA_FTR, 'recete_ad': 'romatoloji/FTR'},
+    'C13': {'ad': 'Apremilast', 'sut': '4.2.1.C-13 (1)', 'anti_tnf': False,
+            'heyet': ROMATOLOJI + KLINIK_IMMUN + FTR,
+            'recete': ROMATOLOJI + KLINIK_IMMUN + FTR + IC_HAST,
+            'recete_ad': 'romatoloji/klinik immün/FTR/iç hast.'},
+}
+
 PSO_MADDELER: Set[str] = set(PSO_META)   # C4,C9,C10,C11,C12,C13,C14
 RA_MADDELER: Set[str] = set(RA_META)     # C2,C3,C5,C6
+PSA_MADDELER: Set[str] = set(PSA_META)   # C4,C6,C9,C10,C13
+
+# Romatolojik ortak branş kümeleri
+ROM_KI_FTR = ROMATOLOJI + KLINIK_IMMUN + FTR
+GASTRO_CER = GASTRO + GENEL_CERRAHI
+
+# Arketip D–H: ENDIK_META[endik][madde] = parametreler
+ENDIK_META: Dict[str, Dict[str, Dict]] = {
+    # ── Arketip D: AS / BASDAİ ──
+    'AS': {
+        'C6': {'ad': 'Tofa/Upadasitinib', 'sut': '4.2.1.C-6 (4)(5)',
+               'basamak': 'anti_tnf', 'basdai': False, 'akut': False,
+               'heyet': ROM_KI_FTR, 'recete': ROM_KI_FTR + IC_HAST,
+               'recete_ad': 'romatoloji/klinik immün/FTR/iç hast.'},
+        'C9': {'ad': 'Sekukinumab', 'sut': '4.2.1.C-9 (1)',
+               'basamak': 'nsai', 'basdai': True, 'akut': True,
+               'heyet': ROM_KI_FTR, 'recete': ROM_KI_FTR + IC_HAST,
+               'recete_ad': 'romatoloji/klinik immün/FTR/iç hast.'},
+    },
+    # ── Arketip E: Crohn ──
+    'CROHN': {
+        'C4': {'ad': 'Ustekinumab', 'sut': '4.2.1.C-4 (3)'},
+        'C6': {'ad': 'Upadasitinib', 'sut': '4.2.1.C-6 (6)'},
+        'C8': {'ad': 'Vedolizumab', 'sut': '4.2.1.C-8 (1)'},
+    },
+    # ── Arketip E: Ülseratif kolit ──
+    'UK': {
+        'C4': {'ad': 'Ustekinumab', 'sut': '4.2.1.C-4 (4)'},
+        'C6': {'ad': 'Tofa/Upadasitinib', 'sut': '4.2.1.C-6 (7)(9)'},
+        'C8': {'ad': 'Vedolizumab', 'sut': '4.2.1.C-8 (2)'},
+    },
+    # ── Arketip F: Juvenil / pediatrik (ACR pediatrik) ──
+    'JIA': {
+        'C3': {'ad': 'Abatasept', 'sut': '4.2.1.C-3 (2)',
+               'recete': COCUK_ROMATOLOJI + COCUK_HAST,
+               'recete_ad': 'çocuk romatoloji/çocuk hast.'},
+        'C5': {'ad': 'Tosilizumab', 'sut': '4.2.1.C-5 (2)(3)',
+               'recete': COCUK_ROMATOLOJI + COCUK_HAST,
+               'recete_ad': 'çocuk romatoloji/çocuk hast.'},
+        'C6': {'ad': 'Tofacitinib', 'sut': '4.2.1.C-6 (10)',
+               'recete': COCUK_ROMATOLOJI, 'recete_ad': 'çocuk romatoloji'},
+        'C7': {'ad': 'Kanakinumab/Anakinra', 'sut': '4.2.1.C-7 (1)',
+               'recete': COCUK_ROMATOLOJI, 'recete_ad': 'çocuk romatoloji'},
+    },
+    # ── Arketip G: Otoinflamatuar (FMF/CAPS/TRAPS/Still/DHA) — klinik=KE ──
+    'OTOINF': {
+        'C5': {'ad': 'Tosilizumab (DHA)', 'sut': '4.2.1.C-5 (4)',
+               'heyet': ROMATOLOJI + KLINIK_IMMUN,
+               'recete': ROMATOLOJI + KLINIK_IMMUN,
+               'recete_ad': 'romatoloji/immünoloji'},
+        'C6': {'ad': 'Upadasitinib (DHA)', 'sut': '4.2.1.C-6 (11)',
+               'heyet': ROMATOLOJI + KLINIK_IMMUN,
+               'recete': ROMATOLOJI + KLINIK_IMMUN,
+               'recete_ad': 'romatoloji/immünoloji'},
+        'C7': {'ad': 'Kanakinumab/Anakinra (FMF/CAPS/TRAPS/Still)',
+               'sut': '4.2.1.C-7 (2)(3)(4)(5)',
+               'heyet': ROMATOLOJI + NEFROLOJI,
+               'recete': ROMATOLOJI + NEFROLOJI,
+               'recete_ad': 'romatoloji (FMF amiloidoz: +nefroloji)'},
+    },
+    # ── Arketip H: Özel ──
+    'GPA': {
+        'C2': {'ad': 'Rituksimab (GPA/MPA)', 'sut': '4.2.1.C-2 (2)',
+               'heyet': ROMATOLOJI + KLINIK_IMMUN + NEFROLOJI,
+               'recete': ROMATOLOJI + KLINIK_IMMUN + NEFROLOJI,
+               'recete_ad': 'romatoloji/klinik immün/nefroloji'},
+    },
+    'PEMFIGUS': {
+        'C2': {'ad': 'Rituksimab (pemfigus vulgaris)', 'sut': '4.2.1.C-2 (3)',
+               'heyet': DERMATOLOJI, 'recete': DERMATOLOJI,
+               'recete_ad': 'dermatoloji'},
+    },
+    'ATOPIK': {
+        'C6': {'ad': 'Upa/Bari/Abrositinib (atopik dermatit)',
+               'sut': '4.2.1.C-6 (8)',
+               'heyet': DERMATOLOJI + IMMUN_ALERJI,
+               'recete': DERMATOLOJI + IMMUN_ALERJI,
+               'recete_ad': 'dermatoloji/immünoloji/immünoloji-alerji'},
+    },
+    'HS': {
+        'C9': {'ad': 'Sekukinumab (hidradenitis süpürativa)',
+               'sut': '4.2.1.C-9 (4)', 'heyet': DERMATOLOJI,
+               'recete': DERMATOLOJI, 'recete_ad': 'dermatoloji'},
+    },
+}
+
+# Madde → desteklenen endikasyonlar (öncelik sırası; spesifik ICD önce)
+MADDE_ENDIK_SIRA: Dict[str, List[str]] = {
+    'C2': ['RA', 'GPA', 'PEMFIGUS'],
+    'C3': ['RA', 'JIA'],
+    'C4': ['PSA', 'PSO', 'CROHN', 'UK'],
+    'C5': ['RA', 'JIA', 'OTOINF'],
+    'C6': ['PSA', 'RA', 'AS', 'CROHN', 'UK', 'ATOPIK', 'JIA', 'OTOINF'],
+    'C7': ['JIA', 'OTOINF'],
+    'C8': ['CROHN', 'UK'],
+    'C9': ['PSA', 'AS', 'HS', 'PSO'],
+    'C10': ['PSA', 'PSO'],
+    'C11': ['PSO'],
+    'C12': ['PSO'],
+    'C13': ['PSA', 'PSO'],
+    'C14': ['PSO'],
+}
 
 
 def _madde_meta(madde: str) -> Dict:
-    return PSO_META.get(madde) or RA_META.get(madde) or {}
+    return PSO_META.get(madde) or RA_META.get(madde) or PSA_META.get(madde) or {}
+
+
+def _endik_meta(madde: str, endik: str) -> Dict:
+    if endik == 'PSO':
+        return PSO_META.get(madde, {})
+    if endik == 'RA':
+        return RA_META.get(madde, {})
+    if endik == 'PSA':
+        return PSA_META.get(madde, {})
+    return ENDIK_META.get(endik, {}).get(madde, {})
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -202,37 +347,58 @@ def biyolojik_madde_belirle(ilac_sonuc: Dict) -> Optional[str]:
     return None
 
 
-def biyolojik_endikasyon_belirle(ilac_sonuc: Dict, madde: str) -> str:
-    """Madde içi endikasyon yolağını belirle: PSO | RA | DIGER (stub)."""
+def _endik_eslesir(ilac_sonuc: Dict, endik: str, madde: str) -> bool:
+    """Reçete/rapor verisi verilen endikasyona (ICD ∨ metin) uyuyor mu?"""
     teshis = _teshis_birlesik(ilac_sonuc)
     metin = _rapor_metni(ilac_sonuc)
-    yas = _yas_oku(ilac_sonuc)
+    if endik == 'PSA':
+        return (_icd_var(teshis, ICD_PSA) or 'psoriyatik artrit' in metin
+                or 'psoriatik artrit' in metin)
+    if endik == 'PSO':
+        if madde in {'C11', 'C12', 'C14'}:   # yalnız-psöriazis ilaçları
+            return True
+        return (_icd_var(teshis, ICD_PSO) or 'plak psoriazis' in metin
+                or 'plak tip psoriazis' in metin or 'psoriazis vulgaris' in metin
+                or 'psoriasis' in metin or 'sedef' in metin or 'psoriazis' in metin)
+    if endik == 'RA':
+        return _icd_var(teshis, ICD_RA) or 'romatoid artrit' in metin
+    if endik == 'AS':
+        return (_icd_var(teshis, ICD_AS) or 'ankilozan spondilit' in metin
+                or 'spondiloartrit' in metin or 'spondilartrit' in metin)
+    if endik == 'CROHN':
+        return _icd_var(teshis, ICD_CROHN) or 'crohn' in metin
+    if endik == 'UK':
+        return (_icd_var(teshis, ICD_UK) or 'ulseratif kolit' in metin
+                or 'ülseratif kolit' in metin)
+    if endik == 'JIA':
+        return (_icd_var(teshis, ICD_JIA) or 'juvenil' in metin
+                or 'juvenil' in metin or 'juvenil idiyopatik' in metin)
+    if endik == 'ATOPIK':
+        return _icd_var(teshis, ICD_ATOPIK) or 'atopik dermatit' in metin
+    if endik == 'GPA':
+        return (_icd_var(teshis, ICD_GPA) or 'granulomatoz' in metin
+                or 'granülomatöz' in metin or 'wegener' in metin
+                or 'polianjit' in metin or 'polianjiitis' in metin)
+    if endik == 'PEMFIGUS':
+        return _icd_var(teshis, ICD_PEMFIGUS) or 'pemfigus' in metin
+    if endik == 'HS':
+        return (_icd_var(teshis, ICD_HS) or 'hidradenit' in metin
+                or 'akne inversa' in metin)
+    if endik == 'OTOINF':
+        return (_icd_var(teshis, ICD_FMF + ICD_DHA + ICD_STILL)
+                or 'ailevi akdeniz' in metin or 'fmf' in metin
+                or 'kriyopirin' in metin or 'caps' in metin or 'traps' in metin
+                or 'hids' in metin or 'mevalonat' in metin
+                or 'dev hucreli arterit' in metin or 'dev hücreli arterit' in metin
+                or 'still' in metin or 'periyodik ates' in metin)
+    return False
 
-    # ── Arketip A: psöriazis ilaçları ──
-    if madde in PSO_MADDELER:
-        pso_artrit = (_icd_var(teshis, ICD_PSA) or 'psoriyatik artrit' in metin
-                      or 'psoriatik artrit' in metin)
-        plak_pso = (_icd_var(teshis, ICD_PSO) or 'plak psoriazis' in metin
-                    or 'plak tip psoriazis' in metin
-                    or 'psoriazis vulgaris' in metin or 'psoriasis' in metin
-                    or 'sedef' in metin or ('psoriazis' in metin and not pso_artrit))
-        # Yalnız-psöriazis ilaçları (C-11/C-12/C-14): her halükârda PSO
-        if madde in {'C11', 'C12', 'C14'}:
-            return 'PSO'
-        if pso_artrit and not plak_pso:
-            return 'DIGER'   # PsA — Arketip C (sonraki tur)
-        if plak_pso:
-            return 'PSO'
-        return 'DIGER'
 
-    # ── Arketip B: RA ilaçları ──
-    if madde in RA_MADDELER:
-        if _icd_var(teshis, ICD_RA) or 'romatoid artrit' in metin:
-            if yas is not None and yas < 18:
-                return 'DIGER'   # juvenil RA — Arketip F (sonraki tur)
-            return 'RA'
-        return 'DIGER'
-
+def biyolojik_endikasyon_belirle(ilac_sonuc: Dict, madde: str) -> str:
+    """Madde içi endikasyon yolağını belirle (öncelik sırasıyla); yoksa DIGER."""
+    for endik in MADDE_ENDIK_SIRA.get(madde, []):
+        if _endik_eslesir(ilac_sonuc, endik, madde):
+            return endik
     return 'DIGER'
 
 
@@ -430,6 +596,325 @@ def ra_kontrol(ilac_sonuc: Dict, madde: str) -> List[SartSonuc]:
     return s
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# ARKETİP C ATOMLARI (PsA / PSARC)
+# ═══════════════════════════════════════════════════════════════════════
+def _atom_psa_endikasyon(ilac_sonuc: Dict, grup: str) -> SartSonuc:
+    """Aktif psöriyatik artrit endikasyonu (L40.5 / M07 ∨ metin). Yapısal."""
+    teshis = _teshis_birlesik(ilac_sonuc)
+    metin = _rapor_metni(ilac_sonuc)
+    if (_icd_var(teshis, ICD_PSA) or 'psoriyatik artrit' in metin
+            or 'psoriatik artrit' in metin):
+        return SartSonuc(ad='Psöriyatik artrit endikasyonu', durum=SartDurumu.VAR,
+                         neden='PsA endikasyonu (ICD L40.5/M07 / rapor metni)',
+                         kaynak='teshis+rapor', grup=grup)
+    return SartSonuc(ad='Psöriyatik artrit endikasyonu', durum=SartDurumu.YOK,
+                     neden='PsA endikasyonu (L40.5/M07 / metin) bulunamadı',
+                     kaynak='teshis+rapor', grup=grup)
+
+
+def psa_kontrol(ilac_sonuc: Dict, madde: str) -> List[SartSonuc]:
+    """PsA / PSARC ortak yolağı (C-4(2)/C-6(3)/C-9(3)/C-10(2)/C-13(1))."""
+    meta = PSA_META[madde]
+    p = meta['sut']
+    s: List[SartSonuc] = []
+    s.append(atom_yas_op(ilac_sonuc, f'{p} Erişkin (yaş ≥18)', '>=', 18,
+                         'Erişkin (yaş ≥18)'))
+    s.append(_atom_psa_endikasyon(ilac_sonuc, f'{p} Psöriyatik artrit endikasyonu'))
+    s.append(_onceki_tedavi_atom(
+        ilac_sonuc, f'{p} ≥3 DMARD (3\'er ay) uygun doz',
+        "≥3 DMARD uygun dozunda en az 3'er ay",
+        ['dmard', 'hastalik modifiye', 'methotrexat', 'metotreksat',
+         'leflunomid', 'sulfasalazin']))
+    if meta['anti_tnf']:
+        s.append(_onceki_tedavi_atom(
+            ilac_sonuc, f'{p} ≥1 anti-TNF 3 ay yetersiz',
+            '≥1 anti-TNF ajanı 3 ay kullanıp yetersiz/intolerans',
+            ['anti-tnf', 'anti tnf', 'tnf inhibit', 'tnf', 'intoleran']))
+    s.append(_onceki_tedavi_atom(
+        ilac_sonuc, f'{p} Aktif hastalık (≥3 hassas + ≥3 şiş eklem)',
+        'Aktif (≥3 hassas + ≥3 şiş eklem, 1 ay arayla 2 muayene)',
+        ['hassas eklem', 'sis eklem', 'şiş eklem', 'psarc', 'aktif psoriyatik',
+         'aktif psoriatik']))
+    s.append(atom_saglik_kurulu_raporu(ilac_sonuc, f'{p} Sağlık kurulu raporu'))
+    s.append(atom_heyet_brans(ilac_sonuc, f'{p} Heyette {meta["recete_ad"]}',
+                              meta['heyet'], f'Heyette {meta["recete_ad"]}'))
+    s.append(atom_recete_brans(ilac_sonuc, f'{p} Reçete eden {meta["recete_ad"]}',
+                               meta['recete'], meta['recete_ad']))
+    s.append(atom_ucuncu_basamak(ilac_sonuc, f'{p} 3. basamak resmi kurum (bilgi)'))
+    return s
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ORTAK YARDIMCI ATOMLAR (Arketip D–H)
+# ═══════════════════════════════════════════════════════════════════════
+def _atom_endik(ilac_sonuc: Dict, grup: str, endik: str, madde: str,
+                etiket: str) -> SartSonuc:
+    """Yapısal endikasyon atomu (ICD ∨ metin eşleşmesi)."""
+    if _endik_eslesir(ilac_sonuc, endik, madde):
+        return SartSonuc(ad=etiket, durum=SartDurumu.VAR,
+                         neden='Endikasyon (ICD / rapor metni) doğrulandı',
+                         kaynak='teshis+rapor', grup=grup)
+    return SartSonuc(ad=etiket, durum=SartDurumu.YOK,
+                     neden='Endikasyon (ICD / metin) bulunamadı',
+                     kaynak='teshis+rapor', grup=grup)
+
+
+def _ke_bilgi_atom(grup: str, etiket: str, neden: str) -> SartSonuc:
+    """Parse edilemeyen klinik/süre şartı → KE + (bilgi) grubu."""
+    return SartSonuc(ad=etiket, durum=SartDurumu.KONTROL_EDILEMEDI,
+                     neden=neden, kaynak='rapor_metni', grup=grup,
+                     sartli_atom=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ARKETİP D — AS / BASDAİ
+# ═══════════════════════════════════════════════════════════════════════
+def as_kontrol(ilac_sonuc: Dict, madde: str) -> List[SartSonuc]:
+    meta = ENDIK_META['AS'][madde]
+    p = meta['sut']
+    s: List[SartSonuc] = []
+    s.append(atom_yas_op(ilac_sonuc, f'{p} Erişkin (yaş ≥18)', '>=', 18,
+                         'Erişkin (yaş ≥18)'))
+    s.append(_atom_endik(ilac_sonuc, f'{p} (Aksiyel) AS / spondiloartrit endikasyonu',
+                         'AS', madde, '(Aksiyel) AS / spondiloartrit endikasyonu'))
+    if meta['basamak'] == 'anti_tnf':
+        s.append(_onceki_tedavi_atom(
+            ilac_sonuc, f'{p} ≥1 anti-TNF yetersiz/intolerans',
+            '≥1 anti-TNF ajanına yetersiz cevap ∨ intolerans',
+            ['anti-tnf', 'anti tnf', 'tnf inhibit', 'tnf', 'intoleran',
+             'yetersiz cevap']))
+    else:  # nsai (C-9/1)
+        s.append(_onceki_tedavi_atom(
+            ilac_sonuc, f'{p} ≥3 NSAİİ (biri maks. indometazin) maks. doz',
+            '≥3 NSAİİ (biri maks. indometazin) maks. dozda yetersiz',
+            ['indometazin', 'nsai', 'nonsteroid', 'antiinflamatuar']))
+    if meta['basdai']:
+        s.append(_skor_atom(ilac_sonuc, f'{p} BASDAİ > 5', 'BASDAİ',
+                            ['basdai', 'basda'], '>', 5,
+                            ['idame', 'devam', 'birim', 'duzelme', 'yanit']))
+    if meta['akut']:
+        s.append(_akut_faz_veya_atom(
+            ilac_sonuc, f'{p} ESH>28 ∨ CRP>ÜSN ∨ MR/sintigrafi (≥1)'))
+    s.append(atom_saglik_kurulu_raporu(ilac_sonuc, f'{p} Sağlık kurulu raporu'))
+    s.append(atom_heyet_brans(ilac_sonuc, f'{p} Heyette {meta["recete_ad"]}',
+                              meta['heyet'], f'Heyette romatoloji/klinik immün/FTR'))
+    s.append(atom_recete_brans(ilac_sonuc, f'{p} Reçete eden {meta["recete_ad"]}',
+                               meta['recete'], meta['recete_ad']))
+    s.append(atom_ucuncu_basamak(ilac_sonuc, f'{p} 3. basamak resmi kurum (bilgi)'))
+    return s
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ARKETİP E — Crohn / Ülseratif kolit (CDAI)
+# ═══════════════════════════════════════════════════════════════════════
+def ibd_kontrol(ilac_sonuc: Dict, madde: str, endik: str) -> List[SartSonuc]:
+    meta = ENDIK_META[endik][madde]
+    p = meta['sut']
+    crohn = endik == 'CROHN'
+    ad_endik = ('Fistülize/şiddetli/aktif luminal Crohn' if crohn
+                else 'Şiddetli aktif ülseratif kolit')
+    s: List[SartSonuc] = []
+    s.append(atom_yas_op(ilac_sonuc, f'{p} Yetişkin (yaş ≥18)', '>=', 18,
+                         'Yetişkin (yaş ≥18)'))
+    s.append(_atom_endik(ilac_sonuc, f'{p} {ad_endik} endikasyonu', endik, madde,
+                         f'{ad_endik} endikasyonu'))
+    if crohn:
+        s.append(_onceki_tedavi_atom(
+            ilac_sonuc, f'{p} ≥1 anti-TNF 3 ay yetersiz',
+            '≥1 anti-TNF tedavisine rağmen hastalık kontrol edilemiyor',
+            ['anti-tnf', 'anti tnf', 'tnf', 'kontrol edileme', 'yetersiz']))
+    else:
+        s.append(_onceki_tedavi_atom(
+            ilac_sonuc, f'{p} ≥1 biyolojik/anti-TNF (∨ konvansiyonel) yetersiz',
+            '≥1 biyolojik ajan/anti-TNF (∨ kortikosteroid+6MP/AZA) yetersiz',
+            ['biyolojik', 'anti-tnf', 'anti tnf', 'tnf', 'kortikosteroid',
+             '6-mp', 'azatiyopurin', 'kontrol edileme', 'yetersiz']))
+    s.append(atom_saglik_kurulu_raporu(ilac_sonuc, f'{p} Sağlık kurulu raporu'))
+    s.append(atom_heyet_brans(
+        ilac_sonuc, f'{p} Heyette gastroenteroloji ∨ genel cerrahi',
+        GASTRO_CER, 'Heyette gastroenteroloji ∨ genel cerrahi'))
+    s.append(atom_recete_brans(
+        ilac_sonuc, f'{p} Reçete eden gastro/genel cerrahi/iç hast.',
+        GASTRO + GENEL_CERRAHI + IC_HAST, 'Gastro / genel cerrahi / iç hastalıkları'))
+    s.append(atom_ucuncu_basamak(ilac_sonuc, f'{p} 3. basamak resmi kurum (bilgi)'))
+    s.append(_ke_bilgi_atom(
+        f'{p} CDAI yanıt takibi (bilgi)',
+        'CDAI ≥70 puan düşüş (devam şartı)',
+        'Crohn Hastalık Aktivite İndeksi başlangıç/devam yanıtı tek reçeteden '
+        'doğrulanamaz — manuel'))
+    return s
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ARKETİP F — Juvenil / pediatrik (ACR pediatrik) — yapısal kapı + klinik KE
+# ═══════════════════════════════════════════════════════════════════════
+def jia_kontrol(ilac_sonuc: Dict, madde: str) -> List[SartSonuc]:
+    meta = ENDIK_META['JIA'][madde]
+    p = meta['sut']
+    s: List[SartSonuc] = []
+    s.append(atom_yas_op(ilac_sonuc, f'{p} Çocuk (yaş <18)', '<', 18,
+                         'Çocuk (yaş <18)'))
+    s.append(_atom_endik(ilac_sonuc, f'{p} Juvenil idiyopatik artrit endikasyonu',
+                         'JIA', madde, 'Juvenil idiyopatik artrit endikasyonu'))
+    s.append(_onceki_tedavi_atom(
+        ilac_sonuc, f'{p} Önceki tedavi (NSAİİ/MTX/anti-TNF/tosilizumab) yetersiz',
+        'Önceki basamak tedavisi yetersiz (madde lafzına göre)',
+        ['nsai', 'nonsteroid', 'methotrexat', 'metotreksat', 'anti-tnf',
+         'anti tnf', 'tnf', 'tosilizumab', 'tocilizumab', 'anakinra',
+         'kortikosteroid']))
+    s.append(atom_saglik_kurulu_raporu(ilac_sonuc, f'{p} Sağlık kurulu raporu'))
+    s.append(atom_heyet_brans(ilac_sonuc, f'{p} Heyette çocuk romatoloji uzmanı',
+                              COCUK_ROMATOLOJI, 'Heyette çocuk romatoloji uzmanı'))
+    s.append(atom_recete_brans(ilac_sonuc, f'{p} Reçete eden {meta["recete_ad"]}',
+                               meta['recete'], meta['recete_ad']))
+    s.append(atom_ucuncu_basamak(ilac_sonuc, f'{p} 3. basamak resmi kurum (bilgi)'))
+    s.append(_ke_bilgi_atom(
+        f'{p} ACR pediatrik yanıt (bilgi)',
+        'ACR pediatrik 30/50/70 yanıt kriteri (başlangıç/devam)',
+        'ACR pediatrik cevap kriteri + ağırlık (40/10 kg) tek reçeteden '
+        'doğrulanamaz — manuel'))
+    return s
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ARKETİP G — Otoinflamatuar (FMF/CAPS/TRAPS/Still/DHA) — yapısal + klinik KE
+# ═══════════════════════════════════════════════════════════════════════
+def otoinf_kontrol(ilac_sonuc: Dict, madde: str) -> List[SartSonuc]:
+    meta = ENDIK_META['OTOINF'][madde]
+    p = meta['sut']
+    s: List[SartSonuc] = []
+    s.append(_atom_endik(
+        ilac_sonuc, f'{p} Otoinflamatuar tanı (FMF/CAPS/TRAPS/Still/DHA)',
+        'OTOINF', madde, 'Otoinflamatuar tanı (FMF/CAPS/TRAPS/Still/DHA)'))
+    s.append(atom_saglik_kurulu_raporu(ilac_sonuc, f'{p} Sağlık kurulu raporu'))
+    s.append(atom_heyet_brans(ilac_sonuc, f'{p} Heyette {meta["recete_ad"]}',
+                              meta['heyet'], f'Heyette {meta["recete_ad"]}'))
+    s.append(atom_recete_brans(ilac_sonuc, f'{p} Reçete eden {meta["recete_ad"]}',
+                               meta['recete'], meta['recete_ad']))
+    # Çekirdek klinik şart KE+şartlı (matematiğe dahil → yapısal tamsa ŞARTLI)
+    s.append(_ke_bilgi_atom(
+        f'{p} Klinik şartlar (manuel doğrulama)',
+        'Atak sıklığı / CRP / kolşisin yanıtı / doz / yaş-ağırlık / önceki tedavi',
+        'Otoinflamatuar klinik şartlar (atak/CRP/kolşisin/doz/ağırlık) metin '
+        'parse ile doğrulanamaz — manuel'))
+    return s
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ARKETİP H — Özel (GPA/MPA, pemfigus, atopik dermatit, hidradenit)
+# ═══════════════════════════════════════════════════════════════════════
+def gpa_kontrol(ilac_sonuc: Dict, madde: str) -> List[SartSonuc]:
+    meta = ENDIK_META['GPA'][madde]
+    p = meta['sut']
+    s: List[SartSonuc] = []
+    s.append(atom_yas_op(ilac_sonuc, f'{p} Erişkin (yaş ≥18)', '>=', 18,
+                         'Erişkin (yaş ≥18)'))
+    s.append(_atom_endik(ilac_sonuc, f'{p} GPA (Wegener) / MPA endikasyonu',
+                         'GPA', madde, 'GPA (Wegener) / MPA endikasyonu'))
+    s.append(_onceki_tedavi_atom(
+        ilac_sonuc, f'{p} Siklofosfamide dirençli ∨ verilemeyen',
+        'Siklofosfamide dirençli ∨ siklofosfamid tedavisi verilemeyen',
+        ['siklofosfamid', 'direncli', 'dirençli', 'verilemeyen']))
+    s.append(_ke_bilgi_atom(
+        f'{p} Glukokortikoid kombinasyonu',
+        'Glukokortikoidlerle kombine kullanım',
+        'GK kombinasyonu + 1 ay rapor süresi metin parse ile doğrulanamaz — manuel'))
+    s.append(atom_saglik_kurulu_raporu(ilac_sonuc, f'{p} Sağlık kurulu raporu'))
+    s.append(atom_heyet_brans(ilac_sonuc, f'{p} Heyette {meta["recete_ad"]}',
+                              meta['heyet'], f'Heyette {meta["recete_ad"]}'))
+    s.append(atom_recete_brans(ilac_sonuc, f'{p} Reçete eden {meta["recete_ad"]}',
+                               meta['recete'], meta['recete_ad']))
+    return s
+
+
+def pemfigus_kontrol(ilac_sonuc: Dict, madde: str) -> List[SartSonuc]:
+    meta = ENDIK_META['PEMFIGUS'][madde]
+    p = meta['sut']
+    s: List[SartSonuc] = []
+    s.append(_atom_endik(ilac_sonuc, f'{p} Orta-şiddetli pemfigus vulgaris endikasyonu',
+                         'PEMFIGUS', madde, 'Orta-şiddetli pemfigus vulgaris endikasyonu'))
+    s.append(_onceki_tedavi_atom(
+        ilac_sonuc, f'{p} Sistemik steroid/immünsupresan ≥1 ay yetersiz',
+        'Sistemik steroid &/veya immünsupresan ≥1 ay sonrası yetersiz/yeni lezyon',
+        ['steroid', 'immunsupres', 'immünsupres', 'yeni lezyon', 'iyilesme']))
+    s.append(_ke_bilgi_atom(
+        f'{p} PDAİ skoru', 'PDAİ > 15',
+        'Pemfigus Hastalığı Alan İndeksi (PDAİ) değeri metin parse ile '
+        'doğrulanamadı — manuel'))
+    s.append(atom_ucuncu_basamak(ilac_sonuc, f'{p} 3. basamak resmi kurum (bilgi)'))
+    s.append(atom_saglik_kurulu_raporu(ilac_sonuc, f'{p} Sağlık kurulu raporu (6 ay)'))
+    s.append(atom_heyet_brans(ilac_sonuc, f'{p} Heyette dermatoloji uzmanı',
+                              meta['heyet'], 'Heyette dermatoloji uzmanı'))
+    s.append(atom_recete_brans(ilac_sonuc, f'{p} Reçete eden dermatoloji uzmanı',
+                               meta['recete'], 'Dermatoloji uzmanı'))
+    return s
+
+
+def atopik_kontrol(ilac_sonuc: Dict, madde: str) -> List[SartSonuc]:
+    meta = ENDIK_META['ATOPIK'][madde]
+    p = meta['sut']
+    # Barisitinib → ≥18; upadasitinib/abrositinib → ≥12
+    barisitinib = _iceriyor(_arama_metni(ilac_sonuc), BARISITINIB)
+    yas_esik = 18 if barisitinib else 12
+    s: List[SartSonuc] = []
+    s.append(atom_yas_op(ilac_sonuc, f'{p} Yaş ≥{yas_esik}', '>=', yas_esik,
+                         f'Yaş ≥{yas_esik} ({"barisitinib" if barisitinib else "upa/abrositinib"})'))
+    s.append(_atom_endik(ilac_sonuc, f'{p} Orta/şiddetli atopik dermatit endikasyonu',
+                         'ATOPIK', madde, 'Orta/şiddetli atopik dermatit endikasyonu'))
+    s.append(_onceki_tedavi_atom(
+        ilac_sonuc, f'{p} Sistemik kortikosteroid+siklosporin (2 ay) yetersiz/tolere/kontrendike',
+        '≥2 ay sistemik kortikosteroid + siklosporin yarar görmeyen ∨ tolere '
+        'edemeyen ∨ kontrendike',
+        ['kortikosteroid', 'siklosporin', 'yarar gormeyen', 'tolere',
+         'kontrendike']))
+    s.append(_atom_dupilumab_kombi(ilac_sonuc, f'{p} Dupilumab+JAK kombi yasağı'))
+    s.append(atom_ucuncu_basamak(ilac_sonuc, f'{p} 3. basamak resmi kurum (bilgi)'))
+    s.append(atom_saglik_kurulu_raporu(ilac_sonuc, f'{p} Sağlık kurulu raporu'))
+    s.append(atom_heyet_brans(ilac_sonuc, f'{p} Heyette {meta["recete_ad"]} (3 uzman)',
+                              meta['heyet'], f'Heyette dermatoloji/immünoloji'))
+    s.append(atom_recete_brans(ilac_sonuc, f'{p} Reçete eden {meta["recete_ad"]}',
+                               meta['recete'], meta['recete_ad']))
+    s.append(_ke_bilgi_atom(
+        f'{p} EASI/DLQI/Pruritus yanıtı (bilgi)',
+        '12 hf: EASI ≥%50 ∨ DLQI ≥4 ∨ Pruritus NRS ≥3 (devam şartı)',
+        'Atopik dermatit yanıt kriterleri tek reçeteden doğrulanamaz — manuel'))
+    return s
+
+
+def _atom_dupilumab_kombi(ilac_sonuc: Dict, grup: str) -> SartSonuc:
+    """Upa/abro/bari + dupilumab birlikte kullanılamaz (C-6/8)."""
+    metin = _rapor_metni(ilac_sonuc)   # diger_ilac_adlari dahil
+    if 'dupilumab' in metin or 'dupixent' in metin:
+        return SartSonuc(ad='Dupilumab ile kombinasyon', durum=SartDurumu.YOK,
+                         neden='Upa/abro/bari + dupilumab birlikte kullanılamaz',
+                         kaynak='diger_ilac', grup=grup)
+    return SartSonuc(ad='Dupilumab kombinasyonu yok', durum=SartDurumu.VAR,
+                     neden='Reçetede dupilumab işareti yok',
+                     kaynak='diger_ilac', grup=grup, sartli_atom=True)
+
+
+def hs_kontrol(ilac_sonuc: Dict, madde: str) -> List[SartSonuc]:
+    meta = ENDIK_META['HS'][madde]
+    p = meta['sut']
+    s: List[SartSonuc] = []
+    s.append(atom_yas_op(ilac_sonuc, f'{p} Erişkin (yaş ≥18)', '>=', 18,
+                         'Erişkin (yaş ≥18)'))
+    s.append(_atom_endik(ilac_sonuc, f'{p} Orta-şiddetli hidradenitis süpürativa endikasyonu',
+                         'HS', madde, 'Orta-şiddetli hidradenitis süpürativa endikasyonu'))
+    s.append(_onceki_tedavi_atom(
+        ilac_sonuc, f'{p} 6 hf antibiyotik + ≥3 ay adalimumab yetersiz',
+        '6 hafta sistemik antibiyotik + ≥3 ay adalimumab kullanıp yetersiz',
+        ['antibiyotik', 'adalimumab', 'yetersiz']))
+    s.append(atom_ucuncu_basamak(ilac_sonuc, f'{p} 3. basamak resmi kurum (bilgi)'))
+    s.append(atom_saglik_kurulu_raporu(ilac_sonuc, f'{p} Sağlık kurulu raporu'))
+    s.append(atom_heyet_brans(ilac_sonuc, f'{p} Heyette 3 dermatoloji uzmanı',
+                              meta['heyet'], 'Heyette dermatoloji uzmanı'))
+    s.append(atom_recete_brans(ilac_sonuc, f'{p} Reçete eden dermatoloji uzmanı',
+                               meta['recete'], 'Dermatoloji uzmanı'))
+    return s
+
+
 def _diger_endikasyon_stub(ilac_sonuc: Dict, madde: str) -> List[SartSonuc]:
     """Bu madde/endikasyon henüz (sonraki arketip turunda) eklenecek."""
     ad = MADDE_ADLARI.get(madde, madde)
@@ -447,7 +932,7 @@ def _diger_endikasyon_stub(ilac_sonuc: Dict, madde: str) -> List[SartSonuc]:
 # ═══════════════════════════════════════════════════════════════════════
 def _mesaj_uret(sonuc: KontrolSonucu, madde: str, endik: str,
                 sartlar: List[SartSonuc]) -> str:
-    meta = _madde_meta(madde)
+    meta = _endik_meta(madde, endik) or _madde_meta(madde)
     baslik = (f"SUT {meta.get('sut', '4.2.1.' + madde)} "
               f"{meta.get('ad', MADDE_ADLARI.get(madde, madde))}")
     yok = [s for s in sartlar if s.durum == SartDurumu.YOK]
@@ -480,13 +965,31 @@ def biyolojik_kontrol_4_2_1_c(ilac_sonuc: Dict) -> KontrolRaporu:
         sartlar = pso_kontrol(ilac_sonuc, madde)
     elif endik == 'RA':
         sartlar = ra_kontrol(ilac_sonuc, madde)
+    elif endik == 'PSA':
+        sartlar = psa_kontrol(ilac_sonuc, madde)
+    elif endik == 'AS':
+        sartlar = as_kontrol(ilac_sonuc, madde)
+    elif endik in ('CROHN', 'UK'):
+        sartlar = ibd_kontrol(ilac_sonuc, madde, endik)
+    elif endik == 'JIA':
+        sartlar = jia_kontrol(ilac_sonuc, madde)
+    elif endik == 'OTOINF':
+        sartlar = otoinf_kontrol(ilac_sonuc, madde)
+    elif endik == 'GPA':
+        sartlar = gpa_kontrol(ilac_sonuc, madde)
+    elif endik == 'PEMFIGUS':
+        sartlar = pemfigus_kontrol(ilac_sonuc, madde)
+    elif endik == 'ATOPIK':
+        sartlar = atopik_kontrol(ilac_sonuc, madde)
+    elif endik == 'HS':
+        sartlar = hs_kontrol(ilac_sonuc, madde)
     else:
         sartlar = _diger_endikasyon_stub(ilac_sonuc, madde)
     sartlar.extend(_biyolojik_genel_bilgi_atomlari(
         ilac_sonuc, rituksimab=(madde == 'C2')))
     sonuc = _genel_sonuc(sartlar)
     mesaj = _mesaj_uret(sonuc, madde, endik, sartlar)
-    meta = _madde_meta(madde)
+    meta = _endik_meta(madde, endik) or _madde_meta(madde)
     return KontrolRaporu(
         sonuc=sonuc, mesaj=mesaj,
         sut_kurali=f"SUT {meta.get('sut', '4.2.1.' + madde)}",
@@ -567,13 +1070,13 @@ def _senaryolar() -> List[Tuple[str, Dict, KontrolSonucu]]:
                         'Günlük doz ve süre belirtildi.',
             doktor_uzmanligi='Dermatoloji'),
          KontrolSonucu.UYGUN),
-        # 9) Sekukinumab AS (psöriazis dışı) → stub → ŞÜPHELİ/ŞARTLI
-        ('Sekukinumab AS endikasyon (stub)', _rapor(
+        # 9) Sekukinumab AS — klinik kısmen sessiz (NSAİİ/akut faz KE) → ŞARTLI
+        ('Sekukinumab AS klinik kısmi → ŞARTLI', _rapor(
             ['Romatoloji'], ilac_adi='COSENTYX', etkin_madde='SEKUKINUMAB',
             hasta_yasi=40, recete_teshisleri=['M45 Ankilozan spondilit'],
             rapor_metni='Ankilozan spondilit, BASDAİ 6.',
             doktor_uzmanligi='Romatoloji'),
-         KontrolSonucu.KONTROL_EDILEMEDI),   # stub → manuel (sonraki tur)
+         KontrolSonucu.SARTLI_UYGUN),
         # 10) Kapsam dışı (parasetamol)
         ('Kapsam dışı parasetamol', {
             'ilac_adi': 'PAROL', 'etkin_madde': 'PARASETAMOL',
@@ -634,13 +1137,149 @@ def _senaryolar() -> List[Tuple[str, Dict, KontrolSonucu]]:
             rapor_metni='Romatoid artrit, methotrexat, DMARD, DAS28 5,9.',
             doktor_uzmanligi='Romatoloji'),
          KontrolSonucu.UYGUN_DEGIL),
-        # 18) Tosilizumab juvenil (yaş<18) → DIGER stub → ŞÜPHELİ
-        ('Tosilizumab juvenil → stub', _rapor(
+        # 18) Tosilizumab juvenil JIA — önceki tedavi sessiz → ŞARTLI
+        ('Tosilizumab juvenil JIA → ŞARTLI', _rapor(
             ['Çocuk Romatoloji'], ilac_adi='ACTEMRA', etkin_madde='TOSILIZUMAB',
             hasta_yasi=10, recete_teshisleri=['M08 Juvenil artrit'],
             rapor_metni='Juvenil idiyopatik artrit.',
             doktor_uzmanligi='Çocuk Sağlığı ve Hastalıkları'),
-         KontrolSonucu.KONTROL_EDILEMEDI),
+         KontrolSonucu.SARTLI_UYGUN),
+
+        # ── Arketip C (PsA / PSARC) ──
+        # 19) İksekizumab PsA tam UYGUN (DMARD + anti-TNF + aktif eklem + romatoloji)
+        ('İksekizumab PsA UYGUN', _rapor(
+            ['Romatoloji'], ilac_adi='TALTZ', etkin_madde='IKSEKIZUMAB',
+            hasta_yasi=45, recete_teshisleri=['L40.5 Psöriyatik artrit'],
+            rapor_metni='Aktif psöriyatik artrit. 3 DMARD ve anti-TNF ajanı '
+                        'kullanmış. 4 hassas eklem, 4 şiş eklem.',
+            doktor_uzmanligi='Romatoloji'),
+         KontrolSonucu.UYGUN),
+        # 20) Apremilast PsA UYGUN (anti-TNF basamağı YOK — sadece DMARD+eklem)
+        ('Apremilast PsA UYGUN (anti-TNF şartı yok)', _rapor(
+            ['Romatoloji'], ilac_adi='OTEZLA', etkin_madde='APREMILAST',
+            hasta_yasi=50, recete_teshisleri=['M07'],
+            rapor_metni='Psöriyatik artrit. En az 3 DMARD uygun dozda kullanmış. '
+                        '3 hassas eklem, 3 şiş eklem.',
+            doktor_uzmanligi='İç Hastalıkları'),   # C-13 reçete iç hast. izinli
+         KontrolSonucu.UYGUN),
+        # 21) C-6(3) Tofa PsA reçete iç hast. → UYGUN DEĞİL (yalnız romatoloji)
+        ('Tofacitinib PsA iç hast. → UYGUN DEĞİL (yalnız romatoloji)', _rapor(
+            ['Romatoloji'], ilac_adi='XELJANZ', etkin_madde='TOFASITINIB',
+            hasta_yasi=48, recete_teshisleri=['L40.5'],
+            rapor_metni='Aktif psöriyatik artrit, 3 DMARD, anti-TNF yetersiz, '
+                        '3 hassas 3 şiş eklem.',
+            doktor_uzmanligi='İç Hastalıkları'),
+         KontrolSonucu.UYGUN_DEGIL),
+        # 22) Sekukinumab PsA klinik sessiz → ŞARTLI
+        ('Sekukinumab PsA klinik sessiz → ŞARTLI', _rapor(
+            ['Fizik Tedavi ve Rehabilitasyon'], ilac_adi='COSENTYX',
+            etkin_madde='SEKUKINUMAB', hasta_yasi=40,
+            recete_teshisleri=['M07'], rapor_metni='Psöriyatik artrit.',
+            doktor_uzmanligi='Fizik Tedavi ve Rehabilitasyon'),
+         KontrolSonucu.SARTLI_UYGUN),
+
+        # ── Arketip D (AS / BASDAİ) ──
+        # 23) Sekukinumab AS tam UYGUN
+        ('Sekukinumab AS UYGUN', _rapor(
+            ['Romatoloji'], ilac_adi='COSENTYX', etkin_madde='SEKUKINUMAB',
+            hasta_yasi=42, recete_teshisleri=['M45 Ankilozan spondilit'],
+            rapor_metni='Ankilozan spondilit. 3 NSAİİ indometazin maks dozda '
+                        'yetersiz. BASDAİ 6. ESH 35. CRP yüksek.',
+            doktor_uzmanligi='Romatoloji'),
+         KontrolSonucu.UYGUN),
+        # 24) Upadasitinib AS reçete dermatoloji → UYGUN DEĞİL
+        ('Upadasitinib AS reçete dermatoloji → UYGUN DEĞİL', _rapor(
+            ['Romatoloji'], ilac_adi='RINVOQ', etkin_madde='UPADASITINIB',
+            atc_kodu='L04AF03', hasta_yasi=40, recete_teshisleri=['M45'],
+            rapor_metni='Aksiyel ankilozan spondilit. Anti-TNF intoleransı.',
+            doktor_uzmanligi='Dermatoloji'),
+         KontrolSonucu.UYGUN_DEGIL),
+
+        # ── Arketip E (Crohn / ÜK) ──
+        # 25) Vedolizumab Crohn UYGUN
+        ('Vedolizumab Crohn UYGUN', _rapor(
+            ['Gastroenteroloji'], ilac_adi='ENTYVIO', etkin_madde='VEDOLIZUMAB',
+            atc_kodu='L04AA33', hasta_yasi=35, recete_teshisleri=['K50 Crohn'],
+            rapor_metni='Aktif luminal Crohn. Anti-TNF tedavisine rağmen kontrol '
+                        'edilemiyor.',
+            doktor_uzmanligi='Gastroenteroloji'),
+         KontrolSonucu.UYGUN),
+        # 26) Vedolizumab ÜK heyet yok → UYGUN DEĞİL
+        ('Vedolizumab ÜK heyet yok → UYGUN DEĞİL', _rapor(
+            ['Kardiyoloji'], ilac_adi='ENTYVIO', etkin_madde='VEDOLIZUMAB',
+            hasta_yasi=40, recete_teshisleri=['K51 Ülseratif kolit'],
+            rapor_metni='Şiddetli aktif ülseratif kolit, anti-TNF yetersiz.',
+            doktor_uzmanligi='Gastroenteroloji'),
+         KontrolSonucu.UYGUN_DEGIL),
+
+        # ── Arketip F (Juvenil) ──
+        # 27) Abatasept JIA — önceki tedavi ibaresi var, ACR=bilgi → UYGUN
+        ('Abatasept JIA → UYGUN (önceki tedavi ibaresi)', _rapor(
+            ['Çocuk Romatoloji'], ilac_adi='ORENCIA', etkin_madde='ABATASEPT',
+            hasta_yasi=12, recete_teshisleri=['M08 Juvenil idiyopatik artrit'],
+            rapor_metni='Juvenil idiyopatik artrit. Anti-TNF tedaviye rağmen '
+                        'yanıtsız.',
+            doktor_uzmanligi='Çocuk Romatoloji'),
+         KontrolSonucu.UYGUN),
+        # 28) Tofacitinib JIA erişkin yaş (≥18) → UYGUN DEĞİL (çocuk şartı)
+        ('Tofacitinib JIA yaş ≥18 → UYGUN DEĞİL', _rapor(
+            ['Çocuk Romatoloji'], ilac_adi='XELJANZ', etkin_madde='TOFASITINIB',
+            hasta_yasi=25, recete_teshisleri=['M08'],
+            rapor_metni='Juvenil idiyopatik artrit.',
+            doktor_uzmanligi='Çocuk Romatoloji'),
+         KontrolSonucu.UYGUN_DEGIL),
+
+        # ── Arketip G (Otoinflamatuar) ──
+        # 29) Kanakinumab FMF → klinik KE → ŞARTLI
+        ('Kanakinumab FMF → ŞARTLI', _rapor(
+            ['Romatoloji'], ilac_adi='ILARIS', etkin_madde='KANAKINUMAB',
+            atc_kodu='L04AC08', hasta_yasi=30,
+            recete_teshisleri=['E85.0 Ailevi Akdeniz Ateşi'],
+            rapor_metni='Ailevi Akdeniz Ateşi (FMF). Kolşisin yetersiz.',
+            doktor_uzmanligi='Romatoloji'),
+         KontrolSonucu.SARTLI_UYGUN),
+        # 30) Anakinra FMF reçete dermatoloji → UYGUN DEĞİL
+        ('Anakinra FMF reçete dermatoloji → UYGUN DEĞİL', _rapor(
+            ['Romatoloji'], ilac_adi='KINERET', etkin_madde='ANAKINRA',
+            hasta_yasi=28, recete_teshisleri=['E85.0'],
+            rapor_metni='FMF amiloidoz.',
+            doktor_uzmanligi='Dermatoloji'),
+         KontrolSonucu.UYGUN_DEGIL),
+
+        # ── Arketip H (Özel) ──
+        # 31) Rituksimab GPA → klinik KE → ŞARTLI
+        ('Rituksimab GPA → ŞARTLI', _rapor(
+            ['Romatoloji'], ilac_adi='MABTHERA', etkin_madde='RITUKSIMAB',
+            atc_kodu='L01FA01', hasta_yasi=50,
+            recete_teshisleri=['M31.3 Wegener granülomatozu'],
+            rapor_metni='Granülomatöz polianjit (Wegener). Siklofosfamide '
+                        'dirençli. Glukokortikoid ile kombine.',
+            doktor_uzmanligi='Romatoloji'),
+         KontrolSonucu.SARTLI_UYGUN),
+        # 32) Sekukinumab hidradenitis UYGUN-zemin (klinik KE) → ŞARTLI
+        ('Sekukinumab hidradenitis → ŞARTLI', _rapor(
+            ['Dermatoloji'], ilac_adi='COSENTYX', etkin_madde='SEKUKINUMAB',
+            hasta_yasi=33, recete_teshisleri=['L73.2 Hidradenitis süpürativa'],
+            rapor_metni='Orta-şiddetli hidradenitis süpürativa. 6 hafta '
+                        'antibiyotik ve adalimumab yetersiz.',
+            doktor_uzmanligi='Dermatoloji'),
+         KontrolSonucu.UYGUN),
+        # 33) Upadasitinib atopik dermatit + dupilumab kombi → UYGUN DEĞİL
+        ('Upadasitinib atopik + dupilumab → UYGUN DEĞİL', _rapor(
+            ['Dermatoloji'], ilac_adi='RINVOQ', etkin_madde='UPADASITINIB',
+            hasta_yasi=20, recete_teshisleri=['L20 Atopik dermatit'],
+            rapor_metni='Orta-şiddetli atopik dermatit. Kortikosteroid ve '
+                        'siklosporin tolere edemeyen. Dupilumab ile birlikte.',
+            doktor_uzmanligi='Dermatoloji',
+            diger_ilac_adlari=['DUPIXENT']),
+         KontrolSonucu.UYGUN_DEGIL),
+        # 34) Barisitinib atopik dermatit yaş 15 (<18) → UYGUN DEĞİL
+        ('Barisitinib atopik yaş 15 → UYGUN DEĞİL', _rapor(
+            ['Dermatoloji'], ilac_adi='OLUMIANT', etkin_madde='BARISITINIB',
+            hasta_yasi=15, recete_teshisleri=['L20'],
+            rapor_metni='Atopik dermatit. Kortikosteroid+siklosporin yetersiz.',
+            doktor_uzmanligi='Dermatoloji'),
+         KontrolSonucu.UYGUN_DEGIL),
     ]
 
 
