@@ -1717,6 +1717,10 @@ class AylikReceteSorguGUI:
         # işaretliyken filtre devrede. Setler eşleşmeyi hızlandırmak için
         # önbelleğe alınır; liste değişince _kontrol_disi_setler tazelenir.
         self.kontrol_disi_filtre_aktif = tk.BooleanVar(value=False)
+        # SQL düzeyinde eleme: AÇIKken kontrol-dışı ilaçlar sorguya HİÇ gelmez
+        # (NOT (...) WHERE koşulu). Yukarıdaki sorgu-sonrası gizleme kutusundan
+        # bağımsız; ikisi birlikte de kullanılabilir.
+        self.kontrol_disi_sql_aktif = tk.BooleanVar(value=False)
         try:
             self._kontrol_disi_setler = kdi.setler()
         except Exception:
@@ -1755,6 +1759,10 @@ class AylikReceteSorguGUI:
         try:
             import aylik_filtre_ayarlari as fa
             self._filtre_ayarlari_aktif = fa.ayarlari_yukle()
+            # Ana "Kullan" anahtarını kayıtlı filtre_aktif ile eşitle
+            # (filtre penceresindeki ana anahtar ile çift yönlü senkron).
+            self.gizle_bos_satirlar.set(
+                bool(self._filtre_ayarlari_aktif.get("filtre_aktif", True)))
         except Exception:
             self._filtre_ayarlari_aktif = None
 
@@ -1925,6 +1933,18 @@ class AylikReceteSorguGUI:
         _Tooltip(self.cb_yil,
                   "Yıl seçimi (çoklu).\n'Tümü' = tüm yıllar (büyük veri seti)")
 
+        # Tek tıkla tüm yılları (DB'de mevcut tüm yıllar, örn. 2021-2026) seç
+        btn_tum_yil = tk.Button(
+            sol, text="⏫ Tüm Yıllar", bg="#455A64", fg="white",
+            activebackground="#37474F", bd=0, padx=8, pady=2,
+            font=("Segoe UI", 8, "bold"), cursor="hand2",
+            command=self._tum_yillari_sec)
+        btn_tum_yil.pack(side="left", padx=(2, 0))
+        _Tooltip(btn_tum_yil,
+                  "Yıl listesindeki TÜM yılları (DB'de bulunan, örn. "
+                  "2021-2026) tek tıkla seçer. Ardından 🔍 SORGULA ile "
+                  "tüm yılların verisi gelir.")
+
         tk.Label(sol, text="Ay", bg=HEADER_BG, fg=HEADER_FG,
                  font=("Segoe UI", 9)).pack(side="left", padx=(8, 3))
         # Ay çoklu seçim — sabit 12 ay
@@ -1999,6 +2019,15 @@ class AylikReceteSorguGUI:
                          font=FONT_BUTON)
         btn.pack(side="right", padx=2)
         _Tooltip(btn, "Görünür sütunları ayarla (göster/gizle)")
+
+        btn = tk.Button(sag, text="📊 Renkli Reçete Excel Yükleme",
+                         bg="#AB47BC", fg="white",
+                         activebackground="#7B1FA2", bd=0,
+                         command=self._renkli_rr_liste_yukle, padx=12, pady=3,
+                         font=FONT_BUTON)
+        btn.pack(side="right", padx=2)
+        _Tooltip(btn, "Renkli reçete sisteminden alınan Excel/PDF listesini "
+                       "yükle (RENKLİ REÇETE kontrolü bu listeyi kullanır)")
 
         # ── ORTA: SAYIM (lbl_sayim) ──
         self.lbl_sayim = tk.Label(row1, text="", bg=HEADER_BG, fg=HEADER_FG,
@@ -2242,10 +2271,28 @@ class AylikReceteSorguGUI:
         cb_kdi.pack(side="left", padx=(4, 0), pady=2)
         _Tooltip(cb_kdi,
                   "İşaretliyken, 'kontrolü gereksiz ilaçlar' listesindeki "
-                  "ilaçlara ait satırlar tablodan gizlenir.\n\n"
+                  "ilaçlara ait satırlar tablodan gizlenir (SORGU SONRASI "
+                  "filtre — veri çekilir, sonra gizlenir).\n\n"
                   "Listeyi yönetmek için yanındaki '⚙ İlaçlar' butonunu "
                   "kullanın veya tabloda bir ilaca sağ tıklayıp "
                   "'🚫 Kontrolü Gereksiz İlaç olarak kaydet' deyin.")
+
+        # SQL düzeyi eleme — sorguya HİÇ getirme (daha az veri, daha hızlı)
+        cb_kdi_sql = tk.Checkbutton(
+            p_kdi, text="⚡ SQL'de\nde getirme",
+            variable=self.kontrol_disi_sql_aktif,
+            bg=P_KDI_BG, fg="#BF360C", selectcolor="#FFFFFF",
+            font=FONT_GROUP, padx=2, bd=0,
+            justify="left", wraplength=80)
+        cb_kdi_sql.pack(side="left", padx=(2, 0), pady=2)
+        _Tooltip(cb_kdi_sql,
+                  "İşaretliyken, 'kontrolü gereksiz ilaçlar' listesindeki "
+                  "ilaçlar SQL sorgusuna HİÇ getirilmez (WHERE NOT (...) "
+                  "koşulu) — veri en baştan elenir, daha az satır çekilir, "
+                  "sorgu hızlanır.\n\n"
+                  "Bu seçenek sorgu anında etkilidir; değişiklik için "
+                  "yeniden 🔍 SORGULA gerekir. Sorgu-sonrası gizleme "
+                  "kutusundan bağımsızdır (ikisi birlikte de çalışır).")
 
         btn_kdi = tk.Button(
             p_kdi, text="⚙ İlaçlar", bg="#E65100", fg="white",
@@ -2257,6 +2304,20 @@ class AylikReceteSorguGUI:
                   "Kontrolü gereksiz ilaç listesini düzenle:\n"
                   "• İlaç adı (tam), ATC kodu (önek), Etken madde (tam)\n"
                   "ekleyip silebilirsiniz.")
+
+        btn_kume = tk.Button(
+            p_kdi, text="📊 Küme Analizi", bg="#6A1B9A", fg="white",
+            activebackground="#4A148C", bd=0, padx=10, pady=4,
+            font=FONT_BUTON, cursor="hand2",
+            command=self._kume_analizi_baslat)
+        btn_kume.pack(side="left", padx=(2, 4), pady=4)
+        _Tooltip(btn_kume,
+                  "İki kapsamı 2021-2026 verisi üzerinde karşılaştır:\n"
+                  "• K = Kontrolü gereksiz ilaçlar\n"
+                  "• B = Beyaz + raporsuz + uyarı kodsuz + mesajsız satırlar\n\n"
+                  "Sadece-K / Sadece-B / Kesişim / Hiçbiri sayılarını ve "
+                  "hangi kapsamın daha geniş olduğunu gösterir.\n"
+                  "(Sadece SELECT — uzun sürebilir.)")
 
         # 🧹 Sıfırla — Göster panelinin içine taşındı (yukarıda)
 
@@ -2634,6 +2695,28 @@ class AylikReceteSorguGUI:
             command=self._renkli_recete_kontrol_baslat
         )
         self.btn_renkli_rr.pack(side="left", padx=(0, 4), pady=2)
+
+        # ── RENKLİ REÇETE LİSTESİ YÜKLE butonu ──
+        # Renkli reçete sisteminden alınan Excel/PDF listesini doğrudan bu
+        # ekrandan yükler (ana ekrana gitmeye gerek kalmaz). Yüklenen liste
+        # ortak singleton'a (get_renkli_recete_kontrol) yazılır; RENKLİ REÇETE
+        # butonu bu liste ile VAR/YOK kontrolü yapar.
+        self.btn_renkli_rr_yukle = tk.Button(
+            row_kontrol, text="📊 RR LİSTE YÜKLE",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#AB47BC", activebackground="#7B1FA2",  # açık mor
+            bd=0, padx=12, pady=3, cursor="hand2",
+            command=self._renkli_rr_liste_yukle
+        )
+        self.btn_renkli_rr_yukle.pack(side="left", padx=(0, 4), pady=2)
+
+        # Yüklü liste durumu (kaç reçete + kaynak)
+        self.lbl_renkli_rr_durum = tk.Label(
+            row_kontrol, text="RR liste: yüklü değil",
+            font=("Segoe UI", 8), fg="#7B1FA2", bg=row_kontrol.cget("bg")
+        )
+        self.lbl_renkli_rr_durum.pack(side="left", padx=(0, 8), pady=2)
+        self._renkli_rr_durum_guncelle()
 
         # ── SATIR 2: STATİN / LİPİD KONTROL butonu ──
         # Buton tıklanınca yüklenen satırlardan ATC C10* (statin + non-statin
@@ -9930,6 +10013,288 @@ class AylikReceteSorguGUI:
         except Exception:
             self.var_ay.set(bu_ay_et)
 
+    def _tum_yillari_sec(self):
+        """⏫ Tüm Yıllar — Yıl dropdown'undaki tüm somut yılları (DB'de
+        bulunanlar, 'Tümü' hariç) seçer. Liste boşsa 'Tümü'ye düşer."""
+        try:
+            tum = [o for o in self.cb_yil.ogeler if o and o != "Tümü"]
+            if not tum:
+                self.cb_yil.set_secilenler(["Tümü"])
+                self.var_yil.set("Tümü")
+                self._durum_yaz("Yıl listesi boş — 'Tümü' seçildi.")
+                return
+            self.cb_yil.set_secilenler(tum)
+            self.var_yil.set(tum[0])
+            self._durum_yaz(
+                f"⏫ Tüm yıllar seçildi: {', '.join(tum)} "
+                f"— 🔍 SORGULA ile getirin.")
+        except Exception as e:
+            logger.warning("Tüm yıllar seçilemedi: %s", e)
+
+    # ----------------------------------------------------- KÜME ANALİZİ
+    def _kume_analizi_baslat(self):
+        """📊 Küme Analizi — 2021-2026 reçete-ilaç satırları üzerinde iki
+        kapsamı karşılaştırır:
+          K = kontrolü gereksiz ilaç listesindeki satırlar
+          B = içerik filtresinin elediği satırlar
+              (beyaz reçete  AND  ilaç mesajı yok  AND  uyarı/teşhis kodu yok
+               AND  rapor kodu yok)
+        Sadece-K / Sadece-B / Kesişim / Hiçbiri sayıları + hangi kapsam daha
+        geniş + her ayrık bölgede örnek ilaçlar. SADECE SELECT.
+        """
+        if not self.db:
+            messagebox.showwarning("Küme Analizi", "DB bağlı değil.",
+                                   parent=self.root)
+            return
+        if getattr(self, "_sorgu_calisiyor", False):
+            self._durum_yaz("⏳ Sorgu çalışıyor — analiz için bekleyin.")
+            return
+
+        import kontrol_disi_ilaclar as _kdi
+        k_pred = _kdi.sql_eslesme_kosulu()
+        liste_bos = not k_pred
+        if liste_bos:
+            if not messagebox.askyesno(
+                    "Kontrol-dışı Liste Boş",
+                    "Kontrolü gereksiz ilaç listesi boş — K kümesi 0 olur.\n\n"
+                    "Yine de B kümesi (beyaz+raporsuz+uyarısız+mesajsız) "
+                    "sayılsın mı?",
+                    parent=self.root):
+                return
+            k_pred = "(0 = 1)"
+
+        try:
+            import aylik_filtre_ayarlari as fa
+            ay_all = {"renkli_getir": True, "mesaj_getir": True,
+                      "uyari_getir": True, "rapor_getir": True}
+            renkli_idler = sorted((self._renkli_recete_idler or {}).keys())
+            if not renkli_idler:
+                messagebox.showwarning(
+                    "Renk ID'leri Yüklenmemiş",
+                    "Kırmızı/Yeşil/Mor reçete ID'leri yüklenmemiş — renkli "
+                    "reçeteler 'beyaz' sayılabilir ve B kümesi yanlış "
+                    "hesaplanır.\n\nÖnce bir kez SORGULA yapıp tekrar deneyin.",
+                    parent=self.root)
+                return
+            icerik = fa.sql_icerik_kosullari(ay_all, renkli_idler)
+        except Exception as e:
+            messagebox.showerror("Küme Analizi",
+                                 f"İçerik koşulu kurulamadı:\n{e}",
+                                 parent=self.root)
+            return
+        if not icerik:
+            messagebox.showerror(
+                "Küme Analizi",
+                "İçerik koşulu boş üretildi (renk ID'leri yüklenmemiş "
+                "olabilir). Önce bir kez SORGULA yapıp tekrar deneyin.",
+                parent=self.root)
+            return
+        # B = içerik filtresinin DIŞINDA kalanlar (elenenler)
+        b_pred = f"(NOT {icerik})"
+
+        self._durum_yaz("📊 Küme analizi hesaplanıyor (2021-2026)… "
+                        "uzun sürebilir.")
+        self.lbl_sayim.config(text="Küme analizi…")
+        self._sorgu_kilidini_kapat()
+        threading.Thread(
+            target=self._kume_analizi_threadi,
+            args=(k_pred, b_pred, liste_bos),
+            daemon=True).start()
+
+    def _kume_analizi_threadi(self, k_pred, b_pred, liste_bos):
+        """2021-2026 aralığında agregat + örnek ilaç sorgularını çalıştırır."""
+        TARIH = ("ra.RxKayitTarihi >= '2021-01-01' "
+                 "AND ra.RxKayitTarihi < '2027-01-01'")
+        FROM_SQL = (
+            "FROM ReceteAna ra "
+            "INNER JOIN ReceteIlaclari ri "
+            "  ON ri.RIRxId = ra.RxId AND ri.RISilme = 0 "
+            "LEFT JOIN Urun u ON u.UrunId = ri.RIUrunId "
+            "LEFT JOIN ATC atc ON atc.ATCId = u.UrunATCId "
+            f"WHERE ra.RxSilme = 0 AND {TARIH}")
+
+        agg_sql = f"""
+            SELECT
+                SUM(CASE WHEN K=1 AND B=1 THEN 1 ELSE 0 END) AS kesisim,
+                SUM(CASE WHEN K=1 AND B=0 THEN 1 ELSE 0 END) AS sadece_k,
+                SUM(CASE WHEN K=0 AND B=1 THEN 1 ELSE 0 END) AS sadece_b,
+                SUM(CASE WHEN K=0 AND B=0 THEN 1 ELSE 0 END) AS hicbiri,
+                SUM(CAST(K AS BIGINT)) AS toplam_k,
+                SUM(CAST(B AS BIGINT)) AS toplam_b,
+                COUNT(*) AS toplam
+            FROM (
+                SELECT
+                    CASE WHEN {k_pred} THEN 1 ELSE 0 END AS K,
+                    CASE WHEN {b_pred} THEN 1 ELSE 0 END AS B
+                {FROM_SQL}
+            ) t
+        """
+
+        def _ornek_sql(bolge_kosulu):
+            # Bir bölgedeki en sık 25 ilaç (UrunAdi) + satır adedi
+            return f"""
+                SELECT TOP 25
+                    ISNULL(u.UrunAdi, N'(bilinmeyen)') AS ilac,
+                    COUNT(*) AS adet
+                {FROM_SQL}
+                  AND ({bolge_kosulu})
+                GROUP BY u.UrunAdi
+                ORDER BY COUNT(*) DESC
+            """
+
+        try:
+            agg = self.db.sorgu_calistir(agg_sql)
+            r = agg[0] if agg else {}
+            sonuc = {
+                "kesisim":  int(r.get("kesisim") or 0),
+                "sadece_k": int(r.get("sadece_k") or 0),
+                "sadece_b": int(r.get("sadece_b") or 0),
+                "hicbiri":  int(r.get("hicbiri") or 0),
+                "toplam_k": int(r.get("toplam_k") or 0),
+                "toplam_b": int(r.get("toplam_b") or 0),
+                "toplam":   int(r.get("toplam") or 0),
+            }
+            # Ayrık bölge örnekleri (Sadece-K ve Sadece-B)
+            if liste_bos:
+                ornek_k = []
+            else:
+                ornek_k = self.db.sorgu_calistir(
+                    _ornek_sql(f"({k_pred}) AND NOT ({b_pred})"))
+            ornek_b = self.db.sorgu_calistir(
+                _ornek_sql(f"NOT ({k_pred}) AND ({b_pred})"))
+        except Exception as e:
+            logger.exception("Küme analizi sorgu hatası")
+            self.root.after(0, lambda: messagebox.showerror(
+                "Küme Analizi — SQL Hatası",
+                f"Analiz sorgusu başarısız:\n{str(e)[:400]}",
+                parent=self.root))
+            self.root.after(0, lambda: self.lbl_sayim.config(text="Hata"))
+            self.root.after(0, self._sorgu_kilidini_ac)
+            return
+
+        self.root.after(0, self._kume_analizi_goster,
+                        sonuc, ornek_k, ornek_b, liste_bos)
+        self.root.after(0, self._sorgu_kilidini_ac)
+
+    def _kume_analizi_goster(self, sonuc, ornek_k, ornek_b, liste_bos):
+        """Küme analizi sonucunu okunur bir pencerede göster (+Excel)."""
+        self.lbl_sayim.config(text="Küme analizi bitti")
+        self._durum_yaz("📊 Küme analizi tamamlandı (2021-2026).")
+
+        # Kullanıcı notasyonu:
+        #   T = tüm satırlar       B = içerik filtresinin elediği küme
+        #   K = kontrolü gereksiz  C = ne B ne K (B∪K dışı)
+        #   X = B∩K (kesişim)      Y = B∪K (birleşim)
+        #   b = sadece B (B∖K)     k = sadece K (K∖B)
+        T = sonuc["toplam"]
+        Bk = sonuc["toplam_b"]          # B = b + X
+        Kk = sonuc["toplam_k"]          # K = k + X
+        X = sonuc["kesisim"]            # B ∩ K
+        C = sonuc["hicbiri"]            # ne B ne K
+        b = sonuc["sadece_b"]           # B ∖ K
+        k = sonuc["sadece_k"]           # K ∖ B
+        Y = b + k + X                   # B ∪ K (= T − C)
+
+        if Kk > Bk:
+            buyuk = (f"K (kontrolü gereksiz) daha GENİŞ — "
+                     f"K={Kk:,} > B={Bk:,}".replace(",", "."))
+        elif Bk > Kk:
+            buyuk = (f"B (beyaz+raporsuz+uyarısız+mesajsız) daha GENİŞ — "
+                     f"B={Bk:,} > K={Kk:,}".replace(",", "."))
+        else:
+            buyuk = f"İki kapsam EŞİT — B = K = {Kk:,}".replace(",", ".")
+
+        def _fmt(n):
+            return f"{int(n):,}".replace(",", ".")
+
+        satirlar = [
+            "═══════════════════════════════════════════════════════",
+            "  KÜME ANALİZİ — 2021-2026 (reçete-ilaç satırı bazında)",
+            "═══════════════════════════════════════════════════════",
+            "",
+            "  TANIMLAR",
+            "    T = Tüm ilaç satırları (2021-2026)",
+            "    B = İçerik filtresinin elediği küme",
+            "        (beyaz reçete ∧ raporsuz ∧ uyarı kodsuz ∧ mesajsız)",
+            "    K = Kontrolü gereksiz ilaçlar kümesi",
+            "    X = B ∩ K  (kesişim)",
+            "    Y = B ∪ K  (birleşim)",
+            "    C = B ∪ K dışı  (ne B ne K)",
+            "    b = sadece B  (B ∖ K)",
+            "    k = sadece K  (K ∖ B)",
+            "",
+            "  SAYILAR",
+            "  ┌──────────────────────────────────────────────────┐",
+            f"  │ b  Sadece B (B∖K)               : {_fmt(b):>12} │",
+            f"  │ k  Sadece K (K∖B)               : {_fmt(k):>12} │",
+            f"  │ X  Kesişim (B∩K)                : {_fmt(X):>12} │",
+            f"  │ C  Ne B ne K (B∪K dışı)         : {_fmt(C):>12} │",
+            "  ├──────────────────────────────────────────────────┤",
+            f"  │ B  Toplam B   (b + X)           : {_fmt(Bk):>12} │",
+            f"  │ K  Toplam K   (k + X)           : {_fmt(Kk):>12} │",
+            f"  │ Y  Birleşim   (b + k + X)       : {_fmt(Y):>12} │",
+            f"  │ T  TOPLAM satır                 : {_fmt(T):>12} │",
+            "  └──────────────────────────────────────────────────┘",
+            "",
+            "  DOĞRULAMA",
+            f"    B + K − X = Y  →  {_fmt(Bk)} + {_fmt(Kk)} − {_fmt(X)} "
+            f"= {_fmt(Y)}",
+            f"    Y + C     = T  →  {_fmt(Y)} + {_fmt(C)} = {_fmt(T)}",
+            "",
+            f"  ► HANGİSİ DAHA BÜYÜK PENCERE: {buyuk}",
+            "",
+        ]
+        if liste_bos:
+            satirlar.append("  ⚠ Kontrolü gereksiz ilaç listesi BOŞtu → "
+                            "K=0 (k=0, X=0) kabul edildi.")
+            satirlar.append("")
+
+        satirlar.append("  ── k = Sadece-K bölgesinde en sık ilaçlar (top 25) ──")
+        if ornek_k:
+            for x in ornek_k:
+                satirlar.append(
+                    f"     {_fmt(x.get('adet') or 0):>8}  "
+                    f"{(x.get('ilac') or '').strip()}")
+        else:
+            satirlar.append("     (yok)")
+        satirlar.append("")
+        satirlar.append("  ── b = Sadece-B bölgesinde en sık ilaçlar (top 25) ──")
+        if ornek_b:
+            for x in ornek_b:
+                satirlar.append(
+                    f"     {_fmt(x.get('adet') or 0):>8}  "
+                    f"{(x.get('ilac') or '').strip()}")
+        else:
+            satirlar.append("     (yok)")
+
+        metin = "\n".join(satirlar)
+
+        win = tk.Toplevel(self.root)
+        win.title("📊 Küme Analizi — Kontrol-dışı vs Boş/Atlanır (2021-2026)")
+        win.geometry("760x640")
+        win.transient(self.root)
+        txt = tk.Text(win, wrap="none", font=("Consolas", 10),
+                      bg="#FFFFFF", fg="#212121")
+        sb = ttk.Scrollbar(win, command=txt.yview)
+        txt.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        txt.pack(side="left", fill="both", expand=True)
+        txt.insert("1.0", metin)
+        txt.config(state="disabled")
+
+        btnf = tk.Frame(win, bg="#ECEFF1")
+        btnf.pack(side="bottom", fill="x")
+        tk.Button(btnf, text="📋 Panoya Kopyala", bg="#546E7A", fg="white",
+                  bd=0, padx=10, pady=4,
+                  command=lambda: (self.root.clipboard_clear(),
+                                   self.root.clipboard_append(metin),
+                                   self._durum_yaz("Küme analizi panoya "
+                                                   "kopyalandı."))
+                  ).pack(side="left", padx=6, pady=6)
+        tk.Button(btnf, text="❌ Kapat", bg="#90A4AE", fg="white", bd=0,
+                  padx=10, pady=4, command=win.destroy
+                  ).pack(side="right", padx=6, pady=6)
+
     @staticmethod
     def _ay_etiketi(no: int) -> str:
         adlar = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -10192,6 +10557,19 @@ class AylikReceteSorguGUI:
                         where_parts.append(liste_kos)
                 except Exception as e:
                     logger.warning("Filtre ayarları SQL'e dönüştürülemedi: %s", e)
+
+            # ⚡ Kontrolü gereksiz ilaçları SQL'de ele — toggle AÇIKsa listedeki
+            # ilaçlar sorguya hiç gelmez (NOT (...) koşulu). Sorgu-sonrası
+            # gizleme kutusundan bağımsız.
+            try:
+                if self.kontrol_disi_sql_aktif.get():
+                    import kontrol_disi_ilaclar as _kdi
+                    kd_pred = _kdi.sql_eslesme_kosulu()
+                    if kd_pred:
+                        where_parts.append(f"NOT {kd_pred}")
+                        logger.info("Kontrol-dışı ilaçlar SQL'de elendi.")
+            except Exception as e:
+                logger.warning("Kontrol-dışı SQL filtresi eklenemedi: %s", e)
 
             where_sql = " AND ".join(where_parts)
 
@@ -11594,9 +11972,19 @@ class AylikReceteSorguGUI:
         self._sayaclari_guncelle()
 
     def _bos_satir_filtre_degisti(self):
-        """🚫 Boş Satırları Gizle değişti → SQL düzeyinde filtre değişti
-        demektir, sorguyu yeniden çalıştır. Henüz veri çekilmediyse hiç
-        bir şey yapma."""
+        """🚫 Boş Satırları Gizle ("Kullan") değişti → SQL düzeyinde filtre
+        değişti demektir, sorguyu yeniden çalıştır. Henüz veri çekilmediyse
+        sadece ayarı kalıcılaştır."""
+        # Filtre penceresindeki ana anahtarla senkron kalsın → JSON'a yaz.
+        try:
+            import aylik_filtre_ayarlari as fa
+            ay = self._filtre_ayarlari_aktif or fa.ayarlari_yukle()
+            ay["filtre_aktif"] = bool(self.gizle_bos_satirlar.get())
+            fa.ayarlari_kaydet(ay)
+            self._filtre_ayarlari_aktif = ay
+        except Exception as e:
+            logger.warning("filtre_aktif kalıcılaştırılamadı: %s", e)
+
         if not self.tum_satirlar:
             return
         self._durum_yaz("🚫 Boş satır filtresi değişti — sorgu yenileniyor…")
@@ -11765,6 +12153,13 @@ class AylikReceteSorguGUI:
         def _on_save(yeni_ayarlar):
             # Yeni ayarları memory'e al ve sorguyu yenile
             self._filtre_ayarlari_aktif = yeni_ayarlar
+            # Filtre penceresindeki ana anahtarı ana ekrandaki "Kullan"
+            # kutusuna yansıt (çift yönlü senkron).
+            try:
+                self.gizle_bos_satirlar.set(
+                    bool(yeni_ayarlar.get("filtre_aktif", True)))
+            except Exception:
+                pass
             if self.tum_satirlar:
                 # Yalnızca bos_gizle açıkken yeniden sorgu mantıklı
                 self._durum_yaz(
@@ -21164,6 +21559,140 @@ class AylikReceteSorguGUI:
         wb.save(path)
         return path
 
+    # ── RENKLİ REÇETE LİSTESİ YÜKLE (bu ekrandan) ─────────────────────
+    def _renkli_rr_durum_guncelle(self):
+        """Yüklü renkli reçete listesi durumunu butonun yanındaki label'a yaz."""
+        lbl = getattr(self, "lbl_renkli_rr_durum", None)
+        if lbl is None:
+            return
+        try:
+            from recete_kontrol import get_renkli_recete_kontrol
+            rk = get_renkli_recete_kontrol()
+            if rk.pdf_yuklu and rk.pdf_receteler:
+                kaynak = rk.pdf_dosya_adi or "manuel"
+                lbl.config(
+                    text=f"RR liste: ✓ {len(rk.pdf_receteler)} reçete ({kaynak})",
+                    fg="#1B5E20")
+            else:
+                lbl.config(text="RR liste: yüklü değil", fg="#7B1FA2")
+        except Exception:
+            lbl.config(text="RR liste: yüklü değil", fg="#7B1FA2")
+
+    def _renkli_rr_excel_parse(self, dosya_yolu: str) -> list:
+        """Excel dosyasından renkli reçete numaralarını çıkar.
+
+        'Reçete No' sütununu adıyla bulmaya çalışır; bulamazsa 2. sütunu
+        (yoksa 1. sütunu) kullanır. 'XXX / 2YYYYYY' formatında ikinci kısım
+        alınır; doğrudan '2XXXXXX' (2 ile başlayan 7 karakter) da kabul edilir.
+        """
+        import pandas as pd
+        import re
+        df = pd.read_excel(dosya_yolu)
+
+        recete_sutun = None
+        for col in df.columns:
+            if "reçete" in str(col).lower() or "recete" in str(col).lower():
+                recete_sutun = col
+                break
+        if recete_sutun is None:
+            recete_sutun = df.columns[1] if len(df.columns) > 1 else df.columns[0]
+
+        receteler = []
+        for val in df[recete_sutun]:
+            if pd.isna(val):
+                continue
+            val_str = str(val)
+            if "/" in val_str:
+                parcalar = val_str.split("/")
+                if len(parcalar) >= 2:
+                    temiz = re.sub(r"[^A-Za-z0-9]", "", parcalar[1].strip())
+                    if re.match(r"^2[A-Za-z0-9]{6}$", temiz):
+                        receteler.append(temiz)
+            else:
+                temiz = re.sub(r"[^A-Za-z0-9]", "", val_str)
+                if re.match(r"^2[A-Za-z0-9]{6}$", temiz):
+                    receteler.append(temiz)
+        return list(set(receteler))
+
+    def _renkli_rr_liste_yukle(self):
+        """📊 RR LİSTE YÜKLE — renkli reçete sisteminden alınan Excel/PDF
+        dosyasını bu ekrandan yükler ve ortak listeye (singleton) yazar.
+
+        Yüklemeden sonra istenirse RENKLİ REÇETE kontrolü hemen çalıştırılır
+        (yüklenen satırlar listeyle karşılaştırılır: VAR / YOK).
+        """
+        from tkinter import filedialog
+
+        try:
+            from recete_kontrol import get_renkli_recete_kontrol
+        except Exception as e:
+            messagebox.showerror(
+                "Modül Hatası",
+                f"recete_kontrol.renkli_recete modülü yüklenemedi:\n{e}",
+                parent=self.root)
+            return
+
+        dosya_yolu = filedialog.askopenfilename(
+            title="Renkli Reçete Listesi Seç (Excel / PDF)",
+            filetypes=[
+                ("Excel / PDF", "*.xlsx *.xls *.pdf"),
+                ("Excel Dosyaları", "*.xlsx *.xls"),
+                ("PDF Dosyaları", "*.pdf"),
+                ("Tüm Dosyalar", "*.*"),
+            ],
+            parent=self.root)
+        if not dosya_yolu:
+            return
+
+        rk = get_renkli_recete_kontrol()
+        uzanti = os.path.splitext(dosya_yolu)[1].lower()
+
+        try:
+            if uzanti == ".pdf":
+                basari, mesaj, sayi = rk.pdf_yukle(dosya_yolu)
+                if not basari:
+                    messagebox.showerror("PDF Hatası", mesaj, parent=self.root)
+                    return
+            else:
+                receteler = self._renkli_rr_excel_parse(dosya_yolu)
+                if not receteler:
+                    messagebox.showwarning(
+                        "Liste Boş",
+                        "Excel dosyasında geçerli reçete numarası bulunamadı.\n\n"
+                        "Reçete numarası formatı: 2XXXXXX (2 ile başlayan 7 karakter).",
+                        parent=self.root)
+                    return
+                rk.liste_yukle(receteler)
+                rk.pdf_dosya_adi = os.path.basename(dosya_yolu)
+                sayi = len(receteler)
+        except Exception as e:
+            logger.exception("Renkli reçete liste yükleme hatası")
+            messagebox.showerror(
+                "Yükleme Hatası",
+                f"Dosya okunamadı:\n{e}",
+                parent=self.root)
+            return
+
+        self._renkli_rr_durum_guncelle()
+        self._durum_yaz(
+            f"📊 Renkli reçete listesi yüklendi: {sayi} reçete "
+            f"({os.path.basename(dosya_yolu)})")
+
+        # Yüklemeden hemen sonra kontrolü çalıştırmak ister mi?
+        if self.tum_satirlar and messagebox.askyesno(
+                "Liste Yüklendi",
+                f"{sayi} reçete yüklendi.\n\n"
+                "Yüklü reçeteler bu listeyle hemen kontrol edilsin mi?\n"
+                "(Renkli RR sütununa VAR / YOK yazılır)",
+                parent=self.root):
+            self._renkli_recete_kontrol_baslat()
+        else:
+            messagebox.showinfo(
+                "Liste Yüklendi",
+                f"{sayi} reçete yüklendi.\n\n"
+                "🔴🟢🟣 RENKLİ REÇETE butonu ile kontrol edebilirsiniz.",
+                parent=self.root)
+
     # ── RENKLİ REÇETE SİSTEMİ KONTROL (renkli_rr sütunu) ──────────────
     def _renkli_recete_kontrol_baslat(self):
         """RENKLİ REÇETE butonu — yüklenen tüm satırlardan Kırmızı/Yeşil/Mor
@@ -21199,8 +21728,9 @@ class AylikReceteSorguGUI:
             messagebox.showwarning(
                 "Renkli Reçete Listesi Yok",
                 "Renkli reçete listesi yüklü değil.\n\n"
-                "Ana ekrandaki '🔴🟢 Renkli Reçete Yükle' butonu ile "
-                "PDF/Excel listesini önce yükleyin.",
+                "Bu ekrandaki '📊 RR LİSTE YÜKLE' butonu ile "
+                "(veya ana ekrandaki '🔴🟢 Renkli Reçete Yükle' ile) "
+                "Excel/PDF listesini önce yükleyin.",
                 parent=self.root)
             return
 

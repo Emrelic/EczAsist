@@ -58,6 +58,11 @@ LISTE_ETIKETLERI = {
 
 
 VARSAYILAN = {
+    # ── Filtre ana anahtarı (ana ekrandaki "Kullan" kutusu ile aynı) ──
+    # AÇIK: aşağıdaki içerik + liste kuralları SQL'e uygulanır.
+    # KAPALI: hiçbir kural uygulanmaz, tüm satırlar gelir.
+    "filtre_aktif": True,
+
     # ── İçerik filtresi (her biri "getir mi?") ──
     "renkli_getir": True,       # Kırmızı/Yeşil/Mor reçeteler
     "mesaj_getir":  True,       # Mesajı olan ilaçlar
@@ -118,6 +123,10 @@ def ayarlari_yukle() -> dict:
     except Exception as e:
         logger.warning("Filtre ayarları okunamadı: %s", e)
         return sonuc
+
+    # Filtre ana anahtarı — JSON'da yoksa varsayılan AÇIK kalır
+    if "filtre_aktif" in ay:
+        sonuc["filtre_aktif"] = bool(ay["filtre_aktif"])
 
     # İçerik toggle'ları
     for k in ("renkli_getir", "mesaj_getir", "uyari_getir", "rapor_getir"):
@@ -856,11 +865,45 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
     banner.pack(fill="x")
     tk.Label(banner,
               text="🚫  Hangi Satırlar Tabloya GELSİN / GELMESİN?  ─  "
-                   "Ana ekrandaki '🚫 Boş Satırları Gizle' AÇIKKEN bu "
-                   "kurallar SQL'e uygulanır.",
+                   "Aşağıdaki ANA ANAHTAR açıkken bu kurallar SQL'e "
+                   "uygulanır.",
               bg="#B71C1C", fg="white",
               font=("Segoe UI", 10, "bold"), padx=14, pady=8
               ).pack(anchor="w")
+
+    # ════════════════════════════════════════════════════════════════
+    # ANA ANAHTAR — filtre kurallarını uygula/uygulama (ana ekrandaki
+    # "Kullan" kutusu ile aynı ayar). Buradan değiştirip kaydedince ana
+    # ekrandaki kutu da otomatik eşitlenir.
+    # ════════════════════════════════════════════════════════════════
+    var_filtre_aktif = tk.BooleanVar(value=ay.get("filtre_aktif", True))
+    anahtar_frm = tk.Frame(win, bg="#FFF3E0", bd=2, relief="ridge")
+    anahtar_frm.pack(fill="x", padx=10, pady=(6, 0))
+    cb_anahtar = tk.Checkbutton(
+        anahtar_frm,
+        text="🚦 BU FİLTRE KURALLARINI UYGULA  "
+             "(ana ekrandaki 'Kullan' kutusu ile aynı)",
+        variable=var_filtre_aktif, bg="#FFF3E0", fg="#BF360C",
+        font=("Segoe UI", 10, "bold"), padx=8, pady=6,
+        selectcolor="#FFFFFF")
+    cb_anahtar.pack(side="left", anchor="w")
+    anahtar_durum = tk.Label(
+        anahtar_frm, text="", bg="#FFF3E0", fg="#33691E",
+        font=("Segoe UI", 9, "italic"))
+    anahtar_durum.pack(side="left", padx=8)
+
+    def _anahtar_guncelle(*_):
+        if var_filtre_aktif.get():
+            anahtar_durum.config(
+                text="● Kurallar AKTİF — işaretli satırlar gelmez.",
+                fg="#1B5E20")
+        else:
+            anahtar_durum.config(
+                text="○ Kurallar KAPALI — TÜM satırlar gelir "
+                     "(hiçbir dışlama uygulanmaz).",
+                fg="#B71C1C")
+    var_filtre_aktif.trace_add("write", _anahtar_guncelle)
+    _anahtar_guncelle()
 
     # ════════════════════════════════════════════════════════════════
     # HIZLI PRESET — kontrol grubu seçimi için combobox
@@ -1425,6 +1468,7 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
 
     def _kaydet_kapat():
         yeni = {
+            "filtre_aktif":  var_filtre_aktif.get(),
             "renkli_getir":  var_renkli.get(),
             "mesaj_getir":   var_mesaj.get(),
             "uyari_getir":   var_uyari.get(),
@@ -1454,6 +1498,7 @@ def ayar_penceresini_ac(parent, db=None, on_save=None):
                                        "(4 içerik açık, liste kuralları "
                                        "boş). Devam edilsin mi?"):
             return
+        var_filtre_aktif.set(True)
         var_renkli.set(True)
         var_mesaj.set(True)
         var_uyari.set(True)
