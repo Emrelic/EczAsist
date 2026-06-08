@@ -1,0 +1,80 @@
+============================================================
+  KÜME ANALİZİ — 2021-2026 (reçete-ilaç satırı bazında)
+============================================================
+
+  TANIMLAR
+    T = Tüm ilaç satırları (2021-2026)
+    B = beyaz ∧ raporsuz ∧ uyarı-kodsuz ∧ mesajsız (elenen)
+    K = Kontrolü gereksiz ilaçlar
+    X = B∩K   Y = B∪K   C = B∪K dışı   b = B∖K   k = K∖B
+
+  SAYILAR
+    b  Sadece B (B∖K)        :         16.831
+    k  Sadece K (K∖B)        :         37.495
+    X  Kesişim (B∩K)         :        159.064
+    C  Ne B ne K (B∪K dışı)  :         24.766
+    ------------------------------------
+    B  Toplam B (b+X)        :        175.895
+    K  Toplam K (k+X)        :        196.559
+    Y  Birleşim (b+k+X)      :        213.390
+    T  TOPLAM satır          :        238.156
+
+  DOĞRULAMA
+    B+K-X = Y : 175.895 + 196.559 - 159.064 = 213.390
+    Y+C   = T : 213.390 + 24.766 = 238.156
+
+  ► DAHA BÜYÜK PENCERE: K (kontrol-dışı) > B  (196.559 > 175.895)
+
+  k = Sadece-K en sık 25 ilaç:
+        3.785  KLOROBEN 200ML GARGARA
+        1.809  ANDOREX 200ML GARGARA
+        1.263  IBUCOLD C 30 FİLM TABLET
+        1.004  IBURAMIN ZERO 100ML SÜSPANSİYON
+          891  A-FERIN FORTE 30 FİLM TABLET
+          882  TRAVAZOL 15GR KREM
+          810  OROHEKS PLUS GARGARA 200ML
+          795  NUROFEN COLD+FLU 24 TABLET
+          677  IBURAMIN COLD ŞURUP 100ML
+          587  CIPRO 500MG 14 FİLM TABLET
+          565  MAJEZIK %0.25 ORAL SPREY 30ML
+          491  ECOPIRIN 100MG 30 ENTERIK TABLET
+          445  DOLGIT %5 50GR KREM
+          421  MAXIMUS %0.25 ORAL SPREY 30ML
+          406  ANDOREX 30ML ORAL SPREY
+          404  THERAFLU FORTE 20 FİLM TABLET
+          395  A-FERIN SINUS 20 FİLM TABLET
+          378  A-FERIN PEDIATRIK ŞURUP 100ML
+          368  AZITRO 500MG 3 FİLM TABLET
+          346  IBURAMIN COLD 24 FİLM TABLET
+          341  VOLTAREN EMULGEL %1 50GR JEL
+          340  A-FERIN PLUS PEDIATRIK 100ML ŞURUP
+          329  FASTJEL %2.5 50GR JEL
+          326  IBURAMIN ZERO 24 FİLM TABLET
+          311  CIPRASID 500MG 14 FİLM TABLET
+
+  b = Sadece-B en sık 25 ilaç:
+          977  CROXILEX-BID 1000MG 10 FİLM TABLET
+          495  APRALJIN FORTE 550MG 20 FİLM TABLET
+          470  KLAMOKS BID 200MG 70ML SÜSPANSİYON
+          402  AMOKLAVIN BID 400/57MG 70ML SÜSPANSİYON
+          346  CORASPIN 100MG 30 TABLET
+          298  APRALJIN FORTE 550MG 10 FİLM TABLET
+          263  VENTOLIN NEBULES 2.5MG/2.5ML 20 NEBUL
+          228  AMOKLAVIN BID 200/28MG 70ML SÜSPANSİYON
+          208  KLAVUNAT BID 200/28MG 100ML ORAL SÜSPANSİYON
+          204  BRUS 100MG/5ML 100ML PED SÜSPANSİYON
+          201  KLAVUNAT 625MG 10 FİLM TABLET
+          173  MOTILIUM 1MG/ML 200ML SÜSPANSİYON
+          157  DAFLON 500MG 60 FİLM TABLET
+          153  KLAVON BID 1000MG 10 FİLM TABLET
+          150  APRAZOL 30MG 28 MİKROPELLET KAPSÜL
+          138  WILKINSON 100GR POMAD
+          130  RASTEL 25MG 20 ÇENTİKLİ FİLM TABLET
+          124  ECOPIRIN PRO 81MG 30 ENTERIK KAPLI TABLET
+          124  KLAVUNAT ES 600/42.9MG ORAL SÜSPANSİYON İÇİN KURU TOZ 100ML
+          123  CROXILEX-BID 200/28 70ML ORAL SÜSPANSİYON
+          119  CROXILEX-BID 625MG 14 FİLM TABLET
+          111  LEVOTIRON 100MCG 50 TABLET
+          111  MAXIDENT DİŞ BAKIM SOLÜSYONU
+          110  DIDERAL 40MG 50 TABLET
+          108  DECAVIT PRONATAL 30 FİLM TABLET
