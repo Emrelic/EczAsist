@@ -91,6 +91,20 @@ def talep_pattern_analiz(db, urun_id: int, ay_sayisi: int = 12) -> dict:
 
     parti_buyuklukleri = list(parti_dict.values())
 
+    # gunluk_parti: date objesi → miktar (donem bazli analiz icin)
+    gunluk_parti = {}
+    for k, v in parti_dict.items():
+        try:
+            if isinstance(k, datetime):
+                d = k.date()
+            elif isinstance(k, str):
+                d = datetime.strptime(k[:10], '%Y-%m-%d').date()
+            else:
+                d = k
+            gunluk_parti[d] = gunluk_parti.get(d, 0) + v
+        except Exception:
+            continue
+
     # Ay-be-ay dokum (takvim ayi bazli; index 0 = bu ay, geriye dogru)
     # aylik_dokum[0] = bu ay (orn. Haziran), aylik_dokum[1] = onceki ay (Mayis), ...
     aylik_dokum = [0.0] * ay_sayisi
@@ -164,7 +178,8 @@ def talep_pattern_analiz(db, urun_id: int, ay_sayisi: int = 12) -> dict:
         'gunluk_ort': gunluk_ort,
         'gunluk_std': gunluk_std,
         'toplam_gun': toplam_gun,
-        'aylik_dokum': aylik_dokum
+        'aylik_dokum': aylik_dokum,
+        'gunluk_parti': gunluk_parti,   # date -> miktar (donem bazli analiz icin)
     }
 
 
@@ -613,6 +628,133 @@ def minimum_stok_hesapla(
     }
 
 
+def minimum_stok_hesapla_donem_bazli(analiz: dict, ay_sayisi: int = 12) -> dict:
+    """
+    Dönem bazlı minimum stok hesaplama (yeni frekans kuralları).
+
+    Yılı 3 eşit döneme böler (bugünden geriye, ay_sayisi/3 aylık).
+    Büyükten küçüğe aday miktarlar denenir; her dönemde en az 1 talep
+    >= aday varsa o aday minimum olarak belirlenir.
+
+    Kurallar:
+      1. <= 2 talep günü → min = 0
+      2. Herhangi bir dönem boşsa → min = 0
+      3. Her dönemde >= aday olan en büyük X → min = X
+      4. Hiçbir X bulunamazsa → min = 0
+    """
+    if not analiz or analiz.get('sinif') == 'NO_DEMAND':
+        return {
+            'min_bilimsel': 0, 'min_finansal': 0, 'min_onerilen': 0,
+            'aciklama': 'Talep yok'
+        }
+
+    talep_sayisi = analiz.get('talep_sayisi', 0)
+    if talep_sayisi <= 2:
+        return {
+            'min_bilimsel': 0, 'min_finansal': 0, 'min_onerilen': 0,
+            'aciklama': f'{talep_sayisi} talep günü (≤2) → min=0'
+        }
+
+    gunluk_parti = analiz.get('gunluk_parti', {})
+    if not gunluk_parti:
+        return {
+            'min_bilimsel': 0, 'min_finansal': 0, 'min_onerilen': 0,
+            'aciklama': 'Günlük veri yok → min=0'
+        }
+
+    # Dönem sınırları: bugünden geriye, ay_sayisi // 3 aylık 3 dilim
+    from datetime import date as date_type
+    bugun = datetime.now().date()
+    donem_ay = ay_sayisi // 3  # 12 ay → 4'er aylık 3 dönem
+
+    # donem_sinirlar[i] = (baslangic_dahil, bitis_haric)
+    donem_sinirlar = []
+    for i in range(3):
+        bit = (datetime.now() - relativedelta(months=i * donem_ay)).date()
+        bas = (datetime.now() - relativedelta(months=(i + 1) * donem_ay)).date()
+        donem_sinirlar.append((bas, bit))
+
+    # Her dönemdeki günlük miktarları topla
+    donem_miktarlar = [[], [], []]
+    for tarih, miktar in gunluk_parti.items():
+        for i, (bas, bit) in enumerate(donem_sinirlar):
+            if bas <= tarih <= bit:
+                donem_miktarlar[i].append(miktar)
+                break
+
+    # Kural 2: herhangi bir dönem boşsa → min=0 (istisna aşağıda)
+    bos = [i + 1 for i, m in enumerate(donem_miktarlar) if not m]
+    if bos:
+        donem_etiketleri = [
+            f"D{i+1}:{donem_sinirlar[i][0].strftime('%m/%y')}-{donem_sinirlar[i][1].strftime('%m/%y')}"
+            for i in range(3)
+        ]
+
+        # İstisna A: sadece D3 (en eski dönem) boş, D1 ve D2'de en az 2'şer talep varsa
+        # → ilaç son 8 ayda düzenli gidiyor, daha öncesinde yoktu (yeni ürün/tekrar başlangıç)
+        # → D1+D2 ortalama parti büyüklüğü → YUKARIYA yuvarlayarak min
+        # NOT: D1 (bugüne en yakın dönem) boşsa istisna YOKTUR — ilaç durmuş sayılır → min=0
+        if bos == [3] and len(donem_miktarlar[0]) >= 2 and len(donem_miktarlar[1]) >= 2:
+            d1_d2 = donem_miktarlar[0] + donem_miktarlar[1]
+            ort = sum(d1_d2) / len(d1_d2)
+            min_oner = math.ceil(ort)
+            return {
+                'min_bilimsel': min_oner, 'min_finansal': 0, 'min_onerilen': min_oner,
+                'aciklama': (
+                    f'İstisna A: D3 boş ama D1({len(donem_miktarlar[0])} talep)'
+                    f'+D2({len(donem_miktarlar[1])} talep) → ort={ort:.1f} → min={min_oner}'
+                )
+            }
+
+        # İstisna B: sadece D2 (orta dönem) boş, D1 ve D3'te yeterli talep varsa
+        # Koşul: min(D1,D3) >= 2 VE max(D1,D3) >= 3
+        # → periyodik/mevsimsel ürün, orta dönemde boşluk var ama baş ve son dönem güçlü
+        # → D1+D3 ortalama parti büyüklüğü → AŞAĞIYA yuvarlayarak min
+        n1, n3 = len(donem_miktarlar[0]), len(donem_miktarlar[2])
+        if bos == [2] and min(n1, n3) >= 2 and max(n1, n3) >= 3:
+            d1_d3 = donem_miktarlar[0] + donem_miktarlar[2]
+            ort = sum(d1_d3) / len(d1_d3)
+            min_oner = math.floor(ort)
+            return {
+                'min_bilimsel': min_oner, 'min_finansal': 0, 'min_onerilen': min_oner,
+                'aciklama': (
+                    f'İstisna B: D2 boş, D1({n1} talep)+D3({n3} talep)'
+                    f' → ort={ort:.1f} → min={min_oner} (alta yuvarla)'
+                )
+            }
+
+        bos_str = ', '.join(f"D{b}" for b in bos)
+        return {
+            'min_bilimsel': 0, 'min_finansal': 0, 'min_onerilen': 0,
+            'aciklama': f'{bos_str} boş → min=0 | ' + ' | '.join(donem_etiketleri)
+        }
+
+    # Tüm unique miktarlar, büyükten küçüğe
+    tum_miktarlar = sorted(
+        set(int(round(m)) for dm in donem_miktarlar for m in dm),
+        reverse=True
+    )
+
+    # Her aday için: her dönemde >= aday olan en az 1 talep var mı?
+    for aday in tum_miktarlar:
+        if all(any(int(round(m)) >= aday for m in dm) for dm in donem_miktarlar):
+            donem_ozet = ' | '.join(
+                f"D{i+1}:[{','.join(str(int(round(m))) for m in sorted(dm, reverse=True)[:5])}]"
+                for i, dm in enumerate(donem_miktarlar)
+            )
+            return {
+                'min_bilimsel': aday,
+                'min_finansal': 0,
+                'min_onerilen': aday,
+                'aciklama': f'Dönem bazlı min={aday} | {donem_ozet}'
+            }
+
+    return {
+        'min_bilimsel': 0, 'min_finansal': 0, 'min_onerilen': 0,
+        'aciklama': 'Ortak dönem miktarı yok → min=0'
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ROP (Reorder Point) + Safety Stock - Bilimsel Yontem
 # Referans: Silver, Pyke & Thomas "Inventory and Production Management in Supply Chains"
@@ -802,8 +944,13 @@ def tum_ilaclari_analiz_et(
         CASE WHEN u.UrunUrunTipId IN (1, 16) THEN
             (SELECT COUNT(*) FROM Karekod kk WHERE kk.KKUrunId = u.UrunId AND kk.KKDurum = 1)
         ELSE (COALESCE(u.UrunStokDepo,0) + COALESCE(u.UrunStokRaf,0) + COALESCE(u.UrunStokAcik,0))
-        END as Stok
+        END as Stok,
+        COALESCE(ut.UrunTipAdi, 'Belirsiz') as UrunTipi,
+        (SELECT TOP 1 b.BarkodAdi FROM Barkod b
+         WHERE b.BarkodUrunId = u.UrunId
+         ORDER BY b.BarkodSilme ASC) as UrunBarkodu
     FROM Urun u
+    LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
     WHERE u.UrunSilme = 0
     AND u.UrunUrunTipId IN (1, 16)
     {stok_filtre}
@@ -842,6 +989,8 @@ def tum_ilaclari_analiz_et(
             sonuclar.append({
                 'UrunId': urun_id,
                 'UrunAdi': ilac['UrunAdi'],
+                'UrunTipi': ilac.get('UrunTipi', '') or '',
+                'UrunBarkodu': ilac.get('UrunBarkodu', '') or '',
                 'MevcutMin': ilac.get('MevcutMin', 0) or 0,
                 'Stok': ilac.get('Stok', 0) or 0,
                 'AylikOrt': round(analiz['aylik_ort'], 1),
@@ -870,6 +1019,8 @@ def tum_ilaclari_analiz_et(
             sonuclar.append({
                 'UrunId': urun_id,
                 'UrunAdi': ilac['UrunAdi'],
+                'UrunTipi': ilac.get('UrunTipi', '') or '',
+                'UrunBarkodu': ilac.get('UrunBarkodu', '') or '',
                 'MevcutMin': ilac.get('MevcutMin', 0) or 0,
                 'Stok': ilac.get('Stok', 0) or 0,
                 'AylikOrt': round(analiz['aylik_ort'], 1),
@@ -886,17 +1037,19 @@ def tum_ilaclari_analiz_et(
                 'Aciklama': rop_sonuc['aciklama']
             })
         else:
-            # Frekans bazlı analiz (12 ay, 3+ satış kuralı)
+            # Frekans bazlı analiz — dönem bazlı yeni kurallar
             analiz = talep_pattern_analiz(db, urun_id, ay_sayisi)
 
             if not analiz:
                 continue
 
-            min_sonuc = minimum_stok_hesapla(analiz, kar_marji, yillik_faiz)
+            min_sonuc = minimum_stok_hesapla_donem_bazli(analiz, ay_sayisi)
 
             sonuclar.append({
                 'UrunId': urun_id,
                 'UrunAdi': ilac['UrunAdi'],
+                'UrunTipi': ilac.get('UrunTipi', '') or '',
+                'UrunBarkodu': ilac.get('UrunBarkodu', '') or '',
                 'MevcutMin': ilac.get('MevcutMin', 0) or 0,
                 'Stok': ilac.get('Stok', 0) or 0,
                 'AylikOrt': round(analiz['aylik_ort'], 1),

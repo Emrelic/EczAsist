@@ -1990,17 +1990,30 @@ class ReceteRaporKontrolGUI:
         medula_btn_frame = tk.Frame(medula_frame, bg="#263238")
         medula_btn_frame.pack(side="left", padx=5, pady=5)
 
-        # Checkbox - butonun üzerinde
+        # Checkbox + geri sayım satırı
+        cb_satir = tk.Frame(medula_btn_frame, bg="#263238")
+        cb_satir.pack(anchor="w", pady=(0, 2))
+
         self.canli_tut_var = tk.BooleanVar(value=self._canli_tut_tercihi_yukle())
         self.canli_tut_cb = tk.Checkbutton(
-            medula_btn_frame, text="Bağlantıyı Açık Tut",
+            cb_satir, text="Bağlantıyı Açık Tut",
             variable=self.canli_tut_var,
             font=("Segoe UI", 8), fg="#90CAF9", bg="#263238",
             selectcolor="#0D2137", activebackground="#263238",
             activeforeground="#90CAF9",
             command=self._canli_tut_toggle,
         )
-        self.canli_tut_cb.pack(anchor="w", pady=(0, 2))
+        self.canli_tut_cb.pack(side="left")
+
+        self.lbl_canli_tut_sayac = tk.Label(
+            cb_satir, text="", bg="#263238", fg="#80CBC4",
+            font=("Segoe UI", 8),
+        )
+        self.lbl_canli_tut_sayac.pack(side="left", padx=(4, 0))
+
+        # Eğer tercih açıksa sayacı başlat
+        if self.canli_tut_var.get():
+            self.root.after(1000, self._canli_tut_sayac_guncelle)
 
         medula_btn = tk.Button(
             medula_btn_frame, text="MEDULA Bağlan",
@@ -2487,10 +2500,11 @@ class ReceteRaporKontrolGUI:
                 self._pencereleri_konumlandir()
             except Exception as e:
                 logger.debug(f"Bağlantı sonrası yerleşim hatası: {e}")
-            # Bağlantıyı Açık Tut işaretliyse servisi başlat
+            # Bağlantıyı Açık Tut işaretliyse servisi başlat (kayıtlı tip ile)
             try:
                 if getattr(self, "canli_tut_var", None) and self.canli_tut_var.get():
-                    self._canli_tut_uygula(True)
+                    tip = self._canli_tut_tip_yukle()
+                    self._canli_tut_uygula(True, tip)
             except Exception:
                 pass
         else:
@@ -2523,29 +2537,157 @@ class ReceteRaporKontrolGUI:
         except Exception:
             pass
 
-    def _canli_tut_uygula(self, basla: bool):
+    def _canli_tut_tip_yukle(self) -> str:
+        """DURUM_DOSYASI'ndan 'canli_tut_tip' tercihini yükle (varsayılan 'A')."""
+        try:
+            if os.path.exists(DURUM_DOSYASI):
+                with open(DURUM_DOSYASI, "r", encoding="utf-8") as f:
+                    return json.load(f).get("_canli_tut_tip", "A")
+        except Exception:
+            pass
+        return "A"
+
+    def _canli_tut_tip_kaydet(self, tip: str):
+        """'canli_tut_tip' tercihini DURUM_DOSYASI'na yaz."""
+        try:
+            durum = {}
+            if os.path.exists(DURUM_DOSYASI):
+                with open(DURUM_DOSYASI, "r", encoding="utf-8") as f:
+                    durum = json.load(f)
+            durum["_canli_tut_tip"] = tip
+            with open(DURUM_DOSYASI, "w", encoding="utf-8") as f:
+                json.dump(durum, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+
+    def _canli_tut_uygula(self, basla: bool, tip: str = "A"):
         """Keepalive servisini başlat veya durdur."""
         try:
-            from medula_oturum_canli import get_servis
+            from medula_oturum_canli import (
+                get_servis, CANLI_TUT_TIP_A, CANLI_TUT_TIP_B,
+                CANLI_TUT_TIP_C, CANLI_TUT_TIP_D,
+            )
+            _TIP_MAP = {
+                "A": CANLI_TUT_TIP_A,
+                "B": CANLI_TUT_TIP_B,
+                "C": CANLI_TUT_TIP_C,
+                "D": CANLI_TUT_TIP_D,
+            }
+            _TIP_AD = {
+                "A": "F5+Yenile",
+                "B": "Sonraki Butonu",
+                "C": "E-Reçete Sorgula",
+                "D": "Giriş Butonu",
+            }
             servis = get_servis()
             if basla:
+                servis.tip = _TIP_MAP.get(tip, CANLI_TUT_TIP_A)
                 if not servis.aktif_mi():
                     if servis.basla():
-                        self.log_yaz("✓ Bağlantıyı açık tutma başladı (110s idle eşiği, F5+popup)", "success")
+                        tip_ad = _TIP_AD.get(tip, tip)
+                        self.log_yaz(f"✓ Bağlantıyı açık tutma başladı (119s, Tip {tip}: {tip_ad})", "success")
+                        self.root.after(1000, self._canli_tut_sayac_guncelle)
                     else:
                         self.log_yaz("Bağlantıyı açık tutma başlatılamadı (pynput?)", "error")
+                else:
+                    servis.tip = _TIP_MAP.get(tip, CANLI_TUT_TIP_A)
             else:
                 if servis.aktif_mi():
                     servis.dur()
                     self.log_yaz("Bağlantıyı açık tutma durduruldu", "info")
+                if hasattr(self, "lbl_canli_tut_sayac"):
+                    self.lbl_canli_tut_sayac.config(text="")
         except Exception as e:
             self.log_yaz(f"Bağlantıyı açık tutma hatası: {e}", "error")
 
+    def _canli_tut_sayac_guncelle(self):
+        """Her saniye geri sayım labelını güncelle."""
+        try:
+            from medula_oturum_canli import get_servis, IDLE_ESIK_SN
+            servis = get_servis()
+            if not servis.aktif_mi() or not self.canli_tut_var.get():
+                if hasattr(self, "lbl_canli_tut_sayac"):
+                    self.lbl_canli_tut_sayac.config(text="")
+                return
+            kalan = max(0, int(IDLE_ESIK_SN - servis.idle_saniye()))
+            renk = "#EF9A9A" if kalan <= 15 else ("#FFCC80" if kalan <= 30 else "#80CBC4")
+            tip = getattr(servis, "tip", "A")
+            etiket = f"[{tip}] ⏱{kalan}s"
+            if hasattr(self, "lbl_canli_tut_sayac"):
+                self.lbl_canli_tut_sayac.config(text=etiket, fg=renk)
+            self.root.after(1000, self._canli_tut_sayac_guncelle)
+        except Exception:
+            pass
+
+    def _canli_tut_ayarlar_popup(self, onceki_tip: str) -> str:
+        """A/B tip seçim popup'ı. Seçilen tipi döndürür (iptal edilirse onceki_tip)."""
+        popup = tk.Toplevel(self.root)
+        popup.title("Canlı Tut Ayarları")
+        popup.resizable(False, False)
+        popup.grab_set()
+        popup.configure(bg="#263238")
+
+        # Pencereyi ortala
+        popup.update_idletasks()
+        pw, ph = 380, 220
+        rx = self.root.winfo_x() + (self.root.winfo_width() - pw) // 2
+        ry = self.root.winfo_y() + (self.root.winfo_height() - ph) // 2
+        popup.geometry(f"{pw}x{ph}+{rx}+{ry}")
+
+        tk.Label(
+            popup, text="Canlı Tutma Yöntemi", bg="#263238", fg="#90CAF9",
+            font=("Segoe UI", 10, "bold"),
+        ).pack(pady=(14, 6))
+
+        secim_var = tk.StringVar(value=onceki_tip)
+
+        for tip, aciklama in [
+            ("A", "A  —  F5 (Yenile) + Yeniden Dene kapat + Enter"),
+            ("B", "B  —  \"Sonra >\" butonuna bas"),
+            ("C", "C  —  E-Reçete Sorgula sayfasına tıkla"),
+            ("D", "D  —  Giriş butonuna tıkla (oturum süresi dolunca)"),
+        ]:
+            tk.Radiobutton(
+                popup, text=aciklama, variable=secim_var, value=tip,
+                bg="#263238", fg="#CFD8DC", selectcolor="#0D2137",
+                activebackground="#263238", activeforeground="#90CAF9",
+                font=("Segoe UI", 9),
+            ).pack(anchor="w", padx=24, pady=2)
+
+        sonuc = {"tip": onceki_tip}
+
+        def _tamam():
+            sonuc["tip"] = secim_var.get()
+            popup.destroy()
+
+        def _iptal():
+            popup.destroy()
+
+        btn_fr = tk.Frame(popup, bg="#263238")
+        btn_fr.pack(pady=(12, 0))
+        tk.Button(
+            btn_fr, text="Tamam", command=_tamam,
+            bg="#0277BD", fg="white", font=("Segoe UI", 9, "bold"),
+            relief="flat", padx=12,
+        ).pack(side="left", padx=6)
+        tk.Button(
+            btn_fr, text="İptal", command=_iptal,
+            bg="#455A64", fg="white", font=("Segoe UI", 9),
+            relief="flat", padx=12,
+        ).pack(side="left", padx=6)
+
+        popup.wait_window()
+        return sonuc["tip"]
+
     def _canli_tut_toggle(self):
-        """Checkbox tıklandı: tercihi kaydet + servisi başlat/durdur."""
+        """Checkbox tıklandı: ayarlar popup göster, tercihi kaydet + servisi başlat/durdur."""
         deger = bool(self.canli_tut_var.get())
+        # Her durumda A/B seçim popup'ı göster
+        onceki_tip = self._canli_tut_tip_yukle()
+        secilen_tip = self._canli_tut_ayarlar_popup(onceki_tip)
+        self._canli_tut_tip_kaydet(secilen_tip)
         self._canli_tut_tercihi_kaydet(deger)
-        self._canli_tut_uygula(deger)
+        self._canli_tut_uygula(deger, secilen_tip)
 
     # === RENKLİ REÇETE EXCEL YÜKLEME ===
 

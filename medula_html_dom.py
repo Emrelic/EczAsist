@@ -236,6 +236,112 @@ def _btnsonraki_tikla(medula_hwnd: int = None) -> bool:
         return False
 
 
+def erecete_sorgu_tikla(medula_hwnd: int = None) -> bool:
+    """Medula ana sayfasındaki 'e-Reçete Sorgu' menü butonuna JS click gönderir.
+
+    HTML id: form1:menuHtmlCommandExButton11_MOUSE
+    Döndürür: True = tıklandı, False = element/döküman bulunamadı.
+    """
+    doc = html_doc_bul(medula_hwnd)
+    if doc is None:
+        logger.warning("erecete_sorgu_tikla: HTMLDocument alınamadı")
+        return False
+    try:
+        win = doc.parentWindow
+        if win is None:
+            logger.warning("erecete_sorgu_tikla: parentWindow yok")
+            return False
+        win.execScript(
+            "(function(){var e=document.getElementById("
+            "'form1:menuHtmlCommandExButton11_MOUSE');"
+            "if(e){e.click();}})()",
+            "javascript",
+        )
+        logger.info("erecete_sorgu_tikla: E-Reçete Sorgu tıklandı")
+        return True
+    except Exception as e:
+        logger.warning(f"erecete_sorgu_tikla execScript hatası: {e}")
+        return False
+
+
+def giris_tikla(medula_hwnd: int = None) -> bool:
+    """Medula giriş penceresindeki 'Giriş' WinForms butonuna click gönderir.
+
+    EnumChildWindows ile "GİRİŞ"/"GIRIS" metinli WindowsForms/Button kontrolünü
+    bulur; pywinauto click_input() ile tıklar. Koordinat tıklaması YOK.
+    Döndürür: True = tıklandı, False = pencere/buton bulunamadı.
+    """
+    if medula_hwnd is None:
+        medula_hwnd = _medula_hwnd()
+    if not medula_hwnd:
+        logger.warning("giris_tikla: MEDULA pencere handle'ı yok")
+        return False
+
+    button_hwnd = None
+    try:
+        import win32gui
+        bulunan = [None]
+
+        def _enum(h, _):
+            try:
+                text = (win32gui.GetWindowText(h) or "").upper().strip()
+                cls = win32gui.GetClassName(h) or ""
+                if text in ("GİRİŞ", "GIRIS") and "WindowsForms" in cls:
+                    bulunan[0] = h
+                    return False
+            except Exception:
+                pass
+            return True
+
+        win32gui.EnumChildWindows(medula_hwnd, _enum, None)
+        button_hwnd = bulunan[0]
+        if button_hwnd and not win32gui.IsWindowEnabled(button_hwnd):
+            logger.warning("giris_tikla: Giriş butonu disabled")
+            return False
+    except Exception as e:
+        logger.debug(f"giris_tikla Win32 enum hatası: {e}")
+
+    try:
+        from pywinauto import Application
+    except ImportError:
+        logger.error("giris_tikla: pywinauto yok")
+        return False
+
+    try:
+        app = Application(backend="uia").connect(handle=medula_hwnd, timeout=3)
+
+        btn = None
+        if button_hwnd:
+            try:
+                btn = app.window(handle=button_hwnd)
+                if not btn.exists(timeout=1):
+                    btn = None
+            except Exception:
+                btn = None
+
+        if btn is None:
+            win = app.window(handle=medula_hwnd)
+            btn = win.child_window(auto_id="btnMedulayaGirisYap", control_type="Button")
+            if not btn.exists(timeout=2):
+                btn = win.child_window(title_re="[Gg][İi][Rr][İi][Şş]", control_type="Button")
+            if not btn.exists(timeout=2):
+                logger.warning("giris_tikla: Giriş butonu bulunamadı")
+                return False
+
+        try:
+            btn.click_input()
+            logger.info("giris_tikla: Giriş butonu click_input() başarılı")
+            return True
+        except Exception as e:
+            logger.warning(f"giris_tikla click_input başarısız, invoke deneniyor: {e}")
+            btn.invoke()
+            logger.info("giris_tikla: Giriş butonu invoke() başarılı")
+            return True
+    except Exception as e:
+        logger.warning(f"giris_tikla pywinauto: {type(e).__name__}: {e}")
+        return False
+
+
 def _kullanilan_ilac_sayfasi_mi(doc) -> bool:
     """DOM'da 'Kullanılan İlaç Listesi' başlığı var mı?"""
     if doc is None:

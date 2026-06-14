@@ -34,6 +34,12 @@ VK_RETURN = 0x0D
 
 
 
+CANLI_TUT_TIP_A = "A"   # F5 + Enter (sayfa yenileme)
+CANLI_TUT_TIP_B = "B"   # Sonraki > butonu (btnSonraki invoke)
+CANLI_TUT_TIP_C = "C"   # E-Reçete Sorgu menü butonu (JS click)
+CANLI_TUT_TIP_D = "D"   # Giriş WinForms butonu (yeniden giriş)
+
+
 class MedulaOturumCanli:
     def __init__(self):
         self._calisiyor = False
@@ -44,6 +50,7 @@ class MedulaOturumCanli:
         self._lock = threading.Lock()
         self._son_yenileme_ts = 0.0
         self._son_yontem = ""              # "postmessage" / "foreground" / ""
+        self.tip = CANLI_TUT_TIP_A        # "A" veya "B"
 
     # ---------------------------------------------------------------- helpers
 
@@ -383,24 +390,93 @@ class MedulaOturumCanli:
 
         return basarili
 
+    # ---------------------------------------------------------------- B tipi: Sonraki butonu
+
+    def _sonraki_butonu_bas(self) -> bool:
+        """B tipi: Medula'daki 'Sonraki >' (btnSonraki) butonuna pywinauto ile tıkla.
+
+        Pencereyi foreground'a almadan UIA invoke kullanır — kullanıcıyı bölmez.
+        CLAUDE.md §3 uyumlu: koordinat tıklama YOK, invoke() ile.
+
+        Returns:
+            True  : buton bulundu ve invoke edildi
+            False : pencere/buton bulunamadı veya hata
+        """
+        try:
+            from pywinauto import Application
+        except ImportError:
+            logger.error("[OTURUM-B] pywinauto yüklü değil")
+            return False
+
+        hwnd = self._medula_hwnd()
+        if not hwnd:
+            logger.warning("[OTURUM-B] Medula penceresi bulunamadı")
+            return False
+
+        try:
+            app = Application(backend="uia").connect(handle=hwnd)
+            dlg = app.window(handle=hwnd)
+            btn = dlg.child_window(auto_id="btnSonraki", control_type="Button")
+            if not btn.exists(timeout=1):
+                logger.warning("[OTURUM-B] btnSonraki bulunamadı")
+                return False
+            btn.invoke()
+            self._son_yenileme_ts = time.monotonic()
+            self._son_yontem = "sonraki_b"
+            logger.info("[OTURUM-B] ✓ btnSonraki invoke edildi")
+            return True
+        except Exception as e:
+            logger.warning(f"[OTURUM-B] btnSonraki hatası: {e}")
+            return False
+
     def _oturumu_yenile(self):
-        """MEDULA penceresine F5 göndererek oturumu canlı tutar.
+        """MEDULA penceresine eylem göndererek oturumu canlı tutar.
 
-        İki kademeli akış:
-          Tier 1 — PostMessage: foreground'a almadan IE_Server alt-penceresine
-                   doğrudan WM_KEYDOWN(VK_F5) gönder. Kullanıcıyı bölmez.
-          Tier 2 — Foreground+pyautogui: Tier 1 başarısız olursa Medula kısa
-                   süreliğine öne alınır, pyautogui ile F5+Enter gönderilir
-                   (popup ihtimaline karşı Enter), sonra önceki pencere geri
-                   yüklenir.
+        tip="A" → İki kademeli F5 akışı (PostMessage → foreground+pyautogui)
+        tip="B" → Sonraki > butonu (btnSonraki UIA invoke)
 
-        Botanik EOS fallback kapalı olduğu için Medula penceresi yoksa
-        hiçbir şey yapılmaz (Botanik EOS'a yanlışlıkla F5 gönderme bug'ını
-        engeller).
+        Botanik EOS fallback kapalı; Medula yoksa hiçbir şey yapılmaz.
         """
         logger.info(
-            f"[OTURUM] {IDLE_ESIK_SN}s idle — Medula sessiz F5 deneniyor"
+            f"[OTURUM] {IDLE_ESIK_SN}s idle — Medula canlı tutma tip={self.tip}"
         )
+
+        # ---- B tipi ----
+        if self.tip == CANLI_TUT_TIP_B:
+            self._sonraki_butonu_bas()
+            return
+
+        # ---- C tipi: E-Reçete Sorgu JS click ----
+        if self.tip == CANLI_TUT_TIP_C:
+            try:
+                from medula_html_dom import erecete_sorgu_tikla
+                ok = erecete_sorgu_tikla()
+                if ok:
+                    self._son_yenileme_ts = time.monotonic()
+                    self._son_yontem = "erecete_sorgu_c"
+                    logger.info("[OTURUM-C] ✓ E-Reçete Sorgu tıklandı")
+                else:
+                    logger.warning("[OTURUM-C] E-Reçete Sorgu tıklanamadı — HTMLDocument alınamıyor olabilir")
+            except Exception as e:
+                logger.error(f"[OTURUM-C] Hata: {e}")
+            return
+
+        # ---- D tipi: Giriş butonu WinForms click ----
+        if self.tip == CANLI_TUT_TIP_D:
+            try:
+                from medula_html_dom import giris_tikla
+                ok = giris_tikla()
+                if ok:
+                    self._son_yenileme_ts = time.monotonic()
+                    self._son_yontem = "giris_d"
+                    logger.info("[OTURUM-D] ✓ Giriş butonu tıklandı")
+                else:
+                    logger.warning("[OTURUM-D] Giriş butonu bulunamadı — giriş ekranı açık mı?")
+            except Exception as e:
+                logger.error(f"[OTURUM-D] Hata: {e}")
+            return
+
+        # ---- A tipi (varsayılan) ----
         try:
             hwnd = self._medula_hwnd()
             if not hwnd:
@@ -416,7 +492,7 @@ class MedulaOturumCanli:
                 self._son_yontem = "postmessage"
                 return
 
-            # Tier 2: PostMessage çalışmadı → mevcut foreground+pyautogui
+            # Tier 2: PostMessage çalışmadı → foreground+pyautogui
             logger.warning(
                 "[OTURUM] PostMessage F5 başarısız — foreground fallback'e geçiliyor"
             )
