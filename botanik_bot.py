@@ -6635,7 +6635,7 @@ def tek_recete_isle(bot, recete_sira_no, rapor_takip, grup="", session_logger=No
     # Rapor toplama sonrası Sonraki butonuna basılıp basılmadığını takip et
     sonraki_zaten_basildi = False
 
-    if rapor_takip:
+    if rapor_toplama_aktif and rapor_takip:
         try:
             if session_logger:
                 session_logger.info("🔵 Rapor toplama başlatılıyor (Reçete Ana Sayfasında)...")
