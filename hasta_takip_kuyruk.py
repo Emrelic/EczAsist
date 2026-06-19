@@ -1076,9 +1076,15 @@ class MesajKuyrugu:
         # Manuel kapatılanlar (WhatsApp'ta Aç / Gönderildi / İlacını Aldı
         # butonlarıyla) listeden her koşulda düşer.
         if getattr(ayarlar, "gonderilenleri_goster", False):
+            # "Mesaj atılanları da getir" AÇIK: 'gonderildi' kayıtlar manuel
+            # kapatılmış (manuel_kapatildi=1) olsa bile listeye gelir. Mesaj
+            # atılınca kayıt gonderildi+manuel_kapatildi=1 olur; bu mod açıkken
+            # eczacı bu kayıtları yeşil olarak görebilsin ve gerekirse yeniden
+            # mesaj atabilsin. 'bekliyor' kayıtlarda manuel_kapatildi filtresi
+            # yine uygulanır (elle indirilen/iptal bekleyenler gizli kalsın).
             durum_koşulu = (
-                "durum IN ('bekliyor','gonderildi') "
-                "AND COALESCE(manuel_kapatildi, 0) = 0"
+                "(durum='gonderildi' "
+                " OR (durum='bekliyor' AND COALESCE(manuel_kapatildi, 0) = 0))"
             )
         else:
             durum_koşulu = (
