@@ -230,8 +230,8 @@ class AnaMenu:
         self._tema_uygula()
 
         # Medula Canlı Tut state (idle-tabanlı MedulaOturumCanli servisine bağlı)
-        # Varsayılan: AÇIK (kullanıcı isteği 2026-05-12)
-        self.var_medula_canli = tk.BooleanVar(value=True)
+        # Varsayılan: KAPALI (kullanıcı isteği 2026-06-20)
+        self.var_medula_canli = tk.BooleanVar(value=False)
         self.lbl_canli_durum = None
 
         # Açık modül pencerelerini takip et: aynı modüle ikinci kez tıklanınca
