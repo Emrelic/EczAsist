@@ -234,6 +234,18 @@ class AnaMenu:
         self.var_medula_canli = tk.BooleanVar(value=False)
         self.lbl_canli_durum = None
 
+        # 🌍 Yabancı uyruklu (98/99 TC) hasta uyarısı aç/kapa — kalıcı ayar.
+        # Anlık reçete kontrolü açıkken geçici koruma DEĞİL yabancı reçete
+        # kaydedilince tam ekran "Topkapı SGK kağıdı" uyarısı çıkar.
+        try:
+            import yabanci_hasta_tespit as _yht
+            _yabanci_aktif = _yht.uyari_aktif_mi()
+        except Exception:
+            _yabanci_aktif = True
+        self.var_yabanci_uyari = tk.BooleanVar(value=_yabanci_aktif)
+        # Geri sayım eşiği (sn) — kullanıcı ayarlayabilir (kullanıcı isteği 2026-06-24)
+        self.var_canli_saniye = tk.StringVar(value="119")
+
         # Açık modül pencerelerini takip et: aynı modüle ikinci kez tıklanınca
         # var olan pencereyi öne getir, yeni kopya açma.
         self.acik_moduller = {}
@@ -421,6 +433,39 @@ class AnaMenu:
             font=("Arial", 10, "bold"),
             cursor='hand2',
         ).pack(side="left")
+        # Geri sayım eşiği girişi (saniye) — ayarlanabilir
+        tk.Label(
+            canli_frame,
+            text="Süre:",
+            bg=self.bg_color,
+            fg=self.fg_secondary,
+            font=("Arial", 9),
+        ).pack(side="left", padx=(10, 2))
+        sp_saniye = tk.Spinbox(
+            canli_frame,
+            from_=10,
+            to=3600,
+            increment=10,
+            textvariable=self.var_canli_saniye,
+            width=5,
+            font=("Arial", 9),
+            bg=self.card_bg,
+            fg=self.fg_color,
+            buttonbackground=self.card_bg,
+            insertbackground=self.fg_color,
+            justify="right",
+            command=self._canli_saniye_uygula,
+        )
+        sp_saniye.pack(side="left")
+        sp_saniye.bind("<Return>", lambda e: self._canli_saniye_uygula())
+        sp_saniye.bind("<FocusOut>", lambda e: self._canli_saniye_uygula())
+        tk.Label(
+            canli_frame,
+            text="sn",
+            bg=self.bg_color,
+            fg=self.fg_secondary,
+            font=("Arial", 9),
+        ).pack(side="left", padx=(2, 0))
         self.lbl_canli_durum = tk.Label(
             canli_frame,
             text="",
@@ -446,6 +491,21 @@ class AnaMenu:
             pady=2,
             command=self._medula_simdi_yenile,
         ).pack(side="left", padx=(8, 0))
+
+        # 🌍 Yabancı uyruklu hasta (Topkapı SGK kağıdı) uyarısı aç/kapa
+        tk.Checkbutton(
+            canli_frame,
+            text="🌍 Yabancı Hasta Uyarısı",
+            variable=self.var_yabanci_uyari,
+            command=self._yabanci_uyari_toggle,
+            bg=self.bg_color,
+            fg=self.fg_color,
+            selectcolor=self.card_bg,
+            activebackground=self.bg_color,
+            activeforeground=self.fg_color,
+            font=("Arial", 10, "bold"),
+            cursor='hand2',
+        ).pack(side="left", padx=(20, 0))
 
         # Tema değiştir butonu (sağda, büyük ve belirgin)
         tema = TEMALAR.get(self.aktif_tema, TEMALAR["koyu"])
@@ -1264,7 +1324,35 @@ class AnaMenu:
                 pass
         modul_pencere.bind('<Destroy>', _geri_getir, add='+')
 
+    def _yabanci_uyari_toggle(self):
+        """🌍 Yabancı hasta uyarısı checkbox'ı — durumu kalıcı kaydet.
+
+        Anlık reçete kontrolü (Aylık Reçete Sorgu) bu ayarı her yoklamada
+        yerel JSON'dan okur; pencere açık değilken de ayar geçerli kalır.
+        """
+        try:
+            import yabanci_hasta_tespit as _yht
+            _yht.uyari_aktif_ayarla(bool(self.var_yabanci_uyari.get()))
+        except Exception as e:
+            try:
+                logger.warning("Yabancı uyarı ayarı kaydedilemedi: %s", e)
+            except Exception:
+                pass
+
     # ---------------- Medula Canlı Tut ----------------
+    def _canli_saniye_uygula(self):
+        """Girilen geri sayım süresini (sn) servise uygula ve giriş kutusunu
+        kırpılmış (geçerli) değerle senkronla. Servis çalışırken de geçerlidir."""
+        try:
+            from medula_oturum_canli import get_servis
+            servis = get_servis()
+            uygulanan = servis.set_esik(self.var_canli_saniye.get())
+            # Spinbox'ı kırpılmış değere geri yaz (örn. boş/aralık dışı girişte)
+            if str(uygulanan) != self.var_canli_saniye.get():
+                self.var_canli_saniye.set(str(uygulanan))
+        except Exception as e:
+            logger.debug(f"Canlı süre uygulama hatası: {e}")
+
     def _medula_simdi_yenile(self):
         """Manuel keepalive tetikleyici (test/teşhis butonu).
 
@@ -1296,15 +1384,18 @@ class AnaMenu:
     def _medula_canli_toggle(self):
         """Checkbox değişince MedulaOturumCanli (idle-tabanlı) servisi başlat/durdur."""
         try:
-            from medula_oturum_canli import get_servis, IDLE_ESIK_SN
+            from medula_oturum_canli import get_servis
         except Exception as e:
             messagebox.showerror("Hata", f"Oturum modülü yüklenemedi:\n{e}")
             self.var_medula_canli.set(False)
             return
         servis = get_servis()
         if self.var_medula_canli.get():
+            # Kullanıcının girdiği süreyi başlamadan önce uygula
+            servis.set_esik(self.var_canli_saniye.get())
+            self.var_canli_saniye.set(str(servis.idle_esik_sn))
             if servis.basla():
-                logger.info(f"Medula canlı tut açıldı (eşik {IDLE_ESIK_SN}s)")
+                logger.info(f"Medula canlı tut açıldı (eşik {servis.idle_esik_sn}s)")
                 self._canli_geri_sayim_tik()
             else:
                 self.var_medula_canli.set(False)
@@ -1323,13 +1414,13 @@ class AnaMenu:
         """Her 1 sn'de etiketi güncelle: Medula'da son tıklamadan beri kaç sn,
         eşiğe (110 sn) ne kadar kaldı."""
         try:
-            from medula_oturum_canli import get_servis, IDLE_ESIK_SN
+            from medula_oturum_canli import get_servis
             servis = get_servis()
             if not servis.aktif_mi() or not self.var_medula_canli.get():
                 if self.lbl_canli_durum is not None:
                     self.lbl_canli_durum.config(text="")
                 return
-            kalan = int(IDLE_ESIK_SN - servis.idle_saniye())
+            kalan = int(servis.idle_esik_sn - servis.idle_saniye())
             if kalan < 0:
                 kalan = 0
             if kalan <= 10:

@@ -20,7 +20,9 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-IDLE_ESIK_SN = 119           # 1 dakika 59 saniye (kullanıcı isteği 2026-05-16)
+IDLE_ESIK_SN = 119           # 1 dakika 59 saniye (kullanıcı isteği 2026-05-16) — varsayılan
+IDLE_ESIK_MIN_SN = 10        # ayarlanabilir alt sınır
+IDLE_ESIK_MAX_SN = 3600      # ayarlanabilir üst sınır (1 saat)
 TARAMA_ARALIK_SN = 2
 POPUP_BEKLEME_SN = 0.9       # F5 sonrası "sayfayı yeniden yükle?" popup için
 POPUP_DOGRULAMA_SN = 0.6     # Enter sonrası popup'ın kapandığını teyit için
@@ -51,6 +53,7 @@ class MedulaOturumCanli:
         self._son_yenileme_ts = 0.0
         self._son_yontem = ""              # "postmessage" / "foreground" / ""
         self.tip = CANLI_TUT_TIP_A        # "A" veya "B"
+        self.idle_esik_sn = IDLE_ESIK_SN  # ayarlanabilir geri sayım eşiği
 
     # ---------------------------------------------------------------- helpers
 
@@ -438,7 +441,7 @@ class MedulaOturumCanli:
         Botanik EOS fallback kapalı; Medula yoksa hiçbir şey yapılmaz.
         """
         logger.info(
-            f"[OTURUM] {IDLE_ESIK_SN}s idle — Medula canlı tutma tip={self.tip}"
+            f"[OTURUM] {self.idle_esik_sn}s idle — Medula canlı tutma tip={self.tip}"
         )
 
         # ---- B tipi ----
@@ -522,7 +525,7 @@ class MedulaOturumCanli:
                 try:
                     with self._lock:
                         gecen = time.monotonic() - self._son_tiklama_ts
-                    if gecen >= IDLE_ESIK_SN:
+                    if gecen >= self.idle_esik_sn:
                         self._oturumu_yenile()
                         with self._lock:
                             self._son_tiklama_ts = time.monotonic()
@@ -541,6 +544,25 @@ class MedulaOturumCanli:
 
     def aktif_mi(self) -> bool:
         return self._calisiyor
+
+    def set_esik(self, saniye) -> int:
+        """Geri sayım eşiğini (idle süresi) saniye cinsinden ayarla.
+
+        [IDLE_ESIK_MIN_SN, IDLE_ESIK_MAX_SN] aralığına kırpılır. Servis çalışırken
+        de çağrılabilir; bir sonraki döngü turunda yeni eşik geçerli olur.
+
+        Returns:
+            Uygulanan (kırpılmış) eşik değeri.
+        """
+        try:
+            sn = int(saniye)
+        except (TypeError, ValueError):
+            logger.warning(f"[OTURUM] Geçersiz eşik değeri: {saniye!r} — yok sayıldı")
+            return self.idle_esik_sn
+        sn = max(IDLE_ESIK_MIN_SN, min(IDLE_ESIK_MAX_SN, sn))
+        self.idle_esik_sn = sn
+        logger.info(f"[OTURUM] Geri sayım eşiği ayarlandı: {sn}s")
+        return sn
 
     def idle_saniye(self) -> float:
         with self._lock:
@@ -575,7 +597,7 @@ class MedulaOturumCanli:
             self._kb_listener = None
         self._worker = threading.Thread(target=self._dongu, daemon=True)
         self._worker.start()
-        logger.info(f"[OTURUM] ✓ Canlı tutma başladı (eşik {IDLE_ESIK_SN}s)")
+        logger.info(f"[OTURUM] ✓ Canlı tutma başladı (eşik {self.idle_esik_sn}s)")
         return True
 
     def dur(self):

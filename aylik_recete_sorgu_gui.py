@@ -29649,21 +29649,40 @@ class AylikReceteSorguGUI:
                     self._canli_son_rxid = yeni_max
                     continue
                 if yeni_max > son:
-                    uyarilar = self._canli_yeni_recete_kontrol(son)
+                    uyarilar, yabancilar = self._canli_yeni_recete_kontrol(son)
                     self._canli_son_rxid = yeni_max
+                    # Önce tam-ekran Topkapı SGK uyarısı (yabancı SGK'lı),
+                    # ardından SUT uygunsuzluk uyarısı. Yabancı uyarısı ana
+                    # sayfadaki "🌍 Yabancı Hasta Uyarısı" kutusuyla aç/kapanır;
+                    # ayar kalıcı JSON'dan okunur (her yoklamada güncel).
+                    if yabancilar:
+                        try:
+                            import yabanci_hasta_tespit as _yht
+                            _goster = _yht.uyari_aktif_mi()
+                        except Exception:
+                            _goster = True
+                        if _goster:
+                            self.root.after(
+                                0, self._canli_yabanci_uyari_goster, yabancilar)
                     if uyarilar:
                         self.root.after(0, self._canli_uyari_goster, uyarilar)
             except Exception as e:
                 logger.warning("Canlı kontrol döngü hatası: %s", e)
 
-    def _canli_yeni_recete_kontrol(self, son_rxid: int) -> list:
+    def _canli_yeni_recete_kontrol(self, son_rxid: int):
         """RxId > son_rxid olan yeni reçeteleri çek + her ilacı kontrol et.
 
         Background thread'den çağrılır (DB erişimi BotanikDB._sorgu_kilidi ile
-        serileştirilir). Kontrol-dışı ilaçlar atlanır. Uyarı listesi döner.
+        serileştirilir). Kontrol-dışı ilaçlar atlanır.
+
+        Döner: (uyarilar, yabancilar) tuple'ı
+          - uyarilar  : SUT uygunsuzluk/şüphe uyarıları (ilaç bazlı)
+          - yabancilar: 98/99 TC'li + geçici koruma DEĞİL reçeteler
+                        (Topkapı SGK kağıt uyarısı, reçete bazlı tekil)
         """
         from recete_kontrol.anlik_kontrol import kontrol_et_tekil, uyari_gerekir_mi
         from recete_kontrol.base_kontrol import VERDICT_ETIKET
+        import yabanci_hasta_tespit as yht
         try:
             import kontrol_disi_ilaclar as kdi
         except Exception:
@@ -29673,8 +29692,27 @@ class AylikReceteSorguGUI:
         sql = self._recete_sorgu_sql(where_sql, limit=500)
         rows = self.db.sorgu_calistir(sql)
         if not rows:
-            return []
+            return [], []
         satirlar = self._rows_to_satirlar(rows)
+
+        # ── Yabancı uyruklu (98/99 TC) + geçici koruma DEĞİL → Topkapı SGK
+        #    kağıt uyarısı. Reçete bazında tekilleştirilir, ilaç-SUT
+        #    kontrolünden tamamen bağımsızdır (kontrol-dışı/UYGUN olsa bile çıkar).
+        yabancilar = []
+        gorulen_rec = set()
+        for s in satirlar:
+            rno = str(s.get("rec_no") or "")
+            if not rno or rno in gorulen_rec:
+                continue
+            gorulen_rec.add(rno)
+            if yht.topkapi_kagit_uyarisi_gerekir_mi(s.get("tc"),
+                                                    s.get("hasta_tip")):
+                yabancilar.append({
+                    "hasta": s.get("hasta", ""),
+                    "tc": (s.get("tc") or "").strip(),
+                    "rec_no": rno,
+                    "kapsam": s.get("hasta_tip") or "",
+                })
 
         # Enrich: heyet + rapor türü/süre (4.2.14.B / 4.2.9.A için)
         rapor_ana_idler = list({s.get("rapor_ana_id") for s in satirlar
@@ -29723,7 +29761,7 @@ class AylikReceteSorguGUI:
                     "sartlar": [(p.ad, p.durum.value, p.neden)
                                  for p in (getattr(rapor, "sartlar", None) or [])],
                 })
-        return uyarilar
+        return uyarilar, yabancilar
 
     @staticmethod
     def _anlik_ilac_sonuc_kur(s: dict, diger_adlar: list, heyet: list,
@@ -29854,6 +29892,92 @@ class AylikReceteSorguGUI:
                   bg="#1976D2", fg="white", font=("Segoe UI", 11, "bold"),
                   padx=24, pady=6, cursor="hand2").pack()
         pop.bind("<Escape>", lambda _e: pop.destroy())
+        pop.focus_force()
+        pop.lift()
+
+    def _canli_yabanci_uyari_goster(self, yabancilar: list):
+        """Tam ekranı kaplayan, kırmızı, sesli 'Topkapı SGK kağıdı' uyarısı.
+
+        98/99 TC ile başlayan (yabancı uyruklu) ama geçici koruma kapsamında
+        OLMAYAN reçete kaydedildiğinde fırlar. Kapatılana kadar öne kalır.
+        """
+        if not yabancilar:
+            return
+        # Sesli alarm (üç kez — "DİKKAT DİKKAT")
+        try:
+            self.root.bell()
+        except Exception:
+            pass
+        try:
+            import winsound
+            for _ in range(3):
+                winsound.MessageBeep(winsound.MB_ICONHAND)
+        except Exception:
+            pass
+
+        pop = tk.Toplevel(self.root)
+        pop.title("⚠️ DİKKAT — YABANCI UYRUKLU HASTA")
+        pop.configure(bg="#B71C1C")
+        try:
+            pop.attributes("-fullscreen", True)   # ekranı kapla
+        except Exception:
+            try:
+                pop.state("zoomed")
+            except Exception:
+                pop.geometry("1100x800")
+        try:
+            pop.attributes("-topmost", True)
+        except Exception:
+            pass
+
+        ic = tk.Frame(pop, bg="#B71C1C")
+        ic.pack(fill="both", expand=True, padx=40, pady=30)
+
+        tk.Label(ic, text="⚠️  DİKKAT  DİKKAT  ⚠️", bg="#B71C1C", fg="#FFEB3B",
+                 font=("Segoe UI", 48, "bold")).pack(pady=(10, 4))
+        tk.Label(ic, text="YABANCI SGK'LI HASTA REÇETESİ",
+                 bg="#B71C1C", fg="white",
+                 font=("Segoe UI", 34, "bold")).pack(pady=4)
+        tk.Label(ic,
+                 text="TOPKAPI SGK'DAN KAĞIT GETİRİLDİ Mİ?",
+                 bg="white", fg="#B71C1C",
+                 font=("Segoe UI", 30, "bold"), padx=24, pady=12).pack(pady=18)
+        tk.Label(ic,
+                 text="Yabancı uyruklu (98/99 ile başlayan TC) SGK'lı hastalar,\n"
+                      "reçeteleri için TOPKAPI SGK'dan kağıt getirmelidir.",
+                 bg="#B71C1C", fg="white", justify="center",
+                 font=("Segoe UI", 18)).pack(pady=(0, 16))
+
+        # Hasta listesi
+        liste = tk.Frame(ic, bg="#FFF3E0")
+        liste.pack(fill="x", padx=60, pady=10)
+        tk.Label(liste, text=f"{len(yabancilar)} reçete:", bg="#FFF3E0",
+                 fg="#B71C1C", font=("Segoe UI", 14, "bold"),
+                 anchor="w").pack(fill="x", padx=14, pady=(8, 2))
+        for y in yabancilar[:12]:
+            satir = (f"   •  {y.get('hasta','')}   (TC: {y.get('tc','')})"
+                     f"   —  Reçete {y.get('rec_no','')}")
+            kapsam = (y.get("kapsam") or "").strip()
+            if kapsam:
+                satir += f"   [{kapsam}]"
+            tk.Label(liste, text=satir, bg="#FFF3E0", fg="#3E2723",
+                     font=("Segoe UI", 13), anchor="w").pack(fill="x", padx=14)
+        if len(yabancilar) > 12:
+            tk.Label(liste, text=f"   … ve {len(yabancilar) - 12} reçete daha",
+                     bg="#FFF3E0", fg="#3E2723", font=("Segoe UI", 12, "italic"),
+                     anchor="w").pack(fill="x", padx=14, pady=(0, 8))
+        else:
+            tk.Label(liste, text="", bg="#FFF3E0").pack(pady=2)
+
+        tk.Button(ic, text="✔  ANLADIM  (Esc)", command=pop.destroy,
+                  bg="#1B5E20", fg="white", font=("Segoe UI", 20, "bold"),
+                  padx=40, pady=14, cursor="hand2").pack(pady=26)
+
+        pop.bind("<Escape>", lambda _e: pop.destroy())
+        try:
+            pop.grab_set()        # modal — onaylanana kadar engelle
+        except Exception:
+            pass
         pop.focus_force()
         pop.lift()
 

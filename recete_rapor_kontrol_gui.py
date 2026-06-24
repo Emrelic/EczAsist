@@ -2603,13 +2603,13 @@ class ReceteRaporKontrolGUI:
     def _canli_tut_sayac_guncelle(self):
         """Her saniye geri sayım labelını güncelle."""
         try:
-            from medula_oturum_canli import get_servis, IDLE_ESIK_SN
+            from medula_oturum_canli import get_servis
             servis = get_servis()
             if not servis.aktif_mi() or not self.canli_tut_var.get():
                 if hasattr(self, "lbl_canli_tut_sayac"):
                     self.lbl_canli_tut_sayac.config(text="")
                 return
-            kalan = max(0, int(IDLE_ESIK_SN - servis.idle_saniye()))
+            kalan = max(0, int(servis.idle_esik_sn - servis.idle_saniye()))
             renk = "#EF9A9A" if kalan <= 15 else ("#FFCC80" if kalan <= 30 else "#80CBC4")
             tip = getattr(servis, "tip", "A")
             etiket = f"[{tip}] ⏱{kalan}s"

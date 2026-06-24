@@ -93,6 +93,14 @@ class EkRaporlarGUI:
             "renk": "#009688",
             "hover": "#00796B",
             "aktif": True
+        },
+        "yabanci_hasta_rapor": {
+            "baslik": "Yabancı Uyruklu Hasta Tespit Raporu",
+            "icon": "🌍",
+            "aciklama": "98/99 TC'li hastalar — geçici koruma vs. Topkapı SGK kağıdı",
+            "renk": "#D32F2F",
+            "hover": "#B71C1C",
+            "aktif": True
         }
     }
 
@@ -351,6 +359,8 @@ class EkRaporlarGUI:
             self.stok_hareket_analiz_ac()
         elif rapor_key == "uretici_firma_rapor":
             self.uretici_firma_rapor_ac()
+        elif rapor_key == "yabanci_hasta_rapor":
+            self.yabanci_hasta_rapor_ac()
 
     def tum_hareketler_ac(self):
         """Tüm Hareketler raporunu aç"""
@@ -446,6 +456,22 @@ class EkRaporlarGUI:
         except Exception as e:
             logger.error(f"Uretici Firma Rapor acma hatasi: {e}")
             messagebox.showerror("Hata", f"Rapor acilamadi:\n{e}")
+
+    def yabanci_hasta_rapor_ac(self):
+        """Yabancı Uyruklu Hasta Tespit Raporu'nu aç"""
+        try:
+            from yabanci_hasta_rapor_gui import YabanciHastaRaporGUI
+
+            rapor_pencere = tk.Toplevel(self.root)
+            YabanciHastaRaporGUI(rapor_pencere)
+
+        except ImportError as e:
+            logger.error(f"Yabancı Hasta Rapor import hatası: {e}")
+            messagebox.showerror(
+                "Hata", f"Yabancı Hasta Rapor modülü yüklenemedi:\n{e}")
+        except Exception as e:
+            logger.error(f"Yabancı Hasta Rapor açma hatası: {e}")
+            messagebox.showerror("Hata", f"Rapor açılamadı:\n{e}")
 
     def ana_menuye_don(self):
         """Ana menüye dön"""

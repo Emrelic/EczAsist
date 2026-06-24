@@ -131,3 +131,4 @@ inspect.exe bilgileri/
 
 # Local pull backups (created when reconciling local changes vs origin)
 .local_backup_pull/
+yabanci_hasta_ayar.json

@@ -3670,7 +3670,7 @@ class HastaTakipGUI:
     def _oturum_canli_toggle(self):
         """'Oturumu Açık Tut' checkbox değiştiğinde servisi başlat/durdur."""
         try:
-            from medula_oturum_canli import get_servis, IDLE_ESIK_SN
+            from medula_oturum_canli import get_servis
         except Exception as e:
             messagebox.showerror("Hata", f"Oturum modülü yüklenemedi:\n{e}")
             self.var_oturum_canli.set(False)
@@ -3679,7 +3679,7 @@ class HastaTakipGUI:
         if self.var_oturum_canli.get():
             if servis.basla():
                 self.durum_bar.config(
-                    text=f"🔒 Oturum canlı tutma açık ({IDLE_ESIK_SN}s eşik)."
+                    text=f"🔒 Oturum canlı tutma açık ({servis.idle_esik_sn}s eşik)."
                 )
                 # Canlı geri sayımı başlat
                 self._oturum_tik_baslat()
@@ -3707,13 +3707,13 @@ class HastaTakipGUI:
     def _oturum_tik_baslat(self):
         """Her 1 saniyede checkbox yanındaki etikete kalan süreyi yaz."""
         try:
-            from medula_oturum_canli import get_servis, IDLE_ESIK_SN
+            from medula_oturum_canli import get_servis
             servis = get_servis()
             if not servis.aktif_mi() or not self.var_oturum_canli.get():
                 if hasattr(self, "lbl_oturum_durum"):
                     self.lbl_oturum_durum.config(text="")
                 return
-            kalan = int(IDLE_ESIK_SN - servis.idle_saniye())
+            kalan = int(servis.idle_esik_sn - servis.idle_saniye())
             if kalan < 0:
                 kalan = 0
             if kalan <= 10:
