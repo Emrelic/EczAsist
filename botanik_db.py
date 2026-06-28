@@ -650,6 +650,82 @@ class BotanikDB:
         """
         return self.sorgu_calistir(sql, (f"%{arama}%",))
 
+    def urun_kart_ara(self, arama: str, limit: int = 50) -> List[Dict]:
+        """
+        Stok modülü için ürün KARTI araması (isim ile) — barkod dahil.
+        SALT-OKUMA. Botanik stoğu değil, yalnızca ürün kartı (ad/barkod) döner.
+        """
+        sql = f"""
+        SELECT TOP {int(limit)}
+            u.UrunId,
+            u.UrunAdi,
+            u.UrunFiyatEtiket as EtiketFiyat,
+            (SELECT TOP 1 b.BarkodAdi FROM Barkod b
+                 WHERE b.BarkodUrunId = u.UrunId
+                 ORDER BY b.BarkodSilme ASC) as Barkod
+        FROM Urun u
+        WHERE u.UrunAdi LIKE ? AND u.UrunSilme = 0
+        ORDER BY u.UrunAdi
+        """
+        return self.sorgu_calistir(sql, (f"%{arama}%",))
+
+    def urun_barkod_ile_getir(self, barkod: str) -> Optional[Dict]:
+        """
+        Barkod (EAN13) veya GTIN (14) ile ürün kartını getir. SALT-OKUMA.
+
+        GTIN ile EAN13 arasında baştaki '0' farkı olabileceğinden birkaç
+        aday biçim birden denenir.
+        """
+        if not barkod:
+            return None
+        b = str(barkod).strip()
+        if not b:
+            return None
+        adaylar = {b, b.lstrip('0')}
+        if len(b) == 14 and b.startswith('0'):
+            adaylar.add(b[1:])
+        if len(b) == 13:
+            adaylar.add('0' + b)
+        adaylar = [a for a in adaylar if a]
+        if not adaylar:
+            return None
+        placeholders = ','.join('?' for _ in adaylar)
+        sql = f"""
+        SELECT TOP 1
+            u.UrunId,
+            u.UrunAdi,
+            b.BarkodAdi as Barkod,
+            u.UrunFiyatEtiket as EtiketFiyat
+        FROM Barkod b
+        JOIN Urun u ON b.BarkodUrunId = u.UrunId
+        WHERE b.BarkodAdi IN ({placeholders}) AND u.UrunSilme = 0
+        ORDER BY b.BarkodSilme ASC
+        """
+        sonuc = self.sorgu_calistir(sql, tuple(adaylar))
+        return sonuc[0] if sonuc else None
+
+    def tum_urun_kartlari(self, limit: int = None) -> List[Dict]:
+        """
+        Stok modülü için TÜM ürün kartlarını (barkod bazlı) getir. SALT-OKUMA.
+
+        Yerel veritabanına bir kez aktarım (import) amaçlıdır; sonrasında modül
+        Botanik'e bağlanmadan yerel kartlarla çalışır. Bir ürünün birden çok
+        barkodu varsa her barkod ayrı satır döner.
+        """
+        top = f"TOP {int(limit)} " if limit else ""
+        sql = f"""
+        SELECT {top}
+            u.UrunId,
+            u.UrunAdi,
+            b.BarkodAdi as Barkod,
+            u.UrunFiyatEtiket as EtiketFiyat
+        FROM Barkod b
+        JOIN Urun u ON b.BarkodUrunId = u.UrunId
+        WHERE u.UrunSilme = 0 AND b.BarkodSilme = 0
+          AND b.BarkodAdi IS NOT NULL AND LTRIM(RTRIM(b.BarkodAdi)) <> ''
+        """
+        return self.sorgu_calistir(sql)
+
     def iade_fatura_detay_getir(self, fatura_no: str = None, fatura_tarihi: str = None, depo_adi: str = None) -> List[Dict]:
         """
         İade faturası detaylarını getir.
@@ -917,8 +993,16 @@ class BotanikDB:
             WHERE fg.FGSilme = 0 AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
         ),
         UrunStoklar AS (
-            SELECT UrunId, (UrunStokDepo + UrunStokRaf + UrunStokAcik) as Stok
-            FROM Urun WHERE UrunSilme = 0
+            -- Gerçek stok: ilaç (karekod takipli) ise aktif karekod sayısı (Botanik EOS ile uyumlu),
+            -- diğer ürünlerde Urun stok kolonları toplamı
+            SELECT
+                u.UrunId,
+                CASE
+                    WHEN u.UrunUrunTipId = 1
+                    THEN (SELECT COUNT(*) FROM Karekod kk WHERE kk.KKUrunId = u.UrunId AND kk.KKDurum = 1)
+                    ELSE (COALESCE(u.UrunStokDepo, 0) + COALESCE(u.UrunStokRaf, 0) + COALESCE(u.UrunStokAcik, 0))
+                END as Stok
+            FROM Urun u WHERE u.UrunSilme = 0
         ),
         FIFOMaliyet AS (
             -- Her ürün için stok miktarına kadar olan faturalardan ağırlıklı ortalama
@@ -945,7 +1029,7 @@ class BotanikDB:
             u.UrunId,
             u.UrunAdi,
             COALESCE(ut.UrunTipAdi, 'Belirsiz') as UrunTipi,
-            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) as Stok,
+            COALESCE(gs.Stok, 0) as Stok,
 
             -- Sarflar
             COALESCE(s.Sarf3, 0) as Sarf3,
@@ -971,7 +1055,7 @@ class BotanikDB:
             -- Stok bitiş hesaplamaları (6 aylık ortalamaya göre)
             CASE
                 WHEN COALESCE(s.Sarf6, 0) > 0
-                THEN ROUND((u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) / (s.Sarf6 / 6.0) * 30, 0)
+                THEN ROUND(COALESCE(gs.Stok, 0) / (s.Sarf6 / 6.0) * 30, 0)
                 ELSE NULL
             END as StokBitisGunu,
 
@@ -980,25 +1064,26 @@ class BotanikDB:
                 WHEN COALESCE(s.Sarf6, 0) > 0 AND eym.Miad IS NOT NULL
                 THEN ROUND(
                     DATEDIFF(DAY, '{bugun}', eym.Miad) /
-                    NULLIF((u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) / (s.Sarf6 / 6.0) * 30, 0)
+                    NULLIF(COALESCE(gs.Stok, 0) / (s.Sarf6 / 6.0) * 30, 0)
                 , 2)
                 ELSE NULL
             END as MiadaKacKezBiter,
 
             -- Toplam maliyet (stok * maliyet)
-            (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) * COALESCE(m.Maliyet, 0) as ToplamMaliyet
+            COALESCE(gs.Stok, 0) * COALESCE(m.Maliyet, 0) as ToplamMaliyet
 
         FROM Urun u
         LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
         LEFT JOIN SarfOzet s ON u.UrunId = s.UrunId
         LEFT JOIN EnYakinMiad eym ON u.UrunId = eym.UrunId
         LEFT JOIN FIFOMaliyet m ON u.UrunId = m.UrunId
+        LEFT JOIN UrunStoklar gs ON u.UrunId = gs.UrunId
         WHERE u.UrunSilme = 0
         """
 
-        # Sadece stoklu ürünler
+        # Sadece stoklu ürünler (gerçek stok: ilaçta aktif karekod sayısı)
         if sadece_stoklu:
-            sql += " AND (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) > 0"
+            sql += " AND COALESCE(gs.Stok, 0) > 0"
 
         # Ürün tipi filtresi
         if urun_tipi and urun_tipi != "TUMU":
@@ -1010,7 +1095,7 @@ class BotanikDB:
             urun_adi_temiz = urun_adi.replace("'", "''")
             sql += f" AND u.UrunAdi LIKE '%{urun_adi_temiz}%'"
 
-        sql += " ORDER BY (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) DESC, u.UrunAdi"
+        sql += " ORDER BY COALESCE(gs.Stok, 0) DESC, u.UrunAdi"
 
         return self.sorgu_calistir(sql)
 
@@ -1131,8 +1216,16 @@ class BotanikDB:
             WHERE fg.FGSilme = 0 AND fs.FSMaliyet > 0 AND fs.FSUrunAdet > 0
         ),
         UrunStoklar AS (
-            SELECT UrunId, (UrunStokDepo + UrunStokRaf + UrunStokAcik) as Stok
-            FROM Urun WHERE UrunSilme = 0
+            -- Gerçek stok: ilaç (karekod takipli) ise aktif karekod sayısı (Botanik EOS ile uyumlu),
+            -- diğer ürünlerde Urun stok kolonları toplamı
+            SELECT
+                u.UrunId,
+                CASE
+                    WHEN u.UrunUrunTipId = 1
+                    THEN (SELECT COUNT(*) FROM Karekod kk WHERE kk.KKUrunId = u.UrunId AND kk.KKDurum = 1)
+                    ELSE (COALESCE(u.UrunStokDepo, 0) + COALESCE(u.UrunStokRaf, 0) + COALESCE(u.UrunStokAcik, 0))
+                END as Stok
+            FROM Urun u WHERE u.UrunSilme = 0
         ),
         FIFOMaliyet AS (
             SELECT

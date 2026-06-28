@@ -132,6 +132,13 @@ class AnaMenu:
             "renk": "#E91E63",  # Pembe
             "hover": "#C2185B"
         },
+        "stok_takip": {
+            "baslik": "Stok Takip",
+            "icon": "📦",
+            "aciklama": "Barkod/karekod ile stok ekle-düş (yerel defter)",
+            "renk": "#00ACC1",  # Açık camgöbeği
+            "hover": "#00838F"
+        },
         "stok_maliyet_analiz": {
             "baslik": "Stok Maliyet Analizi",
             "icon": "💰",
@@ -538,13 +545,15 @@ class AnaMenu:
             "ilac_takip", "depo_ekstre", "kasa_takip", "rapor_kontrol",
             "aylik_recete_sorgu", "t_cetvel", "ek_raporlar", "mf_analiz",
             "mf_hizli", "siparis_verme", "fatih_siparisci", "hibrit_siparisci",
-            "min_stok_analiz", "stok_maliyet_analiz",
+            "min_stok_analiz", "stok_takip", "stok_maliyet_analiz",
             "prim_raporlama", "satis_raporlari", "kdv_analiz", "hasta_takip", "yedek_temizlik", "kullanici_yonetimi"
         ]
 
         # Grid ayarları: uniform parametresi ile tum hucreler ayni boyut.
         # Sutun ve satir sayisini modul sayisina gore hesapla.
-        sutun_sayisi = 4
+        # 5 sutun: 21 modul -> 5 satir (sabit pencere yuksekligine sigsin,
+        # kartlar dikeyde sikismasin diye).
+        sutun_sayisi = 5
         satir_sayisi = (len(modul_listesi) + sutun_sayisi - 1) // sutun_sayisi
         for i in range(sutun_sayisi):
             grid_frame.columnconfigure(i, weight=1, uniform='modul_col')
@@ -572,7 +581,7 @@ class AnaMenu:
             )
 
             col += 1
-            if col >= 4:
+            if col >= sutun_sayisi:
                 col = 0
                 row += 1
 
@@ -589,14 +598,14 @@ class AnaMenu:
         kart.grid(row=row, column=col, padx=10, pady=10, sticky='nsew')
 
         # İç frame
-        ic_frame = tk.Frame(kart, bg=renk if yetkili else '#555555', padx=15, pady=20)
+        ic_frame = tk.Frame(kart, bg=renk if yetkili else '#555555', padx=6, pady=6)
         ic_frame.pack(fill="both", expand=True)
 
         # Icon
         icon_label = tk.Label(
             ic_frame,
             text=icon,
-            font=("Arial", 32),
+            font=("Arial", 24),
             bg=renk if yetkili else '#555555',
             fg='white' if yetkili else '#888888'
         )
@@ -606,11 +615,13 @@ class AnaMenu:
         baslik_label = tk.Label(
             ic_frame,
             text=baslik,
-            font=("Arial", 12, "bold"),
+            font=("Arial", 11, "bold"),
             bg=renk if yetkili else '#555555',
-            fg='white' if yetkili else '#888888'
+            fg='white' if yetkili else '#888888',
+            wraplength=120,
+            justify="center"
         )
-        baslik_label.pack(pady=(10, 5))
+        baslik_label.pack(pady=(4, 2))
 
         # Açıklama
         aciklama_label = tk.Label(
@@ -619,7 +630,7 @@ class AnaMenu:
             font=("Arial", 8),
             bg=renk if yetkili else '#555555',
             fg='#E0E0E0' if yetkili else '#666666',
-            wraplength=150
+            wraplength=115
         )
         aciklama_label.pack()
 
@@ -714,6 +725,8 @@ class AnaMenu:
             self.hibrit_siparisci_ac()
         elif modul_key == "min_stok_analiz":
             self.min_stok_analiz_ac()
+        elif modul_key == "stok_takip":
+            self.stok_takip_ac()
         elif modul_key == "stok_maliyet_analiz":
             self.stok_maliyet_analiz_ac()
         elif modul_key == "prim_raporlama":
@@ -1167,6 +1180,26 @@ class AnaMenu:
         except Exception as e:
             logger.error(f"Hasta Takip açma hatası: {e}")
             messagebox.showerror("Hata", f"Hasta Takip modülü açılamadı:\n{e}")
+            if pencere is not None:
+                try: pencere.destroy()
+                except Exception: pass
+
+    def stok_takip_ac(self):
+        """Stok Takip modülünü aç (tam ekran)"""
+        pencere = None
+        try:
+            pencere = self._modul_pencere_al("stok_takip", zoomed=True)
+            if pencere is None:
+                return
+
+            self._yeniden_yukle("botanik_db", "stok_takip_db", "stok_takip_gui")
+            from stok_takip_gui import StokTakipGUI
+
+            StokTakipGUI(pencere, ana_menu_callback=lambda: None)
+
+        except Exception as e:
+            logger.error(f"Stok Takip açma hatası: {e}", exc_info=True)
+            messagebox.showerror("Hata", f"Stok Takip modülü açılamadı:\n{e}")
             if pencere is not None:
                 try: pencere.destroy()
                 except Exception: pass

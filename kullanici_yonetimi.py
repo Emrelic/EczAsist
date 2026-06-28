@@ -38,6 +38,7 @@ class KullaniciYonetimi:
         "mf_hizli": "MF Hızlı Hesaplama",
         "siparis_verme": "Sipariş Verme",
         "min_stok_analiz": "Minimum Stok Analizi",
+        "stok_takip": "Stok Takip (Barkod/Karekod)",
         "stok_maliyet_analiz": "Stok Maliyet Analizi",
         "prim_raporlama": "Prim Raporlama",
         "satis_raporlari": "Satış Raporları",
