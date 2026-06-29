@@ -438,6 +438,9 @@ class HastaTakipDB:
             lr.RxReceteTarihi                              AS recete_tarihi,
             (SELECT COUNT(DISTINCT r2.RxId) FROM ReceteAna r2
               WHERE r2.RxMusteriId = m.MusteriId AND r2.RxSilme = 0) AS toplam_ziyaret,
+            (SELECT COUNT(DISTINCT r2.RxId) FROM ReceteAna r2
+              WHERE r2.RxMusteriId = m.MusteriId AND r2.RxSilme = 0
+                AND r2.RxReceteTarihi >= DATEADD(YEAR, -1, GETDATE())) AS son_yil_ziyaret,
             (SELECT MAX(r2.RxReceteTarihi) FROM ReceteAna r2
               WHERE r2.RxMusteriId = m.MusteriId AND r2.RxSilme = 0) AS son_ziyaret,
             'RECETE'                                       AS kaynak
@@ -491,6 +494,9 @@ class HastaTakipDB:
             mhi.RxTarihi                                 AS recete_tarihi,
             (SELECT COUNT(DISTINCT r2.RxId) FROM ReceteAna r2
               WHERE r2.RxMusteriId = m.MusteriId AND r2.RxSilme = 0) AS toplam_ziyaret,
+            (SELECT COUNT(DISTINCT r2.RxId) FROM ReceteAna r2
+              WHERE r2.RxMusteriId = m.MusteriId AND r2.RxSilme = 0
+                AND r2.RxReceteTarihi >= DATEADD(YEAR, -1, GETDATE())) AS son_yil_ziyaret,
             (SELECT MAX(r2.RxReceteTarihi) FROM ReceteAna r2
               WHERE r2.RxMusteriId = m.MusteriId AND r2.RxSilme = 0) AS son_ziyaret,
             'MEDULA'                                     AS kaynak

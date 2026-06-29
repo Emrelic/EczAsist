@@ -138,7 +138,8 @@ class HastaTakipAyarlari:
         "ilac_sayi": True,
         "menzil": True,
         "ziyaret": True,
-        "son_gelis": False,
+        "son_yil": True,
+        "son_gelis": True,
         "gun": True,
         "takip": False,
     })
@@ -343,6 +344,7 @@ class MesajKuyrugu:
             for kol, tip in [
                 ("tckn", "TEXT"),
                 ("toplam_ziyaret", "INTEGER"),
+                ("son_yil_ziyaret", "INTEGER"),
                 ("son_ziyaret", "TEXT"),
                 ("takipli", "INTEGER DEFAULT 0"),
                 # Bekleyen ilaç manuel olarak indirildiyse 1 (açık sarı gösterim)
@@ -784,6 +786,7 @@ class MesajKuyrugu:
                 "cep_tel": (s.get("cep_tel") or "").strip(),
                 "tckn": (s.get("tckn") or "").strip(),
                 "toplam_ziyaret": s.get("toplam_ziyaret"),
+                "son_yil_ziyaret": s.get("son_yil_ziyaret"),
                 "son_ziyaret": str(s.get("son_ziyaret") or "")[:10],
                 "takipli": 1 if s.get("takipli") else 0,
                 "ilaclar": [],
@@ -813,11 +816,12 @@ class MesajKuyrugu:
                     planli = self._planli_gonderim_tarihi(ayarlar, g["ilaclar"])
                     c.execute(
                         "INSERT INTO mesaj_kuyrugu(musteri_id, hasta_adi, cep_tel, "
-                        "tckn, toplam_ziyaret, son_ziyaret, takipli, "
+                        "tckn, toplam_ziyaret, son_yil_ziyaret, son_ziyaret, takipli, "
                         "ilac_json, olusturma, planli_gonderim, durum) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?, 'bekliyor')",
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?, 'bekliyor')",
                         (mid, g["hasta_adi"], g["cep_tel"],
-                         g["tckn"], g["toplam_ziyaret"], g["son_ziyaret"], g["takipli"],
+                         g["tckn"], g["toplam_ziyaret"], g["son_yil_ziyaret"],
+                         g["son_ziyaret"], g["takipli"],
                          json.dumps(g["ilaclar"], ensure_ascii=False),
                          simdi, planli.isoformat()),
                     )
@@ -843,11 +847,13 @@ class MesajKuyrugu:
                         planli = self._planli_gonderim_tarihi(ayarlar, mevcut)
                     c.execute(
                         "UPDATE mesaj_kuyrugu SET ilac_json=?, planli_gonderim=?, "
-                        "tckn=?, toplam_ziyaret=?, son_ziyaret=?, takipli=? "
+                        "tckn=?, toplam_ziyaret=?, son_yil_ziyaret=?, son_ziyaret=?, "
+                        "takipli=? "
                         "WHERE id=?",
                         (json.dumps(mevcut, ensure_ascii=False),
                          planli.isoformat(),
-                         g["tckn"], g["toplam_ziyaret"], g["son_ziyaret"], g["takipli"],
+                         g["tckn"], g["toplam_ziyaret"], g["son_yil_ziyaret"],
+                         g["son_ziyaret"], g["takipli"],
                          row["id"]),
                     )
         return yeni
@@ -1096,7 +1102,7 @@ class MesajKuyrugu:
             # Her grupta planli_gonderim ASC, aynı tarihte hasta_adi ASC.
             rows = c.execute(
                 f"SELECT id, musteri_id, hasta_adi, cep_tel, tckn, "
-                f"toplam_ziyaret, son_ziyaret, takipli, ilac_json, "
+                f"toplam_ziyaret, son_yil_ziyaret, son_ziyaret, takipli, ilac_json, "
                 f"olusturma, planli_gonderim, durum, "
                 f"COALESCE(bekleteni_indirildi, 0) AS bekleteni_indirildi "
                 f"FROM mesaj_kuyrugu "
@@ -1128,6 +1134,7 @@ class MesajKuyrugu:
                 "cep_tel": r["cep_tel"],
                 "tckn": r["tckn"] or "",
                 "toplam_ziyaret": r["toplam_ziyaret"],
+                "son_yil_ziyaret": r["son_yil_ziyaret"],
                 "son_ziyaret": son or "",
                 "son_gun_once": gun_once,
                 "takipli": bool(r["takipli"]),
@@ -1709,7 +1716,7 @@ class MesajKuyrugu:
         with self._conn() as c:
             row = c.execute(
                 "SELECT musteri_id, hasta_adi, cep_tel, tckn, toplam_ziyaret, "
-                "son_ziyaret, takipli, ilac_json, planli_gonderim "
+                "son_yil_ziyaret, son_ziyaret, takipli, ilac_json, planli_gonderim "
                 "FROM mesaj_kuyrugu WHERE id=?",
                 (kuyruk_id,),
             ).fetchone()
@@ -1790,12 +1797,12 @@ class MesajKuyrugu:
                     yeni_planli = date.today()
                 c.execute(
                     "INSERT INTO mesaj_kuyrugu(musteri_id, hasta_adi, cep_tel, "
-                    "tckn, toplam_ziyaret, son_ziyaret, takipli, "
+                    "tckn, toplam_ziyaret, son_yil_ziyaret, son_ziyaret, takipli, "
                     "ilac_json, olusturma, planli_gonderim, durum) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?, 'bekliyor')",
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?, 'bekliyor')",
                     (row["musteri_id"], row["hasta_adi"], row["cep_tel"],
-                     row["tckn"], row["toplam_ziyaret"], row["son_ziyaret"],
-                     row["takipli"],
+                     row["tckn"], row["toplam_ziyaret"], row["son_yil_ziyaret"],
+                     row["son_ziyaret"], row["takipli"],
                      json.dumps(ileri, ensure_ascii=False),
                      simdi, yeni_planli.isoformat()),
                 )

@@ -351,7 +351,7 @@ class HastaTakipGUI:
         bol.add(ust, minsize=180, stretch="always")
 
         kols = ("planli_tarih", "hasta", "tc", "tel", "ilac_sayi",
-                "menzil", "ziyaret", "son_gelis", "gun", "takip")
+                "menzil", "ziyaret", "son_yil", "son_gelis", "gun", "takip")
         self.tv_yaz = ttk.Treeview(
             ust, columns=kols, show="headings", selectmode="browse",
         )
@@ -363,6 +363,7 @@ class HastaTakipGUI:
             ("ilac_sayi",    "İlaç",         45, "center"),
             ("menzil",       "🔗 Menzil",    70, "center"),
             ("ziyaret",      "Ziyaret",      60, "center"),
+            ("son_yil",      "Son 1 Yıl",    70, "center"),
             ("son_gelis",    "Son Geliş",    90, "center"),
             ("gun",          "Gün Önce",     65, "center"),
             ("takip",        "Takipli",      55, "center"),
@@ -391,6 +392,8 @@ class HastaTakipGUI:
         self.menu_yaz.add_separator()
         self.menu_yaz.add_command(label="💊 Medulada İlaç Listesi Aç",
                                   command=self._medulada_ilac_listesi_ac)
+        self.menu_yaz.add_command(label="🧾 Bizden Alınan İlaçları Göster",
+                                  command=self._bizden_alinan_ilaclar_goster)
         self.menu_yaz.add_command(label="👤 Başka Hastaya At...",
                                   command=self._farkli_kisiye_gonder)
         self.menu_yaz.add_separator()
@@ -1777,6 +1780,7 @@ class HastaTakipGUI:
                     len(m["ilaclar"]),
                     menzil_sayisi,
                     m.get("toplam_ziyaret") if m.get("toplam_ziyaret") is not None else "-",
+                    m.get("son_yil_ziyaret") if m.get("son_yil_ziyaret") is not None else "-",
                     (m.get("son_ziyaret") or "")[:10] or "-",
                     m.get("son_gun_once") if m.get("son_gun_once") is not None else "-",
                     "Evet" if m.get("takipli") else "Hayır",
@@ -2415,6 +2419,104 @@ class HastaTakipGUI:
 
         # (pywinauto fallback kaldırıldı — Ctrl+A davranışı tüm sayfa seçimi
         # yaparak kullanıcıyı rahatsız ediyordu. Tek yol HTML DOM.)
+
+    def _bizden_alinan_ilaclar_goster(self):
+        """Seçili hastanın eczanemizden (Botanik) aldığı tüm ilaçların
+        reçete bazlı geçmişini ayrı bir pencerede gösterir.
+
+        SADECE OKUMA: Botanik EOS'tan SELECT (hastanin_ilac_gecmisi).
+        """
+        m = self._aktif_mesaj()
+        if not m:
+            return
+        mid = m.get("musteri_id")
+        if not mid:
+            messagebox.showwarning("Kayıt Yok", "Hastanın müşteri kaydı bulunamadı.")
+            return
+
+        self.durum_bar.config(text=f"⏳ {m.get('hasta_adi','')} ilaç geçmişi alınıyor...")
+        self.root.update_idletasks()
+        try:
+            if self.db is None:
+                self.db = HastaTakipDB()
+            ilaclar = self.db.hastanin_ilac_gecmisi(int(mid), limit=1000)
+        except Exception as e:
+            logger.warning("Bizden alınan ilaçlar yüklenemedi: %s", e, exc_info=True)
+            messagebox.showerror("Hata", f"İlaç geçmişi alınamadı:\n{e}")
+            self.durum_bar.config(text="⚠ İlaç geçmişi alınamadı.")
+            return
+
+        pencere = tk.Toplevel(self.root)
+        pencere.title(f"🧾 Bizden Alınan İlaçlar — {m.get('hasta_adi','')}")
+        pencere.geometry("760x500")
+        pencere.transient(self.root)
+        try:
+            from eczasist_ikon import ikon_uygula
+            ikon_uygula(pencere)
+        except Exception:
+            pass
+
+        # Başlık: hasta özet bilgisi
+        ust = tk.Frame(pencere, bg="white")
+        ust.pack(fill="x", padx=10, pady=(10, 4))
+        tk.Label(
+            ust, text=f"🧑 {m.get('hasta_adi','')}   |   T.C. {m.get('tckn') or '-'}",
+            bg="white", font=("Arial", 11, "bold"), fg="#1976D2",
+        ).pack(anchor="w")
+        sy = m.get("son_yil_ziyaret")
+        tk.Label(
+            ust,
+            text=(
+                f"📊 Toplam ziyaret: {m.get('toplam_ziyaret') if m.get('toplam_ziyaret') is not None else '-'}"
+                f"   |   Son 1 yıl: {sy if sy is not None else '-'}"
+                f"   |   Son geliş: {(m.get('son_ziyaret') or '-')[:10]}"
+                f"   |   Toplam kalem: {len(ilaclar)}"
+            ),
+            bg="white", fg="#455A64", font=("Arial", 9),
+        ).pack(anchor="w", pady=(2, 0))
+
+        # İlaç geçmişi tablosu
+        cerceve = tk.Frame(pencere)
+        cerceve.pack(fill="both", expand=True, padx=10, pady=(4, 8))
+        kols = ("recete_tarihi", "urun_adi", "adet", "doz", "bitis_tarihi", "rapor_no")
+        tv = ttk.Treeview(cerceve, columns=kols, show="headings")
+        for k, b, w, a in [
+            ("recete_tarihi", "Reçete Tarihi", 110, "center"),
+            ("urun_adi",      "İlaç",          300, "w"),
+            ("adet",          "Adet",           55, "center"),
+            ("doz",           "Doz",           120, "w"),
+            ("bitis_tarihi",  "Bitiş",         100, "center"),
+            ("rapor_no",      "Rapor No",       90, "center"),
+        ]:
+            tv.heading(k, text=b)
+            tv.column(k, width=w, anchor=a)
+        sb = ttk.Scrollbar(cerceve, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        tv.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        def _tar(x):
+            return str(x)[:10] if x else ""
+
+        for x in ilaclar:
+            tv.insert("", "end", values=(
+                _tar(x.get("recete_tarihi")),
+                (x.get("urun_adi") or "")[:80],
+                x.get("adet") if x.get("adet") is not None else "",
+                (x.get("doz") or ""),
+                _tar(x.get("bitis_tarihi")),
+                x.get("rapor_no") or "",
+            ))
+
+        tk.Button(
+            pencere, text="Kapat", command=pencere.destroy,
+            bg="#607D8B", fg="white", bd=0, padx=16, pady=6,
+            font=("Arial", 9, "bold"),
+        ).pack(pady=(0, 10))
+
+        self.durum_bar.config(
+            text=f"🧾 {m.get('hasta_adi','')} — {len(ilaclar)} kalem ilaç listelendi."
+        )
 
     def _secilene_gonder(self):
         """Seçilen tek hasta için wa.me aç — _wa_ac ile aynı."""
@@ -3803,7 +3905,7 @@ class HastaTakipGUI:
                 vars_def = {
                     "planli_tarih": True, "hasta": True, "tc": False, "tel": False,
                     "ilac_sayi": True, "menzil": True,
-                    "ziyaret": True, "son_gelis": False,
+                    "ziyaret": True, "son_yil": True, "son_gelis": True,
                     "gun": True, "takip": False,
                 }
                 v.set(vars_def.get(k, True))
