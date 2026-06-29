@@ -712,6 +712,12 @@ class BotanikDB:
         Botanik'e bağlanmadan yerel kartlarla çalışır. Bir ürünün birden çok
         barkodu varsa her barkod ayrı satır döner.
         """
+        # NOT: Silinmiş-işaretli barkodlar (BarkodSilme=1) da alınır — fiziksel
+        # kutularda eski/mülga barkodlar basılı kalıp hâlâ okutulabiliyor (örn.
+        # MONODOKS). Ürün aktif olduğu (UrunSilme=0) sürece dahil edilir.
+        # ORDER BY BarkodSilme DESC: aynı barkod hem aktif hem silinmişse, aktif
+        # satır listede SONRA gelir; çağıran taraf INSERT OR REPLACE ile aktif
+        # olanı en son yazar (kazanır).
         top = f"TOP {int(limit)} " if limit else ""
         sql = f"""
         SELECT {top}
@@ -721,8 +727,9 @@ class BotanikDB:
             u.UrunFiyatEtiket as EtiketFiyat
         FROM Barkod b
         JOIN Urun u ON b.BarkodUrunId = u.UrunId
-        WHERE u.UrunSilme = 0 AND b.BarkodSilme = 0
+        WHERE u.UrunSilme = 0
           AND b.BarkodAdi IS NOT NULL AND LTRIM(RTRIM(b.BarkodAdi)) <> ''
+        ORDER BY b.BarkodSilme DESC
         """
         return self.sorgu_calistir(sql)
 

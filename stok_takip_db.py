@@ -60,6 +60,7 @@ class StokTakipDB:
                 miad        TEXT,            -- ISO YYYY-MM-DD (NULL olabilir)
                 karekod_ham TEXT,
                 adet        INTEGER NOT NULL DEFAULT 1,
+                birim       TEXT NOT NULL DEFAULT 'KUTU', -- KUTU / TABLET
                 durum       INTEGER NOT NULL DEFAULT 1,   -- 1=stokta, 0=çıktı
                 giris_tarih TEXT,
                 cikis_tarih TEXT,
@@ -77,6 +78,7 @@ class StokTakipDB:
                 parti_no  TEXT,
                 miad      TEXT,
                 adet      INTEGER,
+                birim     TEXT,
                 zaman     TEXT,
                 kullanici TEXT,
                 aciklama  TEXT
@@ -110,6 +112,18 @@ class StokTakipDB:
             CREATE INDEX IF NOT EXISTS ix_urun_kart_uid ON urun_kart(urun_id)
         """)
         self.conn.commit()
+        # Eski DB'ler için birim kolonu migrasyonu (KUTU / TABLET ayrımı)
+        self._kolon_ekle("stok_kalem", "birim", "TEXT NOT NULL DEFAULT 'KUTU'")
+        self._kolon_ekle("stok_log", "birim", "TEXT")
+
+    def _kolon_ekle(self, tablo: str, kolon: str, tanim: str):
+        """Tabloda kolon yoksa ALTER ile ekle (idempotent migrasyon)."""
+        cur = self.conn.cursor()
+        cur.execute(f"PRAGMA table_info({tablo})")
+        mevcut = [r[1] for r in cur.fetchall()]
+        if kolon not in mevcut:
+            cur.execute(f"ALTER TABLE {tablo} ADD COLUMN {kolon} {tanim}")
+            self.conn.commit()
 
     # ====================================================== YEREL ÜRÜN KARTLARI
     def kart_sayisi(self) -> int:
@@ -145,8 +159,15 @@ class StokTakipDB:
             barkod = str(barkod).strip()
             if not barkod:
                 continue
-            veriler.append((barkod, r.get("UrunId"), r.get("UrunAdi"),
-                            r.get("EtiketFiyat"), simdi))
+            # SQL Server NUMERIC/DECIMAL -> SQLite uyumlu tiplere çevir
+            uid = r.get("UrunId")
+            uid = int(uid) if uid is not None else None
+            ef = r.get("EtiketFiyat")
+            try:
+                ef = float(ef) if ef is not None else None
+            except (TypeError, ValueError):
+                ef = None
+            veriler.append((barkod, uid, r.get("UrunAdi"), ef, simdi))
 
         cur = self.conn.cursor()
         cur.execute("DELETE FROM urun_kart")
@@ -158,6 +179,38 @@ class StokTakipDB:
         self.conn.commit()
         logger.info("Yerel ürün kartı aktarımı: %d kart", len(veriler))
         return len(veriler)
+
+    def kart_ekle_manuel(self, barkod, urun_adi, etiket_fiyat=None,
+                         urun_id=None) -> Tuple[bool, str]:
+        """
+        Elle ürün kartı ekle/güncelle (urun_kart). Stokta olmayan / Botanik'te
+        bulunmayan ürünler için. barkod PK; aynı barkod varsa güncellenir.
+        """
+        barkod = (str(barkod) if barkod is not None else "").strip()
+        urun_adi = (urun_adi or "").strip()
+        if not barkod:
+            return False, "Barkod zorunlu."
+        if not urun_adi:
+            return False, "Ürün adı zorunlu."
+        ef = None
+        if etiket_fiyat not in (None, ""):
+            try:
+                ef = float(str(etiket_fiyat).replace(",", "."))
+            except ValueError:
+                return False, "Etiket fiyatı sayı olmalı."
+        cur = self.conn.cursor()
+        cur.execute("SELECT urun_adi FROM urun_kart WHERE barkod = ?", (barkod,))
+        mevcut = cur.fetchone()
+        simdi = datetime.now().isoformat(timespec="seconds")
+        cur.execute("""
+            INSERT OR REPLACE INTO urun_kart
+                (barkod, urun_id, urun_adi, etiket_fiyat, guncelleme)
+            VALUES (?, ?, ?, ?, ?)
+        """, (barkod, urun_id, urun_adi, ef, simdi))
+        self.conn.commit()
+        if mevcut:
+            return True, f"Kart güncellendi: {urun_adi}"
+        return True, f"Kart eklendi: {urun_adi}"
 
     def urun_karti_barkoddan(self, barkod: str) -> Optional[Dict]:
         """Barkod/GTIN ile YEREL ürün kartı (urun_kart tablosu)."""
@@ -187,18 +240,31 @@ class StokTakipDB:
                 "Barkod": r["barkod"], "EtiketFiyat": r["etiket_fiyat"]}
 
     def urun_karti_ara(self, ad: str, limit: int = 100) -> List[Dict]:
-        """İsimle YEREL ürün kartı araması (urun_kart tablosu)."""
+        """
+        İsimle YEREL ürün kartı araması (urun_kart). ÇOK KELİMELİ: her boşlukla
+        ayrılmış kelime adda geçmeli (sıra önemsiz). Örn. "jard 10 tab" ->
+        "JARDIANCE 10 MG TABLET". Daha kısa adlar (daha alakalı) önce gelir.
+        """
         if not ad or not ad.strip():
             return []
+        tokenlar = [t for t in ad.strip().split() if t]
+        if not tokenlar:
+            return []
+        kosullar = []
+        params = []
+        for t in tokenlar:
+            kosullar.append("urun_adi LIKE ?")
+            params.append(f"%{t}%")
+        params.append(int(limit))
         cur = self.conn.cursor()
-        cur.execute("""
+        cur.execute(f"""
             SELECT urun_id, urun_adi, MIN(barkod) AS barkod
             FROM urun_kart
-            WHERE urun_adi LIKE ?
+            WHERE {' AND '.join(kosullar)}
             GROUP BY urun_id, urun_adi
-            ORDER BY urun_adi
+            ORDER BY LENGTH(urun_adi), urun_adi
             LIMIT ?
-        """, (f"%{ad.strip()}%", int(limit)))
+        """, params)
         return [{"UrunId": r["urun_id"], "UrunAdi": r["urun_adi"],
                  "Barkod": r["barkod"]} for r in cur.fetchall()]
 
@@ -303,22 +369,19 @@ class StokTakipDB:
 
         TR ilaç datamatrix'inde değişken seri alanından sonra daima 17=miad gelir.
         Yanlış sınır (seri içindeki rastgele rakamlar) riskini en aza indirmek için
-        SADECE güçlü sınırlar aranır:
+        SADECE tek güçlü sınır aranır:
           - "17" + geçerli YYMMDD tarih  (seri -> miad sınırı; asıl ayraç)
-          - "01" + 14 hane GTIN          (nadir: arka arkaya birleşik kod)
         Bulunamazsa string sonu döner (alan sona kadar uzanır — örn. son parti).
+
+        Not: "01"+14 hane (GTIN) sınır olarak ARANMAZ; seri no'lar içinde "01"
+        + 14 rakam dizisi sık görülüp gerçek GTIN'i ezen yanlış pozitif üretiyordu.
         """
         n = len(s)
         k = j
         while k <= n - 2:
-            ai = s[k:k + 2]
-            if ai == "17":
+            if s[k:k + 2] == "17":
                 seg = s[k + 2:k + 8]
                 if cls._gecerli_tarih6(seg):
-                    return k
-            elif ai == "01":
-                seg = s[k + 2:k + 16]
-                if len(seg) == 14 and seg.isdigit():
                     return k
             k += 1
         return n
@@ -385,15 +448,18 @@ class StokTakipDB:
             if cur.fetchone():
                 return False, f"Bu karekod (seri: {seri_no}) zaten stokta."
         try:
+            birim = (kalem.get("birim") or "KUTU").upper()
+            if birim not in ("KUTU", "TABLET"):
+                birim = "KUTU"
             cur.execute("""
                 INSERT INTO stok_kalem
                     (urun_id, barkod, urun_adi, seri_no, parti_no, miad,
-                     karekod_ham, adet, durum, giris_tarih, ekleyen)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                     karekod_ham, adet, birim, durum, giris_tarih, ekleyen)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
             """, (
                 kalem.get("urun_id"), kalem.get("barkod"), urun_adi,
                 seri_no, kalem.get("parti_no"), kalem.get("miad"),
-                kalem.get("karekod_ham"), adet, simdi, kullanici,
+                kalem.get("karekod_ham"), adet, birim, simdi, kullanici,
             ))
             kalem_id = cur.lastrowid
             self._logla(cur, "GIRIS", kalem, adet, kullanici, simdi)
@@ -427,19 +493,80 @@ class StokTakipDB:
         self.conn.commit()
         return True, f"Düşüldü: {row['urun_adi']} (seri {seri_no})"
 
+    def stok_dus_kalem(self, kalem_id, kullanici: str = "") -> Tuple[bool, str]:
+        """Tek bir stok_kalem kaydını tümüyle stoktan çıkar (durum=0)."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM stok_kalem WHERE id = ? AND durum = 1",
+                    (kalem_id,))
+        row = cur.fetchone()
+        if not row:
+            return False, "Kayıt bulunamadı veya zaten çıkmış."
+        simdi = datetime.now().isoformat(timespec="seconds")
+        cur.execute(
+            "UPDATE stok_kalem SET durum = 0, cikis_tarih = ? WHERE id = ?",
+            (simdi, kalem_id))
+        self._logla(cur, "CIKIS", dict(row), row["adet"], kullanici, simdi)
+        self.conn.commit()
+        return True, row["urun_adi"]
+
+    def stok_dus_urun_birim(self, urun_id, barkod, birim,
+                            kullanici: str = "") -> int:
+        """Bir ürünün belirli birimdeki TÜM aktif stoğunu çıkar. Döner: kayıt sayısı."""
+        kosullar = ["durum = 1"]
+        params = []
+        if urun_id is not None:
+            kosullar.append("urun_id IS ?")
+            params.append(urun_id)
+        elif barkod:
+            kosullar.append("barkod = ?")
+            params.append(barkod)
+        if birim in ("KUTU", "TABLET"):
+            kosullar.append("birim = ?")
+            params.append(birim)
+        cur = self.conn.cursor()
+        cur.execute(f"SELECT * FROM stok_kalem WHERE {' AND '.join(kosullar)}",
+                    params)
+        rows = cur.fetchall()
+        if not rows:
+            return 0
+        simdi = datetime.now().isoformat(timespec="seconds")
+        for r in rows:
+            cur.execute(
+                "UPDATE stok_kalem SET durum = 0, cikis_tarih = ? WHERE id = ?",
+                (simdi, r["id"]))
+            self._logla(cur, "CIKIS", dict(r), r["adet"], kullanici, simdi)
+        self.conn.commit()
+        return len(rows)
+
+    def tum_stogu_temizle(self, kullanici: str = "") -> int:
+        """TÜM aktif stoğu çıkar (durum=0). Geçmiş log korunur. Döner: kayıt sayısı."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM stok_kalem WHERE durum = 1")
+        rows = cur.fetchall()
+        if not rows:
+            return 0
+        simdi = datetime.now().isoformat(timespec="seconds")
+        for r in rows:
+            self._logla(cur, "CIKIS", dict(r), r["adet"], kullanici, simdi)
+        cur.execute(
+            "UPDATE stok_kalem SET durum = 0, cikis_tarih = ? WHERE durum = 1",
+            (simdi,))
+        self.conn.commit()
+        return len(rows)
+
     def stok_dus_parti(self, urun_id, barkod, parti_no, miad, adet,
-                       kullanici: str = "") -> Tuple[bool, str]:
+                       kullanici: str = "", birim=None) -> Tuple[bool, str]:
         """
-        Belirli ürün + parti + miad için 'adet' kadar stoktan düş.
-        (Karekod okutulmadan, kullanıcı parti seçtiğinde kullanılır.)
+        Belirli ürün + parti + miad (+ birim) için 'adet' kadar stoktan düş.
+        (Karekod okutulmadan, kullanıcı parti/birim seçtiğinde kullanılır.)
         """
         adet = int(adet)
         if adet <= 0:
             return False, "Adet 0'dan büyük olmalı."
-        kosul, params = self._parti_kosulu(urun_id, barkod, parti_no, miad)
+        kosul, params = self._parti_kosulu(urun_id, barkod, parti_no, miad, birim)
         cur = self.conn.cursor()
         cur.execute(f"""
-            SELECT id, adet, urun_id, barkod, urun_adi, seri_no, parti_no, miad
+            SELECT id, adet, urun_id, barkod, urun_adi, seri_no, parti_no, miad, birim
             FROM stok_kalem
             WHERE durum = 1 AND {kosul}
             ORDER BY id
@@ -470,7 +597,7 @@ class StokTakipDB:
         ad = rows[0]["urun_adi"] if rows else ""
         return True, f"Düşüldü: {ad} ({adet} adet)"
 
-    def _parti_kosulu(self, urun_id, barkod, parti_no, miad):
+    def _parti_kosulu(self, urun_id, barkod, parti_no, miad, birim=None):
         """Parti eşleştirme WHERE koşulu (NULL-güvenli)."""
         kosullar = []
         params = []
@@ -486,24 +613,27 @@ class StokTakipDB:
         params.append(parti_no)
         kosullar.append("IFNULL(miad,'') = IFNULL(?,'')")
         params.append(miad)
+        if birim in ("KUTU", "TABLET"):
+            kosullar.append("birim = ?")
+            params.append(birim)
         return " AND ".join(kosullar), tuple(params)
 
     def _logla(self, cur, yon, kalem, adet, kullanici, zaman):
         cur.execute("""
             INSERT INTO stok_log
                 (yon, urun_id, barkod, urun_adi, seri_no, parti_no, miad,
-                 adet, zaman, kullanici, aciklama)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 adet, birim, zaman, kullanici, aciklama)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             yon, kalem.get("urun_id"), kalem.get("barkod"),
             kalem.get("urun_adi"), kalem.get("seri_no"),
             kalem.get("parti_no"), kalem.get("miad"),
-            adet, zaman, kullanici, "",
+            adet, kalem.get("birim"), zaman, kullanici, "",
         ))
 
     # ============================================================ PARTİ LİSTE
-    def parti_listesi(self, urun_id=None, barkod=None) -> List[Dict]:
-        """Bir ürünün stoktaki partileri (çıkış için seçim)."""
+    def parti_listesi(self, urun_id=None, barkod=None, birim=None) -> List[Dict]:
+        """Bir ürünün stoktaki partileri (çıkış için seçim). birim ile filtreli."""
         kosullar = ["durum = 1"]
         params = []
         if urun_id is not None:
@@ -512,59 +642,68 @@ class StokTakipDB:
         elif barkod:
             kosullar.append("barkod = ?")
             params.append(barkod)
+        if birim in ("KUTU", "TABLET"):
+            kosullar.append("birim = ?")
+            params.append(birim)
         cur = self.conn.cursor()
         cur.execute(f"""
-            SELECT urun_id, barkod, urun_adi,
+            SELECT urun_id, barkod, urun_adi, birim,
                    parti_no, miad, SUM(adet) AS toplam
             FROM stok_kalem
             WHERE {' AND '.join(kosullar)}
-            GROUP BY urun_id, barkod, urun_adi, parti_no, miad
+            GROUP BY urun_id, barkod, urun_adi, birim, parti_no, miad
             ORDER BY IFNULL(miad,'9999-99-99'), parti_no
         """, params)
         return [dict(r) for r in cur.fetchall()]
 
     # ============================================================ GÖRÜNÜMLER
-    def _filtre_kosul(self, filtre):
+    def _filtre_kosul(self, filtre, birim=None):
+        ek = ""
+        params = []
         if filtre and filtre.strip():
-            return " AND urun_adi LIKE ?", (f"%{filtre.strip()}%",)
-        return "", tuple()
+            ek += " AND urun_adi LIKE ?"
+            params.append(f"%{filtre.strip()}%")
+        if birim in ("KUTU", "TABLET"):
+            ek += " AND birim = ?"
+            params.append(birim)
+        return ek, tuple(params)
 
-    def stok_barkod_bazli(self, filtre: str = "") -> List[Dict]:
-        """Her ürün tek satır: toplam adet + en yakın miad."""
-        ek, params = self._filtre_kosul(filtre)
+    def stok_barkod_bazli(self, filtre: str = "", birim=None) -> List[Dict]:
+        """Her ürün+birim tek satır: toplam adet + en yakın miad."""
+        ek, params = self._filtre_kosul(filtre, birim)
         cur = self.conn.cursor()
         cur.execute(f"""
-            SELECT urun_id, barkod, urun_adi,
+            SELECT urun_id, barkod, urun_adi, birim,
                    SUM(adet) AS toplam,
                    MIN(miad) AS en_yakin_miad,
                    COUNT(DISTINCT IFNULL(parti_no,'') || '|' || IFNULL(miad,'')) AS parti_sayisi
             FROM stok_kalem
             WHERE durum = 1{ek}
-            GROUP BY urun_id, barkod, urun_adi
-            ORDER BY urun_adi
+            GROUP BY urun_id, barkod, urun_adi, birim
+            ORDER BY urun_adi, birim
         """, params)
         return [dict(r) for r in cur.fetchall()]
 
-    def stok_miad_bazli(self, filtre: str = "") -> List[Dict]:
-        """Her ayrı parti+miad bir satır."""
-        ek, params = self._filtre_kosul(filtre)
+    def stok_miad_bazli(self, filtre: str = "", birim=None) -> List[Dict]:
+        """Her ayrı parti+miad+birim bir satır."""
+        ek, params = self._filtre_kosul(filtre, birim)
         cur = self.conn.cursor()
         cur.execute(f"""
-            SELECT urun_id, barkod, urun_adi, parti_no, miad,
+            SELECT urun_id, barkod, urun_adi, birim, parti_no, miad,
                    SUM(adet) AS toplam
             FROM stok_kalem
             WHERE durum = 1{ek}
-            GROUP BY urun_id, barkod, urun_adi, parti_no, miad
+            GROUP BY urun_id, barkod, urun_adi, birim, parti_no, miad
             ORDER BY urun_adi, IFNULL(miad,'9999-99-99')
         """, params)
         return [dict(r) for r in cur.fetchall()]
 
-    def stok_karekod_bazli(self, filtre: str = "") -> List[Dict]:
-        """Her karekod (seri) ayrı satır."""
-        ek, params = self._filtre_kosul(filtre)
+    def stok_karekod_bazli(self, filtre: str = "", birim=None) -> List[Dict]:
+        """Her karekod (seri) / tek tablet kaydı ayrı satır."""
+        ek, params = self._filtre_kosul(filtre, birim)
         cur = self.conn.cursor()
         cur.execute(f"""
-            SELECT id, urun_id, barkod, urun_adi, seri_no, parti_no, miad,
+            SELECT id, urun_id, barkod, urun_adi, birim, seri_no, parti_no, miad,
                    adet, giris_tarih
             FROM stok_kalem
             WHERE durum = 1{ek}
