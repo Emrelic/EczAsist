@@ -44,6 +44,7 @@ class KullaniciYonetimi:
         "satis_raporlari": "Satış Raporları",
         "kdv_analiz": "KDV Analiz",
         "hasta_takip": "Hasta Takip & WhatsApp",
+        "hasta_sure": "Hasta Süre Sayacı",
         "fatih_siparisci": "Fatih Siparişçi (Müstakil)",
         "hibrit_siparisci": "Hibrit Siparişçi",
         "yedek_temizlik": "Yedek Klasörü Boşaltma",

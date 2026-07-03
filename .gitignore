@@ -116,6 +116,10 @@ _ai_*.json
 hasta_takip.db
 hasta_takip_ayarlari.json
 
+# Hasta Sure Sayaci yerel state (kronometre istatistik + checkbox ayari)
+hasta_sure_takip.db
+hasta_sure_ayar.json
+
 # Excel temp files
 ~$*.xlsx
 
@@ -132,3 +136,7 @@ inspect.exe bilgileri/
 # Local pull backups (created when reconciling local changes vs origin)
 .local_backup_pull/
 yabanci_hasta_ayar.json
+
+# PyInstaller (yabanci_hasta_servis) — uretilen spec + servis runtime ayari
+*.spec
+servis_ayar.json

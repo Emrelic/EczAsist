@@ -174,6 +174,13 @@ class AnaMenu:
             "renk": "#25D366",  # WhatsApp yeşili
             "hover": "#128C7E"
         },
+        "hasta_sure": {
+            "baslik": "Hasta Süre Sayacı",
+            "icon": "⏱",
+            "aciklama": "Hasta ilgilenme süresini ölçen küçük kronometre + istatistik",
+            "renk": "#00838F",  # Camgöbeği koyu
+            "hover": "#006064"
+        },
         "fatih_siparisci": {
             "baslik": "Fatih Siparişçi",
             "icon": "🛍️",
@@ -546,7 +553,8 @@ class AnaMenu:
             "aylik_recete_sorgu", "t_cetvel", "ek_raporlar", "mf_analiz",
             "mf_hizli", "siparis_verme", "fatih_siparisci", "hibrit_siparisci",
             "min_stok_analiz", "stok_takip", "stok_maliyet_analiz",
-            "prim_raporlama", "satis_raporlari", "kdv_analiz", "hasta_takip", "yedek_temizlik", "kullanici_yonetimi"
+            "prim_raporlama", "satis_raporlari", "kdv_analiz", "hasta_takip",
+            "hasta_sure", "yedek_temizlik", "kullanici_yonetimi"
         ]
 
         # Grid ayarları: uniform parametresi ile tum hucreler ayni boyut.
@@ -737,6 +745,8 @@ class AnaMenu:
             self.kdv_analiz_ac()
         elif modul_key == "hasta_takip":
             self.hasta_takip_ac()
+        elif modul_key == "hasta_sure":
+            self.hasta_sure_ac()
         elif modul_key == "yedek_temizlik":
             self.yedek_temizlik_ac()
         elif modul_key == "kullanici_yonetimi":
@@ -1200,6 +1210,33 @@ class AnaMenu:
         except Exception as e:
             logger.error(f"Stok Takip açma hatası: {e}", exc_info=True)
             messagebox.showerror("Hata", f"Stok Takip modülü açılamadı:\n{e}")
+            if pencere is not None:
+                try: pencere.destroy()
+                except Exception: pass
+
+    def hasta_sure_ac(self):
+        """Hasta İşlem Süresi (kronometre + istatistik) modülünü aç."""
+        pencere = None
+        try:
+            pencere = self._modul_pencere_al("hasta_sure")
+            if pencere is None:
+                return
+            try:
+                pencere.geometry("1100x680")
+            except Exception:
+                pass
+
+            self._yeniden_yukle("hasta_sure_db", "hasta_sure_gui")
+            from hasta_sure_gui import HastaSureGUI
+
+            personel = (self.kullanici.get('ad_soyad')
+                        or self.kullanici.get('kullanici_adi') or "")
+            HastaSureGUI(pencere, personel=personel,
+                         ana_menu_callback=lambda: None)
+
+        except Exception as e:
+            logger.error(f"Hasta Süre açma hatası: {e}", exc_info=True)
+            messagebox.showerror("Hata", f"Hasta Süre modülü açılamadı:\n{e}")
             if pencere is not None:
                 try: pencere.destroy()
                 except Exception: pass
