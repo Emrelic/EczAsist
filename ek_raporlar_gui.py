@@ -115,18 +115,21 @@ class EkRaporlarGUI:
 
         self.root.title("Ek Raporlar - Botanik Veritabanı Sorguları")
 
-        # Pencere boyutları
-        pencere_genislik = 800
-        pencere_yukseklik = 700
+        # Pencere boyutları — 11 rapor kartı (3 sütun × 4 satır) sığsın diye
+        # yükseklik artırıldı; ileride kart eklenince kesilmesin diye yeniden
+        # boyutlandırılabilir yapıldı (2026-06-24: Yabancı Uyruklu raporu 4.
+        # satırda kalıp kesiliyordu).
+        pencere_genislik = 820
+        pencere_yukseklik = 880
 
-        # Ekranın ortasına yerleştir
+        # Ekranın ortasına yerleştir (ekrandan taşmasın diye kırp)
         ekran_genislik = self.root.winfo_screenwidth()
         ekran_yukseklik = self.root.winfo_screenheight()
-        x = (ekran_genislik - pencere_genislik) // 2
-        y = (ekran_yukseklik - pencere_yukseklik) // 2
+        x = max(0, (ekran_genislik - pencere_genislik) // 2)
+        y = max(0, (ekran_yukseklik - pencere_yukseklik) // 2)
 
         self.root.geometry(f"{pencere_genislik}x{pencere_yukseklik}+{x}+{y}")
-        self.root.resizable(False, False)
+        self.root.resizable(True, True)
 
         # Renk şeması
         self.bg_color = '#1A237E'  # Koyu mavi
