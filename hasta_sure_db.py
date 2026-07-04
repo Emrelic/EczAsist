@@ -49,20 +49,39 @@ class HastaSureDB:
                 sure_saniye INTEGER NOT NULL DEFAULT 0,
                 ekleme_say  INTEGER NOT NULL DEFAULT 0,
                 notu        TEXT,
+                kategori    TEXT,            -- ziyaretçi tipi (M/DP/MH/BADH...)
+                recete      INTEGER NOT NULL DEFAULT 0,  -- reçete adedi (0,1,2..)
+                perakende   INTEGER NOT NULL DEFAULT 0,  -- perakende adedi (0,1,2..)
                 tarih       TEXT             -- YYYY-MM-DD
             )
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS ix_islem_tarih ON islem(tarih)")
         cur.execute("CREATE INDEX IF NOT EXISTS ix_islem_personel ON islem(personel)")
         self.conn.commit()
+        # Eski DB'ler için kolon migrasyonları (idempotent)
+        self._kolon_ekle("islem", "kategori", "TEXT")
+        self._kolon_ekle("islem", "recete", "INTEGER NOT NULL DEFAULT 0")
+        self._kolon_ekle("islem", "perakende", "INTEGER NOT NULL DEFAULT 0")
+
+    def _kolon_ekle(self, tablo, kolon, tanim):
+        """Tabloda kolon yoksa ALTER ile ekle (idempotent migrasyon)."""
+        cur = self.conn.cursor()
+        cur.execute(f"PRAGMA table_info({tablo})")
+        mevcut = [row[1] for row in cur.fetchall()]
+        if kolon not in mevcut:
+            cur.execute(f"ALTER TABLE {tablo} ADD COLUMN {kolon} {tanim}")
+            self.conn.commit()
 
     # ============================================================ KAYIT / GÜNCELLE
     def islem_kaydet(self, hasta_adi, personel, baslangic_dt, bitis_dt,
-                     sure_saniye, ekleme_say=0, notu=""):
+                     sure_saniye, ekleme_say=0, notu="", kategori="",
+                     recete=0, perakende=0):
         """
         Yeni bir işlem kaydı ekle. Döner: yeni kaydın id'si.
 
         baslangic_dt / bitis_dt: datetime nesnesi ya da ISO string olabilir.
+        kategori: ziyaretçi tipi kısa kodu (M/DP/MH/BADH/AS/OZ/UNV/DH) ya da "".
+        recete/perakende: adet (0,1,2..); bağımsız — bir hastada birden çok olabilir.
         """
         bas = self._iso(baslangic_dt)
         bit = self._iso(bitis_dt)
@@ -71,18 +90,21 @@ class HastaSureDB:
         cur.execute("""
             INSERT INTO islem
                 (hasta_adi, personel, baslangic, bitis, sure_saniye,
-                 ekleme_say, notu, tarih)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ekleme_say, notu, kategori, recete, perakende, tarih)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             (hasta_adi or "").strip(), (personel or "").strip(),
             bas, bit, int(round(sure_saniye or 0)),
-            int(ekleme_say or 0), (notu or "").strip(), tarih,
+            int(ekleme_say or 0), (notu or "").strip(),
+            (kategori or "").strip(), max(0, int(recete or 0)),
+            max(0, int(perakende or 0)), tarih,
         ))
         self.conn.commit()
         return cur.lastrowid
 
     def islem_guncelle(self, islem_id, bitis_dt, sure_saniye,
-                       ekleme_say=None, hasta_adi=None, notu=None):
+                       ekleme_say=None, hasta_adi=None, notu=None,
+                       kategori=None, recete=None, perakende=None):
         """
         Var olan bir işlemi güncelle (hasta dönüp geldiğinde 'Ekle' + tekrar
         'Bitir' senaryosu). Yalnızca verilen alanlar güncellenir.
@@ -98,6 +120,15 @@ class HastaSureDB:
         if notu is not None:
             alanlar.append("notu = ?")
             params.append((notu or "").strip())
+        if kategori is not None:
+            alanlar.append("kategori = ?")
+            params.append((kategori or "").strip())
+        if recete is not None:
+            alanlar.append("recete = ?")
+            params.append(max(0, int(recete or 0)))
+        if perakende is not None:
+            alanlar.append("perakende = ?")
+            params.append(max(0, int(perakende or 0)))
         params.append(islem_id)
         cur = self.conn.cursor()
         cur.execute(f"UPDATE islem SET {', '.join(alanlar)} WHERE id = ?", params)
@@ -115,7 +146,7 @@ class HastaSureDB:
         cur = self.conn.cursor()
         cur.execute("""
             SELECT id, hasta_adi, personel, baslangic, bitis, sure_saniye,
-                   ekleme_say, notu, tarih
+                   ekleme_say, notu, kategori, recete, perakende, tarih
             FROM islem
             ORDER BY id DESC
             LIMIT 1
@@ -150,7 +181,7 @@ class HastaSureDB:
         cur = self.conn.cursor()
         cur.execute(f"""
             SELECT id, hasta_adi, personel, baslangic, bitis, sure_saniye,
-                   ekleme_say, notu, tarih
+                   ekleme_say, notu, kategori, recete, perakende, tarih
             FROM islem
             {where}
             ORDER BY id DESC
@@ -176,7 +207,9 @@ class HastaSureDB:
                    IFNULL(SUM(sure_saniye), 0) AS toplam,
                    IFNULL(AVG(sure_saniye), 0) AS ortalama,
                    IFNULL(MAX(sure_saniye), 0) AS en_uzun,
-                   IFNULL(MIN(sure_saniye), 0) AS en_kisa
+                   IFNULL(MIN(sure_saniye), 0) AS en_kisa,
+                   IFNULL(SUM(recete), 0) AS recete,
+                   IFNULL(SUM(perakende), 0) AS perakende
             FROM islem
             WHERE {' AND '.join(kosullar)}
         """, params)
@@ -188,6 +221,8 @@ class HastaSureDB:
             "ortalama": int(round(r["ortalama"])) if r["adet"] else 0,
             "en_uzun": int(r["en_uzun"]),
             "en_kisa": int(r["en_kisa"]) if r["adet"] else 0,
+            "recete": int(r["recete"]),
+            "perakende": int(r["perakende"]),
         }
 
     def saatlik_dagilim(self, tarih=None, personel=None):
@@ -251,6 +286,29 @@ class HastaSureDB:
         """, (tarih,))
         return [{"personel": r["personel"], "adet": r["adet"],
                  "toplam": int(r["toplam"]),
+                 "ortalama": int(round(r["ortalama"]))}
+                for r in cur.fetchall()]
+
+    def kategori_ozeti(self, tarih=None, personel=None):
+        """Bir günde kategori (ziyaretçi tipi) bazlı adet + ortalama süre."""
+        if tarih is None:
+            tarih = datetime.now().strftime("%Y-%m-%d")
+        kosullar = ["tarih = ?"]
+        params = [tarih]
+        if personel:
+            kosullar.append("personel = ?")
+            params.append(personel)
+        cur = self.conn.cursor()
+        cur.execute(f"""
+            SELECT IFNULL(NULLIF(kategori, ''), '(belirsiz)') AS kategori,
+                   COUNT(*) AS adet,
+                   IFNULL(AVG(sure_saniye), 0) AS ortalama
+            FROM islem
+            WHERE {' AND '.join(kosullar)}
+            GROUP BY kategori
+            ORDER BY adet DESC
+        """, params)
+        return [{"kategori": r["kategori"], "adet": r["adet"],
                  "ortalama": int(round(r["ortalama"]))}
                 for r in cur.fetchall()]
 

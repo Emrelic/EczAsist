@@ -36,6 +36,25 @@ logger = logging.getLogger(__name__)
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _AYAR_DOSYA = os.path.join(_SCRIPT_DIR, "hasta_sure_ayar.json")
 
+# Ziyaretçi/hasta tipi kategorileri: (kod, gösterim, tam ad).
+# Küçük radiobutton (tek-seçim, tekrar tıklayınca temizlenir) olarak gösterilir.
+# Seçilmezse boş ("") kaydedilir. Sol ve sağ sütun ayrı listelenir.
+KATEGORILER_SOL = [
+    ("M",  "M",  "MÜMESSİL"),
+    ("DP", "DP", "DEPOCU"),
+    ("MH", "MH", "MAHALLELİ"),
+    ("DN", "DN", "DANIŞAN"),
+]
+KATEGORILER_SAG = [
+    ("BADH", "BADH", "BAĞCILAR AĞIZ DİŞ HASTANESİ"),
+    ("AS",   "AS",   "AİLE SAĞLIĞI"),
+    ("OZ",   "ÖZ",   "ÖZEL HASTANE"),
+    ("UNV",  "ÜNV",  "ÜNİVERSİTE"),
+    ("DH",   "DH",   "DEVLET HASTANESİ"),
+]
+KATEGORILER = KATEGORILER_SOL + KATEGORILER_SAG
+_KATEGORI_AD = {kod: tam for kod, _g, tam in KATEGORILER}
+
 
 def _renkler():
     """Aktif tema renklerini getir (tema modülü yoksa makul varsayılan)."""
@@ -94,6 +113,10 @@ class KronometrePenceresi:
         self._kayit_id = None             # DB'ye yazılmış kaydın id'si
         self._ekleme_say = 0
         self._tik_job = None
+        self.kategori = ""                # seçili ziyaretçi tipi kısa kodu ("")
+        self.kat_butonlar = {}            # kod -> Button
+        self.recete = 0                   # bu hastanın reçete adedi (tık ile artar)
+        self.perakende = 0                # bu hastanın perakende adedi
 
         self.r = _renkler()
         self._pencere_kur()
@@ -108,52 +131,109 @@ class KronometrePenceresi:
         self.win.title("⏱ Hasta Süre")
         self.win.configure(bg=yesil)
         self.win.resizable(False, False)
+        # Title çubuğu görünmesin (yerden kazan) — çerçevesiz pencere.
+        try:
+            self.win.overrideredirect(True)
+        except Exception:
+            pass
         try:
             self.win.attributes("-topmost", True)
         except Exception:
             pass
         self.win.protocol("WM_DELETE_WINDOW", self.kapat)
 
-        dis = tk.Frame(self.win, bg=yesil, padx=5, pady=3)
+        # İnce kenarlık (çerçevesiz pencere zeminden ayrışsın)
+        self.win.configure(highlightbackground="#1B5E20", highlightthickness=1)
+
+        dis = tk.Frame(self.win, bg=yesil, padx=4, pady=2)
         dis.pack(fill="both", expand=True)
 
-        # --- Ad soyad (opsiyonel) ---
+        # --- Üst satır: ad kutusu + ✕ (title çubuğu yerine) ---
         ust = tk.Frame(dis, bg=yesil)
         ust.pack(fill="x")
-        tk.Label(ust, text="👤", bg=yesil, fg=yesil_ac,
-                 font=("Segoe UI", 8)).pack(side="left")
+        self.btn_kapat = tk.Button(
+            ust, text="✕", command=self.kapat, bg=yesil, fg=yesil_ac,
+            activebackground=r["error"], activeforeground="#FFFFFF",
+            relief="flat", bd=0, font=("Segoe UI", 8, "bold"),
+            cursor="hand2", padx=3, pady=0)
+        self.btn_kapat.pack(side="right")
         self.ad_var = tk.StringVar()
         self.ad_entry = tk.Entry(
             ust, textvariable=self.ad_var, bg=r["input_bg"], fg=r["input_fg"],
             insertbackground=r["fg"], relief="flat", font=("Segoe UI", 8),
-            width=14)
-        self.ad_entry.pack(side="left", fill="x", expand=True, padx=(3, 0))
-        # placeholder benzeri ipucu
+            width=10)
+        self.ad_entry.pack(side="left", fill="x", expand=True, padx=(0, 3))
         self._ipucu_kur(self.ad_entry, self.ad_var, "Ad Soyad (ops.)")
 
-        # --- Süre göstergesi (rakamlar beyaz) ---
+        # --- Orta gövde: 3 sütun (sol kat | sayaç+eylem | sağ kat) ---
+        orta = tk.Frame(dis, bg=yesil)
+        orta.pack(fill="x", pady=(2, 0))
+        orta.columnconfigure(0, weight=0)
+        orta.columnconfigure(1, weight=1)
+        orta.columnconfigure(2, weight=0)
+
+        sol_col = tk.Frame(orta, bg=yesil)
+        sol_col.grid(row=0, column=0, sticky="ns", padx=(0, 3))
+        merkez = tk.Frame(orta, bg=yesil)
+        merkez.grid(row=0, column=1, sticky="nsew")
+        sag_col = tk.Frame(orta, bg=yesil)
+        sag_col.grid(row=0, column=2, sticky="ns", padx=(3, 0))
+
+        # Sol sütun kategori butonları (M / DP / MH / DN)
+        for kod, gosterim, tam in KATEGORILER_SOL:
+            self._kat_buton(sol_col, kod, gosterim, tam)
+        # Sağ sütun kategori butonları (BADH / AS / ÖZ / ÜNV / DH)
+        for kod, gosterim, tam in KATEGORILER_SAG:
+            self._kat_buton(sag_col, kod, gosterim, tam)
+        self._kategori_gorsel()
+
+        # Merkez: üstte sayaç (beyaz rakam) — sürüklenebilir
         self.sure_lbl = tk.Label(
-            dis, text="00:00", bg=yesil, fg="#FFFFFF",
-            font=("Consolas", 20, "bold"))
-        self.sure_lbl.pack(pady=(1, 1))
+            merkez, text="00:00", bg=yesil, fg="#FFFFFF",
+            font=("Consolas", 19, "bold"), cursor="fleur")
+        self.sure_lbl.pack(fill="x", pady=(0, 2))
+        self.sure_lbl.bind("<Button-1>", self._surukle_baslat)
+        self.sure_lbl.bind("<B1-Motion>", self._surukle)
 
-        # --- Butonlar: [Başlat/Durdur/Sürdür] [Ekle] [Bitir/Yeni] ---
-        # Durdur↔Sürdür ve ayrıca Bitir↔Yeni aynı butonda dönüşümlü.
-        btn_fr = tk.Frame(dis, bg=yesil)
-        btn_fr.pack(fill="x")
-
-        def mk(parent, text, cmd, renk):
-            b = tk.Button(parent, text=text, command=cmd, bg=renk, fg="#FFFFFF",
+        # Merkez: Başlat / Ekle / Yeni (yukarıdan aşağıya)
+        def mk(text, cmd, renk):
+            b = tk.Button(merkez, text=text, command=cmd, bg=renk, fg="#FFFFFF",
                           activebackground=renk, activeforeground="#FFFFFF",
                           relief="flat", font=("Segoe UI", 8, "bold"),
                           disabledforeground="#DDDDDD", cursor="hand2",
                           padx=2, pady=1)
-            b.pack(side="left", expand=True, fill="x", padx=1)
+            b.pack(fill="x", pady=1)
             return b
 
-        self.btn_ana = mk(btn_fr, "▶ Başlat", self.ana_dugme, r["success"])
-        self.btn_ekle = mk(btn_fr, "➕ Ekle", self.ekle, r["info"])
-        self.btn_bitir = mk(btn_fr, "⏹ Bitir", self.bitir_yeni, r["error"])
+        self.btn_ana = mk("▶ Başlat", self.ana_dugme, r["success"])
+        self.btn_ekle = mk("➕ Ekle", self.ekle, r["info"])
+        self.btn_bitir = mk("⏹ Bitir", self.bitir_yeni, r["error"])
+
+        # Üst satır + sayaç üzerinden pencereyi sürükle
+        for w in (ust, self.sure_lbl):
+            w.bind("<Button-1>", self._surukle_baslat)
+            w.bind("<B1-Motion>", self._surukle)
+
+        # --- Reçete / Perakende (bağımsız iki sayaç-toggle) ---
+        rp = tk.Frame(dis, bg=yesil)
+        rp.pack(fill="x", pady=(3, 0))
+        rp.columnconfigure(0, weight=1)
+        rp.columnconfigure(1, weight=1)
+        self.btn_recete = tk.Button(
+            rp, text="℞ Reçete", command=self._recete_tikla,
+            relief="flat", font=("Segoe UI", 8, "bold"), bd=1,
+            cursor="hand2", padx=2, pady=1)
+        self.btn_recete.grid(row=0, column=0, sticky="ew", padx=(0, 1))
+        self.btn_recete.bind("<Button-3>", lambda e: self._recete_azalt())
+        self.btn_perakende = tk.Button(
+            rp, text="🛒 Perakende", command=self._perakende_tikla,
+            relief="flat", font=("Segoe UI", 8, "bold"), bd=1,
+            cursor="hand2", padx=2, pady=1)
+        self.btn_perakende.grid(row=0, column=1, sticky="ew", padx=(1, 0))
+        self.btn_perakende.bind("<Button-3>", lambda e: self._perakende_azalt())
+        self._tooltip(self.btn_recete, "Sol tık +1 · Sağ tık −1")
+        self._tooltip(self.btn_perakende, "Sol tık +1 · Sağ tık −1")
+        self._rp_gorsel()
 
         # --- Bir önceki kaydı sil (küçük, ikincil satır) ---
         self.btn_son_sil = tk.Button(
@@ -172,6 +252,20 @@ class KronometrePenceresi:
         x = sw - w - 20
         y = sh - h - 60           # görev çubuğunun biraz üstü
         self.win.geometry(f"+{max(0, x)}+{max(0, y)}")
+
+    def _surukle_baslat(self, e):
+        """Çerçevesiz pencereyi taşımaya başla (tıklama offset'i kaydet)."""
+        self._surukle_dx = e.x_root - self.win.winfo_x()
+        self._surukle_dy = e.y_root - self.win.winfo_y()
+
+    def _surukle(self, e):
+        """Fare hareketiyle pencereyi taşı."""
+        try:
+            x = e.x_root - self._surukle_dx
+            y = e.y_root - self._surukle_dy
+            self.win.geometry(f"+{x}+{y}")
+        except Exception:
+            pass
 
     def _ipucu_kur(self, entry, var, ipucu):
         """Basit placeholder davranışı."""
@@ -208,6 +302,111 @@ class KronometrePenceresi:
         self.ad_entry.delete(0, "end")
         self.ad_entry._ipucu_aktif = False
         self.ad_entry.event_generate("<FocusOut>")
+
+    # -------------------------------------------------------------- kategori
+    def _kat_buton(self, parent, kod, gosterim, tam):
+        """Sütuna yığılmış küçük tek-seçim kategori butonu oluştur."""
+        b = tk.Button(
+            parent, text=gosterim,
+            command=lambda k=kod: self._kategori_tikla(k),
+            relief="flat", font=("Segoe UI", 7, "bold"), bd=1,
+            cursor="hand2", padx=2, pady=0, width=5)
+        b.pack(fill="x", pady=1)
+        self.kat_butonlar[kod] = b
+        self._tooltip(b, tam)
+        return b
+
+    def _kategori_tikla(self, kod):
+        """Tek-seçim: seçili olana tekrar tıklanırsa temizlenir."""
+        self.kategori = "" if self.kategori == kod else kod
+        self._kategori_gorsel()
+
+    def _kategori_gorsel(self):
+        """Seçili kategoriyi vurgula, diğerlerini soluk göster."""
+        sec_bg, sec_fg = "#FFFFFF", "#1B5E20"      # seçili: beyaz zemin
+        pas_bg, pas_fg = "#1B5E20", "#C8E6C9"      # pasif: koyu yeşil
+        for kod, b in self.kat_butonlar.items():
+            if kod == self.kategori:
+                b.config(bg=sec_bg, fg=sec_fg, activebackground=sec_bg,
+                         activeforeground=sec_fg, relief="solid")
+            else:
+                b.config(bg=pas_bg, fg=pas_fg, activebackground=pas_bg,
+                         activeforeground="#FFFFFF", relief="flat")
+
+    # ------------------------------------------------------- reçete/perakende
+    def _recete_tikla(self):
+        """Sol tık: bu hastanın reçete adedini +1."""
+        self.recete += 1
+        self._rp_gorsel()
+
+    def _recete_azalt(self):
+        """Sağ tık: reçete adedini −1 (0'ın altına inmez)."""
+        if self.recete > 0:
+            self.recete -= 1
+            self._rp_gorsel()
+
+    def _perakende_tikla(self):
+        """Sol tık: bu hastanın perakende adedini +1."""
+        self.perakende += 1
+        self._rp_gorsel()
+
+    def _perakende_azalt(self):
+        """Sağ tık: perakende adedini −1 (0'ın altına inmez)."""
+        if self.perakende > 0:
+            self.perakende -= 1
+            self._rp_gorsel()
+
+    def _rp_gorsel(self):
+        """Bu hastanın reçete/perakende adedini butonda göster + vurgula."""
+        pas_bg, pas_fg = "#1B5E20", "#C8E6C9"
+        rec_txt = f"℞ {self.recete} Reçete" if self.recete else "℞ Reçete"
+        per_txt = (f"🛒 {self.perakende} Perakende"
+                   if self.perakende else "🛒 Perakende")
+        # Adet > 0 = beyaz zemin (reçete mavi, perakende turuncu yazı)
+        if self.recete:
+            self.btn_recete.config(text=rec_txt, bg="#FFFFFF", fg="#1565C0",
+                                   activebackground="#FFFFFF", relief="solid")
+        else:
+            self.btn_recete.config(text=rec_txt, bg=pas_bg, fg=pas_fg,
+                                   activebackground=pas_bg, relief="flat")
+        if self.perakende:
+            self.btn_perakende.config(text=per_txt, bg="#FFFFFF", fg="#E65100",
+                                      activebackground="#FFFFFF", relief="solid")
+        else:
+            self.btn_perakende.config(text=per_txt, bg=pas_bg, fg=pas_fg,
+                                      activebackground=pas_bg, relief="flat")
+
+    def _tooltip(self, widget, metin):
+        """Basit hover ipucu (kategori tam adı)."""
+        state = {"tip": None}
+
+        def _gir(_e):
+            if state["tip"] or not metin:
+                return
+            try:
+                x = widget.winfo_rootx() + 10
+                y = widget.winfo_rooty() - 22
+                tip = tk.Toplevel(widget)
+                tip.wm_overrideredirect(True)
+                tip.wm_geometry(f"+{x}+{y}")
+                tip.attributes("-topmost", True)
+                tk.Label(tip, text=metin, bg="#263238", fg="#FFFFFF",
+                         font=("Segoe UI", 8), padx=5, pady=2,
+                         relief="solid", bd=1).pack()
+                state["tip"] = tip
+            except Exception:
+                state["tip"] = None
+
+        def _cik(_e):
+            if state["tip"]:
+                try:
+                    state["tip"].destroy()
+                except Exception:
+                    pass
+                state["tip"] = None
+
+        widget.bind("<Enter>", _gir)
+        widget.bind("<Leave>", _cik)
 
     # -------------------------------------------------------------- süre
     def _gecen(self):
@@ -255,6 +454,11 @@ class KronometrePenceresi:
         """Yeni hasta — süreyi sıfırdan başlat (bos ya da bitti durumundan)."""
         if self.durum == "bitti":
             self._ad_temizle()           # yeni hasta için alanı temizle
+            self.kategori = ""           # kategori seçimini de sıfırla
+            self._kategori_gorsel()
+            self.recete = 0              # reçete/perakende adedini de sıfırla
+            self.perakende = 0
+            self._rp_gorsel()
         self._biriken = 0.0
         self._ekleme_say = 0
         self._kayit_id = None
@@ -302,11 +506,14 @@ class KronometrePenceresi:
                     hasta_adi=self._ad_oku(), personel=self.personel,
                     baslangic_dt=self._ilk_baslangic_dt, bitis_dt=bitis,
                     sure_saniye=sure, ekleme_say=self._ekleme_say,
-                    notu="")
+                    notu="", kategori=self.kategori,
+                    recete=self.recete, perakende=self.perakende)
             else:
                 self.db.islem_guncelle(
                     self._kayit_id, bitis_dt=bitis, sure_saniye=sure,
-                    ekleme_say=self._ekleme_say, hasta_adi=self._ad_oku())
+                    ekleme_say=self._ekleme_say, hasta_adi=self._ad_oku(),
+                    kategori=self.kategori,
+                    recete=self.recete, perakende=self.perakende)
         except Exception as e:
             logger.error("İşlem kaydı hatası: %s", e, exc_info=True)
             messagebox.showerror("Hata", f"Kayıt yapılamadı:\n{e}",
@@ -391,6 +598,11 @@ class KronometrePenceresi:
             self._ekleme_say = 0
             self.durum = "bos"
             self._ad_temizle()
+            self.kategori = ""
+            self._kategori_gorsel()
+            self.recete = 0
+            self.perakende = 0
+            self._rp_gorsel()
             self.sure_lbl.config(text="00:00")
             self._durum_uygula()
         if self.on_kayit:
@@ -523,7 +735,8 @@ class HastaSureGUI:
         for anahtar, baslik in [
             ("adet", "Bugün Hasta"), ("ortalama", "Ortalama Süre"),
             ("en_uzun", "En Uzun"), ("en_kisa", "En Kısa"),
-            ("toplam", "Toplam Süre")]:
+            ("toplam", "Toplam Süre"), ("recete", "Reçete"),
+            ("perakende", "Perakende")]:
             kart = tk.Frame(self.ozet_fr, bg=r["card_bg"], padx=14, pady=10,
                             highlightbackground=r["border"], highlightthickness=1)
             kart.pack(side="left", expand=True, fill="x", padx=4)
@@ -558,15 +771,16 @@ class HastaSureGUI:
                   relief="flat", font=("Segoe UI", 9), cursor="hand2",
                   padx=8).pack(side="left")
 
-        kolonlar = ("saat", "hasta", "sure", "ekle", "personel")
+        kolonlar = ("saat", "hasta", "tip", "sure", "ekle", "personel")
         self.tablo = ttk.Treeview(sol, columns=kolonlar, show="headings",
                                   height=12)
-        for k, b, g in [("saat", "Başlangıç", 90), ("hasta", "Hasta", 150),
-                        ("sure", "Süre", 80), ("ekle", "Ekleme", 70),
-                        ("personel", "Personel", 110)]:
+        for k, b, g in [("saat", "Başlangıç", 80), ("hasta", "Hasta", 140),
+                        ("tip", "Tip", 60), ("sure", "Süre", 75),
+                        ("ekle", "Ekleme", 60), ("personel", "Personel", 100)]:
             self.tablo.heading(k, text=b)
             self.tablo.column(k, width=g,
-                              anchor="center" if k in ("saat", "sure", "ekle")
+                              anchor="center" if k in ("saat", "tip", "sure",
+                                                       "ekle")
                               else "w")
         self.tablo.pack(fill="both", expand=True)
 
@@ -588,6 +802,19 @@ class HastaSureGUI:
             self.per_tablo.column(k, width=g,
                                   anchor="w" if k == "personel" else "center")
         self.per_tablo.pack(fill="both", expand=True)
+
+        kat_fr = tk.LabelFrame(sag, text=" Bugün — Kategori ", bg=r["frame_bg"],
+                               fg=r["frame_fg"], font=("Segoe UI", 10, "bold"),
+                               padx=6, pady=6)
+        kat_fr.pack(fill="both", expand=True, pady=(0, 6))
+        self.kat_tablo = ttk.Treeview(
+            kat_fr, columns=("kat", "adet", "ort"), show="headings", height=6)
+        for k, b, g in [("kat", "Kategori", 120), ("adet", "Adet", 55),
+                        ("ort", "Ort.", 70)]:
+            self.kat_tablo.heading(k, text=b)
+            self.kat_tablo.column(k, width=g,
+                                  anchor="w" if k == "kat" else "center")
+        self.kat_tablo.pack(fill="both", expand=True)
 
         gun_fr = tk.LabelFrame(sag, text=" Son 7 Gün ", bg=r["frame_bg"],
                                fg=r["frame_fg"], font=("Segoe UI", 10, "bold"),
@@ -644,6 +871,9 @@ class HastaSureGUI:
             self.ozet_kartlar["en_uzun"].config(text=sure_bicimle(o["en_uzun"]))
             self.ozet_kartlar["en_kisa"].config(text=sure_bicimle(o["en_kisa"]))
             self.ozet_kartlar["toplam"].config(text=sure_bicimle(o["toplam"]))
+            self.ozet_kartlar["recete"].config(text=str(o.get("recete", 0)))
+            self.ozet_kartlar["perakende"].config(
+                text=str(o.get("perakende", 0)))
         except Exception as e:
             logger.warning("Özet tazeleme hatası: %s", e)
 
@@ -657,6 +887,7 @@ class HastaSureGUI:
                 ekle = satir.get("ekleme_say") or 0
                 self.tablo.insert("", "end", iid=str(satir["id"]), values=(
                     bas or "—", satir.get("hasta_adi") or "—",
+                    satir.get("kategori") or "—",
                     sure_bicimle(satir.get("sure_saniye")),
                     (f"+{ekle}" if ekle else "—"),
                     satir.get("personel") or "—"))
@@ -672,6 +903,19 @@ class HastaSureGUI:
                     p["personel"], p["adet"], sure_bicimle(p["ortalama"])))
         except Exception as e:
             logger.warning("Personel özeti hatası: %s", e)
+
+        # Kategori özeti (tam ad ile)
+        for i in self.kat_tablo.get_children():
+            self.kat_tablo.delete(i)
+        try:
+            for k in self.db.kategori_ozeti():
+                kod = k["kategori"]
+                etiket = (f"{kod} — {_KATEGORI_AD[kod]}"
+                          if kod in _KATEGORI_AD else kod)
+                self.kat_tablo.insert("", "end", values=(
+                    etiket, k["adet"], sure_bicimle(k["ortalama"])))
+        except Exception as e:
+            logger.warning("Kategori özeti hatası: %s", e)
 
         # Son 7 gün
         for i in self.gun_tablo.get_children():
