@@ -76,7 +76,7 @@ class AIAyarlarDialog(tk.Toplevel):
         )
         f0.pack(fill="x", pady=(0, 6))
 
-        self.var_backend = tk.StringVar(value=ayarlar.BACKEND_API)
+        self.var_backend = tk.StringVar(value=ayarlar.BACKEND_SUBPROCESS)
         rb_api = ttk.Radiobutton(
             f0,
             text="Anthropic API — kendi API anahtarınız (pay-per-use)",
@@ -274,7 +274,7 @@ class AIAyarlarDialog(tk.Toplevel):
     # ──────────────────────────────────────────────
     def _mevcudu_doldur(self) -> None:
         c = self._mevcut
-        self.var_backend.set(c.get("backend") or ayarlar.BACKEND_API)
+        self.var_backend.set(c.get("backend") or ayarlar.BACKEND_SUBPROCESS)
         self.var_api_key.set(c.get("api_key") or "")
         self.var_model.set(c.get("varsayilan_model") or ayarlar.MODEL_SONNET)
         self.var_lim_cagri.set(str(c.get("gunluk_cagri_limiti") or 100))

@@ -61,6 +61,23 @@ def claude_komutu_bul() -> Optional[str]:
     return shutil.which("claude")
 
 
+_NOTR_DIZIN: Optional[str] = None
+
+
+def _notr_calisma_dizini() -> str:
+    """CLAUDE.md içermeyen boş, kalıcı bir geçici dizin (tek sefer yaratılır).
+
+    `claude -p` subprocess'i bu dizinde çalışır; proje kökündeki CLAUDE.md +
+    araçlar yüklenmez → model saf JSON döndürür (ajanca davranmaz). Tek dizin
+    tekrar kullanılır (her çağrıda yeni dizin birikmesin)."""
+    global _NOTR_DIZIN
+    if _NOTR_DIZIN and Path(_NOTR_DIZIN).is_dir():
+        return _NOTR_DIZIN
+    import tempfile
+    _NOTR_DIZIN = tempfile.mkdtemp(prefix="eczasist_ai_")
+    return _NOTR_DIZIN
+
+
 def saglik_kontrolu() -> tuple[bool, str]:
     """`claude --version` çıktısını al. UI'da durum etiketi için."""
     yol = claude_komutu_bul()
@@ -142,8 +159,17 @@ def subprocess_cagir(
     if model:
         cmd.extend(["--model", model])
 
-    logger.info("claude subprocess çağrısı: model=%s prompt_chars=%d",
-                model or "(default)", len(full_prompt))
+    # KRİTİK: subprocess'i proje kökünde çalıştırma! Proje kökünde `claude`,
+    # projenin CLAUDE.md'sini (~47k token SUT talimatı) + araçları yükler ve
+    # model saf JSON döndürmek yerine Claude Code ajanı gibi davranıp dosya
+    # grep'lemeye kalkar → "AI cevabında JSON bloğu bulunamadı" hatası
+    # (SUZAN OLGAÇ 2O12S2H pilotu, 2026-07-04; proje kökü cache_write=52k,
+    # nötr dizin=5.6k). Nötr, boş bir geçici dizinde çalıştır → CLAUDE.md yok.
+    if not cwd:
+        cwd = _notr_calisma_dizini()
+
+    logger.info("claude subprocess çağrısı: model=%s prompt_chars=%d cwd=%s",
+                model or "(default)", len(full_prompt), cwd)
 
     try:
         proc = subprocess.run(

@@ -229,8 +229,9 @@ def _endik_var(metin: str, icd: str, keywords: List[str],
 # (label, keywords[norm_tr_lower], icd_patterns[norm_tr_upper regex])
 _BASIT_ENDIKASYONLAR: List[Tuple[str, str, List[str], List[str]]] = [
     ('a', 'İntestinal malabsorbsiyon sendromu',
-     ['intestinal malabsorbsiyon', 'malabsorbsiyon', 'malabsorpsiyon',
-      'emilim bozuklugu'], []),
+     # 'malabsor' kökü: malabsorbsiyon / malabsorpsiyon / malabsorsiyon
+     # (b/p harfi düşmüş yazım varyantı — SUZAN OLGAÇ 3N619AV, 2026-07-04)
+     ['malabsor', 'emilim bozuklugu'], []),
     ('b', 'Kronik inflamatuar bağırsak hastalığı',
      ['kronik inflamatuar bagirsak', 'inflamatuar bagirsak', 'inflamatuar barsak',
       'crohn', 'ulseratif kolit'], [r'\bK50', r'\bK51']),
