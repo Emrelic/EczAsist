@@ -11,6 +11,12 @@ from kullanici_yonetimi import get_kullanici_yonetimi
 
 logger = logging.getLogger(__name__)
 
+# ŞİFRE EKRANI GEÇİCİ OLARAK DEVRE DIŞI (kullanıcı isteği, 2026-07-04).
+# True iken giriş ekranı her bilgisayarda atlanır, admin olarak direkt ana menüye
+# gidilir (yerel DB'deki "sifresiz_kullanim" ayarından bağımsız). Şifre ekranını
+# geri açmak için burayı False yap.
+SIFRE_EKRANI_GECERSIZ = True
+
 
 class GirisPenceresi:
     """Kullanıcı giriş penceresi"""
@@ -26,7 +32,8 @@ class GirisPenceresi:
         self.giris_yapan_kullanici = None
 
         # Şifresiz kullanım kontrolü
-        if self.kullanici_yonetimi.sifresiz_kullanim_aktif_mi():
+        # SIFRE_EKRANI_GECERSIZ (dosya başı) True ise ayardan bağımsız her zaman atla.
+        if SIFRE_EKRANI_GECERSIZ or self.kullanici_yonetimi.sifresiz_kullanim_aktif_mi():
             # Şifresiz giriş yap ve direkt ana menüye git
             basarili, mesaj, kullanici = self.kullanici_yonetimi.sifresiz_giris_yap()
             if basarili:
