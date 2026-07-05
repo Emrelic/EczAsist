@@ -1631,6 +1631,7 @@ def hasta_raporlarini_tara_ve_kaydet(
         rapor_kodu_filtre: Optional[str] = None,
         detayli_oku: bool = True,
         eos_skip: bool = True,
+        yerel_skip: bool = True,
         cb: StatusCb = None) -> Tuple[int, int]:
     """Bir hasta için tüm raporları (bitmiş dahil) MEDULA'dan tarayıp DB'ye yaz.
 
@@ -1645,6 +1646,10 @@ def hasta_raporlarini_tara_ve_kaydet(
             doldurulur. False ise sadece liste metadata'sı kaydedilir.
         eos_skip: True (default) ise Botanik EOS'ta var olan rapor takip
             no'ları taramada atlanır (CLAUDE.md kuralı: EOS sadece SELECT).
+        yerel_skip: True (default) ise yerel cache'te detayı DOLU raporlar
+            atlanır. False → cache'e bakılmaz, HER rapora yeniden girilir
+            (kullanıcı kararı 2026-07-05: AI toplama her seferinde tüm
+            raporların içine girsin).
         cb: status callback.
 
     Returns: (toplam_satir, kaydedilen_satir)
@@ -1754,21 +1759,26 @@ def hasta_raporlarini_tara_ve_kaydet(
         _bildir('Hastanın MEDULA\'da raporu yok', cb)
         return (0, 0)
 
-    mevcut_takipler = mevcut_rapor_takipleri(tc)
-    if detayli_oku:
-        # Detaylı tarama: yerel cache'te detay_metni BOŞ kayıtlar (önceki
-        # liste-modu taramalar) yeniden ziyaret edilebilsin — sadece detayı
-        # dolu olanlar "zaten var" sayılır (2026-07-05 fix; aksi hâlde
-        # metadata-only kayıt detayın toplanmasını sonsuza dek engelliyordu).
-        try:
-            from recete_kontrol.hasta_rapor_gecmisi_db import (
-                hasta_raporlarini_oku as _yerel_oku)
-            mevcut_takipler = {
-                r.rapor_takip_no for r in _yerel_oku(tc)
-                if (r.detay_metni or '').strip()}
-        except Exception as e:
-            logger.debug('detay-dolu takip filtresi hatası: %s', e)
-    _bildir(f'DB\'de zaten kayıtlı: {len(mevcut_takipler)} rapor', cb)
+    if not yerel_skip:
+        # Cache'e bakma — her rapora yeniden girilecek (kayıtlar güncellenir)
+        mevcut_takipler = set()
+        _bildir('Yerel cache atlaması KAPALI — tüm raporlara girilecek', cb)
+    else:
+        mevcut_takipler = mevcut_rapor_takipleri(tc)
+        if detayli_oku:
+            # Detaylı tarama: yerel cache'te detay_metni BOŞ kayıtlar (önceki
+            # liste-modu taramalar) yeniden ziyaret edilebilsin — sadece detayı
+            # dolu olanlar "zaten var" sayılır (2026-07-05 fix; aksi hâlde
+            # metadata-only kayıt detayın toplanmasını sonsuza dek engelliyordu).
+            try:
+                from recete_kontrol.hasta_rapor_gecmisi_db import (
+                    hasta_raporlarini_oku as _yerel_oku)
+                mevcut_takipler = {
+                    r.rapor_takip_no for r in _yerel_oku(tc)
+                    if (r.detay_metni or '').strip()}
+            except Exception as e:
+                logger.debug('detay-dolu takip filtresi hatası: %s', e)
+        _bildir(f'DB\'de zaten kayıtlı: {len(mevcut_takipler)} rapor', cb)
 
     # EOS skip: Botanik EOS'taki rapor takip no'larını al → yerel set ile
     # birleştir. EOS'ta var olan rapor için tekrar Medula detay sayfasını

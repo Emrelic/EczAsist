@@ -52,48 +52,62 @@ def _tc_maskele(tc: str) -> str:
     return (tc[:3] + '****' + tc[-1]) if tc and len(tc) == 11 else str(tc)
 
 
-def _recete_detayina_getir(cb: StatusCb = None) -> bool:
+def _recete_detayina_getir(cb: StatusCb = None, deneme_sayisi: int = 2) -> bool:
     """Medula'yı hangi durumda olursa olsun REÇETE DETAY ekranına getir.
 
     Rapor tarayıcının state-machine'inin hafif kopyası: kapalıysa exe+login,
     oturum düşmüşse Giriş butonu, ana sayfadaysa Reçete Listesi → ilk reçete.
     İlaç/End.Dışı akışları rapor akışından ÖNCE koştuğunda gerekir.
+
+    Sayfa geçişleri zamanlamaya duyarlı ("B grubu TD bulunamadı" gibi geçici
+    hatalar, canlı 2026-07-05) → adımlar `deneme_sayisi` kez baştan denenir.
     """
     from recete_kontrol.medula_rapor_tarayici import (
         MedulaDurum, _medula_durum_tespit, medula_baslat_ve_giris,
         recete_listesi_b_grubu_ac, ilk_recete_satirini_ac,
         _medula_hwnd_bul, _pencereyi_one_getir, _medulaya_3_kez_giris_dene)
 
-    hwnd = _medula_hwnd_bul()
-    if hwnd:
-        try:
-            _pencereyi_one_getir(hwnd, cb=cb)
-        except Exception:
-            pass
-    durum = _medula_durum_tespit(cb=cb)
+    for deneme in range(1, max(1, deneme_sayisi) + 1):
+        if deneme > 1:
+            _bildir(f'Reçete detayına getirme — deneme {deneme}/{deneme_sayisi}',
+                    cb)
+            _bekle(2.0)
 
-    if durum in (MedulaDurum.KAPALI, MedulaDurum.LOGIN_EKRANI,
-                 MedulaDurum.LOGIN_DUSTU, MedulaDurum.BILINMEYEN):
-        _bildir('Medula kapalı/login — başlatılıyor', cb)
-        if not medula_baslat_ve_giris(cb=cb):
-            return False
+        hwnd = _medula_hwnd_bul()
+        if hwnd:
+            try:
+                _pencereyi_one_getir(hwnd, cb=cb)
+            except Exception:
+                pass
         durum = _medula_durum_tespit(cb=cb)
 
-    if durum == MedulaDurum.ANA_SAYFA_LOGIN_GEREK:
-        h = _medula_hwnd_bul()
-        if not (h and _medulaya_3_kez_giris_dene(h, cb=cb)):
-            return False
-        durum = _medula_durum_tespit(cb=cb)
+        if durum in (MedulaDurum.KAPALI, MedulaDurum.LOGIN_EKRANI,
+                     MedulaDurum.LOGIN_DUSTU, MedulaDurum.BILINMEYEN):
+            _bildir('Medula kapalı/login — başlatılıyor', cb)
+            if not medula_baslat_ve_giris(cb=cb):
+                continue
+            durum = _medula_durum_tespit(cb=cb)
 
-    if durum == MedulaDurum.ANA_SAYFA:
-        if not recete_listesi_b_grubu_ac(cb=cb):
-            return False
-        durum = MedulaDurum.RECETE_LISTESI
+        if durum == MedulaDurum.ANA_SAYFA_LOGIN_GEREK:
+            h = _medula_hwnd_bul()
+            if not (h and _medulaya_3_kez_giris_dene(h, cb=cb)):
+                continue
+            durum = _medula_durum_tespit(cb=cb)
 
-    if durum == MedulaDurum.RECETE_LISTESI:
-        return ilk_recete_satirini_ac(cb=cb)
+        if durum == MedulaDurum.ANA_SAYFA:
+            if not recete_listesi_b_grubu_ac(cb=cb):
+                continue   # geçici yüklenme hatası — baştan dene
+            durum = MedulaDurum.RECETE_LISTESI
 
-    return durum in (MedulaDurum.RECETE_DETAY, MedulaDurum.RAPOR_LISTESI)
+        if durum == MedulaDurum.RECETE_LISTESI:
+            if ilk_recete_satirini_ac(cb=cb):
+                return True
+            continue
+
+        if durum in (MedulaDurum.RECETE_DETAY, MedulaDurum.RAPOR_LISTESI):
+            return True
+
+    return False
 
 
 def _taze_receteye_gec(cb: StatusCb = None) -> bool:
@@ -169,7 +183,8 @@ def medula_hasta_verisi_topla(
         ilac_topla: bool = True,
         rapor_topla: bool = True,
         end_disi_topla: bool = True,
-        rapor_eos_skip: bool = True) -> Dict[str, Any]:
+        rapor_eos_skip: bool = False,
+        rapor_yerel_skip: bool = False) -> Dict[str, Any]:
     """Tek hasta için Medula ilaç + rapor geçmişini topla.
 
     Args:
@@ -247,11 +262,15 @@ def medula_hasta_verisi_topla(
                 # rapor akışı o sayfada TC'yi kendisi yazar.
                 if ilac_topla:
                     _taze_receteye_gec(cb)
+                # Varsayılan: eos_skip=False + yerel_skip=False → HER rapora
+                # her toplamada yeniden girilir (kullanıcı kararı 2026-07-05:
+                # "raporlara teker teker girip verileri topla").
                 hasta_raporlarini_tara_ve_kaydet(
                     tc,
                     rapor_kodu_filtre=rapor_kodu_filtre,
                     detayli_oku=rapor_detayli,
                     eos_skip=rapor_eos_skip,
+                    yerel_skip=rapor_yerel_skip,
                     cb=cb)
             except Exception as e:
                 logger.exception('Medula rapor tarama hatası')
