@@ -1755,6 +1755,19 @@ def hasta_raporlarini_tara_ve_kaydet(
         return (0, 0)
 
     mevcut_takipler = mevcut_rapor_takipleri(tc)
+    if detayli_oku:
+        # Detaylı tarama: yerel cache'te detay_metni BOŞ kayıtlar (önceki
+        # liste-modu taramalar) yeniden ziyaret edilebilsin — sadece detayı
+        # dolu olanlar "zaten var" sayılır (2026-07-05 fix; aksi hâlde
+        # metadata-only kayıt detayın toplanmasını sonsuza dek engelliyordu).
+        try:
+            from recete_kontrol.hasta_rapor_gecmisi_db import (
+                hasta_raporlarini_oku as _yerel_oku)
+            mevcut_takipler = {
+                r.rapor_takip_no for r in _yerel_oku(tc)
+                if (r.detay_metni or '').strip()}
+        except Exception as e:
+            logger.debug('detay-dolu takip filtresi hatası: %s', e)
     _bildir(f'DB\'de zaten kayıtlı: {len(mevcut_takipler)} rapor', cb)
 
     # EOS skip: Botanik EOS'taki rapor takip no'larını al → yerel set ile
@@ -1773,43 +1786,79 @@ def hasta_raporlarini_tara_ve_kaydet(
             _bildir(f'UYARI: EOS skip listesi alınamadı: {e}', cb)
     skip_takipler = mevcut_takipler | eos_takipler
 
-    kaydedilen = 0
+    # ── Satırları RAPORA grupla (2026-07-05, kullanıcı kuralı) ──
+    # Aynı rapor listede TEŞHİS BAŞINA bir satırla temsil edilir: 5 teşhisli
+    # rapor = 5 satır, hepsinde aynı Rapor Takip No + Rapor No. Detaya
+    # rapor başına TEK satırdan (ilki) girilir; teşhisler birleştirilir.
+    gruplar: dict = {}          # takip_no → [_RaporSatirOzet, ...] (sıralı)
     for ozet in ozetler:
-        # Yerel DB veya EOS'ta varsa atla
-        if ozet.rapor_takip_no in skip_takipler:
-            kaynak = ('yerel+EOS' if ozet.rapor_takip_no in mevcut_takipler
-                       and ozet.rapor_takip_no in eos_takipler
-                       else 'EOS' if ozet.rapor_takip_no in eos_takipler
+        gruplar.setdefault(ozet.rapor_takip_no, []).append(ozet)
+
+    def _kategori_bul(icd: str) -> str:
+        return RaporKaydi(hasta_tc='x', rapor_takip_no='x',
+                          icd_kodu=icd).kategoriyi_belirle()
+
+    kaydedilen = 0
+    for takip_no, grup in gruplar.items():
+        ilk = grup[0]
+        # Yerel DB veya EOS'ta varsa atla (rapor bazlı tek log)
+        if takip_no in skip_takipler:
+            kaynak = ('yerel+EOS' if takip_no in mevcut_takipler
+                       and takip_no in eos_takipler
+                       else 'EOS' if takip_no in eos_takipler
                        else 'yerel')
             _bildir(
-                f'  ↺ Atlandı ({kaynak}): {ozet.rapor_takip_no} '
-                f'({ozet.rapor_kodu})', cb)
+                f'  ↺ Atlandı ({kaynak}): {takip_no} '
+                f'[{len(grup)} teşhis satırı]', cb)
             continue
+
+        # Teşhisleri birleştir — tekrarsız, satır sırası korunarak
+        def _tekrarsiz(degerler):
+            gorulen, cikti = set(), []
+            for v in degerler:
+                v = (v or '').strip()
+                if v and v not in gorulen:
+                    gorulen.add(v)
+                    cikti.append(v)
+            return cikti
+
+        kodlar = _tekrarsiz(o.rapor_kodu for o in grup)
+        icdler = _tekrarsiz(o.icd_kodu for o in grup)
+        taniler = _tekrarsiz(
+            (f'{o.rapor_kodu} - {o.tani}' if o.rapor_kodu and o.tani
+             else o.tani or o.rapor_kodu_metni) for o in grup)
 
         kayit = RaporKaydi(
             hasta_tc=tc,
-            rapor_takip_no=ozet.rapor_takip_no,
-            baslangic_tarihi=ozet.baslangic_tarihi,
-            bitis_tarihi=ozet.bitis_tarihi,
-            rapor_kodu=ozet.rapor_kodu,
-            tani=ozet.tani,
-            icd_kodu=ozet.icd_kodu,
-            rapor_tipi=ozet.rapor_tipi,
-            rapor_sira=ozet.sira,
+            rapor_takip_no=takip_no,
+            baslangic_tarihi=ilk.baslangic_tarihi,
+            bitis_tarihi=ilk.bitis_tarihi,
+            rapor_kodu=kodlar[0] if kodlar else '',
+            tani=' | '.join(taniler),
+            icd_kodu=','.join(icdler),
+            rapor_tipi=ilk.rapor_tipi,
+            rapor_sira=ilk.sira,
         )
-        kayit.kategori = kayit.kategoriyi_belirle()
+        # Kategori: TÜM teşhis ICD'lerinden ilk eşleşen (tek ICD üzerinden
+        # bakmak çoklu-teşhis raporda kategori kaçırırdı)
+        kategoriler = _tekrarsiz(_kategori_bul(icd) for icd in icdler)
+        kayit.kategori = kategoriler[0] if kategoriler else ''
 
-        # Filtreler: kategori VE rapor_kodu eşleşmesi (verilenler için)
+        # Filtreler — raporun HERHANGİ BİR teşhisi eşleşirse uyumlu (VEYA)
         kategori_uyumlu = (kategori_filtre is None
-                           or kayit.kategori == kategori_filtre)
+                           or kategori_filtre in kategoriler)
         # Rapor kodu prefix eşleşmesi — '14.01' filtre, '14.01.02' eşleşir
         rapor_kodu_uyumlu = (rapor_kodu_filtre is None
-                              or kayit.rapor_kodu.startswith(rapor_kodu_filtre))
+                              or any(k.startswith(rapor_kodu_filtre)
+                                     for k in kodlar))
 
         if detayli_oku and kategori_uyumlu and rapor_kodu_uyumlu:
-            # Adım 17e: Satıra tıkla → detay aç → metni oku → geri dön
-            _bildir(f'  ▶ Detay açılıyor: {ozet.rapor_takip_no} ({ozet.rapor_kodu})', cb)
-            if rapor_satirini_ac(ozet.sira, cb=cb):
+            # Adım 17e: rapor başına TEK tıklama (ilk satır) → detay →
+            # metni oku → geri dön. Diğer satırlar aynı rapora çıkar.
+            _bildir(f'  ▶ Detay açılıyor: {takip_no} '
+                    f'({", ".join(kodlar) or "-"}) '
+                    f'[{len(grup)} teşhis satırı → 1 tıklama]', cb)
+            if rapor_satirini_ac(ilk.sira, cb=cb):
                 kayit.detay_metni = rapor_detayini_oku(cb=cb)[:8000]   # ilk 8KB
                 rapor_listesine_geri_don(cb=cb)
         else:
@@ -1821,17 +1870,19 @@ def hasta_raporlarini_tara_ve_kaydet(
                 sebep_p.append(f'kod≠{rapor_kodu_filtre}')
             if sebep_p:
                 _bildir(
-                    f'  ▷ Metadata-only: {ozet.rapor_takip_no} '
-                    f'({ozet.rapor_kodu}) — {", ".join(sebep_p)}', cb)
+                    f'  ▷ Metadata-only: {takip_no} '
+                    f'({", ".join(kodlar) or "-"}) — {", ".join(sebep_p)}', cb)
 
         try:
             kaydet(kayit)
             kaydedilen += 1
-            _bildir(f'  ✓ Kaydedildi: {ozet.rapor_kodu_metni} ({ozet.baslangic_tarihi})', cb)
+            _bildir(f'  ✓ Kaydedildi: {takip_no} — {kayit.tani[:70]} '
+                    f'({ilk.baslangic_tarihi})', cb)
         except Exception as e:
-            _bildir(f'  ✗ Kayıt hatası ({ozet.rapor_takip_no}): {e}', cb)
+            _bildir(f'  ✗ Kayıt hatası ({takip_no}): {e}', cb)
 
-    _bildir(f'═══ Tamamlandı: {len(ozetler)} satır, {kaydedilen} yeni kayıt ═══', cb)
+    _bildir(f'═══ Tamamlandı: {len(ozetler)} satır / {len(gruplar)} rapor, '
+            f'{kaydedilen} yeni kayıt ═══', cb)
     return (len(ozetler), kaydedilen)
 
 

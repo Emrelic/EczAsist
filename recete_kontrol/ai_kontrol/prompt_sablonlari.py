@@ -87,6 +87,27 @@ Rapor "X yok" demediyse, "X var" varsayma. Veri sessizse şartı KONTROL_EDİLEM
 - `hasta_diger_raporlari` → hasta'nın geçmiş raporları (başlangıç raporu, eski denemeler)
 - `hasta_ilac_gecmisi` → hasta'nın geçmiş ilaçları (eski tedavi denemeleri, kombinasyonlar)
 - `doktor.brans`, `doktor.rapor_doktor_brans` → reçeteyi yazan vs raporu yazan branş (SUT bazen uzman branş şartı koyar)
+- `endikasyon_disi_izinler` → hastanın SGK-onaylı endikasyon dışı kullanım izinleri (aşağıda)
+
+### 🏷️ `kaynak` etiketi — "botanik_eos" vs "medula"
+Geçmiş rapor/ilaç kayıtlarında `kaynak` alanı verinin nereden geldiğini söyler:
+- **"botanik_eos"** = eczanenin kendi kayıt sistemi (sadece BU eczanede işlenenler)
+- **"medula"** = SGK Medula'dan canlı toplanmış (TÜM eczaneler/hastaneler — çapraz kayıt)
+
+Kullanım kuralları:
+- Medula ilaç geçmişi **çapraz-eczane** olduğundan "önceki tedavi denemesi / daha önce X kullanmış" tipi SUT şartlarında GÜÇLÜ kanıttır; bir ilacın EOS'ta olmayıp Medula'da olması çelişki DEĞİLDİR (hasta başka eczaneden almıştır).
+- `kaynak_etiketleri.medula = false` ise Medula taraması YAPILMAMIŞTIR → "Medula'da yok" çıkarımı yapma; geçmiş-bazlı şartlarda veri eksikse KONTROL_EDİLEMEDİ de.
+- Medula rapor kayıtlarında `rapor_metni` alanı rapor detay sayfasının tam metnidir (tanılar, doktor branşı, etkin maddeler, açıklamalar) — atomik şart taramasında rapor metni gibi kullan.
+
+### 📋 `endikasyon_disi_izinler` — SGK onaylı endikasyon dışı kullanım
+Her kayıt: `basvuru_no`, `basvuru_tarihi`, `onay_tarihi`, `durumu` (Onaylandı/Reddedildi vb.), `saglik_tesisi`, `basvuru_nedeni`, `detay_metni` (başvuru türü/alt türü, doktor branşı, tanılar, **değerlendirme uzmanının doz/süre onayı**).
+
+Kullanım kuralları:
+- Reçetedeki ilaç, teşhis için **onaylı endikasyon dışında** kullanılıyorsa: bu listede `durumu = "Onaylandı"` olan, ilgili tanı/ilaçla eşleşen bir izin varsa **endikasyon şartı VAR sayılır** (SUT 1.9 endikasyon dışı kullanım izni).
+- `detay_metni`'ndeki **doz/süre onayına** dikkat: örn. "6 aylık dozda 500 mg 2*2/gün uygundur" → reçete dozu/süresi bu onayı AŞIYORSA saglanmayan_sartlar'a yaz (UYGUN_DEGIL/SUPHELI).
+- Onay tarihi + süresi ile reçete tarihini karşılaştır (süresi dolmuş izin geçerli kanıt değildir; "Devam Başvurusu" alt türü yenileme gerektiğini gösterir).
+- `durumu` "Onaylandı" değilse kanıt sayma.
+- Liste BOŞ ise: `kaynak_etiketleri.medula = true` iken → hastanın izni YOK demektir (endikasyon dışı kullanım kanıtsız → saglanmayan). `medula = false` iken → izin durumu bilinmiyor → KONTROL_EDİLEMEDİ.
 
 ### ⚠️ Raporsuz reçetelenebilen özel durumlar (EK-4 listeleri) — "rapor yok" ≠ UYGUN_DEGIL
 Bazı ilaçlar SUT EK-4 eklerinde, **ilgili uzman hekimce RAPORSUZ** reçetelenebilir; bu durumda rapor yokluğu eksiklik değildir. Reçeteyi yazan branşı kontrol et:

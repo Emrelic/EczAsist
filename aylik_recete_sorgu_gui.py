@@ -2441,8 +2441,8 @@ class AylikReceteSorguGUI:
         # (_sema_kur içinde, btn_t_gecmis). Ana sayfada tekrarına gerek yok.
 
         # NOT: AI paneli row3'e (eylem grubuyla) taşındı + sadeleştirildi.
-        # Aşağıdaki kontrol değişkenleri (ai_kaynak_medula, ai_model_var) UI'dan
-        # kaldırılmış olsa da kod yolu için tanımları p_ai bloğunda korunur.
+        # ai_kaynak_medula 2026-07-05'te görünür checkbox oldu (Faz 2);
+        # ai_model_var hâlâ ⚙ ayarlardan.
 
         # ─── PANEL: KONTROL BUTONLARI — Filtrelemeler'in YANINDA, sağ tarafta ───
         # İçinde: ▢ Sadece seçilenler checkbox + 🎯 Kontrol Butonları butonu
@@ -2481,29 +2481,40 @@ class AylikReceteSorguGUI:
         # ─── PANEL: AI KONTROL (row2'de, Renkler panelinin SAĞINDA — Sıfırla yanı) ───
         # Kullanıcı isteği 2026-05-23 (2): AI paneli üst satıra, Sıfırla butonunun
         # sağındaki boş alana taşındı. Sadeleştirilmiş tek satır eylem paneli.
-        # Görünür: ☑ Botanik | 🤖 AI KONTROL | 🔍 | 📸 SS(N) | ☐ F2 | ⚙
-        # Gizli (⚙ ayarlar penceresinde): "Meduladan da" disabled checkbox, Model
-        # combobox (varsayılan sonnet — Anthropic önerisi).
+        # Görünür: ☑ Botanik | ☐ Medula | 🤖 AI KONTROL | 🔍 | 📸 SS(N) | ☐ F2 | ⚙
+        # Gizli (⚙ ayarlar penceresinde): Model combobox (varsayılan sonnet).
         P_AI_BG = "#E1F5FE"
         p_ai = tk.Frame(row2, bg=P_AI_BG, bd=1, relief="solid")
         p_ai.pack(side="left", padx=(8, 2), pady=1, fill="y")
         tk.Label(p_ai, text="🤖 AI:", bg=P_AI_BG, fg="#01579B",
                  font=FONT_GROUP).pack(side="left", padx=(6, 4), pady=4)
 
-        # Botanik DB checkbox — tek görünür kaynak (Medula Faz 2)
+        # Veri kaynağı checkbox'ları — Botanik EOS + Medula (Faz 2, 2026-07-05)
         self.ai_kaynak_botanik = tk.BooleanVar(value=True)
-        self.ai_kaynak_medula = tk.BooleanVar(value=False)   # ⚙ ayarlardan
+        self.ai_kaynak_medula = tk.BooleanVar(value=False)
         self.ai_model_var = tk.StringVar(value="sonnet")     # ⚙ ayarlardan
         cb_botanik = tk.Checkbutton(
             p_ai, text="Botanik",
             variable=self.ai_kaynak_botanik,
             bg=P_AI_BG, fg="#01579B", selectcolor="#FFFFFF",
             font=("Segoe UI", 8, "bold"), padx=2, bd=0)
-        cb_botanik.pack(side="left", padx=(0, 4), pady=4)
+        cb_botanik.pack(side="left", padx=(0, 2), pady=4)
         _Tooltip(cb_botanik,
                  "Botanik DB rapor + ilaç geçmişi AI paketine eklenir\n"
-                 "(son 5 yıl rapor, 24 ay ilaç).\n"
-                 "Medula entegrasyonu Faz 2 — ⚙ ayarlardan etkinleşecek.")
+                 "(son 5 yıl rapor, 24 ay ilaç).")
+        cb_medula = tk.Checkbutton(
+            p_ai, text="Medula",
+            variable=self.ai_kaynak_medula,
+            bg=P_AI_BG, fg="#B71C1C", selectcolor="#FFFFFF",
+            font=("Segoe UI", 8, "bold"), padx=2, bd=0)
+        cb_medula.pack(side="left", padx=(0, 4), pady=4)
+        _Tooltip(cb_medula,
+                 "⚠ YAVAŞ (~1-2 dk/hasta): Medula ekranlarında gezinerek\n"
+                 "hastanın SGK ilaç geçmişi (çapraz-reçete, tüm eczaneler)\n"
+                 "+ rapor geçmişi (bitmiş dahil) canlı toplanır ve pakete\n"
+                 "kaynak='medula' etiketiyle eklenir.\n"
+                 "Medula penceresi açık/oturumlu olmalı; toplama sırasında\n"
+                 "Medula'ya elle dokunmayın. SADECE OKUMA yapılır.")
 
         btn_ai = tk.Button(
             p_ai, text="🤖 AI KONTROL",
@@ -20188,15 +20199,29 @@ class AylikReceteSorguGUI:
 
         konfig = paket_olusturucu.PaketKonfig(
             botanik_db_kullan=bool(self.ai_kaynak_botanik.get()),
-            medula_kullan=False,
+            medula_kullan=bool(self.ai_kaynak_medula.get()),
         )
 
-        # Paket oluştur (Botanik DB sorguları içerebilir, biraz sürebilir)
-        self._durum_yaz("⏳ Paket hazırlanıyor (DB sorguları)...")
+        # Paket oluştur (Botanik DB sorguları içerebilir, biraz sürebilir;
+        # Medula seçiliyse ekranlarda gezinme ~1-2 dk sürer)
+        if konfig.medula_kullan:
+            self._durum_yaz("⏳ Paket hazırlanıyor (DB + Medula gezinme, "
+                            "~1-2 dk — Medula'ya dokunmayın)...")
+        else:
+            self._durum_yaz("⏳ Paket hazırlanıyor (DB sorguları)...")
         self.root.update_idletasks()
         try:
+            # Önizle main thread'de çalışır — Medula gezinirken GUI
+            # yenilensin diye cb içinde update_idletasks çağrılır.
+            def _onizle_cb(m):
+                try:
+                    self._durum_yaz(f"🌐 {m}")
+                    self.root.update_idletasks()
+                except Exception:
+                    pass
             paket = paket_olusturucu.paket_olustur(
-                satir, konfig=konfig, db=getattr(self, 'db', None))
+                satir, konfig=konfig, db=getattr(self, 'db', None),
+                durum_cb=_onizle_cb)
         except Exception as e:
             logger.exception("Paket önizleme hatası")
             messagebox.showerror(
@@ -20478,12 +20503,12 @@ class AylikReceteSorguGUI:
         # 3. Konfigürasyon — checkbox + model
         konfig = paket_olusturucu.PaketKonfig(
             botanik_db_kullan=bool(self.ai_kaynak_botanik.get()),
-            medula_kullan=False,   # Faz 1: daima False (UI'da disabled)
+            medula_kullan=bool(self.ai_kaynak_medula.get()),
         )
-        if not konfig.botanik_db_kullan:
+        if not konfig.botanik_db_kullan and not konfig.medula_kullan:
             messagebox.showwarning(
                 "Veri Kaynağı Yok",
-                "En az bir veri kaynağı (Botanik DB) seçili olmalı.",
+                "En az bir veri kaynağı (Botanik / Medula) seçili olmalı.",
                 parent=self.root)
             return
 
@@ -20506,12 +20531,21 @@ class AylikReceteSorguGUI:
         elif (model_id or "").endswith("haiku-4-5-20251001"):
             tahmin_usd *= 0.3
 
+        kaynak_metin = " + ".join(
+            (["Botanik DB"] if konfig.botanik_db_kullan else [])
+            + (["Medula (canlı gezinme, ~1-2 dk/hasta)"]
+               if konfig.medula_kullan else []))
+        medula_notu = (
+            "\n⚠ Medula seçili: pencere açık/oturumlu olmalı; toplama\n"
+            "sırasında Medula'ya elle DOKUNMAYIN (sadece okuma yapılır).\n"
+            if konfig.medula_kullan else "")
         cevap = messagebox.askyesno(
             "🤖 AI Kontrol Başlat",
             f"{n} reçete-ilaç satırı AI denetimine gönderilecek.\n\n"
             f"Model       : {secim} (override)\n"
-            f"Veri kaynağı: Botanik DB\n"
-            f"Tahmini maliyet: ~${tahmin_usd:.3f}\n\n"
+            f"Veri kaynağı: {kaynak_metin}\n"
+            f"Tahmini maliyet: ~${tahmin_usd:.3f}\n"
+            f"{medula_notu}\n"
             f"Hasta verisi anonim (TC hash, ad GÖNDERİLMEZ).\n"
             f"Sonuçlar 'AI Karş.' ve 'AI Açıklama' sütunlarına yazılır.\n\n"
             f"Devam edilsin mi?",
@@ -20563,8 +20597,17 @@ class AylikReceteSorguGUI:
                     self.root.after(
                         0, ilerleme.asama_basla, AIKontrolIlerleme.ASAMA_VERI)
                     try:
+                        # Medula gezinme mesajları worker thread'den gelir —
+                        # GUI güncellemesi root.after ile main thread'e atlanır
+                        def _medula_cb(m):
+                            try:
+                                self.root.after(
+                                    0, self._durum_yaz, f"🌐 {str(m)[:90]}")
+                            except Exception:
+                                pass
                         paket = paket_olusturucu.paket_olustur(
-                            s, konfig=konfig, db=getattr(self, 'db', None))
+                            s, konfig=konfig, db=getattr(self, 'db', None),
+                            durum_cb=_medula_cb)
                         self.root.after(
                             0, ilerleme.asama_bitir,
                             AIKontrolIlerleme.ASAMA_VERI, True)

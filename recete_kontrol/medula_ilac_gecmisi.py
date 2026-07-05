@@ -67,12 +67,22 @@ def _attr(doc, eid: str, ad: str) -> Optional[str]:
         return None
 
 
-def _elem_tikla(doc, eid: str) -> bool:
-    """JSF onclick postback'ini tetikle (pager/buton). Yalnız görüntüleme."""
+def _elem_tikla(doc, eid: str, buton: bool = False) -> bool:
+    """JSF postback'ini tetikle. Yalnız görüntüleme/navigasyon.
+
+    ⚠️ İki element tipi, iki yöntem (canlı bulgu 2026-07-05):
+    - type=submit BUTONLAR (İlaç/Rapor/Geri Dön): onclick handler'ları YOK;
+      fireEvent('onclick') submit'in varsayılan aksiyonunu TETİKLEMEZ →
+      postback hiç gitmez. `.click()` şart (rapor tarayıcı da böyle).
+    - PAGER anchor linkleri: onclick handler'lı; `.click()` JSF postback'i
+      tetiklemiyor, fireEvent('onclick') gerekli.
+    `buton=True` → click-önce; False (pager) → fireEvent-önce.
+    """
     e = doc.getElementById(eid)
     if e is None:
         return False
-    for yontem in ('fireEvent', 'click', 'exec'):
+    sira = ('click', 'fireEvent', 'exec') if buton else ('fireEvent', 'click', 'exec')
+    for yontem in sira:
         try:
             if yontem == 'fireEvent':
                 e.fireEvent('onclick')
@@ -160,12 +170,16 @@ def _tc_yaz(doc, medula_hwnd: int, tc: str, cb: StatusCb = None) -> bool:
 
 # ─── Tablo okuma ────────────────────────────────────────────────────────────
 
-def _sayfadaki_satirlar(doc) -> Dict[int, Dict]:
+def _sayfadaki_satirlar(doc, baslangic: int = 0) -> Dict[int, Dict]:
     """Mevcut sayfadaki satırları GLOBAL index ile oku (sayfa 2 = 20+).
-    40 ardışık boş index sonrası durur (sayfa sonu)."""
+
+    ⚠️ `baslangic` şart: sayfa N'in satırları global index'te önceki sayfanın
+    devamından başlar (sayfa 3 = 40+). 0'dan taramak miss sayacını satıra
+    ulaşmadan doldurur (40 miss = tam sayfa 3 sınırı — off-by-one tuzağı).
+    """
     rows: Dict[int, Dict] = {}
     miss = 0
-    n = 0
+    n = baslangic
     while n < 600 and miss < 40:
         rn = _val(doc, f'{ILAC_TID}:{n}:{_HUCRE["recete_no"]}')
         if rn is None:
@@ -192,15 +206,19 @@ def _tum_sayfalari_oku(cb: StatusCb = None, max_sayfa: int = 15) -> List[Dict]:
         _bildir('HATA: HTML DOM proxy yok (ilaç listesi)', cb)
         return []
     sayfa = _pager_idx(d) + 1
+    baslangic = 0
     for _ in range(max_sayfa):
-        rows = _sayfadaki_satirlar(d)
+        rows = _sayfadaki_satirlar(d, baslangic)
         tum.update(rows)
         _bildir(f'İlaç geçmişi sayfa {sayfa}: {len(rows)} satır '
                 f'(kümülatif {len(tum)})', cb)
+        if baslangic and not rows:
+            break  # yeni sayfa boş geldi — liste bitti
         nx = _sonraki_sayfa_link(d, sayfa + 1)
         if not nx:
             break
         beklenen = (max(tum) + 1) if tum else 0
+        baslangic = beklenen
         _elem_tikla(d, nx)
         # yeni sayfanın ilk satırı DOM'a gelene kadar bekle
         for _p in range(30):
@@ -244,7 +262,7 @@ def ilac_gecmisini_oku(tc: str, cb: StatusCb = None,
         return []
 
     _bildir('İlaç butonu (f:buttonIlacListesi)', cb)
-    if not _elem_tikla(doc, ID_BUTTON_ILAC):
+    if not _elem_tikla(doc, ID_BUTTON_ILAC, buton=True):
         _bildir('HATA: İlaç butonu tıklanamadı', cb)
         return []
 
@@ -260,7 +278,7 @@ def ilac_gecmisini_oku(tc: str, cb: StatusCb = None,
     if geri_don:
         try:
             d = _html_doc(medula_hwnd)
-            _elem_tikla(d, ID_BUTTON_GERI_DON)
+            _elem_tikla(d, ID_BUTTON_GERI_DON, buton=True)
             _bekle(0.8)
         except Exception:
             pass
