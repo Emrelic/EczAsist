@@ -101,6 +101,8 @@ class PaketKonfig:
     medula_kullan: bool = False    # True → Medula'da gezinerek canlı toplama
                                    # (yavaş: ~1-2 dk/hasta; GUI checkbox)
     medula_rapor_detayli: bool = True  # her rapora girip detay metni oku
+    sut_lafzi_ekle: bool = True    # resmî SUT madde lafzını pakete göm
+                                   # (docs/sut/SUT_tam_metin.txt — mevzuat.gov.tr)
     ilac_gecmisi_ay: int = 24      # Botanik DB'den kaç ay geriye bakılsın
     rapor_gecmisi_yil: int = 5     # Kaç yıllık eski rapor dahil
     max_recete_ilac: int = 50      # Reçetenin diğer ilaçları max sayı
@@ -183,6 +185,17 @@ def paket_olustur(
         kayit.setdefault("kaynak", "botanik_eos")
     for kayit in paket["hasta_ilac_gecmisi"]:
         kayit.setdefault("kaynak", "botanik_eos")
+
+    # Resmî SUT lafzı — AI şart analizini ezber yerine güncel resmî
+    # metne (mevzuat.gov.tr yerel kopyası) dayasın
+    paket["sut_lafzi"] = None
+    if cfg.sut_lafzi_ekle:
+        try:
+            from recete_kontrol.ai_kontrol.sut_lafzi import paket_icin_sut_lafzi
+            paket["sut_lafzi"] = paket_icin_sut_lafzi(
+                paket["recete"]["ilac"].get("atc_kodu") or "")
+        except Exception as e:
+            logger.warning("SUT lafzı eklenemedi: %s", e)
 
     if cfg.medula_kullan:
         try:
@@ -356,6 +369,8 @@ def _veri_kapsami_ozeti(paket: Dict[str, Any]) -> Dict[str, Any]:
             if r.get("kaynak") == "medula"),
         "endikasyon_disi_izin_sayisi": len(
             paket.get("endikasyon_disi_izinler") or []),
+        "sut_lafzi_var": bool(paket.get("sut_lafzi")),
+        "sut_lafzi_madde": (paket.get("sut_lafzi") or {}).get("madde", ""),
         "recete_diger_ilac_sayisi": len(paket.get("recete_diger_ilaclari") or []),
         "uyari_sayisi": len(paket.get("uyarilar") or []),
     }
