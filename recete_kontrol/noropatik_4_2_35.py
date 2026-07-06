@@ -19,8 +19,10 @@ YOLAKLAR (dispatcher: etken madde → ilaç sınıfı; endikasyon → alt-paragr
   K    → 4.2.35.A(5)  Kapsaisin mono krem — postherpetik nevralji / ağrılı
                        diyabetik periferik polinöropati
 
-  Delege (ATLANDI): Gabapentin/Pregabalin + yalnız epilepsi/YAB → SUT 4.2.25;
-                    Duloksetin + yalnız depresyon → SUT 4.2.2 (psikiyatri).
+  Delege (ATLANDI): Gabapentin/Pregabalin + yalnız epilepsi/YAB → SUT 4.2.25.
+  Delege (doğrudan): Duloksetin nöropati/FM kanıtı yoksa (depresyon/sessiz
+                     dahil) → SUT 4.2.2(1) SNRI atomik kontrolü çağrılır ve
+                     sonucu döndürülür (snri_4_2_2.py, 2026-07-06).
 
 ═══════════════════════════════════════════════════════════════════════════
 SK-RAPORU GEREKTİREN YOLAKLAR (G, P) vs UZMAN-HEKİM-RAPORU YOLAKLARI (D, AL, K)
@@ -268,16 +270,18 @@ def noropatik_yolak_belirle(ilac_sonuc: Dict) -> Dict[str, Optional[str]]:
             return {'durum': 'yolak', 'yolak': 'P_B2', 'mesaj': ''}
         return {'durum': 'yolak', 'yolak': 'P_A2', 'mesaj': ''}
 
-    # ── Duloksetin → A(3) / B(1) / ATLANDI(psikiyatri) ──
+    # ── Duloksetin → A(3) / B(1) / delege 4.2.2 (SNRI) ──
+    # 2026-07-06: nöropati/fibromiyalji KANITI yoksa D_A3'e zorlamak yerine
+    # SUT 4.2.2(1) SNRI atomik kontrolüne delege edilir (depresyon/anksiyete
+    # ve SESSİZ endikasyon dahil — duloksetinin varsayılan maddesi 4.2.2).
     if _iceriyor(m, DULOKSETIN_ETKEN) or _iceriyor(m, DULOKSETIN_TICARI):
-        if e['depresyon'] and not (
-                e['diyabetik_noro'] or e['fibromiyalji'] or noropatik_aile):
-            return {'durum': 'atlandi', 'yolak': None,
-                    'mesaj': 'Duloksetin depresyon endikasyonunda — SUT 4.2.2 '
-                             '(psikiyatri) butonunda kontrol edilir'}
         if (e['fibromiyalji'] or e['kronik_kas_iskelet']) and not e['diyabetik_noro']:
             return {'durum': 'yolak', 'yolak': 'D_B1', 'mesaj': ''}
-        return {'durum': 'yolak', 'yolak': 'D_A3', 'mesaj': ''}
+        if e['diyabetik_noro'] or noropatik_aile:
+            return {'durum': 'yolak', 'yolak': 'D_A3', 'mesaj': ''}
+        return {'durum': 'delege_422', 'yolak': None,
+                'mesaj': 'Duloksetin: nöropati/fibromiyalji kanıtı yok — '
+                         'SUT 4.2.2(1) SNRI kontrolüne delege'}
 
     # ── Alfa lipoik → A(4)a / A(4)b ──
     if _iceriyor(m, ALFA_LIPOIK_ETKEN) or _iceriyor(m, ALFA_LIPOIK_TICARI):
@@ -769,6 +773,10 @@ def noropatik_kontrol_4_2_35(ilac_sonuc: Dict) -> KontrolRaporu:
     if karar['durum'] == 'atlandi':
         return KontrolRaporu(sonuc=KontrolSonucu.ATLANDI, mesaj=karar['mesaj'],
                              sut_kurali='SUT 4.2.35 (başka maddeye delege)')
+    if karar['durum'] == 'delege_422':
+        # Duloksetin nöropati/FM kanıtı yok → SUT 4.2.2(1) SNRI atomik kontrol
+        from recete_kontrol.snri_4_2_2 import snri_kontrol_4_2_2
+        return snri_kontrol_4_2_2(ilac_sonuc, _delege_kaynak='noropatik')
 
     yolak = karar['yolak']
     sartlar = YOLAK_FN_MAP[yolak](ilac_sonuc)
@@ -862,10 +870,14 @@ def _senaryolar() -> List[Tuple[str, Dict, KontrolSonucu]]:
             'etkin_madde': 'DULOKSETIN', 'brans': 'Romatoloji',
             'recete_teshisleri': ['M79.7 FIBROMIYALJI'],
         }, KontrolSonucu.UYGUN),
-        ("D ATLANDI (duloksetin depresyon → 4.2.2)", {
+        ("D delege 4.2.2 (duloksetin depresyon, reçeteci psikiyatri → SNRI UYGUN)", {
             'etkin_madde': 'DULOKSETIN', 'brans': 'Psikiyatri',
             'recete_teshisleri': ['F32.9 DEPRESYON'],
-        }, KontrolSonucu.ATLANDI),
+        }, KontrolSonucu.UYGUN),
+        ("D delege 4.2.2 (duloksetin SESSİZ, aile hekimi raporsuz → SNRI UYGUN DEĞİL)", {
+            'etkin_madde': 'DULOKSETIN', 'ilac_adi': 'DUXET 30MG',
+            'brans': 'Aile Hekimliği',
+        }, KontrolSonucu.UYGUN_DEGIL),
         # ── AL — Alfa lipoik (Beneday) ──
         ("AL_a UYGUN (BENEDAY diyabetik nöropati, reçeteci endokrin)", {
             'ilac_adi': 'BENEDAY ENTERIK KAPLI TABLET', 'etkin_madde': 'B1+B6+B12',

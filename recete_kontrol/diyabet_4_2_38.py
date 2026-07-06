@@ -324,23 +324,60 @@ def _sglt2_alt_dispatcher(ilac_sonuc: Dict) -> str:
       - DM: ICD E10/E11 VEYA "diyabet/glisemik/HbA1c"
 
     Öncelik: KY > KBH > DM (en spesifik endikasyon). Hiçbiri yoksa Y6 default.
+
+    Rapor bağlamı önceliği (2026-07-06): Reçete kalemi DM raporuna (07.02.x)
+    bağlıysa, reçete ICD'sindeki I50/N18 kodları reçetedeki BAŞKA kalemlere
+    ait olabilir — bu durumda 4.2.74'e yalnız RAPOR METNİ KY/KBH anlatıyorsa
+    sapılır; rapor sessizse Y6 (DM). Pilot: ADEM ERASLAN 3O68UR0 (JARDIANCE,
+    DM raporu 07.02.1 + reçetede N18 → yanlışlıkla Y_KBH'a gidiyordu).
+
+    Kaleme bağlı rapor önceliği genişletmesi (2026-07-06, MUSTAFA TAŞKIN
+    2O4QGJV — FORZIGA DM raporlu, reçetede SANELOC'un I50.9'u → yanlışlıkla
+    Y_KY + "heyette kardiyolog yok" UYGUN DEĞİL üretiyordu):
+      - Rapor kodu 04.01* (Kalp Yetmezliği) → metne bakmadan Y_KY.
+      - Rapor kodu lookup'ı BOŞ gelebilir (RIRaporKodId yok) → rapor METNİ
+        DM anlatıyorsa (rapor ICD satırı E10–E14 / "diyabet/diabetes/
+        glisemik/HbA1c") bu da DM raporu sinyalidir; reçete ICD fallback'ine
+        düşülmez. rapor_metni = rap_ack + ek bilgi + rapor ICD satırları
+        olduğundan raporun kendi teşhisleri bu metinde aranabilir.
     """
     metin = norm_tr_lower(ilac_sonuc.get('rapor_metni') or '')
     teshisler = ilac_sonuc.get('recete_teshisleri') or []
     teshis_str = norm_tr_upper(' '.join(teshisler))
 
-    ky = bool(re.search(r'\bI50(\.\d+)?\b', teshis_str)) or bool(
-        re.search(
-            r'(kalp\s*yetersizli|kalp\s*yetmezli|nyha|ejeksiyon|\bef\s*[<≤])',
-            metin))
-    kbh = bool(re.search(r'\bN18(\.\d+)?\b', teshis_str)) or bool(
-        re.search(
-            r'(kronik\s*b[oö]brek|\bkbh\b|\bkby\b|\bacr\b|\bpcr\b|proteinuri|persistan\s*protein)',
-            metin))
+    ky_metin = bool(re.search(
+        r'(kalp\s*yetersizli|kalp\s*yetmezli|nyha|ejeksiyon|\bef\s*[<≤])',
+        metin))
+    kbh_metin = bool(re.search(
+        r'(kronik\s*b[oö]brek|\bkbh\b|\bkby\b|\bacr\b|\bpcr\b|proteinuri|persistan\s*protein)',
+        metin))
+    ky_icd = bool(re.search(r'\bI50(\.\d+)?\b', teshis_str))
+    kbh_icd = bool(re.search(r'\bN18(\.\d+)?\b', teshis_str))
 
-    if ky:
+    rapor_kodu = str(ilac_sonuc.get('rapor_kodu') or '').strip()
+
+    # Kaleme bağlı rapor KY raporuysa (04.01 Kalp Yetmezliği(I50)) raporun
+    # kendisi endikasyonu söylüyor → metne bakmadan Y_KY.
+    if rapor_kodu.startswith('04.01'):
         return 'Y_KY'
-    if kbh:
+
+    # DM raporu sinyali: rapor kodu 07.02* VEYA rapor metni DM anlatıyor.
+    # Kod lookup'ı boş gelebildiği için metin sinyali de kalem-rapor
+    # önceliği sayılır (MUSTAFA TAŞKIN 2O4QGJV, 2026-07-06).
+    dm_rapor = rapor_kodu.startswith('07.02') or bool(re.search(
+        r'(\be1[0-4](\.\d+)?\b|diyabet|diabetes|glisemik|hba1c|'
+        r'hemoglobin\s*a1c)', metin))
+    if dm_rapor:
+        # DM raporuna bağlı kalem: reçete ICD'si tek başına 4.2.74'e saptırmaz
+        if ky_metin:
+            return 'Y_KY'
+        if kbh_metin:
+            return 'Y_KBH'
+        return 'Y6'
+
+    if ky_metin or ky_icd:
+        return 'Y_KY'
+    if kbh_metin or kbh_icd:
         return 'Y_KBH'
     return 'Y6'
 
@@ -1406,15 +1443,23 @@ def _brans_heyette(ilac_sonuc: Dict, hedef_brans: str) -> Optional[bool]:
         else:
             brans = str(d)
         brans_norm = _brans_norm(brans)
-        # nefroloji için özel kontrol (mapping'de yok, asıl key)
-        norm_compare = brans_norm.lower()
-        if hedef_brans == 'kardiyo' and brans_norm == 'kardiyo':
+        # Ham stringde DE ara: "İç Hastalıkları -> Nefroloji" gibi ana dal +
+        # yan dal birleşik yazımlarda _brans_norm 'ic'ye indirger ve yan dal
+        # bilgisi kaybolur → nefrolog heyette olduğu halde YOK üretilirdi
+        # (ADEM ERASLAN 3O68UR0 / JARDIANCE pilotu 2026-07-06).
+        ham = _ascii_normalize(brans)
+        if hedef_brans == 'kardiyo' and (brans_norm == 'kardiyo'
+                                         or 'kardiyoloji' in ham):
             return True
-        if hedef_brans == 'nefroloji' and 'nefro' in norm_compare:
+        if hedef_brans == 'nefroloji' and ('nefro' in brans_norm
+                                           or 'nefro' in ham):
             return True
-        if hedef_brans == 'endokrin' and brans_norm == 'endokrin':
+        if hedef_brans == 'endokrin' and (brans_norm == 'endokrin'
+                                          or 'endokrin' in ham):
             return True
-        if hedef_brans == 'ic' and brans_norm == 'ic':
+        if hedef_brans == 'ic' and (brans_norm == 'ic'
+                                    or 'ic hastalik' in ham
+                                    or 'dahiliye' in ham):
             return True
     return False
 

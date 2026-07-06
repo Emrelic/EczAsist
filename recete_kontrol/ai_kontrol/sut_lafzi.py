@@ -61,6 +61,10 @@ ATC_MADDE_HARITASI: Dict[str, str] = {
     # İmmünglobulin + palivizumab
     "J06BA": "4.2.12",
     "J06BD01": "4.2.20",
+    # Psikiyatri (4.2.2): antidepresanlar + antipsikotikler
+    # (N06B atomoksetin ve N06D demans bilinçli olarak kapsam DIŞI)
+    "N06A": "4.2.2",         # SSRI/SNRI/trisiklik/tetrasiklik antidepresanlar
+    "N05A": "4.2.2",         # antipsikotikler
     # Nöroloji
     "N03": "4.2.25",         # antiepileptik
     "N02CC": "4.2.19",       # triptanlar

@@ -7,7 +7,8 @@ SUT 4.2.15.B mevzuatına göre tek yolak + (a)/(b) alt-yolu.
   (b) yolu : PAH + komorbidite + op yüksek riskli
 """
 import sys
-from recete_kontrol.sut_kontrolleri import kontrol_silostazol
+from recete_kontrol.sut_kontrolleri import (kontrol_silostazol,
+                                             sut_kategorisi_tespit_et)
 from recete_kontrol.base_kontrol import KontrolSonucu
 
 
@@ -154,6 +155,40 @@ def test_kard_tek_basina_yetmez():
     assert r.sonuc == KontrolSonucu.UYGUN_DEGIL
 
 
+def test_gercek_vaka_dopplar_klass_typo():
+    """Gerçek saha vakası (AHMET ATEŞ 3OHVLSK, 2026-07-03): rapor lafzında
+    "DOPPLAR" (doppler) ve "KLASS 3" (klas 3) yazım hataları — parser typo
+    toleransı ile (a) yolu VAR olmalı."""
+    r = kontrol_silostazol(_rec(
+        ('HASTA İLERİ EVRE PERİFERİK ARTER HASTALIĞI DOPPLAR İLE '
+         'DESTEKLENMİŞ OLUP KLASS 3 SEMPTOMLERİ BULUNAN HASTANIN 1 YIL '
+         'BOYUNCA SİLOSTAZOL 2X1 KULLANMASI UYGUNDUR.OPERASYON YAPILAMAYAN '
+         'HASTA. LDL:110 23.03.2026 TIKAYICI PERİFER ARTER HASTALIĞI '
+         'HASTAYA 02/02/2022 TARİHİNDE ANJİO-STENT UYGULANMIŞTIR. '
+         'KORONER ARTER HASTALIĞI MEVCUTTUR.'),
+        rapor_kodu='04.04',
+        rapor_doktor_brans='Kalp ve Damar Cerrahisi',
+        doktor_uzmanligi='Kalp ve Damar Cerrahisi',
+    ))
+    print(f'[T11 gercek-vaka-typo] {_ozet(r)}')
+    assert r.detaylar.get('(a) yolu') == 'var', \
+        f"(a) yolu var beklendi, gerçek {r.detaylar.get('(a) yolu')}"
+    assert r.sonuc == KontrolSonucu.UYGUN, f'beklenti UYGUN, gerçek {r.sonuc}'
+
+
+def test_kategori_silastazol_varyant():
+    """Etken "SİLASTAZOL" (a'lı Medula yazımı) → kategori SILOSTAZOL
+    (anlık kontrol genel dispatcher'ı bu haritadan yakalar)."""
+    for etken in ('SİLASTAZOL', 'SILASTAZOL', 'SILOSTAZOL', 'CILOSTAZOL'):
+        kat = sut_kategorisi_tespit_et({
+            'ilac_adi': 'PLETAL 100MG 60 TABLET', 'etkin_madde': etken})
+        assert kat == 'SILOSTAZOL', f'{etken} -> {kat} (SILOSTAZOL beklendi)'
+    kat = sut_kategorisi_tespit_et({'ilac_adi': 'PLETAL 100MG 60 TABLET',
+                                     'etkin_madde': ''})
+    assert kat == 'SILOSTAZOL', f'PLETAL ad fallback -> {kat}'
+    print('[T12 kategori-varyant] SILASTAZOL/PLETAL -> SILOSTAZOL OK')
+
+
 if __name__ == '__main__':
     testler = [
         test_a_uygun_kdc_pah_klas_op_yok,
@@ -166,6 +201,8 @@ if __name__ == '__main__':
         test_bos_metin_rapor_yok,
         test_suheli_recete_brans_bos,
         test_kard_tek_basina_yetmez,
+        test_gercek_vaka_dopplar_klass_typo,
+        test_kategori_silastazol_varyant,
     ]
     basari = 0
     hata = 0

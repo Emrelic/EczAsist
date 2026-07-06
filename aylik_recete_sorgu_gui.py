@@ -1726,6 +1726,12 @@ class AylikReceteSorguGUI:
         except Exception:
             self._kontrol_disi_setler = (set(), set(), set())
 
+        # 💬 "İlaç mesajı YOK olanları göster" — Msj sütunu 'yok' olan satırları
+        # süzer (Medula'nın ürün için SUT mesajı göstermediği ilaçlar,
+        # UMTUrunMesaj'da kaydı olmayanlar). Sorgu-sonrası filtre;
+        # işaretliyken msj='var' satırlar gizlenir.
+        self.msj_yok_filtre_aktif = tk.BooleanVar(value=False)
+
         # Verdict (kontrol sonucu) filtre — kullanıcı tabloyu sonuç etiketine
         # göre filtreleyebilsin: UYGUN / UYGUN DEĞİL / ŞÜPHELİ / ŞARTLI UYGUN /
         # MANUEL KONTROL / boş (henüz kontrol edilmemiş). Default hepsi açık.
@@ -2198,11 +2204,16 @@ class AylikReceteSorguGUI:
         # ─── PANEL: SEÇİM (row3'te, Filtrelemeler'in solunda) ───
         # Kullanıcı mockup'ı 2026-05-23: Tümü/Hiçbiri/Tersine/Vurgulu butonları
         # eylem grubunun bir parçası → alt satıra (Filtrelemeler + Kontrol ile).
+        # Kompakt dikey düzen (2026-07-07): başlık ÜSTTE, butonlar ALTTA —
+        # yatay genişlik azalır → sağdaki hücre içerik paneline yer açılır.
         P_SECIM_BG = "#E3F2FD"
         p_secim = tk.Frame(row3, bg=P_SECIM_BG, bd=1, relief="solid")
         p_secim.pack(side="left", padx=2, pady=1, fill="y")
         tk.Label(p_secim, text="🎯 Seçim", bg=P_SECIM_BG, fg="#0D47A1",
-                  font=FONT_GROUP).pack(side="left", padx=(6, 6), pady=4)
+                  font=FONT_GROUP).pack(side="top", anchor="w",
+                                          padx=6, pady=(2, 0))
+        secim_btn_sira = tk.Frame(p_secim, bg=P_SECIM_BG)
+        secim_btn_sira.pack(side="top", padx=3, pady=(0, 3))
         for txt, cmd, tip in [
             ("☑ Tümü", self._tumunu_sec,
              "Filtreden geçen tüm satırları SEÇ"),
@@ -2214,9 +2225,9 @@ class AylikReceteSorguGUI:
              "Shift/Ctrl ile vurgulanmış satırların\n"
              "checkbox'larını işaretle"),
         ]:
-            b = tk.Button(p_secim, text=txt, bg="white", bd=1,
-                          command=cmd, padx=8, pady=3, font=FONT_BUTON)
-            b.pack(side="left", padx=2, pady=4)
+            b = tk.Button(secim_btn_sira, text=txt, bg="white", bd=1,
+                          command=cmd, padx=3, pady=1, font=FONT_BUTON)
+            b.pack(side="left", padx=1)
             _Tooltip(b, tip)
 
         # ─── PANEL: FİLTRELEMELER kompozit (Kullan + Filtrelemeler) ───
@@ -2225,35 +2236,38 @@ class AylikReceteSorguGUI:
         p_flt = tk.Frame(row3, bg=P_FLT_BG2, bd=1, relief="solid")
         p_flt.pack(side="left", padx=2, pady=1, fill="y")
 
+        # "Kullan" checkbox'ı butonun İÇİNDE (2026-07-07) — tek kompakt mavi
+        # buton görünümü: soldaki ☑ filtreyi aç/kapar, metne tıklamak ayar
+        # penceresini açar. Yatay genişlik azalır.
+        btn_flt = tk.Frame(p_flt, bg="#1976D2", cursor="hand2")
+        btn_flt.pack(side="left", padx=3, pady=3, fill="y")
+
         cb_flt = tk.Checkbutton(
-            p_flt, text="Kullan",
-            variable=self.gizle_bos_satirlar,
-            bg=P_FLT_BG2, fg="#1565C0",
-            selectcolor="#FFFFFF",
-            font=FONT_GROUP, padx=4, bd=0,
+            btn_flt, variable=self.gizle_bos_satirlar,
+            bg="#1976D2", activebackground="#1565C0",
+            selectcolor="#FFFFFF", bd=0, padx=0, pady=0,
             command=self._bos_satir_filtre_degisti)
-        cb_flt.pack(side="left", padx=(6, 0), pady=4)
+        cb_flt.pack(side="left", padx=(3, 0))
         self.cb_kullan_filtre = cb_flt  # eşzamanlı sorgu kilidinde disable edilir
         _Tooltip(cb_flt,
-                  "Filtre kurallarının AÇIK/KAPALI anahtarı.\n\n"
+                  "KULLAN — filtre kurallarının AÇIK/KAPALI anahtarı.\n\n"
                   "✅ İŞARETLİ: tanımlanan kurallar SQL'e uygulanır\n"
                   "  (uyarı/mesaj/rapor + ilaç/etken/ATC/farma/tesis filtreleri)\n\n"
                   "☐ İŞARETSİZ: hiçbir filtre uygulanmaz")
 
-        btn_flt_ayar = tk.Button(
-            p_flt, text="📁 Filtrelemeler",
+        lbl_flt_ayar = tk.Label(
+            btn_flt, text="📁 Filtrelemeler",
             bg="#1976D2", fg="white",
-            activebackground="#1565C0",
-            bd=0, padx=10, pady=4,
-            font=FONT_BUTON, cursor="hand2",
-            command=self._filtre_ayar_penceresi_ac)
-        btn_flt_ayar.pack(side="left", padx=(2, 4), pady=4)
-        _Tooltip(btn_flt_ayar,
+            font=FONT_BUTON, padx=6, pady=4, cursor="hand2")
+        lbl_flt_ayar.pack(side="left")
+        lbl_flt_ayar.bind("<Button-1>",
+                           lambda _e: self._filtre_ayar_penceresi_ac())
+        _Tooltip(lbl_flt_ayar,
                   "Tıklayınca filtre ayar penceresi açılır:\n"
                   "• Hangi içerikler gelsin (renkli reçete / mesaj / uyarı / rapor)\n"
                   "• İlaç / etken / ATC / farma / tesis / eşdeğer kuralları\n"
                   "• 🚫 Kurum (Dışlamalar) sekmesi\n\n"
-                  "Üst checkbox: kuralları aktif/pasif yapar.")
+                  "Soldaki ☑ (Kullan): kuralları aktif/pasif yapar.")
 
         # ─── PANEL: KONTROLÜ GEREKSİZ İLAÇ FİLTRESİ ───
         # Eczacının "bu ilaç SUT kontrolü gerektirmez" dediği ilaçları gizler.
@@ -2306,9 +2320,9 @@ class AylikReceteSorguGUI:
                   "ekleyip silebilirsiniz.")
 
         btn_kume = tk.Button(
-            p_kdi, text="📊 Küme Analizi", bg="#6A1B9A", fg="white",
-            activebackground="#4A148C", bd=0, padx=10, pady=4,
-            font=FONT_BUTON, cursor="hand2",
+            p_kdi, text="📊 Küme\nAnalizi", bg="#6A1B9A", fg="white",
+            activebackground="#4A148C", bd=0, padx=4, pady=1,
+            font=FONT_BUTON, cursor="hand2", justify="left",
             command=self._kume_analizi_baslat)
         btn_kume.pack(side="left", padx=(2, 4), pady=4)
         _Tooltip(btn_kume,
@@ -2318,6 +2332,9 @@ class AylikReceteSorguGUI:
                   "Sadece-K / Sadece-B / Kesişim / Hiçbiri sayılarını ve "
                   "hangi kapsamın daha geniş olduğunu gösterir.\n"
                   "(Sadece SELECT — uzun sürebilir.)")
+
+        # NOT: İlaç mesajı YOK filtresi row_etiket'e taşındı (2026-07-07) —
+        # Sonuç/Teyit panelinin sağındaki boşluğu doldurur, row3 kısalır.
 
         # 🧹 Sıfırla — Göster panelinin içine taşındı (yukarıda)
 
@@ -2435,6 +2452,30 @@ class AylikReceteSorguGUI:
                  "  'Boş' = henüz kontrol edilmemiş satırlar.\n\n"
                  "🖉 Teyit (alt): eczacının manuel teyit ettiği etiketler.\n"
                  "  'Teyitsiz' = henüz teyit edilmemiş.")
+
+        # ─── PANEL: İLAÇ MESAJI YOK FİLTRESİ (Sonuç/Teyit sağındaki boşlukta) ───
+        # Msj sütunu 'yok' olan satırları göstermek için hızlı süzgeç.
+        # row3 yerine buraya alındı (2026-07-07) → row3 kısaldı, sağdaki
+        # hücre içerik paneli sola doğru genişleyebiliyor.
+        P_MSJ_BG = "#E8F5E9"
+        p_msj = tk.Frame(row_etiket, bg=P_MSJ_BG, bd=1, relief="solid")
+        p_msj.pack(side="left", padx=2, pady=1, fill="y")
+
+        cb_msj_yok = tk.Checkbutton(
+            p_msj, text="💬 İlaç mesajı\nYOK olanları göster",
+            variable=self.msj_yok_filtre_aktif,
+            bg=P_MSJ_BG, fg="#1B5E20", selectcolor="#FFFFFF",
+            font=("Segoe UI", 8, "bold"), padx=2, bd=0,
+            justify="left", anchor="w",
+            command=self._msj_yok_filtre_degisti)
+        cb_msj_yok.pack(side="left", padx=(4, 4), pady=2, fill="y")
+        _Tooltip(cb_msj_yok,
+                  "İşaretliyken tabloda SADECE 'Msj = yok' satırlar kalır — "
+                  "yani Medula'nın ilaç mesajı göstermediği "
+                  "(UMTUrunMesaj'da kaydı olmayan) ilaçlar.\n\n"
+                  "Mesajı OLAN (Msj = var) satırlar gizlenir.\n"
+                  "Sorgu-sonrası filtredir; veri yeniden çekilmez, "
+                  "kutu kaldırılınca satırlar geri gelir.")
 
         # NOT: 🩺 MEDULA GEÇMİŞ TARA paneli buradan kaldırıldı (kullanıcı isteği
         # 2026-05-23). Şema panel toolbar'ında 🩺 butonu zaten mevcut
@@ -2773,6 +2814,21 @@ class AylikReceteSorguGUI:
         )
         self.btn_klopidogrel.pack(side="left", padx=(0, 4), pady=2)
 
+        # ── SİLOSTAZOL KONTROL butonu (SUT 4.2.15.B) ──
+        # ATC B01AC23 — silostazol (PLETAL/SILOSTAN). Aynı SUT maddesi ailesi
+        # (4.2.15) olduğu için P2Y12 butonunun yanında durur; motoru bağımsız
+        # (kontrol_silostazol — ileri evre PAH, KDC∨Kard+GC heyet, (a)∨(b) yolu).
+        self.btn_silostazol = tk.Button(
+            row_sut,
+            text="🦵 SİLOSTAZOL (4.2.15.B)\nPletal · İleri Evre PAH",
+            font=("Segoe UI", 9, "bold"),
+            justify="center",
+            fg="white", bg="#00838F", activebackground="#005662",
+            bd=0, padx=12, pady=2, cursor="hand2",
+            command=self._silostazol_kontrol_baslat
+        )
+        self.btn_silostazol.pack(side="left", padx=(0, 4), pady=2)
+
         # ── ARB KONTROL butonu (SUT EK-4/F Madde 51 / 1300/51) ──
         # ATC C09C* (mono ARB) / C09D* (ARB kombinasyonları) / C02AC*
         # (Rilmeniden/Moksonidin) — mono raporlu / kombi monoterapi ibaresi /
@@ -2923,15 +2979,19 @@ class AylikReceteSorguGUI:
         )
         self.btn_antiht.pack(side="left", padx=(4, 4), pady=2)
 
-        # ── SATIR 4: İSKEMİK KALP butonu (SUT 4.2.15.C / 4.2.15.F) ──
-        # ATC C01EB17 (İvabradin) / C01EB18 (Ranolazin) / C03DA04 (Eplerenon).
+        # ── SATIR 4: KALP butonu (iskemik SUT 4.2.15.C/F + antiaritmik EK-4/D) ──
+        # ATC C01EB17 (İvabradin) / C01EB18 (Ranolazin) / C03DA04 (Eplerenon)
+        # + C01B* / C07AA07 antiaritmikler (amiodaron/dronedaron/propafenon/sotalol).
         # Endikasyon-bazlı dispatch:
         #   - IVABRADIN/EPLERENON  → kontrol_ivabradin (NYHA + EF≤45% + BB
         #                            intoleransı + sinüs ritmi + angina/KY)
         #   - RANOLAZIN            → kontrol_ranolazin (kronik stabil angina
         #                            + BB/CCB intoleransı veya yetersiz yanıt)
+        #   - ANTİARİTMİKLER       → antiaritmik_kontrol_ek4d (EK-4/D muafiyet
+        #                            ICD 4.3/4.7/4.9/4.13 + EK-4/G parenteral;
+        #                            EK-4/F dışı → raporsuz da UYGUN)
         self.btn_iskemik_kalp = tk.Button(
-            row_diger2, text="❤️ İSKEMİK KALP",
+            row_diger2, text="❤️ KALP (iskemik+aritmi)",
             font=("Segoe UI", 9, "bold"),
             fg="white", bg="#B71C1C", activebackground="#7F0000",  # koyu kırmızı
             bd=0, padx=12, pady=3, cursor="hand2",
@@ -11821,6 +11881,14 @@ class AylikReceteSorguGUI:
                     return False
         except Exception:
             pass
+        # -0.5) 💬 İlaç mesajı YOK filtresi — kutu işaretliyken sadece
+        # Msj='yok' satırlar görünür (mesajı olan ilaçlar gizlenir).
+        try:
+            if self.msj_yok_filtre_aktif.get():
+                if (s.get("msj") or "").strip().lower() != "yok":
+                    return False
+        except Exception:
+            pass
         # 0) Verdict (kontrol sonucu) filtresi — row_verdict checkbox'ları.
         # Etiketi işaretsiz olan satırları en başta ele (en hızlı kısa devre).
         # Bilinmeyen etiketler "ŞÜPHELİ" altında değerlendirilir (varsayılan
@@ -12000,6 +12068,12 @@ class AylikReceteSorguGUI:
             return
         self._durum_yaz("🚫 Boş satır filtresi değişti — sorgu yenileniyor…")
         self._receteleri_sorgula()
+
+    def _msj_yok_filtre_degisti(self):
+        """💬 'İlaç mesajı YOK olanları göster' kutusu değişti → SQL'e gitmeden
+        tabloyu yenile (sadece görünür satırları daraltır/genişletir)."""
+        self._tabloyu_yenile()
+        self._sayaclari_guncelle()
 
     # ───────────────────────────────────────────── KONTROLÜ GEREKSİZ İLAÇLAR
     def _kontrol_disi_filtre_degisti(self):
@@ -16313,6 +16387,8 @@ class AylikReceteSorguGUI:
             "hasta_tc": (s.get("tc") or "").strip(),
             "rapor_takip_no": (s.get("rap_no") or "").strip(),
             "rapor_doktor_brans": (s.get("rapor_doktor_brans") or "").strip(),
+            # SNRI 4.2.2(1) 6-ay atomu (T1) — üriner duloksetin delegesi için
+            "recete_tarihi": s.get("rec_tar") or "",
             "diger_etken_maddeler": diger_etken,
             "diger_ilac_adlari": diger_ilac,
         }
@@ -16444,18 +16520,20 @@ class AylikReceteSorguGUI:
         }
 
     # ───────────────────────────────────────────────────────────────────
-    # İSKEMİK KALP (SUT 4.2.15.C İvabradin + 4.2.15.F Ranolazin) KATEGORİ
+    # KALP: İSKEMİK (SUT 4.2.15.C/F) + ANTİARİTMİK (EK-4/D) KATEGORİ
     # ───────────────────────────────────────────────────────────────────
     @staticmethod
     def _iskemik_kalp_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
-        """Satırın İSKEMİK KALP (ivabradin/ranolazin/eplerenon) kapsamına
-        girip girmediğini sınıflandırır.
+        """Satırın ❤️ KALP butonu kapsamına girip girmediğini sınıflandırır:
+        iskemik kalp (ivabradin/ranolazin/eplerenon, SUT 4.2.15.C/F) +
+        antiaritmikler (amiodaron/dronedaron/propafenon/sotalol, EK-4/D).
 
-        ATC öncelikli (C01EB17 / C01EB18 / C03DA04); ATC yoksa etken madde
-        fallback. Her üçü de tek etken maddeli ilaçlar — kombi parsing
-        gerekmez.
+        ATC öncelikli (C01EB17 / C01EB18 / C03DA04 / C01B* / C07AA07);
+        ATC yoksa etken madde / ticari ad fallback.
 
-        Dönüş: 'IVABRADIN' / 'RANOLAZIN' / 'EPLERENON' / 'NONE'
+        Dönüş: 'IVABRADIN' / 'RANOLAZIN' / 'EPLERENON' /
+               'AMIODARON' / 'DRONEDARON' / 'PROPAFENON' / 'SOTALOL' /
+               'ANTIARITMIK_DIGER' / 'NONE'
         """
         a = (atc or "").upper().strip()
         et = (etkin or "").upper()
@@ -16466,6 +16544,18 @@ class AylikReceteSorguGUI:
             return "RANOLAZIN"
         if a.startswith("C03DA04") or "EPLERENON" in et:
             return "EPLERENON"
+
+        # Antiaritmikler (EK-4/D muafiyet modülü kendi tespitini yapar)
+        try:
+            from recete_kontrol.antiaritmik_ek4d import antiaritmik_kategori
+            kat = antiaritmik_kategori({
+                "ilac_adi": ilac_adi or "", "etkin_madde": etkin or "",
+                "atc_kodu": atc or "",
+            })
+            if kat != "NONE":
+                return kat
+        except Exception:
+            pass
 
         # Fallback — sut_kategorisi_tespit_et
         try:
@@ -16888,7 +16978,7 @@ class AylikReceteSorguGUI:
     _AEP_GABAPENTIN_ETKEN = ("GABAPENTIN",)
     _AEP_GABAPENTIN_TICARI = ("NEURONTIN", "GABANTIN", "GABALEPT")
     _AEP_VALPROAT_ETKEN = ("VALPROAT", "VALPROIK")
-    _AEP_VALPROAT_TICARI = ("DEPAKIN", "CONVULEX")
+    _AEP_VALPROAT_TICARI = ("DEPAKIN", "CONVULEX", "DEPALEX")
 
     @staticmethod
     def _psikiyatri_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
@@ -17095,6 +17185,9 @@ class AylikReceteSorguGUI:
             "yas": s.get("yas") or "",
             "recete_turu": s.get("rec_turu") or "Normal",
             "recete_alt_turu": s.get("rec_alt_turu") or "",
+            # SNRI 4.2.2(1) 6-ay atomu (T1) — reçete tarihi + rapor branşı
+            "recete_tarihi": s.get("rec_tar") or "",
+            "rapor_doktor_brans": (s.get("rapor_doktor_brans") or "").strip(),
             "diger_etken_maddeler": diger_etken,
             "diger_ilac_adlari": diger_ilac,
         }
@@ -17374,6 +17467,11 @@ class AylikReceteSorguGUI:
     _KLOP_AD_FALLBACK = (
         "KLOPIDOGREL", "CLOPIDOGREL", "PRASUGREL", "TIKAGRELOR", "TICAGRELOR",
         "PLAVIX", "PLANOR", "KARUM", "AYRINEX", "KLOPIRA", "OPIROL",
+        "PLAGREL", "PINGEL", "LOPIGROL", "DILOXOL", "DIPOREL", "OPIREL",
+        # Klopidogrel + ASA kombinasyonları — SUT 4.2.15.A "kombinasyonları
+        # dahil". Etken "KOMBİNASYONLAR", ATC B01AC30 (bazen hatalı C10)
+        # geldiği için kapsam ancak ad ile tespit edilir (KLOGEL-A vakası).
+        "KLOGEL", "DUOPLAVIN", "COPLAVIX", "DUOCOVER", "DUOFLAGREL",
         "EFFIENT", "EFIENT", "PRASIBLOCK",
         "BRILINTA", "BRILIQUE",
     )
@@ -17384,14 +17482,20 @@ class AylikReceteSorguGUI:
         olmadığını ATC B01AC04/22/24 önceliği ve ad/etken fallback ile
         sınıflandırır.
 
+        ATC B01AC30 (trombosit agregasyon inhibitörü KOMBİNASYONLARI) tek
+        başına yeterli DEĞİLDİR — içinde klopidogrel olmayan ürünler de var
+        (örn. ASA+dipiridamol). B01AC30 ancak ad/etken ipucu ile kapsama girer.
+
         Dönüş: "KLOPIDOGREL" / "NONE"
         """
         a = (atc or "").upper().strip()
         # B01AC04 = klopidogrel, B01AC22 = prasugrel, B01AC24 = tikagrelor
         if a.startswith("B01AC04") or a.startswith("B01AC22") or a.startswith("B01AC24"):
             return "KLOPIDOGREL"
-        ad = (ilac_adi or "").upper()
-        et = (etkin or "").upper()
+        # Türkçe İ tuzağı: "KLOPİDOGREL".upper() İ'yi korur, ASCII listeyle
+        # eşleşmez → İ'yi I'ya indirge (bkz. feedback-tr-lower-parser-tuzagi).
+        ad = (ilac_adi or "").upper().replace("İ", "I")
+        et = (etkin or "").upper().replace("İ", "I")
         arama = ad + " " + et
         if any(k in arama for k in AylikReceteSorguGUI._KLOP_AD_FALLBACK):
             return "KLOPIDOGREL"
@@ -17407,7 +17511,8 @@ class AylikReceteSorguGUI:
             return "PRASUGREL"
         if a.startswith("B01AC24"):
             return "TIKAGRELOR"
-        ad_et = (ilac_adi or "").upper() + " " + (etkin or "").upper()
+        ad_et = ((ilac_adi or "").upper() + " " +
+                 (etkin or "").upper()).replace("İ", "I")
         if "PRASUGREL" in ad_et or "EFFIENT" in ad_et or "EFIENT" in ad_et \
                 or "PRASIBLOCK" in ad_et:
             return "PRASUGREL"
@@ -18372,6 +18477,61 @@ class AylikReceteSorguGUI:
             logger.warning("YOAK ilk tarih toplu sorgu fail: %s", e)
         return result
 
+    def _hasta_snri_ilk_tarih_topla(
+            self, musteri_idler: List[int]) -> dict:
+        """SUT 4.2.2(1) — SNRI/SSRE/RIMA/NaSSA 6 ay kuralı (T1 atomu) için
+        her hastanın AYNI ETKENLİ (ATC-7 bazlı) en eski reçete tarihini toplu
+        sorgula (Botanik EOS, salt-okur SELECT).
+
+        Filtre ayarları BİLEREK uygulanmaz — kullanım süresi hastanın tüm
+        satış geçmişine bakar (SGK dışı satış da kullanımı başlatır).
+
+        ATC kapsamı: N06AX21 duloksetin, N06AX16 venlafaksin, N06AX23
+        desvenlafaksin, N06AX17 milnasipran, N06AX11 mirtazapin,
+        N06AX14 tianeptin, N06AG02 moklobemid.
+
+        Returns:
+            {(musteri_id, atc7): en_eski_RxKayitTarihi}
+            Hastanın o etkende geçmişi yoksa anahtar yer almaz →
+            snri_4_2_2 T1 atomu KE-şartlı düşer (başka eczane olabilir).
+        """
+        if not musteri_idler or not self.db:
+            return {}
+        SNRI_ATC = ('N06AX21', 'N06AX16', 'N06AX23', 'N06AX17',
+                    'N06AX11', 'N06AX14', 'N06AG02')
+        result: dict = {}
+        try:
+            atc_ph = ",".join("?" * len(SNRI_ATC))
+            for i in range(0, len(musteri_idler), 400):
+                chunk = [m for m in musteri_idler[i:i + 400] if m]
+                if not chunk:
+                    continue
+                ph = ",".join("?" * len(chunk))
+                rows = self.db.sorgu_calistir(
+                    f"""SELECT ra.RxMusteriId AS musteri_id,
+                               LEFT(atc.ATCKodu, 7) AS atc7,
+                               MIN(ra.RxKayitTarihi) AS ilk_tarih
+                        FROM ReceteAna ra
+                        INNER JOIN ReceteIlaclari ri
+                                ON ri.RIRxId = ra.RxId
+                               AND (ri.RISilme IS NULL OR ri.RISilme = 0)
+                        INNER JOIN Urun u ON u.UrunId = ri.RIUrunId
+                        INNER JOIN ATC atc ON atc.ATCId = u.UrunATCId
+                        WHERE ra.RxMusteriId IN ({ph})
+                          AND (ra.RxSilme IS NULL OR ra.RxSilme = 0)
+                          AND LEFT(atc.ATCKodu, 7) IN ({atc_ph})
+                        GROUP BY ra.RxMusteriId, LEFT(atc.ATCKodu, 7)""",
+                    tuple(chunk) + SNRI_ATC)
+                for r in rows:
+                    mid = r.get("musteri_id")
+                    a7 = str(r.get("atc7") or "").strip().upper()
+                    tarih = r.get("ilk_tarih")
+                    if mid and a7 and tarih:
+                        result[(mid, a7)] = tarih
+        except Exception as e:
+            logger.warning("SNRI ilk tarih toplu sorgu fail: %s", e)
+        return result
+
     def _hasta_yoak_ilk_rapor_tarihi_topla(
             self, musteri_idler: List[int]) -> Dict[int, str]:
         """SUT 4.2.15.D-1(2) son cümle (24 ay) — hastanın YOAK ETKEN MADDELİ
@@ -18623,7 +18783,7 @@ class AylikReceteSorguGUI:
     # ── ÇEŞİTLİ İLAÇLAR KONTROL (SUT M.45 / M.2 / BPH α-bloker) ──────
     # ── ORTAK GRUP KONTROL RUNNER (2026-06-04 yeniden gruplama) ──────────
     def _grup_kontrol_calistir(self, kontrol_fn, izinli_kategoriler, baslik,
-                                sk_kategoriler=()):
+                                sk_kategoriler=(), satir_enrich_fn=None):
         """ÜROLOJİ/GÖZ/DEMANS/KT-ANTİEMETİK butonlarının ortak döngüsü.
 
         kontrol_fn         : sut_kontrolleri grup dispatcher (kontrol_uroloji vb.)
@@ -18632,6 +18792,9 @@ class AylikReceteSorguGUI:
         baslik             : durum/messagebox başlığı
         sk_kategoriler     : SK rapor türü+heyet enrichment gereken kategoriler
                              (ör. {'APREPITANT'}) — kanser_gcsf yardımcılarıyla
+        satir_enrich_fn    : opsiyonel `fn(s, kategori, ilac_sonuc)` — butona
+                             özel ilac_sonuc zenginleştirmesi (ör. ÜROLOJİ
+                             duloksetin → SNRI 6-ay ilk reçete tarihi)
         """
         if not self.tum_satirlar:
             messagebox.showinfo(
@@ -18692,6 +18855,13 @@ class AylikReceteSorguGUI:
                     logger.debug("%s SK enrichment fail (rx %s): %s",
                                  baslik, s.get("rec_no"), e)
 
+            if satir_enrich_fn:
+                try:
+                    satir_enrich_fn(s, kategori, ilac_sonuc)
+                except Exception as e:
+                    logger.debug("%s satır enrichment fail (rx %s): %s",
+                                 baslik, s.get("rec_no"), e)
+
             try:
                 rapor = kontrol_fn(ilac_sonuc)
             except Exception as e:
@@ -18739,8 +18909,30 @@ class AylikReceteSorguGUI:
         """🚹 ÜROLOJİ — BPH/finasterid-dutasterid/alprostadil/üriner/desmopressin."""
         from recete_kontrol.sut_kontrolleri import (
             kontrol_uroloji, GRUP_UROLOJI_ALT)
+
+        # ÜRİNER duloksetin → SNRI 4.2.2(1) delegesi için 6-ay (T1) enrichment:
+        # SUI kanıtı olmayan duloksetin satırları snri_4_2_2'ye düşer; T1 atomu
+        # hastanın aynı-etken en eski reçete tarihini ister (yoksa KE-şartlı).
+        dulo_musteriler = list({
+            s.get("musteri_id") for s in (self.tum_satirlar or [])
+            if s.get("musteri_id")
+            and (str(s.get("atc") or "").upper().startswith("N06AX21")
+                 or "DULOKSET" in str(s.get("etkin") or "").upper()
+                 or "DULOXET" in str(s.get("etkin") or "").upper())})
+        hasta_snri_ilk = self._hasta_snri_ilk_tarih_topla(dulo_musteriler)
+
+        def _snri_enrich(s, kategori, ilac_sonuc):
+            if kategori != "URINER":
+                return
+            mid = s.get("musteri_id")
+            a7 = str(s.get("atc") or "").upper()[:7] or "N06AX21"
+            t = hasta_snri_ilk.get((mid, a7)) if mid else None
+            if t:
+                ilac_sonuc["hasta_snri_ilk_recete_tarihi"] = t
+
         self._grup_kontrol_calistir(kontrol_uroloji, GRUP_UROLOJI_ALT,
-                                    "ÜROLOJİ Kontrol")
+                                    "ÜROLOJİ Kontrol",
+                                    satir_enrich_fn=_snri_enrich)
 
     def _goz_kontrol_baslat(self):
         """👁️ GÖZ — Glokom (4.2.11) + suni gözyaşı (M.2)."""
@@ -18797,11 +18989,15 @@ class AylikReceteSorguGUI:
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
                  "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_kapsam_disi": 0}
         # 2026-06-04: ÇEŞİTLİ kalan niş kontroller (+ İvermektin EK-4/F).
+        # 2026-07-05: + DOBESILAT (kalsiyum dobesilat, SUT 4.1.4 genel raporlu) +
+        #             PENTOKSIFILIN (EK-4/D muafiyet).
         CESITLI_KALAN = ("HEMANJIYOM", "FLUDROKORTIZON", "IVERMEKTIN", "MEKLOZIN",
-                         "LEFLUNOMID", "ORLISTAT", "PIMTAK", "ANTIFUNGAL", "RIFAKSIMIN")
+                         "LEFLUNOMID", "ORLISTAT", "PIMTAK", "ANTIFUNGAL", "RIFAKSIMIN",
+                         "DOBESILAT", "PENTOKSIFILIN")
         kategori_sayac = {"HEMANJIYOM": 0, "FLUDROKORTIZON": 0, "IVERMEKTIN": 0,
                           "MEKLOZIN": 0, "LEFLUNOMID": 0, "ORLISTAT": 0, "PIMTAK": 0,
-                          "ANTIFUNGAL": 0, "RIFAKSIMIN": 0}
+                          "ANTIFUNGAL": 0, "RIFAKSIMIN": 0, "DOBESILAT": 0,
+                          "PENTOKSIFILIN": 0}
         denetlenen_satirlar = []
 
         # Aynı reçetenin diğer satırlarını grupla (kombi yasağı için)
@@ -19166,26 +19362,32 @@ class AylikReceteSorguGUI:
                 f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
                 parent=self.root)
 
-    # ── İSKEMİK KALP KONTROL (SUT 4.2.15.C İvabradin + 4.2.15.F Ranolazin) ──
+    # ── KALP KONTROL (iskemik SUT 4.2.15.C/F + antiaritmik EK-4/D) ──
     def _iskemik_kalp_kontrol_baslat(self):
-        """İSKEMİK KALP KONTROL butonu — yüklenen satırlardan ivabradin/
-        ranolazin/eplerenon kapsamına girenleri kategoriye göre dispatch eder.
+        """❤️ KALP (iskemik+aritmi) KONTROL butonu — yüklenen satırlardan
+        kapsama girenleri kategoriye göre dispatch eder.
 
         Dispatch:
           - IVABRADIN / EPLERENON → kontrol_ivabradin (NYHA + EF≤45% + BB
                                     intoleransı + sinüs ritmi)
           - RANOLAZIN             → kontrol_ranolazin (kronik stabil angina
                                     + BB/CCB intoleransı / yetersiz yanıt)
+          - AMIODARON / DRONEDARON / PROPAFENON / SOTALOL / ANTIARITMIK_DIGER
+                                  → antiaritmik_kontrol_ek4d (EK-4/D muafiyet
+                                    + EK-4/G parenteral form)
         """
         if not self.tum_satirlar:
             messagebox.showinfo(
-                "İSKEMİK KALP Kontrol",
+                "KALP (iskemik+aritmi) Kontrol",
                 "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
                 parent=self.root)
             return
         try:
             from recete_kontrol.sut_kontrolleri import (
                 kontrol_ivabradin, kontrol_ranolazin,
+            )
+            from recete_kontrol.antiaritmik_ek4d import (
+                antiaritmik_kontrol_ek4d, ANTIARITMIK_KATEGORILER,
             )
             from recete_kontrol.base_kontrol import KontrolSonucu, VERDICT_ETIKET
         except Exception as e:
@@ -19208,8 +19410,12 @@ class AylikReceteSorguGUI:
         }
         sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0,
                  "ŞÜPHELİ": 0, "TIBBEN UYGUN DEĞİL": 0, "ATLANDI": 0, "_kapsam_disi": 0}
-        kategori_sayac = {"IVABRADIN": 0, "RANOLAZIN": 0, "EPLERENON": 0}
+        kategori_sayac = {"IVABRADIN": 0, "RANOLAZIN": 0, "EPLERENON": 0,
+                          "AMIODARON": 0, "DRONEDARON": 0, "PROPAFENON": 0,
+                          "SOTALOL": 0, "ANTIARITMIK_DIGER": 0}
         denetlenen_satirlar = []
+        _kalp_kategoriler = (("IVABRADIN", "RANOLAZIN", "EPLERENON")
+                             + tuple(ANTIARITMIK_KATEGORILER))
 
         rec_grup = {}
         for s in self.tum_satirlar:
@@ -19225,8 +19431,7 @@ class AylikReceteSorguGUI:
             kategori = self._iskemik_kalp_kategori(
                 s.get("ilac"), s.get("etkin"), s.get("atc"))
             if kategori == "NONE":
-                if s.get("verdict_kategori") in (
-                        "IVABRADIN", "RANOLAZIN", "EPLERENON"):
+                if s.get("verdict_kategori") in _kalp_kategoriler:
                     s["verdict"] = ""
                     s["verdict_detay"] = ""
                     s["verdict_kategori"] = ""
@@ -19246,10 +19451,12 @@ class AylikReceteSorguGUI:
             try:
                 if kategori == "RANOLAZIN":
                     rapor = kontrol_ranolazin(ilac_sonuc)
+                elif kategori in ANTIARITMIK_KATEGORILER:
+                    rapor = antiaritmik_kontrol_ek4d(ilac_sonuc)
                 else:  # IVABRADIN veya EPLERENON
                     rapor = kontrol_ivabradin(ilac_sonuc)
             except Exception as e:
-                logger.warning("İSKEMİK KALP kontrol hata (rx %s): %s",
+                logger.warning("KALP kontrol hata (rx %s): %s",
                                 s.get("rec_no"), e)
                 s["verdict"] = "ŞÜPHELİ"
                 s["verdict_detay"] = f"Hata: {e}"
@@ -19281,7 +19488,7 @@ class AylikReceteSorguGUI:
 
         self._tabloyu_yenile()
         self._durum_yaz(
-            f"İSKEMİK KALP (4.2.15.C/F) kontrolü: "
+            f"KALP (iskemik 4.2.15.C/F + antiaritmik EK-4/D) kontrolü: "
             f"✓ UYGUN {sayac['UYGUN']}  "
             f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
             f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
@@ -19293,23 +19500,33 @@ class AylikReceteSorguGUI:
                    + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
         if toplam == 0:
             messagebox.showinfo(
-                "İSKEMİK KALP Kontrol",
-                "Bu dönemde ivabradin/ranolazin/eplerenon grubuna giren reçete bulunamadı.",
+                "KALP (iskemik+aritmi) Kontrol",
+                "Bu dönemde ivabradin/ranolazin/eplerenon veya antiaritmik "
+                "(amiodaron/dronedaron/propafenon/sotalol) grubuna giren "
+                "reçete bulunamadı.",
                 parent=self.root)
             return
 
+        antiaritmik_toplam = sum(
+            kategori_sayac.get(k, 0) for k in ANTIARITMIK_KATEGORILER)
         cevap = self._excel_rapor_iste() and messagebox.askyesno(
             "Kontrol Raporu",
-            f"İSKEMİK KALP (4.2.15.C/F) kontrolü tamamlandı.\n\n"
-            f"Toplam İSKEMİK KALP satır : {toplam}\n"
+            f"KALP (iskemik 4.2.15.C/F + antiaritmik EK-4/D) kontrolü tamamlandı.\n\n"
+            f"Toplam KALP satır : {toplam}\n"
             f"  ✓ UYGUN          : {sayac['UYGUN']}\n"
             f"  ✗ UYGUN DEĞİL    : {sayac['UYGUN DEĞİL']}\n"
             f"  ? ŞÜPHELİ        : {sayac['ŞÜPHELİ']}\n"
             f"  − ATLANDI        : {sayac['ATLANDI']}\n\n"
             f"İlaç dağılımı:\n"
-            f"  • İvabradin  : {kategori_sayac.get('IVABRADIN', 0)}\n"
-            f"  • Ranolazin  : {kategori_sayac.get('RANOLAZIN', 0)}\n"
-            f"  • Eplerenon  : {kategori_sayac.get('EPLERENON', 0)}\n\n"
+            f"  • İvabradin   : {kategori_sayac.get('IVABRADIN', 0)}\n"
+            f"  • Ranolazin   : {kategori_sayac.get('RANOLAZIN', 0)}\n"
+            f"  • Eplerenon   : {kategori_sayac.get('EPLERENON', 0)}\n"
+            f"  • Amiodaron   : {kategori_sayac.get('AMIODARON', 0)}\n"
+            f"  • Dronedaron  : {kategori_sayac.get('DRONEDARON', 0)}\n"
+            f"  • Propafenon  : {kategori_sayac.get('PROPAFENON', 0)}\n"
+            f"  • Sotalol     : {kategori_sayac.get('SOTALOL', 0)}\n"
+            f"  • Diğer antiaritmik : {kategori_sayac.get('ANTIARITMIK_DIGER', 0)}\n"
+            f"  (antiaritmik toplam : {antiaritmik_toplam})\n\n"
             f"Kapsam dışı (atlanan): {sayac['_kapsam_disi']}\n\n"
             f"Kontrol raporu Excel olarak masaüstündeki "
             f"'Reçete Kontrol' klasörüne kaydedilecek.\n\n"
@@ -19878,6 +20095,17 @@ class AylikReceteSorguGUI:
                 rno = f"__solo_{id(s)}__"
             rec_grup.setdefault(rno, []).append(s)
 
+        # SNRI 4.2.2(1) 6-ay kuralı (T1 atomu) — hastaların aynı-etkenli en
+        # eski SNRI reçete tarihi (EOS SELECT, toplu). snri_4_2_2 modülü
+        # 'hasta_snri_ilk_recete_tarihi' alanını okur; yoksa KE-şartlı.
+        _SNRI_ATC7 = ('N06AX21', 'N06AX16', 'N06AX23', 'N06AX17',
+                      'N06AX11', 'N06AX14', 'N06AG02')
+        snri_musteriler = list({
+            s.get("musteri_id") for s in self.tum_satirlar
+            if s.get("musteri_id")
+            and str(s.get("atc") or "").upper().startswith(_SNRI_ATC7)})
+        hasta_snri_ilk = self._hasta_snri_ilk_tarih_topla(snri_musteriler)
+
         # Önceki çalıştırmadan kalan PSI/AEP verdict'lerini temizle
         for s in self.tum_satirlar:
             kategori = self._psikiyatri_kategori(
@@ -19908,6 +20136,13 @@ class AylikReceteSorguGUI:
                 ilac_sonuc = self._ilac_sonuc_olustur_cesitli(s, ayni_recete)
             else:
                 ilac_sonuc = self._ilac_sonuc_olustur_psikiyatri(s, ayni_recete)
+
+            # SNRI 6-ay (T1) enrichment — aynı etkende geçmiş varsa ekle
+            _mid = s.get("musteri_id")
+            _a7 = str(s.get("atc") or "").upper()[:7]
+            if _mid and (_mid, _a7) in hasta_snri_ilk:
+                ilac_sonuc["hasta_snri_ilk_recete_tarihi"] = (
+                    hasta_snri_ilk[(_mid, _a7)])
 
             try:
                 if kategori == "ATOMOKSETIN":
@@ -23774,13 +24009,14 @@ class AylikReceteSorguGUI:
     def _iskemik_kalp_rapor_excel_olustur(
             self, *, sayac: dict, kategori_sayac: dict,
             denetlenen_satirlar: list) -> str:
-        """Masaüstü/Reçete Kontrol/ klasörüne İSKEMİK KALP SUT denetim
-        raporu yazar.
+        """Masaüstü/Reçete Kontrol/ klasörüne ❤️ KALP (iskemik 4.2.15.C/F +
+        antiaritmik EK-4/D) SUT denetim raporu yazar.
 
         3 sayfa:
-          - Özet : Toplam sayım, ivabradin/ranolazin/eplerenon dağılımı
-          - İSKEMİK KALP Reçeteleri : Denetlenen satır + SUT detay + verdict
-          - İSKEMİK KALP Dışı : Atlanan satırların kısa özeti
+          - Özet : Toplam sayım, ivabradin/ranolazin/eplerenon +
+            amiodaron/dronedaron/propafenon/sotalol dağılımı
+          - KALP Reçeteleri : Denetlenen satır + SUT detay + verdict
+          - KALP Dışı : Atlanan satırların kısa özeti
         """
         try:
             import openpyxl
@@ -23801,7 +24037,7 @@ class AylikReceteSorguGUI:
 
         donem = self.aktif_donem or "tum"
         zaman = _dt.now().strftime("%Y%m%d_%H%M%S")
-        dosya_adi = f"ISKEMIK_KALP_Kontrol_{donem}_{zaman}.xlsx"
+        dosya_adi = f"KALP_Kontrol_{donem}_{zaman}.xlsx"
         path = os.path.join(klasor, dosya_adi)
 
         wb = openpyxl.Workbook()
@@ -23820,7 +24056,9 @@ class AylikReceteSorguGUI:
                    + sayac["ŞÜPHELİ"] + sayac["ATLANDI"])
 
         ws1.cell(row=1, column=1,
-                 value="İSKEMİK KALP SUT 4.2.15.C/F (İvabradin + Ranolazin + Eplerenon) KONTROL RAPORU")
+                 value="KALP KONTROL RAPORU — İskemik SUT 4.2.15.C/F "
+                       "(İvabradin + Ranolazin + Eplerenon) + Antiaritmik EK-4/D "
+                       "(Amiodaron + Dronedaron + Propafenon + Sotalol)")
         ws1.cell(row=1, column=1).font = Font(bold=True, size=14, color="B71C1C")
         ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
 
@@ -23828,14 +24066,16 @@ class AylikReceteSorguGUI:
             ("Dönem (Yıl-Ay)", donem),
             ("Rapor Üretim Tarihi", _dt.now().strftime("%d.%m.%Y %H:%M:%S")),
             ("Toplam Yüklenen Satır", str(len(self.tum_satirlar))),
-            ("İSKEMİK KALP Olarak Tespit Edilen", str(toplam)),
+            ("KALP Kapsamında Tespit Edilen", str(toplam)),
             ("Kapsam Dışı (Atlanan)", str(sayac["_kapsam_disi"])),
             ("", ""),
             ("Uygulanan SUT Kuralı",
-             "SUT 4.2.15.C (İvabradin/Eplerenon) + SUT 4.2.15.F (Ranolazin)"),
+             "SUT 4.2.15.C (İvabradin/Eplerenon) + SUT 4.2.15.F (Ranolazin) + "
+             "EK-4/D m.4.3/4.7/4.9/4.13 Antiaritmikler (EK-4/G parenteral)"),
             ("Filtreleme",
              "ATC C01EB17 (İvabradin) / C01EB18 (Ranolazin) / "
-             "C03DA04 (Eplerenon) — etken madde fallback."),
+             "C03DA04 (Eplerenon) / C01B* + C07AA07 (Antiaritmikler) — "
+             "etken madde/ticari ad fallback."),
             ("Kapsam (İvabradin)",
              "NYHA II-IV + EF≤45% + sinüs ritmi + BB intoleransı veya "
              "yetersiz yanıt + uzman branş raporu"),
@@ -23844,6 +24084,10 @@ class AylikReceteSorguGUI:
             ("Kapsam (Eplerenon)",
              "İvabradin'le benzer koşullar (KY + EF≤45%) — kontrol_ivabradin "
              "üzerinden delege"),
+            ("Kapsam (Antiaritmikler)",
+             "Ana tebliğ/EK-4/F'te madde YOK → raporsuz da ödenir (paylı); "
+             "kontrol = EK-4/D muafiyet ICD (disritmi/kapak/KMP/kr.romatizmal) "
+             "+ parenteral form EK-4/G yatan hasta"),
             ("Veri Kaynağı",
              "Botanik EOS DB (SADECE SELECT) — hiçbir veri değiştirilmedi"),
         ]
@@ -23900,15 +24144,27 @@ class AylikReceteSorguGUI:
                          "intoleransı veya yetersiz yanıt (kontrol_ranolazin)",
             "EPLERENON": "ATC C03DA04 — KY + EF≤45% (kontrol_ivabradin'e delege "
                          "edilir, koşullar benzer)",
+            "AMIODARON": "ATC C01BD01 (CORDARONE) — EK-4/D muafiyet + EK-4/G "
+                         "parenteral (antiaritmik_kontrol_ek4d)",
+            "DRONEDARON": "ATC C01BD07 (MULTAQ) — EK-4/D muafiyet "
+                          "(antiaritmik_kontrol_ek4d)",
+            "PROPAFENON": "ATC C01BC03 (RYTMONORM) — EK-4/D muafiyet "
+                          "(antiaritmik_kontrol_ek4d)",
+            "SOTALOL": "ATC C07AA07 — EK-4/D muafiyet; antiaritmik + "
+                       "beta-bloker başlıkları (antiaritmik_kontrol_ek4d)",
+            "ANTIARITMIK_DIGER": "ATC C01B* diğer (kinidin/meksiletin/"
+                                 "flekainid…) — EK-4/D muafiyet",
         }
-        for i, k in enumerate(["IVABRADIN", "RANOLAZIN", "EPLERENON"],
-                              start=bas2 + 1):
+        _kat_listesi = ["IVABRADIN", "RANOLAZIN", "EPLERENON", "AMIODARON",
+                        "DRONEDARON", "PROPAFENON", "SOTALOL",
+                        "ANTIARITMIK_DIGER"]
+        for i, k in enumerate(_kat_listesi, start=bas2 + 1):
             ws1.cell(row=i, column=1, value=k).font = Font(bold=True)
             ws1.cell(row=i, column=2, value=kategori_sayac.get(k, 0)
                      ).alignment = Alignment(horizontal="center")
             ws1.cell(row=i, column=3, value=kat_aciklama[k])
 
-        bas3 = bas2 + 5
+        bas3 = bas2 + len(_kat_listesi) + 2
         ws1.cell(row=bas3, column=1, value="NOTLAR / SUT KURALI ÖZETİ")
         ws1.cell(row=bas3, column=1).font = Font(bold=True, color="FFFFFF")
         ws1.cell(row=bas3, column=1).fill = baslik_fill
@@ -23921,10 +24177,22 @@ class AylikReceteSorguGUI:
             "yetersiz semptom kontrolü",
             "• Eplerenon → İvabradin koşullarına benzer (KY + EF≤45%); "
             "kontrol_ivabradin'e delege edilir",
-            "• Tüm üçü için raporlu olmak ZORUNLU; raporsuz → UYGUN DEĞİL",
-            "• ŞÜPHELİ = NYHA/EF/BB-intolerans ibaresi parse edilemedi — manuel kontrol",
-            "• Kapsam dışı = ATC C01EB17/18 + C03DA04 dışında olduğu için bu "
-            "butonun kapsamına girmiyor",
+            "• İvabradin/Ranolazin/Eplerenon için raporlu olmak ZORUNLU; "
+            "raporsuz → UYGUN DEĞİL",
+            "• Antiaritmikler (amiodaron/dronedaron/propafenon/sotalol) → "
+            "ana tebliğ/EK-4/F'te madde YOK: raporsuz da UYGUN (katılım paylı)",
+            "• Antiaritmik raporlu → EK-4/D muafiyet ICD kontrolü: I44-I49 "
+            "(disritmi 4.3) / I05-I08+I34-I37+I39 (kapak 4.7) / I42-I43 (KMP "
+            "4.9) / I09 (kr.romatizmal 4.13); sotalol ayrıca I50/I20-I25/Z95/"
+            "Q20-Q28 (beta-bloker başlıkları)",
+            "• Antiaritmik ŞÜPHELİ = rapor tanısı muaf başlık dışı (muaf "
+            "işaretlendiyse KESİNTİ RİSKİ) veya tanı okunamadı — manuel",
+            "• Antiaritmik parenteral form (ampul) → EK-4/G: ayakta reçetede "
+            "UYGUN DEĞİL (sadece yatan hastada ödenir)",
+            "• ŞÜPHELİ (iskemik) = NYHA/EF/BB-intolerans ibaresi parse "
+            "edilemedi — manuel kontrol",
+            "• Kapsam dışı = ATC C01EB17/18 + C03DA04 + C01B* + C07AA07 "
+            "dışında olduğu için bu butonun kapsamına girmiyor",
         ]
         for i, n in enumerate(notlar, start=bas3 + 1):
             ws1.cell(row=i, column=1, value=n)
@@ -23935,7 +24203,7 @@ class AylikReceteSorguGUI:
             ws1.column_dimensions[get_column_letter(col)].width = w
 
         # ────────── SAYFA 2 ──────────
-        ws2 = wb.create_sheet("İSKEMİK KALP Reçeteleri")
+        ws2 = wb.create_sheet("KALP Reçeteleri")
         kolonlar = [
             ("rec_tar",          "Reç.Tarih",       12),
             ("rec_no",           "Reçete No",       18),
@@ -23998,10 +24266,10 @@ class AylikReceteSorguGUI:
         ws2.auto_filter.ref = ws2.dimensions
 
         # ────────── SAYFA 3 ──────────
-        ws3 = wb.create_sheet("İSKEMİK KALP Dışı (Atlanan)")
+        ws3 = wb.create_sheet("KALP Dışı (Atlanan)")
         ws3.cell(row=1, column=1,
-                 value="Aşağıdaki ilaçlar İvabradin/Ranolazin/Eplerenon "
-                       "kapsamında olmadığı için İSKEMİK KALP butonu "
+                 value="Aşağıdaki ilaçlar İvabradin/Ranolazin/Eplerenon/"
+                       "Antiaritmik kapsamında olmadığı için ❤️ KALP butonu "
                        "KAPSAMI DIŞINDA bırakıldı.").font = (
             Font(italic=True, color="546E7A"))
         ws3.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
@@ -27807,6 +28075,186 @@ class AylikReceteSorguGUI:
             parent=self.root)
 
     # ═══════════════════════════════════════════════════════════════════
+    # SUT 4.2.15.B — Silostazol (ileri evre periferik arter hastalığı)
+    # ═══════════════════════════════════════════════════════════════════
+    @staticmethod
+    def _silostazol_kategori(ilac_adi: str, etkin: str, atc: str) -> str:
+        """Reçete kalemi silostazol (ATC B01AC23) mı? → 'SILOSTAZOL'|'NONE'.
+
+        Ad/etken fallback: PLETAL/SILOSTAN ticari adları + SILOSTAZOL/
+        CILOSTAZOL/SILASTAZOL etken yazım varyantları (Medula'da "SİLASTAZOL"
+        a'lı yazım görüldü — 2026-07-05 AHMET ATEŞ 3OHVLSK örneği).
+        """
+        a = (atc or "").upper().strip()
+        if a.startswith("B01AC23"):
+            return "SILOSTAZOL"
+        ad_et = ((ilac_adi or "") + " " + (etkin or "")).upper().replace("İ", "I")
+        if any(k in ad_et for k in (
+                "SILOSTAZOL", "CILOSTAZOL", "SILASTAZOL", "CILASTAZOL",
+                "PLETAL", "SILOSTAN")):
+            return "SILOSTAZOL"
+        return "NONE"
+
+    @staticmethod
+    def _ilac_sonuc_olustur_silostazol(s: dict, heyet: list) -> dict:
+        """Satır dict'inden kontrol_silostazol'un beklediği ilac_sonuc'u üret.
+
+        rapor_doktor_brans: kontrol_silostazol heyet kompozisyonunu (F2a KDC ∨
+        F2b Kard+GenCer) bu VİRGÜLLÜ string üzerinden değerlendirir — satırın
+        TOP 1 branşı + RaporDoktor heyet branşları birleştirilir.
+        """
+        def _bol(metin):
+            if not metin:
+                return []
+            return [p.strip() for p in str(metin).split(" | ") if p.strip()]
+
+        rapor_aciklamalari = []
+        if s.get("rap_ack"):
+            rapor_aciklamalari.append(str(s.get("rap_ack")).strip())
+        for t in _bol(s.get("rap_tesh")):
+            rapor_aciklamalari.append(t)
+
+        brans_parcalar = []
+        if s.get("rapor_doktor_brans"):
+            brans_parcalar.append(str(s.get("rapor_doktor_brans")).strip())
+        for h in (heyet or []):
+            b = (h.get("brans") or "").strip()
+            if b:
+                brans_parcalar.append(b)
+        rapor_brans = ", ".join(dict.fromkeys(p for p in brans_parcalar if p))
+
+        return {
+            "ilac_adi": s.get("ilac") or "",
+            "etkin_madde": s.get("etkin") or "",
+            "atc_kodu": s.get("atc") or "",
+            "rapor_kodu": (s.get("rap_kod") or "").strip(),
+            "recete_teshisleri": _bol(s.get("rec_tesh")),
+            "rapor_teshis_listesi": _bol(s.get("rap_tesh")),
+            "rap_tesh": s.get("rap_tesh") or "",
+            "rapor_aciklamalari": rapor_aciklamalari,
+            "recete_aciklamalari": _bol(s.get("rec_ack")),
+            "mesaj_metni": "",
+            "doktor_uzmanligi": s.get("brans") or "",
+            "rapor_doktor_brans": rapor_brans,
+            "rapor_dr_brans": rapor_brans,  # alias
+            "heyet_doktorlari": list(heyet or []),
+            "hasta_tc": str(s.get("tc") or "").strip(),
+            "rapor_takip_no": (s.get("rap_tak_no") or "").strip(),
+        }
+
+    def _silostazol_kontrol_baslat(self):
+        """SUT 4.2.15.B KONTROL butonu — silostazol (PLETAL, ileri evre PAH).
+
+        Formül: F1 SK rapor ∧ (F2a heyet KDC ∨ F2b heyet Kard+GenCer) ∧
+        G1 reçete yetkisi ∧ ((a) PAH·doppler/anjiyo ∧ klas3/4 ∧ op yapılamayan
+        ∨ (b) PAH·doppler/anjiyo ∧ komorbidite ∧ op yüksek riskli).
+        Enrichment: RaporDoktor heyeti + hastanın tüm-zaman ICD listesi
+        ((b) komorbidite atomu geçmiş raporlardan da beslenir)."""
+        if not self.tum_satirlar:
+            messagebox.showinfo(
+                "4.2.15.B Kontrol",
+                "Önce DÖNEM seçip 🔍 SORGULA ile reçeteleri yükleyin.",
+                parent=self.root)
+            return
+        try:
+            from recete_kontrol.sut_kontrolleri import kontrol_silostazol
+        except Exception as e:
+            self._durum_yaz(f"SUT 4.2.15.B modülü yüklenemedi: {e}")
+            messagebox.showerror("Modül Hatası",
+                                  f"silostazol kontrolü yüklenemedi:\n{e}",
+                                  parent=self.root)
+            return
+
+        sayac = {"UYGUN": 0, "UYGUN DEĞİL": 0, "ŞÜPHELİ": 0,
+                 "ŞARTLI UYGUN": 0, "ATLANDI": 0, "_kapsam_disi": 0}
+
+        kapsam: List[dict] = []
+        for s in self.tum_satirlar:
+            kategori = self._silostazol_kategori(
+                s.get("ilac"), s.get("etkin"), s.get("atc"))
+            if kategori == "NONE":
+                if s.get("verdict_kategori") == "SILOSTAZOL":
+                    for k in ("verdict", "verdict_detay", "verdict_kategori",
+                              "verdict_uyari", "verdict_sut", "verdict_aranan",
+                              "verdict_bulunan", "verdict_detaylar",
+                              "verdict_sartlar"):
+                        s[k] = ""
+                sayac["_kapsam_disi"] += 1
+                continue
+            kapsam.append(s)
+
+        if not kapsam:
+            messagebox.showinfo(
+                "4.2.15.B Kontrol",
+                "Bu dönemde SUT 4.2.15.B kapsamında silostazol "
+                "(PLETAL/SILOSTAN, ATC B01AC23) bulunamadı.",
+                parent=self.root)
+            return
+
+        # Enrichment (yalnız kapsam satırları için toplu sorgu)
+        rapor_ana_idler = list({s.get("rapor_ana_id")
+                                 for s in kapsam if s.get("rapor_ana_id")})
+        heyet_map = self._rapor_heyet_doktor_topla(rapor_ana_idler)
+        musteri_idler = list({s.get("musteri_id")
+                               for s in kapsam if s.get("musteri_id")})
+        hasta_icd_aktif = self._hasta_tum_icd_kodlarini_topla(musteri_idler)
+        hasta_icd_tum = self._hasta_tum_icd_kodlarini_topla(
+            musteri_idler, gecmis_dahil=True)
+
+        for s in kapsam:
+            rap_id = s.get("rapor_ana_id")
+            heyet = heyet_map.get(rap_id, []) if rap_id else []
+            ilac_sonuc = self._ilac_sonuc_olustur_silostazol(s, heyet)
+            mid = s.get("musteri_id")
+            ilac_sonuc["diger_raporlar_icd"] = list(
+                hasta_icd_aktif.get(mid, []) if mid else [])
+            ilac_sonuc["diger_raporlar_icd_tum_zamanlar"] = list(
+                hasta_icd_tum.get(mid, []) if mid else [])
+
+            try:
+                rapor = kontrol_silostazol(ilac_sonuc)
+            except Exception as e:
+                logger.warning("4.2.15.B kontrol hata (rx %s): %s",
+                                s.get("rec_no"), e)
+                s["verdict"] = "ŞÜPHELİ"
+                s["verdict_detay"] = f"Hata: {e}"
+                s["verdict_kategori"] = "SILOSTAZOL"
+                s["verdict_sartlar"] = ""
+                sayac["ŞÜPHELİ"] += 1
+                continue
+
+            d = rapor.detaylar or {}
+            if d.get("(a) yolu") == "var":
+                alt = "YOL-A"
+            elif d.get("(b) yolu") == "var":
+                alt = "YOL-B"
+            else:
+                alt = ""
+            self._kontrol_raporunu_satira_yaz(
+                s, rapor, kategori="SILOSTAZOL", alt_sinif=alt)
+            etiket = s.get("verdict") or "ŞÜPHELİ"
+            sayac[etiket] = sayac.get(etiket, 0) + 1
+
+        self._tabloyu_yenile()
+        toplam = (sayac["UYGUN"] + sayac["UYGUN DEĞİL"] + sayac["ŞÜPHELİ"]
+                  + sayac["ŞARTLI UYGUN"] + sayac["ATLANDI"])
+        self._durum_yaz(
+            f"SUT 4.2.15.B silostazol kontrolü: ✓ UYGUN {sayac['UYGUN']}  "
+            f"✗ UYGUN DEĞİL {sayac['UYGUN DEĞİL']}  "
+            f"? ŞÜPHELİ {sayac['ŞÜPHELİ']}  "
+            f"(kapsam dışı {sayac['_kapsam_disi']} satır)")
+        messagebox.showinfo(
+            "4.2.15.B Kontrol Tamamlandı",
+            f"SUT 4.2.15.B (Silostazol — İleri Evre PAH) kontrolü "
+            f"tamamlandı.\n\n"
+            f"Toplam kapsanan satır : {toplam}\n"
+            f"  ✓ UYGUN           : {sayac['UYGUN']}\n"
+            f"  ✗ UYGUN DEĞİL     : {sayac['UYGUN DEĞİL']}\n"
+            f"  ? ŞÜPHELİ         : {sayac['ŞÜPHELİ']}\n\n"
+            f"Kapsam dışı (atlanan) : {sayac['_kapsam_disi']}",
+            parent=self.root)
+
+    # ═══════════════════════════════════════════════════════════════════
     # SUT 4.2.41 — Parenteral demir preparatları
     # ═══════════════════════════════════════════════════════════════════
     @staticmethod
@@ -30360,7 +30808,10 @@ class AylikReceteSorguGUI:
         P2Y12_IPUC = ("KLOPIDOGREL", "CLOPIDOGREL", "PRASUGREL", "TIKAGRELOR",
                        "TICAGRELOR", "PLAVIX", "EFFIENT", "EFIENT", "BRILINTA",
                        "BRILIQUE", "PLANOR", "KARUM", "AYRINEX", "KLOPIRA",
-                       "OPIROL", "PRASIBLOCK")
+                       "OPIROL", "PRASIBLOCK", "PLAGREL", "PINGEL",
+                       "LOPIGROL", "DILOXOL", "DIPOREL", "OPIREL",
+                       "KLOGEL", "DUOPLAVIN", "COPLAVIX", "DUOCOVER",
+                       "DUOFLAGREL")
 
         # ── Hastanın diğer raporlarındaki ICD/rapor kodlarını çek ──
         # (Endikasyon ICD'si ayrı bir raporda olabilir → cross-rapor tespit)
@@ -30915,7 +31366,10 @@ class AylikReceteSorguGUI:
         P2Y12_IPUC = ("KLOPIDOGREL", "CLOPIDOGREL", "PRASUGREL", "TIKAGRELOR",
                       "TICAGRELOR", "PLAVIX", "EFFIENT", "EFIENT", "BRILINTA",
                       "BRILIQUE", "PLANOR", "KARUM", "AYRINEX", "KLOPIRA",
-                      "OPIROL", "PRASIBLOCK")
+                      "OPIROL", "PRASIBLOCK", "PLAGREL", "PINGEL",
+                      "LOPIGROL", "DILOXOL", "DIPOREL", "OPIREL",
+                      "KLOGEL", "DUOPLAVIN", "COPLAVIX", "DUOCOVER",
+                      "DUOFLAGREL")
 
         # ── Hastanın diğer raporlarındaki ICD kodlarını çek ──
         musteri_idler = list({
