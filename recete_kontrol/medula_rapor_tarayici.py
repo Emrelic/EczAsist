@@ -1412,23 +1412,34 @@ def tc_yaz_ve_raporlari_ac(tc: str, cb: StatusCb = None) -> bool:
         if tc_input is None:
             _bildir(f'HATA: {ID_TC_INPUT} bulunamadı (15sn polling)', cb)
             return False
-        # DOM'da doğrudan value set + change event tetikle
+        # Aynı TC zaten yazılıysa yeniden yazma (aynı hasta için İlaç→Rapor→
+        # End.Dışı TEK reçete / TEK TC yazımıyla döner — kullanıcı akışı
+        # 2026-07-06; doğrudan Rapor butonuna geçilir)
+        ayni_tc = False
         try:
-            tc_input.value = tc
-            tc_input.focus()
-            try:
-                tc_input.fireEvent('onchange')
-            except Exception:
-                pass
-            _bekle(0.3)
+            ayni_tc = (tc_input.getAttribute('value') or '').strip() == tc
         except Exception:
-            # Fallback: tıkla + Ctrl+A/Del/yaz
-            tc_input.click()
-            _bekle(0.1)
-            send_keys('^a', pause=0.03)
-            send_keys('{DEL}', pause=0.03)
-            send_keys(tc, pause=0.02)
-            _bekle(0.3)
+            pass
+        if ayni_tc:
+            _bildir('TC zaten yazılı — yeniden yazma atlandı', cb)
+        else:
+            # DOM'da doğrudan value set + change event tetikle
+            try:
+                tc_input.value = tc
+                tc_input.focus()
+                try:
+                    tc_input.fireEvent('onchange')
+                except Exception:
+                    pass
+                _bekle(0.3)
+            except Exception:
+                # Fallback: tıkla + Ctrl+A/Del/yaz
+                tc_input.click()
+                _bekle(0.1)
+                send_keys('^a', pause=0.03)
+                send_keys('{DEL}', pause=0.03)
+                send_keys(tc, pause=0.02)
+                _bekle(0.3)
     except Exception as e:
         _bildir(f'TC yazma hatası: {e}', cb)
         return False
@@ -1560,16 +1571,28 @@ def rapor_listesini_oku(cb: StatusCb = None) -> List[_RaporSatirOzet]:
 
 
 def rapor_satirini_ac(sira: int, cb: StatusCb = None) -> bool:
-    """Adım 17e: Belirli sıradaki rapor satırına tıkla → detay sayfası."""
+    """Adım 17e: Belirli sıradaki rapor satırına tıkla → detay sayfası.
+
+    Detaydan Geri Dön sonrası liste sayfası geç yüklenebilir — satır
+    elementi 10 sn'ye kadar polling ile beklenir (doc tazelenerek;
+    2026-07-06 fix: tek deneme yavaş dönüşlerde 'satır bulunamadı' veriyordu).
+    """
     medula_hwnd = _medula_hwnd_bul()
     if not medula_hwnd:
         return False
-    doc = _html_doc(medula_hwnd)
-    if doc is None:
-        return False
     try:
         rowaction_id = f'{RAPOR_LIST_ROWACTION_PREFIX}{sira}:rowActionRaporSec'
-        elem = doc.getElementById(rowaction_id)
+        elem = None
+        for _ in range(20):
+            doc = _html_doc(medula_hwnd)
+            if doc is not None:
+                try:
+                    elem = doc.getElementById(rowaction_id)
+                except Exception:
+                    elem = None
+                if elem is not None:
+                    break
+            _bekle(0.5)
         if elem is None:
             _bildir(f'HATA: satır {sira} bulunamadı ({rowaction_id})', cb)
             return False
@@ -1584,20 +1607,34 @@ def rapor_satirini_ac(sira: int, cb: StatusCb = None) -> bool:
         return False
 
 
-def rapor_detayini_oku(cb: StatusCb = None) -> str:
-    """Adım 18: Rapor detay sayfasının metin içeriğini döndür."""
+def rapor_detayini_oku(cb: StatusCb = None, bekleme_sn: float = 15.0) -> str:
+    """Adım 18: Rapor detay sayfasının metin içeriğini döndür.
+
+    Sayfa geçişi yavaş olabilir (2026-07-06 canlı bulgu: anında okuma boş
+    metin veriyordu) → detay sayfası işaretleri ('Tanı Bilgileri' /
+    'Rapor Bilgileri') görünene kadar polling; timeout'ta eldeki son
+    boş-olmayan metin döner.
+    """
     medula_hwnd = _medula_hwnd_bul()
     if not medula_hwnd:
         return ''
-    doc = _html_doc(medula_hwnd)
-    if doc is None:
-        return ''
-    try:
-        body = doc.body
-        return (body.innerText or '').strip() if body else ''
-    except Exception as e:
-        logger.debug(f'detay oku hatası: {e}')
-        return ''
+    son_metin = ''
+    deadline = time.time() + bekleme_sn
+    while time.time() < deadline:
+        doc = _html_doc(medula_hwnd)
+        if doc is not None:
+            try:
+                body = doc.body
+                t = (body.innerText or '').strip() if body else ''
+            except Exception as e:
+                logger.debug(f'detay oku hatası: {e}')
+                t = ''
+            if t:
+                son_metin = t
+                if 'Tanı Bilgileri' in t or 'Rapor Bilgileri' in t:
+                    return t
+        _bekle(0.5)
+    return son_metin
 
 
 def rapor_listesine_geri_don(cb: StatusCb = None) -> bool:

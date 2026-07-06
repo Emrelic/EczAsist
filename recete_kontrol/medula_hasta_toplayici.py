@@ -64,7 +64,7 @@ def _recete_detayina_getir(cb: StatusCb = None, deneme_sayisi: int = 2) -> bool:
     """
     from recete_kontrol.medula_rapor_tarayici import (
         MedulaDurum, _medula_durum_tespit, medula_baslat_ve_giris,
-        recete_listesi_b_grubu_ac, ilk_recete_satirini_ac,
+        recete_listesi_b_grubu_ac, ilk_recete_satirini_ac, _bekle,
         _medula_hwnd_bul, _pencereyi_one_getir, _medulaya_3_kez_giris_dene)
 
     for deneme in range(1, max(1, deneme_sayisi) + 1):
@@ -110,29 +110,25 @@ def _recete_detayina_getir(cb: StatusCb = None, deneme_sayisi: int = 2) -> bool:
     return False
 
 
-def _taze_receteye_gec(cb: StatusCb = None) -> bool:
-    """Reçete detay ekranındayken `Sonraki` ile TAZE reçeteye geç.
-
-    Rapor listesindeysek önce Geri Dön. Taze reçete = o sayfada henüz TC
-    sorgulanmamış → f:t18'e yeni TC yazılabilir.
-    """
+def _recete_detaya_don(cb: StatusCb = None) -> bool:
+    """Alt ekranlardan (rapor listesi / ilaç listesi vb.) Geri Dön'lerle
+    REÇETE DETAY ekranına dön (f:t18 görünene kadar, max 3 seviye).
+    Sonraki'ye BASMAZ — aynı reçetede kalınır (aynı hasta akışı)."""
     from recete_kontrol.medula_rapor_tarayici import (
         _medula_hwnd_bul, _html_doc, _bekle, ID_TC_INPUT, ID_BUTTON_GERI_DON)
     from recete_kontrol.medula_ilac_gecmisi import _elem_tikla
 
     hwnd = _medula_hwnd_bul()
     if not hwnd:
-        _bildir('HATA: Medula penceresi yok (taze reçete)', cb)
+        _bildir('HATA: Medula penceresi yok (reçete detaya dönüş)', cb)
         return False
     d = _html_doc(hwnd)
     if d is None:
         return False
-
-    # Rapor listesi / başka alt ekrandaysak reçete detaya Geri Dön
-    for _ in range(3):
+    for _ in range(4):
         try:
             if d.getElementById(ID_TC_INPUT) is not None:
-                break
+                return True
         except Exception:
             pass
         if not _elem_tikla(d, ID_BUTTON_GERI_DON, buton=True):
@@ -141,8 +137,26 @@ def _taze_receteye_gec(cb: StatusCb = None) -> bool:
         d = _html_doc(hwnd)
         if d is None:
             return False
-    else:
-        _bildir('HATA: reçete detaya dönülemedi', cb)
+    _bildir('HATA: reçete detaya dönülemedi', cb)
+    return False
+
+
+def _taze_receteye_gec(cb: StatusCb = None) -> bool:
+    """Reçete detay ekranındayken `Sonraki` ile TAZE reçeteye geç.
+
+    SADECE hasta başlangıcında kullanılır (yeni hasta = yeni reçete
+    kuralı). Aynı hastanın İlaç→Rapor→End.Dışı adımları arasında
+    KULLANILMAZ — o adımlar aynı reçetede döner.
+    """
+    from recete_kontrol.medula_rapor_tarayici import (
+        _medula_hwnd_bul, _html_doc, _bekle, ID_TC_INPUT)
+    from recete_kontrol.medula_ilac_gecmisi import _elem_tikla
+
+    if not _recete_detaya_don(cb):
+        return False
+    hwnd = _medula_hwnd_bul()
+    d = _html_doc(hwnd)
+    if d is None:
         return False
 
     try:
@@ -253,15 +267,16 @@ def medula_hasta_verisi_topla(
                 sonuc['hatalar'].append(f'İlaç geçmişi: {e}')
 
         # ── 2) RAPOR GEÇMİŞİ — her rapora tek tek girerek (state-aware) ──
+        # Kullanıcı akışı 2026-07-06: İlaç'tan Geri Dön ile dönülen AYNI
+        # reçete üzerinden Rapor'a basılır — yeni reçete açılmaz, TC yeniden
+        # yazılmaz (tc_yaz aynı değeri görünce atlar).
         if rapor_topla:
             try:
                 from recete_kontrol.medula_rapor_tarayici import (
                     hasta_raporlarini_tara_ve_kaydet)
                 _bildir(f'═══ 2/3 RAPOR GEÇMİŞİ ({_tc_maskele(tc)}) ═══', cb)
-                # İlaç adımı reçete detayda bıraktıysa taze reçeteye geç —
-                # rapor akışı o sayfada TC'yi kendisi yazar.
                 if ilac_topla:
-                    _taze_receteye_gec(cb)
+                    _recete_detaya_don(cb)   # aynı reçete — Sonraki YOK
                 # Varsayılan: eos_skip=False + yerel_skip=False → HER rapora
                 # her toplamada yeniden girilir (kullanıcı kararı 2026-07-05:
                 # "raporlara teker teker girip verileri topla").
@@ -299,20 +314,22 @@ def medula_hasta_verisi_topla(
                 logger.exception('Rapor cache okuma hatası')
                 sonuc['hatalar'].append(f'Rapor cache okuma: {e}')
 
-        # ── 3) ENDİKASYON DIŞI İZİNLER — taze reçete + TC + End.Dışı ──
-        # (İzni olmayan hastada 0 satır normal — hata sayılmaz.)
+        # ── 3) ENDİKASYON DIŞI İZİNLER — AYNI reçete + End.Dışı butonu ──
+        # Rapor listesinden Geri Dön ile reçete ana ekranına dönülür, aynı
+        # reçetede End.Dışı'na basılır (TC yazılı — yeniden yazılmaz).
+        # İzni olmayan hastada 0 satır normal — hata sayılmaz.
         if end_disi_topla:
             try:
                 from recete_kontrol.medula_endikasyon_disi import (
                     endikasyon_disi_izinleri_oku)
                 _bildir(f'═══ 3/3 ENDİKASYON DIŞI ({_tc_maskele(tc)}) ═══', cb)
-                if not (rapor_topla or ilac_topla) \
-                        and not _recete_detayina_getir(cb):
+                hazir = (_recete_detaya_don(cb)
+                         if (rapor_topla or ilac_topla)
+                         else (_recete_detayina_getir(cb)
+                               and _taze_receteye_gec(cb)))
+                if not hazir:
                     sonuc['hatalar'].append(
-                        'End.Dışı: reçete detay ekranına gelinemedi')
-                elif not _taze_receteye_gec(cb):
-                    sonuc['hatalar'].append(
-                        'End.Dışı: taze reçete sayfasına geçilemedi')
+                        'End.Dışı: reçete detay ekranına dönülemedi')
                 else:
                     sonuc['endikasyon_disi'] = endikasyon_disi_izinleri_oku(
                         tc, cb=cb, detayli=True, geri_don=True)

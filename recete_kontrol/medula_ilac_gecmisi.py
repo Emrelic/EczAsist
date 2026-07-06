@@ -146,6 +146,14 @@ def _tc_yaz(doc, medula_hwnd: int, tc: str, cb: StatusCb = None) -> bool:
     if tc_input is None:
         _bildir(f'HATA: {ID_TC_INPUT} bulunamadı (15sn polling)', cb)
         return False
+    # Aynı TC zaten yazılıysa yeniden yazma (kullanıcı akışı 2026-07-06:
+    # aynı hasta için İlaç→Rapor→End.Dışı TEK reçete/TEK TC yazımıyla döner)
+    try:
+        if (tc_input.getAttribute('value') or '').strip() == tc:
+            _bildir('TC zaten yazılı — yeniden yazma atlandı', cb)
+            return True
+    except Exception:
+        pass
     try:
         tc_input.value = tc
         tc_input.focus()
@@ -220,9 +228,10 @@ def _tum_sayfalari_oku(cb: StatusCb = None, max_sayfa: int = 15) -> List[Dict]:
         beklenen = (max(tum) + 1) if tum else 0
         baslangic = beklenen
         _elem_tikla(d, nx)
-        # yeni sayfanın ilk satırı DOM'a gelene kadar bekle
-        for _p in range(30):
-            _bekle(0.4)
+        # yeni sayfanın ilk satırı DOM'a gelene kadar bekle (Medula yavaş
+        # anlarında 12sn yetmiyordu — 20sn, 2026-07-06)
+        for _p in range(40):
+            _bekle(0.5)
             d = _html_doc(_medula_hwnd_bul())
             if d is not None and _val(d, f'{ILAC_TID}:{beklenen}:{_HUCRE["recete_no"]}') is not None:
                 break

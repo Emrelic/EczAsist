@@ -81,10 +81,11 @@ def _detay_ac_ve_oku(hwnd: int, idx: int, cb: StatusCb = None) -> str:
                        buton=True):
         _bildir(f'  UYARI: satır {idx} tıklanamadı', cb)
         return ''
-    # Detay ekranı: tanı listesi tablosu gelene kadar bekle
+    # Detay ekranı: tanı listesi tablosu gelene kadar bekle (20sn —
+    # Medula yavaş anları, 2026-07-06)
     metin = ''
-    for _ in range(25):
-        _bekle(0.4)
+    for _ in range(40):
+        _bekle(0.5)
         doc = _html_doc(hwnd)
         if doc is None:
             continue
