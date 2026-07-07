@@ -18287,6 +18287,208 @@ def kontrol_noropatik_4_2_35(ilac_sonuc: Dict) -> KontrolRaporu:
     return noropatik_kontrol_4_2_35(ilac_sonuc)
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# SUT 4.2.24 SOLUNUM — LABA / LAMA / ICS bileşen sözlükleri
+# kontrol_solunum içi reçete taraması + son-3-ay geçmiş taraması ortak
+# kullanır. Üçlü kullanım (4.2.24.B) ayrı reçetelerle de oluşabilir.
+# ═══════════════════════════════════════════════════════════════════════
+_SOLUNUM_ICS_MADDELER = ('BUDESONID', 'BUDEZONID', 'FLUTIKAZON',
+                         'BEKLOMETAZON', 'SIKLESONID', 'MOMETAZON')
+_SOLUNUM_LABA_MADDELER = ('FORMOTEROL', 'SALMETEROL', 'VILANTEROL',
+                          'INDAKATEROL', 'OLODATEROL')
+_SOLUNUM_LAMA_MADDELER = ('TIOTROPIUM', 'GLIKOPIRONYUM', 'UMEKLIDINYUM',
+                          'AKLIDINYUM', 'GLICOPIRONYUM', 'REVEFENACIN')
+_SOLUNUM_LABA_ICS_TICARI = ('SERETIDE', 'SYMBICORT', 'FOSTER', 'RELVAR',
+                            'DUORESP', 'BREQUAL', 'BREQAL', 'BUFOMIX',
+                            'FOKUSAL', 'AIRFLUSAL', 'AIRDUO', 'BREO',
+                            'FLUTIFORM', 'VANNAIR', 'WIXELA', 'INUVAIR',
+                            'BUFEX', 'AIRPLUS', 'MIFLONIDE COMBI', 'BUFOM')
+_SOLUNUM_LABA_LAMA_TICARI = ('ANORO', 'ULTIBRO', 'SPIOLTO', 'DUAKLIR',
+                             'BEVESPI', 'STIOLTO')
+_SOLUNUM_LABA_TEK_TICARI = ('FORADIL', 'OXIS', 'SEREVENT', 'ONBREZ',
+                            'STRIVERDI')
+_SOLUNUM_LAMA_TEK_TICARI = ('SPIRIVA', 'INCRUSE', 'SEEBRI', 'BRETARIS',
+                            'EKLIRA', 'TUDORZA')
+_SOLUNUM_ICS_TEK_TICARI = ('PULMICORT', 'FLIXOTIDE', 'BECLOFORTE', 'ALVESCO',
+                           'MIFLONIDE', 'CORTAIR', 'BUDICORT', 'NEUMOCORT',
+                           'BUDECORT', 'BECLATE', 'CLENIL', 'ASMANEX',
+                           'BECLOJET')
+_SOLUNUM_UCLU_TICARI = ('TRELEGY', 'TRIMBOW', 'ENERZAIR', 'BREZTRI',
+                        'TRIXEO', 'AIRSUPRA')
+
+
+def _solunum_bilesenleri(ad: str, etken: str) -> Tuple[bool, bool, bool]:
+    """Ürün adı + etken maddeden (LABA, ICS, LAMA) bileşen tespiti.
+
+    Args ('ad'/'etken' UPPER beklenir): ticari ad substring + etken madde
+    substring birlikte taranır. Üçlü inhaler ticari adı 3 bileşeni birden
+    kapsar.
+
+    Returns: (laba, ics, lama)
+    """
+    ad = (ad or '').upper()
+    etken = (etken or '').upper()
+    if any(t in ad for t in _SOLUNUM_UCLU_TICARI):
+        return (True, True, True)
+    combo = ad + ' ' + etken
+    laba = ics = lama = False
+    if any(t in ad for t in _SOLUNUM_LABA_ICS_TICARI):
+        laba = ics = True
+    if any(t in ad for t in _SOLUNUM_LABA_LAMA_TICARI):
+        laba = lama = True
+    if (any(m in combo for m in _SOLUNUM_LABA_MADDELER)
+            or any(t in ad for t in _SOLUNUM_LABA_TEK_TICARI)):
+        laba = True
+    if (any(m in combo for m in _SOLUNUM_ICS_MADDELER)
+            or any(t in ad for t in _SOLUNUM_ICS_TEK_TICARI)):
+        ics = True
+    if (any(m in combo for m in _SOLUNUM_LAMA_MADDELER)
+            or any(t in ad for t in _SOLUNUM_LAMA_TEK_TICARI)):
+        lama = True
+    return (laba, ics, lama)
+
+
+def _solunum_referans_tarih(ilac_sonuc: Dict):
+    """ilac_sonuc['recete_tarihi'] parse et (yoksa None → sorguda GETDATE()).
+
+    Retrospektif aylık kontrolde 'son 3 ay' penceresi reçete tarihinden
+    geriye hesaplanmalı; anlık kontrolde alan boş kalır → bugün.
+    """
+    from datetime import datetime, date
+    t = ilac_sonuc.get('recete_tarihi')
+    if not t:
+        return None
+    if isinstance(t, (datetime, date)):
+        return t
+    for fmt in ('%d.%m.%Y', '%Y-%m-%d', '%d/%m/%Y'):
+        try:
+            return datetime.strptime(str(t).strip()[:10], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+# TC bazlı geçmiş sorgu cache'i — aylık toplu kontrolde aynı hastanın her
+# solunum kalemi için EOS'a tekrar gitmemek için. Anahtar: (tc, ref_str).
+_SOLUNUM_GECMIS_CACHE: Dict[tuple, tuple] = {}
+
+
+def _solunum_gecmis_bilesen_tara(
+        ilac_sonuc: Dict) -> Tuple[bool, bool, bool, List[str], str]:
+    """Hastanın SON 3 AY ilaç geçmişinde LABA/LAMA/ICS bileşenlerini tara.
+
+    Kaynak önceliği:
+      1. ilac_sonuc['hasta_ilac_gecmisi'] — pipeline doldurmuşsa (test/AI
+         paketi); kayıt: {'ad'/'ilac_adi', 'etkin_madde', 'tarih'?}
+      2. Botanik EOS `hasta_son_ilac_satislari` (SADECE SELECT — BotanikDB
+         guard, CLAUDE.md §2) — hasta_tc varsa.
+
+    Geçmişte bulunamaması KANIT DEĞİLDİR (başka eczane olabilir) — çağıran
+    taraf yalnızca pozitif bulguyla yükseltme yapar, yokluk davranışı
+    değiştirmez.
+
+    Returns: (laba, ics, lama, kaynaklar, durum)
+        kaynaklar: ['2026-05-12 SYMBICORT TURBUHALER...', ...] (bileşen
+                   içeren kayıtlar, yeniden eskiye)
+        durum: 'pipeline' | 'eos' | 'bos' | 'tc_yok' | 'hata'
+    """
+    from datetime import datetime, date, timedelta
+
+    laba = ics = lama = False
+    kaynaklar: List[str] = []
+    referans = _solunum_referans_tarih(ilac_sonuc)
+
+    def _kayit_isle(ad: str, etken: str, tarih_str: str):
+        nonlocal laba, ics, lama
+        k_laba, k_ics, k_lama = _solunum_bilesenleri(ad, etken)
+        if not (k_laba or k_ics or k_lama):
+            return
+        laba = laba or k_laba
+        ics = ics or k_ics
+        lama = lama or k_lama
+        etiket = f'{tarih_str} {ad}'.strip() if tarih_str else ad
+        if etiket and etiket not in kaynaklar:
+            kaynaklar.append(etiket)
+
+    # ── 1. Pipeline geçmişi (varsa EOS'a gitme) ──
+    gecmis = ilac_sonuc.get('hasta_ilac_gecmisi') or []
+    if gecmis and isinstance(gecmis, list):
+        ref_dt = referans
+        if isinstance(ref_dt, date) and not isinstance(ref_dt, datetime):
+            ref_dt = datetime(ref_dt.year, ref_dt.month, ref_dt.day)
+        if ref_dt is None:
+            ref_dt = datetime.now()
+        alt_sinir = ref_dt - timedelta(days=92)
+        for kayit in gecmis:
+            if isinstance(kayit, dict):
+                ad = str(kayit.get('ad') or kayit.get('ilac_adi') or '')
+                etken = str(kayit.get('etkin_madde') or '')
+                t = kayit.get('tarih') or kayit.get('recete_tarihi') or ''
+            else:
+                ad, etken, t = str(kayit), '', ''
+            tarih_str = str(t)[:10] if t else ''
+            # Tarihli kayıtlar pencere dışıysa atla; tarihsizler dahil
+            # (paket zaten "son N ay" kapsamında üretiliyor).
+            if tarih_str:
+                dt = None
+                for fmt in ('%Y-%m-%d', '%d.%m.%Y', '%d/%m/%Y'):
+                    try:
+                        dt = datetime.strptime(tarih_str, fmt)
+                        break
+                    except ValueError:
+                        continue
+                if dt is not None and (dt < alt_sinir or dt > ref_dt):
+                    continue
+            _kayit_isle(ad, etken, tarih_str)
+        return (laba, ics, lama, kaynaklar, 'pipeline')
+
+    # ── 2. Botanik EOS (SADECE SELECT) ──
+    hasta_tc = str(ilac_sonuc.get('hasta_tc')
+                   or ilac_sonuc.get('tc_no')
+                   or ilac_sonuc.get('tckn') or '').strip()
+    if not hasta_tc or len(hasta_tc) != 11:
+        return (False, False, False, [], 'tc_yok')
+
+    ref_str = ''
+    if referans is not None:
+        try:
+            ref_str = referans.strftime('%Y-%m-%d')
+        except AttributeError:
+            ref_str = str(referans)[:10]
+    cache_key = (hasta_tc, ref_str)
+    if cache_key in _SOLUNUM_GECMIS_CACHE:
+        return _SOLUNUM_GECMIS_CACHE[cache_key]
+
+    try:
+        from botanik_db import get_botanik_db
+        db = get_botanik_db()
+        if not db.baglan():
+            return (False, False, False, [], 'hata')
+        satislar = db.hasta_son_ilac_satislari(
+            hasta_tc, referans_tarih=referans, ay_geri=3, limit=300)
+        for row in satislar:
+            ad = str(row.get('urun_adi') or '')
+            etken = str(row.get('etken_madde') or '')
+            t = row.get('recete_tarihi')
+            tarih_str = ''
+            if t is not None:
+                try:
+                    tarih_str = t.strftime('%Y-%m-%d')
+                except AttributeError:
+                    tarih_str = str(t)[:10]
+            _kayit_isle(ad, etken, tarih_str)
+        sonuc = (laba, ics, lama, kaynaklar,
+                 'eos' if (laba or ics or lama) else 'bos')
+    except Exception as e:
+        logger.debug('Solunum geçmiş EOS sorgu hatası: %s', e)
+        return (False, False, False, [], 'hata')
+
+    if len(_SOLUNUM_GECMIS_CACHE) > 256:
+        _SOLUNUM_GECMIS_CACHE.clear()
+    _SOLUNUM_GECMIS_CACHE[cache_key] = sonuc
+    return sonuc
+
+
 def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     """
     SUT 4.2.24 - Solunum Sistemi İlaçları (Astım/KOAH) — Detaylı Kontrol
@@ -18346,20 +18548,9 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     # 3 ay ICS+LABA tedavisine rağmen yetersiz yanıt + ≥2 atak/yıl + mMRC≥2.
     # Kullanıcı isteği: "üçlü kullanılıyorsa SUT özel hükmü raporda var mı bak"
     diger_ilaclar = ilac_sonuc.get('recete_ilaclari') or []
-    # Reçetedeki TÜM ilaçlardan LABA/LAMA/ICS varlığını topla (mevcut + diğerleri)
-    laba_ics_kombi_ticari = ['SERETIDE', 'SYMBICORT', 'FOSTER', 'RELVAR', 'DUORESP',
-                              'BREQUAL', 'BREQAL', 'BUFOMIX', 'FOKUSAL', 'AIRFLUSAL',
-                              'AIRDUO', 'BREO', 'FLUTIFORM', 'VANNAIR', 'WIXELA',
-                              'INUVAIR', 'BUFEX', 'AIRPLUS']
-    laba_lama_kombi_ticari = ['ANORO', 'ULTIBRO', 'SPIOLTO', 'DUAKLIR', 'BEVESPI', 'STIOLTO']
-    laba_tek_ticari = ['FORADIL', 'OXIS', 'SEREVENT', 'ONBREZ', 'STRIVERDI']
-    lama_tek_ticari = ['SPIRIVA', 'INCRUSE', 'SEEBRI', 'BRETARIS', 'EKLIRA', 'TUDORZA']
-    ics_tek_ticari = ['PULMICORT', 'FLIXOTIDE', 'BECLOFORTE', 'ALVESCO', 'MIFLONIDE',
-                       'CORTAIR', 'BUDICORT', 'NEUMOCORT', 'BUDECORT', 'BECLATE',
-                       'CLENIL', 'ASMANEX', 'BECLOJET']
-    uclu_kombi_ticari = ['TRELEGY', 'TRIMBOW', 'ENERZAIR', 'BREZTRI', 'TRIXEO',
-                          'AIRSUPRA']
-
+    # Reçetedeki TÜM ilaçlardan LABA/LAMA/ICS varlığını topla (mevcut +
+    # diğerleri) — bileşen sözlükleri modül seviyesinde (_SOLUNUM_*),
+    # son-3-ay geçmiş taramasıyla ortak.
     recete_has_laba = has_laba
     recete_has_ics = has_ics
     recete_has_lama = has_lama
@@ -18376,26 +18567,10 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
         # Kendi ilacımız listede varsa atla (case-insensitive substring)
         if ilac_adi and ilac_adi.upper() in di_ad:
             continue
-        di_combo = di_ad + ' ' + di_etkin
-        # Üçlü inhaler tek başına 3'ünü kapsar
-        if any(t in di_ad for t in uclu_kombi_ticari):
-            recete_has_laba = recete_has_ics = recete_has_lama = True
-            continue
-        # LABA+ICS kombi
-        if any(t in di_ad for t in laba_ics_kombi_ticari):
-            recete_has_laba = True
-            recete_has_ics = True
-        # LABA+LAMA kombi
-        if any(t in di_ad for t in laba_lama_kombi_ticari):
-            recete_has_laba = True
-            recete_has_lama = True
-        # Tek bileşen — etkin madde + ticari ad
-        if any(m in di_combo for m in laba_maddeler) or any(t in di_ad for t in laba_tek_ticari):
-            recete_has_laba = True
-        if any(m in di_combo for m in ics_maddeler) or any(t in di_ad for t in ics_tek_ticari):
-            recete_has_ics = True
-        if any(m in di_combo for m in lama_maddeler) or any(t in di_ad for t in lama_tek_ticari):
-            recete_has_lama = True
+        di_laba, di_ics, di_lama = _solunum_bilesenleri(di_ad, di_etkin)
+        recete_has_laba = recete_has_laba or di_laba
+        recete_has_ics = recete_has_ics or di_ics
+        recete_has_lama = recete_has_lama or di_lama
 
     # Reçete genelinde üçlü kullanım var mı?
     recete_uclu_kullanim = recete_has_laba and recete_has_ics and recete_has_lama
@@ -18403,6 +18578,31 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     detaylar['recete_has_laba'] = recete_has_laba
     detaylar['recete_has_ics'] = recete_has_ics
     detaylar['recete_has_lama'] = recete_has_lama
+
+    # ══════════════════════════════════════════════════════════════════
+    # HASTA İLAÇ GEÇMİŞİ (SON 3 AY) — REÇETELER-ARASI ORTAK KULLANIM
+    # ══════════════════════════════════════════════════════════════════
+    # Hasta LABA/LAMA/ICS bileşenlerini AYRI reçetelerle almış olabilir
+    # (örn. geçen ay SYMBICORT, bu reçetede SPIRIVA). Aktif reçete tek
+    # başına üçlü değilse son 3 ayın satışları taranır; reçete + geçmiş
+    # birleşimi 3 bileşeni de kapsıyorsa fiilen üçlü kullanım vardır →
+    # SUT 4.2.24.B özel hükmü aranır. Geçmiş sorgulanamazsa/boşsa davranış
+    # değişmez (yokluk kanıt değildir — başka eczane olabilir).
+    cur_laba, cur_ics, cur_lama = _solunum_bilesenleri(ilac_adi, etkin_madde)
+    gecmis_uclu_kullanim = False
+    gecmis_kaynaklar: List[str] = []
+    if (cur_laba or cur_ics or cur_lama) and not recete_uclu_kullanim:
+        g_laba, g_ics, g_lama, gecmis_kaynaklar, gecmis_durum = \
+            _solunum_gecmis_bilesen_tara(ilac_sonuc)
+        detaylar['gecmis_3ay_sorgu'] = gecmis_durum
+        if g_laba or g_ics or g_lama:
+            detaylar['gecmis_3ay_bilesen'] = {
+                'laba': g_laba, 'ics': g_ics, 'lama': g_lama}
+            detaylar['gecmis_3ay_kaynak'] = gecmis_kaynaklar[:6]
+            gecmis_uclu_kullanim = ((recete_has_laba or g_laba)
+                                    and (recete_has_ics or g_ics)
+                                    and (recete_has_lama or g_lama))
+    detaylar['gecmis_uclu_kullanim'] = gecmis_uclu_kullanim
 
     # ── Farmasötik form tespiti (nebülizasyon / inhaler / oral / enjeksiyon) ──
     ilac_adi_lower = ilac_adi.lower().replace('İ', 'i').replace('I', 'ı')
@@ -18471,9 +18671,12 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     # Reçetede 3 ayrı ilaç olarak LABA+LAMA+ICS yazılmış olabilir — bu da üçlü.
     # Bu durumda mevcut ilaç tek başına ikili (LABA+ICS) olsa bile reçete genelinde
     # üçlü kullanım olduğu için SUT 4.2.24.B özel hükmü aranacak.
+    # Aynı şekilde son 3 ay geçmişindeki satışlar üçlüyü tamamlıyorsa
+    # (örn. bu reçete SPIRIVA + geçen ay SYMBICORT) yine üçlü kullanımdır.
     is_uclu = (any(t in ilac_adi for t in uclu_ticari)
                or uclu_etkin_eslesti
-               or recete_uclu_kullanim)
+               or recete_uclu_kullanim
+               or gecmis_uclu_kullanim)
 
     # ── LTRA (Lökotrien reseptör antagonisti) ──
     # Tek başına: SINGULAIR, ONCEAIR, NOTTA, AIRLUKAST, ACCOLATE
@@ -18822,6 +19025,17 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
 
     # ── Üçlü kombinasyon (LABA+ICS+LAMA) → 3 ay ICS+LABA başarısızlığı ──
     if is_uclu:
+        # Üçlü tespiti geçmiş satışlarla tamamlandıysa mesajda kaynağı göster
+        # (eczacı hangi eski satışın üçlüyü oluşturduğunu görmeli). Aktif
+        # ilacın kendi eski satışları listeden düşülür — tamamlayıcı olan
+        # DİĞER bileşen satışları gösterilir.
+        gecmis_not = ''
+        if gecmis_uclu_kullanim and not recete_uclu_kullanim:
+            kaynak_goster = [k for k in gecmis_kaynaklar
+                             if not (ilac_adi and ilac_adi in k)] \
+                            or gecmis_kaynaklar
+            gecmis_not = (' [üçlü, son 3 ay satışıyla tamamlandı: '
+                          + '; '.join(kaynak_goster[:3]) + ']')
         onceki_tedavi = bool(re.search(r'ics.*laba|iks.*laba|inhaler.*kortikosteroid|laba.*ics', metin_lower))
         yetersiz = _turkce_ara(metin_lower, 'yetersiz') or _turkce_ara(metin_lower, 'yeterli yanıt') or \
                    _turkce_ara(metin_lower, 'başarısız') or _turkce_ara(metin_lower, 'cevapsız') or \
@@ -18851,7 +19065,7 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
                     semptom_bilgi += ' (DİKKAT: <10)'
             return KontrolRaporu(
                 sonuc=KontrolSonucu.UYGUN,
-                mesaj=f'Üçlü kombinasyon — KOAH + ICS+LABA başarısızlığı + atak{semptom_bilgi}',
+                mesaj=f'Üçlü kombinasyon — KOAH + ICS+LABA başarısızlığı + atak{semptom_bilgi}{gecmis_not}',
                 detaylar=detaylar,
                 sut_kurali='SUT 4.2.24.B — Üçlü: KOAH + en az 3 ay ICS+LABA yetersiz + '
                            '≥2 orta/ağır atak/yıl + mMRC≥2 veya CAT≥10, '
@@ -18863,7 +19077,8 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
         if astim and (onceki_tedavi or yetersiz):
             return KontrolRaporu(
                 sonuc=KontrolSonucu.UYGUN,
-                mesaj='Üçlü kombinasyon — astım + ICS+LABA başarısızlığı (basamak tedavisi)',
+                mesaj=('Üçlü kombinasyon — astım + ICS+LABA başarısızlığı '
+                       '(basamak tedavisi)' + gecmis_not),
                 detaylar=detaylar,
                 sut_kurali='SUT 4.2.24 — Üçlü (astım): ICS+LABA yetersiz yanıt → LAMA eklenmesi, '
                            'göğüs hast./alerji uzmanı, 1 yıllık rapor',
@@ -18879,7 +19094,8 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
             return KontrolRaporu(
                 sonuc=KontrolSonucu.UYGUN,
                 mesaj=f'Üçlü kombinasyon raporlu (rapor {rapor_kodu}) — '
-                      f'Medula 3 ay ICS+LABA başarısızlığı + atak + mMRC/CAT şart kontrolünü yapar',
+                      f'Medula 3 ay ICS+LABA başarısızlığı + atak + mMRC/CAT '
+                      f'şart kontrolünü yapar{gecmis_not}',
                 detaylar={**detaylar, 'medula_otomatik': True},
                 sut_kurali='SUT 4.2.24.B — Solunum rapor kodu + Medula şart kontrolü',
                 uyari='3 ay ICS+LABA başarısızlığı, ≥2 atak/yıl, mMRC≥2 veya CAT≥10 '
@@ -18897,7 +19113,7 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
             eksik.append('atak bilgisi (≥2/yıl gerekli)')
         return KontrolRaporu(
             sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-            mesaj=f'Üçlü kombinasyon — eksik: {", ".join(eksik)}',
+            mesaj=f'Üçlü kombinasyon — eksik: {", ".join(eksik)}{gecmis_not}',
             detaylar=detaylar,
             sut_kurali='SUT 4.2.24.B — Üçlü: en az 3 ay ICS+LABA başarısızlığı + ≥2 atak/yıl + mMRC≥2 gerekli',
             uyari='Gerekli: (1) KOAH veya ağır astım, (2) En az 3 ay ICS+LABA kullanılıp yetersiz yanıt, '

@@ -53,6 +53,10 @@ BILGI_KATEGORILER = {
 # psikiyatri (4.2.2) / solunum zaten genel dispatcher kategorilerine bağlı
 # ve gabapentin/pregabalin gibi endikasyona-duyarlı ayrımları orada çözülüyor
 # — burada TEKRAR eklenmez (çakışma riskini önlemek için).
+# İSTİSNA: 4.2.35.A(4)/(5) alfa lipoik (tioktik) + kapsaisin genel
+# dispatcher'ın HİÇBİR kategori haritasında yok; dar tespitçi
+# (ala_kapsaisin_kapsami_mi) yalnız bu iki etkeni yakalar — gabapentin/
+# pregabalin/duloksetin'e dokunmaz, çakışma yaratmaz.
 #
 # Format: (kategori, modül_yolu, tespit_fonksiyonu, kontrol_fonksiyonu)
 _EK_MODUL_DISPATCH: List[Tuple[str, str, str, str]] = [
@@ -69,6 +73,11 @@ _EK_MODUL_DISPATCH: List[Tuple[str, str, str, str]] = [
      'ginkgo_kapsami_mi', 'ginkgo_kontrol_ek4f_55'),
     ('ATOMOKSETIN', 'recete_kontrol.atomoksetin_dehb',
      'atomoksetin_kapsami_mi', 'atomoksetin_kontrol_dehb'),
+    # Alfa lipoik (tioktik asit — ALATAB/THIOCTACID) + kapsaisin krem:
+    # SUT 4.2.35.A(4)/(5). Dar tespitçi — gabapentin/pregabalin/duloksetin
+    # kapsam dışı (genel dispatcher'da çözülürler, yukarıdaki NOT'a bakın).
+    ('NOROPATIK_ALA_KAPSAISIN', 'recete_kontrol.noropatik_4_2_35',
+     'ala_kapsaisin_kapsami_mi', 'noropatik_kontrol_4_2_35'),
     # ── Kardiyoloji / Pulmoner ──
     ('PULMONER_HT', 'recete_kontrol.pulmoner_ht_4_2_30_a',
      'pulmoner_ht_yolak_belirle', 'pulmoner_ht_kontrol_4_2_30_a'),

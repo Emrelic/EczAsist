@@ -73,7 +73,7 @@ ALFA_LIPOIK_ETKEN = {'TIOKTIK', 'TİOKTİK', 'TIYOKTIK', 'TİYOKTİK',
                      'ALPHA LIPOIC', 'TIOCTIC', 'LIPOIK ASIT', 'LİPOİK ASİT'}
 ALFA_LIPOIK_TICARI = {'THIOCTACID', 'TIOCTACID', 'NOREXIA', 'TIOXIDAL',
                       'BENEDAY', 'INSULIPON', 'LIPONAT', 'NEUROLIP',
-                      'TIOLIP', 'LIPOIK'}
+                      'TIOLIP', 'LIPOIK', 'ALATAB'}
 
 KAPSAISIN_ETKEN = {'KAPSAISIN', 'KAPSAİSİN', 'CAPSAICIN', 'KAPSAYSIN'}
 KAPSAISIN_TICARI = {'CAPSIN', 'ZOSTRIX', 'QUTENZA'}
@@ -208,7 +208,11 @@ def _endikasyonlar(ilac_sonuc: Dict) -> Dict[str, bool]:
         any(k in metin for k in ('diyabetik noropati', 'diabetik noropati',
                                  'diyabetik polinoropati', 'periferal diabetik',
                                  'periferik polinoropati', 'polinoropati',
-                                 'diyabetik periferik'))
+                                 # 'perifer' kökü: periferik + periferal ("diyabetik
+                                 # periferal noröpatik ağrı" rapor lafzı)
+                                 'diyabetik perifer', 'diabetik perifer',
+                                 # sahada görülen yazım hatası: "polinörpoati"
+                                 'polinorpoati'))
         or bool(re.search(r'E1[0-4]\.?4', icd))
         or bool(re.search(r'\bG6(0|2)|\bG63\.?2', icd)))
     d['phn'] = (
@@ -244,6 +248,21 @@ def _endikasyonlar(ilac_sonuc: Dict) -> Dict[str, bool]:
 # ═══════════════════════════════════════════════════════════════════════
 # DİSPATCHER
 # ═══════════════════════════════════════════════════════════════════════
+
+def ala_kapsaisin_kapsami_mi(ilac_sonuc: Dict) -> bool:
+    """Anlık kontrol registry tespitçisi — YALNIZ alfa lipoik (tioktik asit)
+    ve kapsaisin krem.
+
+    Gabapentin/pregabalin/duloksetin genel dispatcher kategorilerinde
+    (ANTIEPILEPTIK / NOROPATIK_AGRI / PSIKIYATRI) çözüldüğünden burada
+    kapsam DIŞI tutulur (çakışma yasağı). Alfa lipoik + kapsaisin ise genel
+    dispatcher'ın hiçbir kategori haritasında yok — anlık yüzeyde ancak bu
+    tespitçi ile 4.2.35.A(4)/(5) atomik kontrolüne ulaşırlar.
+    """
+    m = _arama_metni(ilac_sonuc)
+    return (_iceriyor(m, ALFA_LIPOIK_ETKEN) or _iceriyor(m, ALFA_LIPOIK_TICARI)
+            or _iceriyor(m, KAPSAISIN_ETKEN) or _iceriyor(m, KAPSAISIN_TICARI))
+
 
 def noropatik_yolak_belirle(ilac_sonuc: Dict) -> Dict[str, Optional[str]]:
     """{'durum': 'yolak'|'atlandi'|'disi', 'yolak': str|None, 'mesaj': str}."""
@@ -896,6 +915,23 @@ def _senaryolar() -> List[Tuple[str, Dict, KontrolSonucu]]:
             'ilac_adi': 'INSULIPON', 'etkin_madde': 'ALFA LIPOIK ASIT',
             'brans': 'Kardiyoloji', 'recete_teshisleri': ['nöropatik ağrı'],
         }, KontrolSonucu.UYGUN_DEGIL),
+        # Saha lafzı: "periferal" (periferik değil) → AL_a dispatch; iç
+        # hastalıkları YALNIZ A(4)a listesinde — yanlış AL_b dispatch'te
+        # UYGUN DEĞİL'e düşerdi (dispatch doğrulaması).
+        ("AL_a UYGUN (ALATAB 'diyabetik periferal noröpatik ağrı', reçeteci iç hast.)", {
+            'ilac_adi': 'ALATAB 600MG 30 FILM TABLET', 'etkin_madde': 'TİOKTİK ASİT',
+            'brans': 'İç Hastalıkları',
+            'rapor_metni': 'Metformin ve sülfonilürelerin maksimum tolere edilebilir '
+                           'dozlarında yeterli glisemik kontrol sağlanamamıştır. '
+                           'Diyabetik periferal noröpatik ağrı. Hemoglobin A1c: 7',
+        }, KontrolSonucu.UYGUN),
+        # Saha yazım hatası: "polinörpoati" → diyabetik_noro yakalanmalı (AL_a)
+        ("AL_a UYGUN (ALATAB 'diyabetik polinörpoati' yazım hatası, reçeteci endokrin)", {
+            'ilac_adi': 'ALATAB 600MG 30 FILM TABLET', 'etkin_madde': 'TIOKTIK ASIT',
+            'brans': 'Endokrinoloji',
+            'rapor_metni': 'diyabetik polinörpoati ortak 4. karakter '
+                           'Hemoglobin A1c: 5.8 Açlık Kan Şekeri: 100',
+        }, KontrolSonucu.UYGUN),
         # ── K — Kapsaisin ──
         ("K UYGUN (kapsaisin krem PHN, reçeteci dermatoloji)", {
             'ilac_adi': 'ZOSTRIX KREM', 'etkin_madde': 'KAPSAISIN',

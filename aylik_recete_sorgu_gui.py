@@ -1727,11 +1727,10 @@ class AylikReceteSorguGUI:
         except Exception:
             self._kontrol_disi_setler = (set(), set(), set())
 
-        # 🚫² Kontrolü gereksiz 2. KADEME — raporlu VE mesajlı olduğu hâlde
-        # kontrol gerektirmeyen ilaçlar (kontrol_disi_ilaclar_2.py, yerel JSON).
-        # KOŞULLU gizleme: satır hem raporlu hem mesajlı ise gizlenir; aynı
-        # ilaç raporsuz/mesajsız bir satırda geçerse GÖRÜNÜR kalır (anomali
-        # gözden kaçmasın — kullanıcı onayı 2026-07-07).
+        # 🚫² Kontrolü gereksiz 2. KADEME — kullanıcının ayrı tuttuğu ikinci
+        # liste (kontrol_disi_ilaclar_2.py, yerel JSON). Davranış 1. kademe
+        # ile birebir aynı: listedeyse gizle / SQL'de getirme; raporlu-mesajlı
+        # koşulu YOK, karar tamamen kullanıcının (2026-07-07).
         self.kontrol_disi2_filtre_aktif = tk.BooleanVar(value=False)
         self.kontrol_disi2_sql_aktif = tk.BooleanVar(value=False)
         try:
@@ -2382,12 +2381,11 @@ class AylikReceteSorguGUI:
             command=self._kontrol_disi2_filtre_degisti)
         cb_kdi2.grid(row=1, column=0, padx=(4, 0), pady=(0, 2), sticky="w")
         _Tooltip(cb_kdi2,
-                  "2. KADEME: raporlu VE mesajlı olmakla birlikte kontrolü "
-                  "gereksiz ilaçlar.\n\n"
-                  "İşaretliyken, 2. kademe listesindeki ilaçların satırları "
-                  "SADECE hem RAPORLU hem MESAJLI ise gizlenir (sorgu sonrası "
-                  "filtre). Aynı ilaç raporsuz/mesajsız bir satırda geçerse "
-                  "GÖRÜNMEYE devam eder — anormal durum gözden kaçmaz.\n\n"
+                  "2. KADEME: kullanıcının ayrı tuttuğu ikinci kontrolü "
+                  "gereksiz ilaç listesi.\n\n"
+                  "İşaretliyken, 2. kademe listesindeki ilaçlara ait satırlar "
+                  "tablodan gizlenir (SORGU SONRASI filtre) — 1. kademe ile "
+                  "aynı mantık, sadece ayrı liste.\n\n"
                   "Listeye eklemek: tabloda sağ tık → '🚫² Kontrolü Gereksiz "
                   "2. Kademe İlaç olarak kaydet' ya da yandaki ⚙ İlaçlar.")
 
@@ -2398,11 +2396,11 @@ class AylikReceteSorguGUI:
             font=("Segoe UI", 8, "bold"), padx=2, bd=0, anchor="w")
         cb_kdi2_sql.grid(row=1, column=1, padx=(2, 0), pady=(0, 2), sticky="w")
         _Tooltip(cb_kdi2_sql,
-                  "İşaretliyken, 2. kademe listesindeki ilaçlar RAPORLU ve "
-                  "MESAJLI oldukları satırlarda SQL sorgusuna hiç getirilmez "
-                  "(WHERE NOT (... AND raporlu AND mesajlı)).\n\n"
-                  "Raporsuz/mesajsız satırları yine gelir. Değişiklik için "
-                  "yeniden 🔍 SORGULA gerekir.")
+                  "İşaretliyken, 2. kademe listesindeki ilaçlar SQL sorgusuna "
+                  "HİÇ getirilmez (WHERE NOT (...) koşulu) — veri en baştan "
+                  "elenir, daha az satır çekilir.\n\n"
+                  "Değişiklik için yeniden 🔍 SORGULA gerekir. Sorgu-sonrası "
+                  "gizleme kutusundan bağımsızdır.")
 
         btn_kdi2 = tk.Button(
             p_kdi, text="⚙ İlaçlar", bg="#6A1B9A", fg="white",
@@ -10725,23 +10723,16 @@ class AylikReceteSorguGUI:
             except Exception as e:
                 logger.warning("Kontrol-dışı SQL filtresi eklenemedi: %s", e)
 
-            # ⚡² 2. KADEME: listedeki ilaç, satır RAPORLU (RIRaporKodId dolu)
-            # VE MESAJLI (UMTUrunMesaj'da ürün kaydı var) ise sorguya hiç
-            # gelmez. Raporsuz/mesajsız satırları gelmeye devam eder — koşullu
-            # eleme (kullanıcı onayı 2026-07-07). SADECE SELECT/WHERE parçası.
+            # ⚡² 2. KADEME: listedeki ilaçlar sorguya hiç gelmez — 1. kademe
+            # ile aynı mantık, sadece ayrı liste (koşul yok, kullanıcı kararı
+            # 2026-07-07). SADECE SELECT/WHERE parçası.
             try:
                 if self.kontrol_disi2_sql_aktif.get():
                     import kontrol_disi_ilaclar_2 as _kdi2
                     kd2_pred = _kdi2.sql_eslesme_kosulu()
                     if kd2_pred:
-                        where_parts.append(
-                            "NOT (" + kd2_pred +
-                            " AND ISNULL(ri.RIRaporKodId, 0) > 0"
-                            " AND EXISTS (SELECT 1 FROM UMTUrunMesaj kd2umt"
-                            " WHERE kd2umt.UMTUMUrunId = ri.RIUrunId))")
-                        logger.info(
-                            "Kontrol-dışı 2. kademe (raporlu+mesajlı) "
-                            "SQL'de elendi.")
+                        where_parts.append(f"NOT {kd2_pred}")
+                        logger.info("Kontrol-dışı 2. kademe SQL'de elendi.")
             except Exception as e:
                 logger.warning("2. kademe SQL filtresi eklenemedi: %s", e)
 
@@ -11984,19 +11975,15 @@ class AylikReceteSorguGUI:
                     return False
         except Exception:
             pass
-        # -0.8) 🚫² Kontrolü gereksiz 2. KADEME — KOŞULLU gizleme: satır hem
-        # RAPORLU hem MESAJLI ise ve ilaç 2. kademe listesindeyse gizle.
-        # Raporsuz/mesajsız satırlar listede olsa bile görünür kalır
-        # (anomali gözden kaçmasın — örtük kabul yasağı ruhu).
+        # -0.8) 🚫² Kontrolü gereksiz 2. KADEME — 1. kademe ile aynı mantık:
+        # ilaç 2. kademe listesindeyse gizle, başka koşul yok. Hangi ilacın
+        # 2. kademe olduğu tamamen kullanıcının kararıdır (2026-07-07).
         try:
             if self.kontrol_disi2_filtre_aktif.get():
-                if ((s.get("rap_kod") or "").strip()
-                        and (s.get("msj") or "").strip().lower() == "var"):
-                    setler2 = getattr(self, "_kontrol_disi2_setler", None)
-                    if setler2 and any(setler2) and kdi2.eslesir_mi(
-                            s.get("ilac"), s.get("atc"), s.get("etkin"),
-                            setler2):
-                        return False
+                setler2 = getattr(self, "_kontrol_disi2_setler", None)
+                if setler2 and any(setler2) and kdi2.eslesir_mi(
+                        s.get("ilac"), s.get("atc"), s.get("etkin"), setler2):
+                    return False
         except Exception:
             pass
         # -0.5) 💬 İlaç mesajı 3-konum switch — "var"/"yok" seçiliyse sadece
@@ -12303,10 +12290,10 @@ class AylikReceteSorguGUI:
             pass
 
         if kademe == 2:
-            aciklama = ("2. KADEME: raporlu VE mesajlı olmakla birlikte "
-                        "kontrolü gereksiz ilaçlar. '🚫² 2. kademe gizle' "
-                        "kutusu işaretliyken bu ilaçların satırları SADECE "
-                        "hem raporlu hem mesajlı ise gizlenir.\n"
+            aciklama = ("2. KADEME: kullanıcının ayrı tuttuğu ikinci kontrolü "
+                        "gereksiz ilaç listesi. '🚫² 2. kademe gizle' kutusu "
+                        "işaretliyken bu listedeki ilaçların satırları "
+                        "tablodan gizlenir (1. kademe ile aynı mantık).\n"
                         "İlaç adı ve etken TAM eşleşir; ATC kodu ÖNEK eşleşir "
                         "(ör. 'A11' → tüm A11* satırları).")
         else:
@@ -12476,6 +12463,26 @@ class AylikReceteSorguGUI:
         try:
             for v in (self.var_recete_turu or {}).values():
                 v.set(True)
+        except Exception:
+            pass
+        # Verdict (✓ Sonuç) + Teyit etiket filtreleri → hepsi açık
+        try:
+            for v in (getattr(self, "var_verdict_filtre", {}) or {}).values():
+                v.set(True)
+            for v in (getattr(self, "var_teyit_filtre", {}) or {}).values():
+                v.set(True)
+        except Exception:
+            pass
+        # Kontrolü gereksiz 1. ve 2. kademe gizleme kutuları → kapalı
+        try:
+            self.kontrol_disi_filtre_aktif.set(False)
+            self.kontrol_disi2_filtre_aktif.set(False)
+        except Exception:
+            pass
+        # 💬 Msj / 📄 Rapor 3-konum switch'leri → Hepsi
+        try:
+            self.msj_filtre_mod.set("hepsi")
+            self.rapor_filtre_mod.set("hepsi")
         except Exception:
             pass
         # Sıralamayı sıfırla
@@ -13633,7 +13640,17 @@ class AylikReceteSorguGUI:
         ).start()
 
     def _medulada_ac_worker(self, recete_no: str):
-        """Thread: Medula'ya bağlan, reçete sorguyu aç ve sorgula."""
+        """Thread: Medula'ya bağlan, reçete sorguyu aç ve sorgula.
+
+        Kademeli kurtarma (kullanıcı talebi 2026-07-07):
+        1. Reçete Sorgu normal aranır; ana sayfada değilse Geri Dön ile
+           dönülür; oturum düşmüşse Çıkış + Giriş butonu ile yeniden
+           girilir (recete_sorgu_ac_kademeli, bkz. botanik_bot.py).
+        2. Medula penceresi hiç yoksa ya da kademeli kurtarma da
+           başarısız olursa Medula kapatılıp yeniden açılır ve giriş
+           yapılır (medula_taskkill + medula_ac_ve_giris_yap), ardından
+           Reçete Sorgu son bir kez denenir.
+        """
         try:
             from botanik_bot import BotanikBot
         except Exception as e:
@@ -13645,44 +13662,82 @@ class AylikReceteSorguGUI:
             )
             return
 
+        def _durum(msg: str):
+            self.root.after(0, lambda m=msg: self._durum_yaz(m))
+
         try:
+            import time as _t
             bot = BotanikBot()
+
+            def _one_getir():
+                """Medula penceresini öne getir (foreground)."""
+                try:
+                    import ctypes
+                    import win32con
+                    import win32gui
+                    hwnd = bot.medula_hwnd or getattr(bot.main_window, "handle", None)
+                    if hwnd:
+                        if win32gui.IsIconic(hwnd):
+                            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                        user32 = ctypes.windll.user32
+                        # ALT trick (foreground lock için)
+                        user32.keybd_event(0x12, 0, 0, 0)
+                        user32.keybd_event(0x12, 0, 0x0002, 0)
+                        user32.SetForegroundWindow(hwnd)
+                except Exception as e:
+                    logger.debug(f"Medula öne getirme hatası: {e}")
+
+            def _medula_yeniden_ac() -> bool:
+                """Son çare: Medula'yı kapatıp yeniden aç + giriş yap."""
+                try:
+                    from botanik_bot import medula_taskkill, medula_ac_ve_giris_yap
+                    from medula_settings import get_medula_settings
+                except Exception as e:
+                    logger.error(f"Medula yeniden açma modülleri yüklenemedi: {e}")
+                    return False
+                _durum("🔄 Medula yeniden başlatılıyor (kapat + aç + giriş)...")
+                medula_taskkill()
+                if not medula_ac_ve_giris_yap(get_medula_settings()):
+                    logger.error("❌ Medula yeniden açma/giriş başarısız")
+                    return False
+                bot.medula_hwnd = None
+                bot.medula_pid = None
+                return bot.baglanti_kur("MEDULA", ilk_baglanti=False)
+
             if not bot.baglanti_kur("MEDULA", ilk_baglanti=False):
-                self.root.after(
-                    0,
-                    lambda: messagebox.showwarning(
-                        "Medula bulunamadı",
-                        "Medula penceresi açık değil veya bulunamadı.\n"
-                        "Önce Medula'yı açıp giriş yapın.", parent=self.root),
-                )
-                return
+                # Pencere hiç yok (kapanmış) → doğrudan yeniden aç
+                _durum("⚠ Medula penceresi bulunamadı — yeniden açılıyor...")
+                if not _medula_yeniden_ac():
+                    self.root.after(
+                        0,
+                        lambda: messagebox.showwarning(
+                            "Medula açılamadı",
+                            "Medula penceresi bulunamadı ve otomatik yeniden "
+                            "açma da başarısız oldu.\n"
+                            "Medula'yı elle açıp giriş yapın.", parent=self.root),
+                    )
+                    return
 
             # Pencereyi öne getir
-            try:
-                import ctypes
-                import win32con
-                import win32gui
-                hwnd = bot.medula_hwnd or getattr(bot.main_window, "handle", None)
-                if hwnd:
-                    if win32gui.IsIconic(hwnd):
-                        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-                    user32 = ctypes.windll.user32
-                    # ALT trick (foreground lock için)
-                    user32.keybd_event(0x12, 0, 0, 0)
-                    user32.keybd_event(0x12, 0, 0x0002, 0)
-                    user32.SetForegroundWindow(hwnd)
-            except Exception as e:
-                logger.debug(f"Medula öne getirme hatası: {e}")
-
-            import time as _t
+            _one_getir()
             _t.sleep(0.25)
 
-            if not bot.recete_sorgu_ac():
+            # Kademeli: normal → Geri Dön → Çıkış + Giriş
+            acildi = bot.recete_sorgu_ac_kademeli()
+            if not acildi:
+                # Son çare: Medula'yı yeniden aç ve bir kez daha dene
+                if _medula_yeniden_ac():
+                    _one_getir()
+                    _t.sleep(0.25)
+                    acildi = bot.recete_sorgu_ac()
+            if not acildi:
                 self.root.after(
                     0,
                     lambda: messagebox.showerror(
                         "Hata",
-                        "Reçete Sorgu menüsü açılamadı. Medula ana sayfada mı?", parent=self.root),
+                        "Reçete Sorgu menüsü açılamadı.\n"
+                        "Geri Dön, yeniden giriş ve Medula'yı yeniden açma "
+                        "denendi — hepsi başarısız.", parent=self.root),
                 )
                 return
 
@@ -17408,7 +17463,7 @@ class AylikReceteSorguGUI:
     )
     _NOR435_ALFA_LIPOIK_TICARI = (
         "THIOCTACID", "TIOCTACID", "NOREXIA", "LIPOIK", "TIOXIDAL",
-        "BENEDAY", "INSULIPON",
+        "BENEDAY", "INSULIPON", "ALATAB",
     )
     _NOR435_KAPSAISIN_ETKEN = ("KAPSAISIN", "KAPSAİSİN", "CAPSAICIN")
     _NOR435_KAPSAISIN_TICARI = ("CAPSIN", "ZOSTRIX")
@@ -18299,6 +18354,12 @@ class AylikReceteSorguGUI:
             "hasta_yasi": s.get("yas") or "",
             "recete_dozu": s.get("rec_doz") or "",
             "recete_ilaclari": [{"ad": x} for x in (diger_ilac_adlari or []) if x],
+            # Son-3-ay reçeteler-arası LABA/LAMA/ICS ortak kullanım taraması
+            # için (kontrol_solunum → _solunum_gecmis_bilesen_tara, EOS
+            # SADECE SELECT). recete_tarihi = pencere referansı (retrospektif
+            # kontrolde 'son 3 ay' reçete tarihinden geriye hesaplanır).
+            "hasta_tc": (s.get("tc") or "").strip(),
+            "recete_tarihi": (s.get("rec_tar") or "").strip(),
         }
 
     @staticmethod
@@ -30492,6 +30553,7 @@ class AylikReceteSorguGUI:
             "hasta_yasi": s.get("yas") or "",
             "yas": s.get("yas") or "",
             "hasta_tc": (s.get("tc") or "").strip(),
+            "recete_tarihi": (s.get("rec_tar") or "").strip(),
             "recete_dozu": s.get("rec_doz") or "",
             "kutu": kutu_s,
             "kutu_sayisi": kutu_sayisi,

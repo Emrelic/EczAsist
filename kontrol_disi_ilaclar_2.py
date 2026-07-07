@@ -1,12 +1,12 @@
 """
-Kontrolü gereksiz 2. KADEME ilaçlar — raporlu VE mesajlı olduğu hâlde
-eczacının "kontrol gerektirmez" dediği ilaçlar.
+Kontrolü gereksiz 2. KADEME ilaçlar — kullanıcının 1. kademeden ayrı tuttuğu
+ikinci "kontrol gerektirmez" listesi.
 
-1. kademeden (kontrol_disi_ilaclar.py) farkı: GUI tarafında gizleme/SQL eleme
-KOŞULLUDUR — satır hem RAPORLU hem MESAJLI ise gizlenir; aynı ilaç raporsuz
-veya mesajsız bir satırda geçerse görünmeye devam eder (anomali gözden
-kaçmasın). Koşul mantığı bu modülde değil, çağıran taraftadır (GUI/SQL);
-burası sadece 2. kademe listesinin deposudur.
+Davranış 1. kademe (kontrol_disi_ilaclar.py) ile birebir aynıdır: listedeki
+ilaç, gizleme kutusu işaretliyken tablodan gizlenir / SQL'de getirme
+işaretliyken sorguya hiç gelmez. Raporlu-mesajlı gibi ek koşul YOKTUR —
+hangi ilacın 2. kademe olduğu tamamen kullanıcının kararıdır (2026-07-07).
+Tek fark: ayrı JSON dosyası, ayrı checkbox'lar.
 
 Eşleşme kuralları 1. kademe ile birebir aynı (ad TAM / ATC ÖNEK / etken TAM);
 tüm fonksiyonlar kontrol_disi_ilaclar.py'dan dosya parametresiyle delege edilir.
