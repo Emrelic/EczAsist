@@ -32,6 +32,7 @@ from botanik_db import BotanikDB
 from recete_kontrol.sut_kontrolleri import _tr_lower
 import recete_teyit_db
 import kontrol_disi_ilaclar as kdi
+import kontrol_disi_ilaclar_2 as kdi2
 
 logger = logging.getLogger(__name__)
 
@@ -1726,11 +1727,25 @@ class AylikReceteSorguGUI:
         except Exception:
             self._kontrol_disi_setler = (set(), set(), set())
 
-        # 💬 "İlaç mesajı YOK olanları göster" — Msj sütunu 'yok' olan satırları
-        # süzer (Medula'nın ürün için SUT mesajı göstermediği ilaçlar,
-        # UMTUrunMesaj'da kaydı olmayanlar). Sorgu-sonrası filtre;
-        # işaretliyken msj='var' satırlar gizlenir.
-        self.msj_yok_filtre_aktif = tk.BooleanVar(value=False)
+        # 🚫² Kontrolü gereksiz 2. KADEME — raporlu VE mesajlı olduğu hâlde
+        # kontrol gerektirmeyen ilaçlar (kontrol_disi_ilaclar_2.py, yerel JSON).
+        # KOŞULLU gizleme: satır hem raporlu hem mesajlı ise gizlenir; aynı
+        # ilaç raporsuz/mesajsız bir satırda geçerse GÖRÜNÜR kalır (anomali
+        # gözden kaçmasın — kullanıcı onayı 2026-07-07).
+        self.kontrol_disi2_filtre_aktif = tk.BooleanVar(value=False)
+        self.kontrol_disi2_sql_aktif = tk.BooleanVar(value=False)
+        try:
+            self._kontrol_disi2_setler = kdi2.setler()
+        except Exception:
+            self._kontrol_disi2_setler = (set(), set(), set())
+
+        # 💬 İlaç mesajı 3-konum switch (2026-07-07): hepsi / var / yok.
+        # Msj sütununa göre sorgu-sonrası filtre — "var" yalnız mesajlı,
+        # "yok" yalnız mesajsız (UMTUrunMesaj'da kaydı olmayan) satırlar.
+        self.msj_filtre_mod = tk.StringVar(value="hepsi")
+        # 📄 Raporlu/Raporsuz 3-konum switch: hepsi / raporlu / raporsuz.
+        # Rapor Kod sütunu (rap_kod) dolu = raporlu, boş = raporsuz.
+        self.rapor_filtre_mod = tk.StringVar(value="hepsi")
 
         # Verdict (kontrol sonucu) filtre — kullanıcı tabloyu sonuç etiketine
         # göre filtreleyebilsin: UYGUN / UYGUN DEĞİL / ŞÜPHELİ / ŞARTLI UYGUN /
@@ -2111,14 +2126,53 @@ class AylikReceteSorguGUI:
         p_renk = tk.Frame(row2, bg=P_BOYA_BG, bd=1, relief="solid")
         p_renk.pack(side="left", padx=2, pady=1, fill="y")
 
-        tk.Label(p_renk, text="🎨 Renkler", bg=P_BOYA_BG, fg="#E65100",
-                 font=FONT_GROUP).grid(row=0, column=0, rowspan=2,
-                                        padx=(8, 8), pady=2, sticky="ns")
+        # "🎨 Renkler" başlığı kaldırıldı (2026-07-07) — sol sütunda iki adet
+        # 3-konumlu switch: üst = İlaç mesajı (hepsi/var/yok), alt =
+        # Rapor (hepsi/raporlu/raporsuz). Sorgu-sonrası filtreler.
+        _SW_FONT = ("Segoe UI", 7, "bold")
+
+        msj_sw = tk.Frame(p_renk, bg=P_BOYA_BG)
+        msj_sw.grid(row=0, column=0, padx=(4, 2), pady=(2, 0), sticky="w")
+        tk.Label(msj_sw, text="💬 Msj:", bg=P_BOYA_BG, fg="#1B5E20",
+                 font=_SW_FONT).pack(side="left", padx=(0, 1))
+        for txt, val in [("Hepsi", "hepsi"), ("Var", "var"), ("Yok", "yok")]:
+            tk.Radiobutton(
+                msj_sw, text=txt, variable=self.msj_filtre_mod, value=val,
+                bg=P_BOYA_BG, fg="#1B5E20", selectcolor="#FFFFFF",
+                font=_SW_FONT, padx=0, bd=0,
+                command=self._msj_rapor_filtre_degisti
+            ).pack(side="left", padx=(0, 1))
+        _Tooltip(msj_sw,
+                  "İlaç mesajı filtresi (Msj sütunu):\n"
+                  "• Hepsi: filtre yok\n"
+                  "• Var: sadece ilaç mesajı OLAN satırlar\n"
+                  "• Yok: sadece ilaç mesajı OLMAYAN satırlar\n"
+                  "(UMTUrunMesaj'da kaydı olmayan ilaçlar)\n\n"
+                  "Sorgu-sonrası filtredir; veri yeniden çekilmez.")
+
+        rap_sw = tk.Frame(p_renk, bg=P_BOYA_BG)
+        rap_sw.grid(row=1, column=0, padx=(4, 2), pady=(0, 2), sticky="w")
+        tk.Label(rap_sw, text="📄 Rap:", bg=P_BOYA_BG, fg="#0D47A1",
+                 font=_SW_FONT).pack(side="left", padx=(0, 1))
+        for txt, val in [("Hepsi", "hepsi"), ("Raporlu", "raporlu"),
+                          ("Raporsuz", "raporsuz")]:
+            tk.Radiobutton(
+                rap_sw, text=txt, variable=self.rapor_filtre_mod, value=val,
+                bg=P_BOYA_BG, fg="#0D47A1", selectcolor="#FFFFFF",
+                font=_SW_FONT, padx=0, bd=0,
+                command=self._msj_rapor_filtre_degisti
+            ).pack(side="left", padx=(0, 1))
+        _Tooltip(rap_sw,
+                  "Rapor filtresi (Rapor Kod sütunu):\n"
+                  "• Hepsi: filtre yok\n"
+                  "• Raporlu: sadece rapor kodu DOLU satırlar\n"
+                  "• Raporsuz: sadece rapor kodu BOŞ satırlar\n\n"
+                  "Sorgu-sonrası filtredir; veri yeniden çekilmez.")
 
         # --- ÜST SIRA (row=0): BOYAMA — eylem ---
         self.boya_mod = tk.StringVar(value="secili")
         mod_frame = tk.Frame(p_renk, bg=P_BOYA_BG)
-        mod_frame.grid(row=0, column=1, padx=(0, 8), pady=(3, 0), sticky="w")
+        mod_frame.grid(row=0, column=1, padx=(0, 4), pady=(3, 0), sticky="w")
         tk.Label(mod_frame, text="Boya:", bg=P_BOYA_BG, fg="#5D4037",
                   font=("Segoe UI", 8, "bold")).pack(side="left", padx=(0, 2))
         rb_secili = tk.Radiobutton(
@@ -2163,7 +2217,7 @@ class AylikReceteSorguGUI:
             command=self._tum_filtreleri_temizle,
             font=FONT_BUTON, padx=8, pady=2,
             cursor="hand2")
-        btn_sifirla.grid(row=0, column=8, rowspan=2, padx=(8, 6), pady=2,
+        btn_sifirla.grid(row=0, column=8, rowspan=2, padx=(4, 4), pady=2,
                           sticky="ns")
         _Tooltip(btn_sifirla,
                   "Tüm filtreleri SIFIRLA:\n"
@@ -2175,7 +2229,7 @@ class AylikReceteSorguGUI:
         # --- ALT SIRA (row=1): RENK FİLTRESİ — görünüm ---
         tk.Label(p_renk, text="👁 Filtre:", bg=P_BOYA_BG, fg="#1B5E20",
                  font=("Segoe UI", 8, "bold")).grid(row=1, column=1,
-                                                    padx=(0, 8), pady=(0, 3),
+                                                    padx=(0, 4), pady=(0, 3),
                                                     sticky="e")
 
         # Label'sız renkli kareler — Gestalt similarity (renk kendisi bilgi taşır)
@@ -2269,20 +2323,21 @@ class AylikReceteSorguGUI:
                   "• 🚫 Kurum (Dışlamalar) sekmesi\n\n"
                   "Soldaki ☑ (Kullan): kuralları aktif/pasif yapar.")
 
-        # ─── PANEL: KONTROLÜ GEREKSİZ İLAÇ FİLTRESİ ───
-        # Eczacının "bu ilaç SUT kontrolü gerektirmez" dediği ilaçları gizler.
+        # ─── PANEL: KONTROLÜ GEREKSİZ İLAÇ FİLTRESİ (2 kademeli, grid) ───
+        # Üst sıra (row=0): 1. kademe — koşulsuz gizleme (mevcut davranış).
+        # Alt sıra (row=1): 2. KADEME — raporlu VE mesajlı olduğu hâlde kontrol
+        # gerektirmeyen ilaçlar; gizleme KOŞULLU (satır raporlu ∧ mesajlı ise).
         P_KDI_BG = "#FFF3E0"
         p_kdi = tk.Frame(row3, bg=P_KDI_BG, bd=1, relief="solid")
         p_kdi.pack(side="left", padx=2, pady=1, fill="y")
 
         cb_kdi = tk.Checkbutton(
-            p_kdi, text="🚫 Kontrolü\ngereksiz\nilaçları gizle",
+            p_kdi, text="🚫 Kontrolü gereksiz ilaçları gizle",
             variable=self.kontrol_disi_filtre_aktif,
             bg=P_KDI_BG, fg="#E65100", selectcolor="#FFFFFF",
-            font=FONT_GROUP, padx=2, bd=0,
-            justify="left", wraplength=90,
+            font=("Segoe UI", 8, "bold"), padx=2, bd=0, anchor="w",
             command=self._kontrol_disi_filtre_degisti)
-        cb_kdi.pack(side="left", padx=(4, 0), pady=2)
+        cb_kdi.grid(row=0, column=0, padx=(4, 0), pady=(2, 0), sticky="w")
         _Tooltip(cb_kdi,
                   "İşaretliyken, 'kontrolü gereksiz ilaçlar' listesindeki "
                   "ilaçlara ait satırlar tablodan gizlenir (SORGU SONRASI "
@@ -2293,12 +2348,11 @@ class AylikReceteSorguGUI:
 
         # SQL düzeyi eleme — sorguya HİÇ getirme (daha az veri, daha hızlı)
         cb_kdi_sql = tk.Checkbutton(
-            p_kdi, text="⚡ SQL'de\nde getirme",
+            p_kdi, text="⚡ SQL'de getirme",
             variable=self.kontrol_disi_sql_aktif,
             bg=P_KDI_BG, fg="#BF360C", selectcolor="#FFFFFF",
-            font=FONT_GROUP, padx=2, bd=0,
-            justify="left", wraplength=80)
-        cb_kdi_sql.pack(side="left", padx=(2, 0), pady=2)
+            font=("Segoe UI", 8, "bold"), padx=2, bd=0, anchor="w")
+        cb_kdi_sql.grid(row=0, column=1, padx=(2, 0), pady=(2, 0), sticky="w")
         _Tooltip(cb_kdi_sql,
                   "İşaretliyken, 'kontrolü gereksiz ilaçlar' listesindeki "
                   "ilaçlar SQL sorgusuna HİÇ getirilmez (WHERE NOT (...) "
@@ -2310,21 +2364,64 @@ class AylikReceteSorguGUI:
 
         btn_kdi = tk.Button(
             p_kdi, text="⚙ İlaçlar", bg="#E65100", fg="white",
-            activebackground="#BF360C", bd=0, padx=10, pady=4,
-            font=FONT_BUTON, cursor="hand2",
+            activebackground="#BF360C", bd=0, padx=6, pady=0,
+            font=("Segoe UI", 8, "bold"), cursor="hand2",
             command=self._kontrol_disi_ilac_penceresi_ac)
-        btn_kdi.pack(side="left", padx=(2, 4), pady=4)
+        btn_kdi.grid(row=0, column=2, padx=(4, 2), pady=(2, 1), sticky="ew")
         _Tooltip(btn_kdi,
-                  "Kontrolü gereksiz ilaç listesini düzenle:\n"
+                  "Kontrolü gereksiz ilaç listesini (1. kademe) düzenle:\n"
+                  "• İlaç adı (tam), ATC kodu (önek), Etken madde (tam)\n"
+                  "ekleyip silebilirsiniz.")
+
+        # ── Alt sıra: 2. KADEME (raporlu + mesajlı ama kontrolü gereksiz) ──
+        cb_kdi2 = tk.Checkbutton(
+            p_kdi, text="🚫² Kontrolü gereksiz 2. kademe gizle",
+            variable=self.kontrol_disi2_filtre_aktif,
+            bg=P_KDI_BG, fg="#6A1B9A", selectcolor="#FFFFFF",
+            font=("Segoe UI", 8, "bold"), padx=2, bd=0, anchor="w",
+            command=self._kontrol_disi2_filtre_degisti)
+        cb_kdi2.grid(row=1, column=0, padx=(4, 0), pady=(0, 2), sticky="w")
+        _Tooltip(cb_kdi2,
+                  "2. KADEME: raporlu VE mesajlı olmakla birlikte kontrolü "
+                  "gereksiz ilaçlar.\n\n"
+                  "İşaretliyken, 2. kademe listesindeki ilaçların satırları "
+                  "SADECE hem RAPORLU hem MESAJLI ise gizlenir (sorgu sonrası "
+                  "filtre). Aynı ilaç raporsuz/mesajsız bir satırda geçerse "
+                  "GÖRÜNMEYE devam eder — anormal durum gözden kaçmaz.\n\n"
+                  "Listeye eklemek: tabloda sağ tık → '🚫² Kontrolü Gereksiz "
+                  "2. Kademe İlaç olarak kaydet' ya da yandaki ⚙ İlaçlar.")
+
+        cb_kdi2_sql = tk.Checkbutton(
+            p_kdi, text="⚡ SQL'de getirme",
+            variable=self.kontrol_disi2_sql_aktif,
+            bg=P_KDI_BG, fg="#4A148C", selectcolor="#FFFFFF",
+            font=("Segoe UI", 8, "bold"), padx=2, bd=0, anchor="w")
+        cb_kdi2_sql.grid(row=1, column=1, padx=(2, 0), pady=(0, 2), sticky="w")
+        _Tooltip(cb_kdi2_sql,
+                  "İşaretliyken, 2. kademe listesindeki ilaçlar RAPORLU ve "
+                  "MESAJLI oldukları satırlarda SQL sorgusuna hiç getirilmez "
+                  "(WHERE NOT (... AND raporlu AND mesajlı)).\n\n"
+                  "Raporsuz/mesajsız satırları yine gelir. Değişiklik için "
+                  "yeniden 🔍 SORGULA gerekir.")
+
+        btn_kdi2 = tk.Button(
+            p_kdi, text="⚙ İlaçlar", bg="#6A1B9A", fg="white",
+            activebackground="#4A148C", bd=0, padx=6, pady=0,
+            font=("Segoe UI", 8, "bold"), cursor="hand2",
+            command=lambda: self._kontrol_disi_ilac_penceresi_ac(kademe=2))
+        btn_kdi2.grid(row=1, column=2, padx=(4, 2), pady=(0, 2), sticky="ew")
+        _Tooltip(btn_kdi2,
+                  "Kontrolü gereksiz 2. KADEME ilaç listesini düzenle:\n"
                   "• İlaç adı (tam), ATC kodu (önek), Etken madde (tam)\n"
                   "ekleyip silebilirsiniz.")
 
         btn_kume = tk.Button(
             p_kdi, text="📊 Küme\nAnalizi", bg="#6A1B9A", fg="white",
             activebackground="#4A148C", bd=0, padx=4, pady=1,
-            font=FONT_BUTON, cursor="hand2", justify="left",
+            font=("Segoe UI", 8, "bold"), cursor="hand2", justify="left",
             command=self._kume_analizi_baslat)
-        btn_kume.pack(side="left", padx=(2, 4), pady=4)
+        btn_kume.grid(row=0, column=3, rowspan=2, padx=(2, 4), pady=2,
+                       sticky="ns")
         _Tooltip(btn_kume,
                   "İki kapsamı 2021-2026 verisi üzerinde karşılaştır:\n"
                   "• K = Kontrolü gereksiz ilaçlar\n"
@@ -2453,29 +2550,8 @@ class AylikReceteSorguGUI:
                  "🖉 Teyit (alt): eczacının manuel teyit ettiği etiketler.\n"
                  "  'Teyitsiz' = henüz teyit edilmemiş.")
 
-        # ─── PANEL: İLAÇ MESAJI YOK FİLTRESİ (Sonuç/Teyit sağındaki boşlukta) ───
-        # Msj sütunu 'yok' olan satırları göstermek için hızlı süzgeç.
-        # row3 yerine buraya alındı (2026-07-07) → row3 kısaldı, sağdaki
-        # hücre içerik paneli sola doğru genişleyebiliyor.
-        P_MSJ_BG = "#E8F5E9"
-        p_msj = tk.Frame(row_etiket, bg=P_MSJ_BG, bd=1, relief="solid")
-        p_msj.pack(side="left", padx=2, pady=1, fill="y")
-
-        cb_msj_yok = tk.Checkbutton(
-            p_msj, text="💬 İlaç mesajı\nYOK olanları göster",
-            variable=self.msj_yok_filtre_aktif,
-            bg=P_MSJ_BG, fg="#1B5E20", selectcolor="#FFFFFF",
-            font=("Segoe UI", 8, "bold"), padx=2, bd=0,
-            justify="left", anchor="w",
-            command=self._msj_yok_filtre_degisti)
-        cb_msj_yok.pack(side="left", padx=(4, 4), pady=2, fill="y")
-        _Tooltip(cb_msj_yok,
-                  "İşaretliyken tabloda SADECE 'Msj = yok' satırlar kalır — "
-                  "yani Medula'nın ilaç mesajı göstermediği "
-                  "(UMTUrunMesaj'da kaydı olmayan) ilaçlar.\n\n"
-                  "Mesajı OLAN (Msj = var) satırlar gizlenir.\n"
-                  "Sorgu-sonrası filtredir; veri yeniden çekilmez, "
-                  "kutu kaldırılınca satırlar geri gelir.")
+        # NOT: İlaç mesajı YOK filtresi Renkler paneline taşındı (2026-07-07) —
+        # "🎨 Renkler" başlığının altındaki boşlukta duruyor.
 
         # NOT: 🩺 MEDULA GEÇMİŞ TARA paneli buradan kaldırıldı (kullanıcı isteği
         # 2026-05-23). Şema panel toolbar'ında 🩺 butonu zaten mevcut
@@ -2526,29 +2602,36 @@ class AylikReceteSorguGUI:
         # Gizli (⚙ ayarlar penceresinde): Model combobox (varsayılan sonnet).
         P_AI_BG = "#E1F5FE"
         p_ai = tk.Frame(row2, bg=P_AI_BG, bd=1, relief="solid")
-        p_ai.pack(side="left", padx=(8, 2), pady=1, fill="y")
-        tk.Label(p_ai, text="🤖 AI:", bg=P_AI_BG, fg="#01579B",
-                 font=FONT_GROUP).pack(side="left", padx=(6, 4), pady=4)
+        p_ai.pack(side="left", padx=2, pady=1, fill="y")
+        # 2 satırlı kompakt düzen (2026-07-07): üst = AI:/Botanik/Medula/F2/⚙,
+        # alt = AI KONTROL/🔍/SS — panel yatayda daraldı, hücre içerik
+        # paneline yer açıldı.
+        ai_ust = tk.Frame(p_ai, bg=P_AI_BG)
+        ai_ust.pack(side="top", anchor="w", padx=2)
+        ai_alt = tk.Frame(p_ai, bg=P_AI_BG)
+        ai_alt.pack(side="top", anchor="w", padx=2, pady=(0, 1))
+        tk.Label(ai_ust, text="🤖 AI:", bg=P_AI_BG, fg="#01579B",
+                 font=FONT_GROUP).pack(side="left", padx=(2, 2), pady=1)
 
         # Veri kaynağı checkbox'ları — Botanik EOS + Medula (Faz 2, 2026-07-05)
         self.ai_kaynak_botanik = tk.BooleanVar(value=True)
         self.ai_kaynak_medula = tk.BooleanVar(value=False)
         self.ai_model_var = tk.StringVar(value="sonnet")     # ⚙ ayarlardan
         cb_botanik = tk.Checkbutton(
-            p_ai, text="Botanik",
+            ai_ust, text="Botanik",
             variable=self.ai_kaynak_botanik,
             bg=P_AI_BG, fg="#01579B", selectcolor="#FFFFFF",
             font=("Segoe UI", 8, "bold"), padx=2, bd=0)
-        cb_botanik.pack(side="left", padx=(0, 2), pady=4)
+        cb_botanik.pack(side="left", padx=(0, 2), pady=1)
         _Tooltip(cb_botanik,
                  "Botanik DB rapor + ilaç geçmişi AI paketine eklenir\n"
                  "(son 5 yıl rapor, 24 ay ilaç).")
         cb_medula = tk.Checkbutton(
-            p_ai, text="Medula",
+            ai_ust, text="Medula",
             variable=self.ai_kaynak_medula,
             bg=P_AI_BG, fg="#B71C1C", selectcolor="#FFFFFF",
             font=("Segoe UI", 8, "bold"), padx=2, bd=0)
-        cb_medula.pack(side="left", padx=(0, 4), pady=4)
+        cb_medula.pack(side="left", padx=(0, 2), pady=1)
         _Tooltip(cb_medula,
                  "⚠ YAVAŞ (~1-2 dk/hasta): Medula ekranlarında gezinerek\n"
                  "hastanın SGK ilaç geçmişi (çapraz-reçete, tüm eczaneler)\n"
@@ -2558,13 +2641,13 @@ class AylikReceteSorguGUI:
                  "Medula'ya elle dokunmayın. SADECE OKUMA yapılır.")
 
         btn_ai = tk.Button(
-            p_ai, text="🤖 AI KONTROL",
+            ai_alt, text="🤖 AI KONTROL",
             bg="#0277BD", fg="white",
             activebackground="#01579B", bd=1,
             command=self._ai_kontrol_baslat,
-            font=FONT_BUTON, padx=10, pady=4,
+            font=FONT_BUTON, padx=6, pady=1,
             cursor="hand2")
-        btn_ai.pack(side="left", padx=(0, 2), pady=4)
+        btn_ai.pack(side="left", padx=(2, 2), pady=1)
         _Tooltip(btn_ai,
                  "Anthropic Claude ile SUT uygunluk kontrolü.\n"
                  "Seçili satır(lar) → anonim paket → Claude API →\n"
@@ -2574,26 +2657,26 @@ class AylikReceteSorguGUI:
                  "KVKK Madde 6 uyumlu: hasta TC + ad gönderilmez.")
 
         btn_ai_onizle = tk.Button(
-            p_ai, text="🔍",
+            ai_alt, text="🔍",
             bg="#FFECB3", fg="#5D4037",
             activebackground="#FFD54F", bd=1,
             command=self._ai_paket_onizle,
-            font=("Segoe UI", 9, "bold"), padx=5, pady=3,
+            font=("Segoe UI", 9, "bold"), padx=4, pady=0,
             cursor="hand2")
-        btn_ai_onizle.pack(side="left", padx=1, pady=4)
+        btn_ai_onizle.pack(side="left", padx=1, pady=1)
         _Tooltip(btn_ai_onizle,
                  "🔍 Önizle — Seçili satır için AI'a gönderilecek paket\n"
                  "JSON'unu modal pencerede göster. AI çağrılmaz; sadece\n"
                  "şeffaflık + KVKK kontrol amaçlı.")
 
         btn_ai_ss = tk.Button(
-            p_ai, text="📸 SS (0)",
+            ai_alt, text="📸 SS (0)",
             bg="#FFE0B2", fg="#E65100",
             activebackground="#FFCC80", bd=1,
             command=self._ai_screenshot_sorgu_baslat,
-            font=("Segoe UI", 8, "bold"), padx=5, pady=3,
+            font=("Segoe UI", 8, "bold"), padx=4, pady=0,
             cursor="hand2")
-        btn_ai_ss.pack(side="left", padx=1, pady=4)
+        btn_ai_ss.pack(side="left", padx=1, pady=1)
         _Tooltip(btn_ai_ss,
                  "📸 Ek Görsel Yönet — seçili satıra eklenmiş screenshot'ları\n"
                  "gör/yönet. Sayı = ek görsel adedi.\n"
@@ -2601,12 +2684,12 @@ class AylikReceteSorguGUI:
 
         self.var_ss_f2_aktif = tk.BooleanVar(value=False)
         cb_ss_f2 = tk.Checkbutton(
-            p_ai, text="F2",
+            ai_ust, text="F2",
             variable=self.var_ss_f2_aktif,
             bg=P_AI_BG, fg="#E65100", selectcolor="#FFFFFF",
             font=("Segoe UI", 8, "bold"), padx=2, bd=0,
             command=self._ss_f2_aktif_degisti)
-        cb_ss_f2.pack(side="left", padx=(2, 2), pady=4)
+        cb_ss_f2.pack(side="left", padx=(0, 2), pady=1)
         _Tooltip(cb_ss_f2,
                  "F2 ile arka planda ekran görüntüsü yakalama modu.\n"
                  "AÇIK iken: Medula'da F2 → çerçeve seçim overlay →\n"
@@ -2614,13 +2697,13 @@ class AylikReceteSorguGUI:
                  "AI KONTROL'de paket ile birlikte Claude'a gönderilir.")
 
         btn_ai_ayar = tk.Button(
-            p_ai, text="⚙",
+            ai_ust, text="⚙",
             bg="#B3E5FC", fg="#01579B",
             activebackground="#81D4FA", bd=1,
             command=self._ai_ayarlar_ac,
-            font=("Segoe UI", 10, "bold"), padx=5, pady=3,
+            font=("Segoe UI", 9, "bold"), padx=4, pady=0,
             cursor="hand2")
-        btn_ai_ayar.pack(side="left", padx=(1, 6), pady=4)
+        btn_ai_ayar.pack(side="left", padx=(0, 2), pady=1)
         _Tooltip(btn_ai_ayar,
                  "AI Ayarlar — API anahtarı, model (sonnet/opus/haiku),\n"
                  "Medula kaynağı, günlük limit, KVKK onayı, sistem prompt,\n"
@@ -10642,6 +10725,26 @@ class AylikReceteSorguGUI:
             except Exception as e:
                 logger.warning("Kontrol-dışı SQL filtresi eklenemedi: %s", e)
 
+            # ⚡² 2. KADEME: listedeki ilaç, satır RAPORLU (RIRaporKodId dolu)
+            # VE MESAJLI (UMTUrunMesaj'da ürün kaydı var) ise sorguya hiç
+            # gelmez. Raporsuz/mesajsız satırları gelmeye devam eder — koşullu
+            # eleme (kullanıcı onayı 2026-07-07). SADECE SELECT/WHERE parçası.
+            try:
+                if self.kontrol_disi2_sql_aktif.get():
+                    import kontrol_disi_ilaclar_2 as _kdi2
+                    kd2_pred = _kdi2.sql_eslesme_kosulu()
+                    if kd2_pred:
+                        where_parts.append(
+                            "NOT (" + kd2_pred +
+                            " AND ISNULL(ri.RIRaporKodId, 0) > 0"
+                            " AND EXISTS (SELECT 1 FROM UMTUrunMesaj kd2umt"
+                            " WHERE kd2umt.UMTUMUrunId = ri.RIUrunId))")
+                        logger.info(
+                            "Kontrol-dışı 2. kademe (raporlu+mesajlı) "
+                            "SQL'de elendi.")
+            except Exception as e:
+                logger.warning("2. kademe SQL filtresi eklenemedi: %s", e)
+
             where_sql = " AND ".join(where_parts)
 
             sql = self._recete_sorgu_sql(where_sql)
@@ -11881,11 +11984,39 @@ class AylikReceteSorguGUI:
                     return False
         except Exception:
             pass
-        # -0.5) 💬 İlaç mesajı YOK filtresi — kutu işaretliyken sadece
-        # Msj='yok' satırlar görünür (mesajı olan ilaçlar gizlenir).
+        # -0.8) 🚫² Kontrolü gereksiz 2. KADEME — KOŞULLU gizleme: satır hem
+        # RAPORLU hem MESAJLI ise ve ilaç 2. kademe listesindeyse gizle.
+        # Raporsuz/mesajsız satırlar listede olsa bile görünür kalır
+        # (anomali gözden kaçmasın — örtük kabul yasağı ruhu).
         try:
-            if self.msj_yok_filtre_aktif.get():
-                if (s.get("msj") or "").strip().lower() != "yok":
+            if self.kontrol_disi2_filtre_aktif.get():
+                if ((s.get("rap_kod") or "").strip()
+                        and (s.get("msj") or "").strip().lower() == "var"):
+                    setler2 = getattr(self, "_kontrol_disi2_setler", None)
+                    if setler2 and any(setler2) and kdi2.eslesir_mi(
+                            s.get("ilac"), s.get("atc"), s.get("etkin"),
+                            setler2):
+                        return False
+        except Exception:
+            pass
+        # -0.5) 💬 İlaç mesajı 3-konum switch — "var"/"yok" seçiliyse sadece
+        # o Msj değerine sahip satırlar görünür ("hepsi" = filtre yok).
+        try:
+            mod_msj = self.msj_filtre_mod.get()
+            if mod_msj in ("var", "yok"):
+                if (s.get("msj") or "").strip().lower() != mod_msj:
+                    return False
+        except Exception:
+            pass
+        # -0.4) 📄 Raporlu/Raporsuz 3-konum switch — Rapor Kod (rap_kod)
+        # dolu = raporlu, boş = raporsuz ("hepsi" = filtre yok).
+        try:
+            mod_rap = self.rapor_filtre_mod.get()
+            if mod_rap in ("raporlu", "raporsuz"):
+                raporlu = bool((s.get("rap_kod") or "").strip())
+                if mod_rap == "raporlu" and not raporlu:
+                    return False
+                if mod_rap == "raporsuz" and raporlu:
                     return False
         except Exception:
             pass
@@ -12069,9 +12200,9 @@ class AylikReceteSorguGUI:
         self._durum_yaz("🚫 Boş satır filtresi değişti — sorgu yenileniyor…")
         self._receteleri_sorgula()
 
-    def _msj_yok_filtre_degisti(self):
-        """💬 'İlaç mesajı YOK olanları göster' kutusu değişti → SQL'e gitmeden
-        tabloyu yenile (sadece görünür satırları daraltır/genişletir)."""
+    def _msj_rapor_filtre_degisti(self):
+        """💬 Msj (hepsi/var/yok) veya 📄 Rapor (hepsi/raporlu/raporsuz)
+        switch'i değişti → SQL'e gitmeden tabloyu yenile."""
         self._tabloyu_yenile()
         self._sayaclari_guncelle()
 
@@ -12087,58 +12218,83 @@ class AylikReceteSorguGUI:
         self._tabloyu_yenile()
         self._sayaclari_guncelle()
 
-    def _kontrol_disi_ilac_ekle_secili(self, iidler):
+    def _kontrol_disi2_filtre_degisti(self):
+        """🚫² 2. kademe gizle kutusu değişti → SQL'e gitmeden tabloyu yenile.
+        Koşullu filtre _satir_filtreden_geciyor_mu içinde uygulanır."""
+        try:
+            self._kontrol_disi2_setler = kdi2.setler()
+        except Exception:
+            pass
+        self._tabloyu_yenile()
+        self._sayaclari_guncelle()
+
+    def _kontrol_disi_ilac_ekle_secili(self, iidler, kademe: int = 1):
         """Sağ tık → seçili satırların İLAÇ ADINI kontrolü gereksiz listesine
         ekler (tam ad eşleşmesi). ATC/etken bazlı kuralları '⚙ İlaçlar'
-        penceresinden ekleyebilirsiniz."""
+        penceresinden ekleyebilirsiniz.
+
+        kademe=2 → 2. KADEME listesi (raporlu+mesajlı ama kontrolü gereksiz;
+        gizleme koşullu). Modül/set/checkbox o kademeye göre seçilir."""
         if not iidler:
             return
+        mod = kdi2 if kademe == 2 else kdi
+        etiket = ("Kontrolü Gereksiz 2. Kademe İlaç" if kademe == 2
+                  else "Kontrolü Gereksiz İlaç")
         try:
-            data = kdi.yukle()
+            data = mod.yukle()
         except Exception as e:
             messagebox.showerror("Hata", f"Liste okunamadı:\n{e}",
                                   parent=self.root)
             return
-        mevcut = {kdi.normalize(x) for x in data["ilac_adlari"]}
+        mevcut = {mod.normalize(x) for x in data["ilac_adlari"]}
         eklenenler = []
         for iid in iidler:
             s = self.satir_indeks.get(str(iid)) or {}
             ad = (s.get("ilac") or "").strip()
-            if ad and kdi.normalize(ad) not in mevcut:
+            if ad and mod.normalize(ad) not in mevcut:
                 data["ilac_adlari"].append(ad)
-                mevcut.add(kdi.normalize(ad))
+                mevcut.add(mod.normalize(ad))
                 eklenenler.append(ad)
         if not eklenenler:
             messagebox.showinfo(
-                "Kontrolü Gereksiz İlaç",
+                etiket,
                 "Seçili ilaç(lar) zaten listede ya da ad bilgisi yok.",
                 parent=self.root)
             return
-        kdi.kaydet(data)
-        self._kontrol_disi_setler = kdi.setler()
+        mod.kaydet(data)
+        if kademe == 2:
+            self._kontrol_disi2_setler = mod.setler()
+            filtre_acik = self.kontrol_disi2_filtre_aktif.get()
+        else:
+            self._kontrol_disi_setler = mod.setler()
+            filtre_acik = self.kontrol_disi_filtre_aktif.get()
         # Filtre açıksa eklenen ilaçlar anında gizlensin
-        if self.kontrol_disi_filtre_aktif.get():
+        if filtre_acik:
             self._tabloyu_yenile()
             self._sayaclari_guncelle()
         self._durum_yaz(
-            f"🚫 {len(eklenenler)} ilaç kontrolü gereksiz listesine eklendi")
+            f"🚫 {len(eklenenler)} ilaç {etiket.lower()} listesine eklendi")
         messagebox.showinfo(
-            "Kontrolü Gereksiz İlaç",
+            etiket,
             "Listeye eklendi:\n• " + "\n• ".join(eklenenler),
             parent=self.root)
 
-    def _kontrol_disi_ilac_penceresi_ac(self):
+    def _kontrol_disi_ilac_penceresi_ac(self, kademe: int = 1):
         """'⚙ İlaçlar' butonu — kontrolü gereksiz ilaç listesini düzenleme
-        penceresi. 3 sütun: İlaç Adı (tam), ATC Kodu (önek), Etken (tam)."""
+        penceresi. 3 sütun: İlaç Adı (tam), ATC Kodu (önek), Etken (tam).
+
+        kademe=2 → 2. KADEME listesi (raporlu+mesajlı ama kontrolü gereksiz)."""
+        mod = kdi2 if kademe == 2 else kdi
         try:
-            data = kdi.yukle()
+            data = mod.yukle()
         except Exception as e:
             messagebox.showerror("Hata", f"Liste okunamadı:\n{e}",
                                   parent=self.root)
             return
 
         win = tk.Toplevel(self.root)
-        win.title("🚫 Kontrolü Gereksiz İlaçlar")
+        win.title("🚫² Kontrolü Gereksiz 2. Kademe İlaçlar" if kademe == 2
+                  else "🚫 Kontrolü Gereksiz İlaçlar")
         win.geometry("780x470")
         win.transient(self.root)
         try:
@@ -12146,12 +12302,21 @@ class AylikReceteSorguGUI:
         except Exception:
             pass
 
+        if kademe == 2:
+            aciklama = ("2. KADEME: raporlu VE mesajlı olmakla birlikte "
+                        "kontrolü gereksiz ilaçlar. '🚫² 2. kademe gizle' "
+                        "kutusu işaretliyken bu ilaçların satırları SADECE "
+                        "hem raporlu hem mesajlı ise gizlenir.\n"
+                        "İlaç adı ve etken TAM eşleşir; ATC kodu ÖNEK eşleşir "
+                        "(ör. 'A11' → tüm A11* satırları).")
+        else:
+            aciklama = ("Bu listelerdeki ilaçlar, '🚫 Kontrolü gereksiz "
+                        "ilaçları gizle' kutusu işaretliyken tablodan "
+                        "gizlenir.\n"
+                        "İlaç adı ve etken TAM eşleşir; ATC kodu ÖNEK eşleşir "
+                        "(ör. 'A11' → tüm A11* satırları gizlenir).")
         tk.Label(
-            win,
-            text=("Bu listelerdeki ilaçlar, '🚫 Kontrolü gereksiz ilaçları "
-                  "gizle' kutusu işaretliyken tablodan gizlenir.\n"
-                  "İlaç adı ve etken TAM eşleşir; ATC kodu ÖNEK eşleşir "
-                  "(ör. 'A11' → tüm A11* satırları gizlenir)."),
+            win, text=aciklama,
             font=("Segoe UI", 9), fg="#555", justify="left"
         ).pack(side="top", anchor="w", padx=12, pady=(10, 4))
 
@@ -12187,7 +12352,7 @@ class AylikReceteSorguGUI:
             ent.pack(side="left", fill="x", expand=True)
 
             def _ekle(_ev=None, l=lb, e=ent):
-                v = kdi.normalize(e.get())
+                v = mod.normalize(e.get())
                 if v and v not in l.get(0, "end"):
                     l.insert("end", v)
                 e.delete(0, "end")
@@ -12208,12 +12373,19 @@ class AylikReceteSorguGUI:
 
         def _kaydet_kapat():
             yeni = {a: list(lb.get(0, "end")) for a, lb in listboxlar.items()}
-            kdi.kaydet(yeni)
-            self._kontrol_disi_setler = kdi.setler()
-            if self.kontrol_disi_filtre_aktif.get():
+            mod.kaydet(yeni)
+            if kademe == 2:
+                self._kontrol_disi2_setler = mod.setler()
+                filtre_acik = self.kontrol_disi2_filtre_aktif.get()
+                mesaj = "🚫² Kontrolü gereksiz 2. kademe listesi kaydedildi"
+            else:
+                self._kontrol_disi_setler = mod.setler()
+                filtre_acik = self.kontrol_disi_filtre_aktif.get()
+                mesaj = "🚫 Kontrolü gereksiz ilaç listesi kaydedildi"
+            if filtre_acik:
                 self._tabloyu_yenile()
                 self._sayaclari_guncelle()
-            self._durum_yaz("🚫 Kontrolü gereksiz ilaç listesi kaydedildi")
+            self._durum_yaz(mesaj)
             win.destroy()
 
         alt = tk.Frame(win)
@@ -13192,13 +13364,36 @@ class AylikReceteSorguGUI:
                             command=lambda r=renk: self._secilenleri_boya_uygula(
                                 list(self.tv.selection()), r))
 
-        # 🚫 Kontrolü gereksiz ilaç olarak kaydet (seçili satırların ilaç adı)
+        # 🚫 Kontrolü gereksiz ilaç olarak kaydet — İKİ seçim kaynağı:
+        #   • Vurgulanan: sağ tıklanan tekil satır ya da Ctrl/Shift ile
+        #     vurgulanmış çoklu satırlar (tv.selection()).
+        #   • ☑ İşaretli: checkbox ile işaretlenmiş satırlar (secili_iidler) —
+        #     doluysa AYRI menü maddesi çıkar (topluca etiketleme,
+        #     kullanıcı isteği 2026-07-07).
         m.add_separator()
         _sec_kdi = list(self.tv.selection())
+        _isaretli_kdi = list(getattr(self, "secili_iidler", set()) or [])
         m.add_command(
             label=f"🚫 Kontrolü Gereksiz İlaç olarak kaydet ({len(_sec_kdi)})",
             command=lambda lst=_sec_kdi: self._kontrol_disi_ilac_ekle_secili(lst),
             state=("normal" if _sec_kdi else "disabled"))
+        m.add_command(
+            label=("🚫² Kontrolü Gereksiz 2. Kademe İlaç olarak kaydet "
+                   f"({len(_sec_kdi)})"),
+            command=lambda lst=_sec_kdi: self._kontrol_disi_ilac_ekle_secili(
+                lst, kademe=2),
+            state=("normal" if _sec_kdi else "disabled"))
+        if _isaretli_kdi:
+            m.add_command(
+                label=("🚫 ☑ İşaretlileri Kontrolü Gereksiz İlaç kaydet "
+                       f"({len(_isaretli_kdi)})"),
+                command=lambda lst=_isaretli_kdi:
+                    self._kontrol_disi_ilac_ekle_secili(lst))
+            m.add_command(
+                label=("🚫² ☑ İşaretlileri 2. Kademe İlaç kaydet "
+                       f"({len(_isaretli_kdi)})"),
+                command=lambda lst=_isaretli_kdi:
+                    self._kontrol_disi_ilac_ekle_secili(lst, kademe=2))
 
         # ── Manuel Teyit alt menüsü ──
         m.add_separator()
