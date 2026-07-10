@@ -181,6 +181,13 @@ class AnaMenu:
             "renk": "#00838F",  # Camgöbeği koyu
             "hover": "#006064"
         },
+        "erecete_cozucu": {
+            "baslik": "E-Reçete Çözücü",
+            "icon": "🔍",
+            "aciklama": "Okunmaz e-reçete/takip no'yu Medula'da kombinasyonlarla dener",
+            "renk": "#5E35B1",  # Mor
+            "hover": "#4527A0"
+        },
         "fatih_siparisci": {
             "baslik": "Fatih Siparişçi",
             "icon": "🛍️",
@@ -554,7 +561,7 @@ class AnaMenu:
             "mf_hizli", "siparis_verme", "fatih_siparisci", "hibrit_siparisci",
             "min_stok_analiz", "stok_takip", "stok_maliyet_analiz",
             "prim_raporlama", "satis_raporlari", "kdv_analiz", "hasta_takip",
-            "hasta_sure", "yedek_temizlik", "kullanici_yonetimi"
+            "hasta_sure", "erecete_cozucu", "yedek_temizlik", "kullanici_yonetimi"
         ]
 
         # Grid ayarları: uniform parametresi ile tum hucreler ayni boyut.
@@ -747,6 +754,8 @@ class AnaMenu:
             self.hasta_takip_ac()
         elif modul_key == "hasta_sure":
             self.hasta_sure_ac()
+        elif modul_key == "erecete_cozucu":
+            self.erecete_cozucu_ac()
         elif modul_key == "yedek_temizlik":
             self.yedek_temizlik_ac()
         elif modul_key == "kullanici_yonetimi":
@@ -1240,6 +1249,32 @@ class AnaMenu:
         except Exception as e:
             logger.error(f"Stok Takip açma hatası: {e}", exc_info=True)
             messagebox.showerror("Hata", f"Stok Takip modülü açılamadı:\n{e}")
+            if pencere is not None:
+                try: pencere.destroy()
+                except Exception: pass
+
+    def erecete_cozucu_ac(self):
+        """E-Reçete No Çözücü modülünü aç (Medula kombinasyon deneme)."""
+        pencere = None
+        try:
+            pencere = self._modul_pencere_al("erecete_cozucu")
+            if pencere is None:
+                return
+            try:
+                pencere.geometry("880x720")
+            except Exception:
+                pass
+
+            self._yeniden_yukle(
+                "erecete_karisma_tablosu", "erecete_cozucu_motor",
+                "erecete_cozucu_medula", "erecete_cozucu_gui")
+            from erecete_cozucu_gui import EReceteCozucuGUI
+
+            EReceteCozucuGUI(pencere)
+
+        except Exception as e:
+            logger.error(f"E-Reçete Çözücü açma hatası: {e}", exc_info=True)
+            messagebox.showerror("Hata", f"E-Reçete Çözücü modülü açılamadı:\n{e}")
             if pencere is not None:
                 try: pencere.destroy()
                 except Exception: pass

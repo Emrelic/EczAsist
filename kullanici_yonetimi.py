@@ -45,6 +45,7 @@ class KullaniciYonetimi:
         "kdv_analiz": "KDV Analiz",
         "hasta_takip": "Hasta Takip & WhatsApp",
         "hasta_sure": "Hasta Süre Sayacı",
+        "erecete_cozucu": "E-Reçete No Çözücü",
         "fatih_siparisci": "Fatih Siparişçi (Müstakil)",
         "hibrit_siparisci": "Hibrit Siparişçi",
         "yedek_temizlik": "Yedek Klasörü Boşaltma",
