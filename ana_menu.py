@@ -181,6 +181,13 @@ class AnaMenu:
             "renk": "#00838F",  # Camgöbeği koyu
             "hover": "#006064"
         },
+        "erecete_cozucu": {
+            "baslik": "E-Reçete Çözücü",
+            "icon": "🔍",
+            "aciklama": "Okunmaz e-reçete/takip no'yu Medula'da kombinasyonlarla dener",
+            "renk": "#5E35B1",  # Mor
+            "hover": "#4527A0"
+        },
         "fatih_siparisci": {
             "baslik": "Fatih Siparişçi",
             "icon": "🛍️",
@@ -554,7 +561,7 @@ class AnaMenu:
             "mf_hizli", "siparis_verme", "fatih_siparisci", "hibrit_siparisci",
             "min_stok_analiz", "stok_takip", "stok_maliyet_analiz",
             "prim_raporlama", "satis_raporlari", "kdv_analiz", "hasta_takip",
-            "hasta_sure", "yedek_temizlik", "kullanici_yonetimi"
+            "hasta_sure", "erecete_cozucu", "yedek_temizlik", "kullanici_yonetimi"
         ]
 
         # Grid ayarları: uniform parametresi ile tum hucreler ayni boyut.
@@ -747,6 +754,8 @@ class AnaMenu:
             self.hasta_takip_ac()
         elif modul_key == "hasta_sure":
             self.hasta_sure_ac()
+        elif modul_key == "erecete_cozucu":
+            self.erecete_cozucu_ac()
         elif modul_key == "yedek_temizlik":
             self.yedek_temizlik_ac()
         elif modul_key == "kullanici_yonetimi":
@@ -1055,34 +1064,64 @@ class AnaMenu:
         self.root.after(1000, _poll)
 
     def hibrit_siparisci_ac(self):
-        """Hibrit Siparişçi — bizim sipariş listesi + Fatih'in depo motoru"""
-        hibrit_root = None
+        """Hibrit Siparişçi v2 — uç uca akış:
+
+        1. Sipariş Ver modülü: Botanik EOS verisi → tablo → KESİN LİSTE
+        2. Liste bitince Fatih Siparişçi motoru listeyi İLK GİRDİ olarak
+           devralır (Sipariş Ver'deki '🔀 DEPOLARA GÖNDER' butonu ya da
+           bu buton).
+
+        Bu buton akıllıdır: aktif çalışmada kesin sipariş VARSA doğrudan
+        Fatih motorunu (ayrı süreç) başlatır; YOKSA önce Sipariş Ver
+        modülünü açar (akışın 1. adımı).
+        """
         try:
-            hibrit_root = self._modul_pencere_al(
-                "hibrit_siparisci",
-                title="Hibrit Siparişçi (Sipariş Listesi + Fatih Depo Motoru)",
-                zoomed=True,
-            )
-            if hibrit_root is None:
+            siparis_var = False
+            calisma_ad = None
+            try:
+                from siparis_db import get_siparis_db
+                db = get_siparis_db()
+                calisma = db.aktif_calisma_getir()
+                if calisma:
+                    calisma_ad = calisma.get("ad")
+                    siparisler = db.calisma_siparisleri_getir(calisma["id"]) or []
+                    siparis_var = any(int(float(s.get("miktar") or 0)) > 0
+                                      for s in siparisler)
+            except Exception as e:
+                logger.warning(f"Hibrit: sipariş listesi kontrol edilemedi: {e}")
+
+            if not siparis_var:
+                messagebox.showinfo(
+                    "🔀 Hibrit Siparişçi — Adım 1/2",
+                    "Aktif çalışmada kesin sipariş listesi yok.\n\n"
+                    "Hibrit akış:\n"
+                    "  1) Sipariş Ver modülünde tabloyu inceleyip\n"
+                    "      kesin sipariş listesini oluşturun\n"
+                    "  2) '🔀 DEPOLARA GÖNDER (Fatih Motoru)' butonuyla\n"
+                    "      listeyi Fatih motoruna devredin\n\n"
+                    "Sipariş Ver modülü şimdi açılıyor...")
+                self.siparis_verme_ac()
+                return
+
+            onay = messagebox.askyesno(
+                "🔀 Hibrit Siparişçi — Adım 2/2",
+                f"Aktif çalışma: {calisma_ad}\n\n"
+                "Kesin sipariş listesi hazır — Fatih motoru bu listeyle\n"
+                "başlatılsın mı?\n\n"
+                "(Listeyi önce gözden geçirmek istersen 'Hayır' de,\n"
+                "Sipariş Ver modülünden devam et.)")
+            if not onay:
+                self.siparis_verme_ac()
                 return
 
             self._yeniden_yukle("hibrit_siparisci_gui")
-            from hibrit_siparisci_gui import HibritSiparisciGUI
-
-            HibritSiparisciGUI(hibrit_root)
-
-        except ImportError as e:
-            logger.error(f"Hibrit Siparişçi import hatası: {e}")
-            messagebox.showerror("Hata", f"Hibrit Siparişçi modülü yüklenemedi:\n{e}")
-            if hibrit_root is not None:
-                try: hibrit_root.destroy()
-                except Exception: pass
+            from hibrit_siparisci_gui import hibrit_baslat_subprocess
+            proc = hibrit_baslat_subprocess(parent=self.root)
+            if proc is not None:
+                self._ana_pencereyi_subprocess_icin_gizle(proc)
         except Exception as e:
-            logger.error(f"Hibrit Siparişçi açma hatası: {e}")
-            messagebox.showerror("Hata", f"Hibrit Siparişçi açılamadı:\n{e}")
-            if hibrit_root is not None:
-                try: hibrit_root.destroy()
-                except Exception: pass
+            logger.error(f"Hibrit Siparişçi başlatma hatası: {e}")
+            messagebox.showerror("Hata", f"Hibrit Siparişçi başlatılamadı:\n{e}")
 
     def min_stok_analiz_ac(self):
         """Minimum Stok Analizi modülünü aç"""
@@ -1210,6 +1249,32 @@ class AnaMenu:
         except Exception as e:
             logger.error(f"Stok Takip açma hatası: {e}", exc_info=True)
             messagebox.showerror("Hata", f"Stok Takip modülü açılamadı:\n{e}")
+            if pencere is not None:
+                try: pencere.destroy()
+                except Exception: pass
+
+    def erecete_cozucu_ac(self):
+        """E-Reçete No Çözücü modülünü aç (Medula kombinasyon deneme)."""
+        pencere = None
+        try:
+            pencere = self._modul_pencere_al("erecete_cozucu")
+            if pencere is None:
+                return
+            try:
+                pencere.geometry("880x720")
+            except Exception:
+                pass
+
+            self._yeniden_yukle(
+                "erecete_karisma_tablosu", "erecete_cozucu_motor",
+                "erecete_cozucu_medula", "erecete_cozucu_gui")
+            from erecete_cozucu_gui import EReceteCozucuGUI
+
+            EReceteCozucuGUI(pencere)
+
+        except Exception as e:
+            logger.error(f"E-Reçete Çözücü açma hatası: {e}", exc_info=True)
+            messagebox.showerror("Hata", f"E-Reçete Çözücü modülü açılamadı:\n{e}")
             if pencere is not None:
                 try: pencere.destroy()
                 except Exception: pass

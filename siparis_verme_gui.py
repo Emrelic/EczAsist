@@ -872,6 +872,14 @@ class SiparisVermeGUI:
         )
         self.depo_kapat_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
+        # 🔀 Hibrit devir-teslim: kesin liste bitti → Fatih motoru devralır
+        self.hibrit_gonder_btn = tk.Button(
+            header, text="🔀 DEPOLARA GÖNDER (Fatih Motoru)",
+            command=self._hibrit_motora_gonder,
+            bg='#00897B', fg='white', font=('Arial', 9, 'bold'), relief='raised', padx=10
+        )
+        self.hibrit_gonder_btn.pack(side=tk.LEFT, padx=6, pady=2)
+
         # Durum etiketi
         self.depo_durum_label = tk.Label(header, text="", bg=self.R_SUCCESS, fg='yellow',
                                           font=('Arial', 9))
@@ -5178,6 +5186,47 @@ class SiparisVermeGUI:
                  bg='#388E3C', fg='white', font=('Arial', 10, 'bold'), width=20).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Kapat", command=dialog.destroy,
                  font=('Arial', 10), width=10).pack(side=tk.RIGHT, padx=5)
+
+    def _hibrit_motora_gonder(self):
+        """Kesin sipariş listesi BİTTİ → Fatih Siparişçi motorunu başlat.
+
+        Hibrit akışın devir-teslim noktası: Sipariş Ver'in son ürünü olan
+        kesin liste (siparis_db.kesin_siparisler, aktif çalışma) Fatih
+        motorunun İLK GİRDİSİ olur. Motor ayrı süreçte açılır; liste onun
+        arayüzünde 'Botanik sipariş listesiymiş gibi' taranır (depo kıyası,
+        en kârlı depo, sepet). Botanik'e hiçbir şey yazılmaz.
+        """
+        if not self.kesin_siparis_listesi:
+            messagebox.showwarning(
+                "Hibrit Siparişçi",
+                "Kesin sipariş listesi boş!\n\n"
+                "Önce tablodan ürünleri kesin listeye ekleyin.")
+            return
+
+        toplam_kalem = len(self.kesin_siparis_listesi)
+        toplam_kutu = sum(int(s.get('Miktar') or 0) for s in self.kesin_siparis_listesi)
+        onay = messagebox.askyesno(
+            "🔀 Depolara Gönder — Fatih Motoru",
+            f"Kesin sipariş listesi Fatih Siparişçi motoruna devredilecek:\n\n"
+            f"   • {toplam_kalem} kalem / {toplam_kutu} kutu\n\n"
+            "Motor ayrı pencerede açılır; ⚡ SİPARİŞ ile depolar taranır ve\n"
+            "en kârlı depo seçilir. Botanik'e hiçbir şey yazılmaz.\n\n"
+            "⚠ Fatih Siparişçi programı açıksa önce KAPATIN\n"
+            "(aynı depo oturumlarını paylaşırlar).\n\n"
+            "Devam edilsin mi?")
+        if not onay:
+            return
+
+        try:
+            from hibrit_siparisci_gui import hibrit_baslat_subprocess
+            proc = hibrit_baslat_subprocess(parent=self.parent)
+            if proc is not None:
+                messagebox.showinfo(
+                    "Hibrit Siparişçi",
+                    "Fatih motoru başlatıldı — pencere birkaç saniye içinde açılır.\n"
+                    "Liste otomatik yüklenecek.")
+        except Exception as e:
+            messagebox.showerror("Hibrit Siparişçi", f"Başlatılamadı:\n{e}")
 
     def _kesin_listeyi_excel_aktar(self):
         """Kesin listeyi Excel'e aktar"""
