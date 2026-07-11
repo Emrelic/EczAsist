@@ -46,6 +46,167 @@ HATA = "HATA"
 _BULUNAMADI_IBARE = "bulunamad"   # "bulunamadı" / "bulunamadi"
 
 
+def _medula_exe_baslat():
+    """medula_settings'teki exe yolundan BotanikMedula'yı başlat. Başarı: bool."""
+    import os
+    import subprocess
+    try:
+        from medula_settings import get_medula_settings
+        exe = get_medula_settings().get("medula_exe_path", "")
+    except Exception:
+        exe = r"C:\BotanikEczane\BotanikMedula.exe"
+    if not exe or not os.path.exists(exe):
+        logger.warning(f"Medula exe yolu geçersiz: {exe!r}")
+        return False
+    try:
+        subprocess.Popen([exe])
+        logger.info(f"Medula başlatıldı: {exe}")
+        return True
+    except Exception as e:
+        logger.error(f"Medula başlatılamadı: {e}")
+        return False
+
+
+def _medula_kapat():
+    """SADECE BotanikMedula.exe'yi kapat (BotanikEczane.exe'ye dokunma)."""
+    import subprocess
+    try:
+        subprocess.run(["taskkill", "/F", "/IM", "BotanikMedula.exe"],
+                       capture_output=True)
+        logger.info("BotanikMedula.exe kapatıldı (yeniden açmak için).")
+    except Exception as e:
+        logger.debug(f"BotanikMedula kapatma: {e}")
+
+
+def _hwnd_bekle(sure_sn: float):
+    """Medula penceresi görünene kadar bekle (poll). hwnd veya None."""
+    import medula_html_dom as mhd
+    son = time.monotonic() + sure_sn
+    while time.monotonic() < son:
+        h = mhd._medula_hwnd()
+        if h:
+            return h
+        time.sleep(0.5)
+    return None
+
+
+def medula_hazirla(cb=None, max_deneme: int = 2):
+    """Medula'yı e-Reçete Sorgu ekranına hazır hale getir (best-effort).
+
+    Adımlar (kullanıcı isteği): pencere yoksa AÇ → oturum düşmüşse GİRİŞ'e bas
+    (şifre YAZILMAZ, sadece butona basılır; wrapper kayıtlı kimlikle girer) →
+    e-Reçete Sorgu ekranını AÇ. Hâlâ hazır değilse (hata/takılma) BotanikMedula
+    kapatılıp yeniden açılır. Şifre girişi YAPILMAZ — giriş ekranı manuel şifre
+    isterse kullanıcıya bırakılır.
+
+    cb(mesaj): ilerleme bildirimi. Dönüş: (hazir: bool, mesaj: str).
+    """
+    def _log(m):
+        if cb:
+            try:
+                cb(m)
+            except Exception:
+                pass
+
+    try:
+        import medula_html_dom as mhd
+    except Exception as e:
+        return False, f"medula_html_dom yok: {e}"
+
+    for deneme in range(1, max_deneme + 1):
+        # 1) Pencere var mı? Yoksa başlat.
+        hwnd = mhd._medula_hwnd()
+        if not hwnd:
+            _log("Medula açık değil — başlatılıyor…")
+            if not _medula_exe_baslat():
+                return False, ("Medula başlatılamadı — exe yolu ayarlı mı? "
+                               "(Kurulum sihirbazı)")
+            hwnd = _hwnd_bekle(45)
+            if not hwnd:
+                return False, "Medula açıldı ama pencere bulunamadı (45sn)."
+            time.sleep(2)
+
+        # 2) Zaten sorgu ekranında mı?
+        uygun, _m = sorgu_ekraninda_mi()
+        if uygun:
+            return True, "Medula hazır."
+
+        # 3) Oturum düşmüş olabilir → Giriş butonuna bas (şifre yazmadan)
+        _log("Giriş kontrol ediliyor…")
+        try:
+            mhd.giris_tikla(hwnd)     # login ekranı değilse no-op
+        except Exception:
+            pass
+        time.sleep(6)
+
+        # 4) e-Reçete Sorgu menüsünü aç
+        _log("e-Reçete Sorgu açılıyor…")
+        try:
+            mhd.erecete_sorgu_tikla(hwnd)
+        except Exception:
+            pass
+        time.sleep(3)
+
+        uygun, _m = sorgu_ekraninda_mi()
+        if uygun:
+            return True, "Medula hazır."
+
+        # 5) Hâlâ değil → kapat-yeniden aç (son deneme hariç)
+        if deneme < max_deneme:
+            _log("Hazırlanamadı — Medula kapatılıp yeniden açılıyor…")
+            _medula_kapat()
+            time.sleep(3)
+
+    return False, ("Medula e-Reçete Sorgu ekranı hazırlanamadı. Giriş ekranı "
+                   "şifre istiyorsa elle giriş yapın, sonra tekrar deneyin.")
+
+
+def giris_alani_konumu(hwnd=None):
+    """Medula E-Reçete Sorgu ekranındaki TC + E-Reçete textbox bölgesinin
+    EKRAN dikdörtgenini döndürür: (x, y, genislik, yukseklik) piksel.
+
+    getBoundingClientRect (viewport-göreli) + IE_Server client ekran orijini.
+    Bulunamazsa None (Medula açık değil / farklı sayfa).
+    """
+    try:
+        import medula_html_dom as mhd
+        import win32gui
+    except Exception:
+        return None
+    if hwnd is None:
+        hwnd = mhd._medula_hwnd()
+    if not hwnd:
+        return None
+    ie = mhd._ie_server_hwnd(hwnd)
+    if not ie:
+        return None
+    doc = mhd.html_doc_bul(hwnd)
+    if doc is None:
+        return None
+    try:
+        tc = doc.getElementById(ID_TC)
+        er = doc.getElementById(ID_ERECETE_TEXT)
+        if tc is None:
+            return None
+
+        def _rect(el):
+            r = el.getBoundingClientRect()
+            return (float(r.left), float(r.top), float(r.right), float(r.bottom))
+
+        l, t, rr, b = _rect(tc)
+        if er is not None:
+            el2, et2, er2, eb2 = _rect(er)
+            l = min(l, el2)
+            t = min(t, et2)
+            rr = max(rr, er2)
+            b = max(b, eb2)
+        ox, oy = win32gui.ClientToScreen(ie, (0, 0))
+        return (int(ox + l), int(oy + t), int(rr - l), int(b - t))
+    except Exception as e:
+        logger.debug(f"giris_alani_konumu hata: {e}")
+        return None
+
+
 def prefix_tablosu_oku(hwnd=None):
     """Medula E-Reçete Sorgu ekranındaki prefix tablolarını okur.
 
@@ -88,6 +249,50 @@ def prefix_tablosu_oku(hwnd=None):
         if p and p not in sonuc["takip"]:
             sonuc["takip"].append(p)
     return sonuc
+
+
+def canli_alan_yaz(mode, numara=None, tc=None, hwnd=None):
+    """Canlı aktarım: TC ve/veya numarayı ilgili Medula alanlarına YAZ
+    (tıklamadan, hızlı, best-effort). mode: 'erecete'|'takip'.
+    numara/tc None ise o alana dokunulmaz. Dönüş: yazıldı mı (bool)."""
+    try:
+        import medula_html_dom as mhd
+    except Exception:
+        return False
+    if hwnd is None:
+        hwnd = mhd._medula_hwnd()
+    if not hwnd:
+        return False
+    doc = mhd.html_doc_bul(hwnd)
+    if doc is None:
+        return False
+    yazildi = False
+    if tc is not None:
+        if _alan_yaz(doc, ID_TC, tc):
+            yazildi = True
+    if numara is not None:
+        tid = ID_TAKIP_TEXT if mode == "takip" else ID_ERECETE_TEXT
+        if _alan_yaz(doc, tid, numara):
+            yazildi = True
+    return yazildi
+
+
+def sorgula_gonder(mode, hwnd=None):
+    """İlgili alanın Sorgula butonuna bas (tek sorgu — sonuç beklemez).
+    mode: 'erecete'|'takip'. Dönüş: tıklandı mı (bool)."""
+    try:
+        import medula_html_dom as mhd
+    except Exception:
+        return False
+    if hwnd is None:
+        hwnd = mhd._medula_hwnd()
+    if not hwnd:
+        return False
+    doc = mhd.html_doc_bul(hwnd)
+    if doc is None:
+        return False
+    sid = ID_TAKIP_SORGULA if mode == "takip" else ID_ERECETE_SORGULA
+    return _sorgula_tikla(doc, sid)
 
 
 def numara_tipi_belirle(numara: str) -> str:

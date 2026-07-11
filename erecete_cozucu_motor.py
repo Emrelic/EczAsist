@@ -173,54 +173,49 @@ class CozucuMotor:
             for chars in itertools.product(cs, repeat=M):
                 yield self._yerlestir(s, gap_combo, chars)
 
-    # ── Otomatik mod (yakınlık-öncelikli karışma denemesi) ────────────
-    # Kullanıcı tüm karakterleri "kesin" gibi girer; sistem önce numarayı
-    # olduğu gibi dener, sonra EN ÇOK KARIŞAN karakterleri teker teker
-    # (önce 1 karakter değişimi, sonra 2) karışma tablosuna göre dener.
-    def otomatik_bilgi(self, numara: str, max_degisim: int = 2):
-        """(uzunluk, ~toplam_deneme) tahmini döndürür."""
+    # ── Otomatik mod (DERECE-öncelikli karışma denemesi) ──────────────
+    # Kullanıcı numarayı kesin gibi girer; sistem önce numarayı olduğu gibi
+    # dener, sonra karışma ÇİFTLERİNİ rank sırasına göre (önce en sık) tek tek,
+    # ardından ikili değiştirerek dener. `sabit_prefix` (varsayılan 3) kadar
+    # ilk karakter DEĞİŞMEZ — yalnız son haneler (kalan 4) varyasyona girer.
+    def _pos_alternatifleri(self, s: str, sabit_prefix: int):
+        """Uygun (sabit_prefix sonrası) pozisyonlar için (pos, partner, rank)
+        listesi — rank artan sırada."""
+        alt = []
+        for i in range(len(s)):
+            if i < sabit_prefix:
+                continue
+            for partner, rank in self.tablo.alternatifler_sirali(s[i]):
+                alt.append((i, partner, rank))
+        alt.sort(key=lambda t: t[2])
+        return alt
+
+    def otomatik_bilgi(self, numara: str, sabit_prefix: int = 3,
+                       max_degisim: int = 2):
+        """(uzunluk, toplam_deneme) döndürür."""
         s = self._norm_yazilan(numara)
         n = len(s)
         if n == 0:
             return 0, 0
-        alts = self._otomatik_alternatifler(s)
-        toplam = 1  # orijinal
-        from math import comb
-        for d in range(1, max_degisim + 1):
-            # d pozisyon seç, her birinin alternatif sayısı çarpımı — kaba üst sınır
-            import itertools as _it
-            for pozlar in _it.combinations(range(n), d):
-                carp = 1
-                gecerli = True
-                for p in pozlar:
-                    if not alts[p]:
-                        gecerli = False
-                        break
-                    carp *= len(alts[p])
-                if gecerli:
-                    toplam += carp
+        tekli = self._pos_alternatifleri(s, sabit_prefix)
+        toplam = 1 + len(tekli)              # orijinal + tekli değişimler
+        if max_degisim >= 2:
+            from collections import Counter
+            pos_say = Counter(i for (i, _p, _r) in tekli)
+            tum_cift = len(tekli) * (len(tekli) - 1) // 2
+            ayni_poz = sum(c * (c - 1) // 2 for c in pos_say.values())
+            toplam += (tum_cift - ayni_poz)  # farklı pozisyonlu ikili değişimler
         return n, toplam
 
-    def _otomatik_alternatifler(self, s: str):
-        """Her pozisyon için (kendisi hariç) karışma alternatifleri."""
-        cs = self.karakter_seti
-        alts = []
-        for ch in s:
-            g = [c for c in self.tablo.genislet(ch) if c != ch and c in cs]
-            alts.append(g)
-        return alts
-
-    def otomatik_kombinasyonlar(self, numara: str, max_degisim: int = 2,
-                                kap: int = 3000):
-        """Yakınlık-öncelikli üreteç: önce orijinal, sonra 1-karakter karışma
-        değişimleri (en olası), sonra 2-karakter. Tekilleştirilir, `kap` ile
-        sınırlanır."""
-        import itertools as _it
+    def otomatik_kombinasyonlar(self, numara: str, sabit_prefix: int = 3,
+                                max_degisim: int = 2, kap: int = 4000):
+        """Derece-öncelikli üreteç: orijinal → tekli değişimler (çift rank'ine
+        göre) → ikili değişimler (rank toplamına göre). İlk `sabit_prefix`
+        karakter sabit; yalnız sonrası varyasyona girer."""
         s = self._norm_yazilan(numara)
         n = len(s)
         if n == 0:
             return
-        alts = self._otomatik_alternatifler(s)
         gorulen = set()
 
         def _ver(x):
@@ -233,21 +228,40 @@ class CozucuMotor:
         x = _ver(s)
         if x is not None:
             yield x
-        # Mesafe 1..max_degisim
-        for d in range(1, max_degisim + 1):
-            for pozlar in _it.combinations(range(n), d):
-                secenekler = [alts[p] for p in pozlar]
-                if any(len(o) == 0 for o in secenekler):
-                    continue
-                for repl in _it.product(*secenekler):
-                    lst = list(s)
-                    for p, c in zip(pozlar, repl):
-                        lst[p] = c
-                    x = _ver("".join(lst))
-                    if x is not None:
-                        yield x
-                        if len(gorulen) >= kap:
-                            return
+
+        tekli = self._pos_alternatifleri(s, sabit_prefix)  # rank artan
+
+        # Mesafe 1 — tekli değişimler (rank sırası)
+        if max_degisim >= 1:
+            for (i, partner, _r) in tekli:
+                lst = list(s)
+                lst[i] = partner
+                x = _ver("".join(lst))
+                if x is not None:
+                    yield x
+                    if len(gorulen) >= kap:
+                        return
+
+        # Mesafe 2 — ikili değişimler (farklı pozisyon, rank toplamına göre)
+        if max_degisim >= 2:
+            ikili = []
+            for a in range(len(tekli)):
+                i1, p1, r1 = tekli[a]
+                for b in range(a + 1, len(tekli)):
+                    i2, p2, r2 = tekli[b]
+                    if i1 == i2:
+                        continue
+                    ikili.append((r1 + r2, i1, p1, i2, p2))
+            ikili.sort(key=lambda t: t[0])
+            for (_rs, i1, p1, i2, p2) in ikili:
+                lst = list(s)
+                lst[i1] = p1
+                lst[i2] = p2
+                x = _ver("".join(lst))
+                if x is not None:
+                    yield x
+                    if len(gorulen) >= kap:
+                        return
 
     def ozet_satirlari(self, pozisyonlar):
         """Her aktif pozisyon için ('P1', 'KESİN', ['2']) benzeri özet."""
