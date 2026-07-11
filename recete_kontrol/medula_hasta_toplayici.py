@@ -17,6 +17,13 @@ sorgulandıktan sonra AYNI sayfada ikinci bir TC sorgulanamaz. Bu yüzden
 rapor akışının kullandığı reçete sayfası ilaç akışı için YENİDEN
 KULLANILMAZ — `f:buttonSonraki` ile taze reçeteye geçilir.
 
+🅰️ A-YOLU ÖNCELİĞİ (kullanıcı kuralı 2026-07-11): Hastanın BU DÖNEM
+reçetesi varsa geçmişe hastanın KENDİ reçetesi üzerinden girilir:
+Reçete Sorgu menüsü → TC yaz → Sorgula → çıkan reçete satırına tıkla →
+reçete detay (İlaç/Rapor/End.Dışı butonları doğrudan doğru hastayı verir;
+reçete-kilidi sorunu ve taze-reçete/TC-yazma ihtiyacı yoktur). Reçetesi
+yoksa eski B-yolu (taze reçete + f:t18'e TC) aynen geçerlidir.
+
 Eşzamanlılık: Medula tek pencere / tek state — tüm toplama işlemleri
 modül kilidi ile serileştirilir.
 
@@ -37,6 +44,15 @@ StatusCb = Optional[Callable[[str], None]]
 _MEDULA_KILIT = threading.RLock()
 
 ID_BUTTON_SONRAKI = 'f:buttonSonraki'
+
+# ── A-YOLU: Reçete Sorgu ekranı element id'leri ─────────────────────────────
+# UIElementInspector capture'ları (2026-07-11): REÇETE SORGU / TC KİMLİK NO
+# TEXTBOXU / SORGULA BUTONU_1 / REÇETE SATIRI / REÇETE ANA SAYFA.
+ID_MENU_RECETE_SORGU  = 'form1:menuHtmlCommandExButton51'  # sol menü "Reçete Sorgu"
+ID_RECETE_SORGU_TC    = 'form1:text4'    # TC Kimlik No (maskeli input, 11 hane)
+ID_RECETE_SORGU_BUTON = 'form1:button1'  # Sorgula (type=submit)
+RECETE_SORGU_TID      = 'form1:tableEx1' # sonuç tablosu; :N:text9 = reçete no
+ID_BUTTON_ANA_SAYFA   = 'f:buttonAnaSayfa'  # reçete detaydan ana menüye çıkış
 
 
 def _bildir(msg: str, cb: StatusCb) -> None:
@@ -189,6 +205,219 @@ def _taze_receteye_gec(cb: StatusCb = None) -> bool:
         return False
 
 
+def _recete_sorgu_alan_yaz(doc, eid: str, deger: str) -> bool:
+    """Sorgu textbox'ını temizle + değeri yaz (DOM value; maskeli input için
+    fireEvent('onchange') best-effort). Reçete VERİSİ değil, arama alanı."""
+    try:
+        e = doc.getElementById(eid)
+        if e is None:
+            return False
+        try:
+            e.value = ''
+        except Exception:
+            pass
+        e.value = str(deger)
+        try:
+            e.fireEvent('onchange')
+        except Exception:
+            pass
+        return True
+    except Exception as ex:
+        logger.warning(f'_recete_sorgu_alan_yaz({eid}) hata: {ex}')
+        return False
+
+
+def recete_sorgu_ile_hasta_recetesi_ac(tc: str, cb: StatusCb = None,
+                                       deneme_sayisi: int = 2) -> str:
+    """A-YOLU (kullanıcı akışı 2026-07-11): hastanın BU DÖNEM reçetesini aç.
+
+    Sol menü Reçete Sorgu → TC (form1:text4) → Sorgula (form1:button1) →
+    sonuç tablosunun (form1:tableEx1) İLK satırına tıkla → reçete detay
+    (f:t18 hastanın TC'siyle dolu gelir). Açılan reçete hedef hastaya AİT
+    olduğundan İlaç/Rapor/End.Dışı butonları doğrudan doğru hastayı verir —
+    reçete-kilidi sorunu ve taze-reçete/TC-yazma ihtiyacı yoktur.
+
+    Sistem düşmüşse (login.jsp / kapalı) önce oturum kurtarılır
+    (kullanıcı kuralı: "önce düşmüş olma meselesi çözülür").
+
+    Returns:
+        'acildi'     — hastanın kendi reçetesi açıldı (reçete detay ekranı)
+        'recete_yok' — sorgu sonuç vermedi (bu dönem reçete yok) → B-yolu
+        'hata'       — navigasyon başarısız → B-yolu denenebilir
+    """
+    from recete_kontrol.medula_rapor_tarayici import (
+        MedulaDurum, _medula_durum_tespit, medula_baslat_ve_giris,
+        _medulaya_3_kez_giris_dene, _medula_hwnd_bul, _pencereyi_one_getir,
+        _html_doc, _html_dom_hazir_bekle, _bekle, ID_TC_INPUT,
+        ID_BUTTON_GERI_DON, _recete_detay_sayfasinda_mi,
+        _elem_tikla as _rt_elem_tikla)
+    from recete_kontrol.medula_ilac_gecmisi import _elem_tikla, _val
+
+    for deneme in range(1, max(1, deneme_sayisi) + 1):
+        if deneme > 1:
+            _bildir(f'Reçete Sorgu A-yolu — deneme {deneme}/{deneme_sayisi}',
+                    cb)
+            _bekle(2.0)
+
+        # ── 0) Sistem düşmüşse ÖNCE kurtar (kapalı/login/oturum düşmüş) ──
+        hwnd = _medula_hwnd_bul()
+        if hwnd:
+            try:
+                _pencereyi_one_getir(hwnd, cb=cb)
+            except Exception:
+                pass
+        durum = _medula_durum_tespit(cb=cb)
+        if durum in (MedulaDurum.KAPALI, MedulaDurum.LOGIN_EKRANI,
+                     MedulaDurum.LOGIN_DUSTU, MedulaDurum.BILINMEYEN):
+            _bildir('Medula kapalı/login — başlatılıyor (A-yolu)', cb)
+            if not medula_baslat_ve_giris(cb=cb):
+                continue
+            durum = _medula_durum_tespit(cb=cb)
+        if durum == MedulaDurum.ANA_SAYFA_LOGIN_GEREK:
+            h = _medula_hwnd_bul()
+            if not (h and _medulaya_3_kez_giris_dene(h, cb=cb)):
+                continue
+
+        hwnd = _medula_hwnd_bul()
+        if not hwnd:
+            continue
+        doc = _html_dom_hazir_bekle(hwnd, sure_sn=15.0, cb=cb) \
+            or _html_doc(hwnd)
+        if doc is None:
+            continue
+
+        # ── 1) Sol menülü sayfaya çık (reçete detay/alt ekranlarda menü yok:
+        #       Ana Sayfa butonu, olmazsa Geri Dön ile yukarı tırman) ──
+        def _menu_bul(d):
+            for mid in (ID_MENU_RECETE_SORGU, ID_MENU_RECETE_SORGU + '_MOUSE'):
+                try:
+                    e = d.getElementById(mid)
+                except Exception:
+                    e = None
+                if e is not None:
+                    return e, mid
+            return None, ID_MENU_RECETE_SORGU
+
+        menu, menu_id = _menu_bul(doc)
+        for _ in range(4):
+            if menu is not None:
+                break
+            cikti = (_elem_tikla(doc, ID_BUTTON_ANA_SAYFA, buton=True)
+                     or _elem_tikla(doc, ID_BUTTON_GERI_DON, buton=True))
+            if not cikti:
+                break
+            _bekle(1.5)
+            doc = _html_dom_hazir_bekle(hwnd, sure_sn=10.0, cb=cb) \
+                or _html_doc(hwnd)
+            if doc is None:
+                break
+            menu, menu_id = _menu_bul(doc)
+        if menu is None:
+            _bildir('A-yolu: Reçete Sorgu menüsüne ulaşılamadı', cb)
+            continue
+
+        # ── 2) Reçete Sorgu menüsü → TC alanı gelene kadar bekle ──
+        _bildir('Sol menü → Reçete Sorgu', cb)
+        if not _rt_elem_tikla(doc, menu, menu_id, cb=cb):
+            continue
+        tc_alani = None
+        for _ in range(30):
+            _bekle(0.5)
+            doc = _html_doc(hwnd)
+            try:
+                tc_alani = (doc.getElementById(ID_RECETE_SORGU_TC)
+                            if doc is not None else None)
+            except Exception:
+                tc_alani = None
+            if tc_alani is not None:
+                break
+        if tc_alani is None:
+            _bildir('A-yolu: Reçete Sorgu ekranı açılamadı '
+                    f'({ID_RECETE_SORGU_TC} yok)', cb)
+            continue
+
+        # ── 3) TC yaz + Sorgula ──
+        _bildir(f'Reçete Sorgu: TC {_tc_maskele(tc)} yazılıyor', cb)
+        if not _recete_sorgu_alan_yaz(doc, ID_RECETE_SORGU_TC, tc):
+            continue
+        if not _elem_tikla(doc, ID_RECETE_SORGU_BUTON, buton=True):
+            _bildir('A-yolu: Sorgula butonu tıklanamadı', cb)
+            continue
+
+        # ── 4) Sonuç satırı bekle (yoksa bu dönem reçete yok → B-yolu) ──
+        recete_no = None
+        for _ in range(24):   # ~12sn
+            _bekle(0.5)
+            doc = _html_doc(hwnd)
+            if doc is None:
+                continue
+            recete_no = _val(doc, f'{RECETE_SORGU_TID}:0:text9')
+            if recete_no:
+                break
+            try:
+                govde = (doc.body.innerText or '').lower()
+            except Exception:
+                govde = ''
+            if 'bulunamad' in govde:
+                break   # "kayıt bulunamadı" — beklemeyi kes
+        if not recete_no:
+            _bildir('Reçete Sorgu: hastanın bu dönem reçetesi bulunamadı '
+                    '— B-yolu (taze reçete + TC) kullanılacak', cb)
+            return 'recete_yok'
+        _bildir(f'Reçete Sorgu: reçete bulundu ({recete_no}) — '
+                'satıra tıklanıyor', cb)
+
+        # ── 5) İlk reçete satırına tıkla (HxClient TR → dispatchEvent) ──
+        tr_id = f'TR_parentof_{RECETE_SORGU_TID}:0:rowAction1'
+        js = (
+            "(function(){"
+            f"var tr=document.getElementById(\"{tr_id}\");"
+            "if(!tr){return;}"
+            "var ev;"
+            "if(document.createEvent){"
+            "ev=document.createEvent('MouseEvents');"
+            "ev.initMouseEvent('click',true,true,window,1,0,0,0,0,"
+            "false,false,false,false,0,null);"
+            "tr.dispatchEvent(ev);"
+            "}else if(document.createEventObject){"
+            "ev=document.createEventObject();"
+            "tr.fireEvent('onclick',ev);"
+            "}"
+            "})();"
+        )
+        try:
+            doc.parentWindow.execScript(js, 'JavaScript')
+        except Exception as e:
+            _bildir(f'A-yolu: satır tıklama execScript hatası: {e}', cb)
+            # fallback: rowAction span'ine katmanlı tıklama
+            _elem_tikla(doc, f'{RECETE_SORGU_TID}:0:rowAction1', buton=True)
+        _bekle(2.5)
+        _html_dom_hazir_bekle(hwnd, sure_sn=10.0, cb=cb)
+
+        # ── 6) Reçete detay doğrulaması: f:t18 görünür + TC hedef hasta ──
+        if not _recete_detay_sayfasinda_mi(hwnd, sure_sn=8.0):
+            _bildir('A-yolu: satır tıklandı ama reçete detayına geçilmedi',
+                    cb)
+            continue
+        d = _html_doc(hwnd)
+        acilan_tc = ''
+        try:
+            acilan_tc = (d.getElementById(ID_TC_INPUT).getAttribute('value')
+                         or '').strip()
+        except Exception:
+            pass
+        if acilan_tc and acilan_tc != tc:
+            _bildir(f'A-yolu UYARI: açılan reçetenin TC\'si beklenenden '
+                    f'farklı ({_tc_maskele(acilan_tc)}) — B-yolu kullanılacak',
+                    cb)
+            return 'hata'
+        _bildir(f'✓ A-yolu: hastanın reçetesi ({recete_no}) açıldı — '
+                'İlaç/Rapor butonları doğrudan kullanılabilir', cb)
+        return 'acildi'
+
+    return 'hata'
+
+
 def medula_hasta_verisi_topla(
         tc: str,
         cb: StatusCb = None,
@@ -240,16 +469,34 @@ def medula_hasta_verisi_topla(
         # Her adım kendi TAZE reçetesinde çalışır (aynı sayfada ikinci TC
         # sorgulanamaz kuralı) — f:buttonSonraki ile ilerlenir.
 
-        # ── 1) İLAÇ GEÇMİŞİ — reçete detaya gel + taze reçete + TC + İlaç ──
+        # ── 0) A-YOLU ÖNCELİĞİ (kullanıcı kuralı 2026-07-11): hastanın bu
+        # dönem reçetesi varsa Reçete Sorgu → TC → Sorgula → satır tıklama
+        # ile hastanın KENDİ reçetesi açılır; İlaç/Rapor/End.Dışı bu reçete
+        # üzerinden döner (taze reçete + TC yazma gerekmez). Reçetesi yoksa
+        # ('recete_yok') ya da A-yolu takılırsa ('hata') eski B-yolu geçerli.
+        hasta_recetesi_acik = False
+        if ilac_topla or rapor_topla or end_disi_topla:
+            try:
+                a_sonuc = recete_sorgu_ile_hasta_recetesi_ac(tc, cb=cb)
+                hasta_recetesi_acik = (a_sonuc == 'acildi')
+                if not hasta_recetesi_acik:
+                    _bildir(f'A-yolu kullanılamadı ({a_sonuc}) — '
+                            'B-yolu (taze reçete + TC) ile devam', cb)
+            except Exception as e:
+                logger.exception('Reçete Sorgu A-yolu hatası')
+                _bildir(f'A-yolu hatası: {e} — B-yolu ile devam', cb)
+
+        # ── 1) İLAÇ GEÇMİŞİ — A-yolu: reçete zaten açık; B-yolu: reçete
+        # detaya gel + taze reçete + TC yaz — sonra İlaç butonu ──
         if ilac_topla:
             try:
                 from recete_kontrol.medula_ilac_gecmisi import (
                     ilac_gecmisini_oku)
                 _bildir(f'═══ 1/3 İLAÇ GEÇMİŞİ ({_tc_maskele(tc)}) ═══', cb)
-                if not _recete_detayina_getir(cb):
+                if not hasta_recetesi_acik and not _recete_detayina_getir(cb):
                     sonuc['hatalar'].append(
                         'İlaç geçmişi: reçete detay ekranına gelinemedi')
-                elif not _taze_receteye_gec(cb):
+                elif not hasta_recetesi_acik and not _taze_receteye_gec(cb):
                     sonuc['hatalar'].append(
                         'İlaç geçmişi: taze reçete sayfasına geçilemedi')
                 else:
@@ -275,7 +522,7 @@ def medula_hasta_verisi_topla(
                 from recete_kontrol.medula_rapor_tarayici import (
                     hasta_raporlarini_tara_ve_kaydet)
                 _bildir(f'═══ 2/3 RAPOR GEÇMİŞİ ({_tc_maskele(tc)}) ═══', cb)
-                if ilac_topla:
+                if ilac_topla or hasta_recetesi_acik:
                     _recete_detaya_don(cb)   # aynı reçete — Sonraki YOK
                 # Varsayılan: eos_skip=False + yerel_skip=False → HER rapora
                 # her toplamada yeniden girilir (kullanıcı kararı 2026-07-05:
@@ -324,7 +571,7 @@ def medula_hasta_verisi_topla(
                     endikasyon_disi_izinleri_oku)
                 _bildir(f'═══ 3/3 ENDİKASYON DIŞI ({_tc_maskele(tc)}) ═══', cb)
                 hazir = (_recete_detaya_don(cb)
-                         if (rapor_topla or ilac_topla)
+                         if (rapor_topla or ilac_topla or hasta_recetesi_acik)
                          else (_recete_detayina_getir(cb)
                                and _taze_receteye_gec(cb)))
                 if not hazir:
