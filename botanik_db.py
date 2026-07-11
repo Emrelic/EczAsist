@@ -4896,6 +4896,83 @@ class BotanikDB:
             logger.error('hasta_ilk_recete_etken_bazli sorgu hatasi: %s', e)
             return []
 
+    def hasta_son_ilac_satislari(
+        self,
+        hasta_tc: str,
+        referans_tarih=None,
+        ay_geri: int = 3,
+        limit: int = 300,
+    ) -> List[Dict]:
+        """Hastanın referans tarihten geriye `ay_geri` ay içindeki TÜM ilaç
+        satışlarını döndür (reçete kalemi bazında, yeniden eskiye).
+
+        SUT eş-zamanlı (ortak) kullanım tespiti için: örn. solunum
+        LABA+LAMA+ICS üçlüsünün ayrı reçetelerle alınıp alınmadığı
+        (SUT 4.2.24.B). Sınıflandırma çağıran tarafta yapılır — bu metod
+        keyword filtresi uygulamaz.
+
+        Args:
+            hasta_tc: MusteriTCKN (11 haneli string)
+            referans_tarih: pencere bitişi (datetime/date/'YYYY-MM-DD');
+                None → GETDATE() (bugün)
+            ay_geri: pencere genişliği ay cinsinden (default 3)
+            limit: max kalem sayısı (default 300)
+
+        Returns:
+            List[Dict] (en yeni en başta); her satır:
+                RxId, recete_tarihi, islem_tarihi, e_recete_no,
+                urun_adi, etken_madde (virgüllü birleşik), atc_kodu
+            Boş liste = satış yok / hata.
+        """
+        if not hasta_tc:
+            return []
+        if referans_tarih is not None:
+            tarih_kosul = ("ra.RxReceteTarihi >= DATEADD(MONTH, -{ay}, ?) "
+                           "AND ra.RxReceteTarihi <= ?").format(
+                               ay=int(ay_geri))
+            tarih_params = [referans_tarih, referans_tarih]
+        else:
+            tarih_kosul = ("ra.RxReceteTarihi >= "
+                           "DATEADD(MONTH, -{ay}, GETDATE())").format(
+                               ay=int(ay_geri))
+            tarih_params = []
+        sql = f"""
+        SELECT TOP {int(limit)}
+            ra.RxId,
+            ra.RxReceteTarihi             AS recete_tarihi,
+            ra.RxIslemTarihi              AS islem_tarihi,
+            ra.RxEReceteNo                AS e_recete_no,
+            LTRIM(RTRIM(u.UrunAdi))       AS urun_adi,
+            STUFF((
+                SELECT N', ' + LTRIM(RTRIM(em2.EMLAdi))
+                FROM UrunEtkMad uem2
+                LEFT JOIN EtkenMaddeListesi em2
+                       ON em2.EMLId = uem2.UEMEMLId
+                WHERE uem2.UEMUrunId = ri.RIUrunId
+                  AND em2.EMLAdi IS NOT NULL
+                FOR XML PATH(''), TYPE
+            ).value('.', 'NVARCHAR(MAX)'), 1, 2, '')
+                                          AS etken_madde,
+            atc.ATCKodu                   AS atc_kodu
+        FROM ReceteAna ra
+        INNER JOIN ReceteIlaclari ri ON ri.RIRxId = ra.RxId
+                                      AND (ri.RISilme IS NULL OR ri.RISilme = 0)
+                                      AND (ri.RIIade IS NULL OR ri.RIIade = 0)
+        INNER JOIN Musteri m ON m.MusteriId = ra.RxMusteriId
+        LEFT JOIN Urun u ON u.UrunId = ri.RIUrunId
+        LEFT JOIN ATC atc ON atc.ATCId = u.UrunATCId
+        WHERE (ra.RxSilme IS NULL OR ra.RxSilme = 0)
+          AND m.MusteriTCKN = ?
+          AND {tarih_kosul}
+        ORDER BY ra.RxReceteTarihi DESC, ra.RxId DESC
+        """
+        params = tuple([hasta_tc] + tarih_params)
+        try:
+            return self.sorgu_calistir(sql, params)
+        except Exception as e:
+            logger.error('hasta_son_ilac_satislari sorgu hatasi: %s', e)
+            return []
+
     def hasta_etken_rapor_listesi(
         self,
         hasta_tc: str,

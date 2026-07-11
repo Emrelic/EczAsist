@@ -23,8 +23,9 @@ YOLAKLAR (dispatcher: etken madde → ilaç sınıfı)
                     YOK) → SUT 4.2.35 (noropatik_4_2_35.py). Bipolar (lamotrijin)
                     → SUT 4.2.2 (psikiyatri).
 
-  Kapsam dışı: sodyum valproat — SUT 4.2.25 resmî listesinde YOK (epilepside
-               özel kısıt taşımaz).
+  Delege (doğrudan): sodyum valproat — SUT 4.2.25 resmî listesinde YOK
+               (epilepside kısıt taşımaz); tek kısıt bipolar endikasyonu →
+               valproat_4_2_2_7.py atomik kontrolü çağrılır (2026-07-06).
 
 ═══════════════════════════════════════════════════════════════════════════
 ATOM TİPLERİ
@@ -260,6 +261,15 @@ def antiepileptik_yolak_belirle(ilac_sonuc: Dict) -> Dict[str, Optional[str]]:
                     'mesaj': 'Gabapentin nöropatik ağrı endikasyonunda — SUT 4.2.35 '
                              '(nöropatik) butonunda kontrol edilir'}
         return {'durum': 'yolak', 'yolak': 'GAB', 'mesaj': ''}
+
+    # ── Valproat → SUT 4.2.2(7) delege (2026-07-06) ──
+    # 4.2.25 resmî listesinde YOK; tek kısıt bipolar endikasyonu (4.2.2(7)).
+    # Önceki davranış: 'disi' → runner kontrol_psikiyatri'nin yüzeysel
+    # valproat dalına düşürüyordu; artık atomik motor sonucu döner.
+    from recete_kontrol.valproat_4_2_2_7 import valproat_kapsami_mi
+    if valproat_kapsami_mi(ilac_sonuc):
+        return {'durum': 'delege_valproat', 'yolak': None,
+                'mesaj': 'Valproat — SUT 4.2.2(7) atomik kontrolüne delege'}
 
     return {'durum': 'disi', 'yolak': None,
             'mesaj': 'SUT 4.2.25 (antiepileptik) kapsamında değil'}
@@ -662,6 +672,10 @@ def antiepileptik_kontrol_4_2_25(ilac_sonuc: Dict) -> KontrolRaporu:
     if karar['durum'] == 'atlandi':
         return KontrolRaporu(sonuc=KontrolSonucu.ATLANDI, mesaj=karar['mesaj'],
                              sut_kurali='SUT 4.2.25 (başka maddeye delege)')
+    if karar['durum'] == 'delege_valproat':
+        # Valproat 4.2.25 listesinde yok → SUT 4.2.2(7) atomik kontrolü
+        from recete_kontrol.valproat_4_2_2_7 import valproat_kontrol_4_2_2_7
+        return valproat_kontrol_4_2_2_7(ilac_sonuc)
 
     yolak = karar['yolak']
     sartlar = YOLAK_FN_MAP[yolak](ilac_sonuc)
@@ -799,10 +813,15 @@ def _senaryolar() -> List[Tuple[str, Dict, KontrolSonucu]]:
             'ilac_adi': 'NEURONTIN', 'etkin_madde': 'GABAPENTIN', 'brans': 'Algoloji',
             'recete_teshisleri': ['nöropatik ağrı'],
         }, KontrolSonucu.ATLANDI),
-        # ── Kapsam dışı ──
-        ("Kapsam dışı (valproat — 4.2.25 listesinde yok)", {
+        # ── Valproat → 4.2.2(7) delege (2026-07-06) ──
+        ("Valproat delege (epilepsi → 4.2.2(7) kısıtsız UYGUN)", {
             'etkin_madde': 'VALPROAT', 'recete_teshisleri': ['G40.9 EPILEPSI'],
-        }, KontrolSonucu.ATLANDI),
+        }, KontrolSonucu.UYGUN),
+        ("Valproat delege (bipolar + aile hekimi raporsuz → UYGUN DEĞİL)", {
+            'etkin_madde': 'VALPROIK ASIT', 'brans': 'Aile Hekimliği',
+            'recete_teshisleri': ['F31 BIPOLAR BOZUKLUK'],
+        }, KontrolSonucu.UYGUN_DEGIL),
+        # ── Kapsam dışı ──
         ("Kapsam dışı (parasetamol)", {'etkin_madde': 'PARASETAMOL'}, KontrolSonucu.ATLANDI),
     ]
 

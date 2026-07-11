@@ -41,39 +41,45 @@ def bos_yapi() -> dict:
     return {k: [] for k in _ANAHTARLAR}
 
 
-def yukle() -> dict:
-    """JSON'dan listeyi yükle. Dosya yok/bozuksa boş yapı döner."""
-    if not os.path.exists(DOSYA_YOLU):
+def yukle(dosya: str = None) -> dict:
+    """JSON'dan listeyi yükle. Dosya yok/bozuksa boş yapı döner.
+
+    dosya: farklı bir liste dosyası (örn. 2. kademe) için tam yol;
+    verilmezse varsayılan DOSYA_YOLU kullanılır.
+    """
+    dosya = dosya or DOSYA_YOLU
+    if not os.path.exists(dosya):
         return bos_yapi()
     try:
-        with open(DOSYA_YOLU, "r", encoding="utf-8") as f:
+        with open(dosya, "r", encoding="utf-8") as f:
             data = json.load(f)
         return {k: list(data.get(k, []) or []) for k in _ANAHTARLAR}
     except Exception as e:
-        logger.warning("kontrol_disi_ilaclar.json okunamadi: %s", e)
+        logger.warning("%s okunamadi: %s", os.path.basename(dosya), e)
         return bos_yapi()
 
 
-def kaydet(data: dict) -> bool:
+def kaydet(data: dict, dosya: str = None) -> bool:
     """Listeyi normalize edip (tekilleştirip sıralayarak) JSON'a yaz."""
+    dosya = dosya or DOSYA_YOLU
     try:
         temiz = {
             k: sorted({normalize(x) for x in data.get(k, []) if normalize(x)})
             for k in _ANAHTARLAR
         }
-        with open(DOSYA_YOLU, "w", encoding="utf-8") as f:
+        with open(dosya, "w", encoding="utf-8") as f:
             json.dump(temiz, f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
-        logger.error("kontrol_disi_ilaclar.json yazilamadi: %s", e)
+        logger.error("%s yazilamadi: %s", os.path.basename(dosya), e)
         return False
 
 
-def setler(data: dict = None):
+def setler(data: dict = None, dosya: str = None):
     """Hızlı eşleşme için normalize edilmiş 3 set döner:
     (ilac_set, atc_set, etken_set). data verilmezse dosyadan yükler."""
     if data is None:
-        data = yukle()
+        data = yukle(dosya)
     return (
         {normalize(x) for x in data.get("ilac_adlari", [])},
         {normalize(x) for x in data.get("atc_kodlari", [])},
@@ -89,7 +95,8 @@ def _sql_lit(s) -> str:
 def sql_eslesme_kosulu(data: dict = None,
                        urun_adi_kolon: str = "u.UrunAdi",
                        atc_kod_kolon: str = "atc.ATCKodu",
-                       etken_kolon: str = "atc.ATCTurkce") -> str:
+                       etken_kolon: str = "atc.ATCTurkce",
+                       dosya: str = None) -> str:
     """Kontrolü gereksiz ilaç eşleşmesi için POZİTİF SQL koşulu üret.
 
     Döndürülen ifade TRUE ise satır kontrol-dışıdır (gizlenmeli).
@@ -104,7 +111,7 @@ def sql_eslesme_kosulu(data: dict = None,
     NULL-safe: ISNULL ile sarılı (UrunAdi/ATC NULL satırlar yanlış elenmez).
     GÜVENLİK: Sadece WHERE parçası üretir — yalnız SELECT akışında kullanılır.
     """
-    ilac_set, atc_set, etken_set = setler(data)
+    ilac_set, atc_set, etken_set = setler(data, dosya)
     parcalar = []
     if ilac_set:
         lst = ", ".join(_sql_lit(x) for x in sorted(ilac_set) if x)

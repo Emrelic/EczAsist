@@ -11,7 +11,10 @@ Anonimleştirme (KVKK Madde 6 uyumlu):
     • DoktorAdiSoyadi  → "DOKTOR" (atılır; branş kalır)
 
 Faz 1: SADECE Botanik DB kaynağı.
-Faz 2: Medula entegrasyonu (TODO).
+Faz 2 (2026-07-05): Medula canlı entegrasyonu — `medula_kullan=True` ise
+`medula_hasta_toplayici` ile hastanın Medula ilaç geçmişi (çapraz-reçete)
+ve rapor geçmişi (bitmiş dahil) toplanıp `kaynak` etiketiyle Botanik EOS
+verilerine eklenir. Medula SADECE OKUNUR (CLAUDE.md kırmızı çizgi).
 """
 from __future__ import annotations
 
@@ -95,11 +98,15 @@ def _cinsiyet_normalize(c: Any) -> str:
 class PaketKonfig:
     """Paket oluşturma seçenekleri."""
     botanik_db_kullan: bool = True
-    medula_kullan: bool = False   # Faz 1'de DAİMA False (Faz 2'de açılacak)
+    medula_kullan: bool = False    # True → Medula'da gezinerek canlı toplama
+                                   # (yavaş: ~1-2 dk/hasta; GUI checkbox)
+    medula_rapor_detayli: bool = True  # her rapora girip detay metni oku
+    sut_lafzi_ekle: bool = True    # resmî SUT madde lafzını pakete göm
+                                   # (docs/sut/SUT_tam_metin.txt — mevzuat.gov.tr)
     ilac_gecmisi_ay: int = 24      # Botanik DB'den kaç ay geriye bakılsın
     rapor_gecmisi_yil: int = 5     # Kaç yıllık eski rapor dahil
     max_recete_ilac: int = 50      # Reçetenin diğer ilaçları max sayı
-    max_hasta_ilac: int = 100      # Hasta geçmiş ilaç max sayı
+    max_hasta_ilac: int = 100      # Hasta geçmiş ilaç max sayı (kaynak başına)
 
 
 def paket_olustur(
@@ -107,6 +114,7 @@ def paket_olustur(
     *,
     konfig: Optional[PaketKonfig] = None,
     db: Any = None,
+    durum_cb: Any = None,
 ) -> Dict[str, Any]:
     """Bir aylık-tablo satırından AI'a gönderilecek anonim JSON paketi üret.
 
@@ -114,6 +122,8 @@ def paket_olustur(
         satir: aylik_recete_sorgu_gui satır verisi (sütun → değer dict)
         konfig: PaketKonfig — varsayılan: Botanik DB aktif, Medula pasif
         db: BotanikDB instance (None ise yeni açılır)
+        durum_cb: opsiyonel durum callback'i (Medula gezinme ilerleme
+            mesajları — GUI'de göstermek için)
 
     Returns:
         {
@@ -130,7 +140,7 @@ def paket_olustur(
     paket: Dict[str, Any] = {
         "metadata": {
             "olusum_tarihi": datetime.now().isoformat(timespec="seconds"),
-            "paket_versiyon": "1.0-faz1",
+            "paket_versiyon": "1.1-faz2" if cfg.medula_kullan else "1.0-faz1",
         },
         "kaynak_etiketleri": {
             "botanik_db": bool(cfg.botanik_db_kullan),
@@ -144,6 +154,7 @@ def paket_olustur(
 
     paket["hasta_diger_raporlari"] = []
     paket["hasta_ilac_gecmisi"] = []
+    paket["endikasyon_disi_izinler"] = []
     paket["uyarilar"] = []
 
     if cfg.botanik_db_kullan:
@@ -169,15 +180,153 @@ def paket_olustur(
                 "hata": f"Botanik DB sorgusu başarısız: {e}",
             })
 
+    # Kaynak etiketi — EOS kayıtları (Medula'yla ayırt edilebilsin)
+    for kayit in paket["hasta_diger_raporlari"]:
+        kayit.setdefault("kaynak", "botanik_eos")
+    for kayit in paket["hasta_ilac_gecmisi"]:
+        kayit.setdefault("kaynak", "botanik_eos")
+
+    # Resmî SUT lafzı — AI şart analizini ezber yerine güncel resmî
+    # metne (mevzuat.gov.tr yerel kopyası) dayasın
+    paket["sut_lafzi"] = None
+    if cfg.sut_lafzi_ekle:
+        try:
+            from recete_kontrol.ai_kontrol.sut_lafzi import paket_icin_sut_lafzi
+            paket["sut_lafzi"] = paket_icin_sut_lafzi(
+                paket["recete"]["ilac"].get("atc_kodu") or "")
+        except Exception as e:
+            logger.warning("SUT lafzı eklenemedi: %s", e)
+
     if cfg.medula_kullan:
-        # Faz 2 — şimdilik sadece bayrak
-        paket["uyarilar"].append({
-            "kaynak": "medula",
-            "not": "Medula entegrasyonu Faz 2'de aktive olacak (TODO).",
-        })
+        try:
+            _medula_ek_veri(satir, cfg, paket, durum_cb=durum_cb)
+        except Exception as e:
+            logger.error("Medula ek veri toplama hatası: %s", e, exc_info=True)
+            paket["uyarilar"].append({
+                "kaynak": "medula",
+                "hata": f"Medula toplama başarısız: {e}",
+            })
 
     paket["veri_kapsami"] = _veri_kapsami_ozeti(paket)
     return paket
+
+
+def _ddmmyyyy_iso(s: Any) -> str:
+    """Medula tarih formatını (dd/mm/yyyy) ISO'ya çevir; olmazsa aynen dön."""
+    t = str(s or "").strip()
+    if len(t) == 10 and t[2] == "/" and t[5] == "/":
+        return f"{t[6:10]}-{t[3:5]}-{t[0:2]}"
+    return t
+
+
+def _medula_ek_veri(
+    satir: Dict[str, Any],
+    cfg: PaketKonfig,
+    paket: Dict[str, Any],
+    durum_cb: Any = None,
+) -> None:
+    """Medula'da gezinerek hastanın ilaç + rapor geçmişini topla ve paketi
+    yerinde zenginleştir (kaynak='medula' etiketiyle).
+
+    • Rapor geçmişi → `hasta_diger_raporlari`'na eklenir; EOS'ta zaten
+      bulunan raporlar rapor_takip_no ile DEDUP edilir (EOS zengin verisi
+      öncelikli, Medula sadece EOS'ta olmayanları getirir).
+    • İlaç geçmişi → `hasta_ilac_gecmisi`'ne eklenir (çapraz-reçete SGK
+      geçmişi: başka eczaneler dahil — EOS'tan geniş kapsam).
+    Medula SADECE OKUNUR; toplayıcı modül kilitle serileştirir.
+    """
+    tc = str(satir.get("MusteriTCKN") or satir.get("hasta_tc")
+             or satir.get("tc") or "").strip()
+    if not (len(tc) == 11 and tc.isdigit()):
+        paket["uyarilar"].append({
+            "kaynak": "medula",
+            "not": "Hasta TC satırda yok/geçersiz — Medula toplama atlandı",
+        })
+        return
+
+    # Aktif reçetenin rapor kodu → sadece ilgili raporlar detaylı okunsun
+    # (hepsine girmek çok yavaş; liste metadata'sı yine TÜM raporlar için gelir)
+    rapor_kodu = str(satir.get("sr_rapor_kodu") or satir.get("rapor_kodu")
+                     or satir.get("rap_kod") or "").strip() or None
+
+    from recete_kontrol.medula_hasta_toplayici import medula_hasta_verisi_topla
+    veri = medula_hasta_verisi_topla(
+        tc,
+        cb=durum_cb,
+        rapor_detayli=cfg.medula_rapor_detayli,
+        rapor_kodu_filtre=rapor_kodu,
+    )
+
+    for hata in veri.get("hatalar") or []:
+        paket["uyarilar"].append({"kaynak": "medula", "hata": str(hata)})
+
+    # ── Rapor geçmişi birleştirme (rapor_takip_no dedup) ──
+    eos_takipler = {
+        str(r.get("rapor_takip_no") or "").strip()
+        for r in paket.get("hasta_diger_raporlari") or []
+        if str(r.get("rapor_takip_no") or "").strip()
+    }
+    eklenen_rapor = 0
+    for r in veri.get("rapor_gecmisi") or []:
+        takip = str(r.get("rapor_takip_no") or "").strip()
+        if takip and takip in eos_takipler:
+            continue  # EOS'ta zaten var (zenginleştirilmiş hâliyle)
+        paket["hasta_diger_raporlari"].append({
+            "rapor_no": takip,
+            "rapor_takip_no": takip,
+            "rapor_tarihi": _ddmmyyyy_iso(r.get("baslangic_tarihi")),
+            "bitis_tarihi": _ddmmyyyy_iso(r.get("bitis_tarihi")),
+            "rapor_metni": str(r.get("detay_metni") or "")[:4000],
+            "icd_listesi": (
+                [{"icd_kodu": str(r.get("icd_kodu")), "aciklama": ""}]
+                if r.get("icd_kodu") else []),
+            "etken_madde_listesi": [],
+            "ek_bilgiler": [],
+            "rapor_doktor_uzmanliklari": [],
+            "rapor_kodlari": (
+                [{"kod": str(r.get("rapor_kodu")),
+                  "aciklama": str(r.get("tani") or "")}]
+                if r.get("rapor_kodu") else []),
+            "rapor_tipi": str(r.get("rapor_tipi") or ""),
+            "tani": str(r.get("tani") or ""),
+            "kaynak": "medula",
+        })
+        eklenen_rapor += 1
+
+    # ── İlaç geçmişi birleştirme ──
+    # Medula listesi çapraz-reçete (başka eczaneler dahil) — dedup edilmez,
+    # kaynak etiketi AI'a hangi listenin nereden geldiğini söyler.
+    ilaclar = veri.get("ilac_gecmisi") or []
+    ilaclar = ilaclar[: max(0, int(cfg.max_hasta_ilac))]
+    for k in ilaclar:
+        paket["hasta_ilac_gecmisi"].append({
+            "tarih": _ddmmyyyy_iso(k.get("recete_tarihi")),
+            "urun_adi": str(k.get("ilac_adi") or ""),
+            "adet": _safe_int(k.get("adet")),
+            "kullanim": str(k.get("kullanim") or ""),
+            "ilac_alim_tarihi": _ddmmyyyy_iso(k.get("ilac_alim_tar")),
+            "recete_no": str(k.get("recete_no") or ""),
+            "rapor_teshis_takip": str(k.get("teshis_raptak") or ""),
+            "kaynak": "medula",
+        })
+
+    # ── Endikasyon dışı izinler (sadece Medula'da var) ──
+    # SUT denetimi için kritik: onaylı endikasyon dışı kullanım izni,
+    # doz/süre onayı ve değerlendirme uzmanı açıklaması detay metninde.
+    paket["endikasyon_disi_izinler"] = [{
+        "basvuru_no": str(e.get("basvuru_no") or ""),
+        "basvuru_tarihi": _ddmmyyyy_iso(e.get("basvuru_tarihi")),
+        "onay_tarihi": _ddmmyyyy_iso(e.get("onay_tarihi")),
+        "durumu": str(e.get("durumu") or ""),
+        "saglik_tesisi": str(e.get("saglik_tesisi") or ""),
+        "basvuru_nedeni": str(e.get("basvuru_nedeni") or ""),
+        "detay_metni": str(e.get("detay_metni") or "")[:4000],
+        "kaynak": "medula",
+    } for e in veri.get("endikasyon_disi") or []]
+
+    logger.info("Medula ek veri: +%d rapor, +%d ilaç, +%d end.dışı izin "
+                "(TC %s****)", eklenen_rapor, len(ilaclar),
+                len(paket["endikasyon_disi_izinler"]), tc[:3])
 
 
 def _veri_kapsami_ozeti(paket: Dict[str, Any]) -> Dict[str, Any]:
@@ -212,6 +361,16 @@ def _veri_kapsami_ozeti(paket: Dict[str, Any]) -> Dict[str, Any]:
         "hasta_diger_rapor_zenginlik": _gecmis_rapor_zenginlik_ozeti(
             paket.get("hasta_diger_raporlari") or []),
         "hasta_ilac_gecmisi_sayisi": len(paket.get("hasta_ilac_gecmisi") or []),
+        "medula_rapor_sayisi": sum(
+            1 for r in paket.get("hasta_diger_raporlari") or []
+            if r.get("kaynak") == "medula"),
+        "medula_ilac_sayisi": sum(
+            1 for r in paket.get("hasta_ilac_gecmisi") or []
+            if r.get("kaynak") == "medula"),
+        "endikasyon_disi_izin_sayisi": len(
+            paket.get("endikasyon_disi_izinler") or []),
+        "sut_lafzi_var": bool(paket.get("sut_lafzi")),
+        "sut_lafzi_madde": (paket.get("sut_lafzi") or {}).get("madde", ""),
         "recete_diger_ilac_sayisi": len(paket.get("recete_diger_ilaclari") or []),
         "uyari_sayisi": len(paket.get("uyarilar") or []),
     }

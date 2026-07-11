@@ -408,6 +408,123 @@ def main():
         if ok:
             basarili += 1
 
+    # ══════════════════════════════════════════════════════════════════════
+    # ADEM ERASLAN 3O68UR0 pilotu (2026-07-06) — DM raporuna bağlı kalem +
+    # reçetede N18 ICD → dispatcher Y_KBH'a sapmamalı; heyette yan dal
+    # birleşik yazım ("İç Hastalıkları -> Nefroloji") nefrolog sayılmalı.
+    # ══════════════════════════════════════════════════════════════════════
+    print('\n=== Rapor baglami onceligi + yan dal brans (3O68UR0 pilotu) ===')
+    _adem_rapor = ('*METFORMIN VE SULFONILURELERI, TOLERE EDILEBILECEK '
+                   'MAKSIMUM DOZLARDA KULLANILIP YETERLI GLISEMIK KONTROL '
+                   'SAGLANAMAMISTIR.')
+    toplam += 1
+    adem = _ilac(ad='JARDIANCE 25MG', etkin='EMPAGLIFLOZIN',
+                 teshis=['A49.9', 'E14', 'J45.9', 'N18'],
+                 brans='İç Hastalıkları -> Nefroloji',
+                 heyet=['İç Hastalıkları -> Nefroloji'],
+                 rapor=_adem_rapor)
+    adem['rapor_doktor_brans'] = 'İç Hastalıkları -> Nefroloji'
+    adem['rapor_kodu'] = '07.02.1'
+    if _test('DM raporu (07.02) + recete N18 -> Y6 UYGUN (Y_KBH degil)',
+              adem, 'Y6', KontrolSonucu.UYGUN):
+        basarili += 1
+
+    toplam += 1
+    kbh_lafizli = dict(adem)
+    kbh_lafizli['rapor_metni'] = ('Kronik bobrek hastaligi. Persistan '
+                                  'proteinuri 3 ay. ACR 250 mg/g. eGFR 40.')
+    kbh_lafizli['recete_ilaclari'] = [{'ad': 'COVERSYL'}]
+    if _test('DM rapor kodu ama rapor metni KBH anlatiyor -> Y_KBH kalir',
+              kbh_lafizli, 'Y_KBH', KontrolSonucu.UYGUN):
+        basarili += 1
+
+    from recete_kontrol.diyabet_4_2_38 import _brans_heyette
+    print('\n=== _brans_heyette yan dal birlesik yazim ===')
+    heyet_vakalari = [
+        ('İç Hastalıkları -> Nefroloji', 'nefroloji', True),
+        ('İç Hastalıkları -> Nefroloji', 'ic', True),
+        ('İç Hastalıkları -> Endokrinoloji', 'endokrin', True),
+        ('ic hastaliklari', 'nefroloji', False),
+        ('Kardiyoloji', 'kardiyo', True),
+        ('Kalp ve Damar Cerrahisi', 'kardiyo', False),
+    ]
+    for brans, hedef, beklenen in heyet_vakalari:
+        toplam += 1
+        got = _brans_heyette({'heyet_doktorlari': [{'brans': brans}]}, hedef)
+        ok = (got == beklenen)
+        icon = 'OK' if ok else 'FAIL'
+        print(f"  [{icon}] _brans_heyette({brans!r}, {hedef!r}) = {got} "
+              f"(beklenen {beklenen})")
+        if ok:
+            basarili += 1
+
+    # ══════════════════════════════════════════════════════════════════════
+    # MUSTAFA TAŞKIN 2O4QGJV pilotu (2026-07-06) — kaleme bağlı rapor
+    # önceliği: DM raporlu FORZIGA + reçetede I50.9 (SANELOC/DESAL'in
+    # teşhisi) → Y_KY'ye sapıp "heyette kardiyolog yok" UYGUN DEĞİL
+    # üretiyordu; Y6 UYGUN olmalı.
+    # ══════════════════════════════════════════════════════════════════════
+    print('\n=== Kaleme bagli rapor onceligi (2O4QGJV pilotu) ===')
+    _mustafa_rapor = ('metformin ve sulfonilurelerin maksimum tolere '
+                      'edilebillir dozlarinda yeterli glisemik kontrol '
+                      'saglanamamistir. Kilo: 80 Aclik Kan Sekeri: 200 '
+                      'Hemoglobin A1c: 10.5 E11.9 INSULIN BAGIMLI OLMAYAN '
+                      'DIYABETES MELLITUS, KOMPLIKASYONLARI OLMAYAN')
+    toplam += 1
+    mustafa = _ilac(ad='FORZIGA 10MG 28 FILM TABLET (SGLT2 INH)',
+                    etkin='DAPAGLIFLOZIN',
+                    teshis=['E11 INSULIN-BAGIMLI OLMAYAN DM',
+                            'I10 ESANSIYEL HIPERTANSIYON',
+                            'I25.0 ATEROSKLEROTIK KVH',
+                            'I50.9 KALP YETMEZLIGI, TANIMLANMAMIS'],
+                    brans='aile hekimligi',
+                    rapor_brans='İç Hastalıkları (Ana Branş)',
+                    diger_ilac=['DESAL 40MG', 'NOVORAPID FLEXPEN',
+                                'SANELOC 100MG'],
+                    rapor=_mustafa_rapor)
+    mustafa['rapor_doktor_brans'] = 'İç Hastalıkları (Ana Branş)'
+    mustafa['rapor_kodu'] = '07.02.1'
+    if _test('DM raporu (07.02) + recete I50.9 -> Y6 UYGUN (Y_KY degil)',
+              mustafa, 'Y6', KontrolSonucu.UYGUN):
+        basarili += 1
+
+    toplam += 1
+    kodsuz = dict(mustafa)
+    kodsuz['rapor_kodu'] = ''  # RIRaporKodId lookup boş — metin DM sinyali yeter
+    if _test('Rapor kodu BOS ama metin DM + recete I50.9 -> yine Y6 UYGUN',
+              kodsuz, 'Y6', KontrolSonucu.UYGUN):
+        basarili += 1
+
+    from recete_kontrol.diyabet_4_2_38 import _sglt2_alt_dispatcher
+    print('\n=== _sglt2_alt_dispatcher yonlendirme matrisi ===')
+    disp_vakalari = [
+        ('04.01 KY rapor kodu -> Y_KY (metin sessiz olsa da)',
+         {'rapor_kodu': '04.01', 'rapor_metni': '',
+          'recete_teshisleri': []}, 'Y_KY'),
+        ('rapor sessiz + recete I50 -> Y_KY (fallback korunur)',
+         {'rapor_kodu': '', 'rapor_metni': '',
+          'recete_teshisleri': ['I50.9 KALP YETMEZLIGI']}, 'Y_KY'),
+        ('rapor sessiz + recete N18 -> Y_KBH (fallback korunur)',
+         {'rapor_kodu': '', 'rapor_metni': '',
+          'recete_teshisleri': ['N18.4 KBH']}, 'Y_KBH'),
+        ('kodsuz DM metinli rapor + recete N18 -> Y6',
+         {'rapor_kodu': '',
+          'rapor_metni': 'E11.9 diyabetes mellitus yeterli glisemik kontrol',
+          'recete_teshisleri': ['N18.4 KBH']}, 'Y6'),
+        ('DM rapor kodu ama metin KY anlatiyor -> Y_KY kalir',
+         {'rapor_kodu': '07.02.1',
+          'rapor_metni': 'diyabet + kalp yetmezligi EF <%35 NYHA III',
+          'recete_teshisleri': []}, 'Y_KY'),
+    ]
+    for adi, ils, beklenen in disp_vakalari:
+        toplam += 1
+        got = _sglt2_alt_dispatcher(ils)
+        ok = (got == beklenen)
+        icon = 'OK' if ok else 'FAIL'
+        print(f"  [{icon}] {adi}: {got} (beklenen {beklenen})")
+        if ok:
+            basarili += 1
+
     print(f'\n=== TOPLAM: {basarili}/{toplam} test gecti ===')
     return basarili == toplam
 

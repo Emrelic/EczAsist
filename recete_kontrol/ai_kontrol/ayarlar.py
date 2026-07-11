@@ -50,9 +50,12 @@ FIYAT_USD_PER_MTOK = {
                     "cache_read": 0.10, "cache_write": 1.25},
 }
 
-# Backend seçenekleri
-BACKEND_API = "api"               # Anthropic SDK + kullanıcının API key'i (varsayılan)
-BACKEND_SUBPROCESS = "subprocess" # Yerel `claude` CLI subprocess (Max plan ile çalışır)
+# Backend seçenekleri — kullanıcı ikisinden birini AI Ayarlar'dan seçer.
+# Varsayılan: SUBPROCESS (Max planı dahilinde ek ücretsiz; token süresi
+# dolunca `/login` ile tazelenir). API backend token başına ayrı faturalanır
+# ama kopmaz; kullanıcı isterse ona geçer.
+BACKEND_API = "api"               # Anthropic SDK + kullanıcının API key'i (ücretli)
+BACKEND_SUBPROCESS = "subprocess" # Yerel `claude` CLI subprocess (Max plan — varsayılan)
 
 GECERLI_BACKENDLER = (BACKEND_API, BACKEND_SUBPROCESS)
 
@@ -62,7 +65,7 @@ BACKEND_ETIKETLERI = {
 }
 
 VARSAYILAN_AYARLAR: Dict[str, Any] = {
-    "backend": BACKEND_API,
+    "backend": BACKEND_SUBPROCESS,   # varsayılan: ücretsiz Max (subprocess)
     "api_key": "",
     "varsayilan_model": MODEL_SONNET,
     "gunluk_cagri_limiti": 100,
@@ -98,7 +101,7 @@ def ayarlari_yukle() -> Dict[str, Any]:
     if sonuc.get("varsayilan_model") not in GECERLI_MODELLER:
         sonuc["varsayilan_model"] = MODEL_SONNET
     if sonuc.get("backend") not in GECERLI_BACKENDLER:
-        sonuc["backend"] = BACKEND_API
+        sonuc["backend"] = BACKEND_SUBPROCESS
     return sonuc
 
 

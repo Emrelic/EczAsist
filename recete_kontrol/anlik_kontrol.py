@@ -53,6 +53,10 @@ BILGI_KATEGORILER = {
 # psikiyatri (4.2.2) / solunum zaten genel dispatcher kategorilerine bağlı
 # ve gabapentin/pregabalin gibi endikasyona-duyarlı ayrımları orada çözülüyor
 # — burada TEKRAR eklenmez (çakışma riskini önlemek için).
+# İSTİSNA: 4.2.35.A(4)/(5) alfa lipoik (tioktik) + kapsaisin genel
+# dispatcher'ın HİÇBİR kategori haritasında yok; dar tespitçi
+# (ala_kapsaisin_kapsami_mi) yalnız bu iki etkeni yakalar — gabapentin/
+# pregabalin/duloksetin'e dokunmaz, çakışma yaratmaz.
 #
 # Format: (kategori, modül_yolu, tespit_fonksiyonu, kontrol_fonksiyonu)
 _EK_MODUL_DISPATCH: List[Tuple[str, str, str, str]] = [
@@ -69,9 +73,21 @@ _EK_MODUL_DISPATCH: List[Tuple[str, str, str, str]] = [
      'ginkgo_kapsami_mi', 'ginkgo_kontrol_ek4f_55'),
     ('ATOMOKSETIN', 'recete_kontrol.atomoksetin_dehb',
      'atomoksetin_kapsami_mi', 'atomoksetin_kontrol_dehb'),
+    # Alfa lipoik (tioktik asit — ALATAB/THIOCTACID) + kapsaisin krem:
+    # SUT 4.2.35.A(4)/(5). Dar tespitçi — gabapentin/pregabalin/duloksetin
+    # kapsam dışı (genel dispatcher'da çözülürler, yukarıdaki NOT'a bakın).
+    ('NOROPATIK_ALA_KAPSAISIN', 'recete_kontrol.noropatik_4_2_35',
+     'ala_kapsaisin_kapsami_mi', 'noropatik_kontrol_4_2_35'),
     # ── Kardiyoloji / Pulmoner ──
     ('PULMONER_HT', 'recete_kontrol.pulmoner_ht_4_2_30_a',
      'pulmoner_ht_yolak_belirle', 'pulmoner_ht_kontrol_4_2_30_a'),
+    # Antiaritmikler (amiodaron/dronedaron/propafenon + SOTALOL C07AA07):
+    # EK-4/D muafiyet + EK-4/G parenteral. Sotalol beta-bloker ATC'sinde ama
+    # klinik kullanımı antiaritmik — burada yakalanır (genel dispatcher'daki
+    # ANTIHT'den ÖNCE); diğer beta blokerler kapsam dışı → ATLANDI →
+    # fall-through ile genel dispatcher'a düşer.
+    ('ANTIARITMIK', 'recete_kontrol.antiaritmik_ek4d',
+     'antiaritmik_kapsami_mi', 'antiaritmik_kontrol_ek4d'),
     # ── Onkoloji ──
     ('MELANOM', 'recete_kontrol.melanom_braf_mek_4_2_14_c_z',
      'melanom_yolak_belirle', 'melanom_kontrol_4_2_14_c_z'),
@@ -127,6 +143,15 @@ _EK_MODUL_DISPATCH: List[Tuple[str, str, str, str]] = [
      'aprepitant_kapsami_mi', 'aprepitant_kontrol_kt_bulanti'),
     ('MEKLOZIN', 'recete_kontrol.meklozin_antiemetik',
      'meklozin_kapsami_mi', 'meklozin_kontrol'),
+    # ── Damar/venöz ──
+    # DOBESILAT önce: kalsiyum dobesilat SUT 4.1.4(3)+(5)a miktar/rapor-etken
+    # kontrolü (EK-4/D muafiyet atomu bilgi olarak içinde). Kapsamı yalnız
+    # dobesilat → pentoksifilin fall-through ile alttaki EK-4/D modülüne düşer.
+    ('DOBESILAT', 'recete_kontrol.dobesilat_genel_raporlu_4_1_4',
+     'dobesilat_kapsami_mi', 'dobesilat_kontrol_genel_raporlu'),
+    # (EK-4/D muafiyet — pentoksifilin; dobesilat yukarıda yakalanır)
+    ('PENTOKSIFILIN', 'recete_kontrol.pentoksifilin_ek4d',
+     'pentoksifilin_kapsami_mi', 'pentoksifilin_kontrol_ek4d'),
 ]
 
 

@@ -191,6 +191,8 @@ ETKIN_MADDE_KATEGORI = {
     # SILOSTAZOL (SUT 4.2.15.B — ileri evre PAH)
     'SILOSTAZOL': 'SILOSTAZOL',
     'CILOSTAZOL': 'SILOSTAZOL',
+    'SILASTAZOL': 'SILOSTAZOL',   # Medula/Botanik yazım varyantı (a'lı)
+    'SİLASTAZOL': 'SILOSTAZOL',
 
     # STATIN
     'ATORVASTATIN': 'STATIN',
@@ -1084,6 +1086,21 @@ ILAC_ADI_KATEGORI = {
     'KLOPIDOGREL': 'KLOPIDOGREL',
     'PLAGREL': 'KLOPIDOGREL',
     'PINGEL': 'KLOPIDOGREL',
+    'PLANOR': 'KLOPIDOGREL',
+    'AYRINEX': 'KLOPIDOGREL',
+    'KLOPIRA': 'KLOPIDOGREL',
+    'OPIROL': 'KLOPIDOGREL',
+    'LOPIGROL': 'KLOPIDOGREL',
+    'DILOXOL': 'KLOPIDOGREL',
+    'DIPOREL': 'KLOPIDOGREL',
+    'OPIREL': 'KLOPIDOGREL',
+    # Klopidogrel + ASA kombinasyonları — SUT 4.2.15.A "kombinasyonları
+    # dahil"; etken "KOMBİNASYONLAR" geldiği için sadece ad ile yakalanır.
+    'KLOGEL': 'KLOPIDOGREL',
+    'DUOPLAVIN': 'KLOPIDOGREL',
+    'COPLAVIX': 'KLOPIDOGREL',
+    'DUOCOVER': 'KLOPIDOGREL',
+    'DUOFLAGREL': 'KLOPIDOGREL',
     'EFFIENT': 'PRASUGREL',       # SUT 4.2.15.Ç bağımsız şema
     'PRASUGREL': 'PRASUGREL',
     'BRILINTA': 'TIKAGRELOR',     # SUT 4.2.15.E bağımsız şema
@@ -1094,6 +1111,7 @@ ILAC_ADI_KATEGORI = {
     'SILOSTAN': 'SILOSTAZOL',
     'SILOSTAZOL': 'SILOSTAZOL',
     'CILOSTAZOL': 'SILOSTAZOL',
+    'SILASTAZOL': 'SILOSTAZOL',   # yazım varyantı (a'lı)
     # YOAK
     'XARELTO': 'YOAK',
     'RAZINA': 'YOAK',
@@ -6990,16 +7008,20 @@ def _klop_doktor_brans_in(doktor_brans: str,
     örneği "KALP VE DAMAR CERRAHISI (ANA BRANS)" lafzında 'KALP DAMAR'
     substring kaçırılıyordu.
     """
-    db = (doktor_brans or '').upper().strip()
+    # Türkçe İ tuzağı: "KARDİYOLOJİ".upper() İ'yi korur ve ASCII
+    # 'KARDIYOLOJ' anahtarıyla eşleşmez → iki taraf da _tr_lower ile
+    # ASCII'ye indirgenir (AVNİ DİLLİ 3OC7VPJ KLOGEL-A vakası, 2026-07-05).
+    db = _tr_lower(doktor_brans or '').upper().strip()
     if not db:
         return (False, '')
     # Normalize edilmiş versiyon: "VE/İLE/-/parantez" temizleme
+    # (İLE, _tr_lower sonrası ASCII 'ILE' olarak aranır)
     db_norm = re.sub(r'\s+VE\s+', ' ', db)
-    db_norm = re.sub(r'\s+İLE\s+', ' ', db_norm)
+    db_norm = re.sub(r'\s+ILE\s+', ' ', db_norm)
     db_norm = db_norm.replace('-', ' ').replace('(', ' ').replace(')', ' ')
     db_norm = re.sub(r'\s+', ' ', db_norm).strip()
     for a in izinli:
-        au = a.upper()
+        au = _tr_lower(a).upper()
         if au in db or au in db_norm:
             return (True, db)
     return (False, db)
@@ -8555,7 +8577,8 @@ def _silos_atom_pah(metin_lower: str, teshis_metin: str
         'intermittan klaudikasyo', 'periferik vaskuler',
     ])
     doppler_anjio = any(k in metin_lower for k in [
-        'doppler', 'anjio', 'angio', 'anjiyo', 'angyo',
+        'doppl',  # doppler/dopplar/doppller — sahada "DOPPLAR" yazımı görüldü
+        'dopler', 'anjio', 'angio', 'anjiyo', 'angyo',
         'anjiyograf', 'angyograf', 'anjigraf',
     ])
     if pah_anchor and doppler_anjio:
@@ -8571,6 +8594,8 @@ def _silos_atom_klas_3_4(metin_lower: str) -> Tuple[bool, str]:
     """(a) Klinik klas 3 ∨ klas 4 semptom."""
     if any(k in metin_lower for k in [
         'klas 3', 'klas 4', 'klas iii', 'klas iv',
+        'klass 3', 'klass 4', 'klass iii', 'klass iv',  # saha yazımı "KLASS 3"
+        'class 3', 'class 4', 'class iii', 'class iv',
         'sinif 3', 'sınıf 3', 'sinif 4', 'sınıf 4',
         'fontaine 3', 'fontaine iii', 'fontaine 4', 'fontaine iv',
         'rutherford 4', 'rutherford 5', 'rutherford 6',
@@ -17781,7 +17806,7 @@ def kontrol_psikiyatri(ilac_sonuc: Dict) -> KontrolRaporu:
         antipsik_ticari = ['CEDRINA', 'KETILEPT', 'SEROQUEL', 'OLAXINN',
                            'ZYPREXA', 'RISPERDAL', 'ABIZOL', 'ABILIFY',
                            'LEPONEX', 'INVEGA']
-        mood_ticari = ['DEPAKIN', 'DEPAKINE', 'CONVULEX', 'LAMICTAL']
+        mood_ticari = ['DEPAKIN', 'DEPAKINE', 'CONVULEX', 'DEPALEX', 'LAMICTAL']
 
         if any(t in ilac_adi for t in ssri_ticari):
             is_ssri = True
@@ -17842,8 +17867,15 @@ def kontrol_psikiyatri(ilac_sonuc: Dict) -> KontrolRaporu:
             sut_kurali='SUT 4.2.2(1) — Trisiklik/SSRI tüm hekimlerce yazılabilir, 6 ay+ psikiyatri raporu',
             aranan_ibare='Trisiklik/SSRI → rapor gerekmez (ilk 6 ay)')
 
-    # ── SUT Fıkra (1): SNRI/NASSA → psikiyatri/nöroloji/geriatri ──
-    # (SNRI zaten rapor kontrolüne düşecek, burada sadece raporsuz durumu kontrol et)
+    # ── SUT Fıkra (1) cümle 2: SNRI/SSRE/RIMA/NaSSA → atomik modül ──
+    # 2026-07-06: Bu dal daha önce implemente edilmemişti (yorum vardı, kod
+    # yoktu) — raporsuz SNRI'lar generic KONTROL_EDILEMEDI'ye düşüyordu.
+    # snri_4_2_2: psikiyatri ∨ (nöroloji/geriatri ∧ ≤6 ay) üst-VEYA motoru;
+    # duloksetin üriner (M.45) / nöropati (4.2.35) dispatch'i modül içinde.
+    # Bupropion/vortioksetin/agomelatin/trazodon kapsam DIŞI (aşağıda BVA).
+    from recete_kontrol.snri_4_2_2 import snri_kapsami_mi, snri_kontrol_4_2_2
+    if snri_kapsami_mi(ilac_sonuc):
+        return snri_kontrol_4_2_2(ilac_sonuc)
 
     # ── SUT Fıkra (1): Bupropion/Vortioksetin/Agomelatin → sadece major depresif bozukluk ──
     if is_bva:
@@ -17875,29 +17907,15 @@ def kontrol_psikiyatri(ilac_sonuc: Dict) -> KontrolRaporu:
             uyari='SUT 4.2.2: Bupropion/vortioksetin/agomelatin sadece major depresif bozuklukta, psikiyatri/nöroloji',
             sut_kurali='SUT 4.2.2(1)')
 
-    # ── SUT Fıkra (7): Valproat — bipolar bozukluk endikasyonunda psikiyatri/nöroloji ──
+    # ── SUT Fıkra (7): Valproat → atomik modüle delege (2026-07-06) ──
+    # Eski yüzeysel dal (rapor kodu varsa körlemesine UYGUN diyordu)
+    # valproat_4_2_2_7 atomik motoruna taşındı: E1 (bipolar-değil) ‖
+    # B (psikiyatri/nöroloji reçeteci ∨ raporu) üst-VEYA + KÜB/kokteyl bilgi.
     if is_mood_stab and ('VALPROAT' in etkin_madde or 'VALPROIK' in etkin_madde or
-                          'DEPAKIN' in ilac_adi or 'DEPAKINE' in ilac_adi or 'CONVULEX' in ilac_adi):
-        bipolar = any(k in teshis_metin for k in ['F31']) if recete_teshisleri else False
-        if not bipolar:
-            bipolar = _turkce_ara(metin or '', 'bipolar')
-        detaylar['alt_grup'] = 'Valproat (Bipolar)'
-        if rapor_kodu:
-            return KontrolRaporu(KontrolSonucu.UYGUN,
-                f"Valproat — bipolar bozukluk raporu mevcut ({rapor_kodu})",
-                detaylar=detaylar,
-                sut_kurali='SUT 4.2.2(7) — Valproat: bipolar bozuklukta psikiyatri/nöroloji raporu',
-                aranan_ibare='Bipolar bozukluk (F31) + psikiyatri/nöroloji raporu')
-        doktor_val = _tr_lower(ilac_sonuc.get('doktor_uzmanligi'))
-        if any(k in doktor_val for k in ['psikiyatri', 'nöroloji', 'noroloji']):
-            return KontrolRaporu(KontrolSonucu.UYGUN,
-                "Valproat — psikiyatri/nöroloji uzmanı tarafından yazılmış",
-                detaylar=detaylar,
-                sut_kurali='SUT 4.2.2(7) — Valproat: bipolar bozuklukta psikiyatri/nöroloji uzmanı yazabilir')
-        return KontrolRaporu(KontrolSonucu.KONTROL_EDILEMEDI,
-            "Valproat (bipolar) — psikiyatri/nöroloji uzmanı veya raporu gerekli",
-            detaylar=detaylar,
-            sut_kurali='SUT 4.2.2(7) — Valproat bipolar bozuklukta psikiyatri/nöroloji gerekli')
+                          'DEPAKIN' in ilac_adi or 'DEPAKINE' in ilac_adi or
+                          'CONVULEX' in ilac_adi or 'DEPALEX' in ilac_adi):
+        from recete_kontrol.valproat_4_2_2_7 import valproat_kontrol_4_2_2_7
+        return valproat_kontrol_4_2_2_7(ilac_sonuc)
 
     # ── Antipsikotik alt tip ayrımı ──
     # Tipik (klasik) antipsikotikler: rapor gerekmez, tüm hekimler yazabilir
@@ -18269,6 +18287,208 @@ def kontrol_noropatik_4_2_35(ilac_sonuc: Dict) -> KontrolRaporu:
     return noropatik_kontrol_4_2_35(ilac_sonuc)
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# SUT 4.2.24 SOLUNUM — LABA / LAMA / ICS bileşen sözlükleri
+# kontrol_solunum içi reçete taraması + son-3-ay geçmiş taraması ortak
+# kullanır. Üçlü kullanım (4.2.24.B) ayrı reçetelerle de oluşabilir.
+# ═══════════════════════════════════════════════════════════════════════
+_SOLUNUM_ICS_MADDELER = ('BUDESONID', 'BUDEZONID', 'FLUTIKAZON',
+                         'BEKLOMETAZON', 'SIKLESONID', 'MOMETAZON')
+_SOLUNUM_LABA_MADDELER = ('FORMOTEROL', 'SALMETEROL', 'VILANTEROL',
+                          'INDAKATEROL', 'OLODATEROL')
+_SOLUNUM_LAMA_MADDELER = ('TIOTROPIUM', 'GLIKOPIRONYUM', 'UMEKLIDINYUM',
+                          'AKLIDINYUM', 'GLICOPIRONYUM', 'REVEFENACIN')
+_SOLUNUM_LABA_ICS_TICARI = ('SERETIDE', 'SYMBICORT', 'FOSTER', 'RELVAR',
+                            'DUORESP', 'BREQUAL', 'BREQAL', 'BUFOMIX',
+                            'FOKUSAL', 'AIRFLUSAL', 'AIRDUO', 'BREO',
+                            'FLUTIFORM', 'VANNAIR', 'WIXELA', 'INUVAIR',
+                            'BUFEX', 'AIRPLUS', 'MIFLONIDE COMBI', 'BUFOM')
+_SOLUNUM_LABA_LAMA_TICARI = ('ANORO', 'ULTIBRO', 'SPIOLTO', 'DUAKLIR',
+                             'BEVESPI', 'STIOLTO')
+_SOLUNUM_LABA_TEK_TICARI = ('FORADIL', 'OXIS', 'SEREVENT', 'ONBREZ',
+                            'STRIVERDI')
+_SOLUNUM_LAMA_TEK_TICARI = ('SPIRIVA', 'INCRUSE', 'SEEBRI', 'BRETARIS',
+                            'EKLIRA', 'TUDORZA')
+_SOLUNUM_ICS_TEK_TICARI = ('PULMICORT', 'FLIXOTIDE', 'BECLOFORTE', 'ALVESCO',
+                           'MIFLONIDE', 'CORTAIR', 'BUDICORT', 'NEUMOCORT',
+                           'BUDECORT', 'BECLATE', 'CLENIL', 'ASMANEX',
+                           'BECLOJET')
+_SOLUNUM_UCLU_TICARI = ('TRELEGY', 'TRIMBOW', 'ENERZAIR', 'BREZTRI',
+                        'TRIXEO', 'AIRSUPRA')
+
+
+def _solunum_bilesenleri(ad: str, etken: str) -> Tuple[bool, bool, bool]:
+    """Ürün adı + etken maddeden (LABA, ICS, LAMA) bileşen tespiti.
+
+    Args ('ad'/'etken' UPPER beklenir): ticari ad substring + etken madde
+    substring birlikte taranır. Üçlü inhaler ticari adı 3 bileşeni birden
+    kapsar.
+
+    Returns: (laba, ics, lama)
+    """
+    ad = (ad or '').upper()
+    etken = (etken or '').upper()
+    if any(t in ad for t in _SOLUNUM_UCLU_TICARI):
+        return (True, True, True)
+    combo = ad + ' ' + etken
+    laba = ics = lama = False
+    if any(t in ad for t in _SOLUNUM_LABA_ICS_TICARI):
+        laba = ics = True
+    if any(t in ad for t in _SOLUNUM_LABA_LAMA_TICARI):
+        laba = lama = True
+    if (any(m in combo for m in _SOLUNUM_LABA_MADDELER)
+            or any(t in ad for t in _SOLUNUM_LABA_TEK_TICARI)):
+        laba = True
+    if (any(m in combo for m in _SOLUNUM_ICS_MADDELER)
+            or any(t in ad for t in _SOLUNUM_ICS_TEK_TICARI)):
+        ics = True
+    if (any(m in combo for m in _SOLUNUM_LAMA_MADDELER)
+            or any(t in ad for t in _SOLUNUM_LAMA_TEK_TICARI)):
+        lama = True
+    return (laba, ics, lama)
+
+
+def _solunum_referans_tarih(ilac_sonuc: Dict):
+    """ilac_sonuc['recete_tarihi'] parse et (yoksa None → sorguda GETDATE()).
+
+    Retrospektif aylık kontrolde 'son 3 ay' penceresi reçete tarihinden
+    geriye hesaplanmalı; anlık kontrolde alan boş kalır → bugün.
+    """
+    from datetime import datetime, date
+    t = ilac_sonuc.get('recete_tarihi')
+    if not t:
+        return None
+    if isinstance(t, (datetime, date)):
+        return t
+    for fmt in ('%d.%m.%Y', '%Y-%m-%d', '%d/%m/%Y'):
+        try:
+            return datetime.strptime(str(t).strip()[:10], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+# TC bazlı geçmiş sorgu cache'i — aylık toplu kontrolde aynı hastanın her
+# solunum kalemi için EOS'a tekrar gitmemek için. Anahtar: (tc, ref_str).
+_SOLUNUM_GECMIS_CACHE: Dict[tuple, tuple] = {}
+
+
+def _solunum_gecmis_bilesen_tara(
+        ilac_sonuc: Dict) -> Tuple[bool, bool, bool, List[str], str]:
+    """Hastanın SON 3 AY ilaç geçmişinde LABA/LAMA/ICS bileşenlerini tara.
+
+    Kaynak önceliği:
+      1. ilac_sonuc['hasta_ilac_gecmisi'] — pipeline doldurmuşsa (test/AI
+         paketi); kayıt: {'ad'/'ilac_adi', 'etkin_madde', 'tarih'?}
+      2. Botanik EOS `hasta_son_ilac_satislari` (SADECE SELECT — BotanikDB
+         guard, CLAUDE.md §2) — hasta_tc varsa.
+
+    Geçmişte bulunamaması KANIT DEĞİLDİR (başka eczane olabilir) — çağıran
+    taraf yalnızca pozitif bulguyla yükseltme yapar, yokluk davranışı
+    değiştirmez.
+
+    Returns: (laba, ics, lama, kaynaklar, durum)
+        kaynaklar: ['2026-05-12 SYMBICORT TURBUHALER...', ...] (bileşen
+                   içeren kayıtlar, yeniden eskiye)
+        durum: 'pipeline' | 'eos' | 'bos' | 'tc_yok' | 'hata'
+    """
+    from datetime import datetime, date, timedelta
+
+    laba = ics = lama = False
+    kaynaklar: List[str] = []
+    referans = _solunum_referans_tarih(ilac_sonuc)
+
+    def _kayit_isle(ad: str, etken: str, tarih_str: str):
+        nonlocal laba, ics, lama
+        k_laba, k_ics, k_lama = _solunum_bilesenleri(ad, etken)
+        if not (k_laba or k_ics or k_lama):
+            return
+        laba = laba or k_laba
+        ics = ics or k_ics
+        lama = lama or k_lama
+        etiket = f'{tarih_str} {ad}'.strip() if tarih_str else ad
+        if etiket and etiket not in kaynaklar:
+            kaynaklar.append(etiket)
+
+    # ── 1. Pipeline geçmişi (varsa EOS'a gitme) ──
+    gecmis = ilac_sonuc.get('hasta_ilac_gecmisi') or []
+    if gecmis and isinstance(gecmis, list):
+        ref_dt = referans
+        if isinstance(ref_dt, date) and not isinstance(ref_dt, datetime):
+            ref_dt = datetime(ref_dt.year, ref_dt.month, ref_dt.day)
+        if ref_dt is None:
+            ref_dt = datetime.now()
+        alt_sinir = ref_dt - timedelta(days=92)
+        for kayit in gecmis:
+            if isinstance(kayit, dict):
+                ad = str(kayit.get('ad') or kayit.get('ilac_adi') or '')
+                etken = str(kayit.get('etkin_madde') or '')
+                t = kayit.get('tarih') or kayit.get('recete_tarihi') or ''
+            else:
+                ad, etken, t = str(kayit), '', ''
+            tarih_str = str(t)[:10] if t else ''
+            # Tarihli kayıtlar pencere dışıysa atla; tarihsizler dahil
+            # (paket zaten "son N ay" kapsamında üretiliyor).
+            if tarih_str:
+                dt = None
+                for fmt in ('%Y-%m-%d', '%d.%m.%Y', '%d/%m/%Y'):
+                    try:
+                        dt = datetime.strptime(tarih_str, fmt)
+                        break
+                    except ValueError:
+                        continue
+                if dt is not None and (dt < alt_sinir or dt > ref_dt):
+                    continue
+            _kayit_isle(ad, etken, tarih_str)
+        return (laba, ics, lama, kaynaklar, 'pipeline')
+
+    # ── 2. Botanik EOS (SADECE SELECT) ──
+    hasta_tc = str(ilac_sonuc.get('hasta_tc')
+                   or ilac_sonuc.get('tc_no')
+                   or ilac_sonuc.get('tckn') or '').strip()
+    if not hasta_tc or len(hasta_tc) != 11:
+        return (False, False, False, [], 'tc_yok')
+
+    ref_str = ''
+    if referans is not None:
+        try:
+            ref_str = referans.strftime('%Y-%m-%d')
+        except AttributeError:
+            ref_str = str(referans)[:10]
+    cache_key = (hasta_tc, ref_str)
+    if cache_key in _SOLUNUM_GECMIS_CACHE:
+        return _SOLUNUM_GECMIS_CACHE[cache_key]
+
+    try:
+        from botanik_db import get_botanik_db
+        db = get_botanik_db()
+        if not db.baglan():
+            return (False, False, False, [], 'hata')
+        satislar = db.hasta_son_ilac_satislari(
+            hasta_tc, referans_tarih=referans, ay_geri=3, limit=300)
+        for row in satislar:
+            ad = str(row.get('urun_adi') or '')
+            etken = str(row.get('etken_madde') or '')
+            t = row.get('recete_tarihi')
+            tarih_str = ''
+            if t is not None:
+                try:
+                    tarih_str = t.strftime('%Y-%m-%d')
+                except AttributeError:
+                    tarih_str = str(t)[:10]
+            _kayit_isle(ad, etken, tarih_str)
+        sonuc = (laba, ics, lama, kaynaklar,
+                 'eos' if (laba or ics or lama) else 'bos')
+    except Exception as e:
+        logger.debug('Solunum geçmiş EOS sorgu hatası: %s', e)
+        return (False, False, False, [], 'hata')
+
+    if len(_SOLUNUM_GECMIS_CACHE) > 256:
+        _SOLUNUM_GECMIS_CACHE.clear()
+    _SOLUNUM_GECMIS_CACHE[cache_key] = sonuc
+    return sonuc
+
+
 def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     """
     SUT 4.2.24 - Solunum Sistemi İlaçları (Astım/KOAH) — Detaylı Kontrol
@@ -18328,20 +18548,9 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     # 3 ay ICS+LABA tedavisine rağmen yetersiz yanıt + ≥2 atak/yıl + mMRC≥2.
     # Kullanıcı isteği: "üçlü kullanılıyorsa SUT özel hükmü raporda var mı bak"
     diger_ilaclar = ilac_sonuc.get('recete_ilaclari') or []
-    # Reçetedeki TÜM ilaçlardan LABA/LAMA/ICS varlığını topla (mevcut + diğerleri)
-    laba_ics_kombi_ticari = ['SERETIDE', 'SYMBICORT', 'FOSTER', 'RELVAR', 'DUORESP',
-                              'BREQUAL', 'BREQAL', 'BUFOMIX', 'FOKUSAL', 'AIRFLUSAL',
-                              'AIRDUO', 'BREO', 'FLUTIFORM', 'VANNAIR', 'WIXELA',
-                              'INUVAIR', 'BUFEX', 'AIRPLUS']
-    laba_lama_kombi_ticari = ['ANORO', 'ULTIBRO', 'SPIOLTO', 'DUAKLIR', 'BEVESPI', 'STIOLTO']
-    laba_tek_ticari = ['FORADIL', 'OXIS', 'SEREVENT', 'ONBREZ', 'STRIVERDI']
-    lama_tek_ticari = ['SPIRIVA', 'INCRUSE', 'SEEBRI', 'BRETARIS', 'EKLIRA', 'TUDORZA']
-    ics_tek_ticari = ['PULMICORT', 'FLIXOTIDE', 'BECLOFORTE', 'ALVESCO', 'MIFLONIDE',
-                       'CORTAIR', 'BUDICORT', 'NEUMOCORT', 'BUDECORT', 'BECLATE',
-                       'CLENIL', 'ASMANEX', 'BECLOJET']
-    uclu_kombi_ticari = ['TRELEGY', 'TRIMBOW', 'ENERZAIR', 'BREZTRI', 'TRIXEO',
-                          'AIRSUPRA']
-
+    # Reçetedeki TÜM ilaçlardan LABA/LAMA/ICS varlığını topla (mevcut +
+    # diğerleri) — bileşen sözlükleri modül seviyesinde (_SOLUNUM_*),
+    # son-3-ay geçmiş taramasıyla ortak.
     recete_has_laba = has_laba
     recete_has_ics = has_ics
     recete_has_lama = has_lama
@@ -18358,26 +18567,10 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
         # Kendi ilacımız listede varsa atla (case-insensitive substring)
         if ilac_adi and ilac_adi.upper() in di_ad:
             continue
-        di_combo = di_ad + ' ' + di_etkin
-        # Üçlü inhaler tek başına 3'ünü kapsar
-        if any(t in di_ad for t in uclu_kombi_ticari):
-            recete_has_laba = recete_has_ics = recete_has_lama = True
-            continue
-        # LABA+ICS kombi
-        if any(t in di_ad for t in laba_ics_kombi_ticari):
-            recete_has_laba = True
-            recete_has_ics = True
-        # LABA+LAMA kombi
-        if any(t in di_ad for t in laba_lama_kombi_ticari):
-            recete_has_laba = True
-            recete_has_lama = True
-        # Tek bileşen — etkin madde + ticari ad
-        if any(m in di_combo for m in laba_maddeler) or any(t in di_ad for t in laba_tek_ticari):
-            recete_has_laba = True
-        if any(m in di_combo for m in ics_maddeler) or any(t in di_ad for t in ics_tek_ticari):
-            recete_has_ics = True
-        if any(m in di_combo for m in lama_maddeler) or any(t in di_ad for t in lama_tek_ticari):
-            recete_has_lama = True
+        di_laba, di_ics, di_lama = _solunum_bilesenleri(di_ad, di_etkin)
+        recete_has_laba = recete_has_laba or di_laba
+        recete_has_ics = recete_has_ics or di_ics
+        recete_has_lama = recete_has_lama or di_lama
 
     # Reçete genelinde üçlü kullanım var mı?
     recete_uclu_kullanim = recete_has_laba and recete_has_ics and recete_has_lama
@@ -18385,6 +18578,31 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     detaylar['recete_has_laba'] = recete_has_laba
     detaylar['recete_has_ics'] = recete_has_ics
     detaylar['recete_has_lama'] = recete_has_lama
+
+    # ══════════════════════════════════════════════════════════════════
+    # HASTA İLAÇ GEÇMİŞİ (SON 3 AY) — REÇETELER-ARASI ORTAK KULLANIM
+    # ══════════════════════════════════════════════════════════════════
+    # Hasta LABA/LAMA/ICS bileşenlerini AYRI reçetelerle almış olabilir
+    # (örn. geçen ay SYMBICORT, bu reçetede SPIRIVA). Aktif reçete tek
+    # başına üçlü değilse son 3 ayın satışları taranır; reçete + geçmiş
+    # birleşimi 3 bileşeni de kapsıyorsa fiilen üçlü kullanım vardır →
+    # SUT 4.2.24.B özel hükmü aranır. Geçmiş sorgulanamazsa/boşsa davranış
+    # değişmez (yokluk kanıt değildir — başka eczane olabilir).
+    cur_laba, cur_ics, cur_lama = _solunum_bilesenleri(ilac_adi, etkin_madde)
+    gecmis_uclu_kullanim = False
+    gecmis_kaynaklar: List[str] = []
+    if (cur_laba or cur_ics or cur_lama) and not recete_uclu_kullanim:
+        g_laba, g_ics, g_lama, gecmis_kaynaklar, gecmis_durum = \
+            _solunum_gecmis_bilesen_tara(ilac_sonuc)
+        detaylar['gecmis_3ay_sorgu'] = gecmis_durum
+        if g_laba or g_ics or g_lama:
+            detaylar['gecmis_3ay_bilesen'] = {
+                'laba': g_laba, 'ics': g_ics, 'lama': g_lama}
+            detaylar['gecmis_3ay_kaynak'] = gecmis_kaynaklar[:6]
+            gecmis_uclu_kullanim = ((recete_has_laba or g_laba)
+                                    and (recete_has_ics or g_ics)
+                                    and (recete_has_lama or g_lama))
+    detaylar['gecmis_uclu_kullanim'] = gecmis_uclu_kullanim
 
     # ── Farmasötik form tespiti (nebülizasyon / inhaler / oral / enjeksiyon) ──
     ilac_adi_lower = ilac_adi.lower().replace('İ', 'i').replace('I', 'ı')
@@ -18453,9 +18671,12 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
     # Reçetede 3 ayrı ilaç olarak LABA+LAMA+ICS yazılmış olabilir — bu da üçlü.
     # Bu durumda mevcut ilaç tek başına ikili (LABA+ICS) olsa bile reçete genelinde
     # üçlü kullanım olduğu için SUT 4.2.24.B özel hükmü aranacak.
+    # Aynı şekilde son 3 ay geçmişindeki satışlar üçlüyü tamamlıyorsa
+    # (örn. bu reçete SPIRIVA + geçen ay SYMBICORT) yine üçlü kullanımdır.
     is_uclu = (any(t in ilac_adi for t in uclu_ticari)
                or uclu_etkin_eslesti
-               or recete_uclu_kullanim)
+               or recete_uclu_kullanim
+               or gecmis_uclu_kullanim)
 
     # ── LTRA (Lökotrien reseptör antagonisti) ──
     # Tek başına: SINGULAIR, ONCEAIR, NOTTA, AIRLUKAST, ACCOLATE
@@ -18804,6 +19025,17 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
 
     # ── Üçlü kombinasyon (LABA+ICS+LAMA) → 3 ay ICS+LABA başarısızlığı ──
     if is_uclu:
+        # Üçlü tespiti geçmiş satışlarla tamamlandıysa mesajda kaynağı göster
+        # (eczacı hangi eski satışın üçlüyü oluşturduğunu görmeli). Aktif
+        # ilacın kendi eski satışları listeden düşülür — tamamlayıcı olan
+        # DİĞER bileşen satışları gösterilir.
+        gecmis_not = ''
+        if gecmis_uclu_kullanim and not recete_uclu_kullanim:
+            kaynak_goster = [k for k in gecmis_kaynaklar
+                             if not (ilac_adi and ilac_adi in k)] \
+                            or gecmis_kaynaklar
+            gecmis_not = (' [üçlü, son 3 ay satışıyla tamamlandı: '
+                          + '; '.join(kaynak_goster[:3]) + ']')
         onceki_tedavi = bool(re.search(r'ics.*laba|iks.*laba|inhaler.*kortikosteroid|laba.*ics', metin_lower))
         yetersiz = _turkce_ara(metin_lower, 'yetersiz') or _turkce_ara(metin_lower, 'yeterli yanıt') or \
                    _turkce_ara(metin_lower, 'başarısız') or _turkce_ara(metin_lower, 'cevapsız') or \
@@ -18833,7 +19065,7 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
                     semptom_bilgi += ' (DİKKAT: <10)'
             return KontrolRaporu(
                 sonuc=KontrolSonucu.UYGUN,
-                mesaj=f'Üçlü kombinasyon — KOAH + ICS+LABA başarısızlığı + atak{semptom_bilgi}',
+                mesaj=f'Üçlü kombinasyon — KOAH + ICS+LABA başarısızlığı + atak{semptom_bilgi}{gecmis_not}',
                 detaylar=detaylar,
                 sut_kurali='SUT 4.2.24.B — Üçlü: KOAH + en az 3 ay ICS+LABA yetersiz + '
                            '≥2 orta/ağır atak/yıl + mMRC≥2 veya CAT≥10, '
@@ -18845,7 +19077,8 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
         if astim and (onceki_tedavi or yetersiz):
             return KontrolRaporu(
                 sonuc=KontrolSonucu.UYGUN,
-                mesaj='Üçlü kombinasyon — astım + ICS+LABA başarısızlığı (basamak tedavisi)',
+                mesaj=('Üçlü kombinasyon — astım + ICS+LABA başarısızlığı '
+                       '(basamak tedavisi)' + gecmis_not),
                 detaylar=detaylar,
                 sut_kurali='SUT 4.2.24 — Üçlü (astım): ICS+LABA yetersiz yanıt → LAMA eklenmesi, '
                            'göğüs hast./alerji uzmanı, 1 yıllık rapor',
@@ -18861,7 +19094,8 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
             return KontrolRaporu(
                 sonuc=KontrolSonucu.UYGUN,
                 mesaj=f'Üçlü kombinasyon raporlu (rapor {rapor_kodu}) — '
-                      f'Medula 3 ay ICS+LABA başarısızlığı + atak + mMRC/CAT şart kontrolünü yapar',
+                      f'Medula 3 ay ICS+LABA başarısızlığı + atak + mMRC/CAT '
+                      f'şart kontrolünü yapar{gecmis_not}',
                 detaylar={**detaylar, 'medula_otomatik': True},
                 sut_kurali='SUT 4.2.24.B — Solunum rapor kodu + Medula şart kontrolü',
                 uyari='3 ay ICS+LABA başarısızlığı, ≥2 atak/yıl, mMRC≥2 veya CAT≥10 '
@@ -18879,7 +19113,7 @@ def kontrol_solunum(ilac_sonuc: Dict) -> KontrolRaporu:
             eksik.append('atak bilgisi (≥2/yıl gerekli)')
         return KontrolRaporu(
             sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-            mesaj=f'Üçlü kombinasyon — eksik: {", ".join(eksik)}',
+            mesaj=f'Üçlü kombinasyon — eksik: {", ".join(eksik)}{gecmis_not}',
             detaylar=detaylar,
             sut_kurali='SUT 4.2.24.B — Üçlü: en az 3 ay ICS+LABA başarısızlığı + ≥2 atak/yıl + mMRC≥2 gerekli',
             uyari='Gerekli: (1) KOAH veya ağır astım, (2) En az 3 ay ICS+LABA kullanılıp yetersiz yanıt, '
@@ -20390,16 +20624,128 @@ def kontrol_trimetazidin(ilac_sonuc: Dict) -> KontrolRaporu:
 
 
 def kontrol_dmah(ilac_sonuc: Dict) -> KontrolRaporu:
-    """DMAH/Enoksaparin (SUT 4.2.7) - Rapor + uyarı kodu zorunlu"""
-    rapor_kodu = ilac_sonuc.get('rapor_kodu', '')
+    """DMAH/Enoksaparin (SUT 4.2.7 — Düşük molekül ağırlıklı heparinler).
 
+    Resmî lafız (Değişik:RG-25/11/2025-33088):
+    (1) Uzman hekim raporu (en fazla 6 ay, dozu gösterir) → tüm hekimler reçete
+        edebilir. 6 aydan uzun kullanımda onk/hemat/KVC/kard/göğüs/iç hst/
+        genel cerrahi/nöroloji uzmanlı SK raporu. Gebede KHD uzman raporu (10 ay).
+    (2) Yatan hastalarda veya acil servislerde RAPOR ARANMAZ.
+    (3) Hemodiyalizde işlem puanına dahil — reçete edilse dahi ödenmez.
+    (4) Farklı etken maddeli DMAH'ların birlikte kullanımı ödenmez.
+    """
+    sut_kurali = 'SUT 4.2.7 — Düşük molekül ağırlıklı heparinler'
+    rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
+    recete_alt_turu = (ilac_sonuc.get('recete_alt_turu') or '').strip()
+    alt_tur = _tr_lower(recete_alt_turu)
+    etkin_madde = (ilac_sonuc.get('etkin_madde') or '').upper()
+    ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
+    metin = _tum_metinleri_birlesir(ilac_sonuc) or ''
+
+    sartlar: List[SartSonuc] = []
+
+    # ── Fıkra (4): farklı etken maddeli DMAH kombinasyonu ödenmez ──
+    DMAH_ETKEN_IPUCLARI = {
+        'ENOKSAPARIN': ['ENOKSAPARIN', 'ENOKSAPARİN', 'OKSAPAR', 'CLEXANE', 'ENOX'],
+        'BEMIPARIN': ['BEMIPARIN', 'BEMİPARİN', 'HIBOR', 'IVOR'],
+        'DALTEPARIN': ['DALTEPARIN', 'DALTEPARİN', 'FRAGMIN'],
+        'NADROPARIN': ['NADROPARIN', 'NADROPARİN', 'FRAXIPARINE', 'FRAXODI'],
+        'TINZAPARIN': ['TINZAPARIN', 'TİNZAPARİN', 'INNOHEP'],
+        'FONDAPARINUKS': ['FONDAPARINUKS', 'FONDAPARINUX', 'ARIXTRA'],
+    }
+    diger_ilaclar = ilac_sonuc.get('recete_ilaclari') or []
+    diger_ilac_adlari = ' '.join([str(i.get('ad', '') if isinstance(i, dict) else i)
+                                  for i in diger_ilaclar]).upper()
+    aktif_grup = next((e for e, ips in DMAH_ETKEN_IPUCLARI.items()
+                       if any(ip in etkin_madde or ip in ilac_adi for ip in ips)), None)
+    farkli_dmah = [e for e, ips in DMAH_ETKEN_IPUCLARI.items()
+                   if e != aktif_grup and any(ip in diger_ilac_adlari for ip in ips)]
+    if farkli_dmah:
+        sartlar.append(SartSonuc(
+            ad='Farklı etken maddeli DMAH birlikte kullanılmamalı (fıkra 4)',
+            durum=SartDurumu.YOK,
+            neden=f"Aynı reçetede farklı DMAH etkeni: {', '.join(farkli_dmah)}",
+            kaynak='recete_ilaclari', grup='Kombinasyon yasağı (fıkra 4)'))
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN_DEGIL,
+            f"Farklı etken maddeli DMAH birlikte yazılmış ({aktif_grup or etkin_madde} + "
+            f"{', '.join(farkli_dmah)}) — bedeli ödenmez",
+            uyari='SUT 4.2.7(4) — farklı etken maddeli DMAH kombinasyonu Kurumca karşılanmaz',
+            sut_kurali=sut_kurali, sartlar=sartlar)
+    sartlar.append(SartSonuc(
+        ad='Farklı etken maddeli DMAH birlikte kullanılmamalı (fıkra 4)',
+        durum=SartDurumu.VAR, neden='Reçetede başka DMAH etkeni yok',
+        kaynak='recete_ilaclari', grup='Kombinasyon yasağı (fıkra 4)'))
+
+    # ── Fıkra (3): hemodiyaliz — işlem puanına dahil, sadece uyarı ──
+    hemodiyaliz_uyari = None
+    if 'HEMODIYALIZ' in metin.upper() or 'HEMODİYALİZ' in metin.upper():
+        hemodiyaliz_uyari = ('SUT 4.2.7(3) — hemodiyaliz tedavisinde heparinler işlem '
+                             'puanına dahildir, reçete edilse dahi ödenmez (manuel doğrulayın)')
+
+    # ── Fıkra (1): uzman hekim raporu ──
     if rapor_kodu:
-        return KontrolRaporu(KontrolSonucu.UYGUN,
-                             f"DMAH - rapor mevcut ({rapor_kodu})",
-                             uyari="Uyarı kodu 280(başlangıç)/281(idame) kontrol edilmeli")
-    return KontrolRaporu(KontrolSonucu.UYGUN_DEGIL,
-                         "DMAH/Enoksaparin RAPORSUZ yazılmış! Rapor ZORUNLU",
-                         uyari="SUT 4.2.7 - raporsuz verilemez")
+        sartlar.append(SartSonuc(
+            ad='Uzman hekim raporu (fıkra 1)', durum=SartDurumu.VAR,
+            neden=f'Rapor mevcut ({rapor_kodu})', kaynak='rapor_kodu',
+            grup='Ödeme yolu (≥1)', veya_grubu=True))
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            f"DMAH — rapor mevcut ({rapor_kodu})",
+            uyari=hemodiyaliz_uyari or ('Rapor süresi ≤6 ay ve dozu göstermeli; >6 ay '
+                                        'kullanımda SK raporu gerekir. Uyarı kodu '
+                                        '280(başlangıç)/281(idame) kontrol edilmeli'),
+            sut_kurali=sut_kurali, sartlar=sartlar)
+
+    # ── Fıkra (2): yatan hasta / acil servis istisnası — rapor aranmaz ──
+    if 'yatan' in alt_tur or 'acil' in alt_tur or 'taburcu' in alt_tur:
+        sartlar.append(SartSonuc(
+            ad='Yatan hasta / acil servis istisnası (fıkra 2)', durum=SartDurumu.VAR,
+            neden=f"Reçete alt türü: {recete_alt_turu}", kaynak='recete_alt_turu',
+            grup='Ödeme yolu (≥1)', veya_grubu=True))
+        uyari = hemodiyaliz_uyari
+        if 'taburcu' in alt_tur:
+            uyari = uyari or ('Taburcu reçetesi yatan hasta istisnası kapsamında '
+                              'değerlendirildi (SUT 4.2.7(2))')
+        return KontrolRaporu(
+            KontrolSonucu.UYGUN,
+            f"DMAH raporsuz — reçete alt türü '{recete_alt_turu}': "
+            f"yatan hasta/acil serviste rapor aranmaz",
+            uyari=uyari, sut_kurali=sut_kurali,
+            aranan_ibare='Reçete alt türü: Yatan/Acil/Taburcu',
+            bulunan_metin=f'Reçete alt türü: {recete_alt_turu}', sartlar=sartlar)
+
+    # Alt tür bilinmiyor / yatan-acil kapsamı belirsiz (Günübirlik, Yeşil Alan,
+    # Evde Bakım, boş) → örtük kabul yasağı: UYGUN da UYGUN DEĞİL de denemez
+    if not alt_tur or alt_tur not in ('ayaktan',):
+        if 'ayaktan' not in alt_tur:
+            sartlar.append(SartSonuc(
+                ad='Uzman hekim raporu (fıkra 1) VEYA yatan/acil istisnası (fıkra 2)',
+                durum=SartDurumu.KONTROL_EDILEMEDI,
+                neden=(f"Rapor yok; reçete alt türü "
+                       f"{'belirsiz/boş' if not alt_tur else repr(recete_alt_turu)} — "
+                       f"yatan/acil kapsamı doğrulanamadı"),
+                kaynak='recete_alt_turu', grup='Ödeme yolu (≥1)', veya_grubu=True))
+            return KontrolRaporu(
+                KontrolSonucu.KONTROL_EDILEMEDI,
+                f"DMAH raporsuz; reçete alt türü "
+                f"{'okunamadı' if not alt_tur else recete_alt_turu} — yatan hasta/acil "
+                f"servis istisnası (SUT 4.2.7(2)) manuel doğrulanmalı",
+                uyari=hemodiyaliz_uyari or ('Ayaktan reçete ise rapor zorunlu; yatan/acil '
+                                            'kaynaklı ise raporsuz ödenir'),
+                sut_kurali=sut_kurali, sartlar=sartlar)
+
+    # Ayaktan + raporsuz → rapor zorunlu
+    sartlar.append(SartSonuc(
+        ad='Uzman hekim raporu (fıkra 1) VEYA yatan/acil istisnası (fıkra 2)',
+        durum=SartDurumu.YOK,
+        neden=f"Rapor yok; reçete alt türü '{recete_alt_turu}' (ayaktan) — istisna kapsamında değil",
+        kaynak='rapor_kodu + recete_alt_turu', grup='Ödeme yolu (≥1)', veya_grubu=True))
+    return KontrolRaporu(
+        KontrolSonucu.UYGUN_DEGIL,
+        "DMAH/Enoksaparin ayaktan RAPORSUZ yazılmış! Uzman hekim raporu ZORUNLU",
+        uyari='SUT 4.2.7(1) — ayaktan tedavide dozu gösteren uzman hekim raporu gerekir',
+        sut_kurali=sut_kurali, sartlar=sartlar)
 
 
 def kontrol_kadin_hormon(ilac_sonuc: Dict) -> KontrolRaporu:
@@ -22527,6 +22873,24 @@ def _cesitli_alt_grup_tespit(ilac_adi: str, etkin_madde: str,
             t in ad for t in ('NORMIX', 'TARGAXAN', 'XIFAXAN', 'RIFACOL', 'COLIDUR')):
         return 'RIFAKSIMIN'
 
+    # KALSIYUM DOBESILAT (SUT 4.1.4 genel raporlu — özel SUT maddesi YOK;
+    # ana tebliğ + EK-4/E + EK-4/F taraması negatif, 2026-07-05) — ATC C05BX01.
+    # NOT: alt_grup adı 'DOBESILAT' — 'GENEL_RAPORLU' genel dispatcher
+    # kategorisiyle (rapor kodu haritası) çakışmasın diye.
+    if a.startswith('C05BX'):
+        return 'DOBESILAT'
+    if 'DOBESILAT' in arama_ap or 'DOBESILATE' in arama_ap or any(
+            t in ad for t in ('DOXIUM', 'DOBESIFAR', 'MODET')):
+        return 'DOBESILAT'
+
+    # PENTOKSIFILIN (EK-4/D m.4.4/4.11 muafiyet modülü) — ATC C04AD03.
+    # Kalsiyum dobesilat AYRI ('DOBESILAT'/genel raporlu, yukarıda).
+    if a.startswith('C04AD03'):
+        return 'PENTOKSIFILIN'
+    if 'PENTOKSIFILIN' in arama_ap or 'PENTOXIFYLLINE' in arama_ap or any(
+            t in ad for t in ('TRENTAL', 'TRENTILIN', 'PENTOX')):
+        return 'PENTOKSIFILIN'
+
     if a.startswith('G04BD'):
         return 'URINER'
     # FINASTERID/DUTASTERID (BPH 5-ARI) — G04CB* + G04CA52 (dutasterid+tamsulosin
@@ -22713,22 +23077,6 @@ def kontrol_cesitli_madde_45_uriner(ilac_sonuc: Dict) -> KontrolRaporu:
 
     # ── 2) Duloksetin özel kontrolü ──
     if is_duloksetin:
-        if not rapor_kodu:
-            # Raporsuz Duloksetin — depresyon/anksiyete kapsamında olabilir.
-            # SUT M.45 kapsamında üriner için RAPOR ZORUNLU; raporsuz ise
-            # bu buton kapsamı değil → ŞÜPHELİ (psikiyatri butonu kontrol etsin)
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=('Duloksetin RAPORSUZ — büyük olasılıkla depresyon/'
-                       'anksiyete endikasyonu (SUT 4.2.2). Üriner endikasyon '
-                       'için M.45 rapor şart.'),
-                detaylar={**detaylar, 'endikasyon': 'belirsiz'},
-                uyari=('Duloksetin için PSİKİYATRİ butonu daha doğru kontrol '
-                       'eder; üriner endikasyonda bu satır ŞÜPHELİ kalır'),
-                sut_kurali=sut_kurali,
-                aranan_ibare='Duloksetin üriner endikasyonu (rapor şart)',
-            )
-
         ml = tum_metin.replace('İ', 'i').replace('I', 'ı').lower()
         sui_var = (
             ('stres' in ml and ('inkontinan' in ml or 'sui' in ml
@@ -22738,30 +23086,19 @@ def kontrol_cesitli_madde_45_uriner(ilac_sonuc: Dict) -> KontrolRaporu:
         )
         kadin_kesin = cinsiyet in ('K', 'KADIN', 'KADİN', 'F', 'FEMALE')
 
-        if not kadin_kesin:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f'Duloksetin raporlu (rap.kod {rapor_kodu}) — '
-                       f'cinsiyet "{cinsiyet or "bilinmiyor"}" '
-                       '(üriner endikasyon yalnız erişkin KADIN)'),
-                detaylar={**detaylar, 'sui_var': sui_var},
-                uyari=('Duloksetin üriner endikasyonda yalnız erişkin '
-                       'KADIN + stres SUI / mikst SUI'),
-                sut_kurali=sut_kurali,
-                aranan_ibare='Cinsiyet=Kadın + stres üriner inkontinans',
-            )
-
-        if not sui_var:
-            return KontrolRaporu(
-                sonuc=KontrolSonucu.KONTROL_EDILEMEDI,
-                mesaj=(f'Duloksetin raporlu (rap.kod {rapor_kodu}) — kadın '
-                       'hasta ama stres SUI / mikst SUI ibaresi raporda '
-                       'bulunamadı (depresyon olabilir)'),
-                detaylar={**detaylar, 'sui_var': False},
-                uyari='Üriner endikasyon için raporda STRES SUI / MİKST SUI olmalı',
-                sut_kurali=sut_kurali,
-                aranan_ibare='stres üriner inkontinans / mikst SUI',
-            )
+        # 2026-07-06: M.45 üriner kapsam kanıtı yoksa (raporsuz / SUI ibaresi
+        # yok / erkek) satırı ŞÜPHELİ bırakma — SUT 4.2.2(1) SNRI atomik
+        # kontrolüne delege et (o modül nöropati sinyalinde 4.2.35'e yönlenir).
+        # Önceki davranış: 3 ayrı sabit KONTROL_EDILEMEDI → tüm duloksetinler
+        # ÜROLOJİ butonunda ŞÜPHELİ yığılıyordu.
+        if not rapor_kodu or not kadin_kesin or not sui_var:
+            from recete_kontrol.snri_4_2_2 import snri_kontrol_4_2_2
+            rapor = snri_kontrol_4_2_2(ilac_sonuc, _delege_kaynak='uriner')
+            if rapor.detaylar is not None:
+                rapor.detaylar['uriner_delege'] = (
+                    'M.45 üriner kapsam kanıtı yok (rapor/SUI/kadın) → '
+                    'SUT 4.2.2(1) SNRI kontrolü uygulandı')
+            return rapor
 
         if any(b in doktor_brans for b in UZMAN_DULOKSETIN):
             return KontrolRaporu(
@@ -23551,7 +23888,7 @@ GRUP_DEMANS_ALT = {'DEMANS_ALS', 'GINKGO'}
 GRUP_KT_ANTIEMETIK_ALT = {'APREPITANT', 'SETRON'}
 GRUP_CESITLI_KALAN_ALT = {'HEMANJIYOM', 'FLUDROKORTIZON', 'IVERMEKTIN', 'MEKLOZIN',
                           'LEFLUNOMID', 'ORLISTAT', 'PIMTAK', 'ANTIFUNGAL',
-                          'RIFAKSIMIN'}
+                          'RIFAKSIMIN', 'DOBESILAT', 'PENTOKSIFILIN'}
 # RANOLAZIN → ❤️ İSKEMİK KALP butonu; ATOMOKSETIN → 🧠 PSİKİYATRİ/NÖROLOJİ butonu
 # (bu iki alt_grup mevcut butonların akışında işlenir, grup setlerine konmaz).
 
@@ -23618,6 +23955,14 @@ def _cesitli_route(alt_grup: str, ilac_sonuc: Dict) -> KontrolRaporu:
     if alt_grup == 'ANTIFUNGAL':
         from recete_kontrol.antifungal_4_2_23 import antifungal_kontrol_4_2_23
         return antifungal_kontrol_4_2_23(ilac_sonuc)
+    if alt_grup == 'DOBESILAT':
+        from recete_kontrol.dobesilat_genel_raporlu_4_1_4 import (
+            dobesilat_kontrol_genel_raporlu)
+        return dobesilat_kontrol_genel_raporlu(ilac_sonuc)
+    if alt_grup == 'PENTOKSIFILIN':
+        from recete_kontrol.pentoksifilin_ek4d import (
+            pentoksifilin_kontrol_ek4d)
+        return pentoksifilin_kontrol_ek4d(ilac_sonuc)
     if alt_grup == 'RIFAKSIMIN':
         from recete_kontrol.rifaksimin_ek4f import rifaksimin_kontrol
         return rifaksimin_kontrol(ilac_sonuc)

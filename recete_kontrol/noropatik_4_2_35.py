@@ -19,8 +19,10 @@ YOLAKLAR (dispatcher: etken madde → ilaç sınıfı; endikasyon → alt-paragr
   K    → 4.2.35.A(5)  Kapsaisin mono krem — postherpetik nevralji / ağrılı
                        diyabetik periferik polinöropati
 
-  Delege (ATLANDI): Gabapentin/Pregabalin + yalnız epilepsi/YAB → SUT 4.2.25;
-                    Duloksetin + yalnız depresyon → SUT 4.2.2 (psikiyatri).
+  Delege (ATLANDI): Gabapentin/Pregabalin + yalnız epilepsi/YAB → SUT 4.2.25.
+  Delege (doğrudan): Duloksetin nöropati/FM kanıtı yoksa (depresyon/sessiz
+                     dahil) → SUT 4.2.2(1) SNRI atomik kontrolü çağrılır ve
+                     sonucu döndürülür (snri_4_2_2.py, 2026-07-06).
 
 ═══════════════════════════════════════════════════════════════════════════
 SK-RAPORU GEREKTİREN YOLAKLAR (G, P) vs UZMAN-HEKİM-RAPORU YOLAKLARI (D, AL, K)
@@ -71,7 +73,7 @@ ALFA_LIPOIK_ETKEN = {'TIOKTIK', 'TİOKTİK', 'TIYOKTIK', 'TİYOKTİK',
                      'ALPHA LIPOIC', 'TIOCTIC', 'LIPOIK ASIT', 'LİPOİK ASİT'}
 ALFA_LIPOIK_TICARI = {'THIOCTACID', 'TIOCTACID', 'NOREXIA', 'TIOXIDAL',
                       'BENEDAY', 'INSULIPON', 'LIPONAT', 'NEUROLIP',
-                      'TIOLIP', 'LIPOIK'}
+                      'TIOLIP', 'LIPOIK', 'ALATAB'}
 
 KAPSAISIN_ETKEN = {'KAPSAISIN', 'KAPSAİSİN', 'CAPSAICIN', 'KAPSAYSIN'}
 KAPSAISIN_TICARI = {'CAPSIN', 'ZOSTRIX', 'QUTENZA'}
@@ -206,7 +208,11 @@ def _endikasyonlar(ilac_sonuc: Dict) -> Dict[str, bool]:
         any(k in metin for k in ('diyabetik noropati', 'diabetik noropati',
                                  'diyabetik polinoropati', 'periferal diabetik',
                                  'periferik polinoropati', 'polinoropati',
-                                 'diyabetik periferik'))
+                                 # 'perifer' kökü: periferik + periferal ("diyabetik
+                                 # periferal noröpatik ağrı" rapor lafzı)
+                                 'diyabetik perifer', 'diabetik perifer',
+                                 # sahada görülen yazım hatası: "polinörpoati"
+                                 'polinorpoati'))
         or bool(re.search(r'E1[0-4]\.?4', icd))
         or bool(re.search(r'\bG6(0|2)|\bG63\.?2', icd)))
     d['phn'] = (
@@ -243,6 +249,21 @@ def _endikasyonlar(ilac_sonuc: Dict) -> Dict[str, bool]:
 # DİSPATCHER
 # ═══════════════════════════════════════════════════════════════════════
 
+def ala_kapsaisin_kapsami_mi(ilac_sonuc: Dict) -> bool:
+    """Anlık kontrol registry tespitçisi — YALNIZ alfa lipoik (tioktik asit)
+    ve kapsaisin krem.
+
+    Gabapentin/pregabalin/duloksetin genel dispatcher kategorilerinde
+    (ANTIEPILEPTIK / NOROPATIK_AGRI / PSIKIYATRI) çözüldüğünden burada
+    kapsam DIŞI tutulur (çakışma yasağı). Alfa lipoik + kapsaisin ise genel
+    dispatcher'ın hiçbir kategori haritasında yok — anlık yüzeyde ancak bu
+    tespitçi ile 4.2.35.A(4)/(5) atomik kontrolüne ulaşırlar.
+    """
+    m = _arama_metni(ilac_sonuc)
+    return (_iceriyor(m, ALFA_LIPOIK_ETKEN) or _iceriyor(m, ALFA_LIPOIK_TICARI)
+            or _iceriyor(m, KAPSAISIN_ETKEN) or _iceriyor(m, KAPSAISIN_TICARI))
+
+
 def noropatik_yolak_belirle(ilac_sonuc: Dict) -> Dict[str, Optional[str]]:
     """{'durum': 'yolak'|'atlandi'|'disi', 'yolak': str|None, 'mesaj': str}."""
     m = _arama_metni(ilac_sonuc)
@@ -268,16 +289,18 @@ def noropatik_yolak_belirle(ilac_sonuc: Dict) -> Dict[str, Optional[str]]:
             return {'durum': 'yolak', 'yolak': 'P_B2', 'mesaj': ''}
         return {'durum': 'yolak', 'yolak': 'P_A2', 'mesaj': ''}
 
-    # ── Duloksetin → A(3) / B(1) / ATLANDI(psikiyatri) ──
+    # ── Duloksetin → A(3) / B(1) / delege 4.2.2 (SNRI) ──
+    # 2026-07-06: nöropati/fibromiyalji KANITI yoksa D_A3'e zorlamak yerine
+    # SUT 4.2.2(1) SNRI atomik kontrolüne delege edilir (depresyon/anksiyete
+    # ve SESSİZ endikasyon dahil — duloksetinin varsayılan maddesi 4.2.2).
     if _iceriyor(m, DULOKSETIN_ETKEN) or _iceriyor(m, DULOKSETIN_TICARI):
-        if e['depresyon'] and not (
-                e['diyabetik_noro'] or e['fibromiyalji'] or noropatik_aile):
-            return {'durum': 'atlandi', 'yolak': None,
-                    'mesaj': 'Duloksetin depresyon endikasyonunda — SUT 4.2.2 '
-                             '(psikiyatri) butonunda kontrol edilir'}
         if (e['fibromiyalji'] or e['kronik_kas_iskelet']) and not e['diyabetik_noro']:
             return {'durum': 'yolak', 'yolak': 'D_B1', 'mesaj': ''}
-        return {'durum': 'yolak', 'yolak': 'D_A3', 'mesaj': ''}
+        if e['diyabetik_noro'] or noropatik_aile:
+            return {'durum': 'yolak', 'yolak': 'D_A3', 'mesaj': ''}
+        return {'durum': 'delege_422', 'yolak': None,
+                'mesaj': 'Duloksetin: nöropati/fibromiyalji kanıtı yok — '
+                         'SUT 4.2.2(1) SNRI kontrolüne delege'}
 
     # ── Alfa lipoik → A(4)a / A(4)b ──
     if _iceriyor(m, ALFA_LIPOIK_ETKEN) or _iceriyor(m, ALFA_LIPOIK_TICARI):
@@ -769,6 +792,10 @@ def noropatik_kontrol_4_2_35(ilac_sonuc: Dict) -> KontrolRaporu:
     if karar['durum'] == 'atlandi':
         return KontrolRaporu(sonuc=KontrolSonucu.ATLANDI, mesaj=karar['mesaj'],
                              sut_kurali='SUT 4.2.35 (başka maddeye delege)')
+    if karar['durum'] == 'delege_422':
+        # Duloksetin nöropati/FM kanıtı yok → SUT 4.2.2(1) SNRI atomik kontrol
+        from recete_kontrol.snri_4_2_2 import snri_kontrol_4_2_2
+        return snri_kontrol_4_2_2(ilac_sonuc, _delege_kaynak='noropatik')
 
     yolak = karar['yolak']
     sartlar = YOLAK_FN_MAP[yolak](ilac_sonuc)
@@ -862,10 +889,14 @@ def _senaryolar() -> List[Tuple[str, Dict, KontrolSonucu]]:
             'etkin_madde': 'DULOKSETIN', 'brans': 'Romatoloji',
             'recete_teshisleri': ['M79.7 FIBROMIYALJI'],
         }, KontrolSonucu.UYGUN),
-        ("D ATLANDI (duloksetin depresyon → 4.2.2)", {
+        ("D delege 4.2.2 (duloksetin depresyon, reçeteci psikiyatri → SNRI UYGUN)", {
             'etkin_madde': 'DULOKSETIN', 'brans': 'Psikiyatri',
             'recete_teshisleri': ['F32.9 DEPRESYON'],
-        }, KontrolSonucu.ATLANDI),
+        }, KontrolSonucu.UYGUN),
+        ("D delege 4.2.2 (duloksetin SESSİZ, aile hekimi raporsuz → SNRI UYGUN DEĞİL)", {
+            'etkin_madde': 'DULOKSETIN', 'ilac_adi': 'DUXET 30MG',
+            'brans': 'Aile Hekimliği',
+        }, KontrolSonucu.UYGUN_DEGIL),
         # ── AL — Alfa lipoik (Beneday) ──
         ("AL_a UYGUN (BENEDAY diyabetik nöropati, reçeteci endokrin)", {
             'ilac_adi': 'BENEDAY ENTERIK KAPLI TABLET', 'etkin_madde': 'B1+B6+B12',
@@ -884,6 +915,23 @@ def _senaryolar() -> List[Tuple[str, Dict, KontrolSonucu]]:
             'ilac_adi': 'INSULIPON', 'etkin_madde': 'ALFA LIPOIK ASIT',
             'brans': 'Kardiyoloji', 'recete_teshisleri': ['nöropatik ağrı'],
         }, KontrolSonucu.UYGUN_DEGIL),
+        # Saha lafzı: "periferal" (periferik değil) → AL_a dispatch; iç
+        # hastalıkları YALNIZ A(4)a listesinde — yanlış AL_b dispatch'te
+        # UYGUN DEĞİL'e düşerdi (dispatch doğrulaması).
+        ("AL_a UYGUN (ALATAB 'diyabetik periferal noröpatik ağrı', reçeteci iç hast.)", {
+            'ilac_adi': 'ALATAB 600MG 30 FILM TABLET', 'etkin_madde': 'TİOKTİK ASİT',
+            'brans': 'İç Hastalıkları',
+            'rapor_metni': 'Metformin ve sülfonilürelerin maksimum tolere edilebilir '
+                           'dozlarında yeterli glisemik kontrol sağlanamamıştır. '
+                           'Diyabetik periferal noröpatik ağrı. Hemoglobin A1c: 7',
+        }, KontrolSonucu.UYGUN),
+        # Saha yazım hatası: "polinörpoati" → diyabetik_noro yakalanmalı (AL_a)
+        ("AL_a UYGUN (ALATAB 'diyabetik polinörpoati' yazım hatası, reçeteci endokrin)", {
+            'ilac_adi': 'ALATAB 600MG 30 FILM TABLET', 'etkin_madde': 'TIOKTIK ASIT',
+            'brans': 'Endokrinoloji',
+            'rapor_metni': 'diyabetik polinörpoati ortak 4. karakter '
+                           'Hemoglobin A1c: 5.8 Açlık Kan Şekeri: 100',
+        }, KontrolSonucu.UYGUN),
         # ── K — Kapsaisin ──
         ("K UYGUN (kapsaisin krem PHN, reçeteci dermatoloji)", {
             'ilac_adi': 'ZOSTRIX KREM', 'etkin_madde': 'KAPSAISIN',
