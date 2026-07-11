@@ -42,6 +42,24 @@ def _renkler():
         }
 
 
+def _tr_i_duzelt(entry, var):
+    """Textbox'ta Türkçe İ/ı harflerini anında ASCII I'ya çevirir (sorgu yok).
+    İmleç konumu korunur (1:1 dönüşüm)."""
+    s = var.get()
+    yeni = s.replace("İ", "I").replace("ı", "I")
+    if yeni != s:
+        try:
+            pos = entry.index("insert")
+        except Exception:
+            pos = None
+        var.set(yeni)
+        if pos is not None:
+            try:
+                entry.icursor(pos)
+            except Exception:
+                pass
+
+
 def _hasta_sec_popup(parent, sonuclar, on_sec):
     """Birden çok hasta eşleşmesinde seçim penceresi. on_sec(tc, ad) çağrılır."""
     r = _renkler()
@@ -105,6 +123,10 @@ class HastaAutocomplete:
 
     # ── Tetikleme / arama ─────────────────────────────────────────────
     def tetikle(self, kelime):
+        # Aynı arama terimi + dropdown zaten açıksa YENİDEN ARAMA YAPMA —
+        # aksi halde ok tuşuyla gezerken liste yeniden dolup seçim resetlenir.
+        if kelime == self._son_kelime and self._acik():
+            return
         self._son_kelime = kelime
         if self._after_id:
             try:
@@ -281,8 +303,56 @@ class EReceteCozucuGUI:
         self.durum_var = tk.StringVar(value="Hazır.")
         self.ilerleme_var = tk.StringVar(value="")
 
+        self._mini_ref = None
         self._arayuz_kur()
         self._toplami_guncelle()
+        # Ana pencere küçültülünce (minimize) mini'yi Medula giriş alanı üstüne aç
+        try:
+            self.win.bind("<Unmap>", self._ana_kucultuldu)
+        except Exception:
+            pass
+
+    def _app_root(self):
+        """Uygulama kök penceresini bul (mini pencere buna bağlanır ki ana
+        pencere minimize olunca mini gizlenmesin)."""
+        w = self.win
+        try:
+            while w.master is not None:
+                w = w.master
+        except Exception:
+            pass
+        return w
+
+    def _ana_kucultuldu(self, _evt=None):
+        """Ana pencere minimize edildiğinde mini'yi aç (tek örnek)."""
+        try:
+            if self.win.state() != "iconic":
+                return
+        except Exception:
+            return
+        self._mini_goster()
+
+    def _mini_goster(self):
+        """TEK mini örneğini aç/öne getir, Medula giriş alanı üstüne konumla ve
+        büyük pencereyi gizle (taskbar'a). Tekrar çağrılınca aynı mini kullanılır
+        — ikinci pencere açılmaz."""
+        try:
+            if self._mini_ref is None or not self._mini_ref.win.winfo_exists():
+                self._mini_ref = MiniCozucuGUI(self._app_root(),
+                                               on_kapat=self._buyuk_geri)
+            self._mini_ref.medula_ustune_konumlan()
+            if self.win.state() != "iconic":
+                self.win.iconify()          # büyük pencereyi gizle
+        except Exception as e:
+            logger.debug(f"mini göster: {e}")
+
+    def _buyuk_geri(self):
+        """Mini kapanınca büyük pencereyi geri getir."""
+        try:
+            self.win.deiconify()
+            self.win.lift()
+        except Exception:
+            pass
 
     # ── Arayüz ────────────────────────────────────────────────────────
     def _arayuz_kur(self):
@@ -429,21 +499,24 @@ class EReceteCozucuGUI:
                           justify="center", font=("Consolas", 14, "bold"),
                           bg=kesin_bg, relief="solid", bd=1)
             ke.grid(row=1, column=c, padx=3, pady=3)
-            ke.bind("<KeyRelease>", lambda e: self._toplami_guncelle())
+            ke.bind("<KeyRelease>",
+                    lambda e, en=ke, v=self.kesin_vars[i]: self._poz_key(en, v))
             self.kesin_entryleri.append(ke)
 
             bz = tk.Entry(grid, textvariable=self.benzet_vars[i], width=6,
                           justify="center", font=("Consolas", 12),
                           bg=alt_bg, relief="solid", bd=1)
             bz.grid(row=2, column=c, padx=3, pady=3)
-            bz.bind("<KeyRelease>", lambda e: self._toplami_guncelle())
+            bz.bind("<KeyRelease>",
+                    lambda e, en=bz, v=self.benzet_vars[i]: self._poz_key(en, v))
             self.benzet_entryleri.append(bz)
 
             ol = tk.Entry(grid, textvariable=self.olasi_vars[i], width=6,
                           justify="center", font=("Consolas", 12),
                           bg=alt_bg, relief="solid", bd=1)
             ol.grid(row=3, column=c, padx=3, pady=3)
-            ol.bind("<KeyRelease>", lambda e: self._toplami_guncelle())
+            ol.bind("<KeyRelease>",
+                    lambda e, en=ol, v=self.olasi_vars[i]: self._poz_key(en, v))
             self.olasi_entryleri.append(ol)
 
             pv = tk.Label(grid, textvariable=self.onizleme_vars[i], bg=r["bg"],
@@ -624,6 +697,7 @@ class EReceteCozucuGUI:
         (yeni numara sıfırdan girildiği varsayımı).
 
         Eksik modunda dağıtım YAPILMAZ — toplu kutu 'yazılan eksik numara'dır."""
+        _tr_i_duzelt(self.toplu_entry, self.toplu_var)
         if self.cozum_modu_var.get() == "eksik":
             self._toplami_guncelle()
             return
@@ -678,6 +752,11 @@ class EReceteCozucuGUI:
                 aktif=(i < n),
             ))
         return poz
+
+    def _poz_key(self, entry, var):
+        """Pozisyon kutusunda İ/ı→I canlı düzelt + toplamı güncelle."""
+        _tr_i_duzelt(entry, var)
+        self._toplami_guncelle()
 
     def _toplami_guncelle(self):
         # Eksik karakter modu
@@ -780,11 +859,8 @@ class EReceteCozucuGUI:
         else:
             tc_list = [None]
 
-        # Ekran hazır mı?
-        uygun, mesaj = medula.sorgu_ekraninda_mi()
-        if not uygun:
-            messagebox.showerror("Medula", mesaj, parent=self.win)
-            return
+        # (Medula hazırlığı worker içinde otomatik yapılır — açık değilse açar,
+        #  oturum düştüyse Giriş'e basar, e-Reçete Sorgu'yu açar.)
 
         # Moda göre kombinasyonları üret
         cmod = self.cozum_modu_var.get()
@@ -853,6 +929,13 @@ class EReceteCozucuGUI:
         """Worker thread: (TC adayı × numara kombinasyonu) sırayla dener."""
         import medula_html_dom as mhd
         import time
+        # Önce Medula'yı e-Reçete Sorgu ekranına hazır hale getir
+        hazir, hmsg = medula.medula_hazirla(
+            cb=lambda m: self._ui(lambda m=m: (
+                self.durum_var.set(m), self._log_yaz(m, "warn"))))
+        if not hazir:
+            self._ui(lambda: self._bitti(False, hmsg))
+            return
         hwnd = mhd._medula_hwnd()
         belirsiz_ardisik = 0
         toplam = len(tc_list) * len(kombolar)
@@ -933,7 +1016,7 @@ class EReceteCozucuGUI:
         AyarPenceresi(self.win, self.tablo, on_kaydet=self._toplami_guncelle)
 
     def _mini_ac(self):
-        MiniCozucuGUI(self.win)
+        self._mini_goster()
 
 
 class AyarPenceresi:
@@ -953,41 +1036,55 @@ class AyarPenceresi:
 
     def _kur(self):
         r = self.r
-        tk.Label(self.win, text="Birbiriyle karışabilen karakter grupları",
+        tk.Label(self.win, text="Karışma çiftleri — deneme öncelik sırası",
                  bg=r["bg"], fg=r["fg"], font=("Segoe UI", 11, "bold")).pack(pady=(10, 2))
         tk.Label(self.win,
-                 text="Her satır bir karışma grubudur. Gruptaki karakterlerin\n"
-                      "hepsi birbiriyle karışabilir kabul edilir. Örn: QO0DC",
+                 text="Üstteki çift önce denenir (en sık karışma). ↑/↓ ile "
+                      "önceliği değiştir. Örn: 0 ↔ O (derece 1)",
                  bg=r["bg"], fg=r["fg_secondary"], font=("Segoe UI", 8)).pack()
 
         liste_cerceve = tk.Frame(self.win, bg=r["bg"])
         liste_cerceve.pack(fill="both", expand=True, padx=12, pady=8)
-        self.liste = tk.Listbox(liste_cerceve, font=("Consolas", 12),
+        self.liste = tk.Listbox(liste_cerceve, font=("Consolas", 11),
                                 bg="#0D1B2A", fg="#D0E0F0", selectmode="single",
                                 activestyle="none")
         self.liste.pack(side="left", fill="both", expand=True)
         sb = tk.Scrollbar(liste_cerceve, command=self.liste.yview)
         sb.pack(side="right", fill="y")
         self.liste.config(yscrollcommand=sb.set)
-        self.liste.bind("<<ListboxSelect>>", self._secildi)
 
+        # Yeni çift ekleme: A  B  derece
         giris = tk.Frame(self.win, bg=r["bg"])
         giris.pack(fill="x", padx=12)
-        self.giris_var = tk.StringVar()
-        ent = tk.Entry(giris, textvariable=self.giris_var, font=("Consolas", 13))
-        ent.pack(side="left", fill="x", expand=True)
+        tk.Label(giris, text="Çift ekle:", bg=r["bg"], fg=r["fg_secondary"],
+                 font=("Segoe UI", 9)).pack(side="left")
+        self.a_var = tk.StringVar()
+        self.b_var = tk.StringVar()
+        self.derece_var = tk.IntVar(value=4)
+        tk.Entry(giris, textvariable=self.a_var, width=3, justify="center",
+                 font=("Consolas", 13)).pack(side="left", padx=(6, 2))
+        tk.Label(giris, text="↔", bg=r["bg"], fg=r["fg"]).pack(side="left")
+        tk.Entry(giris, textvariable=self.b_var, width=3, justify="center",
+                 font=("Consolas", 13)).pack(side="left", padx=2)
+        tk.Label(giris, text="der.", bg=r["bg"], fg=r["fg_secondary"],
+                 font=("Segoe UI", 8)).pack(side="left", padx=(6, 1))
+        tk.Spinbox(giris, from_=1, to=9, width=3, textvariable=self.derece_var,
+                   font=("Segoe UI", 10)).pack(side="left")
         tk.Button(giris, text="Ekle", command=self._ekle, bg=r["success"],
                   fg="white", relief="flat", cursor="hand2",
                   font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 0))
 
         btnler = tk.Frame(self.win, bg=r["bg"])
         btnler.pack(fill="x", padx=12, pady=8)
-        tk.Button(btnler, text="Seçiliyi Güncelle", command=self._guncelle,
+        tk.Button(btnler, text="▲ Yukarı", command=lambda: self._tasi(-1),
                   bg=r["card_bg"], fg=r["fg"], relief="flat", cursor="hand2",
                   font=("Segoe UI", 9)).pack(side="left")
+        tk.Button(btnler, text="▼ Aşağı", command=lambda: self._tasi(1),
+                  bg=r["card_bg"], fg=r["fg"], relief="flat", cursor="hand2",
+                  font=("Segoe UI", 9)).pack(side="left", padx=6)
         tk.Button(btnler, text="Seçiliyi Sil", command=self._sil,
                   bg=r["error"], fg="white", relief="flat", cursor="hand2",
-                  font=("Segoe UI", 9)).pack(side="left", padx=6)
+                  font=("Segoe UI", 9)).pack(side="left")
         tk.Button(btnler, text="Varsayılana Dön", command=self._varsayilan,
                   bg=r["warning"], fg="white", relief="flat", cursor="hand2",
                   font=("Segoe UI", 9)).pack(side="right")
@@ -998,46 +1095,42 @@ class AyarPenceresi:
                   bg=r["success"], fg="white", relief="flat", cursor="hand2",
                   font=("Segoe UI", 10, "bold"), pady=6).pack(fill="x")
 
-    def _listeyi_doldur(self):
+    def _listeyi_doldur(self, sec=None):
         self.liste.delete(0, "end")
-        for s in self.tablo.setler:
-            self.liste.insert("end", s)
-
-    def _secildi(self, _evt=None):
-        sel = self.liste.curselection()
-        if sel:
-            self.giris_var.set(self.liste.get(sel[0]))
+        for i, (a, b, d) in enumerate(self.tablo.ciftler):
+            self.liste.insert("end", f"{i+1:>2}. {a} ↔ {b}   (derece {d})")
+        if sec is not None and 0 <= sec < self.liste.size():
+            self.liste.selection_set(sec)
+            self.liste.see(sec)
 
     def _ekle(self):
         try:
-            self.tablo.set_ekle(self.giris_var.get())
-            self._listeyi_doldur()
-            self.giris_var.set("")
+            self.tablo.cift_ekle(self.a_var.get(), self.b_var.get(),
+                                 self.derece_var.get())
+            self._listeyi_doldur(len(self.tablo.ciftler) - 1)
+            self.a_var.set("")
+            self.b_var.set("")
         except ValueError as e:
             messagebox.showwarning("Geçersiz", str(e), parent=self.win)
 
-    def _guncelle(self):
+    def _tasi(self, yon):
         sel = self.liste.curselection()
         if not sel:
-            messagebox.showinfo("Seçim", "Önce listeden bir grup seçin.", parent=self.win)
             return
-        try:
-            self.tablo.set_guncelle(sel[0], self.giris_var.get())
-            self._listeyi_doldur()
-        except ValueError as e:
-            messagebox.showwarning("Geçersiz", str(e), parent=self.win)
+        yeni = self.tablo.cift_tasi(sel[0], yon)
+        self._listeyi_doldur(yeni)
 
     def _sil(self):
         sel = self.liste.curselection()
         if not sel:
             return
-        self.tablo.set_sil(sel[0])
-        self._listeyi_doldur()
+        self.tablo.cift_sil(sel[0])
+        self._listeyi_doldur(min(sel[0], len(self.tablo.ciftler) - 1))
 
     def _varsayilan(self):
         if messagebox.askyesno("Varsayılana Dön",
-                               "Tüm değişiklikler silinip varsayılan tabloya "
-                               "dönülsün mü?", parent=self.win):
+                               "Tüm değişiklikler silinip varsayılan çift "
+                               "tablosuna dönülsün mü?", parent=self.win):
             self.tablo.varsayilana_don()
             self._listeyi_doldur()
 
@@ -1065,13 +1158,13 @@ class MiniCozucuGUI:
     20sn'de bir uyanık tutulur.
     """
 
-    def __init__(self, master=None):
+    def __init__(self, master=None, on_kapat=None):
         self._sahip_root = master is None
+        self._on_kapat = on_kapat        # kapanınca çağrılır (büyük pencereyi geri getir)
         self.win = tk.Tk() if master is None else tk.Toplevel(master)
         self.win.title("⚡ Hızlı Çözücü")
         try:
             self.win.attributes("-topmost", True)
-            self.win.geometry("340x300+8+8")   # sol üst köşe
             self.win.resizable(False, False)
         except Exception:
             pass
@@ -1088,6 +1181,10 @@ class MiniCozucuGUI:
         self.worker = None
         self._ka_thread = None
         self._ka_stop = threading.Event()
+        self._son_medula_istek = 0.0     # son gerçek Medula isteği (monotonic)
+        self._aktar_after = None         # canlı aktarım debounce id
+        self._son_num_uzunluk = 0        # 7. karakterde otomatik sorgula için
+        self._tc_tamamdi = False         # TC tamamlanınca imleç geçişi (tek sefer)
 
         self.tc_var = tk.StringVar()
         self.tc_bilgi_var = tk.StringVar(value="")
@@ -1096,6 +1193,11 @@ class MiniCozucuGUI:
         self.tip_override = None          # None=oto | "erecete" | "takip"
         self.derin_var = tk.BooleanVar(value=False)   # 2 karakter değişim
         self.canli_var = tk.BooleanVar(value=False)
+        self.canli_aktar_var = tk.BooleanVar(value=True)  # yazdıkça Medula'ya aktar
+        self.ka_min_var = tk.IntVar(value=240)   # keepalive alt sınır (sn)
+        self.ka_max_var = tk.IntVar(value=360)   # keepalive üst sınır (sn)
+        self._ka_hedef = 0                        # bu turun rastgele hedefi (sn)
+        self.ka_sayac_var = tk.StringVar(value="")  # canlı geri sayım göstergesi
         self.tip_var = tk.StringVar(value="Tip: —")
         self.durum_var = tk.StringVar(value="Hazır.")
 
@@ -1107,7 +1209,7 @@ class MiniCozucuGUI:
         head = tk.Frame(self.win, bg=r["header_bg"])
         head.pack(fill="x")
         tk.Label(head, text="⚡ Hızlı Çözücü", bg=r["header_bg"], fg=r["fg"],
-                 font=("Segoe UI", 11, "bold")).pack(side="left", padx=6, pady=3)
+                 font=("Segoe UI", 10, "bold")).pack(side="left", padx=6, pady=1)
         self.pin_chk = tk.Checkbutton(
             head, text="📌 Üstte", variable=self.topmost_var,
             command=self._topmost_toggle, bg=r["header_bg"], fg=r["fg"],
@@ -1117,75 +1219,103 @@ class MiniCozucuGUI:
         self.pin_chk.pack(side="right", padx=6)
 
         gov = tk.Frame(self.win, bg=r["bg"])
-        gov.pack(fill="both", expand=True, padx=8, pady=6)
+        gov.pack(fill="both", expand=True, padx=6, pady=3)
 
-        tk.Label(gov, text="TC / isim:", bg=r["bg"], fg=r["fg_secondary"],
-                 font=("Segoe UI", 9)).grid(row=0, column=0, sticky="e", pady=2)
-        self.tc_entry = tk.Entry(gov, textvariable=self.tc_var, width=18,
-                                 font=("Consolas", 11))
-        self.tc_entry.grid(row=0, column=1, sticky="w", padx=4)
+        tk.Label(gov, text="TC/isim:", bg=r["bg"], fg=r["fg_secondary"],
+                 font=("Segoe UI", 8)).grid(row=0, column=0, sticky="e", pady=1)
+        self.tc_entry = tk.Entry(gov, textvariable=self.tc_var, width=15,
+                                 font=("Consolas", 10))
+        self.tc_entry.grid(row=0, column=1, sticky="w", padx=3)
         self.tc_entry.bind("<KeyRelease>", lambda e: self._tc_guncelle())
         self._ac = HastaAutocomplete(
             self.win, self.tc_entry, tc_yardimci.hasta_ara,
             self._tc_hasta_secildi, on_enter_bos=self._tc_hasta_ara)
 
         self.tc_bilgi_lbl = tk.Label(gov, textvariable=self.tc_bilgi_var, bg=r["bg"],
-                                     fg=r["fg_secondary"], font=("Consolas", 8),
-                                     wraplength=320, justify="left")
+                                     fg=r["fg_secondary"], font=("Consolas", 7),
+                                     wraplength=250, justify="left")
         self.tc_bilgi_lbl.grid(row=1, column=0, columnspan=2, sticky="w")
 
         tk.Label(gov, text="Numara:", bg=r["bg"], fg=r["fg_secondary"],
-                 font=("Segoe UI", 9)).grid(row=2, column=0, sticky="e", pady=2)
-        self.num_entry = tk.Entry(gov, textvariable=self.num_var, width=18,
-                                  font=("Consolas", 14, "bold"))
-        self.num_entry.grid(row=2, column=1, sticky="w", padx=4)
-        self.num_entry.bind("<KeyRelease>", lambda e: self._tip_guncelle())
+                 font=("Segoe UI", 8)).grid(row=2, column=0, sticky="e", pady=1)
+        self.num_entry = tk.Entry(gov, textvariable=self.num_var, width=15,
+                                  font=("Consolas", 12, "bold"))
+        self.num_entry.grid(row=2, column=1, sticky="w", padx=3)
+        self.num_entry.bind("<KeyRelease>", self._num_key)
         self.num_entry.bind("<Return>", lambda e: self._coz())
 
         tipf = tk.Frame(gov, bg=r["bg"])
         tipf.grid(row=3, column=0, columnspan=2, sticky="w")
         self.tip_lbl = tk.Label(tipf, textvariable=self.tip_var, bg=r["bg"],
-                                fg=r["fg_secondary"], font=("Segoe UI", 9, "bold"),
+                                fg=r["fg_secondary"], font=("Segoe UI", 8, "bold"),
                                 cursor="hand2")
         self.tip_lbl.pack(side="left", padx=(2, 4))
         self.tip_lbl.bind("<Button-1>", lambda e: self._tip_dongu())
-        tk.Button(tipf, text="⟳ prefiks", command=self._medula_prefix_oku,
+        tk.Button(tipf, text="⟳", command=self._medula_prefix_oku,
                   bg=r["card_bg"], fg=r["fg"], relief="flat", cursor="hand2",
                   font=("Segoe UI", 7)).pack(side="left")
-        tk.Label(tipf, text="(tür seç → ilk 3 hane dolar)", bg=r["bg"],
-                 fg=r["fg_secondary"], font=("Segoe UI", 7)).pack(side="left", padx=4)
+        tk.Label(tipf, text="(tıkla: tür)", bg=r["bg"],
+                 fg=r["fg_secondary"], font=("Segoe UI", 7)).pack(side="left", padx=3)
 
-        tk.Checkbutton(gov, text="derin ara (2 karakter)", variable=self.derin_var,
+        tk.Checkbutton(gov, text="derin (2kr)", variable=self.derin_var,
                        bg=r["bg"], fg=r["fg"], selectcolor=r["card_bg"],
                        activebackground=r["bg"], font=("Segoe UI", 8)).grid(
-            row=4, column=0, columnspan=2, sticky="w", pady=(2, 0))
+            row=4, column=0, sticky="w", pady=(1, 0))
 
-        self.canli_chk = tk.Checkbutton(
-            gov, text="Medulayı canlı tut", variable=self.canli_var,
+        tk.Checkbutton(
+            gov, text="⚡ aktar+7'de sorgu", variable=self.canli_aktar_var,
             bg=r["bg"], fg=r["fg"], selectcolor=r["card_bg"],
-            activebackground=r["bg"], font=("Segoe UI", 9),
+            activebackground=r["bg"], font=("Segoe UI", 8)).grid(
+            row=4, column=1, sticky="e")
+
+        canlif = tk.Frame(gov, bg=r["bg"])
+        canlif.grid(row=5, column=0, columnspan=2, sticky="w")
+        self.canli_chk = tk.Checkbutton(
+            canlif, text="canlı tut", variable=self.canli_var,
+            bg=r["bg"], fg=r["fg"], selectcolor=r["card_bg"],
+            activebackground=r["bg"], font=("Segoe UI", 8),
             command=self._canli_toggle)
-        self.canli_chk.grid(row=5, column=0, columnspan=2, sticky="w")
+        self.canli_chk.pack(side="left")
+        tk.Label(canlif, text="aralık", bg=r["bg"], fg=r["fg_secondary"],
+                 font=("Segoe UI", 7)).pack(side="left", padx=(6, 1))
+        tk.Spinbox(canlif, from_=30, to=1800, width=4, increment=30,
+                   textvariable=self.ka_min_var, font=("Segoe UI", 8)).pack(side="left")
+        tk.Label(canlif, text="–", bg=r["bg"], fg=r["fg_secondary"]).pack(side="left")
+        tk.Spinbox(canlif, from_=30, to=1800, width=4, increment=30,
+                   textvariable=self.ka_max_var, font=("Segoe UI", 8)).pack(side="left")
+        tk.Label(canlif, text="sn", bg=r["bg"], fg=r["fg_secondary"],
+                 font=("Segoe UI", 7)).pack(side="left", padx=(1, 0))
+        tk.Label(canlif, textvariable=self.ka_sayac_var, bg=r["bg"],
+                 fg=r["success"], font=("Consolas", 8, "bold")).pack(
+            side="left", padx=(6, 0))
 
         btnf = tk.Frame(gov, bg=r["bg"])
-        btnf.grid(row=6, column=0, columnspan=2, pady=(4, 2), sticky="we")
+        btnf.grid(row=6, column=0, columnspan=2, pady=(3, 1), sticky="we")
         self.coz_btn = tk.Button(btnf, text="🔓 Çöz", command=self._coz,
                                  bg=r["success"], fg="white", relief="flat",
-                                 font=("Segoe UI", 10, "bold"), cursor="hand2")
+                                 font=("Segoe UI", 9, "bold"), cursor="hand2")
         self.coz_btn.pack(side="left", expand=True, fill="x", padx=(0, 3))
         self.dur_btn = tk.Button(btnf, text="■ Dur", command=self._durdur,
                                  bg=r["error"], fg="white", relief="flat",
-                                 font=("Segoe UI", 10, "bold"), cursor="hand2",
+                                 font=("Segoe UI", 9, "bold"), cursor="hand2",
                                  state="disabled")
         self.dur_btn.pack(side="left", expand=True, fill="x", padx=(3, 0))
 
         self.durum_lbl = tk.Label(gov, textvariable=self.durum_var, bg=r["bg"],
-                                  fg=r["fg"], font=("Segoe UI", 8), wraplength=320,
+                                  fg=r["fg"], font=("Segoe UI", 7), wraplength=250,
                                   justify="left")
-        self.durum_lbl.grid(row=7, column=0, columnspan=2, sticky="w", pady=(2, 0))
-        self.progress = ttk.Progressbar(gov, mode="determinate", length=320)
-        self.progress.grid(row=8, column=0, columnspan=2, sticky="we", pady=(2, 0))
+        self.durum_lbl.grid(row=7, column=0, columnspan=2, sticky="w", pady=(1, 0))
+        self.progress = ttk.Progressbar(gov, mode="determinate", length=250)
+        self.progress.grid(row=8, column=0, columnspan=2, sticky="we", pady=(1, 0))
+        # Metin değişir değişmez Medula'ya canlı aktar (elle/yapıştır/barkod)
+        self.tc_var.trace_add("write", lambda *a: self._canli_aktar_planla())
+        self.num_var.trace_add("write", lambda *a: self._canli_aktar_planla())
         self._tc_guncelle()
+        # Layout oturunca sağ alt köşeye yerleştir
+        try:
+            self.win.after(30, self._sag_alt)
+        except Exception:
+            pass
         # Açılışta Medula prefix tablosunu sessizce oku (varsa)
         try:
             self.win.after(700, lambda: self._medula_prefix_oku(sessiz=True))
@@ -1198,6 +1328,36 @@ class MiniCozucuGUI:
             self.win.attributes("-topmost", bool(self.topmost_var.get()))
         except Exception:
             pass
+
+    def _sag_alt(self):
+        """Pencereyi ekranın SAĞ ALT köşesine (taskbar payıyla) yerleştir."""
+        try:
+            self.win.update_idletasks()
+            w = self.win.winfo_width() or self.win.winfo_reqwidth()
+            h = self.win.winfo_height() or self.win.winfo_reqheight()
+            sw = self.win.winfo_screenwidth()
+            sh = self.win.winfo_screenheight()
+            x = max(0, sw - w - 12)
+            y = max(0, sh - h - 52)   # görev çubuğu için pay
+            self.win.geometry(f"+{x}+{y}")
+        except Exception:
+            pass
+
+    def medula_ustune_konumlan(self):
+        """Mini'yi öne getir ve SAĞ ALT köşeye konumla (kullanıcı tercihi)."""
+        try:
+            self.win.deiconify()
+            self.topmost_var.set(True)
+            self.win.attributes("-topmost", True)
+        except Exception:
+            pass
+        self._sag_alt()
+        try:
+            self.win.lift()
+            self.num_entry.focus_set()
+        except Exception:
+            pass
+        return True
 
     # ── TC / isim işleme ──────────────────────────────────────────────
     def _tc_guncelle(self):
@@ -1214,22 +1374,35 @@ class MiniCozucuGUI:
             return
         self._ac.gizle()
         rakam = "".join(c for c in giris if c.isdigit())
+        tamam = False
         if len(rakam) == 9:
             tam = tc_yardimci.tc_tamamla(rakam)
             if tam:
                 self.tc_var.set(tam)
                 self.tc_bilgi_var.set(f"✓ tamamlandı → {tam}")
                 self.tc_bilgi_lbl.config(fg=self.r["success"])
-                return
-        try:
-            durum, n, _ = tc_yardimci.durum_ozeti(giris)
-        except Exception:
-            self.tc_bilgi_var.set("")
-            return
-        renk = {0: self.r["error"], 1: self.r["success"]}.get(n, self.r["warning"])
-        onek = {0: "✗", 1: "✓"}.get(n, "●")
-        self.tc_bilgi_var.set(f"{onek} {durum}")
-        self.tc_bilgi_lbl.config(fg=renk)
+                tamam = True
+        if not tamam:
+            try:
+                durum, n, _ = tc_yardimci.durum_ozeti(giris)
+            except Exception:
+                durum, n = "", 0
+            if n or not giris.isdigit():
+                renk = {0: self.r["error"], 1: self.r["success"]}.get(
+                    n, self.r["warning"])
+                onek = {0: "✗", 1: "✓"}.get(n, "●")
+                self.tc_bilgi_var.set(f"{onek} {durum}")
+                self.tc_bilgi_lbl.config(fg=renk)
+            if len(rakam) == 11 and n == 1:
+                tamam = True
+        # TC yeni tamamlandıysa imleci e-reçete no (Numara) kutusuna geçir
+        if tamam and not self._tc_tamamdi:
+            try:
+                self.num_entry.focus_set()
+                self.num_entry.icursor("end")
+            except Exception:
+                pass
+        self._tc_tamamdi = tamam
 
     def _tc_hasta_ara(self):
         giris = self.tc_var.get().strip()
@@ -1259,8 +1432,19 @@ class MiniCozucuGUI:
         self.tc_var.set(tc)
         self.tc_bilgi_var.set(f"✓ {ad} → {tc}")
         self.tc_bilgi_lbl.config(fg=self.r["success"])
+        self._tc_tamamdi = True
+        # Hasta seçilince (TC tamam) imleç e-reçete no kutusuna geçsin
+        try:
+            self.num_entry.focus_set()
+            self.num_entry.icursor("end")
+        except Exception:
+            pass
 
     # ── Tip tespiti ───────────────────────────────────────────────────
+    def _num_key(self, _e=None):
+        _tr_i_duzelt(self.num_entry, self.num_var)
+        self._tip_guncelle()
+
     def _tip_guncelle(self):
         if self.tip_override:
             ad = "E-Reçete" if self.tip_override == "erecete" else "Takip"
@@ -1271,12 +1455,12 @@ class MiniCozucuGUI:
         ad = "E-Reçete" if tip == "erecete" else "Takip"
         if ogr:
             pfx = self._ogrenme.eslesen_prefix(num) or ""
-            self.tip_var.set(f"Oto: {ad} ✓öğr.{pfx}")
+            self.tip_var.set(f"Oto: {ad} ✓prefiks {pfx}")
         else:
-            self.tip_var.set(f"Oto: {ad} → sonra diğeri")
+            self.tip_var.set(f"Oto: {ad} (tahmin — prefiks yok)")
 
     def _tip_dongu(self):
-        # oto (öğrenilmişse direkt, değilse ikisini dener) → erecete → takip
+        # oto (prefiksten tek tür) → yalnız erecete → yalnız takip
         self.tip_override = {None: "erecete", "erecete": "takip",
                              "takip": None}[self.tip_override]
         if self.tip_override in ("erecete", "takip"):
@@ -1345,16 +1529,15 @@ class MiniCozucuGUI:
             self._prefix_uygula(self.tip_override)
 
     def _mode_sirasi(self, num):
-        """(modes, confident) döndürür.
-        - override → [tek], True
-        - öğrenilmiş prefix → [öğrenilen, diğer], True (direkt öğrenileni dene)
-        - bilinmiyor → [heuristik, diğer], False (iki alanın orijinali önce)
-        """
+        """Denenecek TEK alanı döndürür — ÇAPRAZ DENEME YOK. Tür, numaranın
+        başındaki karakterlerden (Medula prefix tablosu / öğrenme) belirlenir;
+        bilinmiyorsa heuristik (harf→erecete, rakam→takip). Belirlenen alan
+        dışına asla geçilmez.
+        Dönüş: (modes[tek eleman], ogrenildi_mi)."""
         if self.tip_override:
             return [self.tip_override], True
         tip, ogr = self._ogrenme.tip_belirle(num)
-        diger = "takip" if tip == "erecete" else "erecete"
-        return [tip, diger], ogr
+        return [tip], ogr
 
     # ── Çözüm ─────────────────────────────────────────────────────────
     def _coz(self):
@@ -1373,32 +1556,12 @@ class MiniCozucuGUI:
         else:
             tc_list = [None]
 
-        uygun, mesaj = medula.sorgu_ekraninda_mi()
-        if not uygun:
-            self._durum(mesaj, r_err=True)
-            return
-
-        modes, confident = self._mode_sirasi(num)
+        modes, _ogr = self._mode_sirasi(num)
+        mode = modes[0]                 # TEK alan — çapraz deneme YOK
         max_deg = 2 if self.derin_var.get() else 1
         tum = list(self.motor.otomatik_kombinasyonlar(num, max_degisim=max_deg))
-        orijinal = tum[0] if tum else num
-        degisimler = tum[1:]
-
-        if confident or len(modes) == 1:
-            # Tür biliniyor (öğrenildi/sabit) → DOĞRUDAN o alanı tam dene,
-            # (güvenlik için) sonra diğerini tam dene.
-            sekans = []
-            for mo in modes:
-                sekans.append((mo, orijinal))
-                for c in degisimler:
-                    sekans.append((mo, c))
-        else:
-            # Tür bilinmiyor → önce her iki alanın ORİJİNAL numarası (yanlış
-            # tespit ilk 2 sorguda telafi), sonra karışma değişimleri.
-            sekans = [(mo, orijinal) for mo in modes]
-            for mo in modes:
-                for c in degisimler:
-                    sekans.append((mo, c))
+        # Yalnız belirlenen alanda: orijinal + son-4 karışma değişimleri
+        sekans = [(mode, k) for k in tum]
         genel = len(tc_list) * len(sekans)
 
         self.calisiyor = True
@@ -1406,9 +1569,8 @@ class MiniCozucuGUI:
         self.coz_btn.config(state="disabled")
         self.dur_btn.config(state="normal")
         self.progress.config(maximum=genel, value=0)
-        ad = "her ikisi" if len(modes) > 1 else (
-            "E-Reçete" if modes[0] == "erecete" else "Takip")
-        self._durum(f"Deneniyor… ({genel} deneme · {ad})")
+        ad = "E-Reçete" if mode == "erecete" else "Takip"
+        self._durum(f"Deneniyor… ({genel} deneme · yalnız {ad})")
 
         self.worker = threading.Thread(
             target=self._dongu, args=(sekans, tc_list), daemon=True)
@@ -1420,6 +1582,12 @@ class MiniCozucuGUI:
     def _dongu(self, sekans, tc_list):
         import medula_html_dom as mhd
         import time
+        # Önce Medula'yı e-Reçete Sorgu ekranına hazır hale getir
+        hazir, hmsg = medula.medula_hazirla(
+            cb=lambda m: self._ui(lambda m=m: self._durum(m)))
+        if not hazir:
+            self._ui(lambda: self._bitti(False, hmsg))
+            return
         hwnd = mhd._medula_hwnd()
         toplam = len(tc_list) * len(sekans)
         belirsiz = 0
@@ -1433,6 +1601,7 @@ class MiniCozucuGUI:
                 etiket = f"{kombo} [{'E-Reç' if mode == 'erecete' else 'Takip'}]"
                 self._ui(lambda i=i, etiket=etiket: self._ilerleme(i, toplam, etiket))
                 durum, _m = medula.tek_dene(kombo, mode=mode, tc=tc, hwnd=hwnd)
+                self._medula_istek_oldu()   # gerçek istek → keepalive sayacı sıfır
                 if durum == medula.BULUNDU:
                     medula.sonuc_satirini_ac(hwnd=hwnd)
                     try:
@@ -1482,29 +1651,177 @@ class MiniCozucuGUI:
     # ── Medula canlı tut (keepalive) ──────────────────────────────────
     def _canli_toggle(self):
         if self.canli_var.get():
+            import time
+            import random
+            self._son_medula_istek = time.monotonic()  # sayaç başlasın
+            self._ka_hedef = random.randint(*self._ka_aralik())
             self._ka_stop.clear()
             self._ka_thread = threading.Thread(target=self._ka_loop, daemon=True)
             self._ka_thread.start()
+            self._ka_sayac_guncelle()                  # canlı geri sayım
         else:
             self._ka_stop.set()
+            self.ka_sayac_var.set("")
 
-    def _ka_loop(self):
-        try:
-            import medula_keepalive as ka
-        except Exception:
+    def _medula_istek_oldu(self):
+        """Sisteme gerçek bir Medula isteği gittiğinde çağrılır → keepalive
+        sayacını SIFIRLAR ve yeni rastgele hedef seçer (aktivite varken boşuna
+        ping atmayalım)."""
+        import time
+        import random
+        self._son_medula_istek = time.monotonic()
+        self._ka_hedef = random.randint(*self._ka_aralik())
+
+    def _ka_sayac_guncelle(self):
+        """Canlı tut açıkken sonraki tıklamaya kalan süreyi (M:SS) her saniye
+        göster. Kapalıysa durur."""
+        if not self.canli_var.get():
+            self.ka_sayac_var.set("")
             return
-        while not self._ka_stop.is_set():
+        try:
+            import time
+            kalan = int(self._ka_hedef - (time.monotonic() - self._son_medula_istek))
+            kalan = max(0, kalan)
+            self.ka_sayac_var.set(f"▸ {kalan // 60}:{kalan % 60:02d}")
+        except Exception:
+            self.ka_sayac_var.set("")
+        try:
+            self.win.after(1000, self._ka_sayac_guncelle)
+        except Exception:
+            pass
+
+    def _ka_aralik(self):
+        """Keepalive rastgele aralığı (alt, üst) sn — kullanıcı ayarından,
+        doğrulanmış (alt≥30, üst≥alt)."""
+        try:
+            a = int(self.ka_min_var.get())
+            b = int(self.ka_max_var.get())
+        except Exception:
+            a, b = 240, 360
+        a = max(30, a)
+        b = max(a, b)
+        return a, b
+
+    # ── Canlı aktarım (yazdıkça Medula'ya) ────────────────────────────
+    def _canli_aktar_planla(self):
+        """Metin değişince aktarımı debounce'la (barkod hızlı yazımını birleştir,
+        UI donmasın). Kapalıysa / çözüm sürerken yapma."""
+        if not self.canli_aktar_var.get() or self.calisiyor:
+            return
+        try:
+            if self._aktar_after:
+                self.win.after_cancel(self._aktar_after)
+        except Exception:
+            pass
+        try:
+            self._aktar_after = self.win.after(70, self._canli_aktar)
+        except Exception:
+            pass
+
+    def _canli_aktar(self):
+        """TC + numarayı Medula alanlarına yaz (best-effort). E-reçete/takip
+        numarası 7 karaktere ulaşınca (yeni) otomatik Sorgula gönder."""
+        self._aktar_after = None
+        if not self.canli_aktar_var.get() or self.calisiyor:
+            return
+        num = "".join(c for c in self.num_var.get() if c.isalnum()).upper()
+        tc_ham = self.tc_var.get().strip()
+        # TC sadece rakamsa aktar (isim aramasıysa gönderme)
+        tc = tc_ham if (tc_ham and tc_ham.isdigit()) else None
+        mode = self._mode_sirasi(num)[0][0] if num else "erecete"
+        try:
+            yazildi = medula.canli_alan_yaz(
+                mode, numara=(num or None), tc=tc)
+        except Exception:
+            yazildi = False
+        if yazildi:
+            self._medula_istek_oldu()   # aktivite → keepalive ping'i ertele
+        # 7. karaktere YENİ ulaşıldıysa otomatik sorgula
+        if len(num) == 7 and self._son_num_uzunluk < 7:
             try:
-                w = ka.medula_penceresi_bul()
-                if w is not None and ka.oturum_aktif_mi(w):
-                    ka.keepalive_tiklama(w)
+                medula.sorgula_gonder(mode)
+                self._medula_istek_oldu()
+                self._durum(f"→ {num} otomatik sorgulandı ({'Takip' if mode=='takip' else 'E-Reçete'})")
             except Exception:
                 pass
-            self._ka_stop.wait(20)
+        self._son_num_uzunluk = len(num)
+
+    def _ka_loop(self):
+        """Medulayı canlı tut — SGK'yı yormayacak biçimde:
+        - 4–6 dk arası RASTGELE aralık (jitter; robotik kusursuz periyot yok)
+        - GECE (20:00–08:00) ping atmaz
+        - Çözüm sürerken dokunmaz (zaten sorgu trafiği var)
+        - Yalnız e-Reçete Sorgu ekranındayken GERÇEK app eylemiyle tazeler
+          (menüden e-Reçete Sorgu'yu yeniden aç — birebir kullanıcı tıklaması,
+          uydurma istek YOK). Başka ekranda ise (kullanıcı aktif) dokunmaz.
+        - Oturum düşerse ≤3 kez Giriş'e basar (şifresiz), sonra durur (kilit
+          riskine girmeyelim)."""
+        import random
+        import time
+        from datetime import datetime
+        try:
+            import medula_keepalive as ka
+            import medula_html_dom as mhd
+        except Exception:
+            return
+        giris_deneme = 0
+        eylem_sira = 0                     # dönüşümlü eylem sayacı
+        while not self._ka_stop.is_set():
+            # Her 20sn'de bir kontrol (yerel — sunucuya İSTEK GİTMEZ)
+            if self._ka_stop.wait(20):
+                return
+            # Gece (20:00–08:00): ping atma
+            try:
+                saat = datetime.now().hour
+            except Exception:
+                saat = 12
+            if saat >= 20 or saat < 8:
+                continue
+            # Çözüm sürüyorsa dokunma (kendi trafiği oturumu canlı tutar)
+            if self.calisiyor:
+                continue
+            # Son gerçek istekten bu yana HEDEF süre geçti mi? Geçmediyse bekle
+            # (yani sistem yakın zamanda Medula'ya istek attıysa keepalive atlanır)
+            if time.monotonic() - self._son_medula_istek < self._ka_hedef:
+                continue
+            try:
+                w = ka.medula_penceresi_bul()
+                if w is None:
+                    continue
+                if not ka.oturum_aktif_mi(w):
+                    if giris_deneme < 3:
+                        giris_deneme += 1
+                        d = giris_deneme
+                        self._ui(lambda d=d: self._durum(
+                            f"Oturum düştü — Giriş ({d}/3)…"))
+                        ka.oturumu_yenile(w)
+                    else:
+                        self._ui(lambda: self._durum(
+                            "Oturum yenilenemedi — elle giriş yapın."))
+                    self._medula_istek_oldu()   # sayacı sıfırla + yeni hedef
+                    continue
+                giris_deneme = 0
+                # Dönüşümlü GERÇEK eylem (uydurma istek yok). Şu an güvenli
+                # tek eylem: e-Reçete Sorgu'yu yeniden aç. (Ek ekranlar
+                # eklenince eylem_sira ile döngüye sokulacak.)
+                uygun, _m = medula.sorgu_ekraninda_mi()
+                if uygun:
+                    mhd.erecete_sorgu_tikla(mhd._medula_hwnd())
+                    eylem_sira += 1
+                    self._medula_istek_oldu()   # sayacı sıfırla + yeni hedef
+                    self._ui(lambda: self._durum("● Medula canlı tutuldu."))
+            except Exception:
+                pass
 
     def _kapat(self):
         self.durdur_bayrak = True
         self._ka_stop.set()
+        # Büyük pencereyi geri getir (varsa)
+        if self._on_kapat:
+            try:
+                self._on_kapat()
+            except Exception:
+                pass
         try:
             self.win.destroy()
         except Exception:
@@ -1526,10 +1843,16 @@ def mini_cozucu_ac(parent=None):
 
 
 def erecete_cozucu_ac(parent=None):
-    """Modülü aç. parent bir Toplevel/root ise onu kullanır; yoksa yeni açar."""
+    """Modülü aç. parent bir Toplevel/root ise onu kullanır; yoksa yeni açar.
+
+    Standalone modda: gizli kök Tk + ana pencere Toplevel — böylece ana pencere
+    minimize edilince mini (kökün çocuğu) gizlenmez (production ile aynı)."""
     if parent is None:
         root = tk.Tk()
-        gui = EReceteCozucuGUI(root)
+        root.withdraw()
+        win = tk.Toplevel(root)
+        EReceteCozucuGUI(win)
+        win.protocol("WM_DELETE_WINDOW", root.destroy)
         root.mainloop()
         return None
     win = parent if isinstance(parent, (tk.Tk, tk.Toplevel)) else tk.Toplevel(parent)
