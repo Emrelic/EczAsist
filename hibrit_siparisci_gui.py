@@ -48,11 +48,13 @@ SIPARISCI_DIZIN = Path(os.environ.get("LOCALAPPDATA", "")) / "Siparisci"
 
 # Adaptörün birebir doğrulandığı Siparişçi sürümü (src/surum.py:SURUM_TAM).
 # Yeni sürümde ürün dict alanları / MainController imzaları değişmiş olabilir.
-# 1.8 → 1.13 (2026-07-04): otomatik güncelleme gün içinde sürüm yükseltti;
-# tüm adaptör yüzeyleri (get_all_products_data_only imzası, on_product_read
-# sözleşmesi, botanik.* metot seti, adet=max(siparis_adet,min_adet)) V1.13'te
-# birebir doğrulandı, duman testi V1.13 koduna karşı PASS.
-TEST_EDILEN_SURUM = "1.13"
+# Sürüm geçmişi: 1.8 → 1.13 (2026-07-04) → 1.22 (2026-07-11). Her seferinde
+# aynı doğrulama seti uygulandı: botanik.* yüzey grep'i (28 kullanım, yeni
+# metot yok), get_all_products_data_only imzası, on_product_read(product,
+# idx, total) sözleşmesi, adet=max(siparis_adet,min_adet) semantiği,
+# bul_en_karli_secenek anahtarları, "MM.YY" ay formatı, mutex adı —
+# hepsi değişmemiş; duman testi (gerçek EOS kırılım turu dahil) PASS.
+TEST_EDILEN_SURUM = "1.22"
 
 # Fatih'in Siparisci.pyw'sindeki tek-örnek mutex'i ile AYNI ad (bilinçli):
 # hibrit bu kilidi alınca gerçek Siparişçi açılmaz, o açıkken hibrit açılmaz.
