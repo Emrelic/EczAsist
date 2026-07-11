@@ -1,782 +1,770 @@
 """
-Hibrit Siparişçi — Kademeli Sepete Gönderme
-=============================================
-EczAsist'in sipariş listesi (siparis_db.kesin_siparisler) + Fatih Siparişçi'nin
-depo otomasyonu (selenium tabanlı login + barkod arama + sepete ekleme).
+Hibrit Siparişçi v2
+===================
+EczAsist "Sipariş Ver" modülünün ürettiği kesin sipariş listesini
+(siparis_db.kesin_siparisler), Fatih Mazı'nın kurulu Siparişçi programının
+(%LOCALAPPDATA%\\Siparisci) tarama/kıyas/sepet motoruna enjekte eder.
 
-Akış (kademeli düşürme):
-1. Aktif sipariş çalışması yüklenir (UrunAdi, Barkod, Miktar).
-2. Kullanıcı depo öncelik sırasını belirler (varsayılan .env DEPO_SIRALAMA).
-3. "Depoları Aç & Giriş Yap" → Fatih MainController._init_depolar() ile aktif
-   depo siteleri açılır + login.
-4. "Sepete Gönder":
-   - kalanlar = tüm satırlar
-   - 1. depo için: her satırda search_barcode + add_to_cart → başarılılar düşer
-   - 2. depo için: yalnız ekleyemediklerimiz denenir
-   - ... taa ki tüm depolar bitsin veya liste tükensin
-5. Final rapor: her depodan kaç eklendi, hiçbir depoda bulunamayanların listesi.
+Nasıl çalışır?
+--------------
+Fatih'in `MainController.run_fast_scan()` akışı Botanik EOS'a yalnızca
+`self.botanik` (BotanikEOSController) nesnesi üzerinden dokunur. Hibrit,
+bu nesneyi `SanalBotanik` ile değiştirir:
 
-Tarama (stok karşılaştırma) YOK — kullanıcı ilaç + miktar zaten belirlemiş,
-depolar sadece yürütme tarafı.
+- `get_all_products_data_only()` Botanik penceresini okumak yerine bizim
+  kesin sipariş listemizi ürün ürün akıtır (depo araması paralel başlar).
+- `calculate_order_quantity()` bizim belirlediğimiz miktarı döndürür
+  (Fatih'in Ort/MinStk hesabı devreye girmez).
+- Tüm yazma metotları (set_adet/mf/aciklama/tevzi) no-op'tur: Botanik'e
+  TEK DOKUNUŞ yapılmaz — Botanik'in açık olması bile gerekmez.
 
-Login bilgileri: Fatih'in config/.env'sinden okunur.
+Böylece Fatih'in dosyalarına dokunulmaz (otomatik güncelleme onun kurulu
+kodunu her an değiştirebilir); depo kıyası, en kârlı depo seçimi, oto-sepet
+ve onun tanıdık arayüzü sıfır değişiklikle bizim listeyle çalışır.
+
+Ayrı süreç olarak çalışır (kendi Tk mainloop'u):
+    pythonw hibrit_siparisci_gui.py
+
+Güvenlik:
+- Fatih'in kendi tek-örnek mutex'i (BotSiparis_Siparisci_SingleInstance)
+  alınır: Siparişçi zaten açıksa hibrit başlamaz (aynı Chrome profillerini
+  paylaştıkları için ikisi aynı anda ÇALIŞAMAZ); hibrit açıkken de
+  Siparişçi açılmaz.
+- Sürüm kontrolü: kurulu sürüm TEST_EDILEN_SURUM'den farklıysa uyarı
+  gösterilir ama çalışma engellenmez.
 """
 
 import os
+import re
 import sys
+import json
+import ctypes
 import logging
-import threading
-import tkinter as tk
-from tkinter import ttk, messagebox
+import traceback
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+ECZASIST_DIZIN = Path(__file__).resolve().parent
+SIPARISCI_DIZIN = Path(os.environ.get("LOCALAPPDATA", "")) / "Siparisci"
 
-# ─── Fatih Siparişçi kurulu dizini ──────────────────────────────────────────
-SIPARISCI_KURULU_DIZIN = Path(os.environ.get("LOCALAPPDATA", "")) / "Siparisci"
-SIPARISCI_ENV = SIPARISCI_KURULU_DIZIN / "config" / ".env"
+# Adaptörün birebir doğrulandığı Siparişçi sürümü (src/surum.py:SURUM_TAM).
+# Yeni sürümde ürün dict alanları / MainController imzaları değişmiş olabilir.
+# 1.8 → 1.13 (2026-07-04): otomatik güncelleme gün içinde sürüm yükseltti;
+# tüm adaptör yüzeyleri (get_all_products_data_only imzası, on_product_read
+# sözleşmesi, botanik.* metot seti, adet=max(siparis_adet,min_adet)) V1.13'te
+# birebir doğrulandı, duman testi V1.13 koduna karşı PASS.
+TEST_EDILEN_SURUM = "1.13"
 
-# Tüm depolar (Fatih'in DEFAULT_DEPO_ORDER'ı ile aynı)
-TUM_DEPOLAR = ["alliance", "selcuk", "yusufpasa", "iskoop", "bursa", "farmazon", "sancak"]
+# Fatih'in Siparisci.pyw'sindeki tek-örnek mutex'i ile AYNI ad (bilinçli):
+# hibrit bu kilidi alınca gerçek Siparişçi açılmaz, o açıkken hibrit açılmaz.
+MUTEX_ADI = "BotSiparis_Siparisci_SingleInstance"
+_MUTEX = None  # GC kapatmasın diye süreç boyunca global tutulur
 
-DEPO_GORUNEN_AD = {
-    "alliance": "Alliance",
-    "selcuk": "Selçuk",
-    "yusufpasa": "Yusuf Paşa",
-    "iskoop": "İskoop",
-    "bursa": "Bursa",
-    "farmazon": "Farmazon",
-    "sancak": "Sancak",
-}
-
-
-def _fatih_path_ekle() -> bool:
-    """Fatih kurulumunu sys.path'e ekle"""
-    if not SIPARISCI_KURULU_DIZIN.exists():
-        return False
-    p = str(SIPARISCI_KURULU_DIZIN)
-    if p not in sys.path:
-        sys.path.insert(0, p)
-    return True
+logger = logging.getLogger("hibrit_siparisci")
 
 
-def _env_yukle():
-    """Fatih'in .env'sini yükle"""
+# ─────────────────────────────────────────────────────────────────────────────
+# Yardımcılar
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _tek_ornek_kilidi_al() -> bool:
+    """Mutex'i almayı dene. False dönerse Siparişçi/hibrit zaten açık."""
+    global _MUTEX
     try:
-        from dotenv import load_dotenv
-        if SIPARISCI_ENV.exists():
-            load_dotenv(SIPARISCI_ENV, override=False)
-    except ImportError:
-        logger.error("python-dotenv yüklü değil")
+        kernel32 = ctypes.windll.kernel32
+        _MUTEX = kernel32.CreateMutexW(None, False, MUTEX_ADI)
+        ERROR_ALREADY_EXISTS = 183
+        return kernel32.GetLastError() != ERROR_ALREADY_EXISTS
+    except Exception:
+        return True  # kontrol yapılamazsa kullanıcıyı kilitleme
 
 
-def _credentials_olustur() -> dict:
-    """Fatih formatında credentials dict'i"""
-    return {
-        "alliance": {
-            "eczane_kodu": os.getenv("ALLIANCE_ECZANE_KODU", ""),
-            "username": os.getenv("ALLIANCE_USERNAME", ""),
-            "password": os.getenv("ALLIANCE_PASSWORD", ""),
-        },
-        "selcuk": {
-            "hesap_kodu": os.getenv("SELCUK_HESAP_KODU", ""),
-            "username": os.getenv("SELCUK_USERNAME", ""),
-            "password": os.getenv("SELCUK_PASSWORD", ""),
-        },
-        "yusufpasa": {
-            "eczane_kodu": os.getenv("YUSUFPASA_ECZANE_KODU", ""),
-            "username": os.getenv("YUSUFPASA_USERNAME", ""),
-            "password": os.getenv("YUSUFPASA_PASSWORD", ""),
-        },
-        "iskoop": {
-            "username": os.getenv("ISKOOP_USERNAME", ""),
-            "password": os.getenv("ISKOOP_PASSWORD", ""),
-        },
-        "bursa": {
-            "username": os.getenv("BURSA_USERNAME", ""),
-            "password": os.getenv("BURSA_PASSWORD", ""),
-        },
-        "farmazon": {
-            "username": os.getenv("FARMAZON_USERNAME", ""),
-            "password": os.getenv("FARMAZON_PASSWORD", ""),
-        },
-        "sancak": {
-            "username": os.getenv("SANCAK_USERNAME", ""),
-            "password": os.getenv("SANCAK_PASSWORD", ""),
-        },
-    }
+def _hata_kutusu(baslik: str, mesaj: str):
+    import tkinter as tk
+    from tkinter import messagebox
+    kok = tk.Tk()
+    kok.withdraw()
+    messagebox.showerror(baslik, mesaj)
+    kok.destroy()
 
 
-def _env_depo_siralamasi() -> list[str]:
-    """Fatih'in .env'sindeki DEPO_SIRALAMA değerini parse et"""
-    raw = os.getenv("DEPO_SIRALAMA", "")
-    if not raw:
-        return TUM_DEPOLAR.copy()
-    sirali = [d.strip().lower() for d in raw.split(",") if d.strip()]
-    sirali = [d for d in sirali if d in TUM_DEPOLAR]
-    # Eksik depoları sona ekle (kullanıcı çıkardıysa görünmesin ama referansta kalsın)
-    for d in TUM_DEPOLAR:
-        if d not in sirali:
-            sirali.append(d)
-    return sirali
+def _kesin_liste_yukle():
+    """EczAsist SQLite'ından aktif çalışmanın kesin siparişlerini getir."""
+    if str(ECZASIST_DIZIN) not in sys.path:
+        sys.path.insert(0, str(ECZASIST_DIZIN))
+    from siparis_db import get_siparis_db
+    db = get_siparis_db()
+    calisma = db.aktif_calisma_getir()
+    if not calisma:
+        return None, []
+    siparisler = db.calisma_siparisleri_getir(calisma["id"]) or []
+    return calisma, siparisler
 
 
-def _depo_kullanilabilir_mi(depo_key: str, creds: dict) -> bool:
-    """Bu depo için login bilgileri tam mı?"""
-    c = creds.get(depo_key, {})
-    if depo_key == "alliance":
-        return bool(c.get("eczane_kodu") and c.get("username") and c.get("password"))
-    if depo_key == "selcuk":
-        return bool(c.get("hesap_kodu") and c.get("username") and c.get("password"))
-    if depo_key == "yusufpasa":
-        return bool(c.get("eczane_kodu") and c.get("username") and c.get("password"))
-    return bool(c.get("username") and c.get("password"))
+def _urunleri_hazirla(siparisler):
+    """kesin_siparisler satırlarını Fatih'in ürün dict formatına çevir.
 
+    Alan sözleşmesi: eos_controller._get_product_data_fast +
+    get_all_products_data_only'nin ürettiği şema (row/stok/urun_adi/mf/
+    minstk/mevcut_adet/ort/barkod/monthly_sales/mf_info/mevcut_aciklama).
 
-class HibritSiparisciGUI:
-    """Hibrit Siparişçi — Kademeli sepete gönderme"""
-
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Hibrit Siparişçi — Liste → Depolara Kademeli Sepete Gönder")
-
-        # State
-        self.fatih_hazir = False
-        self.controller = None
-        self.aktif_calisma = None
-        self.siparisler = []  # list of dict
-        self.worker_thread = None
-        self.iptal_istendi = False
-        self.depo_sirasi = []  # ['selcuk', 'alliance', ...]
-        self.credentials = {}
-
-        # Fatih kurulum kontrolü
-        if not _fatih_path_ekle():
-            self._fatih_yok_goster()
-            return
-
-        _env_yukle()
-        self.credentials = _credentials_olustur()
-        self.depo_sirasi = [
-            d for d in _env_depo_siralamasi()
-            if _depo_kullanilabilir_mi(d, self.credentials)
-        ]
-
-        # Fatih MainController import test
+    hibrit_ihtiyac = bizim MIKTAR (ödenecek kutu). Fatih motorunda
+    siparis_adet = ödenen adettir; depo MF bedavası üstüne gelir
+    (controller._auto_add_to_cart: adet = max(siparis_adet, min_adet)).
+    """
+    products, barkodsuz = [], []
+    row = 0
+    for s in siparisler:
         try:
-            from src.controller import MainController  # noqa: F401
-            self.fatih_hazir = True
-        except Exception as e:
-            logger.error(f"Fatih import hatası: {e}")
-            self._fatih_import_hatasi_goster(e)
-            return
+            miktar = int(float(s.get("miktar") or 0))
+        except (TypeError, ValueError):
+            miktar = 0
+        if miktar <= 0:
+            continue
 
-        self._arayuz_olustur()
-        self.root.after(200, self._aktif_calismayi_yukle)
+        barkod = str(s.get("barkod") or "").strip()
+        if barkod.endswith(".0"):
+            barkod = barkod[:-2]
+        if not barkod or not barkod.replace(" ", "").isdigit():
+            barkodsuz.append(str(s.get("urun_adi") or "?"))
+            continue
 
-    # ─────────────────────────────────────────────────────────────────────
-    # Hata göstergeleri
-    # ─────────────────────────────────────────────────────────────────────
-    def _fatih_yok_goster(self):
-        for w in self.root.winfo_children():
-            w.destroy()
-        frm = tk.Frame(self.root, padx=40, pady=40)
-        frm.pack(fill="both", expand=True)
-        tk.Label(
-            frm,
-            text="⚠️  Fatih Siparişçi kurulu değil",
-            font=("Arial", 16, "bold"),
-            fg="#E65100",
-        ).pack(pady=(20, 10))
-        tk.Label(
-            frm,
-            text=(
-                "Hibrit Siparişçi, depo otomasyonu için Fatih Siparişçi'yi kullanır.\n\n"
-                f"Beklenen kurulum yolu:\n{SIPARISCI_KURULU_DIZIN}\n\n"
-                "Lütfen önce SiparisciKurulum.exe'yi çalıştırın."
-            ),
-            font=("Arial", 10),
-            justify="center",
-        ).pack(pady=10)
-        tk.Button(frm, text="Kapat", command=self.root.destroy, padx=20, pady=8).pack(pady=20)
-
-    def _fatih_import_hatasi_goster(self, hata):
-        for w in self.root.winfo_children():
-            w.destroy()
-        frm = tk.Frame(self.root, padx=40, pady=40)
-        frm.pack(fill="both", expand=True)
-        tk.Label(
-            frm,
-            text="⚠️  Fatih Siparişçi modülleri yüklenemedi",
-            font=("Arial", 14, "bold"),
-            fg="#C62828",
-        ).pack(pady=(20, 10))
-        tk.Label(
-            frm,
-            text=f"Hata:\n\n{hata}\n\n"
-                 "Eksik paket (selenium, pywinauto vb.) olabilir.\n"
-                 "Fatih Siparişçi'yi bir kez çalıştırıp paketlerin yüklü olmasını sağlayın.",
-            font=("Arial", 10),
-            justify="left",
-            wraplength=600,
-        ).pack(pady=10)
-        tk.Button(frm, text="Kapat", command=self.root.destroy, padx=20, pady=8).pack(pady=20)
-
-    # ─────────────────────────────────────────────────────────────────────
-    # Arayüz
-    # ─────────────────────────────────────────────────────────────────────
-    def _arayuz_olustur(self):
-        # Üst bilgi
-        ust = tk.Frame(self.root, bg="#00695C", padx=12, pady=8)
-        ust.pack(fill="x", side="top")
-        self.lbl_calisma = tk.Label(
-            ust, text="Çalışma yükleniyor...",
-            font=("Arial", 11, "bold"), bg="#00695C", fg="white",
-        )
-        self.lbl_calisma.pack(side="left")
-        self.lbl_ist = tk.Label(
-            ust, text="", font=("Arial", 9), bg="#00695C", fg="#B2DFDB",
-        )
-        self.lbl_ist.pack(side="left", padx=20)
-        tk.Button(
-            ust, text="↻ Listeyi Yenile",
-            command=self._aktif_calismayi_yukle, font=("Arial", 9),
-        ).pack(side="right")
-
-        # Tarayıcı modu satırı
-        mode_row = tk.Frame(self.root, padx=12, pady=4)
-        mode_row.pack(fill="x")
-        tk.Label(mode_row, text="Tarayıcı:", font=("Arial", 9, "bold")).pack(side="left")
-        env_mode = os.getenv("BROWSER_MODE", "tabs")
-        self.var_mode = tk.StringVar(value=env_mode)
-        tk.Radiobutton(
-            mode_row, text="Paralel (her depo ayrı pencere)",
-            variable=self.var_mode, value="windows",
-        ).pack(side="left", padx=(5, 0))
-        tk.Radiobutton(
-            mode_row, text="Sıralı (tek tarayıcı, tab'lar)",
-            variable=self.var_mode, value="tabs",
-        ).pack(side="left")
-
-        # Aksiyon butonları
-        self.btn_depo_ac = tk.Button(
-            mode_row, text="🌐  Depoları Aç & Giriş Yap",
-            command=self._depolari_ac,
-            bg="#1565C0", fg="white",
-            font=("Arial", 10, "bold"), padx=12, pady=6, cursor="hand2",
-        )
-        self.btn_depo_ac.pack(side="left", padx=20)
-
-        self.btn_gonder = tk.Button(
-            mode_row, text="🛒  Sepete Gönder (Kademeli)",
-            command=self._sepete_gonder_baslat,
-            bg="#2E7D32", fg="white",
-            font=("Arial", 10, "bold"), padx=14, pady=6,
-            state="disabled", cursor="hand2",
-        )
-        self.btn_gonder.pack(side="left", padx=4)
-
-        self.btn_iptal = tk.Button(
-            mode_row, text="✖ İptal",
-            command=self._iptal_et,
-            bg="#C62828", fg="white",
-            padx=10, pady=6, state="disabled",
-        )
-        self.btn_iptal.pack(side="right", padx=4)
-
-        # Ana içerik: sol depo sırası, sağ treeview
-        main = tk.Frame(self.root, padx=12, pady=8)
-        main.pack(fill="both", expand=True)
-
-        # ─── Sol: Depo Sırası ───
-        sol = tk.LabelFrame(main, text="Depo Öncelik Sırası", padx=8, pady=6)
-        sol.pack(side="left", fill="y")
-
-        tk.Label(
-            sol,
-            text="Yukarıdakiler önce denenir.\nEkleyemediği ilaçlar bir sonraki\ndepoya iner (kademeli).",
-            font=("Arial", 8), fg="#555", justify="left",
-        ).pack(anchor="w", pady=(0, 6))
-
-        lst_frame = tk.Frame(sol)
-        lst_frame.pack(fill="both", expand=True)
-
-        self.lst_depo = tk.Listbox(
-            lst_frame, height=10, width=20,
-            font=("Arial", 10), exportselection=False,
-            selectmode="single",
-        )
-        self.lst_depo.pack(side="left", fill="both", expand=True)
-
-        btn_col = tk.Frame(lst_frame)
-        btn_col.pack(side="left", fill="y", padx=(4, 0))
-        tk.Button(
-            btn_col, text="▲", width=3,
-            command=self._depo_yukari, font=("Arial", 11, "bold"),
-        ).pack(pady=2)
-        tk.Button(
-            btn_col, text="▼", width=3,
-            command=self._depo_asagi, font=("Arial", 11, "bold"),
-        ).pack(pady=2)
-
-        tk.Button(
-            sol, text="↺ .env sırasına dön",
-            command=self._depo_sirasi_resetle,
-            font=("Arial", 8),
-        ).pack(fill="x", pady=(6, 0))
-
-        # Bilgi etiketi: kaç depo aktif
-        self.lbl_depo_bilgi = tk.Label(
-            sol, text="", font=("Arial", 8), fg="#777", wraplength=180, justify="left",
-        )
-        self.lbl_depo_bilgi.pack(fill="x", pady=(6, 0))
-
-        self._depo_listbox_doldur()
-
-        # ─── Sağ: Treeview ───
-        sag = tk.Frame(main)
-        sag.pack(side="left", fill="both", expand=True, padx=(12, 0))
-
-        kolonlar = [
-            ("urun_adi", "Ürün Adı", 280),
-            ("barkod",   "Barkod",   120),
-            ("miktar",   "Miktar",    70),
-            ("eklenen",  "Eklenen Depo", 130),
-            ("durum",    "Durum",    320),
-        ]
-        self.tv = ttk.Treeview(
-            sag, columns=[c[0] for c in kolonlar],
-            show="headings", height=22,
-        )
-        for k, lbl, w in kolonlar:
-            self.tv.heading(k, text=lbl)
-            anchor = "w" if k in ("urun_adi", "durum") else "center"
-            self.tv.column(k, width=w, anchor=anchor)
-
-        ysb = ttk.Scrollbar(sag, orient="vertical", command=self.tv.yview)
-        self.tv.configure(yscrollcommand=ysb.set)
-        ysb.pack(side="right", fill="y")
-        self.tv.pack(side="left", fill="both", expand=True)
-
-        self.tv.tag_configure("eklendi", background="#E8F5E9")
-        self.tv.tag_configure("calisiyor", background="#FFF8E1")
-        self.tv.tag_configure("hata", background="#FFEBEE")
-        self.tv.tag_configure("bekliyor", background="white")
-
-        # Log paneli
-        log_frame = tk.LabelFrame(self.root, text="Log", padx=8, pady=4)
-        log_frame.pack(fill="x", side="bottom", padx=12, pady=(0, 8))
-        self.log_txt = tk.Text(log_frame, height=7, font=("Consolas", 8), wrap="word")
-        log_sb = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_txt.yview)
-        self.log_txt.configure(yscrollcommand=log_sb.set, state="disabled")
-        log_sb.pack(side="right", fill="y")
-        self.log_txt.pack(side="left", fill="both", expand=True)
-
-        # Durum çubuğu
-        self.lbl_durum = tk.Label(
-            self.root, text="Hazır",
-            font=("Arial", 9), anchor="w",
-            bg="#ECEFF1", padx=12, pady=4,
-        )
-        self.lbl_durum.pack(fill="x", side="bottom")
-
-    # ─────────────────────────────────────────────────────────────────────
-    # Depo sıralama UI
-    # ─────────────────────────────────────────────────────────────────────
-    def _depo_listbox_doldur(self):
-        self.lst_depo.delete(0, "end")
-        for i, dk in enumerate(self.depo_sirasi, start=1):
-            self.lst_depo.insert("end", f"{i}.  {DEPO_GORUNEN_AD.get(dk, dk)}")
-        if self.depo_sirasi:
-            self.lst_depo.selection_set(0)
-        self.lbl_depo_bilgi.config(
-            text=f"{len(self.depo_sirasi)} aktif depo (login bilgisi tam olanlar)."
-        )
-
-    def _depo_yukari(self):
-        sel = self.lst_depo.curselection()
-        if not sel or sel[0] == 0:
-            return
-        i = sel[0]
-        self.depo_sirasi[i - 1], self.depo_sirasi[i] = self.depo_sirasi[i], self.depo_sirasi[i - 1]
-        self._depo_listbox_doldur()
-        self.lst_depo.selection_set(i - 1)
-
-    def _depo_asagi(self):
-        sel = self.lst_depo.curselection()
-        if not sel or sel[0] >= len(self.depo_sirasi) - 1:
-            return
-        i = sel[0]
-        self.depo_sirasi[i + 1], self.depo_sirasi[i] = self.depo_sirasi[i], self.depo_sirasi[i + 1]
-        self._depo_listbox_doldur()
-        self.lst_depo.selection_set(i + 1)
-
-    def _depo_sirasi_resetle(self):
-        self.depo_sirasi = [
-            d for d in _env_depo_siralamasi()
-            if _depo_kullanilabilir_mi(d, self.credentials)
-        ]
-        self._depo_listbox_doldur()
-        self._log("Depo sırası .env değerine sıfırlandı.")
-
-    # ─────────────────────────────────────────────────────────────────────
-    # Log + durum
-    # ─────────────────────────────────────────────────────────────────────
-    def _log(self, msg: str):
+        row += 1
         try:
-            self.log_txt.configure(state="normal")
-            self.log_txt.insert("end", msg + "\n")
-            self.log_txt.see("end")
-            self.log_txt.configure(state="disabled")
-        except Exception:
-            pass
-        logger.info(msg)
+            toplam = int(float(s.get("toplam") or miktar))
+        except (TypeError, ValueError):
+            toplam = miktar
 
-    def _log_safe(self, msg: str):
-        self.root.after(0, lambda m=msg: self._log(m))
+        # MF planı ayrıştır ("100+30" → min=100, mf=30). Kalem bazında karma
+        # kural (kullanıcı kararı 2026-07-04): plan varsa depo şartlarında
+        # önce BİREBİR plan aranır (HibritController.bul_en_karli_secenek);
+        # bulunamazsa motor serbest seçer.
+        plan_min = plan_mf = None
+        m = re.match(r"^\s*(\d+)\s*\+\s*(\d+)\s*$", str(s.get("mf") or ""))
+        if m:
+            plan_min, plan_mf = int(m.group(1)), int(m.group(2))
 
-    def _durum(self, msg: str):
-        try:
-            self.lbl_durum.config(text=msg)
-            self.root.update_idletasks()
-        except Exception:
-            pass
+        products.append({
+            # Fatih şeması (zorunlu alanlar)
+            "row": row,
+            "barkod": barkod,
+            "urun_adi": str(s.get("urun_adi") or "?"),
+            "stok": int(float(s.get("stok") or 0)),
+            "mf": 0,            # 0 → siparis_adet, calculate_order_quantity'den gelir
+            "minstk": 0,
+            "mevcut_adet": 0,
+            "ort": float(s.get("aylik_ort") or 0),
+            "monthly_sales": {},
+            "mf_info": None,
+            "mevcut_aciklama": "",
+            "tarih": "",
+            # Hibrit alanları
+            "hibrit_urun_id": s.get("urun_id"),     # EOS UrunId (aylık kırılım için)
+            "hibrit_ihtiyac": miktar,               # ödenecek kutu (bizim karar)
+            "hibrit_mf_plan": str(s.get("mf") or ""),  # bizim MF planı (metin)
+            "hibrit_mf_plan_min": plan_min,         # plan: ödenen (100+30 → 100)
+            "hibrit_mf_plan_mf": plan_mf,           # plan: bedava (100+30 → 30)
+            "hibrit_toplam": toplam,                # miktar + MF bedavası (bilgi)
+            "hibrit_db_id": s.get("id"),            # kesin_siparisler.id (geri bildirim)
+            "hibrit_kaynak": "EczAsist",
+        })
+    return products, barkodsuz
 
-    def _durum_safe(self, msg: str):
-        self.root.after(0, lambda m=msg: self._durum(m))
 
-    # ─────────────────────────────────────────────────────────────────────
-    # Sipariş DB'den aktif çalışma
-    # ─────────────────────────────────────────────────────────────────────
-    def _aktif_calismayi_yukle(self):
-        try:
-            from siparis_db import get_siparis_db
-            sdb = get_siparis_db()
-            self.aktif_calisma = sdb.aktif_calisma_getir()
-        except Exception as e:
-            messagebox.showerror("Hata", f"Sipariş DB açılamadı:\n{e}", parent=self.root)
-            return
+def _aylik_kirilim_topla(products):
+    """Ürünlerin 13 aylık ay-ay çıkışını Botanik EOS'tan çek (SADECE SELECT).
 
-        if not self.aktif_calisma:
-            self.lbl_calisma.config(text="⚠  Aktif sipariş çalışması yok")
-            self.lbl_ist.config(text="Önce Sipariş Verme modülünde liste oluşturun.")
-            self._log("Aktif sipariş çalışması bulunamadı.")
-            return
+    Fatih'in mevsim/trend katsayısı (`hesapla_mevsim_katsayisi`) 13 tam aylık
+    seri ister (geçen yıl aynı ay + son 12 ay ortalaması). Sipariş Ver'in
+    tablosu kullanıcının seçtiği ay sayısıyla sınırlı olduğundan kırılım
+    burada, devir anında EOS'tan taze çekilir. Filtreler Sipariş Ver'in
+    CikisVerileri CTE'si ile birebir (Reçete+Elden, silme=0, iadeler hariç).
 
-        try:
-            self.siparisler = sdb.calisma_siparisleri_getir(self.aktif_calisma["id"])
-        except Exception as e:
-            messagebox.showerror("Hata", f"Siparişler getirilemedi:\n{e}", parent=self.root)
-            return
+    Erişim yalnız BotanikDB guard'ı üzerinden; EOS erişilemezse sessizce
+    vazgeçilir (monthly_sales boş kalır → katsayı nötr 1.0).
 
-        self.lbl_calisma.config(
-            text=f"📋  {self.aktif_calisma['ad']}  (#{self.aktif_calisma['id']})"
+    Returns:
+        int: kırılımı doldurulan ürün sayısı (0 = EOS yok/veri yok)
+    """
+    urunlu = [p for p in products if p.get("hibrit_urun_id")]
+    if not urunlu:
+        return 0
+    try:
+        from dateutil.relativedelta import relativedelta
+        from datetime import datetime
+        from botanik_db import BotanikDB
+
+        bugun = datetime.now()
+        # 13 kova: bu ay (kısmi) + geriye 12 tam ay; etiket "MM.YY"
+        etiketler = []
+        for i in range(12, -1, -1):
+            t = bugun - relativedelta(months=i)
+            etiketler.append((t.year, t.month, f"{t.month:02d}.{t.year % 100:02d}"))
+        baslangic = (bugun - relativedelta(months=12)).replace(day=1).strftime("%Y-%m-%d")
+
+        ids = ",".join(str(int(p["hibrit_urun_id"])) for p in urunlu)
+        sql = f"""
+        ;WITH CikisVerileri AS (
+            SELECT ri.RIUrunId as UrunId, ri.RIAdet as Adet,
+                   CAST(ra.RxKayitTarihi as date) as Tarih
+            FROM ReceteIlaclari ri
+            JOIN ReceteAna ra ON ri.RIRxId = ra.RxId
+            WHERE ra.RxSilme = 0 AND ri.RISilme = 0
+              AND (ri.RIIade = 0 OR ri.RIIade IS NULL)
+              AND ra.RxKayitTarihi >= '{baslangic}'
+              AND ri.RIUrunId IN ({ids})
+            UNION ALL
+            SELECT ei.RIUrunId, ei.RIAdet, CAST(ea.RxKayitTarihi as date)
+            FROM EldenIlaclari ei
+            JOIN EldenAna ea ON ei.RIRxId = ea.RxId
+            WHERE ea.RxSilme = 0 AND ei.RISilme = 0
+              AND (ei.RIIade = 0 OR ei.RIIade IS NULL)
+              AND ea.RxKayitTarihi >= '{baslangic}'
+              AND ei.RIUrunId IN ({ids})
         )
-        self.lbl_ist.config(text=f"{len(self.siparisler)} kalem")
-        self._log(f"Aktif çalışma yüklendi: {len(self.siparisler)} kalem")
-
-        self._treeview_doldur()
-
-    def _treeview_doldur(self):
-        for iid in self.tv.get_children():
-            self.tv.delete(iid)
-        for s in self.siparisler:
-            self.tv.insert(
-                "", "end",
-                iid=str(s.get("id", "")),
-                values=[
-                    s.get("urun_adi", ""),
-                    s.get("barkod", ""),
-                    s.get("miktar", 0),
-                    "—",
-                    "Bekliyor",
-                ],
-                tags=("bekliyor",),
-            )
-
-    def _tv_satir_guncelle(self, sid, eklenen: str, durum: str, tag: str):
-        iid = str(sid)
-        if self.tv.exists(iid):
-            mevcut = self.tv.item(iid, "values")
-            self.tv.item(iid, values=[mevcut[0], mevcut[1], mevcut[2], eklenen, durum], tags=(tag,))
-
-    # ─────────────────────────────────────────────────────────────────────
-    # Depoları aç
-    # ─────────────────────────────────────────────────────────────────────
-    def _depolari_ac(self):
-        if not self.siparisler:
-            messagebox.showwarning(
-                "Liste Boş",
-                "Aktif çalışmada sipariş yok. Önce Sipariş Verme modülünde liste hazırlayın.",
-                parent=self.root,
-            )
-            return
-        if not self.depo_sirasi:
-            messagebox.showwarning(
-                "Depo Yok",
-                "Hiçbir depo için login bilgisi tanımlı değil.\n"
-                "Fatih Siparişçi'nin Ayarlar penceresinden depo bilgilerini girin.",
-                parent=self.root,
-            )
-            return
-
-        os.environ["BROWSER_MODE"] = self.var_mode.get()
-
-        self.btn_depo_ac.config(state="disabled")
-        self.btn_iptal.config(state="normal")
-        self._durum("Depolar açılıyor — pencereleri kapatmayın...")
-
-        def worker():
-            try:
-                from src.controller import MainController
-                if self.controller is None:
-                    self.controller = MainController(gui_window=None)
-
-                self._log_safe("Depo girişleri yapılıyor...")
-                self.controller._init_depolar(self.credentials)
-
-                aktif = self.controller.active_depolar or {}
-                self._log_safe(f"✓ {len(aktif)} depo aktif: {', '.join(aktif.keys())}")
-
-                # Aktif depo sırası: kullanıcının seçtiği sırada AMA sadece açılabilenler
-                self.depo_sirasi = [d for d in self.depo_sirasi if d in aktif]
-                self.root.after(0, self._depo_listbox_doldur)
-
-                self.root.after(0, lambda: self.btn_gonder.config(state="normal"))
-                self.root.after(0, lambda: self._durum(f"✓ {len(aktif)} depo hazır — 'Sepete Gönder' butonuna basın"))
-            except Exception as e:
-                logger.exception("Depo açma hatası")
-                self.root.after(0, lambda: messagebox.showerror(
-                    "Depo Açma Hatası",
-                    f"Depolar açılamadı:\n\n{e}\n\n"
-                    f".env: {SIPARISCI_ENV}",
-                    parent=self.root,
-                ))
-                self.root.after(0, lambda: self._durum("Depo açılamadı"))
-            finally:
-                self.root.after(0, lambda: self.btn_depo_ac.config(state="normal"))
-                self.root.after(0, lambda: self.btn_iptal.config(state="disabled"))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    # ─────────────────────────────────────────────────────────────────────
-    # Kademeli sepete gönderme
-    # ─────────────────────────────────────────────────────────────────────
-    def _sepete_gonder_baslat(self):
-        if not self.controller or not self.controller.active_depolar:
-            messagebox.showwarning(
-                "Depolar Açık Değil",
-                "Önce 'Depoları Aç & Giriş Yap' butonuna basın.",
-                parent=self.root,
-            )
-            return
-        if self.worker_thread and self.worker_thread.is_alive():
-            messagebox.showinfo("İşlem Sürüyor", "Mevcut işlem bitsin.", parent=self.root)
-            return
-        if not self.siparisler:
-            messagebox.showinfo("Liste Boş", "Sipariş listesi boş.", parent=self.root)
-            return
-
-        # Onay
-        sira_metni = " → ".join(DEPO_GORUNEN_AD.get(d, d) for d in self.depo_sirasi)
-        if not messagebox.askyesno(
-            "Sepete Gönder",
-            f"{len(self.siparisler)} kalem sırasıyla şu depolara denenecek:\n\n"
-            f"{sira_metni}\n\n"
-            "Bir depoya eklenebilen ürünler sonraki depolarda atlanır.\n"
-            "Devam edilsin mi?",
-            parent=self.root,
-        ):
-            return
-
-        # Treeview sıfırla
-        for s in self.siparisler:
-            self._tv_satir_guncelle(s["id"], "—", "Bekliyor", "bekliyor")
-
-        self.iptal_istendi = False
-        self.btn_gonder.config(state="disabled")
-        self.btn_depo_ac.config(state="disabled")
-        self.btn_iptal.config(state="normal")
-        self._durum("Sepete gönderme başladı...")
-
-        def worker():
-            try:
-                rapor = self._sepete_gonder_yap()
-                self.root.after(0, lambda r=rapor: self._sepete_gonder_bitti(r))
-            except Exception as e:
-                logger.exception("Sepete gönderme hatası")
-                self.root.after(0, lambda: messagebox.showerror(
-                    "Hata", f"Sepete gönderme sırasında hata:\n{e}", parent=self.root,
-                ))
-                self.root.after(0, self._sepete_gonder_temizle)
-
-        self.worker_thread = threading.Thread(target=worker, daemon=True)
-        self.worker_thread.start()
-
-    def _sepete_gonder_yap(self) -> dict:
+        SELECT UrunId, YEAR(Tarih) as Yil, MONTH(Tarih) as Ay, SUM(Adet) as Adet
+        FROM CikisVerileri
+        GROUP BY UrunId, YEAR(Tarih), MONTH(Tarih)
         """
-        Kademeli akış:
-        - kalanlar = tüm satırlar
-        - her depo için: kalanlar üzerinden geç, başarılı olanlar listeden düşer
-        Returns:
-            dict — { depo_key: [eklenen_satirlar], "_hicbirinde": [...] }
+        db = BotanikDB()
+        satirlar = db.sorgu_calistir(sql) or []
+
+        # (UrunId, Yil, Ay) → Adet
+        adetler = {}
+        for r in satirlar:
+            adetler[(int(r["UrunId"]), int(r["Yil"]), int(r["Ay"]))] = int(r["Adet"] or 0)
+
+        dolan = 0
+        for p in urunlu:
+            uid = int(p["hibrit_urun_id"])
+            # 13 kovanın hepsi doldurulur (satışsız ay = 0 — ortalamaya girmeli)
+            kirilim = {etiket: str(adetler.get((uid, y, m), 0))
+                       for (y, m, etiket) in etiketler}
+            p["monthly_sales"] = kirilim
+            if any(v != "0" for v in kirilim.values()):
+                dolan += 1
+        logger.info(f"[HİBRİT] 13 aylık kırılım EOS'tan yüklendi: "
+                    f"{dolan}/{len(urunlu)} üründe satış verisi var")
+        return dolan
+    except Exception as e:
+        logger.warning(f"[HİBRİT] Aylık kırılım çekilemedi (mevsim katsayısı nötr kalır): {e}")
+        return 0
+
+
+def hibrit_baslat_subprocess(parent=None):
+    """Hibrit Siparişçi'yi ayrı süreç olarak başlat (EczAsist içinden çağrılır).
+
+    Sipariş Ver modülündeki "Depolara Gönder" butonu ve ana menü butonu bu
+    ortak fonksiyonu kullanır. Ayrı süreç şart: Fatih'in MainWindow'u kendi
+    Tk mainloop'unu ister, ayrıca Selenium EczAsist'i kilitlememeli.
+
+    Returns:
+        subprocess.Popen | None
+    """
+    import subprocess
+    from tkinter import messagebox
+    try:
+        runner = str(Path(__file__).resolve())
+        pythonw = Path(sys.executable).with_name("pythonw.exe")
+        cmd = str(pythonw) if pythonw.exists() else sys.executable
+
+        creationflags = 0
+        if os.name == "nt":
+            creationflags = (subprocess.CREATE_NO_WINDOW
+                             | subprocess.DETACHED_PROCESS)
+
+        proc = subprocess.Popen(
+            [cmd, runner],
+            cwd=str(ECZASIST_DIZIN),
+            creationflags=creationflags,
+            close_fds=True,
+        )
+        logger.info(f"Hibrit Siparişçi başlatıldı: {cmd} {runner}")
+        return proc
+    except Exception as e:
+        logger.error(f"Hibrit Siparişçi başlatma hatası: {e}")
+        messagebox.showerror("Hibrit Siparişçi",
+                             f"Başlatılamadı:\n{e}", parent=parent)
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fatih modülleri import edildikten sonra kurulan sınıflar (factory)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _siniflari_kur(BotanikEOSController, MainController, sip_logger):
+    """SanalBotanik + HibritController sınıflarını üret.
+
+    Fatih'in modülleri ancak sys.path/chdir sonrası import edilebildiği
+    için sınıflar modül seviyesinde değil burada tanımlanır.
+    """
+
+    class SanalBotanik(BotanikEOSController):
+        """Botanik EOS'a hiç dokunmayan sahte controller.
+
+        Okuma → enjekte edilen ürün listesinden; yazma → no-op.
+        Saf hesap metotları (calculate_order_quantity fallback,
+        aylik_satis_efektif, _count_sales_months...) üst sınıftan
+        değişmeden miras alınır.
         """
-        rapor = {dk: [] for dk in self.depo_sirasi}
-        rapor["_hicbirinde"] = []
 
-        kalanlar = list(self.siparisler)
-        toplam = len(self.siparisler)
+        def __init__(self, urunler):
+            super().__init__()
+            self.urunler = list(urunler)
+            self._satir = {p["row"]: p for p in self.urunler}
 
-        for depo_key in self.depo_sirasi:
-            if self.iptal_istendi or not kalanlar:
-                break
+        # ── bağlantı / pencere (no-op) ──────────────────────────────────
+        def connect(self):
+            sip_logger.info(f"[HİBRİT] Sanal Botanik: {len(self.urunler)} "
+                            f"ürünlük EczAsist listesi bağlı (Botanik penceresi KULLANILMIYOR)")
+            return True
 
-            depo = self.controller.active_depolar.get(depo_key)
-            if not depo:
-                self._log_safe(f"⚠ {depo_key} aktif değil, atlanıyor")
-                continue
+        def is_connected(self):
+            return True
 
-            depo_adi = DEPO_GORUNEN_AD.get(depo_key, depo_key)
-            self._log_safe(f"")
-            self._log_safe(f"═══ {depo_adi} — {len(kalanlar)} kalem deneniyor ═══")
-            self._durum_safe(f"{depo_adi}: 0/{len(kalanlar)}")
+        def bring_siparis_to_front(self):
+            return True
 
-            # Bu depo için ekleyebildiklerimiz
-            eklendi_idler = set()
+        def position_for_ordering(self):
+            return True
 
-            for i, s in enumerate(kalanlar, start=1):
-                if self.iptal_istendi:
-                    break
+        def click_yenile_button(self):
+            return True
 
-                barkod = (s.get("barkod") or "").strip()
-                miktar = int(s.get("miktar") or 0)
-                urun_adi = s.get("urun_adi", "")[:50]
-                sid = s["id"]
+        def prepare_table_for_scan(self):
+            self.table_prepared = True
+            return True
 
-                if not barkod or miktar <= 0:
-                    self._log_safe(f"  [{i}] {urun_adi} → barkod/miktar boş, atlandı")
-                    self.root.after(0, lambda sid=sid: self._tv_satir_guncelle(
-                        sid, "—", "Barkod/miktar boş", "hata"
-                    ))
-                    # Bu satır kalanlar listesinden de çıkarılsın (hata olarak işaretle)
-                    eklendi_idler.add(sid)  # kademeden çıkar
-                    rapor["_hicbirinde"].append(s)
+        def ensure_date_sorted(self):
+            return True
+
+        # ── okuma (enjekte listeden) ────────────────────────────────────
+        def get_row_numbers(self):
+            return [p["row"] for p in self.urunler]
+
+        def get_total_row_count(self, refresh=False):
+            return len(self.urunler)
+
+        def get_product_data(self, row_num):
+            p = self._satir.get(row_num)
+            return dict(p) if p else None
+
+        def get_product_name_at_row(self, row_num):
+            p = self._satir.get(row_num)
+            return p.get("urun_adi") if p else None
+
+        def get_all_product_names_with_rows(self):
+            return {p["urun_adi"].lower(): p["row"] for p in self.urunler}
+
+        def get_all_product_names_fast(self):
+            return self.get_all_product_names_with_rows()
+
+        def get_aciklama_value(self, row_num):
+            p = self._satir.get(row_num)
+            return p.get("mevcut_aciklama", "") if p else ""
+
+        def click_depo_personel_cell(self, row_num, fast_mode=True):
+            p = self._satir.get(row_num)
+            return p.get("barkod") if p else None
+
+        # ── muadil akışı Botanik UI ister → hibritte kapalı ─────────────
+        def get_muadil_list(self):
+            return []
+
+        def get_muadil_barcode(self, muadil_rect):
+            return None
+
+        # ── yazma (no-op; değer ürün dict'inde saklanır, GUI tutarlı kalır)
+        def set_adet_value(self, row_num, value):
+            p = self._satir.get(row_num)
+            if p is not None:
+                p["hibrit_yazilan_adet"] = value
+            sip_logger.info(f"[HİBRİT] Botanik'e Adet yazma ATLANDI (satır {row_num} → {value})")
+            return True
+
+        def set_mf_value(self, row_num, value):
+            p = self._satir.get(row_num)
+            if p is not None:
+                p["hibrit_yazilan_mf"] = value
+            sip_logger.info(f"[HİBRİT] Botanik'e MF yazma ATLANDI (satır {row_num} → {value})")
+            return True
+
+        def set_aciklama_value(self, row_num, text, skip_scroll=False):
+            p = self._satir.get(row_num)
+            if p is not None:
+                p["mevcut_aciklama"] = text or ""
+            sip_logger.info(f"[HİBRİT] Botanik'e açıklama yazma ATLANDI (satır {row_num})")
+            return True
+
+        def set_tevzi_ilac(self, row_num, tam_alindi=False):
+            sip_logger.info(f"[HİBRİT] Botanik tevzi işareti ATLANDI (satır {row_num})")
+            return True
+
+        # ── sipariş adedi: bizim karar ──────────────────────────────────
+        def calculate_order_quantity(self, product):
+            ihtiyac = product.get("hibrit_ihtiyac")
+            if ihtiyac is not None:
+                return int(ihtiyac)
+            return super().calculate_order_quantity(product)
+
+        # ── ana okuyucu: gerçek get_all_products_data_only'nin birebir
+        #    sözleşmesi (controller.run_fast_scan bunu çağırır) ───────────
+        def get_all_products_data_only(self, on_product_read=None,
+                                       start_depo_search=None,
+                                       start_from_row=None, only_rows=None,
+                                       stok_filter_func=None):
+            products = []
+            rows = [p["row"] for p in self.urunler]
+
+            if start_from_row:
+                kalan = [r for r in rows if r >= start_from_row]
+                if kalan:
+                    rows = kalan
+            if only_rows is not None:
+                rows = [r for r in rows if r in only_rows]
+
+            total = len(rows)
+            sip_logger.info(f"[HİBRİT] EczAsist listesi akıtılıyor: {total} ürün")
+
+            for idx, row_num in enumerate(rows, 1):
+                try:
+                    if self.gui and hasattr(self.gui, "pause_event"):
+                        self.gui.pause_event.wait()
+                    if self.gui and getattr(self.gui, "stop_scan", False):
+                        sip_logger.info(f"[HİBRİT] Kullanıcı durdurdu (satır {row_num})")
+                        break
+
+                    p = self._satir[row_num]
+
+                    if stok_filter_func is not None:
+                        try:
+                            stok_int = int(p.get("stok") or 0)
+                        except (TypeError, ValueError):
+                            stok_int = 0
+                        if not stok_filter_func(stok_int):
+                            continue
+
+                    if self.gui:
+                        self.gui.root.after(0, lambda i=idx, t=total, ad=p.get("urun_adi", "-"):
+                                            self.gui.update_status(f"Hibrit liste {i}/{t}: {ad}"))
+
+                    # Barkod hazır → depo aramasını hemen başlat (paralel)
+                    depo_future = None
+                    barkod = p.get("barkod")
+                    if barkod and start_depo_search:
+                        try:
+                            depo_future = start_depo_search(barkod)
+                        except Exception as e:
+                            sip_logger.debug(f"[HİBRİT] Depo araması başlatılamadı: {e}")
+
+                    # Sipariş adedi (gerçek okuyucudaki mantıkla aynı):
+                    # mf==0 → calculate_order_quantity → hibrit_ihtiyac
+                    if p.get("mf", 0) == 0:
+                        p["siparis_adet"] = self.calculate_order_quantity(p)
+                    else:
+                        p["siparis_adet"] = p["mf"]
+
+                    # Depo sonuçlarını bekle ve ürüne işle
+                    if depo_future:
+                        try:
+                            depo_sonuclari = depo_future.result(timeout=30)
+                            if depo_sonuclari:
+                                p.update(depo_sonuclari)
+                        except Exception as e:
+                            sip_logger.warning(f"[HİBRİT] Depo sonuçları alınamadı "
+                                               f"({p.get('urun_adi')}): {e}")
+
+                    products.append(p)
+
+                    if on_product_read:
+                        try:
+                            on_product_read(p, idx, total)
+                        except Exception as cb_err:
+                            sip_logger.debug(f"[HİBRİT] Callback hatası: {cb_err}")
+
+                except Exception as e:
+                    sip_logger.error(f"[HİBRİT] Satır {row_num} hatası: {e}")
                     continue
 
-                self._durum_safe(f"{depo_adi}: {i}/{len(kalanlar)} — {urun_adi[:40]}")
-                self.root.after(0, lambda sid=sid, da=depo_adi: self._tv_satir_guncelle(
-                    sid, da + " ...", "Aranıyor", "calisiyor"
-                ))
+            sip_logger.info(f"[HİBRİT] {len(products)} ürün işlendi")
+            return products
 
-                try:
-                    # Tab'a geç (paralel modda gerekli)
-                    depo.switch_to_tab()
-                    bulundu = depo.search_barcode(barkod)
-                except Exception as e:
-                    self._log_safe(f"  [{i}] {urun_adi} → arama hatası: {e}")
-                    self.root.after(0, lambda sid=sid: self._tv_satir_guncelle(
-                        sid, "—", f"Arama hatası", "hata"
-                    ))
-                    continue  # sonraki depoda denenecek
-
-                if not bulundu:
-                    self._log_safe(f"  [{i}] {urun_adi} → barkod bulunamadı, sonraki depo")
-                    self.root.after(0, lambda sid=sid, da=depo_adi: self._tv_satir_guncelle(
-                        sid, "—", f"{da}: barkod yok → sonraki depo", "bekliyor"
-                    ))
-                    continue  # bu satır sonraki depoda denenecek
-
-                try:
-                    eklendi = depo.add_to_cart(miktar, secenek=None)
-                except Exception as e:
-                    self._log_safe(f"  [{i}] {urun_adi} → sepete ekleme hatası: {e}")
-                    self.root.after(0, lambda sid=sid: self._tv_satir_guncelle(
-                        sid, "—", "Sepete eklenemedi (hata)", "hata"
-                    ))
-                    continue
-
-                if eklendi:
-                    self._log_safe(f"  [{i}] ✓ {urun_adi} → {depo_adi} ({miktar} adet)")
-                    self.root.after(0, lambda sid=sid, da=depo_adi, m=miktar: self._tv_satir_guncelle(
-                        sid, da, f"✓ {m} adet sepete eklendi", "eklendi"
-                    ))
-                    eklendi_idler.add(sid)
-                    rapor[depo_key].append(s)
+        # Eski (ölü) controller.run() yolu da çağırırsa aynı listeyi akıt
+        def get_all_products(self, filter_mf_zero=False, skip_mf_write=True,
+                             on_product=None, start_from_row=None, **kwargs):
+            products = []
+            rows = [p["row"] for p in self.urunler]
+            if start_from_row:
+                rows = [r for r in rows if r >= start_from_row] or rows
+            total = len(rows)
+            for idx, row_num in enumerate(rows, 1):
+                p = self._satir[row_num]
+                if p.get("mf", 0) == 0:
+                    p["siparis_adet"] = self.calculate_order_quantity(p)
                 else:
-                    self._log_safe(f"  [{i}] ✗ {urun_adi} → {depo_adi}: sepete eklenemedi, sonraki depo")
-                    self.root.after(0, lambda sid=sid, da=depo_adi: self._tv_satir_guncelle(
-                        sid, "—", f"{da}: sepete eklenemedi → sonraki depo", "bekliyor"
-                    ))
+                    p["siparis_adet"] = p["mf"]
+                products.append(p)
+                if on_product:
+                    try:
+                        on_product(p, idx, total)
+                    except Exception as cb_err:
+                        sip_logger.error(f"[HİBRİT] on_product hatası: {cb_err}")
+            return products
 
-            # Bu depoda eklenenleri kalanlar listesinden düş
-            kalanlar = [s for s in kalanlar if s["id"] not in eklendi_idler]
-            self._log_safe(
-                f"═══ {depo_adi} bitti — {len(eklendi_idler)} eklendi, "
-                f"{len(kalanlar)} kalemler sonraki depoya iniyor ═══"
+    class HibritController(MainController):
+        """Fatih MainController'ı, Botanik yerine SanalBotanik ile."""
+
+        def __init__(self, urunler):
+            super().__init__(gui_window=None)
+            sanal = SanalBotanik(urunler)
+            # MainController.__init__ gun_sayisi'ni gerçek botanik'e yazmıştı;
+            # takas sonrası sanal nesneye taşı.
+            sanal.gun_sayisi = getattr(self, "gun_sayisi", 30)
+            self.botanik = sanal
+
+        def bul_en_karli_secenek(self, product):
+            """Kalem bazında karma MF kuralı (kullanıcı kararı 2026-07-04):
+
+            Kalemde MF planı varsa (Sipariş Ver'de NPV ile seçilmiş, örn.
+            100+30) depo şartları içinde BİREBİR eşleşen (min_adet+mf aynı)
+            seçenek öne alınır → oto-sepet ve GUI 'en kârlı' olarak planı
+            görür. Birebir eşleşme yoksa motor tamamen serbest (normal
+            efektif sıralaması). MF plansız kalemler zaten serbest.
+            """
+            sonuc = super().bul_en_karli_secenek(product)
+            plan_min = product.get("hibrit_mf_plan_min")
+            plan_mf = product.get("hibrit_mf_plan_mf")
+            if not sonuc or not plan_min or not plan_mf:
+                return sonuc
+            try:
+                secenekler = sonuc.get("tum_secenekler") or []
+                eslesen = [s for s in secenekler
+                           if s.get("min_adet") == plan_min and s.get("mf") == plan_mf]
+                if eslesen:
+                    kalan = [s for s in secenekler if s not in eslesen]
+                    sonuc["tum_secenekler"] = eslesen + kalan
+                    sonuc["en_karli"] = eslesen[0]
+                    if (not eslesen[0].get("sadece_oneri")
+                            and eslesen[0].get("depo") not in ("farmazon", "farmazonrx")):
+                        sonuc["en_karli_eklenebilir"] = eslesen[0]
+                    product["hibrit_mf_plan_durum"] = (
+                        f"PLAN {plan_min}+{plan_mf} bulundu: {eslesen[0].get('depo')}")
+                    sip_logger.info(f"[HİBRİT] MF planı öne alındı "
+                                    f"({product.get('urun_adi')}): {plan_min}+{plan_mf} "
+                                    f"→ {eslesen[0].get('depo')}")
+                else:
+                    product["hibrit_mf_plan_durum"] = (
+                        f"PLAN {plan_min}+{plan_mf} depoda yok → motor serbest")
+                    sip_logger.info(f"[HİBRİT] MF planı depoda bulunamadı "
+                                    f"({product.get('urun_adi')}): {plan_min}+{plan_mf} "
+                                    f"→ serbest seçim")
+            except Exception as e:
+                sip_logger.warning(f"[HİBRİT] MF plan önceliklendirme hatası: {e}")
+            return sonuc
+
+    return HibritController
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ana akış
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    logging.basicConfig(level=logging.INFO)
+
+    # 1) Kurulum var mı?
+    if not (SIPARISCI_DIZIN / "Siparisci.pyw").exists():
+        try:
+            if str(ECZASIST_DIZIN) not in sys.path:
+                sys.path.insert(0, str(ECZASIST_DIZIN))
+            from fatih_siparisci_launcher import _kurulum_yok_uyarisi
+            _kurulum_yok_uyarisi(parent=None)
+        except Exception:
+            _hata_kutusu("Hibrit Siparişçi",
+                         f"Fatih Siparişçi kurulu değil:\n{SIPARISCI_DIZIN}\n\n"
+                         "Önce SiparisciKurulum.exe ile kurulum yapın.")
+        return 1
+
+    # 2) Tek örnek: Siparişçi (veya başka bir hibrit) açıksa çalışma.
+    #    Aynı Chrome profillerini (data/chrome_profiles) paylaştıkları için
+    #    ikisi aynı anda çalışamaz.
+    if not _tek_ornek_kilidi_al():
+        _hata_kutusu(
+            "Hibrit Siparişçi — Siparişçi Açık",
+            "Fatih Siparişçi (veya başka bir Hibrit Siparişçi) şu anda açık.\n\n"
+            "İkisi aynı depo oturumlarını (Chrome profillerini) paylaştığı için\n"
+            "aynı anda çalışamaz.\n\n"
+            "Lütfen önce Siparişçi penceresini kapatın, sonra tekrar deneyin."
+        )
+        return 1
+
+    # 3) EczAsist kesin sipariş listesini yükle
+    try:
+        calisma, siparisler = _kesin_liste_yukle()
+    except Exception as e:
+        _hata_kutusu("Hibrit Siparişçi",
+                     f"Sipariş listesi okunamadı (siparis_db):\n{e}")
+        return 1
+
+    if not calisma:
+        _hata_kutusu("Hibrit Siparişçi",
+                     "Aktif sipariş çalışması bulunamadı.\n\n"
+                     "Önce Sipariş Ver modülünde bir çalışma oluşturup\n"
+                     "kesin sipariş listesine ürün ekleyin.")
+        return 1
+
+    products, barkodsuz = _urunleri_hazirla(siparisler)
+    if not products:
+        _hata_kutusu("Hibrit Siparişçi",
+                     f"'{calisma.get('ad', '?')}' çalışmasında işlenebilir sipariş yok.\n\n"
+                     f"(Toplam kayıt: {len(siparisler)}, barkodsuz/miktarsız: {len(barkodsuz)})")
+        return 1
+
+    # 3b) 13 aylık gidiş kırılımını EOS'tan çek (mevsim katsayısı için;
+    #     chdir'den ÖNCE — botanik_db EczAsist dizininden import edilir)
+    kirilim_sayisi = _aylik_kirilim_topla(products)
+
+    # 4) Fatih ortamına geç (config/.env, data/, logs/ göreli yolları için)
+    sys.path.insert(0, str(SIPARISCI_DIZIN))
+    os.chdir(SIPARISCI_DIZIN)
+
+    # 5) Sürüm kontrolü (uyar ama engelleme)
+    surum_uyari = None
+    try:
+        from src import surum as _surum
+        kurulu = str(getattr(_surum, "SURUM_TAM", "?"))
+        if kurulu != TEST_EDILEN_SURUM:
+            surum_uyari = (
+                f"Kurulu Siparişçi sürümü V{kurulu}, hibrit adaptörü ise "
+                f"V{TEST_EDILEN_SURUM} ile test edildi.\n\n"
+                "Genellikle sorunsuz çalışır; ama tarama/sepet davranışında "
+                "tuhaflık görürsen adaptörün yeni sürüme uyarlanması gerekir."
             )
+    except Exception:
+        pass
 
-        # Hiçbir depoya eklenmeyenler
-        eklendi_tum = set()
-        for dk in self.depo_sirasi:
-            for s in rapor.get(dk, []):
-                eklendi_tum.add(s["id"])
-        for s in self.siparisler:
-            if s["id"] not in eklendi_tum and s not in rapor["_hicbirinde"]:
-                rapor["_hicbirinde"].append(s)
-                self.root.after(0, lambda sid=s["id"]: self._tv_satir_guncelle(
-                    sid, "—", "❌ Hiçbir depoda eklenemedi", "hata"
-                ))
+    # 6) Fatih modüllerini yükle
+    try:
+        from src.controller import MainController
+        from src.botanik.eos_controller import BotanikEOSController
+        from src.gui.main_window import MainWindow
+        from src.utils import logger as sip_logger
+    except Exception as e:
+        _hata_kutusu("Hibrit Siparişçi",
+                     f"Siparişçi modülleri yüklenemedi:\n{e}\n\n{traceback.format_exc()}")
+        return 1
 
-        rapor["_toplam"] = toplam
-        return rapor
+    HibritController = _siniflari_kur(BotanikEOSController, MainController, sip_logger)
 
-    def _sepete_gonder_bitti(self, rapor: dict):
-        self._sepete_gonder_temizle()
+    # 7) Controller + Fatih GUI (Siparisci.pyw main() ile aynı kablolama)
+    sip_logger.info("=" * 60)
+    sip_logger.info(f"HİBRİT SİPARİŞÇİ başlatılıyor — çalışma: {calisma.get('ad', '?')}, "
+                    f"{len(products)} ürün (EczAsist kesin sipariş listesi)")
+    sip_logger.info("=" * 60)
 
-        toplam = rapor.get("_toplam", 0)
-        hicbirinde = rapor.get("_hicbirinde", [])
-        eklenen_sayisi = toplam - len(hicbirinde)
+    controller = HibritController(products)
+    gui = MainWindow(controller)
+    controller.gui = gui
+    controller.botanik.gui = gui
 
-        if self.iptal_istendi:
-            self._durum(f"İptal edildi — {eklenen_sayisi}/{toplam} eklendi")
+    try:
+        gui.root.title(gui.root.title() + "  —  🔀 HİBRİT · EczAsist listesi")
+    except Exception:
+        pass
+
+    # 8) Geri bildirim döngüsü: tarama/sepet sonuçlarını EczAsist kesin
+    #    listesine işle (kesin_siparisler.depo_bilgileri → Sipariş Ver'in
+    #    depo sütunlarında görünür). Kullanıcı kararı 2026-07-04.
+    depo_gorunen = {"selcuk": "Selcuk", "alliance": "Alliance", "sancak": "Sancak",
+                    "iskoop": "Iskoop", "farmazon": "Farmazon",
+                    "yusufpasa": "YusufPasa", "bursa": "Bursa",
+                    "farmazonrx": "FarmazonRX"}
+    try:
+        from siparis_db import get_siparis_db  # singleton, mutlak yol (chdir'den etkilenmez)
+        ecz_db = get_siparis_db()
+    except Exception as e:
+        sip_logger.warning(f"[HİBRİT] Geri bildirim kapalı (siparis_db yok): {e}")
+        ecz_db = None
+
+    def _sonuc_ozeti(p):
+        """Ürünün depo sonucunu kesin liste sütun formatına (dict) çevir."""
+        ozet = {}
+        enk = (p.get("en_karli_sonuc") or {}).get("en_karli") or {}
+        if enk:
+            ad = depo_gorunen.get(enk.get("depo"), str(enk.get("depo")))
+            parca = [x for x in (enk.get("sart"),
+                                 f"{enk.get('efektif_birim')} TL" if enk.get("efektif_birim") else None)
+                     if x]
+            ozet[ad] = ("★ " + " ".join(str(x) for x in parca)).strip()
+        if p.get("sepete_eklendi") is True:
+            ad = depo_gorunen.get(p.get("sepete_eklenen_depo"), str(p.get("sepete_eklenen_depo")))
+            ozet[ad] = f"✓ SEPETTE {p.get('sepete_eklenen_adet', 0)} ad"
+        elif p.get("sepete_eklendi") is False and p.get("sepete_eklenmeme_sebebi"):
+            ozet["HibritDurum"] = p["sepete_eklenmeme_sebebi"]
+        if p.get("hibrit_mf_plan_durum"):
+            ozet["MFPlan"] = p["hibrit_mf_plan_durum"]
+        return ozet
+
+    _yazilan = {}
+
+    def _geri_bildirim_dongusu():
+        try:
+            for p in list(getattr(controller, "products", [])):
+                sid = p.get("hibrit_db_id")
+                if not sid or not ecz_db:
+                    continue
+                ozet = _sonuc_ozeti(p)
+                if ozet and ozet != _yazilan.get(sid):
+                    if ecz_db.siparis_guncelle(
+                            sid, depo_bilgileri=json.dumps(ozet, ensure_ascii=False)):
+                        _yazilan[sid] = ozet
+        except Exception as e:
+            sip_logger.debug(f"[HİBRİT] Geri bildirim hatası: {e}")
+        try:
+            gui.root.after(7000, _geri_bildirim_dongusu)
+        except Exception:
+            pass  # pencere kapandı
+
+    if ecz_db:
+        gui.root.after(7000, _geri_bildirim_dongusu)
+
+    # 9) Açılış bilgisi (pencere kurulduktan sonra)
+    def _acilis_bilgisi():
+        from tkinter import messagebox
+        mesaj = (
+            f"EczAsist sipariş listesi yüklendi:\n\n"
+            f"   Çalışma:  {calisma.get('ad', '?')}\n"
+            f"   Ürün:  {len(products)} adet\n"
+        )
+        if barkodsuz:
+            mesaj += (f"   ⚠ Barkodu olmadığı için atlanan: {len(barkodsuz)}\n"
+                      f"      ({', '.join(barkodsuz[:5])}"
+                      f"{' ...' if len(barkodsuz) > 5 else ''})\n")
+        if kirilim_sayisi:
+            mesaj += (f"   📈 13 aylık gidiş EOS'tan yüklendi "
+                      f"({kirilim_sayisi} ürün) — mevsim katsayısı aktif\n")
         else:
-            self._durum(f"Tamamlandı — {eklenen_sayisi}/{toplam} eklendi")
+            mesaj += "   📈 Aylık gidiş alınamadı — mevsim düzeltmesi nötr (1.0)\n"
+        mesaj += (
+            "\nBotanik penceresi KULLANILMAZ ve Botanik'e hiçbir şey yazılmaz.\n"
+            "⚡ SİPARİŞ butonuna basınca depolar açılır ve bu liste taranır."
+        )
+        if surum_uyari:
+            mesaj += f"\n\n⚠ SÜRÜM UYARISI:\n{surum_uyari}"
+        messagebox.showinfo("Hibrit Siparişçi", mesaj, parent=gui.root)
 
-        # Özet rapor
-        satirlar = [f"TOPLAM {toplam} kalem işlendi.\n"]
-        for dk in self.depo_sirasi:
-            sayi = len(rapor.get(dk, []))
-            if sayi > 0:
-                satirlar.append(f"  • {DEPO_GORUNEN_AD.get(dk, dk)}: {sayi} kalem eklendi")
-        if hicbirinde:
-            satirlar.append(f"\n❌ Hiçbir depoya eklenemeyen {len(hicbirinde)} kalem:")
-            for s in hicbirinde[:20]:
-                satirlar.append(f"  · {s.get('urun_adi', '?')[:50]}  ({s.get('barkod', '')})")
-            if len(hicbirinde) > 20:
-                satirlar.append(f"  ... ve {len(hicbirinde) - 20} kalem daha (Treeview'da kırmızı)")
+    gui.root.after(700, _acilis_bilgisi)
 
-        ozet = "\n".join(satirlar)
-        for s in satirlar:
-            self._log(s)
-
-        messagebox.showinfo("Sepete Gönderme Tamamlandı", ozet, parent=self.root)
-
-    def _sepete_gonder_temizle(self):
-        self.btn_gonder.config(state="normal")
-        self.btn_depo_ac.config(state="normal")
-        self.btn_iptal.config(state="disabled")
-
-    # ─────────────────────────────────────────────────────────────────────
-    # İptal
-    # ─────────────────────────────────────────────────────────────────────
-    def _iptal_et(self):
-        self.iptal_istendi = True
-        self._log("İptal istendi — mevcut adım bitince duracak...")
+    # 10) Çalıştır
+    gui.run()
+    return 0
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    root = tk.Tk()
-    root.geometry("1400x800")
-    HibritSiparisciGUI(root)
-    root.mainloop()
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except Exception as e:
+        _hata_kutusu("Hibrit Siparişçi — Beklenmeyen Hata",
+                     f"{e}\n\n{traceback.format_exc()}")
+        sys.exit(1)

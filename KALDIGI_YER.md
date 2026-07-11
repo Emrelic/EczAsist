@@ -1,4 +1,48 @@
-# 📍 KALDIĞIMIZ YER — 2026-05-29 (Başlangıç Bulucu Yalçın Bug Fix)
+# 📍 KALDIĞIMIZ YER — 2026-07-04 (Hibrit Siparişçi v2)
+
+## 🔀 Hibrit Siparişçi v2 — KOD TAMAM, CANLI TEST BEKLİYOR
+
+**Mimari:** EczAsist kesin sipariş listesi (siparis_db.kesin_siparisler) →
+Fatih'in kurulu Siparişçi V1.8'ine (%LOCALAPPDATA%\Siparisci) `SanalBotanik`
+stub'ı ile enjekte edilir. Fatih'in dosyalarına DOKUNULMAZ (otomatik
+güncelleme siler); adaptör tamamen bizde: `hibrit_siparisci_gui.py` (v2,
+baştan yazıldı). Detay: memory `project-hibrit-siparisci-v2`.
+
+- ✅ `hibrit_siparisci_gui.py` v2: SanalBotanik (okuma=bizim liste,
+  yazma=no-op, `calculate_order_quantity`=bizim miktar) + HibritController +
+  Fatih MainWindow'u ayrı süreçte açan `main()`. Fatih'in tek-örnek mutex'i
+  paylaşılır (Siparişçi açıkken hibrit açılmaz, tersi de).
+- ✅ **Uç uca akış (kullanıcı tarifi, 2026-07-04):** (1) Sipariş Ver çalışır,
+  kesin liste oluşur → (2) liste bitince Fatih motoru devralır. İki devir
+  noktası: Sipariş Ver kesin liste panelindeki **🔀 DEPOLARA GÖNDER (Fatih
+  Motoru)** butonu (`_hibrit_motora_gonder`) ve ana menü Hibrit butonu
+  (akıllı: liste varsa onay+motor, yoksa Sipariş Ver'i açar). Ortak
+  başlatıcı: `hibrit_siparisci_gui.hibrit_baslat_subprocess()`.
+- ✅ `test_hibrit_v2_smoke.py` PASS (GUI'siz/Selenium'suz enjeksiyon hattı).
+- ✅ "BotSiparis - Kopya" silindi (git'te staged, commit bekliyor).
+- ⏳ **CANLI TEST:** yerel DB'de "HIBRIT V2 TEST (otomatik silinecek)"
+  çalışması (id=1, 2 ürün) hazır. Adımlar: (1) Siparişçi penceresini kapat,
+  (2) ana menü → 🔀 Hibrit Siparişçi, (3) pencere + açılış bilgisi kontrol,
+  (4) ⚡ SİPARİŞ ile depo taraması (gerçek depo girişi yapar!). Test bitince
+  test çalışması silinecek.
+- ⚠ `siparis_adet` = kesin_siparisler.MIKTAR (ödenen kutu); depo MF bedavası
+  üstüne gelir. Canlı testte oto-sepet miktarları bu varsayımla doğrulanmalı.
+- ✅ **Aylık gidiş köprüsü:** Fatih'in aşırı-alım/finansal modeli bizim
+  aylik_ort ile çalışır; mevsim katsayısı için hibrit açılışta EOS'tan
+  13 aylık kırılım çekilir (`_aylik_kirilim_topla`, SELECT-only, gerçek
+  EOS ile test PASS: katsayı=0.98 mevsim+trend tam formül). V1.13'e karşı
+  yüzey doğrulandı, TEST_EDILEN_SURUM='1.13'.
+- ✅ **3. aşama davranışları (kullanıcı kararları):** (1) MF kalem bazında
+  karma — plan birebir depoda varsa öne alınır, yoksa motor serbest;
+  (2) sepet modu Siparişçi .env ayarına uyar (şu an kapalı → kıyas+manuel);
+  (3) tarama/sepet sonuçları 7sn'de bir kesin listeye geri yazılır
+  (depo_bilgileri → Sipariş Ver depo sütunları).
+- Sonraki iş: kök `depolar/` klasörünü ("Depolarda Ara") Fatih motoruna
+  taşıyıp kaldırmak.
+
+---
+
+# ESKİ — 2026-05-29 (Başlangıç Bulucu Yalçın Bug Fix)
 
 ## 🔑 YARIN AÇTIĞINDA İLK BAKILACAK YER
 

@@ -140,3 +140,7 @@ yabanci_hasta_ayar.json
 # PyInstaller (yabanci_hasta_servis) — uretilen spec + servis runtime ayari
 *.spec
 servis_ayar.json
+
+# E-Reçete Çözücü — runtime/yerel durum (koddan yeniden üretilir)
+erecete_prefix_ogrenme.json
+erecete_karisma_tablosu.json
