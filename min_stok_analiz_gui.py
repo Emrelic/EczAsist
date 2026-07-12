@@ -80,6 +80,10 @@ class MinStokAnalizGUI:
         self.servis_var     = tk.DoubleVar(value=95.0)
         self.tedarik_var    = tk.IntVar(value=0)
         self.inceleme_var   = tk.IntVar(value=1)
+        # İlaç-dışı basit mantık parametreleri
+        self.urun_tipi_modu   = tk.StringVar(value='ilac')   # ilac/ilac_disi/tumu
+        self.basit_hedef_ay   = tk.IntVar(value=3)           # min kaç aya yeterli
+        self.basit_seyrek_esik = tk.IntVar(value=6)          # kaç ayda bir → 1
 
         self._arayuz_olustur()
 
@@ -105,6 +109,7 @@ class MinStokAnalizGUI:
 
         self._parametre_panel_olustur()
         self._rop_panel_olustur()
+        self._basit_panel_olustur()
         self._tablo_olustur()
         self._buton_panel_olustur()
 
@@ -161,6 +166,17 @@ class MinStokAnalizGUI:
                        value='finansal', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 5))
         tk.Radiobutton(mod_f, text="ROP (Bilimsel)", variable=self.hesaplama_modu,
                        value='rop', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 2))
+        tk.Radiobutton(mod_f, text="Basit (İlaç-dışı)", variable=self.hesaplama_modu,
+                       value='basit', bg='#E8EAF6', font=('Arial', 9, 'bold'),
+                       fg='#00695C').pack(side=tk.LEFT, padx=(0, 2))
+
+        # Ürün tipi seçici (İlaç / İlaç-dışı / Tümü)
+        tip_f = tk.Frame(r2, bg='#E0F2F1', relief='ridge', bd=1, padx=5, pady=2)
+        tip_f.pack(side=tk.LEFT, padx=(8, 0))
+        tk.Label(tip_f, text="Ürün:", font=('Arial', 9, 'bold'), bg='#E0F2F1').pack(side=tk.LEFT, padx=(2, 4))
+        for etiket, deger in (("İlaç", 'ilac'), ("İlaç-dışı", 'ilac_disi'), ("Tümü", 'tumu')):
+            tk.Radiobutton(tip_f, text=etiket, variable=self.urun_tipi_modu,
+                           value=deger, bg='#E0F2F1', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 4))
 
         self.durum_label = tk.Label(r2, text="Hazir", font=('Arial', 9), bg='#E3F2FD', fg='#666')
         self.durum_label.pack(side=tk.RIGHT, padx=10)
@@ -188,8 +204,32 @@ class MinStokAnalizGUI:
         tk.Label(self.rop_frame, text="PP=Tedarik+Inceleme | SS=Z*σ*√PP | Min=⌈d*PP+SS⌉",
                  font=('Arial', 8), bg='#E8F5E9', fg='#666').pack(side=tk.RIGHT, padx=10, pady=5)
 
+    def _basit_panel_olustur(self):
+        self.basit_frame = tk.Frame(self.parent, bg='#E0F2F1', relief='ridge', bd=1)
+        tk.Label(self.basit_frame, text="Basit Min (İlaç-dışı):", font=('Arial', 9, 'bold'),
+                 bg='#E0F2F1', fg='#00695C').pack(side=tk.LEFT, padx=(10, 10), pady=5)
+        tk.Label(self.basit_frame, text="Hedef süre:", font=('Arial', 9), bg='#E0F2F1').pack(side=tk.LEFT, padx=(5, 3))
+        ttk.Spinbox(self.basit_frame, from_=1, to=24, textvariable=self.basit_hedef_ay,
+                    width=3).pack(side=tk.LEFT, padx=(0, 3), pady=5)
+        tk.Label(self.basit_frame, text="aya yeterli", font=('Arial', 9), bg='#E0F2F1').pack(side=tk.LEFT, padx=(0, 15))
+        tk.Label(self.basit_frame, text="Seyreklik:", font=('Arial', 9), bg='#E0F2F1').pack(side=tk.LEFT, padx=(5, 3))
+        ttk.Spinbox(self.basit_frame, from_=2, to=24, textvariable=self.basit_seyrek_esik,
+                    width=3).pack(side=tk.LEFT, padx=(0, 3), pady=5)
+        tk.Label(self.basit_frame, text="ayda bir → 1 adet", font=('Arial', 9), bg='#E0F2F1').pack(side=tk.LEFT, padx=(0, 15))
+        tk.Label(self.basit_frame,
+                 text="Min = ⌈aylık ort × hedef⌉ · seyrek ise 1 · Analiz penceresi = yukarıdaki 'Ay'",
+                 font=('Arial', 8), bg='#E0F2F1', fg='#666').pack(side=tk.RIGHT, padx=10, pady=5)
+
     def _mod_degisti(self, *args):
         modu = self.hesaplama_modu.get()
+        # Basit mod seçilince ürün tipini otomatik ilaç-dışına al (kolaylık)
+        if modu == 'basit' and self.urun_tipi_modu.get() == 'ilac':
+            self.urun_tipi_modu.set('ilac_disi')
+        if hasattr(self, 'basit_frame'):
+            if modu == 'basit':
+                self.basit_frame.pack(fill=tk.X, padx=10, pady=(0, 5), before=self.tablo_frame)
+            else:
+                self.basit_frame.pack_forget()
         if modu == 'rop':
             self.rop_frame.pack(fill=tk.X, padx=10, pady=(0, 5), before=self.tablo_frame)
         else:
@@ -553,7 +593,10 @@ class MinStokAnalizGUI:
                     progress_callback=progress_cb,
                     servis_seviyesi=self.servis_var.get(),
                     tedarik_suresi=self.tedarik_var.get(),
-                    inceleme_periyodu=self.inceleme_var.get()
+                    inceleme_periyodu=self.inceleme_var.get(),
+                    urun_tipi_modu=self.urun_tipi_modu.get(),
+                    basit_hedef_ay=self.basit_hedef_ay.get(),
+                    basit_seyrek_esik_ay=self.basit_seyrek_esik.get()
                 )
                 self.analiz_sonuclari = sonuclar
                 self.parent.after(0, self._tabloyu_doldur)

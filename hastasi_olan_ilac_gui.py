@@ -345,6 +345,16 @@ class HastasiOlanIlacGUI:
         bugun = date.today()
         ay_basi = bugun.replace(day=1)
 
+        # Ilac basina toplam hasta sayisi (filtreden BAGIMSIZ, tum kayitlar
+        # uzerinden) — hasta adinin yanina "(n)" olarak yazilir; ayni ilaci
+        # kac hastanin kullandigi siparis miktari kararinda onemli.
+        urun_hastalari: Dict[int, set] = {}
+        for k in self.tum_kayitlar:
+            uid = k.get('UrunId')
+            if uid is not None:
+                urun_hastalari.setdefault(uid, set()).add(k.get('MusteriId'))
+        hasta_sayisi = {uid: len(m) for uid, m in urun_hastalari.items()}
+
         for idx, r in enumerate(self.gosterilen):
             urun_id = r.get('UrunId')
             musteri_id = r.get('MusteriId')
@@ -357,6 +367,8 @@ class HastasiOlanIlacGUI:
             sa_str = sa_d.strftime('%Y-%m-%d') if sa_d else ''
 
             ad = (r.get('MusteriAdiSoyadi') or '').strip()
+            n_hasta = hasta_sayisi.get(urun_id, 1)
+            ad = f"{ad}  ({n_hasta})"
             tckn = (r.get('MusteriTCKN') or '').strip() if r.get('MusteriTCKN') else ''
 
             olasilik = r.get('Olasilik', 0)

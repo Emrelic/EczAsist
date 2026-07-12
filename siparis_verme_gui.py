@@ -532,6 +532,13 @@ class SiparisVermeGUI:
             relief='raised', bd=2, padx=10, pady=3
         ).pack(side=tk.LEFT, padx=(0, 8))
 
+        tk.Button(
+            row2, text="🔗 Özel Muadil",
+            command=self._ozel_muadil_pencereyi_ac,
+            bg='#00695C', fg='white', font=('Arial', 9, 'bold'),
+            relief='raised', bd=2, padx=10, pady=3
+        ).pack(side=tk.LEFT, padx=(0, 8))
+
         self.excel_btn = tk.Button(
             row2, text="Excel'e Aktar", command=self.excel_aktar,
             bg=self.R_WARNING, fg='white', font=('Arial', 9, 'bold'),
@@ -576,6 +583,28 @@ class SiparisVermeGUI:
         header.pack_propagate(False)
         tk.Label(header, text="📊 STOK VE SİPARİŞ ANALİZİ", bg=self.R_TABLE_HEADER_BG, fg='white',
                 font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=10)
+
+        # Sıralama seçici — çoktan aza. Muadil grupları konsolide toplamla
+        # sıralanır (grup, üyelerinin toplam değeriyle yerini alır).
+        sirala_frame = tk.Frame(header, bg=self.R_TABLE_HEADER_BG)
+        sirala_frame.pack(side=tk.LEFT, padx=15)
+        tk.Label(sirala_frame, text="Sırala:", bg=self.R_TABLE_HEADER_BG, fg='white',
+                 font=('Arial', 9)).pack(side=tk.LEFT)
+        self.siralama_kriteri = tk.StringVar()
+        self._aktif_siralama = 'parasal'
+        self._siralama_secenekleri = {
+            'parasal': 'Parasal değer (Öneri×Fiyat)',
+            'oneri': 'Sipariş adedi (çok→az)',
+            'aylik': 'Aylık gidiş (çok→az)',
+            'ihtiyac_orani': 'Aciliyet (stok/ihtiyaç, az→çok)',
+        }
+        sirala_combo = ttk.Combobox(
+            sirala_frame, textvariable=self.siralama_kriteri,
+            values=list(self._siralama_secenekleri.values()),
+            state='readonly', width=26, font=('Arial', 8))
+        sirala_combo.current(0)
+        sirala_combo.pack(side=tk.LEFT, padx=3)
+        sirala_combo.bind('<<ComboboxSelected>>', self._siralama_degisti)
 
         # Arama kutusu (Ctrl+F)
         self.arama_frame = tk.Frame(header, bg=self.R_TABLE_HEADER_BG)
@@ -709,6 +738,14 @@ class SiparisVermeGUI:
         self.ana_tree.bind('<<TreeviewSelect>>', self._satir_secildi)
         self.ana_tree.bind('<Double-1>', self._satir_cift_tiklandi)
         self.ana_tree.bind('<Button-1>', self._sutun_tiklandi)
+
+        # Sütun sürükle-taşı: başlığı tutup sürükleyip başka sütunun üstüne
+        # bırakınca görsel sıra değişir; düzen JSON'a kaydedilip sonraki
+        # açılışta korunur. Hücre tıklaması (_sutun_tiklandi) etkilenmez.
+        self._surukle_kaynak_col = None
+        self._surukle_basladi = False
+        self.ana_tree.bind('<B1-Motion>', self._sutun_surukle_hareket, add='+')
+        self.ana_tree.bind('<ButtonRelease-1>', self._sutun_surukle_birak, add='+')
 
         # Tooltip (ilaç ismi gösterimi)
         self._tooltip = None
@@ -2641,6 +2678,9 @@ class SiparisVermeGUI:
 
         self.aktif_sutunlar = tum_sutunlar
 
+        # Kullanıcının kaydettiği sütun sırasını uygula (varsa)
+        self._sutun_duzeni_uygula()
+
     def _filtreleme_uygula(self):
         """Yeterlileri gizle filtresini uygula ve tabloyu güncelle"""
         if not self.tum_veriler:
@@ -2678,6 +2718,13 @@ class SiparisVermeGUI:
 
         self._tabloyu_guncelle()
 
+    def _siralama_degisti(self, event=None):
+        """Sıralama combobox'ı değişti — kriteri çöz ve tabloyu yeniden diz."""
+        display = self.siralama_kriteri.get()
+        ters = {v: k for k, v in self._siralama_secenekleri.items()}
+        self._aktif_siralama = ters.get(display, 'parasal')
+        self._tabloyu_guncelle()
+
     def _tabloyu_guncelle(self):
         """Ana tabloyu gruplu şekilde güncelle"""
         # Mevcut satırları temizle
@@ -2687,38 +2734,82 @@ class SiparisVermeGUI:
         if not self.gorunen_veriler:
             return
 
+        # Özel muadil eşlemesi (ilaç-dışı ortak kod) — Botanik EsdegerId'si
+        # olmayan ürünleri kendi tanımladığımız ortak kodla konsolide grupla.
+        ozel_map = {}
+        self._ozel_ad_map = {}
+        try:
+            if hasattr(self, 'siparis_db') and self.siparis_db:
+                ozel_map = self.siparis_db.ozel_muadil_map()
+                if ozel_map:
+                    _gr = self.siparis_db.ozel_muadil_gruplari_getir()
+                    self._ozel_ad_map = {k: v['ad'] for k, v in _gr.items()}
+        except Exception as e:
+            logger.warning("Ozel muadil map alinamadi: %s", e)
+
         # Eşdeğer gruplarına ayır
         esdeger_gruplari = {}
         for veri in self.gorunen_veriler:
             eid = veri.get('EsdegerId') or 0
+            if eid == 0:
+                # Botanik muadili yok → özel muadil kodu varsa onunla grupla
+                ozel_kod = ozel_map.get(veri.get('UrunId'))
+                if ozel_kod:
+                    eid = f'OZ:{ozel_kod}'
             if eid not in esdeger_gruplari:
                 esdeger_gruplari[eid] = []
             esdeger_gruplari[eid].append(veri)
 
-        # Her grubun toplam parasal değerini hesapla (Oneri × DepocuFiyat)
-        def grup_parasal_deger(urunler):
-            return sum(u.get('Oneri', 0) * u.get('DepocuFiyat', 0) for u in urunler)
+        # Sıralama kriteri (kullanıcı seçimi). Muadil grupları HER kriterde
+        # konsolide toplamla sıralanır (grup = üyelerinin toplam değeri).
+        kriter = getattr(self, '_aktif_siralama', 'parasal')
 
-        # Grup içi sıralama: bireysel parasal değere göre (yüksekten düşüğe)
-        def birey_parasal_deger(urun):
-            return urun.get('Oneri', 0) * urun.get('DepocuFiyat', 0)
+        def birey_deger(urun):
+            if kriter == 'oneri':
+                return urun.get('Oneri', 0) or 0
+            if kriter == 'aylik':
+                return urun.get('AylikOrt', 0) or 0
+            if kriter == 'ihtiyac_orani':
+                # Aciliyet: stok / ihtiyaç düşük olan önce (az→çok). Öneri 0 ise
+                # aciliyet yok → en sona (büyük değer). İhtiyaç yoksa yine sona.
+                ihtiyac = (urun.get('GunlukOrt', 0) or 0) * (urun.get('HedefGun', 0) or 0)
+                if ihtiyac <= 0:
+                    return float('inf')
+                return (urun.get('Stok', 0) or 0) / ihtiyac
+            return (urun.get('Oneri', 0) or 0) * (urun.get('DepocuFiyat', 0) or 0)
+
+        def grup_deger(urunler):
+            if kriter == 'ihtiyac_orani':
+                # Grup konsolide aciliyet: toplam stok / toplam ihtiyaç
+                ihtiyac = sum((u.get('GunlukOrt', 0) or 0) * (u.get('HedefGun', 0) or 0)
+                              for u in urunler)
+                if ihtiyac <= 0:
+                    return float('inf')
+                return sum(u.get('Stok', 0) or 0 for u in urunler) / ihtiyac
+            return sum(birey_deger(u) for u in urunler)
+
+        # 'ihtiyac_orani' aciliyet sıralaması artan (az stok→çok stok), diğerleri azalan
+        artan = (kriter == 'ihtiyac_orani')
 
         for eid, urunler in esdeger_gruplari.items():
-            urunler.sort(key=birey_parasal_deger, reverse=True)
+            urunler.sort(key=birey_deger, reverse=not artan)
 
-        # Grupları parasal değere göre sırala (yüksekten düşüğe)
         # EsdegerId=0 olanlar (eşdeğersiz) ayrı tutulur ve bireysel sıralanır
         esdegerli_gruplar = [(eid, urunler) for eid, urunler in esdeger_gruplari.items() if eid != 0]
         esdegersiz_urunler = esdeger_gruplari.get(0, [])
 
-        # Eşdeğerli grupları toplam parasal değere göre sırala
-        esdegerli_gruplar.sort(key=lambda x: grup_parasal_deger(x[1]), reverse=True)
+        # Eşdeğerli grupları KONSOLİDE grup değerine göre sırala
+        esdegerli_gruplar.sort(key=lambda x: grup_deger(x[1]), reverse=not artan)
+        # Eşdeğersiz ürünleri bireysel değere göre sırala
+        esdegersiz_urunler.sort(key=birey_deger, reverse=not artan)
 
-        # Eşdeğersiz ürünleri bireysel parasal değere göre sırala
-        esdegersiz_urunler.sort(key=birey_parasal_deger, reverse=True)
-
-        # Tüm grupları birleştir: önce eşdeğerliler (parasal değere göre), sonra eşdeğersizler (bireysel değere göre)
-        sirali_gruplar = esdegerli_gruplar + [(0, esdegersiz_urunler)] if esdegersiz_urunler else esdegerli_gruplar
+        # Grup ve eşdeğersizleri ortak konsolide değere göre HARMANLA: eskiden
+        # eşdeğersizler hep en sona atılıyordu; artık her muadil grubu ve her
+        # tek ürün, konsolide değerine göre gerçek sırasında yer alır. Her
+        # eşdeğersiz ürün (0, [tek_ürün]) sarmalanır → render döngüsü eid==0'ı
+        # zaten tek satır olarak işler.
+        sirali_gruplar = list(esdegerli_gruplar) + [(0, [u]) for u in esdegersiz_urunler]
+        sirali_gruplar.sort(key=lambda x: grup_deger(x[1]), reverse=not artan)
 
         for eid, urunler in sirali_gruplar:
             if eid == 0:
@@ -2792,8 +2883,15 @@ class SiparisVermeGUI:
 
         # Grup başlık satırı - sübvansiyon oranı STOK sütununda (index 2)
         tutar_str = f" ({grup_tutar:,.0f}₺)" if grup_tutar > 0 else ""
+        # Özel muadil grubu (ilaç-dışı ortak kod) farklı etiketlenir
+        if isinstance(esdeger_id, str) and esdeger_id.startswith('OZ:'):
+            kod = esdeger_id[3:]
+            ad = getattr(self, '_ozel_ad_map', {}).get(kod, kod)
+            grup_etiket = f"◆ ÖZEL MUADİL: {ad}{tutar_str} ◆"
+        else:
+            grup_etiket = f"══ GRUP #{esdeger_id}{tutar_str} ══"
         # Sütun yapısı: [simge, ad, STOK, min, sart1, sart2, sart3, aylar..., aylik, gun, aybitis, oneri...]
-        baslik_values = ['═', f"══ GRUP #{esdeger_id}{tutar_str} ══", subv_stok_str] + [''] * (len(self.aktif_sutunlar) - 3)
+        baslik_values = ['═', grup_etiket, subv_stok_str] + [''] * (len(self.aktif_sutunlar) - 3)
         self.ana_tree.insert('', 'end', values=baslik_values, tags=(subv_tag,))
 
         # Grup üyeleri
@@ -2924,8 +3022,101 @@ class SiparisVermeGUI:
                 else:
                     self.status_label.config(text=f"⚠ {urun.get('UrunAdi', '')[:30]} için sipariş önerisi yok")
 
+    # ── Sütun sürükle-taşı ────────────────────────────────────────────────
+    def _sutun_gorsel_sira(self):
+        """Treeview'in güncel görsel sütun sırası (displaycolumns çözümlü)."""
+        dc = self.ana_tree['displaycolumns']
+        if not dc or dc == ('#all',) or dc == '#all':
+            return list(self.ana_tree['columns'])
+        return list(dc)
+
+    def _sutun_surukle_hareket(self, event):
+        """Başlık sürüklenirken imleç geri bildirimi ver."""
+        if self._surukle_kaynak_col:
+            self._surukle_basladi = True
+            try:
+                self.ana_tree.config(cursor='exchange')
+            except Exception:
+                pass
+
+    def _sutun_surukle_birak(self, event):
+        """Başlık bırakıldı — kaynağı hedef sütunun konumuna taşı ve kaydet."""
+        kaynak = self._surukle_kaynak_col
+        basladi = self._surukle_basladi
+        self._surukle_kaynak_col = None
+        self._surukle_basladi = False
+        try:
+            self.ana_tree.config(cursor='')
+        except Exception:
+            pass
+        if not kaynak or not basladi:
+            return
+        if self.ana_tree.identify_region(event.x, event.y) != 'heading':
+            return
+        hedef_col = self.ana_tree.identify_column(event.x)
+        hedef = self.ana_tree.column(hedef_col, 'id') if hedef_col else None
+        if not hedef or hedef == kaynak:
+            return
+        sira = self._sutun_gorsel_sira()
+        if kaynak not in sira or hedef not in sira:
+            return
+        sira.remove(kaynak)
+        sira.insert(sira.index(hedef), kaynak)
+        try:
+            self.ana_tree['displaycolumns'] = sira
+        except Exception as e:
+            logger.warning("Sutun tasima uygulanamadi: %s", e)
+            return
+        self._sutun_duzeni_kaydet(sira)
+
+    def _sutun_duzen_dosya_yolu(self):
+        import os
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            'siparis_sutun_duzeni.json')
+
+    def _sutun_duzeni_kaydet(self, sira):
+        """Görsel sütun sırasını JSON'a yaz (kalıcı)."""
+        import json
+        try:
+            with open(self._sutun_duzen_dosya_yolu(), 'w', encoding='utf-8') as f:
+                json.dump(list(sira), f, ensure_ascii=False)
+        except Exception as e:
+            logger.warning("Sutun duzeni kaydedilemedi: %s", e)
+
+    def _sutun_duzeni_uygula(self):
+        """Kayıtlı sütun düzenini tabloya uygula (dinamik ay sütunlarına dayanıklı).
+
+        Kayıtta olmayan (yeni eklenen) sütunlar mevcut sıradaki yerinde,
+        kayıtta olup artık olmayan sütunlar atlanır.
+        """
+        import json
+        try:
+            with open(self._sutun_duzen_dosya_yolu(), encoding='utf-8') as f:
+                kayitli = json.load(f)
+        except FileNotFoundError:
+            return
+        except Exception as e:
+            logger.warning("Sutun duzeni okunamadi: %s", e)
+            return
+        mevcut = list(self.ana_tree['columns'])
+        yeni = [c for c in kayitli if c in mevcut]
+        yeni += [c for c in mevcut if c not in yeni]
+        if yeni and yeni != mevcut:
+            try:
+                self.ana_tree['displaycolumns'] = yeni
+            except Exception as e:
+                logger.warning("Sutun duzeni uygulanamadi: %s", e)
+
     def _sutun_tiklandi(self, event):
         """Sütun tıklaması - Oneri/MF sütunlarına tıklama işlemleri"""
+        # Başlık bölgesi → sütun sürükle-taşı başlat (hücre mantığına gitme)
+        if self.ana_tree.identify_region(event.x, event.y) == 'heading':
+            col = self.ana_tree.identify_column(event.x)
+            self._surukle_kaynak_col = self.ana_tree.column(col, 'id') if col else None
+            self._surukle_basladi = False
+            return
+        self._surukle_kaynak_col = None
+
         # Tıklanan bölgeyi tespit et
         region = self.ana_tree.identify_region(event.x, event.y)
         if region != 'cell':
@@ -3372,7 +3563,7 @@ class SiparisVermeGUI:
 
         # Yeni ekleme
         if hasattr(self, 'siparis_db') and self.siparis_db and self.aktif_calisma:
-            db_id = self.siparis_db.siparis_ekle(self.aktif_calisma, siparis_data)
+            db_id = self.siparis_db.siparis_ekle(self.aktif_calisma['id'], siparis_data)
             if db_id:
                 siparis_data['db_id'] = db_id
 
@@ -4485,6 +4676,32 @@ class SiparisVermeGUI:
             db=self.db,
         )
 
+    def _ozel_muadil_pencereyi_ac(self):
+        """Özel Muadil (ilaç-dışı ortak kod) ayar penceresini aç."""
+        try:
+            from ozel_muadil_gui import OzelMuadilGUI
+        except ImportError as e:
+            messagebox.showerror("Modül Yok", f"Özel muadil modülü yüklenemedi:\n{e}")
+            return
+        if not getattr(self, 'siparis_db', None):
+            messagebox.showerror("Hata", "Yerel sipariş veritabanı hazır değil.")
+            return
+        if not self.tum_veriler:
+            messagebox.showinfo(
+                "Önce Veri Getir",
+                "Ürün listesi boş.\n\nİlaç-dışı ürünleri gruplamak için önce ürün "
+                "tipini (İlaç-dışı/Tümü) seçip 'Verileri Getir' ile listeyi doldurun.")
+            return
+        pencere_kapandi = OzelMuadilGUI(self.parent, self.tum_veriler, self.siparis_db)
+        # Pencere kapanınca tabloyu yenile ki yeni gruplar konsolide görünsün
+        try:
+            pencere_kapandi.window.bind(
+                '<Destroy>',
+                lambda e: (self._tabloyu_guncelle()
+                           if e.widget is pencere_kapandi.window else None))
+        except Exception:
+            pass
+
     def _hastasi_olan_ilaclari_ana_listeye_ekle(self, urunler):
         """Hastası olan ilaç penceresinden gelen seçimi kesin sipariş listesine ekle.
 
@@ -4545,7 +4762,7 @@ class SiparisVermeGUI:
                         and self.aktif_calisma):
                     try:
                         db_id = self.siparis_db.siparis_ekle(
-                            self.aktif_calisma, siparis_data
+                            self.aktif_calisma['id'], siparis_data
                         )
                         if db_id:
                             siparis_data['db_id'] = db_id
