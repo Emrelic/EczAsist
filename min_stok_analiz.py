@@ -900,7 +900,7 @@ def tum_ilaclari_analiz_et(
     servis_seviyesi: float = 95.0,
     tedarik_suresi: int = 0,
     inceleme_periyodu: int = 1,
-    urun_tipi_modu: str = "ilac",
+    secili_tipler: list = None,
     basit_hedef_ay: float = 3.0,
     basit_seyrek_esik_ay: float = 6.0
 ) -> list:
@@ -938,14 +938,13 @@ def tum_ilaclari_analiz_et(
             'Aciklama': str
         }, ...]
     """
-    # Ürün tipi filtresi (İlaç tipleri = UrunUrunTipId 1,16)
-    #   'ilac'      → sadece ilaçlar (varsayılan, mevcut davranış)
-    #   'ilac_disi' → ilaç-dışı (OTC/kozmetik/medikal vb.)
-    #   'tumu'      → hepsi
-    if urun_tipi_modu == 'ilac_disi':
-        tip_filtre = "AND u.UrunUrunTipId NOT IN (1, 16)"
-    elif urun_tipi_modu == 'tumu':
-        tip_filtre = ""
+    # Ürün tipi filtresi — Botanik UrunTip adlarından seçim (UrunTipAdi).
+    #   secili_tipler None/boş → varsayılan: sadece ilaç (UrunUrunTipId 1,16)
+    #   secili_tipler = ['SERUMLAR','OTC',...] → o tip adları (isimle filtre)
+    if secili_tipler:
+        _tipler = ",".join(
+            "'" + str(t).replace("'", "''") + "'" for t in secili_tipler)
+        tip_filtre = f"AND ut.UrunTipAdi IN ({_tipler})"
     else:
         tip_filtre = "AND u.UrunUrunTipId IN (1, 16)"
 

@@ -82,6 +82,13 @@ class SiparisVermeGUI:
         self.ay_sayisi = tk.IntVar(value=6)
         self.beklenen_zam_orani = tk.StringVar(value="0")
 
+        # Excel benzeri sütun filtreleri: {col_id: {'izinli': set, 'min': float, 'max': float}}
+        # Filtre aktifken tablo düz liste (grupsuz) gösterilir.
+        self.aktif_sutun_filtreleri = {}
+        # Sayısal OLMAYAN sütunlar (değer listesi metin karşılaştırması yapılır)
+        self._sutun_sayisal_degil = {'Tur', 'UrunAdi', 'Sart1', 'Sart2', 'Sart3',
+                                     'AyBitis', 'YeniAyBitis', 'MF'}
+
         # Checkbox değişkenleri
         self.hedef_tarih_aktif = tk.BooleanVar(value=False)
         self.min_stok_aktif = tk.BooleanVar(value=True)
@@ -605,6 +612,12 @@ class SiparisVermeGUI:
         sirala_combo.current(0)
         sirala_combo.pack(side=tk.LEFT, padx=3)
         sirala_combo.bind('<<ComboboxSelected>>', self._siralama_degisti)
+
+        # Sütun başlığına tıkla → Excel filtre; toplu temizleme butonu:
+        tk.Button(sirala_frame, text="⛛✕ Filtre Temizle",
+                  command=self._tum_sutun_filtrelerini_temizle,
+                  bg='#455A64', fg='white', font=('Arial', 8), relief='flat',
+                  padx=6).pack(side=tk.LEFT, padx=(8, 0))
 
         # Arama kutusu (Ctrl+F)
         self.arama_frame = tk.Frame(header, bg=self.R_TABLE_HEADER_BG)
@@ -2718,6 +2731,204 @@ class SiparisVermeGUI:
 
         self._tabloyu_guncelle()
 
+    # ── Excel benzeri sütun filtreleme ────────────────────────────────────
+    def _sutun_ham_deger(self, veri, col):
+        """Bir ürünün col sütunundaki ham değeri (dict key = col_id)."""
+        return veri.get(col, '')
+
+    def _hucre_sayi(self, v):
+        try:
+            return float(str(v).replace(',', '.')) if v not in (None, '') else 0.0
+        except (ValueError, TypeError):
+            return 0.0
+
+    def _veri_filtreden_gecer(self, veri):
+        """Ürün, tüm aktif sütun filtrelerini geçiyor mu?"""
+        for col, spec in self.aktif_sutun_filtreleri.items():
+            val = self._sutun_ham_deger(veri, col)
+            sval = '' if val is None else str(val)
+            izinli = spec.get('izinli')
+            if izinli is not None and sval not in izinli:
+                return False
+            mn, mx = spec.get('min'), spec.get('max')
+            if mn is not None or mx is not None:
+                num = self._hucre_sayi(val)
+                if mn is not None and num < mn:
+                    return False
+                if mx is not None and num > mx:
+                    return False
+        return True
+
+    def _sutun_filtre_baslik_guncelle(self):
+        """Filtreli sütun başlıklarına ⛛ işareti koy."""
+        for col_id, baslik, _w in getattr(self, 'aktif_sutunlar', []):
+            if col_id == 'Stok':
+                gosterim = "[ STOK ]"
+            elif col_id == 'AylikOrt':
+                gosterim = "[ AYLIK ]"
+            elif col_id == 'Oneri':
+                gosterim = ">> SIPARIS <<"
+            elif col_id.startswith('Ay_'):
+                gosterim = f"◆{baslik}"
+            else:
+                gosterim = baslik
+            if col_id in self.aktif_sutun_filtreleri:
+                gosterim += " ⛛"
+            try:
+                self.ana_tree.heading(col_id, text=gosterim)
+            except tk.TclError:
+                pass
+
+    def _sutun_filtre_popup(self, col):
+        """Sütun başlığı tıklanınca Excel-tarzı filtre penceresi aç."""
+        if not self.gorunen_veriler:
+            return
+        sayisal = col not in self._sutun_sayisal_degil
+        baslik = next((b for c, b, _ in getattr(self, 'aktif_sutunlar', []) if c == col), col)
+
+        # Bu sütunun benzersiz değerleri (filtrelenmemiş kaynak: gorunen_veriler)
+        ham = [str(self._sutun_ham_deger(v, col) if self._sutun_ham_deger(v, col) is not None else '')
+               for v in self.gorunen_veriler]
+        if sayisal:
+            benzersiz = sorted(set(ham), key=lambda s: self._hucre_sayi(s))
+        else:
+            benzersiz = sorted(set(ham), key=lambda s: s.lower())
+
+        spec = self.aktif_sutun_filtreleri.get(col, {})
+        izinli0 = spec.get('izinli')
+        secili = set(benzersiz) if izinli0 is None else set(izinli0)
+
+        pop = tk.Toplevel(self.parent)
+        pop.title(f"{baslik} - Filtre")
+        pop.transient(self.parent)
+        pop.configure(bg='#FAFAFA')
+        pop.geometry(f"280x480+{self.ana_tree.winfo_pointerx()}+{self.ana_tree.winfo_pointery()}")
+        pop.resizable(False, True)
+
+        # Sayı filtresi (min/max) — yalnız sayısal sütunlarda
+        min_var = tk.StringVar(value='' if spec.get('min') is None else str(spec['min']))
+        max_var = tk.StringVar(value='' if spec.get('max') is None else str(spec['max']))
+        if sayisal:
+            nf = tk.LabelFrame(pop, text='Rakam filtresi (min–max)', bg='#FAFAFA',
+                               font=('Arial', 8, 'bold'))
+            nf.pack(fill=tk.X, padx=8, pady=(8, 4))
+            row = tk.Frame(nf, bg='#FAFAFA')
+            row.pack(fill=tk.X, pady=3)
+            tk.Label(row, text='Min:', bg='#FAFAFA').pack(side=tk.LEFT)
+            ttk.Entry(row, textvariable=min_var, width=8).pack(side=tk.LEFT, padx=(2, 8))
+            tk.Label(row, text='Max:', bg='#FAFAFA').pack(side=tk.LEFT)
+            ttk.Entry(row, textvariable=max_var, width=8).pack(side=tk.LEFT, padx=2)
+
+        # Değer listesi (metin filtresi + checkbox, Excel AutoFilter)
+        vf = tk.LabelFrame(pop, text='Metin / değer filtresi', bg='#FAFAFA',
+                           font=('Arial', 8, 'bold'))
+        vf.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 4))
+        arama_var = tk.StringVar()
+        ttk.Entry(vf, textvariable=arama_var).pack(fill=tk.X, padx=4, pady=(4, 2))
+
+        cb_outer = tk.Frame(vf, bg='#FAFAFA')
+        cb_outer.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        cb_canvas = tk.Canvas(cb_outer, bg='#FAFAFA', highlightthickness=0)
+        cb_sb = ttk.Scrollbar(cb_outer, orient='vertical', command=cb_canvas.yview)
+        cb_canvas.configure(yscrollcommand=cb_sb.set)
+        cb_sb.pack(side=tk.RIGHT, fill=tk.Y)
+        cb_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        cb_frame = tk.Frame(cb_canvas, bg='#FAFAFA')
+        cb_frame_id = cb_canvas.create_window((0, 0), window=cb_frame, anchor='nw')
+        def _cb_resize(e):
+            cb_canvas.configure(scrollregion=cb_canvas.bbox('all'))
+            cb_canvas.itemconfig(cb_frame_id, width=cb_canvas.winfo_width())
+        cb_frame.bind('<Configure>', _cb_resize)
+        def _mw(e):
+            cb_canvas.yview_scroll(int(-1 * (e.delta / 120)), 'units')
+        cb_canvas.bind('<MouseWheel>', _mw)
+        cb_frame.bind('<MouseWheel>', _mw)
+
+        cb_vars = {}
+        tumu_var = tk.BooleanVar()
+        gosterilen = []
+
+        def _tumu_guncelle():
+            tumu_var.set(all(cb_vars[v].get() for v in gosterilen if v in cb_vars))
+
+        def _tumu_toggle():
+            val = tumu_var.get()
+            for v in gosterilen:
+                if v in cb_vars:
+                    cb_vars[v].set(val)
+                    (secili.add if val else secili.discard)(v)
+
+        def _cb_toggle(v):
+            (secili.add if cb_vars[v].get() else secili.discard)(v)
+            _tumu_guncelle()
+
+        tk.Checkbutton(cb_frame, text='(Tümünü Seç)', variable=tumu_var,
+                       command=_tumu_toggle, bg='#FAFAFA', anchor='w',
+                       font=('Arial', 9, 'bold'), fg='#1565C0').pack(fill=tk.X, padx=4, pady=(2, 0))
+        ttk.Separator(cb_frame, orient='horizontal').pack(fill=tk.X, padx=4, pady=2)
+
+        def doldur(*_):
+            nonlocal gosterilen
+            f = arama_var.get().lower()
+            gosterilen = [v for v in benzersiz if f in v.lower()]
+            for w in list(cb_frame.winfo_children())[2:]:
+                w.destroy()
+            for v in gosterilen:
+                cb_vars[v] = cb_vars.get(v) or tk.BooleanVar()
+                cb_vars[v].set(v in secili)
+                cb = tk.Checkbutton(cb_frame, text=(v if v != '' else '(boş)'),
+                                    variable=cb_vars[v], command=lambda _v=v: _cb_toggle(_v),
+                                    bg='#FAFAFA', anchor='w', font=('Arial', 9))
+                cb.pack(fill=tk.X, padx=(16, 4), pady=1)
+                cb.bind('<MouseWheel>', _mw)
+            _tumu_guncelle()
+            cb_canvas.update_idletasks()
+            cb_canvas.configure(scrollregion=cb_canvas.bbox('all'))
+
+        arama_var.trace_add('write', doldur)
+        doldur()
+
+        bf = tk.Frame(pop, bg='#FAFAFA')
+        bf.pack(fill=tk.X, padx=8, pady=6)
+
+        def uygula():
+            yeni = {}
+            if set(secili) != set(benzersiz):
+                yeni['izinli'] = set(secili)
+            def parse(s):
+                s = s.strip().replace(',', '.')
+                try:
+                    return float(s) if s != '' else None
+                except ValueError:
+                    return None
+            mn, mx = parse(min_var.get()), parse(max_var.get())
+            if mn is not None:
+                yeni['min'] = mn
+            if mx is not None:
+                yeni['max'] = mx
+            if yeni:
+                self.aktif_sutun_filtreleri[col] = yeni
+            else:
+                self.aktif_sutun_filtreleri.pop(col, None)
+            self._tabloyu_guncelle()
+            pop.destroy()
+
+        def temizle():
+            self.aktif_sutun_filtreleri.pop(col, None)
+            self._tabloyu_guncelle()
+            pop.destroy()
+
+        tk.Button(bf, text='Uygula', command=uygula, bg='#2E7D32', fg='white',
+                  font=('Arial', 9, 'bold'), relief='raised', padx=10).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+        tk.Button(bf, text='Bu sütun filtresini temizle', command=temizle, bg='#B71C1C',
+                  fg='white', font=('Arial', 8), relief='flat', padx=6).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+
+    def _tum_sutun_filtrelerini_temizle(self):
+        """Tüm Excel sütun filtrelerini kaldır → gruplu görünüme dön."""
+        if self.aktif_sutun_filtreleri:
+            self.aktif_sutun_filtreleri = {}
+            self._tabloyu_guncelle()
+
     def _siralama_degisti(self, event=None):
         """Sıralama combobox'ı değişti — kriteri çöz ve tabloyu yeniden diz."""
         display = self.siralama_kriteri.get()
@@ -2726,12 +2937,41 @@ class SiparisVermeGUI:
         self._tabloyu_guncelle()
 
     def _tabloyu_guncelle(self):
-        """Ana tabloyu gruplu şekilde güncelle"""
+        """Ana tabloyu güncelle. Excel sütun filtresi aktifse DÜZ liste,
+        yoksa muadil gruplu görünüm."""
         # Mevcut satırları temizle
         for item in self.ana_tree.get_children():
             self.ana_tree.delete(item)
 
         if not self.gorunen_veriler:
+            return
+
+        kriter = getattr(self, '_aktif_siralama', 'parasal')
+
+        def _birey_deger(urun):
+            if kriter == 'oneri':
+                return urun.get('Oneri', 0) or 0
+            if kriter == 'aylik':
+                return urun.get('AylikOrt', 0) or 0
+            if kriter == 'ihtiyac_orani':
+                ihtiyac = (urun.get('GunlukOrt', 0) or 0) * (urun.get('HedefGun', 0) or 0)
+                if ihtiyac <= 0:
+                    return float('inf')
+                return (urun.get('Stok', 0) or 0) / ihtiyac
+            return (urun.get('Oneri', 0) or 0) * (urun.get('DepocuFiyat', 0) or 0)
+
+        # ── Excel sütun filtresi aktif → DÜZ liste (grupsuz), Excel gibi ──
+        if self.aktif_sutun_filtreleri:
+            veriler = [v for v in self.gorunen_veriler if self._veri_filtreden_gecer(v)]
+            veriler.sort(key=_birey_deger, reverse=(kriter != 'ihtiyac_orani'))
+            for urun in veriler:
+                self._tek_satir_ekle(urun)
+            self._sutun_filtre_baslik_guncelle()
+            try:
+                self.kayit_label.config(
+                    text=f"{len(veriler)} / {len(self.gorunen_veriler)} kayıt (⛛ filtreli)")
+            except Exception:
+                pass
             return
 
         # Özel muadil eşlemesi (ilaç-dışı ortak kod) — Botanik EsdegerId'si
@@ -3040,7 +3280,7 @@ class SiparisVermeGUI:
                 pass
 
     def _sutun_surukle_birak(self, event):
-        """Başlık bırakıldı — kaynağı hedef sütunun konumuna taşı ve kaydet."""
+        """Başlık bırakıldı — sürüklendiyse sütunu taşı, sadece tıklandıysa filtre aç."""
         kaynak = self._surukle_kaynak_col
         basladi = self._surukle_basladi
         self._surukle_kaynak_col = None
@@ -3049,7 +3289,12 @@ class SiparisVermeGUI:
             self.ana_tree.config(cursor='')
         except Exception:
             pass
-        if not kaynak or not basladi:
+        if not kaynak:
+            return
+        if not basladi:
+            # Sürükleme yok = sadece tıklama → Excel filtre popup'ı aç
+            if self.ana_tree.identify_region(event.x, event.y) == 'heading':
+                self._sutun_filtre_popup(kaynak)
             return
         if self.ana_tree.identify_region(event.x, event.y) != 'heading':
             return
@@ -5625,11 +5870,20 @@ class SiparisVermeGUI:
         """Minimum Stok Analizi penceresini aç"""
         from min_stok_analiz import tum_ilaclari_analiz_et, toplu_min_stok_guncelle
 
-        # Yeni pencere
+        # Yeni pencere — tüm paneller (ürün türü satırı dahil) görünsün diye
+        # başlangıçta tam ekran (zoomed) açılır.
         analiz_win = tk.Toplevel(self.parent)
         analiz_win.title("Minimum Stok Analizi - Tüm İlaçlar")
-        analiz_win.geometry("1400x700")
+        analiz_win.geometry("1500x850")
+        analiz_win.minsize(1200, 720)
         analiz_win.configure(bg='#ECEFF1')
+        try:
+            analiz_win.state('zoomed')
+        except Exception:
+            try:
+                analiz_win.attributes('-zoomed', True)
+            except Exception:
+                pass
 
         # Üst panel - Parametreler
         param_frame = tk.Frame(analiz_win, bg='#E3F2FD', relief='raised', bd=1)
@@ -5684,6 +5938,63 @@ class SiparisVermeGUI:
                        value='finansal', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 5))
         tk.Radiobutton(mod_frame, text="ROP (Bilimsel)", variable=hesaplama_modu_var,
                        value='rop', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 2))
+        tk.Radiobutton(mod_frame, text="Basit (İlaç-dışı)", variable=hesaplama_modu_var,
+                       value='basit', bg='#E8EAF6', font=('Arial', 9, 'bold'),
+                       fg='#00695C').pack(side=tk.LEFT, padx=(0, 2))
+
+        # ── Ürün tipi seçimi (Botanik türlerinden çoklu) + İlaç-dışı basit
+        # mantık ayarları — AYRI, BELİRGİN SATIR (param_frame'in hemen altında)
+        basit_hedef_var = tk.IntVar(value=3)
+        basit_esik_var = tk.IntVar(value=6)
+        basit_bar = tk.Frame(analiz_win, bg='#E0F2F1', relief='raised', bd=1)
+        basit_bar.pack(fill=tk.X, padx=10, pady=(0, 8), after=param_frame)
+        tk.Label(basit_bar, text="🔗 Ürün Türü:", font=('Arial', 10, 'bold'),
+                 bg='#E0F2F1', fg='#00695C').pack(side=tk.LEFT, padx=(10, 6), pady=5)
+
+        # Türleri Botanik'ten yükle; checkbox menüsü (Sipariş Ver ana ekranı gibi)
+        analiz_tip_vars = {}
+        tip_mb = tk.Menubutton(basit_bar, text="Tür seç ▾", relief='raised', bd=1,
+                               bg='white', font=('Arial', 9), width=18)
+        tip_menu = tk.Menu(tip_mb, tearoff=0)
+        tip_mb.config(menu=tip_menu)
+        tip_mb.pack(side=tk.LEFT, padx=(0, 4))
+
+        def _tip_ozet():
+            secili = [t for t, v in analiz_tip_vars.items() if v.get()]
+            if not secili:
+                tip_mb.config(text="İlaç (varsayılan) ▾")
+            elif len(secili) == len(analiz_tip_vars):
+                tip_mb.config(text="Tümü ▾")
+            elif len(secili) <= 2:
+                tip_mb.config(text=", ".join(secili[:2]) + " ▾")
+            else:
+                tip_mb.config(text=f"{len(secili)} tür ▾")
+
+        try:
+            _tipler = self.db.urun_tipleri_getir() if self.db else []
+            for _t in _tipler:
+                _ad = _t['UrunTipAdi']
+                _v = tk.BooleanVar(value=False)
+                analiz_tip_vars[_ad] = _v
+                tip_menu.add_checkbutton(label=_ad, variable=_v, command=_tip_ozet)
+            tip_menu.add_separator()
+            tip_menu.add_command(
+                label="İlaç-dışı tümü",
+                command=lambda: [v.set(a not in ('İLAÇ', 'PASİF İLAÇ', 'SERUMLAR'))
+                                 for a, v in analiz_tip_vars.items()] and _tip_ozet())
+            tip_menu.add_command(
+                label="Temizle",
+                command=lambda: [v.set(False) for v in analiz_tip_vars.values()] and _tip_ozet())
+        except Exception as _e:
+            logger.warning("Ürün türleri yüklenemedi: %s", _e)
+        _tip_ozet()
+
+        tk.Label(basit_bar, text="(seçilmezse yalnız ilaç)   │   'Basit' modu → Hedef:",
+                 font=('Arial', 9), bg='#E0F2F1').pack(side=tk.LEFT, padx=(6, 3))
+        ttk.Spinbox(basit_bar, from_=1, to=24, textvariable=basit_hedef_var, width=3).pack(side=tk.LEFT)
+        tk.Label(basit_bar, text="aya yeterli, Seyrek:", font=('Arial', 9), bg='#E0F2F1').pack(side=tk.LEFT, padx=(3, 3))
+        ttk.Spinbox(basit_bar, from_=2, to=24, textvariable=basit_esik_var, width=3).pack(side=tk.LEFT)
+        tk.Label(basit_bar, text="ayda bir → 1 adet", font=('Arial', 9), bg='#E0F2F1').pack(side=tk.LEFT, padx=(3, 10))
 
         # Durum etiketi
         durum_label = tk.Label(param_frame, text="Hareket süresi içinde stok/satış/alış hareketi olan ilaçlar analiz edilir",
@@ -6106,7 +6417,10 @@ class SiparisVermeGUI:
                     progress_callback=progress_cb,
                     servis_seviyesi=servis_var.get(),
                     tedarik_suresi=tedarik_var.get(),
-                    inceleme_periyodu=inceleme_var.get()
+                    inceleme_periyodu=inceleme_var.get(),
+                    secili_tipler=[t for t, v in analiz_tip_vars.items() if v.get()] or None,
+                    basit_hedef_ay=basit_hedef_var.get(),
+                    basit_seyrek_esik_ay=basit_esik_var.get()
                 )
 
                 # Reçete ile sipariş listesindeki ilaçları filtrele
