@@ -25,12 +25,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from recete_kontrol.base_kontrol import KontrolSonucu, SartDurumu
 from recete_kontrol.hepatit_kontrol import (
     kontrol_hepatit_atomik,
-    _hep_recete_tipi_tespit, _tr_lower,
+    _hep_recete_tipi_tespit, _tr_lower, _tr_upper,
     _hep_atom_eriskin_baslangic_dozu,
     _hep_atom_hbsag_antihbs_raporda,
     _hep_atom_sonlandirma_12ay,
     _hep_atom_hbsag_pozitif_devam,
-    _hep_atom_etken_devam,
+    _hep_etken_degisim_atomlari,
     _BASLANGIC_IBARELERI, _DEVAM_IBARELERI,
 )
 
@@ -168,37 +168,56 @@ def test_hbsag_pozitif_devam_meşru():
 # /4 ETKEN DEĞİŞİM ATOMU
 # ─────────────────────────────────────────────────────────────────────────
 
+def _degisim_atomlari(ilac, etkin, gecmis, metin):
+    """API sarmalayıcı: _hep_etken_degisim_atomlari liste döndürür (2026-05
+    refactor'ında tek-atom _hep_atom_etken_devam'ın yerini aldı)."""
+    return _hep_etken_degisim_atomlari(
+        _tr_upper(ilac), _tr_upper(etkin), gecmis, _tr_lower(metin))
+
+
+def _gerekce_atomu(atomlar):
+    """(4-e) değişim gerekçesi AND atomunu bul."""
+    return next(a for a in atomlar if a.grup.startswith('(4-e)'))
+
+
 def test_degisim_etken_ayni_devam_var():
-    """Önceki etken VAR ve aktif etkenle aynı → değişim yok, VAR."""
-    atom = _hep_atom_etken_devam(
+    """Önceki etken VAR ve aktif etkenle aynı → değişim yok, tek VAR atomu."""
+    atomlar = _degisim_atomlari(
         'BARACLUDE 0.5 MG', 'ENTEKAVIR',
-        gecmis_etken_gerekce='kendi_eczane:BARACLUDE 0.5 MG ENTEKAVIR',
-        metin_lower='hbsag pozitif, tedavi devam ediyor.')
-    print(f"[T10] /4 Etken aynı (devam): durum={atom.durum.value}")
-    assert atom.durum == SartDurumu.VAR
+        'kendi_eczane:BARACLUDE 0.5 MG ENTEKAVIR',
+        'hbsag pozitif, tedavi devam ediyor.')
+    print(f"[T10] /4 Etken aynı (devam): {len(atomlar)} atom, "
+          f"durum={atomlar[0].durum.value}")
+    assert len(atomlar) == 1
+    assert atomlar[0].durum == SartDurumu.VAR
 
 
 def test_degisim_farkli_etken_gerekce_var():
-    """Etken farklı ama "24. hafta HBV DNA" gerekçesi metinde → VAR."""
-    atom = _hep_atom_etken_devam(
+    """Etken farklı ama "24. hafta" + değişim gerekçesi metinde →
+    VEYA grubunda VAR alt-yol + (4-e) gerekçe VAR."""
+    atomlar = _degisim_atomlari(
         'VIREAD 245 MG', 'TENOFOVIR DISOPROKSIL',
-        gecmis_etken_gerekce='kendi_eczane:ZEFFIX 100 MG LAMIVUDIN',
-        metin_lower=_tr_lower(
-            '24. haftada HBV DNA ≥ 50 IU/ml — tedavi değişimi yapıldı.'))
-    print(f"[T11] /4 Etken değişim + gerekçe: durum={atom.durum.value}")
-    assert atom.durum == SartDurumu.VAR
+        'kendi_eczane:ZEFFIX 100 MG LAMIVUDIN',
+        '24. haftada HBV DNA ≥ 50 IU/ml — tedavi değişimi yapıldı.')
+    veya_var = any(a.durum == SartDurumu.VAR for a in atomlar if a.veya_grubu)
+    gerekce = _gerekce_atomu(atomlar)
+    print(f"[T11] /4 Etken değişim + gerekçe: veya_grubu_var={veya_var}, "
+          f"gerekçe={gerekce.durum.value}")
+    assert veya_var
+    assert gerekce.durum == SartDurumu.VAR
 
 
 def test_degisim_farkli_etken_gerekce_yok_KE():
-    """Etken farklı ve gerekçe yok → KE (eczacı doğrulamalı)."""
-    atom = _hep_atom_etken_devam(
+    """Etken farklı ve gerekçe yok → (4-e) gerekçe atomu KE + şartlı."""
+    atomlar = _degisim_atomlari(
         'VIREAD 245 MG', 'TENOFOVIR DISOPROKSIL',
-        gecmis_etken_gerekce='kendi_eczane:ZEFFIX 100 MG LAMIVUDIN',
-        metin_lower=_tr_lower('Hasta tedaviye devam ediyor.'))
-    print(f"[T12] /4 Etken değişim + gerekçesiz: durum={atom.durum.value}, "
-          f"sartli={atom.sartli_atom}")
-    assert atom.durum == SartDurumu.KONTROL_EDILEMEDI
-    assert atom.sartli_atom is True
+        'kendi_eczane:ZEFFIX 100 MG LAMIVUDIN',
+        'Hasta tedaviye devam ediyor.')
+    gerekce = _gerekce_atomu(atomlar)
+    print(f"[T12] /4 Etken değişim + gerekçesiz: durum={gerekce.durum.value}, "
+          f"sartli={gerekce.sartli_atom}")
+    assert gerekce.durum == SartDurumu.KONTROL_EDILEMEDI
+    assert gerekce.sartli_atom is True
 
 
 # ─────────────────────────────────────────────────────────────────────────
