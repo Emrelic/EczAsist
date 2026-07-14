@@ -304,7 +304,9 @@ class MesajKuyrugu:
                 );
 
                 -- Hasta bazlı hariç tutma: bu hastalara HİÇ mesaj atılmaz.
-                -- durum: oldu | goctu | kustu | aranmasin
+                -- durum: HASTA_DURUMLARI anahtarlarından biri
+                -- (oldu/goctu/kustu/kizdi/borclu/sorunlu/aranmasin/
+                --  gelmiyor/tek_sefer/mesaj_baska/sebep/baskasinin)
                 CREATE TABLE IF NOT EXISTS hasta_durum (
                     musteri_id    INTEGER PRIMARY KEY,
                     tckn          TEXT,
@@ -866,13 +868,27 @@ class MesajKuyrugu:
         "oldu": "Öldü",
         "goctu": "Göçtü",
         "kustu": "Küstü",
-        "aranmasin": "Aranmak İstemiyor",
+        "kizdi": "Kızdı",
+        "borclu": "Borçlu",
+        "sorunlu": "Sorunlu",
+        "aranmasin": "Mesaj Almak İstemiyor",
+        "gelmiyor": "Bir Süredir Başka Yerden İlaçları Alıyor",
+        "tek_sefer": "Sadece Bir Sefer Bizden İlaç Almış",
+        "mesaj_baska": "Bizden Mesajı Alıp İlaçları Başka Yerden Alıyor",
+        "sebep": "Bir Sebepten Mesaj Atmayalım",
+        "whatsapp_yok": "WhatsApp Kullanmıyor",
+        # Eski kayıtlarla uyum için korunur (menüde yok)
+        "baskasinin": "Başkasının Hastası",
     }
     # İlaç durumları: sadece o (hasta, ürün) listeye gelmez
     ILAC_DURUMLARI = {
         "birakti": "İlacı Bıraktı",
         "degisti": "İlacı Değişti",
         "getirme": "Bu İlacı Artık Getirme",
+        "baska_yerden": "Bu İlacı Başka Yerden Alıyor",
+        "doktor_kesti": "Doktor Kesti / Tedavi Bitti",
+        "tek_sefer": "Sadece Bir Sefer Almış",
+        "sebep": "Bir Sebepten Bu İlacı Yazma",
     }
 
     def haric_hasta_seti(self) -> set:
@@ -1699,7 +1715,7 @@ class MesajKuyrugu:
 
     def gonderildi_isaretle(
         self, kuyruk_id: int, sonuc: str = "OK", manuel: bool = True,
-        isaret: str = "💊 İlaç",
+        isaret: str = "💊 İlaç", batch_pencere_gun: Optional[int] = None,
     ) -> None:
         """Kuyruk kaydını 'gonderildi' olarak işaretle.
 
@@ -1776,9 +1792,12 @@ class MesajKuyrugu:
             # İleri tarihli ilaçları yeni bir 'bekliyor' kaydı olarak aktar
             if ileri:
                 # Yeni planlı: ileri tarihli ilaçlar kendi batch'lerini oluştursun.
-                # Burada dataclass ayarına erişimimiz yok — varsayılan 5 günlük
-                # pencere ile hesapla (gerçek değer bir sonraki upsert taramasında
-                # zaten yeniden hesaplanacak).
+                # Pencere, çağıranın verdiği batch ayarıdır; verilmediyse 5 gün
+                # (geriye uyum). Sonraki upsert taramasında yeniden hesaplanır.
+                pencere = (
+                    5 if batch_pencere_gun is None
+                    else max(0, int(batch_pencere_gun))
+                )
                 from datetime import timedelta
                 tarihler = []
                 for il in ileri:
@@ -1789,7 +1808,7 @@ class MesajKuyrugu:
                         pass
                 if tarihler:
                     baslangic = min(tarihler)
-                    pencere_son = baslangic + timedelta(days=5)
+                    pencere_son = baslangic + timedelta(days=pencere)
                     pencere_ici = [t for t in tarihler if t <= pencere_son]
                     yeni_planli = max(pencere_ici) if pencere_ici else baslangic
                     yeni_planli = max(date.today(), yeni_planli)

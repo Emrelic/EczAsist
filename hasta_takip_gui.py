@@ -151,11 +151,12 @@ class HastaTakipGUI:
         kontrol = tk.Frame(f, bg="white")
         kontrol.pack(fill="x", padx=8, pady=(6, 2))
 
-        tk.Button(
+        self.btn_yenile = tk.Button(
             kontrol, text="🔄 Yenile", command=self._yazdirma_yenile,
             bg="#1976D2", fg="white", bd=0, padx=10, pady=5,
             font=("Arial", 9, "bold"),
-        ).pack(side="left", padx=(0, 4))
+        )
+        self.btn_yenile.pack(side="left", padx=(0, 4))
 
         tk.Button(
             kontrol, text="⚙ Sütunlar", command=self._sutun_ayarlari_ac,
@@ -167,6 +168,13 @@ class HastaTakipGUI:
             kontrol, text="💊 Kategoriler", command=self._kategori_ayarlari_ac,
             bg="#00897B", fg="white", bd=0, padx=8, pady=5,
             font=("Arial", 9, "bold"),
+        ).pack(side="left", padx=4)
+
+        tk.Button(
+            kontrol, text="📴 WA Kullanmayanlar",
+            command=self._wa_kullanmayanlar_ac,
+            bg="#455A64", fg="white", bd=0, padx=8, pady=5,
+            font=("Arial", 9),
         ).pack(side="left", padx=4)
 
         # Oturum canlı tutma (arka plan servisi) + canlı geri sayım
@@ -255,7 +263,9 @@ class HastaTakipGUI:
         # (spinbox ile senkron; tarama ile aynı aralığı kapsasın)
         self._filt_bas_aktif = tk.BooleanVar(value=True)
         self._filt_bit_aktif = tk.BooleanVar(value=True)
-        _eski = int(getattr(self.ayarlar, "eski_kayit_gun", 30) or 30)
+        # 0 geçerli ("Son: 0" → Baş = bugün) — yalnızca None 30'a düşer
+        _eski_ayar = getattr(self.ayarlar, "eski_kayit_gun", 30)
+        _eski = 30 if _eski_ayar is None else int(_eski_ayar)
         varsayilan_bas = date.today() - timedelta(days=_eski)
         varsayilan_bit = date.today()
 
@@ -316,6 +326,8 @@ class HastaTakipGUI:
                  font=("Arial", 9)).pack(side="left", padx=(2, 0))
         self.sp_batch.bind("<Return>", lambda e: self._batch_degisti())
         self.sp_batch.bind("<FocusOut>", lambda e: self._batch_degisti())
+        # Elle yazılan değer Enter beklemeden anında kaydedilsin
+        self.sp_batch.bind("<KeyRelease>", lambda e: self._batch_degisti())
 
         # Eski kayıt penceresi — bitişi kaç gün öncesinden itibaren taransın
         tk.Label(filtre, text=" 📅 Son:", bg="white",
@@ -333,6 +345,8 @@ class HastaTakipGUI:
                  font=("Arial", 9)).pack(side="left", padx=(2, 0))
         self.sp_eski.bind("<Return>", lambda e: self._eski_gun_degisti())
         self.sp_eski.bind("<FocusOut>", lambda e: self._eski_gun_degisti())
+        # Elle yazılan değer Enter beklemeden anında kaydedilsin
+        self.sp_eski.bind("<KeyRelease>", lambda e: self._eski_gun_degisti())
 
         self._filt_durum_lbl = tk.Label(
             filtre, text="", bg="white", fg="#455A64", font=("Arial", 8, "italic"),
@@ -399,16 +413,30 @@ class HastaTakipGUI:
         self.menu_yaz.add_separator()
         # Hastayı işaretle (artık mesaj atılmaz)
         menu_hasta = tk.Menu(self.menu_yaz, tearoff=0)
-        menu_hasta.add_command(label="💀 Öldü",
-                               command=lambda: self._hasta_isaretle("oldu"))
-        menu_hasta.add_command(label="🚚 Göçtü",
-                               command=lambda: self._hasta_isaretle("goctu"))
-        menu_hasta.add_command(label="😠 Küstü",
-                               command=lambda: self._hasta_isaretle("kustu"))
-        menu_hasta.add_command(label="📵 Aranmak İstemiyor",
-                               command=lambda: self._hasta_isaretle("aranmasin"))
+        # Etiketler HASTA_DURUMLARI sözlüğünden gelir — yeni durum eklemek
+        # için sözlüğe anahtar + buraya (kod, emoji) satırı eklemek yeterli.
+        for durum_kod, emoji in [
+            ("oldu", "💀"),
+            ("goctu", "🚚"),
+            ("kustu", "😠"),
+            ("kizdi", "😡"),
+            ("borclu", "💸"),
+            ("sorunlu", "⚠️"),
+            ("aranmasin", "📵"),
+            ("gelmiyor", "🏪"),
+            ("tek_sefer", "1️⃣"),
+            ("mesaj_baska", "📨"),
+            ("sebep", "❔"),
+        ]:
+            etiket = MesajKuyrugu.HASTA_DURUMLARI.get(durum_kod, durum_kod)
+            menu_hasta.add_command(
+                label=f"{emoji} {etiket}",
+                command=lambda k=durum_kod: self._hasta_isaretle(k))
         self.menu_yaz.add_cascade(label="🚫 Hastayı İşaretle (mesaj atma)",
                                   menu=menu_hasta)
+        self.menu_yaz.add_command(
+            label="📴 WhatsApp Kullanmayanlar Listesine Ekle",
+            command=lambda: self._hasta_isaretle("whatsapp_yok"))
         self.menu_yaz.add_command(label="💊 İlacı İşaretle (bu ilaç gelmesin)...",
                                   command=self._ilac_isaretle_dialog)
         self.tv_yaz.bind("<Button-3>", self._yaz_sagtik)
@@ -485,6 +513,12 @@ class HastaTakipGUI:
 
         sag_aks = tk.Frame(aksiyon, bg="#ECEFF1")
         sag_aks.pack(side="right", pady=4)
+        tk.Button(
+            sag_aks, text="📴 WhatsApp Yok",
+            command=lambda: self._hasta_isaretle("whatsapp_yok"),
+            bg="#607D8B", fg="white", bd=0, padx=10, pady=6,
+            font=("Arial", 9, "bold"),
+        ).pack(side="left", padx=2)
         tk.Button(
             sag_aks, text="✔ Gönderildi", command=self._gonderildi_manuel,
             bg="#7B1FA2", fg="white", bd=0, padx=10, pady=6,
@@ -748,6 +782,10 @@ class HastaTakipGUI:
         tk.Spinbox(fr2, from_=0, to=30, width=4, textvariable=self.var_rt).grid(row=0, column=3, sticky="w")
         tk.Label(fr2, text="   Eski kayıt gün (gürültü filtresi):", bg="white").grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.var_eski = tk.IntVar(value=self.ayarlar.eski_kayit_gun)
+        # İki yönlü senkronun ters yönü: bu kutu değişince sekme 1'deki
+        # 'Son' spinbox'ı da aynı değeri göstersin (_eski_gun_degisti öbür
+        # yönü zaten yapıyor).
+        self.var_eski.trace_add("write", self._eski_ayar_degisti_sync)
         tk.Spinbox(fr2, from_=0, to=365, width=5, textvariable=self.var_eski).grid(row=1, column=1, sticky="w", padx=4, pady=(6, 0))
 
         # Filtreler
@@ -1540,6 +1578,9 @@ class HastaTakipGUI:
         try:
             kare = self._spinner_kareler[self._spinner_idx % len(self._spinner_kareler)]
             self.durum_bar.config(text=f"{kare} {self._spinner_metin}")
+            # Tarama sürüyorsa kum saatini Yenile butonunda da oynat
+            if self._yazdirma_calisiyor and hasattr(self, "btn_yenile"):
+                self.btn_yenile.config(text=f"{kare} Taranıyor...")
             self._spinner_idx += 1
             self._spinner_after_id = self.root.after(500, self._spinner_tik)
         except Exception:
@@ -1567,7 +1608,16 @@ class HastaTakipGUI:
         if self._yazdirma_calisiyor:
             logger.info("Yazdırma yenileme zaten çalışıyor, yeni istek yok sayıldı.")
             return
+        # Spinbox'larda elle yazılıp henüz commit edilmemiş Batch/Son
+        # değerlerini taramadan önce kesinleştir — sorgu ekranda görünen
+        # değerlerle çalışsın.
+        try:
+            self._batch_degisti()
+            self._eski_gun_degisti()
+        except Exception as e:
+            logger.debug(f"Spinbox commit hatası: {e}")
         self._yazdirma_calisiyor = True
+        self._yenile_mesgul(True)
         self._progress_baslat("DB sorgulanıyor...")
         self.root.update_idletasks()
 
@@ -1593,22 +1643,60 @@ class HastaTakipGUI:
                     haber_verilenleri_gizle=getattr(a, "haber_verilenleri_gizle", False),
                 )
                 yeni = self.kuyruk.hasta_mesajlarini_upsert(sonuc, a)
-                self.root.after(0, lambda: self._yazdirma_tamam(len(sonuc), yeni))
+                self.root.after(0, lambda: self._yazdirma_tamam(
+                    len(sonuc), yeni,
+                    geri_gun=a.eski_kayit_gun, ileri_gun=tolerans,
+                ))
             except Exception as e:
                 logger.exception("yazdirma_yenile hatası")
                 self.root.after(0, lambda: self._progress_durdur("❌ Hata"))
                 self.root.after(0, lambda: messagebox.showerror("Hata", str(e)))
             finally:
-                self.root.after(0, lambda: setattr(self, "_yazdirma_calisiyor", False))
+                def _bitti():
+                    self._yazdirma_calisiyor = False
+                    self._yenile_mesgul(False)
+                self.root.after(0, _bitti)
 
         threading.Thread(target=_calis, daemon=True).start()
 
-    def _yazdirma_tamam(self, ilac_sayi: int, yeni_hasta: int):
+    def _yenile_mesgul(self, mesgul: bool):
+        """Yenile butonunu meşgul/hazır görünümüne geçir.
+
+        Meşgulken: buton '⏳ Taranıyor...' yazar, devre dışı kalır (çift
+        tıklama zaten korumalı ama görsel olarak da kilitli görünsün),
+        gri renge döner ve imleç kum saatine çevrilir. Kum saati karesi
+        _spinner_tik tarafından ⏳/⌛ olarak canlı değiştirilir. Bitince
+        buton eski haline döner.
+        """
+        btn = getattr(self, "btn_yenile", None)
+        if btn is None:
+            return
+        try:
+            if mesgul:
+                btn.config(text="⏳ Taranıyor...", state="disabled",
+                           bg="#90A4AE", cursor="watch")
+                self.root.config(cursor="watch")
+            else:
+                btn.config(text="🔄 Yenile", state="normal",
+                           bg="#1976D2", cursor="")
+                self.root.config(cursor="")
+        except Exception as e:
+            logger.debug(f"Yenile buton durumu güncellenemedi: {e}")
+
+    def _yazdirma_tamam(
+        self, ilac_sayi: int, yeni_hasta: int,
+        geri_gun: Optional[int] = None, ileri_gun: Optional[int] = None,
+    ):
         self._kuyruktan_yukle()
         gosterilen = len(self._kuyruk_sonuclari)
+        pencere = ""
+        if geri_gun is not None and ileri_gun is not None:
+            p_bas = (date.today() - timedelta(days=int(geri_gun))).strftime("%d.%m.%Y")
+            p_bit = (date.today() + timedelta(days=int(ileri_gun))).strftime("%d.%m.%Y")
+            pencere = f" | 🔍 Tarama penceresi: {p_bas} → {p_bit}"
         self._progress_durdur(
             f"✅ DB tarandı: {ilac_sayi} ilaç | {yeni_hasta} yeni hasta kuyruğa eklendi | "
-            f"Ekranda gösterilen: {gosterilen}"
+            f"Ekranda gösterilen: {gosterilen}{pencere}"
         )
         if gosterilen == 0 and ilac_sayi > 0:
             messagebox.showinfo(
@@ -1651,7 +1739,10 @@ class HastaTakipGUI:
         # bitişi çok gerilere kaymış ilaçları gizle. DB sorgusu bu filtreyi
         # zaten uygular; ancak kullanıcı ayarı küçülttüğünde eski kuyruk
         # kayıtları upsert edilmediği için görünmeye devam eder.
-        eski_gun = int(getattr(a, "eski_kayit_gun", 30) or 30)
+        # 0 geçerli bir değerdir ("sadece bitişi bugün ve sonrası") — `or 30`
+        # kullanılmaz, yalnızca None/eksik değer 30'a düşer.
+        _eski_ham = getattr(a, "eski_kayit_gun", 30)
+        eski_gun = 30 if _eski_ham is None else int(_eski_ham)
         if eski_gun >= 0 and self._kuyruk_sonuclari:
             esik_str = (date.today() - timedelta(days=eski_gun)).isoformat()
             temiz = []
@@ -1937,6 +2028,7 @@ class HastaTakipGUI:
         try:
             self.kuyruk.gonderildi_isaretle(
                 kid, "MESAJ GONDERILDI", manuel=True, isaret=isaret,
+                batch_pencere_gun=self._batch_pencere_gun(),
             )
         except Exception as e:
             logger.exception("gonderildi_isaretle hatası")
@@ -2335,6 +2427,100 @@ class HastaTakipGUI:
                         durum, il.get("not_metni") or "",
                         (il.get("guncelleme") or "")[:16].replace("T", " ")))
 
+    def _wa_kullanmayanlar_ac(self):
+        """WhatsApp kullanmayan hastaların listesini ayrı pencerede göster.
+
+        Kayıtlar hasta_durum tablosunda durum='whatsapp_yok' olanlardır.
+        Pencereden tek tıkla listeden çıkarma (geri alma) yapılabilir.
+        """
+        pencere = tk.Toplevel(self.root)
+        pencere.title("📴 WhatsApp Kullanmayanlar")
+        pencere.geometry("680x440")
+        pencere.configure(bg="white")
+        pencere.transient(self.root)
+        try:
+            from eczasist_ikon import ikon_uygula
+            ikon_uygula(pencere)
+        except Exception:
+            pass
+
+        ust = tk.Frame(pencere, bg="white")
+        ust.pack(fill="x", padx=10, pady=(10, 4))
+        lbl_sayac = tk.Label(
+            ust, text="", bg="white", fg="#455A64",
+            font=("Arial", 10, "bold"),
+        )
+        lbl_sayac.pack(side="left")
+
+        govde = tk.Frame(pencere, bg="white")
+        govde.pack(fill="both", expand=True, padx=10, pady=4)
+        tv = ttk.Treeview(
+            govde, columns=("hasta", "tc", "notu", "tarih"),
+            show="headings", selectmode="browse",
+        )
+        for k, b, w, a in [
+            ("hasta", "Hasta", 240, "w"),
+            ("tc", "T.C.", 110, "center"),
+            ("notu", "Not", 150, "w"),
+            ("tarih", "Eklenme", 120, "center"),
+        ]:
+            tv.heading(k, text=b)
+            tv.column(k, width=w, anchor=a)
+        tv.pack(side="left", fill="both", expand=True)
+        sb = ttk.Scrollbar(govde, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+
+        def _doldur():
+            tv.delete(*tv.get_children())
+            kayitlar = [
+                h for h in self.kuyruk.isaretli_hastalar_listele()
+                if h.get("durum") == "whatsapp_yok"
+            ]
+            for h in kayitlar:
+                tv.insert(
+                    "", "end", iid=str(h["musteri_id"]),
+                    values=(
+                        h.get("hasta_adi") or "-",
+                        h.get("tckn") or "-",
+                        h.get("not_metni") or "",
+                        (h.get("guncelleme") or "")[:16].replace("T", " "),
+                    ),
+                )
+            lbl_sayac.config(
+                text=f"📴 WhatsApp kullanmayan {len(kayitlar)} hasta"
+            )
+
+        def _geri_al():
+            sec = tv.selection()
+            if not sec:
+                messagebox.showinfo(
+                    "Seçim Yok", "Listeden çıkarılacak hastayı seçin.",
+                    parent=pencere,
+                )
+                return
+            self.kuyruk.hasta_durum_kaldir(int(sec[0]))
+            _doldur()
+            self._isaretli_yenile()
+            self.durum_bar.config(
+                text="✅ Hasta WhatsApp kullanmayanlar listesinden çıkarıldı "
+                     "(tekrar mesaj listesine girebilir)."
+            )
+
+        alt = tk.Frame(pencere, bg="white")
+        alt.pack(fill="x", padx=10, pady=(0, 10))
+        tk.Button(
+            alt, text="✅ Listeden Çıkar", command=_geri_al,
+            bg="#2E7D32", fg="white", bd=0, padx=12, pady=6,
+            font=("Arial", 9, "bold"),
+        ).pack(side="left")
+        tk.Button(
+            alt, text="Kapat", command=pencere.destroy,
+            bg="#90A4AE", fg="white", bd=0, padx=12, pady=6,
+        ).pack(side="right")
+
+        _doldur()
+
     def _isaretli_hasta_geri_al(self):
         sec = self.tv_is_hasta.selection()
         if not sec:
@@ -2552,7 +2738,10 @@ class HastaTakipGUI:
         except Exception:
             pass
         try:
-            self.kuyruk.gonderildi_isaretle(kid, sonuc="MESAJ GONDERILDI", manuel=True)
+            self.kuyruk.gonderildi_isaretle(
+                kid, sonuc="MESAJ GONDERILDI", manuel=True,
+                batch_pencere_gun=self._batch_pencere_gun(),
+            )
         except Exception as e:
             logger.exception("gonderildi_isaretle hatası")
             messagebox.showerror("Hata", f"Kayıt işaretlenemedi: {e}")
@@ -2582,7 +2771,10 @@ class HastaTakipGUI:
         except Exception:
             pass
         try:
-            self.kuyruk.gonderildi_isaretle(kid, sonuc="ILACINI ALDI", manuel=True)
+            self.kuyruk.gonderildi_isaretle(
+                kid, sonuc="ILACINI ALDI", manuel=True,
+                batch_pencere_gun=self._batch_pencere_gun(),
+            )
         except Exception as e:
             logger.exception("gonderildi_isaretle hatası")
             messagebox.showerror("Hata", f"Kayıt işaretlenemedi: {e}")
@@ -3211,6 +3403,13 @@ class HastaTakipGUI:
         a.hafta_sonu_tolerans_gun = int(self.var_hs.get())
         a.rapor_yazdirma_tolerans_gun = int(self.var_rt.get())
         a.eski_kayit_gun = int(self.var_eski.get())
+        # Batch da diğer ayarlar gibi doğrudan widget'tan okunur — JSON'a
+        # kaydedilmiş olmasına güvenilmez (tek doğruluk kaynağı: ekran).
+        if hasattr(self, "var_batch"):
+            try:
+                a.batch_bekleme_gun = max(0, min(60, int(self.var_batch.get())))
+            except Exception:
+                pass  # Kutu boş/geçersiz — JSON'daki değer geçerli kalır
         if hasattr(self, "var_haber_gizle"):
             a.haber_verilenleri_gizle = bool(self.var_haber_gizle.get())
         if hasattr(self, "var_haber_gizle_yerel"):
@@ -3408,6 +3607,17 @@ class HastaTakipGUI:
         self.durum_bar.config(text="Not güncellendi.")
 
     # -----------------------------------------------------------------
+    def _batch_pencere_gun(self) -> int:
+        """Geçerli batch pencere değeri — önce ekrandaki spinbox, o
+        okunamazsa kayıtlı ayar. Gönderim sonrası ileri tarihli ilaçların
+        yeni planlı tarihi bu pencereyle hesaplanır."""
+        if hasattr(self, "var_batch"):
+            try:
+                return max(0, min(60, int(self.var_batch.get())))
+            except Exception:
+                pass
+        return max(0, int(getattr(self.ayarlar, "batch_bekleme_gun", 5) or 0))
+
     def _batch_degisti(self):
         """Spinbox değeri değiştiğinde: ayarı kaydet. DB taraması YAPILMAZ —
         kullanıcının '🔄 Yenile' butonuna basması beklenir (gereksiz sorgu
@@ -3514,6 +3724,23 @@ class HastaTakipGUI:
             + " — güncel sonuç için '🔄 Yenile'ye basın."
         )
 
+    def _eski_ayar_degisti_sync(self, *_args):
+        """Ayarlar sekmesindeki 'Eski kayıt gün' → sekme 1 'Son' spinbox
+        senkronu (ters yön). İki widget aynı ayarı (eski_kayit_gun) temsil
+        eder; bu metod ikisini her zaman aynı değerde tutar."""
+        if not hasattr(self, "var_eski_gun"):
+            return  # Sekme 1 henüz kurulmadı
+        try:
+            v = int(self.var_eski.get())
+        except Exception:
+            return  # Kutu boş / geçersiz — dokunma
+        try:
+            mevcut = int(self.var_eski_gun.get())
+        except Exception:
+            mevcut = None
+        if mevcut != v:
+            self.var_eski_gun.set(v)
+
     def _eski_gun_degisti(self):
         """'Son N gün önce bitmiş' spinbox'ı değişince: ayarı kaydet +
         filtre baş tarihini otomatik geriye çek. DB taraması YAPILMAZ —
@@ -3527,6 +3754,10 @@ class HastaTakipGUI:
         except Exception:
             return
         yeni = max(0, min(365, yeni))
+        _mevcut_ham = getattr(self.ayarlar, "eski_kayit_gun", 30)
+        mevcut = 30 if _mevcut_ham is None else int(_mevcut_ham)
+        if yeni == mevcut:
+            return  # Değer değişmedi — filtre tarihine ve tabloya dokunma
         self.ayarlar.eski_kayit_gun = yeni
         # Ayarlar sekmesindeki aynı değişkeni senkronla — aksi halde
         # _ayarlar_snapshot() eski değerle gelir ve filtre çalışmaz
@@ -4028,35 +4259,46 @@ class HastaTakipGUI:
 
     # -----------------------------------------------------------------
     def _yerlesimi_kaydet(self):
-        """Anki MEDULA + Hasta Takip pencere konumlarını JSON'a yaz."""
+        """Ekranda alan kaplayan TÜM pencerelerin (Hasta Takip, MEDULA ve
+        diğer tüm uygulama pencereleri) anki konum/boyutunu JSON'a yaz."""
         try:
-            from pencere_yerlesim import yerlesimi_kaydet_simdi, yerlesim_yukle
+            from pencere_yerlesim import tum_yerlesimi_yakala, yerlesim_kaydet
         except Exception as e:
             messagebox.showerror("Hata", f"pencere_yerlesim modülü yüklenemedi:\n{e}")
             return
-        ok = yerlesimi_kaydet_simdi(tk_root=self.root)
-        data = yerlesim_yukle()
-        medula_var = "medula" in data
-        ht_var = "hasta_takip" in data
-        if ok:
-            mesaj = (
-                f"✓ Yerleşim kaydedildi.\n\n"
-                f"MEDULA: {'✔' if medula_var else '✖ (pencere bulunamadı)'}\n"
-                f"Hasta Takip: {'✔' if ht_var else '✖'}\n\n"
-                f"Program bir sonraki açılışta bu konumlarda açılacak."
-            )
-            messagebox.showinfo("Yerleşim Kaydedildi", mesaj)
-            self.durum_bar.config(text="📐 Pencere yerleşimi kaydedildi.")
-        else:
+        data = tum_yerlesimi_yakala(tk_root=self.root)
+        ok = yerlesim_kaydet(data)
+        if not ok:
             messagebox.showerror("Hata", "Yerleşim kaydedilemedi (log'a bakın).")
+            return
+
+        pencereler = data.get("pencereler") or []
+        satirlar = []
+        if "hasta_takip" in data:
+            satirlar.append("✔ Hasta Takip (bu pencere)")
+        for p in pencereler:
+            baslik = (p.get("title") or p.get("exe") or "?")
+            if len(baslik) > 55:
+                baslik = baslik[:52] + "..."
+            satirlar.append(f"✔ {baslik}")
+        toplam = len(satirlar)
+        mesaj = (
+            f"✓ Yerleşim kaydedildi — {toplam} pencere:\n\n"
+            + "\n".join(satirlar)
+            + "\n\nTümünü bu düzene geri getirmek için 📐 Yerleşimi Uygula'ya "
+            "basın.\n(Hasta Takip ve MEDULA açılışta otomatik uygulanır.)"
+        )
+        messagebox.showinfo("Yerleşim Kaydedildi", mesaj)
+        self.durum_bar.config(
+            text=f"📐 Yerleşim kaydedildi ({toplam} pencere)."
+        )
 
     # -----------------------------------------------------------------
     def _yerlesimi_uygula(self):
-        """Kaydedilmiş yerleşimi MEDULA ve Hasta Takip penceresine uygula."""
+        """Kaydedilmiş yerleşimi kayıttaki TÜM pencerelere uygula.
+        Üç pencere kaydedildiyse üçü de eski konum/boyutuna taşınır."""
         try:
-            from pencere_yerlesim import (
-                yerlesim_yukle, medulaya_uygula, hasta_takibe_uygula,
-            )
+            from pencere_yerlesim import yerlesim_yukle, tum_yerlesimi_uygula
         except Exception as e:
             messagebox.showerror("Hata", f"pencere_yerlesim modülü yüklenemedi:\n{e}")
             return
@@ -4071,33 +4313,29 @@ class HastaTakipGUI:
             )
             return
 
-        medula_ok = False
-        ht_ok = False
-        if "medula" in data:
-            try:
-                medula_ok = medulaya_uygula()
-            except Exception as e:
-                logger.error(f"MEDULA'ya yerleşim uygulanamadı: {e}")
-        if "hasta_takip" in data:
-            try:
-                ht_ok = hasta_takibe_uygula(self.root)
-            except Exception as e:
-                logger.error(f"Hasta Takip'e yerleşim uygulanamadı: {e}")
+        try:
+            sonuclar = tum_yerlesimi_uygula(tk_root=self.root)
+        except Exception as e:
+            logger.exception("Yerleşim uygulama hatası")
+            messagebox.showerror("Hata", f"Yerleşim uygulanamadı:\n{e}")
+            return
 
-        parca = []
-        if "medula" in data:
-            parca.append(f"MEDULA: {'✔' if medula_ok else '✖ (pencere açık değil?)'}")
-        if "hasta_takip" in data:
-            parca.append(f"Hasta Takip: {'✔' if ht_ok else '✖'}")
-
-        if medula_ok or ht_ok:
+        basarili = sum(1 for _, ok in sonuclar if ok)
+        toplam = len(sonuclar)
+        parca = [
+            f"{'✔' if ok else '✖'} {ad}" for ad, ok in sonuclar
+        ]
+        if basarili:
             self.durum_bar.config(
-                text="📐 Yerleşim uygulandı: " + "  ·  ".join(parca)
+                text=f"📐 Yerleşim uygulandı ({basarili}/{toplam}): "
+                + "  ·  ".join(parca)
             )
-        else:
+        if basarili < toplam:
+            eksikler = "\n".join(f"✖ {ad}" for ad, ok in sonuclar if not ok)
             messagebox.showwarning(
-                "Uygulanamadı",
-                "Yerleşim uygulanamadı.\n\n" + "\n".join(parca),
+                "Kısmen Uygulandı" if basarili else "Uygulanamadı",
+                f"{basarili}/{toplam} pencere yerleştirildi.\n\n"
+                f"Yerleştirilemeyenler (pencere kapalı olabilir):\n{eksikler}",
             )
 
     # -----------------------------------------------------------------
