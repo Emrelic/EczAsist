@@ -93,8 +93,9 @@ def _hbv_oral_etken_alt_tip(ilac_adi: str, etkin_madde: str) -> str:
 
     Returns: 'TAF' | 'TDF' | 'ETV' | 'LAM' | 'TLB' | 'ADV' | ''
     """
-    ilac = (ilac_adi or '').upper()
-    etkin = (etkin_madde or '').upper()
+    # ASCII katlama: 'ENTEKAVİR'/'TENOFOVİR DİSOPROKSİL' (İ) → ASCII eşleşme.
+    ilac = _tr_ascii_upper(ilac_adi)
+    etkin = _tr_ascii_upper(etkin_madde)
     if 'VEMLIDY' in ilac or 'ALAFENAMID' in etkin:
         return 'TAF'
     if ('VIREAD' in ilac or 'TENOFAR' in ilac or 'HIVERAC' in ilac
@@ -187,6 +188,21 @@ def _tr_upper(s: Optional[str]) -> str:
     if not s:
         return ''
     return (str(s).replace('ı', 'I').replace('i', 'İ').upper())
+
+
+def _tr_ascii_upper(s: Optional[str]) -> str:
+    """Türkçe harfleri ASCII'ye katlayıp BÜYÜK harfe çevir.
+
+    ASCII sabitlerle (ENTEKAVIR, SOFOSBUVIR, DISOPROKSIL...) güvenli substring
+    eşleşmesi için. Kritik: 'ENTEKAVİR' (dotlı İ = U+0130) Python .upper() ile
+    İ olarak KALIR ve ASCII 'ENTEKAVIR' ile EŞLEŞMEZ → tip=NONE → ATLANDI.
+    Bu katlama İ/Ş/Ç/Ö/Ü/Ğ giderir (dotless ı zaten .upper() ile I olur).
+    """
+    if not s:
+        return ''
+    return (str(s).upper()
+            .replace('İ', 'I').replace('Ş', 'S').replace('Ç', 'C')
+            .replace('Ö', 'O').replace('Ü', 'U').replace('Ğ', 'G'))
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -615,7 +631,9 @@ def _hep_recetede_ilac_var(diger_ilac_adlari_upper: str,
 def _hep_etken_tip(ilac_adi: str, etkin: str) -> str:
     """Tek ilaç için tip: 'HBV_ORAL' | 'HCV_DAA' | 'PEG_IFN' | 'IFN' |
     'RIBAVIRIN' | 'NONE'."""
-    arama = (ilac_adi or '').upper() + ' ' + (etkin or '').upper()
+    # ASCII katlama zorunlu: 'ENTEKAVİR' (İ) .upper() ile ASCII sabit
+    # 'ENTEKAVIR' ile eşleşmez → NONE → ATLANDI (gerçek Medula verisi tuzağı).
+    arama = _tr_ascii_upper((ilac_adi or '') + ' ' + (etkin or ''))
     if any(e in arama for e in HCV_DAA_ETKEN) or \
        any(t in arama for t in HCV_DAA_TICARI):
         return 'HCV_DAA'
@@ -3244,7 +3262,10 @@ def _hep_hcv_rejim_tespit(ilac_adi_upper: str, etkin_upper: str,
         'IFN_RBV'/'PEG_RBV' — klasik kombinasyon (çocuk)
         'OTHER'  — başka
     """
-    arama = ilac_adi_upper + ' ' + etkin_upper + ' ' + diger_ilac_adlari_upper
+    # ASCII katlama: 'SOFOSBUVİR'/'LEDİPASVİR' (İ) → ASCII sabitlerle eşleşme.
+    arama = _tr_ascii_upper(
+        (ilac_adi_upper or '') + ' ' + (etkin_upper or '')
+        + ' ' + (diger_ilac_adlari_upper or ''))
     has_sof = 'SOFOSBUVIR' in arama or 'SOVALDI' in arama
     has_vel = 'VELPATASVIR' in arama or 'EPCLUSA' in arama or 'VOSEVI' in arama
     has_vox = 'VOXILAPREVIR' in arama or 'VOSEVI' in arama
@@ -4254,8 +4275,15 @@ def kontrol_hepatit_atomik(ilac_sonuc: Dict) -> KontrolRaporu:
     geçer; atomik şema disiplini + SartSonuc gruplandırma + ÜST-VEYA
     aggregator + sayısal parser'lar + hasta geçmişi sorgusu içerir.
     """
-    ilac_adi = (ilac_sonuc.get('ilac_adi') or '').upper()
-    etkin = (ilac_sonuc.get('etkin_madde') or '').upper()
+    # Türkçe İ tuzağı: ilaç/etken adını ASCII'ye katla ki TÜM downstream
+    # eşleşmeler (etken tip, alt-tip, rejim, doz, /4 etken değişim) çalışsın —
+    # 'ENTEKAVİR' (İ) aksi halde ASCII 'ENTEKAVIR' ile eşleşmez → ATLANDI.
+    # Çağıranın dict'ini bozmamak için sığ kopya üzerinde normalize et.
+    ilac_sonuc = dict(ilac_sonuc)
+    ilac_sonuc['ilac_adi'] = _tr_ascii_upper(ilac_sonuc.get('ilac_adi'))
+    ilac_sonuc['etkin_madde'] = _tr_ascii_upper(ilac_sonuc.get('etkin_madde'))
+    ilac_adi = ilac_sonuc['ilac_adi']
+    etkin = ilac_sonuc['etkin_madde']
     rapor_kodu = (ilac_sonuc.get('rapor_kodu') or '').strip()
 
     etkin_tip = _hep_etken_tip(ilac_adi, etkin)

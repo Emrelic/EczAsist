@@ -213,6 +213,48 @@ def test_r9_y9_nonsirotik_svv_mesru():
         'Nonsirotik + SVV meşru → UYGUN DEĞİL verilmemeli'
 
 
+def test_r10_turkce_i_entekavir_atlanmaz():
+    """Türkçe İ tuzağı: 'ENTEKAVİR' (dotlı İ = U+0130) ATLANDI değil, HBV
+    yolağına gitmeli. Gerçek Medula verisi 'ENTEKAVİR' ile gelir; ASCII sabit
+    'ENTEKAVIR' ile eşleşmezse tip=NONE → ATLANDI olurdu."""
+    r, yolak = _calistir({
+        'ilac_adi': 'BARAVIR 0.5MG 30 FİLM TABLET',
+        'etkin_madde': 'ENTEKAVİR',
+        'rapor_kodu': '06.01',
+        'hasta_yasi': 60,
+        'doktor_uzmanligi': 'GASTROENTEROLOJI',
+        'rapor_aciklamalari': [
+            'HBS AG(+) ANTİ HBS(-) HBV DNA 682 IU/ML. ENTEKAVIR 0.5 MG 1X1. '
+            '09.12.2020 tarihli rapora istinaden idame tedavisidir.'],
+        'recete_teshisleri': ['B18.1'],
+    })
+    print(f"[R10] İ tuzağı ENTEKAVİR: {r.sonuc.value} | yolak={yolak}")
+    assert r.sonuc != KontrolSonucu.ATLANDI, \
+        "'ENTEKAVİR' (İ) ATLANDI olmamalı — HBV yolağına gitmeli"
+    assert yolak in ('YOLAK1', 'YOLAK4'), \
+        f'HBV yolağı (Y1/Y4) beklenir, alınan {yolak}'
+
+
+def test_r11_turkce_i_sofosbuvir_hcv():
+    """Türkçe İ: 'SOFOSBUVİR' (İ) HCV yolağına gitmeli, ATLANDI değil."""
+    r, yolak = _calistir({
+        'ilac_adi': 'SOVALDI',
+        'etkin_madde': 'SOFOSBUVİR',
+        'rapor_kodu': '06.01',
+        'hasta_yasi': 50,
+        'doktor_uzmanligi': 'GASTROENTEROLOJI',
+        'rapor_aciklamalari': [
+            'Kronik Hepatit C. HCV RNA pozitif. Nonsirotik. Daha önce '
+            'tedavi almamış. Üniversite hastanesi gastroenteroloji raporu.'],
+        'recete_teshisleri': ['B18.2'],
+    })
+    print(f"[R11] İ tuzağı SOFOSBUVİR: {r.sonuc.value} | yolak={yolak}")
+    assert r.sonuc != KontrolSonucu.ATLANDI, \
+        "'SOFOSBUVİR' (İ) ATLANDI olmamalı — HCV yolağına gitmeli"
+    assert yolak in ('YOLAK9', 'YOLAK10', 'YOLAK11', 'YOLAK12'), \
+        f'HCV yolağı beklenir, alınan {yolak}'
+
+
 if __name__ == '__main__':
     print('═' * 70)
     print('SUT 4.2.13 HEPATİT — 2026-07 DENETİM DÜZELTMELERİ REGRESYON TESTİ')
@@ -227,6 +269,8 @@ if __name__ == '__main__':
         test_r7_y10_tur_belirsiz_naive_dali_gecmez,
         test_r8_cocuk_c_2_3_basamak_atomu_var,
         test_r9_y9_nonsirotik_svv_mesru,
+        test_r10_turkce_i_entekavir_atlanmaz,
+        test_r11_turkce_i_sofosbuvir_hcv,
     ]
     basarili = 0
     for t in testler:

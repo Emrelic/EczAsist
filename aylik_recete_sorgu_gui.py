@@ -17686,8 +17686,10 @@ class AylikReceteSorguGUI:
         if a.startswith("L03AB10") or a.startswith("L03AB11"):
             return "KLASIK"  # Peginterferon alfa
 
-        ad = (ilac_adi or "").upper()
-        et = (etkin or "").upper()
+        # ATC yoksa ad/etken fallback — Türkçe İ tuzağı: 'ENTEKAVİR' (İ) ASCII
+        # 'ENTEKAVIR' ile eşleşmez. İ→I katla (bkz. hepatit_kontrol İ fix).
+        ad = (ilac_adi or "").upper().replace("İ", "I")
+        et = (etkin or "").upper().replace("İ", "I")
         arama = ad + " " + et
 
         # HCV ilk önce (DAA → kombinasyon ad/etken örtüşebilir)
@@ -17717,7 +17719,7 @@ class AylikReceteSorguGUI:
         if kategori == "HCV":
             return "HCV_DAA"
         if kategori == "KLASIK":
-            ad_et = (ilac_adi or "").upper() + " " + (etkin or "").upper()
+            ad_et = ((ilac_adi or "") + " " + (etkin or "")).upper().replace("İ", "I")
             if "RIBAVIRIN" in ad_et or "COPEGUS" in ad_et or "REBETOL" in ad_et:
                 return "KLASIK_RIBA"
             return "KLASIK_PEGIFN"
