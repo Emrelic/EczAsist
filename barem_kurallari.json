@@ -1,0 +1,96 @@
+{
+  "_aciklama": "SGK-TEB protokolü eczacı iskonto baremleri + reçete başı hizmet bedelleri + kademeli kâr dilimleri. Baremler her yıl protokol/enflasyon ile güncellenir — yeni yıl geldiğinde 'yillar' altına yeni blok eklenir.",
+  "aktif_yil": "2026",
+  "yillar": {
+    "2025": {
+      "kaynak": "2024 protokol dönemi baremleri (01.10.2024 - 30.09.2025). DİKKAT: hizmet bedeli değerleri 2026 değerlerinden oran (1/1.607) ile TÜRETİLMİŞTİR, resmî metinden doğrulanmadı — sadece kıyas amaçlı.",
+      "gecerlilik": "01.10.2024 - 30.09.2025",
+      "iskonto_baremleri": [
+        { "ust": 4604058, "oran": 0.0 },
+        { "ust": 5755072, "oran": 0.005 },
+        { "ust": 6906086, "oran": 0.0105 },
+        { "ust": 9668521, "oran": 0.0135 },
+        { "ust": 11510143, "oran": 0.02 },
+        { "ust": null, "oran": 0.0225 }
+      ],
+      "hizmet_bedeli_baremleri": [
+        { "ust": 2762434, "tutar": 18.57 },
+        { "ust": 4604058, "tutar": 12.5 },
+        { "ust": 5755072, "tutar": 10.4 },
+        { "ust": 6906086, "tutar": 7.99 },
+        { "ust": 9668521, "tutar": 7.73 },
+        { "ust": 11510143, "tutar": 7.29 },
+        { "ust": null, "tutar": 7.25 }
+      ]
+    },
+    "2026": {
+      "kaynak": "2026/1 Ek Protokol (SGK-TEB, imza 12.03.2026), Madde 2 — 01.10.2025'ten geçerli",
+      "gecerlilik": "01.10.2025 -",
+      "iskonto_baremleri": [
+        { "ust": 7399182, "oran": 0.0 },
+        { "ust": 9248976, "oran": 0.005 },
+        { "ust": 11098771, "oran": 0.0105 },
+        { "ust": 15538280, "oran": 0.0135 },
+        { "ust": 18497951, "oran": 0.02 },
+        { "ust": null, "oran": 0.0225 }
+      ],
+      "hizmet_bedeli_baremleri": [
+        { "ust": 4439509, "tutar": 29.85 },
+        { "ust": 7399182, "tutar": 20.09 },
+        { "ust": 9248976, "tutar": 16.71 },
+        { "ust": 11098771, "tutar": 12.84 },
+        { "ust": 15538280, "tutar": 12.42 },
+        { "ust": 18497951, "tutar": 11.72 },
+        { "ust": null, "tutar": 11.65 }
+      ]
+    }
+  },
+  "mobil_soguk_zincir_hizmet_carpani": 1.5,
+  "oda_katki_payi_orani": 0.012,
+  "oda_katki_payi_not": "Sıralı dağıtım reçetelerinde eczacı odasının onayda kestiği katkı payı. İSTANBUL EO GERÇEK KESİNTİ: %1,20 (kullanıcının e-bandrol dökümünden doğrulandı, 2025/09-2026/06 arası 10 kayıtta istisnasız %1,20 = duyurudaki %1 katılım payı + %20 KDV). Mor-turuncu (kan ürünü) ve diyaliz/EPO gruplarında aynı oran. Üst limitli sistem reçeteleri ve anti-TNF muaf (İEO ayrı duyuru). Diğer odalarda nominal %0,3-0,5 görülür (KDV'siyle ~%0,36-0,6); yurt dışı sigortalı + eczanesiz bölge muaf. Kendi odanızın oranını GUI'den girin.",
+  "istihdam": {
+    "_aciklama": "İkinci/yardımcı eczacı çalıştırma zorunluluğu (6197 sayılı Kanun + Eczacılar ve Eczaneler Hakkında Yönetmelik; eşikler TİTCK/TEB tarafından her yıl güncellenir). Eşik, bir önceki yıl KDV hariç satış hasılatına göre uygulanır.",
+    "aktif_yil": "2025",
+    "yillar": {
+      "2025": {
+        "kaynak": "TEB 2025 kriterleri GÜNCELLENMİŞ duyurusu (2024 hasılatına göre; ilk duyuru 46.831.024 idi, 49.906.075'e güncellendi). Yönetmelik m.16 lafzı: eşiğin 'AŞILMASI' halinde; eklenen her eşik katı için ilave; azami 3; reçete ve ciro ikisi de uygunsa fazla olanı esas alınır. 2026 kriterleri henüz duyurulmadı — duyurulunca buraya '2026' bloğu eklenir.",
+        "ikinci_eczaci_hasilat_esigi": 49906075.0,
+        "ikinci_eczaci_recete_esigi": 80000,
+        "yardimci_eczaci_hasilat_esigi": 23664692.0,
+        "azami_ikinci_eczaci": 3
+      }
+    },
+    "maliyet_parametreleri": {
+      "kaynak": "Yönetmelik m.16/5 (yardımcı ≥1,5x / ikinci ≥3x asgari ücret, katlar BRÜT üzerinden — Yargıtay içtihadı; TEB 2026 net tabanları 39.882,24/75.302,46 bu brütlerden birebir türer). 2026 asgari ücret + SGK oranları + yemek istisnası + İş K. m.41 fazla mesai.",
+      "asgari_ucret_brut": 33030.0,
+      "yardimci_eczaci_kat": 1.5,
+      "ikinci_eczaci_kat": 3.0,
+      "sgk_isveren_orani": 0.2175,
+      "issizlik_isveren_orani": 0.02,
+      "hazine_tesvik_puan": 0.02,
+      "yemek_gunluk": 300.0,
+      "yemek_gunluk_not": "2026 vergi istisnası: NAKİT 300 TL/gün, yemek KARTI 330 TL/gün — kart kullanılıyorsa 330 yazılabilir. SGK prim istisnası ayrı ve daha düşüktür (2025: 158 TL/gün; 2026 henüz açıklanmadı) — aşan kısmın prim etkisi bu modelde ihmal edilir.",
+      "yemek_gun_sayisi": 26,
+      "fazla_mesai_yillik_azami_saat": 270,
+      "fazla_mesai_zam_carpani": 1.5,
+      "aylik_calisma_saati": 225
+    }
+  },
+  "kademeli_kar": {
+    "kaynak": "Beşeri Tıbbi Ürünlerin Fiyatlandırılmasına Dair Karar (Karar Sayısı: 11031), baremler 01.04.2026'dan geçerli",
+    "dilimler": [
+      { "ust": 440.65, "depocu": 0.08, "eczaci": 0.28 },
+      { "ust": 882.66, "depocu": 0.06, "eczaci": 0.18 },
+      { "ust": null, "depocu": 0.03, "eczaci": 0.13 }
+    ]
+  },
+  "notlar": [
+    "Barem, eczanenin BİR ÖNCEKİ YIL TOPLAM satış hasılatına (KDV hariç, nakit dahil) göre belirlenir (EK-5 vergi dairesi onaylı form). Hasılat = gelir tablosu NET satışlar (600+601+602 − 610 iade − 611 iskonto); stok affı (7143/7440) faturaları düşülür.",
+    "İskonto oranı değişimi sözleşme döneminin BAŞINA (1 Ekim) retroaktif uygulanır — barem atlayan eczane Ekim-Mart farkını EK FATURA ile öder (İstanbul EO ek fatura SSS). Modeldeki 'gelecek yıl' basitleştirmesi bu dönemselliği yıllıklaştırır.",
+    "HASILAT BEYAN DÖNGÜSÜ (teyitli): H yılı 31 Aralık'ta kapanır; beyannameler Mart-Nisan'da kesinleşir; İTS hasılat beyanı ~7 Nisan - 6 Mayıs (TİTCK duyurusu, Yönetmelik m.16 gereği — İSTİHDAM kriterleri kanalı; girilmezse İTS erişimi kısıtlanır, yanlış beyana adli/idari işlem); SGK İSKONTO kanalı ayrı: EK-5 vergi dairesi onaylı form + sözleşme yenileme (2026'da 04.05.2026'ya kadar); yeni oran H+1 yılının 1 Ekim'inden hukuken geçerli, ilan gecikirse retro ek fatura.",
+    "İskonto yalnız SGK'ya fatura edilen reçetelere, kamu fiyatı üzerinden uygulanır (SUT 4.4.1/12).",
+    "Depocu fiyatlı ilaçlarda (kan ürünleri, enzimler, bazı mama/radyofarmasötik) eczacı indirimi UYGULANMAZ (SUT 4.4.1/11) — ama tutarları hasılata girer ve baremi şişirir.",
+    "Mobil + soğuk zincirli reçetelerde hizmet bedeli %50 artırımlı ödenir.",
+    "Yeni açılan eczaneye en düşük iskonto + en yüksek hizmet bedeli uygulanır."
+  ]
+}

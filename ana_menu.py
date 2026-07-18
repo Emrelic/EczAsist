@@ -167,6 +167,13 @@ class AnaMenu:
             "renk": "#1A237E",  # Indigo
             "hover": "#0D1340"
         },
+        "sgk_barem": {
+            "baslik": "SGK Barem Hesap",
+            "icon": "⚖️",
+            "aciklama": "Pahalı reçete kârı + barem atlama (iskonto/hizmet bedeli) + ikinci/yardımcı eczacı maliyeti + fiyat-kârlılık",
+            "renk": "#B71C1C",  # Koyu kırmızı
+            "hover": "#7F0000"
+        },
         "hasta_takip": {
             "baslik": "Hasta Takip & WA",
             "icon": "📲",
@@ -560,8 +567,9 @@ class AnaMenu:
             "aylik_recete_sorgu", "t_cetvel", "ek_raporlar", "mf_analiz",
             "mf_hizli", "siparis_verme", "fatih_siparisci", "hibrit_siparisci",
             "min_stok_analiz", "stok_takip", "stok_maliyet_analiz",
-            "prim_raporlama", "satis_raporlari", "kdv_analiz", "hasta_takip",
-            "hasta_sure", "erecete_cozucu", "yedek_temizlik", "kullanici_yonetimi"
+            "prim_raporlama", "satis_raporlari", "kdv_analiz", "sgk_barem",
+            "hasta_takip", "hasta_sure", "erecete_cozucu", "yedek_temizlik",
+            "kullanici_yonetimi"
         ]
 
         # Grid ayarları: uniform parametresi ile tum hucreler ayni boyut.
@@ -750,6 +758,8 @@ class AnaMenu:
             self.satis_raporlari_ac()
         elif modul_key == "kdv_analiz":
             self.kdv_analiz_ac()
+        elif modul_key == "sgk_barem":
+            self.sgk_barem_ac()
         elif modul_key == "hasta_takip":
             self.hasta_takip_ac()
         elif modul_key == "hasta_sure":
@@ -1328,6 +1338,27 @@ class AnaMenu:
         except Exception as e:
             logger.error(f"KDV Analiz açma hatası: {e}", exc_info=True)
             messagebox.showerror("Hata", f"KDV Analiz açılamadı:\n{e}")
+            if pencere is not None:
+                try: pencere.destroy()
+                except Exception: pass
+
+    def sgk_barem_ac(self):
+        """SGK Barem / İskonto Etki Hesaplayıcı modülünü aç"""
+        pencere = None
+        try:
+            pencere = self._modul_pencere_al("sgk_barem")
+            if pencere is None:
+                return
+            # Boyut GUI tarafından içeriğe göre ayarlanır (_pencereyi_icerige_sigdir)
+
+            self._yeniden_yukle("sgk_barem_motoru", "sgk_barem_gui")
+            from sgk_barem_gui import SGKBaremGUI
+
+            SGKBaremGUI(pencere, ana_menu_callback=lambda: None)
+
+        except Exception as e:
+            logger.error(f"SGK Barem açma hatası: {e}", exc_info=True)
+            messagebox.showerror("Hata", f"SGK Barem modülü açılamadı:\n{e}")
             if pencere is not None:
                 try: pencere.destroy()
                 except Exception: pass

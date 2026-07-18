@@ -43,6 +43,7 @@ class KullaniciYonetimi:
         "prim_raporlama": "Prim Raporlama",
         "satis_raporlari": "Satış Raporları",
         "kdv_analiz": "KDV Analiz",
+        "sgk_barem": "SGK Barem Hesap",
         "hasta_takip": "Hasta Takip & WhatsApp",
         "hasta_sure": "Hasta Süre Sayacı",
         "erecete_cozucu": "E-Reçete No Çözücü",

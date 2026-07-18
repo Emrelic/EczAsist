@@ -1183,7 +1183,7 @@ class MiniCozucuGUI:
         self._ka_stop = threading.Event()
         self._son_medula_istek = 0.0     # son gerçek Medula isteği (monotonic)
         self._aktar_after = None         # canlı aktarım debounce id
-        self._son_num_uzunluk = 0        # 7. karakterde otomatik sorgula için
+        self._son_coz_num = ""           # 7. karakterde otomatik çöz (değer bazlı)
         self._tc_tamamdi = False         # TC tamamlanınca imleç geçişi (tek sefer)
 
         self.tc_var = tk.StringVar()
@@ -1263,7 +1263,7 @@ class MiniCozucuGUI:
             row=4, column=0, sticky="w", pady=(1, 0))
 
         tk.Checkbutton(
-            gov, text="⚡ aktar+7'de sorgu", variable=self.canli_aktar_var,
+            gov, text="⚡ aktar+7'de çöz", variable=self.canli_aktar_var,
             bg=r["bg"], fg=r["fg"], selectcolor=r["card_bg"],
             activebackground=r["bg"], font=("Segoe UI", 8)).grid(
             row=4, column=1, sticky="e")
@@ -1736,15 +1736,17 @@ class MiniCozucuGUI:
             yazildi = False
         if yazildi:
             self._medula_istek_oldu()   # aktivite → keepalive ping'i ertele
-        # 7. karaktere YENİ ulaşıldıysa otomatik sorgula
-        if len(num) == 7 and self._son_num_uzunluk < 7:
+        # 7 karaktere YENİ bir numara ulaşınca otomatik ÇÖZ: _coz önce girilen
+        # numarayı (orijinal) dener; girerse durur, girmezse ihtimalleri en
+        # büyük olasılıktan başlayarak çözer.
+        if len(num) == 7 and num != self._son_coz_num and not self.calisiyor:
+            self._son_coz_num = num
             try:
-                medula.sorgula_gonder(mode)
-                self._medula_istek_oldu()
-                self._durum(f"→ {num} otomatik sorgulandı ({'Takip' if mode=='takip' else 'E-Reçete'})")
+                self._coz()
             except Exception:
                 pass
-        self._son_num_uzunluk = len(num)
+        elif len(num) < 7:
+            self._son_coz_num = ""   # kısaldıysa sıfırla (tekrar 7'de tetiklensin)
 
     def _ka_loop(self):
         """Medulayı canlı tut — SGK'yı yormayacak biçimde:
