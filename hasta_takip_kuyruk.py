@@ -121,6 +121,22 @@ class HastaTakipAyarlari:
     eczane_adi: str = "İKİZLER ECZANESİ"
     eczane_tel: str = "0542 515 74 40"
 
+    # Günlük özet raporunun (kaç hastaya kaç kalem ilaç mesajı atıldı)
+    # WhatsApp ile gönderileceği alıcı numara. Gönderen, tarayıcıda oturum
+    # açık olan eczane WhatsApp hesabıdır (wa.me gönderen seçemez).
+    gunluk_ozet_tel: str = "0507 947 74 23"
+
+    # --- Günlük özet OTOMATİK gönderim ---
+    # Uygulama açıkken belirtilen saatlerde özet WhatsApp Web'de açılır ve
+    # (ozet_otomatik_enter açıksa) WhatsApp penceresi öndeyken Enter'a
+    # basılarak gönderilir. Saat kaçırıldıysa tolerans süresi içinde
+    # (örn. uygulama sonradan açıldıysa) telafi gönderimi yapılır.
+    ozet_otomatik_aktif: bool = True
+    ozet_otomatik_saatler: str = "14:00, 19:00"
+    ozet_otomatik_enter: bool = True
+    ozet_otomatik_bekleme_sn: int = 25   # WhatsApp Web yüklenme beklemesi
+    ozet_otomatik_tolerans_dk: int = 60  # kaçan saat için telafi penceresi
+
     # Pazartesi mod için gönderim günü (0=Pazartesi, 6=Pazar)
     toplu_gonderim_gunu: int = 0
 
@@ -303,6 +319,23 @@ class MesajKuyrugu:
                     sonuc         TEXT
                 );
 
+                -- Günlük özet gönderim kaydı: o gün kaç hastaya / kaç kalem
+                -- ilaç için mesaj atıldığı özetinin WhatsApp ile eczacıya
+                -- gönderildiğinin izi.
+                CREATE TABLE IF NOT EXISTS gunluk_ozet_log (
+                    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tarih              TEXT NOT NULL,      -- özetlenen gün (ISO)
+                    hasta_sayisi       INTEGER,
+                    mesaj_sayisi       INTEGER,
+                    ilac_kalem_sayisi  INTEGER,
+                    rapor_sayisi       INTEGER,
+                    alici_tel          TEXT,
+                    mesaj_metni        TEXT,
+                    zaman              TEXT NOT NULL,      -- gönderim anı (ISO)
+                    slot               TEXT,               -- '14:00'|'19:00'|'manuel'
+                    sonuc              TEXT
+                );
+
                 -- Hasta bazlı hariç tutma: bu hastalara HİÇ mesaj atılmaz.
                 -- durum: oldu | goctu | kustu | aranmasin
                 CREATE TABLE IF NOT EXISTS hasta_durum (
@@ -381,6 +414,13 @@ class MesajKuyrugu:
                 "CREATE INDEX IF NOT EXISTS idx_grl_haber "
                 "ON gonderim_rapor_log(musteri_id, rapor_kodu, em_sgk_kodu, bitis_tarihi)"
             )
+
+            # Migration: gunluk_ozet_log.slot / .sonuc (otomatik gönderim izi)
+            cur_gol = c.execute("PRAGMA table_info(gunluk_ozet_log)").fetchall()
+            gol_kolonlar = {row[1] for row in cur_gol}
+            for kol in ("slot", "sonuc"):
+                if kol not in gol_kolonlar:
+                    c.execute(f"ALTER TABLE gunluk_ozet_log ADD COLUMN {kol} TEXT")
 
     # -----------------------------------------------------------------
     # Kuyruk işlemleri
@@ -1919,4 +1959,150 @@ class MesajKuyrugu:
             c.execute(
                 "UPDATE gonderim_log SET not_metni=? WHERE id=?",
                 (not_metni, log_id),
+            )
+
+    # -----------------------------------------------------------------
+    # Günlük özet (kaç hastaya kaç kalem ilaç mesajı atıldı)
+    # -----------------------------------------------------------------
+    def gunluk_ozet_detay(self, tarih_iso: Optional[str] = None) -> Dict:
+        """Belirtilen günün (varsayılan bugün) gönderim özetini çıkar.
+
+        gonderim_log (mesaj başına), gonderim_ilac_log (ilaç kalemi başına)
+        ve gonderim_rapor_log (rapor bildirimi başına) tablolarından o güne
+        ait sayıları toplar. Eczacıya giden WhatsApp günlük özet raporunun
+        veri kaynağıdır.
+        """
+        tarih = tarih_iso or date.today().isoformat()
+        with self._conn() as c:
+            mesajlar = c.execute(
+                "SELECT id, musteri_id, hasta_adi, isaret FROM gonderim_log "
+                "WHERE substr(zaman,1,10)=? ORDER BY id",
+                (tarih,),
+            ).fetchall()
+            ilac_sayilari = {
+                r["gonderim_id"]: r["n"]
+                for r in c.execute(
+                    "SELECT gonderim_id, COUNT(*) AS n FROM gonderim_ilac_log "
+                    "WHERE substr(zaman,1,10)=? GROUP BY gonderim_id",
+                    (tarih,),
+                ).fetchall()
+            }
+            toplam_ilac = c.execute(
+                "SELECT COUNT(*) AS n FROM gonderim_ilac_log "
+                "WHERE substr(zaman,1,10)=?",
+                (tarih,),
+            ).fetchone()["n"]
+            toplam_rapor = c.execute(
+                "SELECT COUNT(*) AS n FROM gonderim_rapor_log "
+                "WHERE substr(zaman,1,10)=?",
+                (tarih,),
+            ).fetchone()["n"]
+
+        hastalar: Dict[int, Dict] = {}
+        isaret_dagilim: Dict[str, int] = {}
+        for m in mesajlar:
+            h = hastalar.setdefault(
+                m["musteri_id"],
+                {"hasta_adi": m["hasta_adi"] or "?", "mesaj": 0, "ilac": 0},
+            )
+            h["mesaj"] += 1
+            h["ilac"] += int(ilac_sayilari.get(m["id"], 0) or 0)
+            etiket = (m["isaret"] or "").strip() or "(işaretsiz)"
+            isaret_dagilim[etiket] = isaret_dagilim.get(etiket, 0) + 1
+
+        return {
+            "tarih": tarih,
+            "hasta_sayisi": len(hastalar),
+            "mesaj_sayisi": len(mesajlar),
+            "ilac_kalem_sayisi": int(toplam_ilac),
+            "rapor_sayisi": int(toplam_rapor),
+            "isaret_dagilim": isaret_dagilim,
+            "hastalar": [
+                {"hasta_adi": v["hasta_adi"], "mesaj": v["mesaj"], "ilac": v["ilac"]}
+                for v in hastalar.values()
+            ],
+        }
+
+    @staticmethod
+    def gunluk_ozet_mesaji_olustur(
+        ozet: Dict, ayarlar: "HastaTakipAyarlari",
+    ) -> str:
+        """Günlük özet sözlüğünden WhatsApp mesaj metni üret."""
+        gun_adi = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
+        try:
+            t = datetime.strptime(ozet["tarih"], "%Y-%m-%d").date()
+            tarih_gosterim = f"{gun_adi[t.weekday()]} {t.strftime('%d/%m/%Y')}"
+        except Exception:
+            tarih_gosterim = ozet.get("tarih", "")
+        saat = datetime.now().strftime("%H:%M")
+
+        L = [
+            "📊 *GÜNLÜK İLAÇ MESAJ ÖZETİ*",
+            ayarlar.eczane_adi,
+            f"📅 {tarih_gosterim}  🕐 {saat}",
+            "=" * 30,
+            f"👥 Mesaj atılan hasta: {ozet['hasta_sayisi']}",
+            f"✉️ Toplam mesaj: {ozet['mesaj_sayisi']}",
+            f"💊 İlaç kalemi: {ozet['ilac_kalem_sayisi']}",
+        ]
+        if ozet.get("rapor_sayisi"):
+            L.append(f"📑 Rapor bildirimi: {ozet['rapor_sayisi']}")
+
+        dagilim = ozet.get("isaret_dagilim") or {}
+        if len(dagilim) > 1:
+            L.append("-" * 30)
+            for etiket, n in sorted(dagilim.items(), key=lambda x: -x[1]):
+                L.append(f"{etiket}: {n}")
+
+        hastalar = ozet.get("hastalar") or []
+        L.append("-" * 30)
+        if not hastalar:
+            L.append("Bugün mesaj atılmadı.")
+        else:
+            for i, h in enumerate(hastalar[:40], 1):
+                satir = f"{i}) {h['hasta_adi']} — {h['ilac']} ilaç"
+                if h["mesaj"] > 1:
+                    satir += f" ({h['mesaj']} mesaj)"
+                L.append(satir)
+            if len(hastalar) > 40:
+                L.append(f"… ve {len(hastalar) - 40} hasta daha")
+        return "\n".join(L)
+
+    def gunluk_ozet_kaydet(
+        self, ozet: Dict, mesaj_metni: str, alici_tel: str,
+        sonuc: str = "OK", slot: str = "manuel",
+    ) -> int:
+        """Günlük özetin WhatsApp'a gönderildiğini gunluk_ozet_log'a yaz.
+
+        slot: '14:00' / '19:00' gibi otomatik gönderim saati veya 'manuel'.
+        Dönüş: eklenen kaydın id'si (sonuc güncellemesi için).
+        """
+        simdi = datetime.now().isoformat(timespec="seconds")
+        with self._conn() as c:
+            cur = c.execute(
+                "INSERT INTO gunluk_ozet_log(tarih, hasta_sayisi, mesaj_sayisi, "
+                "ilac_kalem_sayisi, rapor_sayisi, alici_tel, mesaj_metni, "
+                "zaman, slot, sonuc) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (ozet["tarih"], ozet["hasta_sayisi"], ozet["mesaj_sayisi"],
+                 ozet["ilac_kalem_sayisi"], ozet["rapor_sayisi"], alici_tel,
+                 mesaj_metni, simdi, slot, sonuc),
+            )
+            return int(cur.lastrowid)
+
+    def gunluk_ozet_slot_gonderildi_mi(self, tarih_iso: str, slot: str) -> bool:
+        """Bu gün için bu saat slotunda otomatik özet zaten gönderildi mi?"""
+        with self._conn() as c:
+            r = c.execute(
+                "SELECT COUNT(*) AS n FROM gunluk_ozet_log "
+                "WHERE tarih=? AND slot=?",
+                (tarih_iso, slot),
+            ).fetchone()
+            return bool(r and r["n"])
+
+    def gunluk_ozet_sonuc_guncelle(self, ozet_id: int, sonuc: str) -> None:
+        """Otomatik gönderim sonrası kaydın sonuç bilgisini güncelle."""
+        with self._conn() as c:
+            c.execute(
+                "UPDATE gunluk_ozet_log SET sonuc=? WHERE id=?",
+                (sonuc, ozet_id),
             )

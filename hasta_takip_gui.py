@@ -134,6 +134,12 @@ class HastaTakipGUI:
             except Exception as e:
                 logger.debug(f"Otomatik oturum başlatma hatası: {e}")
 
+        # Günlük özet otomatik gönderim zamanlayıcısı (varsayılan 14:00/19:00).
+        # İlk kontrol 20 sn sonra — açılışta kaçmış slot varsa tolerans
+        # penceresi içinde telafi gönderimi yapılır.
+        self._ozet_oto_calisiyor = False
+        self.root.after(20000, self._ozet_zamanlayici_tik)
+
     # ================================================================= SEKME 1
     def _sekme_yazdirma_olustur(self) -> tk.Frame:
         """Dar ekran için iş akışına göre düzenlenmiş kompakt tasarım:
@@ -815,6 +821,53 @@ class HastaTakipGUI:
         tk.Entry(fr5, textvariable=self.var_ec_ad, width=40).grid(row=0, column=1, sticky="w", padx=4)
         tk.Label(fr5, text="Telefon:", bg="white").grid(row=1, column=0, sticky="w", pady=(4, 0))
         tk.Entry(fr5, textvariable=self.var_ec_tel, width=40).grid(row=1, column=1, sticky="w", padx=4, pady=(4, 0))
+        self.var_ozet_tel = tk.StringVar(
+            value=getattr(self.ayarlar, "gunluk_ozet_tel", "0507 947 74 23"))
+        tk.Label(fr5, text="Günlük özet alıcısı:", bg="white").grid(row=2, column=0, sticky="w", pady=(4, 0))
+        tk.Entry(fr5, textvariable=self.var_ozet_tel, width=40).grid(row=2, column=1, sticky="w", padx=4, pady=(4, 0))
+        tk.Label(
+            fr5, text="(gün sonu 'kaç hasta / kaç kalem' özet mesajının gideceği numara)",
+            bg="white", fg="#78909C", font=("Arial", 8),
+        ).grid(row=3, column=1, sticky="w", padx=4)
+
+        # Günlük özet otomatik gönderim
+        g5b = grup("Günlük Özet Otomatik Gönderim")
+        fr5b = tk.Frame(g5b, bg="white")
+        fr5b.pack(fill="x")
+        self.var_ozet_oto = tk.BooleanVar(
+            value=bool(getattr(self.ayarlar, "ozet_otomatik_aktif", True)))
+        tk.Checkbutton(
+            fr5b, text="Aktif — belirtilen saatlerde özeti otomatik gönder",
+            variable=self.var_ozet_oto, bg="white",
+        ).grid(row=0, column=0, columnspan=3, sticky="w")
+        tk.Label(fr5b, text="Saatler (virgülle):", bg="white").grid(
+            row=1, column=0, sticky="w", pady=(4, 0))
+        self.var_ozet_saatler = tk.StringVar(
+            value=getattr(self.ayarlar, "ozet_otomatik_saatler", "14:00, 19:00"))
+        tk.Entry(fr5b, textvariable=self.var_ozet_saatler, width=20).grid(
+            row=1, column=1, sticky="w", padx=4, pady=(4, 0))
+        self.var_ozet_enter = tk.BooleanVar(
+            value=bool(getattr(self.ayarlar, "ozet_otomatik_enter", True)))
+        tk.Checkbutton(
+            fr5b, text="WhatsApp Web açılınca Enter'a basarak GÖNDER "
+                       "(kapalıysa sohbet açık bırakılır)",
+            variable=self.var_ozet_enter, bg="white",
+        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        tk.Label(fr5b, text="WhatsApp yüklenme beklemesi (sn):", bg="white").grid(
+            row=3, column=0, sticky="w", pady=(4, 0))
+        self.var_ozet_bekleme = tk.IntVar(
+            value=int(getattr(self.ayarlar, "ozet_otomatik_bekleme_sn", 25) or 25))
+        tk.Spinbox(fr5b, from_=5, to=120, width=5,
+                   textvariable=self.var_ozet_bekleme).grid(
+            row=3, column=1, sticky="w", padx=4, pady=(4, 0))
+        tk.Label(
+            fr5b,
+            text="Not: Gönderim için bu uygulama açık ve Chrome'da eczane "
+                 "WhatsApp Web oturumu (0542 515 74 40) açık olmalıdır.\n"
+                 "Saat kaçırılırsa (uygulama sonradan açıldıysa) 60 dk içinde "
+                 "telafi gönderimi yapılır; aynı slot günde bir kez gönderilir.",
+            bg="white", fg="#78909C", font=("Arial", 8), justify="left",
+        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
         # Şablon
         g6 = grup("Mesaj Şablonu (placeholders: {hasta_adi} {ilac_listesi} {eczane_adi} {eczane_tel})")
@@ -1457,6 +1510,11 @@ class HastaTakipGUI:
         tk.Button(
             top, text="📤 Excel Aktar", command=self._log_excel_aktar,
             bg="#2E7D32", fg="white", bd=0, padx=12, pady=6,
+        ).pack(side="left", padx=(10, 0))
+
+        tk.Button(
+            top, text="📊 Günlük Özet → WhatsApp", command=self._gunluk_ozet_gonder,
+            bg="#25D366", fg="white", bd=0, padx=12, pady=6,
         ).pack(side="left", padx=(10, 0))
 
         self.lbl_log_sayac = tk.Label(top, text="", bg="white", fg="#455A64", font=("Arial", 9, "bold"))
@@ -3239,6 +3297,16 @@ class HastaTakipGUI:
         a.calisma_bitis = self.var_bit.get()
         a.eczane_adi = self.var_ec_ad.get()
         a.eczane_tel = self.var_ec_tel.get()
+        if hasattr(self, "var_ozet_tel"):
+            a.gunluk_ozet_tel = self.var_ozet_tel.get()
+        if hasattr(self, "var_ozet_oto"):
+            a.ozet_otomatik_aktif = bool(self.var_ozet_oto.get())
+            a.ozet_otomatik_saatler = self.var_ozet_saatler.get()
+            a.ozet_otomatik_enter = bool(self.var_ozet_enter.get())
+            try:
+                a.ozet_otomatik_bekleme_sn = int(self.var_ozet_bekleme.get())
+            except Exception:
+                pass
         a.mesaj_sablonu = self.txt_sablon.get("1.0", "end").rstrip("\n")
         a.ilac_satir_formati = self.var_satir.get()
         a.toplu_gonderim_gunu = int(self.var_gonderim_gun.get())
@@ -3361,6 +3429,230 @@ class HastaTakipGUI:
             ws.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = genislik
         wb.save(yol)
         messagebox.showinfo("Tamam", f"{len(kayitlar)} kayıt aktarıldı:\n{yol}")
+
+    def _gunluk_ozet_gonder(self):
+        """Bugünün gönderim özetini (kaç hastaya kaç kalem ilaç mesajı
+        atıldı) hazırlayıp ayarlardaki özet alıcısına WhatsApp Web'de açar.
+
+        Gönderen numara, tarayıcıda oturum açık olan eczane WhatsApp
+        hesabıdır (wa.me gönderen hesabı seçemez). Özet ayrıca
+        gunluk_ozet_log tablosuna kaydedilir.
+        """
+        from hasta_takip_kuyruk import MesajKuyrugu
+        a = self._ayarlar_snapshot()
+        try:
+            ozet = self.kuyruk.gunluk_ozet_detay()
+            mesaj = MesajKuyrugu.gunluk_ozet_mesaji_olustur(ozet, a)
+        except Exception as e:
+            logger.exception("gunluk_ozet_detay hatası")
+            messagebox.showerror("Hata", f"Günlük özet hazırlanamadı:\n{e}")
+            return
+
+        # Özet metnini alt önizleme paneline bas
+        try:
+            self.txt_log_mesaj.delete("1.0", "end")
+            self.txt_log_mesaj.insert("1.0", mesaj)
+        except Exception:
+            pass
+
+        if ozet["mesaj_sayisi"] == 0:
+            if not messagebox.askyesno(
+                "Bugün Mesaj Yok",
+                "Bugün hiç hasta mesajı atılmamış görünüyor.\n\n"
+                "Yine de boş özet gönderilsin mi?",
+            ):
+                return
+
+        tel = (getattr(a, "gunluk_ozet_tel", "") or "").strip().replace(" ", "")
+        if not tel or len(tel) < 10:
+            messagebox.showwarning(
+                "Alıcı Numara Eksik",
+                "Günlük özet alıcı telefonu tanımlı değil.\n\n"
+                "Ayarlar sekmesi → Eczane Bilgisi → 'Günlük özet alıcısı' "
+                "alanına numarayı girin.",
+            )
+            return
+        if tel.startswith("+"):
+            tel = tel[1:]
+        if tel.startswith("0"):
+            tel = "90" + tel[1:]
+        if not tel.startswith("90"):
+            tel = "90" + tel
+
+        url = f"https://wa.me/{tel}?text={urllib.parse.quote(mesaj)}"
+        chrome_acildi = self._chrome_ile_ac(url)
+        try:
+            self.kuyruk.gunluk_ozet_kaydet(
+                ozet, mesaj, getattr(a, "gunluk_ozet_tel", ""), "OK")
+        except Exception:
+            logger.exception("gunluk_ozet_kaydet hatası")
+        ek = "" if chrome_acildi else " (Chrome bulunamadı — varsayılan tarayıcı açıldı)"
+        self.durum_bar.config(
+            text=f"📊 Günlük özet WhatsApp'ta açıldı → {getattr(a, 'gunluk_ozet_tel', '')} "
+                 f"({ozet['hasta_sayisi']} hasta / {ozet['ilac_kalem_sayisi']} kalem ilaç).{ek}"
+        )
+
+    # -----------------------------------------------------------------
+    # Günlük özet — OTOMATİK zamanlanmış gönderim (14:00 / 19:00)
+    # -----------------------------------------------------------------
+    @staticmethod
+    def _ozet_tel_normalize(tel: str) -> str:
+        """'0507 947 74 23' → '905079477423'. Geçersizse boş döner."""
+        tel = (tel or "").strip().replace(" ", "")
+        if not tel or len(tel) < 10:
+            return ""
+        if tel.startswith("+"):
+            tel = tel[1:]
+        if tel.startswith("0"):
+            tel = "90" + tel[1:]
+        if not tel.startswith("90"):
+            tel = "90" + tel
+        return tel
+
+    @staticmethod
+    def _on_pencere_basligi() -> str:
+        """Öndeki (foreground) pencerenin başlığını döndür."""
+        try:
+            import win32gui
+            return win32gui.GetWindowText(win32gui.GetForegroundWindow()) or ""
+        except Exception:
+            pass
+        try:
+            import ctypes
+            h = ctypes.windll.user32.GetForegroundWindow()
+            buf = ctypes.create_unicode_buffer(512)
+            ctypes.windll.user32.GetWindowTextW(h, buf, 512)
+            return buf.value or ""
+        except Exception:
+            return ""
+
+    def _ozet_zamanlayici_tik(self):
+        """30 sn'de bir çalışan zamanlayıcı — sırası gelen slotu tetikler."""
+        try:
+            self._ozet_zamanlayici_kontrol()
+        except Exception:
+            logger.exception("Günlük özet zamanlayıcı hatası")
+        finally:
+            try:
+                self.root.after(30000, self._ozet_zamanlayici_tik)
+            except Exception:
+                pass  # pencere kapatılıyor
+
+    def _ozet_zamanlayici_kontrol(self):
+        a = self.ayarlar
+        if not getattr(a, "ozet_otomatik_aktif", False):
+            return
+        if self._ozet_oto_calisiyor:
+            return
+        simdi = datetime.now()
+        bugun = date.today().isoformat()
+        tolerans = int(getattr(a, "ozet_otomatik_tolerans_dk", 60) or 0)
+        saatler = (getattr(a, "ozet_otomatik_saatler", "") or "")
+        for parca in saatler.split(","):
+            parca = parca.strip()
+            if not parca:
+                continue
+            try:
+                h, m = parca.split(":")
+                hedef = simdi.replace(hour=int(h), minute=int(m),
+                                      second=0, microsecond=0)
+            except Exception:
+                logger.warning("Özet saati çözümlenemedi: %r", parca)
+                continue
+            if not (hedef <= simdi <= hedef + timedelta(minutes=tolerans)):
+                continue
+            slot = f"{int(h):02d}:{int(m):02d}"
+            if self.kuyruk.gunluk_ozet_slot_gonderildi_mi(bugun, slot):
+                continue
+            self._gunluk_ozet_otomatik_gonder(slot)
+            break  # tek tikte tek slot
+
+    def _gunluk_ozet_otomatik_gonder(self, slot: str):
+        """Slot saati geldi: özeti hazırla, WhatsApp Web'de aç, Enter'la gönder.
+
+        Kayıt, Enter basılmadan ÖNCE atılır — böylece sonraki tiklerde aynı
+        slot tekrar tetiklenmez. Enter sonucu kayda sonradan işlenir.
+        """
+        self._ozet_oto_calisiyor = True
+        try:
+            a = self.ayarlar
+            ozet = self.kuyruk.gunluk_ozet_detay()
+            mesaj = MesajKuyrugu.gunluk_ozet_mesaji_olustur(ozet, a)
+            alici = getattr(a, "gunluk_ozet_tel", "") or ""
+            tel = self._ozet_tel_normalize(alici)
+            if not tel:
+                # Alıcı yok — kaydı yine at ki her 30 sn'de tekrar denemesin
+                self.kuyruk.gunluk_ozet_kaydet(
+                    ozet, mesaj, alici, sonuc="ALICI NUMARA YOK", slot=slot)
+                self.durum_bar.config(
+                    text=f"📊 {slot} özeti gönderilemedi: alıcı numara tanımsız "
+                         "(Ayarlar → Günlük özet alıcısı).")
+                self._ozet_oto_calisiyor = False
+                return
+
+            # web.whatsapp.com/send: wa.me ara sayfasını atlar, sohbeti
+            # metin dolu açar — Enter ile gönderime hazır.
+            url = (f"https://web.whatsapp.com/send?phone={tel}"
+                   f"&text={urllib.parse.quote(mesaj)}")
+            self._chrome_ile_ac(url)
+            ozet_id = self.kuyruk.gunluk_ozet_kaydet(
+                ozet, mesaj, alici, sonuc="ACILDI (Enter bekleniyor)", slot=slot)
+            self.durum_bar.config(
+                text=f"📊 {slot} günlük özeti WhatsApp Web'de açıldı → {alici} "
+                     f"({ozet['hasta_sayisi']} hasta / "
+                     f"{ozet['ilac_kalem_sayisi']} kalem ilaç).")
+
+            if getattr(a, "ozet_otomatik_enter", True):
+                threading.Thread(
+                    target=self._ozet_enter_bas, args=(ozet_id, slot),
+                    daemon=True,
+                ).start()
+            else:
+                self.kuyruk.gunluk_ozet_sonuc_guncelle(
+                    ozet_id, "ACIK BIRAKILDI (elle gönderin)")
+                self._ozet_oto_calisiyor = False
+        except Exception:
+            logger.exception("Günlük özet otomatik gönderim hatası")
+            self._ozet_oto_calisiyor = False
+
+    def _ozet_enter_bas(self, ozet_id: int, slot: str):
+        """WhatsApp Web yüklenince Enter'a basıp mesajı gönder (arka plan).
+
+        Güvenlik: Enter yalnızca öndeki pencere başlığında 'WhatsApp'
+        geçiyorsa basılır — kullanıcı başka pencerede yazıyorsa dokunulmaz,
+        sohbet açık bırakılır ve elle gönderilmesi istenir.
+        """
+        import time
+        basarili = False
+        try:
+            bekleme = int(getattr(self.ayarlar, "ozet_otomatik_bekleme_sn", 25) or 25)
+            time.sleep(max(5, bekleme))
+            for _ in range(6):  # 6 deneme x 3 sn = 18 sn ek pencere
+                baslik = self._on_pencere_basligi()
+                if "whatsapp" in baslik.lower():
+                    try:
+                        import pyautogui
+                        pyautogui.press("enter")
+                        basarili = True
+                    except Exception:
+                        logger.exception("pyautogui Enter basılamadı")
+                    break
+                time.sleep(3)
+            sonuc = ("OTOMATIK GONDERILDI" if basarili
+                     else "ENTER BASILAMADI (elle gönderin)")
+            try:
+                self.kuyruk.gunluk_ozet_sonuc_guncelle(ozet_id, sonuc)
+            except Exception:
+                logger.exception("gunluk_ozet_sonuc_guncelle hatası")
+            metin = (f"📊 {slot} günlük özeti otomatik gönderildi. ✅" if basarili
+                     else f"📊 {slot} özeti: WhatsApp penceresi önde değildi — "
+                          "sohbet açık, mesajı elle gönderin.")
+            try:
+                self.root.after(0, lambda t=metin: self.durum_bar.config(text=t))
+            except Exception:
+                pass
+        finally:
+            self._ozet_oto_calisiyor = False
 
     def _log_sagtik(self, event):
         rid = self.tv_log.identify_row(event.y)
