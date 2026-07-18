@@ -5,8 +5,71 @@
 > Çalışılmış pilot: YOAK 4.2.15.D (bkz. `docs/SUT_MANTIK_SEMA_PROTOKOLU.md`).
 > Bu belge `recete_kontrol/hepatit_kontrol.py` (3381 satır) implementasyonunun
 > **donmuş tasarım belgesi**dir. Mevzuat değişirse buradan başlanır.
-> Versiyon: 2026-05-23 (revize 3 — başlangıç/devam dallanması + Y1 PIF üst-VEYA fix + ASCII akım şemaları)
-> Test sayısı: `test_hepatit_atomik.py` 16/16 ∧ `test_hepatit_baslangic_devam.py` 21/21 = 37/37 pass
+> Versiyon: 2026-07-12 (revize 4 — DENETİM DÜZELTMELERİ, aşağıya bakınız)
+> Test sayısı: `test_hepatit_atomik.py` 16/16 ∧ `test_hepatit_baslangic_devam.py` 21/21
+> ∧ `test_hepatit_denetim_2026_07.py` 9/9 = 46/46 pass
+
+---
+
+## ⚠️ 2026-07-12 DENETİM DÜZELTMELERİ (revize 4)
+
+Tam yolak denetiminde bulunan YANLIŞ-ONAY (false-positive) hataları düzeltildi.
+Kök neden: düz `ust_or_ciftleri` + grup-içi `veya_grubu` modeli "VEYA-kolu-içinde-VE"
+(`(A∧B)∨(C∧D)`) ifade edemiyordu; bir gruptaki tek `veya_grubu=True` atom TÜM
+grubu OR'a çeviriyordu (`_hep_genel_sonuc:veya_flag=any(...)`).
+
+**Çözüm:** iç-içe dallar Python'da tek verdict atomuna indirgeniyor
+(`_hep_and_durum` / `_hep_or_durum` / `_hep_esik_durum` / `_hep_uc_deger`);
+detay koşulları `(bilgi)` gruplarında şema görünürlüğü için tutuluyor.
+
+| # | Yolak | Hata → Düzeltme |
+|---|-------|-----------------|
+| K1 | Y9/Y10 | Rejim OR'u endikasyon kilidini bypass ediyordu (dekompanse+SVV → UYGUN). Her dal (hasta grubu ∧ rejim) tek atomda AND ile çözülüyor. |
+| B1 | Y1 | (1)(a)(2) `ALT ∧ (FIB-4∨APRI)` zinciri düz 3'lü OR'a düşmüştü (ALT tek başına geçiyordu). Yol-a tek atom: `DNA≥2000 ∧ [(HAI≥6∨fib≥2) ∨ (ALT>ÜS∧(FIB4∨APRI))]`. |
+| PIF | Y1 | Pegile IFN kolu (1)(a/b)'ye alternatif OR'du. Artık ek-AND: `(1)(a) endikasyon ∧ (2)(a)`; yol-b (oral-only) PIF için kapalı. |
+| Y6 | Akut B | `INR∨PT∨sarılık` üçlü OR idi. Düzeltildi: `(INR≥1,5 ∨ PT>4sn) ∧ (sarılık>4hafta)`. |
+| Y2 | Çocuk B | İlaç-yaş uyumu sadece bilgi atomuydu (10 yaşa ETV UYGUN). Sert atom: ETV 16-18 / TDF-TAF 12-18 / LAM 2-18 dışı → YOK. |
+| K2 | Y9/Y10 | Dekompanse kanıt (asit∨ensefalopati∨bilirubin>3∨varis) parse edilmiyordu → `_hep_dekompanse_kanit` dala AND. |
+| O1 | Y9/Y10 | Kompanse biyopsisiz kriteri (trombosit<150k∨PT≥3sn) HCV'de yoktu → `_hep_kompanse_biyopsisiz_kanit`. |
+| K3 | Y10/11/12 | 2./3. basamak (madde 5) yalnız Y9'daydı → tüm HCV yolaklarına eklendi. |
+| K4 | Y10 | NS5A türü belirsizken "almamış" (izinli dal) örtük kabul ediliyordu → `tur_belirsiz` bayrağı, belirsizde KE. |
+| Y7 | Delta | HBV DNA bulunamayınca YOK (hard-fail) idi → KE (Anti-HDV ile simetrik). |
+| Y4 | İmmünsüp | Rapor tarih/sayı reçetede şartı (madde 1) için atom eklendi. |
+| O3 | Y10 | Yaş bilinmiyorken erişkin atomu düşüyordu → KE atomu (Y9 ile simetrik). |
+| — | test | `test_hepatit_baslangic_devam.py` bozuk import'u (`_hep_atom_etken_devam` → `_hep_etken_degisim_atomlari` refactor'ı) düzeltildi. |
+
+Not: `hep_parse_fib4/apri/...` gibi sayısal parser'lar `[\d\.,]+` greedy olduğundan
+cümle-sonu noktasını ("FIB-4: 1.0.") sayıya katıp None dönebilir — bilinen küçük
+sağlamlık boşluğu, bu denetim kapsamı dışında (ayrı iş).
+
+### 🔍 İlaç Geçmişini Raporlardan Tara (SUT 4.2.13.1/4 belirsizliği)
+
+DEVAM reçetelerinde "/4 aktif etken önceki tedaviyle aynı mı" atomu, önceki HBV
+oral etkeni bilinmediğinde KE (şüpheli) kalır. Kaynak sınırları: Medula ilaç
+geçmişi ~1 yıl; kendi-eczane EOS yalnız bu eczane. Raporlar eczane-ötesi ve
+kalıcı olduğundan çözüm rapor taramasıdır:
+
+- **Çekirdek:** `hepatit_onceki_etken_raporlardan(tc, ilac, etken, aktif_rapor_tarih)`
+  → `rapor_etken_madde_tablosu.hasta_etken_tablo` ile tüm raporların "Rapor Etkin
+  Madde Bilgileri" bölümünü tarar, önceki HBV oral etkeni + alt-tip + tarih
+  döndürür, aktifle karşılaştırır (`ayni_mi`), `gecmis_etken_gerekce` üretir.
+- **Enjeksiyon:** `ilac_sonuc['_gecmis_etken_override']` → `_hep_recete_tipi_tespit`
+  bunu `extra['gecmis_etken']` yapar (DB/EOS'tan öncelikli) → /4 atomu KE'den çıkar.
+- **GUI:** sağ tık "🔍 İlaç Geçmişini Raporlardan Tara" + "🔍 Raporlardan Etken"
+  butonu → sonuç diyaloğu + "Uygula → Kontrolü Yenile" (override enjekte edip tek
+  satır yeniden denetlenir). Rapor cache boşsa "🩺 MEDULA Geçmiş Raporlarını Tara"ya
+  yönlendirir.
+- Test: `test_hepatit_rapor_tarama.py` 8/8.
+
+**Batch EOS ikinci geçişi:** "🦠 HEPATİT B/C" toplu kontrolü ilk geçişte
+hasta_tc taşımaz (EOS sorgusuyla batch yavaşlamasın). Sonuç **ŞÜPHELİ** ya da
+**DEVAM/BELİRSİZ** olan satırlarda hasta_tc (+rapor_ana_id) enjekte edilip
+kontrol tekrar çalıştırılır → `_hep_recete_tipi_tespit` EOS Sinyal 4 (RaporAna
+karşılaştırması) + DB drug-history (Sinyal 1/3) çalışır, başlangıç/devam ve /4
+önceki-etken netleşir. Yalnız bu satırlar EOS maliyeti öder; EOS hatasında ilk
+sonuç korunur (`aylik_recete_sorgu_gui.py:_hepatit_kontrol_baslat`). Kendi
+eczane dışı/eski tedaviler EOS'ta yoksa manuel "🔍 Raporlardan Etken" komutu
+devreye girer.
 
 ---
 

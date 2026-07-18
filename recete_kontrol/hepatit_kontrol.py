@@ -813,6 +813,134 @@ def _hep_eos_gecmis_sorgu(hasta_tc: str,
         return (None, f'EOS sorgu hatası: {e}')
 
 
+def hepatit_onceki_etken_raporlardan(hasta_tc: str,
+                                     aktif_ilac_adi: str = '',
+                                     aktif_etken: str = '',
+                                     aktif_rapor_tarih: str = '',
+                                     kategori: str = 'HEPATIT_B') -> Dict:
+    """Hastanın TÜM raporlarını tarayıp önceki HBV oral etken maddelerini bulur
+    ve aktif etkenle karşılaştırır (SUT 4.2.13.1/4 "aktif etken önceki tedaviyle
+    aynı mı" belirsizliğini giderir).
+
+    Neden raporlar? Medula ilaç geçmişi yalnız ~1 yıl, kendi-eczane EOS yalnız
+    bu eczanede satılanları gösterir. Rapor "Rapor Etkin Madde Bilgileri"
+    bölümü ise kalıcı ve eczane-ötesi kayıttır → başka eczanede/1 yıldan önce
+    başlanan tedavi ancak raporlardan tespit edilebilir.
+
+    Veri kaynağı: `rapor_etken_madde_tablosu.hasta_etken_tablo` (yerel
+    `hasta_rapor_gecmisi.db` — önce '🩺 MEDULA Geçmiş Raporlarını Tara' ile
+    doldurulmalı).
+
+    Returns dict:
+        basarili        — rapor tablosu okunabildi mi
+        rapor_var       — hastaya ait rapor bulundu mu
+        onceki_etkenler — [{etken, alt_tip, tarih, rapor_kodu, rapor_no}] (yeni→eski)
+        aktif_alt_tip   — 'TAF'|'TDF'|'ETV'|'LAM'|'TLB'|'ADV'|''
+        onceki_alt_tip  — en son önceki HBV oral alt-tipi (yoksa '')
+        ayni_mi         — True (aynı) | False (değişmiş) | None (önceki yok/belirsiz)
+        gecmis_etken_gerekce — _hep_etken_degisim_atomlari uyumlu string ('' ise yok)
+        mesaj           — insan-okur özet
+    """
+    sonuc: Dict = {
+        'basarili': False, 'rapor_var': False, 'onceki_etkenler': [],
+        'aktif_alt_tip': '', 'onceki_alt_tip': '', 'ayni_mi': None,
+        'gecmis_etken_gerekce': '', 'mesaj': '',
+    }
+    if not hasta_tc:
+        sonuc['mesaj'] = 'Hasta TC yok — rapor taraması yapılamadı'
+        return sonuc
+
+    aktif_alt = _hbv_oral_etken_alt_tip(aktif_ilac_adi or '', aktif_etken or '')
+    sonuc['aktif_alt_tip'] = aktif_alt
+
+    try:
+        from recete_kontrol.rapor_etken_madde_tablosu import hasta_etken_tablo
+        satirlar = hasta_etken_tablo(hasta_tc)
+    except Exception as e:
+        logger.debug('hepatit rapor tarama hatası: %s', e)
+        sonuc['mesaj'] = (f'Rapor tablosu okunamadı: {e}. Önce "🩺 MEDULA '
+                          f'Geçmiş Raporlarını Tara" çalıştırın.')
+        return sonuc
+
+    sonuc['basarili'] = True
+    if not satirlar:
+        sonuc['mesaj'] = (
+            'Bu hastaya ait yerel rapor kaydı yok. Önce sağ tık → "🩺 MEDULA '
+            'Geçmiş Raporlarını Tara" ile hastanın raporlarını indirin, sonra '
+            'bu taramayı tekrar çalıştırın.')
+        return sonuc
+    sonuc['rapor_var'] = True
+
+    aktif_key = _tarih_sort_key_hep(aktif_rapor_tarih)
+    onceki: List[Dict] = []
+    for s in satirlar:
+        et = (getattr(s, 'etken_madde', '') or '').strip()
+        if not et or et.upper() == '(PARSE EDILEMEDI)':
+            continue
+        alt = _hbv_oral_etken_alt_tip('', et)
+        if not alt:
+            continue  # HBV oral antiviral değil (HCV/başka etken)
+        satir_key = _tarih_sort_key_hep(getattr(s, 'tarih', ''))
+        # Aktif rapor tarihi verildiyse ondan önceki/farklı raporları al
+        if aktif_key != '00000000' and satir_key >= aktif_key:
+            continue
+        onceki.append({
+            'etken': et,
+            'alt_tip': alt,
+            'tarih': getattr(s, 'tarih', '') or '',
+            'rapor_kodu': getattr(s, 'rapor_kodu', '') or '',
+            'rapor_no': getattr(s, 'rapor_no', '') or '',
+        })
+
+    # Yeni → eski sırala
+    onceki.sort(key=lambda d: _tarih_sort_key_hep(d['tarih']), reverse=True)
+    sonuc['onceki_etkenler'] = onceki
+
+    if not onceki:
+        sonuc['mesaj'] = (
+            'Hastanın raporlarında (aktif rapor öncesinde) HBV oral antiviral '
+            'etkeni bulunamadı. Bu ilk tedavi olabilir ya da önceki tedavi '
+            'raporlara yansımamış olabilir — eczacı doğrulamalı.')
+        return sonuc
+
+    en_son = onceki[0]
+    sonuc['onceki_alt_tip'] = en_son['alt_tip']
+    sonuc['gecmis_etken_gerekce'] = f"raporlar:{en_son['tarih']} {en_son['etken']}"
+
+    if aktif_alt and en_son['alt_tip']:
+        sonuc['ayni_mi'] = (aktif_alt == en_son['alt_tip'])
+
+    liste_txt = '\n'.join(
+        f"  • {d['tarih']}  {d['etken']} ({d['alt_tip']})"
+        f"{('  [rapor ' + d['rapor_kodu'] + ']') if d['rapor_kodu'] else ''}"
+        for d in onceki)
+    if sonuc['ayni_mi'] is True:
+        karar = (f"AYNI ETKEN — en son önceki tedavi {en_son['alt_tip']}, "
+                 f"aktif {aktif_alt}. SUT 4.2.13.1/4 etken değişim kuralları "
+                 f"aranmaz.")
+    elif sonuc['ayni_mi'] is False:
+        karar = (f"ETKEN DEĞİŞMİŞ — önceki {en_son['alt_tip']} → aktif "
+                 f"{aktif_alt}. SUT 4.2.13.1/4 değişim gerekçesi raporda "
+                 f"aranmalı.")
+    else:
+        karar = (f"Aktif ilaç alt-tipi belirlenemedi ({aktif_ilac_adi} / "
+                 f"{aktif_etken}) — karşılaştırma eczacı doğrulamalı.")
+    sonuc['mesaj'] = (
+        f"Raporlardan tespit edilen önceki HBV oral etken(ler):\n{liste_txt}"
+        f"\n\n➤ {karar}")
+    return sonuc
+
+
+def _tarih_sort_key_hep(tarih_str: str) -> str:
+    """DD/MM/YYYY veya DD.MM.YYYY → YYYYMMDD sort key ('00000000' if none)."""
+    if not tarih_str:
+        return '00000000'
+    m = re.match(r'(\d{1,2})[./](\d{1,2})[./](\d{4})', str(tarih_str).strip())
+    if not m:
+        return '00000000'
+    return f'{m.group(3)}{m.group(2).zfill(2)}{m.group(1).zfill(2)}'
+
+
 def hep_onceki_hcv_tedavi_var_mi(metin_lower: str,
                                   ilac_sonuc: Dict
                                   ) -> Tuple[SartDurumu, str, Dict]:
@@ -825,7 +953,10 @@ def hep_onceki_hcv_tedavi_var_mi(metin_lower: str,
                             eczane olabilir)
     """
     detay = {'kaynak': '', 'ns5a': False, 'proteaz': False, 'ifn': False,
-             'sof': False, 'naive_lafzen': False, 'yerel_db_bulundu': None}
+             'sof': False, 'naive_lafzen': False, 'yerel_db_bulundu': None,
+             # K4: deneyimli ama önceki tedavi TÜRÜ (NS5A/proteaz) belirsiz mi?
+             # True iken ns5a/proteaz False'ları "almamış" gibi yorumlanamaz.
+             'tur_belirsiz': False}
 
     # 1. Rapor lafzen "naive / ilk tedavi / daha önce almamış"
     if re.search(r'(?:daha\s+önce\s+(?:tedavi\s+)?almam|naive|tedavi\s+almamış|'
@@ -861,10 +992,11 @@ def hep_onceki_hcv_tedavi_var_mi(metin_lower: str,
                 f"NS5A={detay['ns5a']}, Proteaz={detay['proteaz']}, "
                 f"IFN={detay['ifn']}, SOF={detay['sof']}", detay)
 
-    # 5. Lafzen "tedavi deneyimli / tedavi sonrası nüks"
+    # 5. Lafzen "tedavi deneyimli / tedavi sonrası nüks" — tür belirsiz (K4)
     if re.search(r'(?:tedavi\s*deneyimli|tedavi\s*sonrası\s*nüks|'
                  r'önceki\s*tedavi|relapse)', metin_lower):
         detay['kaynak'] = 'rapor_metni'
+        detay['tur_belirsiz'] = True
         return (SartDurumu.VAR,
                 'Rapor: "tedavi deneyimli/nüks" ibaresi (önceki tedavi türü '
                 'belirsiz — manuel doğrulanmalı)', detay)
@@ -879,6 +1011,7 @@ def hep_onceki_hcv_tedavi_var_mi(metin_lower: str,
     detay['yerel_db_bulundu'] = db_var
     if db_var is True:
         detay['kaynak'] = 'kendi_eczane_db'
+        detay['tur_belirsiz'] = True  # K4: DB önceki tedaviyi gösterir, türü değil
         return (SartDurumu.VAR, f'Yerel eczane DB: {db_neden}', detay)
     if db_var is False:
         # Yerel DB'de yok ama başka eczaneden alınmış olabilir → KE
@@ -1223,6 +1356,18 @@ def _hep_recete_tipi_tespit(ilac_sonuc: Dict, kategori: str,
     hasta_tc = (ilac_sonuc.get('hasta_tc') or '').strip()
 
     # ════════════════════════════════════════════════════════════════════
+    # Önceki-etken override — "🔍 İlaç Geçmişini Raporlardan Tara" komutu
+    # (hepatit_onceki_etken_raporlardan) sonucunu enjekte eder. Raporlardan
+    # tespit edilen önceki HBV oral etkeni, DB/EOS sorgusundan daha güvenilir
+    # (eczane-ötesi + 1 yıl sınırsız) olduğundan kararı bağlar.
+    # ════════════════════════════════════════════════════════════════════
+    gecmis_override = (ilac_sonuc.get('_gecmis_etken_override') or '').strip()
+    if gecmis_override:
+        extra['gecmis_etken'] = gecmis_override
+        extra['sinyaller'].insert(
+            0, f'Rapor taraması (önceki etken): {gecmis_override}')
+
+    # ════════════════════════════════════════════════════════════════════
     # Sinyal 4 — Botanik EOS RaporAna karşılaştırması (EN ÖNCELİKLİ)
     # ════════════════════════════════════════════════════════════════════
     # Hastanın bu etken için EOS'taki tüm DISTINCT raporlarını çek; aktif
@@ -1303,7 +1448,7 @@ def _hep_recete_tipi_tespit(ilac_sonuc: Dict, kategori: str,
     elif kategori == 'HEPATIT_D':
         etken_anahtarlari = (HBV_ORAL_ETKEN + HBV_ORAL_TICARI
                               + PEG_IFN_ETKEN + PEG_IFN_TICARI)
-    if etken_anahtarlari:
+    if etken_anahtarlari and not extra['gecmis_etken']:
         bulundu, gerekce = _hep_gecmis_db_sorgu(hasta_tc, etken_anahtarlari)
         if bulundu is True:
             extra['gecmis_etken'] = gerekce
@@ -1490,8 +1635,12 @@ def _hep_etken_degisim_atomlari(ilac_adi_upper: str, etkin_upper: str,
         return [SartSonuc(
             'Aktif etken — önceki tedaviyle aynı mı?',
             SartDurumu.KONTROL_EDILEMEDI,
-            'Hasta drug history sorgulanamadı — önceki HBV oral etkeni '
-            'bilinmiyor; etken aynıysa /4 değişim kuralları aranmaz',
+            'Önceki HBV oral etkeni bilinmiyor (yerel DB + kendi-eczane EOS '
+            'boş; Medula ilaç geçmişi ~1 yıl ile sınırlı — hasta başka '
+            'eczanede/1 yıldan önce başlamış olabilir). ÇÖZÜM: reçeteye sağ '
+            'tık → "🔍 İlaç Geçmişini Raporlardan Tara" ile hastanın önceki '
+            'raporlarındaki hepatit etkenini tespit edin (raporlar eczane-ötesi '
+            've kalıcı kayıttır). Etken aynıysa /4 değişim kuralları aranmaz.',
             'hasta_gecmisi',
             grup='(4) Tedavi devamı/değişim (SUT 4.2.13.1/4)',
             sartli_atom=True)]
@@ -2010,6 +2159,103 @@ def _hep_grup_durumu(grup_sartlar: List[SartSonuc],
     return SartDurumu.VAR
 
 
+def _hep_kompanse_biyopsisiz_kanit(metin_lower: str) -> SartDurumu:
+    """SUT 4.2.13.3.2(2) — Kompanse (Child A) sirozda histopatolojik tanı
+    yoksa trombosit <150.000 VEYA PT ≥3 sn koşulu aranır.
+
+    VAR: biyopsi/histopatoloji VAR ∨ trombosit<150k ∨ PT≥3sn.
+    Aksi (sessiz / kriter sağlanmıyor) → KE (biyopsi başka yerde olabilir,
+    hard-fail etme; eczacı doğrular).
+    """
+    if re.search(r'(?:biyopsi|histopatoloj|histoloj)', metin_lower):
+        return SartDurumu.VAR
+    trom = hep_parse_trombosit(metin_lower)
+    pt = hep_parse_pt_uzun(metin_lower)
+    if (trom is not None and trom < 150000) or (pt is not None and pt >= 3.0):
+        return SartDurumu.VAR
+    return SartDurumu.KONTROL_EDILEMEDI
+
+
+def _hep_dekompanse_kanit(metin_lower: str) -> SartDurumu:
+    """SUT 4.2.13.3.2(3) — Dekompanse (Child B/C) sirozda: asit sıvısı VEYA
+    hepatik ensefalopati VEYA sarılık (total bilirubin >3 mg/dl) VEYA özofagus
+    varis kanaması koşullarından biri aranır.
+
+    VAR: dört kanıttan biri tespit edildi. Aksi (sessiz) → KE (manuel).
+    """
+    if re.search(r'(?:\basit\b|assit|hepatik\s*ensefalopati|ensefalopati|'
+                 r'[öo]zofag[uü]s\s*varis|varis\s*kanama)', metin_lower):
+        return SartDurumu.VAR
+    # total bilirubin > 3 mg/dl
+    m = re.search(r'(?:total\s*)?bilirubin[^0-9]{0,25}(\d+(?:[.,]\d+)?)',
+                  metin_lower)
+    if m:
+        val = _hep_sayi_oku(m.group(1))
+        if val is not None and val > 3.0:
+            return SartDurumu.VAR
+    return SartDurumu.KONTROL_EDILEMEDI
+
+
+def _hep_and_durum(*durumlar: SartDurumu) -> SartDurumu:
+    """Üç-değerli mantıksal VE (AND) — bir dal içi koşulları birleştirir.
+
+    NA sayılmaz. YOK varsa YOK; yoksa KE varsa KE; hepsi VAR ise VAR.
+    Boş / tümü NA → NA. 'VEYA-kolu-içinde-VE' yapısını (K1/Y1) tek verdict
+    atomuna indirgemek için kullanılır — aggregator grup modeli iç-içe
+    OR/AND tutamadığından dal durumu burada çözülür.
+    """
+    ds = [d for d in durumlar if d != SartDurumu.NA]
+    if not ds:
+        return SartDurumu.NA
+    if any(d == SartDurumu.YOK for d in ds):
+        return SartDurumu.YOK
+    if any(d == SartDurumu.KONTROL_EDILEMEDI for d in ds):
+        return SartDurumu.KONTROL_EDILEMEDI
+    return SartDurumu.VAR
+
+
+def _hep_or_durum(*durumlar: SartDurumu) -> SartDurumu:
+    """Üç-değerli mantıksal VEYA (OR). NA sayılmaz. VAR varsa VAR; yoksa KE
+    varsa KE; hepsi YOK ise YOK. Boş/tümü NA → NA."""
+    ds = [d for d in durumlar if d != SartDurumu.NA]
+    if not ds:
+        return SartDurumu.NA
+    if any(d == SartDurumu.VAR for d in ds):
+        return SartDurumu.VAR
+    if any(d == SartDurumu.KONTROL_EDILEMEDI for d in ds):
+        return SartDurumu.KONTROL_EDILEMEDI
+    return SartDurumu.YOK
+
+
+def _hep_esik_durum(deger: Optional[float], esik: float,
+                    op: str = '>=') -> SartDurumu:
+    """Sayısal eşik → üç-değerli durum. None → KE. op: '>=' | '>' | '<' | '<='."""
+    if deger is None:
+        return SartDurumu.KONTROL_EDILEMEDI
+    if op == '>=':
+        ok = deger >= esik
+    elif op == '>':
+        ok = deger > esik
+    elif op == '<':
+        ok = deger < esik
+    elif op == '<=':
+        ok = deger <= esik
+    else:
+        return SartDurumu.KONTROL_EDILEMEDI
+    return SartDurumu.VAR if ok else SartDurumu.YOK
+
+
+def _hep_uc_deger(is_match: bool, biliniyor: bool) -> SartDurumu:
+    """Bir alt-koşulu üç-değerli durumla ifade et.
+
+    is_match True → VAR; değilse: durum biliniyorsa YOK (net değil),
+    bilinmiyorsa KONTROL_EDILEMEDI (sessiz → manuel; örtük kabul yasağı).
+    """
+    if is_match:
+        return SartDurumu.VAR
+    return SartDurumu.YOK if biliniyor else SartDurumu.KONTROL_EDILEMEDI
+
+
 def _hep_genel_sonuc(sartlar: List[SartSonuc], detaylar: Dict,
                       sut_kurali: str,
                       ust_or_ciftleri: Optional[List[Tuple[str, ...]]] = None,
@@ -2176,140 +2422,106 @@ def _hep_yolak1_eriskin_b(metin_lower: str, teshis_metin: str,
     # BAŞLANGIÇ atomları — SUT 4.2.13.1/1, /1.b, /3, /2 (pegile IFN eşik)
     # ════════════════════════════════════════════════════════════════════
     if show_baslangic_atomlari:
-        # YOL-a — HBV DNA + (histoloji ∨ ALT yol)
-        g_a = f'(1)(a) HBV DNA + histoloji/ALT [yol-a]{bilgi_suffix}'
-        # HBV DNA ≥ 10.000 kopya/ml ≈ 2.000 IU/ml
-        if hbv_dna is None:
-            sartlar.append(SartSonuc(
-                'HBV DNA ≥ 2.000 IU/ml (10.000 kopya/ml)',
-                SartDurumu.KONTROL_EDILEMEDI,
-                'HBV DNA değeri rapordan parse edilemedi',
-                'rapor_metni', grup=g_a, sartli_atom=True))
-        elif hbv_dna < 0:
-            sartlar.append(SartSonuc(
-                'HBV DNA ≥ 2.000 IU/ml (10.000 kopya/ml)',
-                SartDurumu.KONTROL_EDILEMEDI,
-                'HBV DNA pozitif belirtilmiş ama sayısal değer yok — eşik '
-                'aşımı manuel doğrulanmalı',
-                'rapor_metni', grup=g_a, sartli_atom=True))
-        else:
-            sartlar.append(_hep_atom_sayisal_esik(
-                hbv_dna, 2000.0, '>=',
-                'HBV DNA ≥ 2.000 IU/ml (10.000 kopya/ml)',
-                grup=g_a, birim=' IU/ml'))
-
-        # Histoloji yolu: HAI ≥ 6 VEYA fibrozis ≥ 2
+        # ── Ham parse değerleri
         hai = hep_parse_hai(metin_lower)
         fibroz = hep_parse_fibrozis(metin_lower)
-        g_a_hist = f'(1)(a)(1) Histoloji (HAI≥6 ∨ fibrozis≥2) [yol-a-hist]{bilgi_suffix}'
-        sartlar.append(_hep_atom_sayisal_esik(
-            hai, 6.0, '>=', 'HAI ≥ 6 (Histolojik Aktivite İndeksi)',
-            grup=g_a_hist, veya_grubu=True))
-        sartlar.append(_hep_atom_sayisal_esik(
-            fibroz, 2.0, '>=', 'Fibrozis ≥ 2',
-            grup=g_a_hist, veya_grubu=True))
-
-        # ALT yolu: 3 ay arayla ALT yüksek + (FIB-4 > 1.45 VEYA APRI > 0.5)
         alt_yuksek = hep_parse_alt_yuksek(metin_lower)
         alt_orani = hep_parse_alt_ust_sinir_orani(metin_lower)
         fib4 = hep_parse_fib4(metin_lower)
         apri = hep_parse_apri(metin_lower)
-
+        hbeag = hep_parse_hbeag(metin_lower)
         uc_ay = bool(re.search(
-            r'3\s*ay\s*ara|üç\s*ay\s*ara|3\s*ay\s*sonra\s*tekrar',
-            metin_lower))
+            r'3\s*ay\s*ara|üç\s*ay\s*ara|3\s*ay\s*sonra\s*tekrar', metin_lower))
 
-        g_a_alt = (f'(1)(a)(2) ALT yüksek + (FIB-4>1.45 ∨ APRI>0.5) '
-                   f'[yol-a-alt]{bilgi_suffix}')
+        # ── Detay atomları — şema görünürlüğü için (bilgi); verdict'i dal
+        # atomları sürer (aşağıda). Böylece iç-içe VE/VEYA doğru çözülür.
+        d = ' (bilgi)'
+        # DNA anchor durumu
+        if hbv_dna is None or hbv_dna < 0:
+            dna_a = SartDurumu.KONTROL_EDILEMEDI
+        else:
+            dna_a = _hep_esik_durum(hbv_dna, 2000.0, '>=')
+        for _ad, _dur, _neden in [
+            ('HBV DNA ≥ 2.000 IU/ml (10.000 kopya/ml)', dna_a,
+             f'HBV DNA={hbv_dna}'),
+            ('HAI ≥ 6', _hep_esik_durum(hai, 6.0, '>='), f'HAI={hai}'),
+            ('Fibrozis ≥ 2', _hep_esik_durum(fibroz, 2.0, '>='),
+             f'Fibrozis={fibroz}'),
+            ('FIB-4 > 1.45', _hep_esik_durum(fib4, 1.45, '>'), f'FIB-4={fib4}'),
+            ('APRI > 0.5', _hep_esik_durum(apri, 0.5, '>'), f'APRI={apri}'),
+        ]:
+            sartlar.append(SartSonuc(
+                _ad, _dur, _neden, 'rapor_metni',
+                grup=f'(1)(a) Başlangıç ölçüm detayları{d}',
+                sartli_atom=_dur == SartDurumu.KONTROL_EDILEMEDI))
+
+        # ── Alt-koşul durumları (Python'da çözülür → dal atomu)
+        histoloji = _hep_or_durum(_hep_esik_durum(hai, 6.0, '>='),
+                                  _hep_esik_durum(fibroz, 2.0, '>='))
         if alt_yuksek is True or (alt_orani is not None and alt_orani > 1.0):
-            sartlar.append(SartSonuc(
-                'ALT normalin üzerinde (3 ay arayla 2 kez)',
-                SartDurumu.VAR if uc_ay else SartDurumu.KONTROL_EDILEMEDI,
-                f'ALT yüksek tespit edildi; 3 ay ara ibaresi: '
-                f'{"VAR" if uc_ay else "yok"}',
-                'rapor_metni', grup=g_a_alt, sartli_atom=not uc_ay))
+            alt_cond = SartDurumu.VAR if uc_ay else SartDurumu.KONTROL_EDILEMEDI
+        elif alt_yuksek is False:
+            alt_cond = SartDurumu.YOK
         else:
-            sartlar.append(SartSonuc(
-                'ALT normalin üzerinde (3 ay arayla 2 kez)',
-                SartDurumu.KONTROL_EDILEMEDI,
-                'ALT yüksekliği ya da 3 ay ara ibaresi tespit edilemedi',
-                'rapor_metni', grup=g_a_alt, sartli_atom=True))
-        g_a_alt_iç = f'(1)(a)(2) FIB-4 ∨ APRI [yol-a-alt-iç]{bilgi_suffix}'
-        sartlar.append(_hep_atom_sayisal_esik(
-            fib4, 1.45, '>', 'FIB-4 > 1.45',
-            grup=g_a_alt_iç, veya_grubu=True))
-        sartlar.append(_hep_atom_sayisal_esik(
-            apri, 0.5, '>', 'APRI > 0.5',
-            grup=g_a_alt_iç, veya_grubu=True))
+            alt_cond = SartDurumu.KONTROL_EDILEMEDI
+        skor = _hep_or_durum(_hep_esik_durum(fib4, 1.45, '>'),
+                             _hep_esik_durum(apri, 0.5, '>'))
+        alt_chain = _hep_and_durum(alt_cond, skor)
+        # YOL-a: DNA≥2000 ∧ [(HAI≥6 ∨ fib≥2) ∨ (ALT>ÜS ∧ (FIB4 ∨ APRI))]
+        yol_a = _hep_and_durum(dna_a, _hep_or_durum(histoloji, alt_chain))
 
-        # YOL-b — ≥40 yaş + HBV DNA ≥ 20.000 IU/ml + oral antiviral
-        g_b = (f'(1)(b) ≥40 yaş + HBV DNA ≥ 20.000 IU/ml + oral antiviral '
-               f'[yol-b]{bilgi_suffix}')
+        # YOL-b: >40 yaş ∧ HBV DNA≥20.000 ∧ oral (yalnız oral; PIF kullanamaz)
         if yas is None:
-            sartlar.append(SartSonuc(
-                'Hasta yaşı > 40',
-                SartDurumu.KONTROL_EDILEMEDI,
-                'Hasta yaşı bilinmiyor (TC yok)',
-                'hasta_yasi', grup=g_b, sartli_atom=True))
+            yas_b = SartDurumu.KONTROL_EDILEMEDI
         else:
-            sartlar.append(SartSonuc(
-                'Hasta yaşı > 40',
-                SartDurumu.VAR if yas > 40 else SartDurumu.YOK,
-                f'Hasta yaşı: {yas}',
-                'hasta_yasi', grup=g_b))
-        sartlar.append(_hep_atom_sayisal_esik(
-            hbv_dna if (hbv_dna and hbv_dna > 0) else None,
-            20000.0, '>=', 'HBV DNA ≥ 20.000 IU/ml (yol-b eşik)',
-            grup=g_b, birim=' IU/ml'))
-        sartlar.append(SartSonuc(
-            'Reçete: oral antiviral (interferon değil)',
-            SartDurumu.VAR if etkin_tip == 'HBV_ORAL' else SartDurumu.YOK,
-            f'Reçete ilaç tipi: {etkin_tip}',
-            'recete', grup=g_b))
+            yas_b = SartDurumu.VAR if yas > 40 else SartDurumu.YOK
+        if hbv_dna is None or hbv_dna < 0:
+            dna_b = SartDurumu.KONTROL_EDILEMEDI
+        else:
+            dna_b = _hep_esik_durum(hbv_dna, 20000.0, '>=')
+        oral_b = SartDurumu.VAR if etkin_tip == 'HBV_ORAL' else SartDurumu.YOK
+        yol_b = _hep_and_durum(yas_b, dna_b, oral_b)
 
-        # Pegile IFN eligibilité (4.2.13.1/2.a) — TÜM PIF şartları aynı grup
-        # adı altında AND ile birleşir; üst-VEYA çiftine tek prefix ile katılır.
-        # SUT lafzı: "ALT > 2×ÜS VE [(HBeAg(-)∧DNA≤10⁷) VEYA (HBeAg(+)∧DNA≤10⁹)]"
-        # Bu nedenle HBeAg+DNA koşulu TEK birleşik atom olarak üretilir
-        # (içinde POZ/NEG OR mantığı atomun durumunda çözülür) — böylece grup
-        # AND-OR karışımı olmadan saf AND olur ve _hep_grup_durumu doğru çalışır.
+        # PIF ek şartı (2)(a): ALT>2×ÜS ∧ [(HBeAg-∧DNA≤10⁷)∨(HBeAg+∧DNA≤10⁹)]
+        alt2 = _hep_esik_durum(alt_orani, 2.0, '>')
+        if hbeag == 'NEG' and hbv_dna and hbv_dna > 0:
+            eag = SartDurumu.VAR if hbv_dna * 5 <= 1e7 else SartDurumu.YOK
+        elif hbeag == 'POZ' and hbv_dna and hbv_dna > 0:
+            eag = SartDurumu.VAR if hbv_dna * 5 <= 1e9 else SartDurumu.YOK
+        else:
+            eag = SartDurumu.KONTROL_EDILEMEDI
+        pif_ek = _hep_and_durum(alt2, eag)
+
+        # ── Dal verdict atomları. PIF ek-AND (SUT (1)(a) endikasyonu ∧ (2)(a));
+        # oral için yol-a ∨ yol-b. BELIRSIZ modunda bilgi_suffix ile pasif.
         if etkin_tip == 'PEG_IFN':
-            g_pi = f'(2)(a) Pegile interferon — erişkin ek şartlar{bilgi_suffix}'
-            if alt_orani is not None:
-                sartlar.append(SartSonuc(
-                    'ALT > 2× normalin üst sınırı (pegile IFN için)',
-                    SartDurumu.VAR if alt_orani > 2.0 else SartDurumu.YOK,
-                    f'ALT oranı: {alt_orani:g}× ÜS',
-                    'rapor_metni', grup=g_pi))
-            else:
-                sartlar.append(SartSonuc(
-                    'ALT > 2× normalin üst sınırı (pegile IFN için)',
-                    SartDurumu.KONTROL_EDILEMEDI,
-                    'ALT/ÜS oranı parse edilemedi',
-                    'rapor_metni', grup=g_pi, sartli_atom=True))
-            hbeag = hep_parse_hbeag(metin_lower)
-            # HBeAg(±) + DNA eşik — POZ/NEG mantığı atom içinde çözülür
-            if hbeag == 'NEG' and hbv_dna and hbv_dna > 0:
-                eag_durum = (SartDurumu.VAR if hbv_dna * 5 <= 1e7
-                              else SartDurumu.YOK)
-                eag_neden = f'HBeAg=NEG, HBV DNA={hbv_dna} IU/ml (eşik 10⁷ kopya/ml)'
-            elif hbeag == 'POZ' and hbv_dna and hbv_dna > 0:
-                eag_durum = (SartDurumu.VAR if hbv_dna * 5 <= 1e9
-                              else SartDurumu.YOK)
-                eag_neden = f'HBeAg=POZ, HBV DNA={hbv_dna} IU/ml (eşik 10⁹ kopya/ml)'
-            else:
-                eag_durum = SartDurumu.KONTROL_EDILEMEDI
-                eag_neden = (f'HBeAg={hbeag}, HBV DNA={hbv_dna} '
-                             '— eşik karşılaştırması yapılamadı')
+            g_pif = (f'(2)(a) Pegile IFN: (1)(a) endikasyon ∧ ek şart '
+                     f'[dal-PIF]{bilgi_suffix}')
+            pif_branch = _hep_and_durum(yol_a, pif_ek)
             sartlar.append(SartSonuc(
-                '(HBeAg(-)∧DNA≤10⁷) ∨ (HBeAg(+)∧DNA≤10⁹) (pegile IFN)',
-                eag_durum, eag_neden, 'rapor_metni', grup=g_pi,
-                sartli_atom=(eag_durum == SartDurumu.KONTROL_EDILEMEDI)))
+                'Dal PIF: (1)(a) endikasyon ∧ (2)(a) ALT>2×ÜS ∧ HBeAg/DNA eşik',
+                pif_branch,
+                f'yol-a={yol_a.value}, ALT>2×ÜS={alt2.value}, '
+                f'HBeAg/DNA={eag.value}',
+                'rapor_metni/recete', grup=g_pif))
             sartlar.append(SartSonuc(
-                'Tedavi süresi ≤ 48 hafta',
-                SartDurumu.KONTROL_EDILEMEDI,
-                'Süre rapora göre eczacı tarafından doğrulanmalı',
-                'rapor_metni', grup=f'{g_pi} (bilgi)', sartli_atom=True))
+                'Tedavi süresi ≤ 48 hafta', SartDurumu.KONTROL_EDILEMEDI,
+                'Süre rapora göre eczacı doğrulamalı', 'rapor_metni',
+                grup='(2)(a) PIF süre (bilgi)', sartli_atom=True))
+        else:
+            g_ya = f'(1)(a) Yol-a: DNA≥2000 ∧ (histoloji ∨ ALT-zinciri) [dal-a]{bilgi_suffix}'
+            sartlar.append(SartSonuc(
+                'Dal-a: HBV DNA≥2000 ∧ [(HAI≥6∨fib≥2) ∨ (ALT>ÜS∧(FIB4>1.45∨APRI>0.5))]',
+                yol_a,
+                f'DNA={dna_a.value}, histoloji={histoloji.value}, '
+                f'ALT-zinciri={alt_chain.value} (ALT={alt_cond.value}, skor={skor.value})',
+                'rapor_metni', grup=g_ya))
+            g_yb = f'(1)(b) Yol-b: >40 yaş ∧ DNA≥20k ∧ oral [dal-b]{bilgi_suffix}'
+            sartlar.append(SartSonuc(
+                'Dal-b: yaş>40 ∧ HBV DNA≥20.000 ∧ oral antiviral',
+                yol_b,
+                f'yaş>40={yas_b.value}, DNA≥20k={dna_b.value}, oral={oral_b.value}',
+                'rapor_metni/recete', grup=g_yb))
 
         # NOT: /3 erişkin başlangıç dozu helper'da eklendi (yukarıda)
 
@@ -2325,23 +2537,13 @@ def _hep_yolak1_eriskin_b(metin_lower: str, teshis_metin: str,
             'Biyopsi koşulu aranmayan durumlar raporda açıkça belirtilmiş mi',
             grup_baslik='(1.4) Biyopsi kontrendikasyon (SUT 4.2.13.1.4)'))
 
-    # Üst-VEYA çiftleri — sadece BAŞLANGIÇ atomları gerçekten verdict'e
-    # girdiğinde anlamlı. DEVAM yalnız modunda yol-a/yol-b yok, çift listesi boş.
-    # BELIRSIZ modunda atomlar (bilgi) suffix'li → aggregator zaten skip eder.
-    # SUT 4.2.13.1: tedaviye "pegile interferonlar VEYA oral antiviraller" ile
-    # başlanabilir → PIF kolu (4.2.13.1/2.a) yol-a/yol-b'nin alternatifidir.
-    # Etken=PEG_IFN ise PIF kolu ust-VEYA çiftine dahil edilir.
+    # Üst-VEYA çiftleri — sadece BAŞLANGIÇ verdict'e girer (DEVAM'da yol atomu
+    # yok; BELIRSIZ'de dal atomları (bilgi) → aggregator skip eder).
+    # Oral: yol-a ∨ yol-b (ikisi ust-VEYA). PIF: tek "dal-PIF" grubu (ek-AND,
+    # yol-b oral-only olduğundan PIF onu kullanamaz) — ayrı grup üst düzey VE'de.
     ust_or = []
-    if is_baslangic:
-        ana_yol = ['(1)(a) HBV DNA', '(1)(b) ≥40 yaş']
-        if etkin_tip == 'PEG_IFN':
-            ana_yol.append('(2)(a) Pegile interferon')
-        ust_or = [
-            tuple(ana_yol),
-            ('(1)(a)(1) Histoloji',
-             '(1)(a)(2) ALT yüksek',
-             '(1)(a)(2) FIB-4'),
-        ]
+    if is_baslangic and etkin_tip != 'PEG_IFN':
+        ust_or = [('(1)(a) Yol-a', '(1)(b) Yol-b')]
 
     yolak_etiket_suffix = ''
     if is_baslangic:
@@ -2428,13 +2630,46 @@ def _hep_yolak2_cocuk_b(metin_lower: str, teshis_metin: str,
         ilac_sonuc, metin_lower, 'HEPATIT_B', etkin_tip, sartlar, detaylar,
         ekle_eriskin_doz=False)
 
-    # Çocuk yaş-doz (bilgi)
-    sartlar.append(_hep_bilgi_atom(
-        'Yaş-doz uyumu: LAM 3mg/kg/gün (2-18) ∨ TDF 245mg/gün (12-18) ∨ '
-        'TAF 25mg/gün (12-18) ∨ ETV 0.5mg/gün (16-18)',
-        'Reçete dozu çocuk yaş aralığına uygun mu — eczacı doğrulamalı',
-        grup_baslik='(5) Çocuk yaş-doz (SUT 4.2.13.1/5)',
-        kaynak='recete/hasta_yasi'))
+    # Çocuk ilaç-yaş uygunluğu — SUT 4.2.13.1/5(a) SERT ŞART:
+    #   LAM 2-18 ∨ TDF 12-18 ∨ TAF 12-18 ∨ ETV 16-18.
+    # (Telbivudin ve adefovir SUT'ta çocuk BAŞLANGIÇ listesinde YOK.)
+    # Yalnızca yaş-penceresi ihlali NET olduğunda YOK (UYGUN DEĞİL); alt-tip
+    # ya da yaş bilinmiyorsa KE+şartlı (örtük kabul yasağı).
+    g_yasdoz = '(5) Çocuk ilaç-yaş uygunluğu (SUT 4.2.13.1/5(a))'
+    alt_tip = _hbv_oral_etken_alt_tip(
+        ilac_sonuc.get('ilac_adi', ''), ilac_sonuc.get('etkin_madde', ''))
+    _cocuk_yas_pencere = {'LAM': (2, 18), 'TDF': (12, 18),
+                          'TAF': (12, 18), 'ETV': (16, 18)}
+    if yas is None or alt_tip == '':
+        sartlar.append(SartSonuc(
+            'Çocuk ilaç-yaş uygunluğu',
+            SartDurumu.KONTROL_EDILEMEDI,
+            f'Yaş={yas}, oral antiviral alt-tipi={alt_tip or "belirlenemedi"} '
+            f'— eczacı doğrulamalı',
+            'recete/hasta_yasi', grup=g_yasdoz, sartli_atom=True))
+    elif alt_tip in _cocuk_yas_pencere:
+        lo, hi = _cocuk_yas_pencere[alt_tip]
+        if lo <= yas <= hi:
+            sartlar.append(SartSonuc(
+                f'Çocuk ilaç-yaş uygunluğu ({alt_tip} {lo}-{hi})',
+                SartDurumu.VAR,
+                f'{alt_tip} için yaş {yas} ∈ [{lo},{hi}] — SUT 4.2.13.1/5(a) uygun',
+                'recete/hasta_yasi', grup=g_yasdoz))
+        else:
+            sartlar.append(SartSonuc(
+                f'Çocuk ilaç-yaş uygunluğu ({alt_tip} {lo}-{hi})',
+                SartDurumu.YOK,
+                f'{alt_tip} yalnız {lo}-{hi} yaş için onaylı; hasta yaşı {yas} '
+                f'— SUT 4.2.13.1/5(a) dışında',
+                'recete/hasta_yasi', grup=g_yasdoz))
+    else:
+        # TLB / ADV → çocuk başlangıç listesinde yok (devam olabilir → KE+şartlı)
+        sartlar.append(SartSonuc(
+            f'Çocuk ilaç-yaş uygunluğu ({alt_tip})',
+            SartDurumu.KONTROL_EDILEMEDI,
+            f'{alt_tip} SUT 4.2.13.1/5(a) çocuk başlangıç listesinde yok '
+            f'(LAM/TDF/TAF/ETV) — tedavi devamı/değişim ise eczacı doğrulamalı',
+            'recete/hasta_yasi', grup=g_yasdoz, sartli_atom=True))
     # 4.2.13.1.4 — Biyopsi kontrendikasyon (çocuk Knodell skor)
     sartlar.append(_hep_bilgi_atom(
         'Biyopsi kontrendikasyon (Knodell skor): PT>3sn ∨ trombosit<80k ∨ '
@@ -2617,6 +2852,22 @@ def _hep_yolak4_b_immunsup(metin_lower: str, teshis_metin: str,
         sartli_atom=(hbsag is None or
                      (hbsag == 'NEG' and hbv_dna is None and anti_hbc is None))))
 
+    # SUT 4.2.13.1.2(1) — İmmünsupresif/kemo/monoklonal tedaviye ilişkin ilaç
+    # raporunun tarih ve sayısı REÇETEDE belirtilmelidir (zorunlu reçete-belge
+    # şartı). Metinde referans ibare aranır; yoksa KE+şartlı (eczacı doğrular).
+    g_rapor_ref = '(1) İmmünsüp tedavi raporu tarih/sayı reçetede'
+    rapor_ref = bool(re.search(
+        r'(?:rapor\s*(?:tarih|no|say[ıi]|numaras)|protokol\s*no|'
+        r'immün[a-zçş]*\s*(?:tedavi\s*)?rapor)', metin_lower))
+    sartlar.append(SartSonuc(
+        'İmmünsüpresif tedavi raporu tarih ve sayısı reçetede belirtilmiş',
+        SartDurumu.VAR if rapor_ref else SartDurumu.KONTROL_EDILEMEDI,
+        ('Reçete/rapor metninde immünsüp tedavi raporu referansı tespit edildi'
+         if rapor_ref else
+         'SUT 4.2.13.1.2(1): immünsüp tedavi raporunun tarih ve sayısı reçetede '
+         'belirtilmeli — metinden tespit edilemedi, eczacı doğrulamalı'),
+        'recete/rapor_metni', grup=g_rapor_ref, sartli_atom=not rapor_ref))
+
     # Tedavi sonrası 12 ay devamı (bilgi)
     g_devam = '(1)(3) Tedavi bitimi sonrası ≤12 ay devam (bilgi)'
     sartlar.append(SartSonuc(
@@ -2711,20 +2962,24 @@ def _hep_yolak6_akut_b(metin_lower: str, teshis_metin: str,
         f'Metin={akut}, ICD={akut_icd}',
         'teshis/rapor_metni', grup=g_e, sartli_atom=not (akut or akut_icd)))
 
-    # Ciddi klinik (OR ≥1)
-    g_kl = '(3)(a) Ciddi akut klinik (INR≥1.5 ∨ PT>4sn üzeri ∨ sarılık>4 hafta) [klinik]'
+    # Ciddi klinik — SUT 4.2.13(3)(a): "(İNR ≥ 1,5 veya PT ... uzun olanlar)
+    # VE (sarılık dönemi > 4 hafta olanlar)". Yani lab kriteri (INR ∨ PT) bir
+    # VEYA grubu; sarılık > 4 hafta AYRI ve zorunlu (VE) konjunkt. İki grup
+    # default üst düzey VE ile birleşir → (INR ∨ PT) ∧ sarılık.
+    g_lab = '(3)(a) Ciddi akut lab kriteri (INR≥1.5 ∨ PT>ÜS+4sn) [klinik-lab]'
+    g_sar = '(3)(a) Sarılık dönemi > 4 hafta (zorunlu)'
     inr = hep_parse_inr(metin_lower)
     pt_uz = hep_parse_pt_uzun(metin_lower)
     sar_hafta = hep_parse_sarilik_sure(metin_lower)
     sartlar.append(_hep_atom_sayisal_esik(
         inr, 1.5, '>=', 'INR ≥ 1.5',
-        grup=g_kl, veya_grubu=True))
+        grup=g_lab, veya_grubu=True))
     sartlar.append(_hep_atom_sayisal_esik(
         pt_uz, 4.0, '>', 'PT > normalin üst sınırı + 4 sn',
-        grup=g_kl, veya_grubu=True))
+        grup=g_lab, veya_grubu=True))
     sartlar.append(_hep_atom_sayisal_esik(
         sar_hafta, 4.0, '>', 'Sarılık > 4 hafta',
-        grup=g_kl, veya_grubu=True))
+        grup=g_sar))
 
     # İlaç: SB onaylı antiviral
     g_ilac = '(3) İlaç: SB onaylı antiviral'
@@ -2771,12 +3026,17 @@ def _hep_yolak7_kronik_d(metin_lower: str, teshis_metin: str,
         f'Anti-HDV: {anti_hdv}', 'rapor_metni',
         grup=g_e, sartli_atom=anti_hdv is None))
 
+    # HBV DNA "belirtilir" zorunlu; ancak parser zayıflığında (farklı ibare/OCR)
+    # bulunamayınca hard-fail (YOK) yerine KE+şartlı — Anti-HDV atomuyla simetrik,
+    # örtük kabul yasağına uygun (sessiz → manuel doğrula, reçeteyi reddetme).
     hbv_dna, _ = hep_parse_hbv_dna(metin_lower)
     sartlar.append(SartSonuc(
         'HBV DNA sonucu raporda belirtilmiş',
-        SartDurumu.VAR if hbv_dna is not None else SartDurumu.YOK,
-        f'HBV DNA: {hbv_dna}', 'rapor_metni',
-        grup=g_e))
+        SartDurumu.VAR if hbv_dna is not None else SartDurumu.KONTROL_EDILEMEDI,
+        f'HBV DNA: {hbv_dna}'
+        + ('' if hbv_dna is not None
+           else ' — raporda "HBV DNA" ibaresi tespit edilemedi, eczacı doğrulamalı'),
+        'rapor_metni', grup=g_e, sartli_atom=hbv_dna is None))
 
     # Reçete: pegile IFN ve/veya oral antiviral
     g_ilac = '(1) İlaç — pegile IFN ± oral antiviral'
@@ -3103,56 +3363,52 @@ def _hep_yolak9_kronik_c_eriskin_naive(metin_lower: str, teshis_metin: str,
     detaylar.update({'siroz_durum': siroz_durum, 'child_pugh': cp,
                      'genotip': genotip, 'rejim': rejim})
 
-    # Grup 1 — Nonsirotik (SVV 8 hf ∨ GP 8 hf)
-    g_g1 = '(A.1.1) Nonsirotik — SVV 8hf ∨ GP 8hf [grup-nonsirot]'
+    # ── Endikasyon-rejim eşleşmesi — "VEYA-kolu-içinde-VE" (hasta grubu ∧ rejim)
+    # her dal tek verdict atomuna indirgenir; üç dal ust-VEYA ile OR'lanır.
+    # (K1 fix: eskiden rejim atomu veya_grubu=True olduğundan tüm grubu OR'a
+    #  çevirip endikasyon kilidini bypass ediyordu.)
+    siroz_biliniyor = siroz_durum is not None
     is_nonsirot = (siroz_durum == 'nonsirotik')
-    sartlar.append(SartSonuc(
-        'Nonsirotik hasta',
-        SartDurumu.VAR if is_nonsirot else (
-            SartDurumu.YOK if siroz_durum else SartDurumu.KONTROL_EDILEMEDI),
-        f'Siroz durumu: {siroz_durum}',
-        'rapor_metni', grup=g_g1, sartli_atom=siroz_durum is None))
-    sartlar.append(SartSonuc(
-        'Reçete: SVV (Sofosbuvir+Velpatasvir+Voxilaprevir) ∨ GP',
-        SartDurumu.VAR if rejim in ('SVV', 'GP') else SartDurumu.YOK,
-        f'Rejim: {rejim}',
-        'recete', grup=g_g1, veya_grubu=True))
-
-    # Grup 2 — Kompanse Child A (SVV 12hf ∨ GP 8hf)
-    g_g2 = '(A.1.2) Kompanse Child-Pugh A — SVV 12hf ∨ GP 8hf [grup-kompans]'
     is_komp = (siroz_durum == 'kompanse' or cp == 'A')
-    sartlar.append(SartSonuc(
-        'Kompanse sirotik (Child-Pugh A)',
-        SartDurumu.VAR if is_komp else (
-            SartDurumu.YOK if siroz_durum else SartDurumu.KONTROL_EDILEMEDI),
-        f'Siroz={siroz_durum}, Child={cp}',
-        'rapor_metni', grup=g_g2, sartli_atom=siroz_durum is None and cp is None))
-    sartlar.append(SartSonuc(
-        'Reçete: SVV ∨ GP (Child-A için)',
-        SartDurumu.VAR if rejim in ('SVV', 'GP') else SartDurumu.YOK,
-        f'Rejim: {rejim}',
-        'recete', grup=g_g2, veya_grubu=True))
-
-    # Grup 3 — Dekompanse Child B/C + Genotip 1a/1b/4/5/6 (SL+RBV 12hf)
-    g_g3 = '(A.1.3) Dekompanse Child B/C + G1a/1b/4/5/6 — SL+RBV 12hf [grup-dekomp]'
     is_dekomp = (siroz_durum == 'dekompanse' or cp in ('B', 'C'))
     uygun_genotip = genotip in ('1', '1a', '1b', '4', '5', '6')
+    rejim_svv_gp = SartDurumu.VAR if rejim in ('SVV', 'GP') else SartDurumu.YOK
+    rejim_sl_rbv = SartDurumu.VAR if rejim == 'SL_RBV' else SartDurumu.YOK
+
+    # Kompanse biyopsisiz tanı kanıtı (SUT genel (2)) — O1: histopatoloji yoksa
+    # trombosit<150k ∨ PT≥3sn. Kanıt yoksa dal içinde KE (şüpheli).
+    komp_kanit = _hep_kompanse_biyopsisiz_kanit(metin_lower)
+    # Dekompanse kanıtı (SUT genel (3)) — K2: asit ∨ ensefalopati ∨
+    # bilirubin>3 ∨ varis kanaması.
+    dekomp_kanit = _hep_dekompanse_kanit(metin_lower)
+
+    g_g1 = '(A.1.1) Nonsirotik ∧ (SVV∨GP) — 8hf [dal-nonsirot]'
+    b1 = _hep_and_durum(_hep_uc_deger(is_nonsirot, siroz_biliniyor), rejim_svv_gp)
     sartlar.append(SartSonuc(
-        'Dekompanse sirotik (Child B/C)',
-        SartDurumu.VAR if is_dekomp else SartDurumu.YOK,
-        f'Siroz={siroz_durum}, Child={cp}',
-        'rapor_metni', grup=g_g3))
+        'Dal: Nonsirotik hasta ∧ reçete SVV∨GP', b1,
+        f'Nonsirotik={is_nonsirot} (siroz={siroz_durum}), rejim={rejim}',
+        'rapor_metni/recete', grup=g_g1))
+
+    g_g2 = '(A.1.2) Kompanse Child-A ∧ (SVV∨GP) — 12/8hf [dal-kompans]'
+    b2 = _hep_and_durum(_hep_uc_deger(is_komp, siroz_biliniyor or cp is not None),
+                        komp_kanit, rejim_svv_gp)
     sartlar.append(SartSonuc(
-        'Genotip 1a/1b/4/5/6 (dekompanse için onaylı)',
-        SartDurumu.VAR if uygun_genotip else (
-            SartDurumu.YOK if genotip else SartDurumu.KONTROL_EDILEMEDI),
-        f'Genotip: {genotip}',
-        'rapor_metni', grup=g_g3, sartli_atom=genotip is None))
+        'Dal: Kompanse (Child-A) ∧ biyopsisiz kanıt ∧ reçete SVV∨GP', b2,
+        f'Kompanse={is_komp} (siroz={siroz_durum}, Child={cp}), '
+        f'biyopsisiz-kanıt={komp_kanit.value}, rejim={rejim}',
+        'rapor_metni/recete', grup=g_g2))
+
+    g_g3 = '(A.1.3) Dekompanse B/C ∧ G1a/1b/4/5/6 ∧ SL+RBV — 12hf [dal-dekomp]'
+    b3 = _hep_and_durum(
+        _hep_uc_deger(is_dekomp, siroz_biliniyor or cp is not None),
+        dekomp_kanit,
+        _hep_uc_deger(uygun_genotip, genotip is not None),
+        rejim_sl_rbv)
     sartlar.append(SartSonuc(
-        'Reçete: Sofosbuvir+Ledipasvir+Ribavirin',
-        SartDurumu.VAR if rejim == 'SL_RBV' else SartDurumu.YOK,
-        f'Rejim: {rejim}',
-        'recete', grup=g_g3))
+        'Dal: Dekompanse (Child B/C) ∧ kanıt ∧ uygun genotip ∧ reçete SL+RBV', b3,
+        f'Dekompanse={is_dekomp} (siroz={siroz_durum}, Child={cp}), '
+        f'kanıt={dekomp_kanit.value}, genotip={genotip}, rejim={rejim}',
+        'rapor_metni/recete', grup=g_g3))
 
     # Başlangıç/idame raporu DB sorgu
     sartlar.append(_hep_baslangic_rapor_db_atom(ilac_sonuc, 'HEPATIT_C'))
@@ -3161,8 +3417,8 @@ def _hep_yolak9_kronik_c_eriskin_naive(metin_lower: str, teshis_metin: str,
         sartlar, detaylar, SUT_KURALI_HEPATIT,
         ust_or_ciftleri=[
             ('(A.1.1) Nonsirotik',
-             '(A.1.2) Kompanse Child-Pugh A',
-             '(A.1.3) Dekompanse Child B/C')],
+             '(A.1.2) Kompanse Child-A',
+             '(A.1.3) Dekompanse B/C')],
         yolak_etiketi='[Yolak 9] Kronik Hepatit C Erişkin Naive '
                        '(4.2.13.3.2.A.1)')
 
@@ -3209,6 +3465,16 @@ def _hep_yolak10_kronik_c_eriskin_exp(metin_lower: str, teshis_metin: str,
             'Erişkin yaş (≥18)',
             SartDurumu.VAR if yas >= 18 else SartDurumu.YOK,
             f'Hasta yaşı: {yas}', 'hasta_yasi', grup=g_e))
+    else:
+        # O3: yaş bilinmiyorken erişkin atomu sessizce düşmesin (Y9 ile simetrik)
+        sartlar.append(SartSonuc(
+            'Erişkin yaş (≥18)', SartDurumu.KONTROL_EDILEMEDI,
+            'Hasta yaşı bilinmiyor', 'hasta_yasi',
+            grup=g_e, sartli_atom=True))
+
+    # K3: SUT 4.2.13.3.2(5) — 2./3. basamak sağlık kurumu + gastro/enf raporu
+    # (tüm Kronik C yolaklarında zorunlu; Y9 ile aynı atom)
+    sartlar.append(hep_atom_rapor_2_3_basamak(metin_lower, rapor_kodu))
 
     # Önceki tedavi — VAR olmalı + NS5A/proteaz tespiti
     durum, neden, gecmis_detay = hep_onceki_hcv_tedavi_var_mi(
@@ -3233,57 +3499,67 @@ def _hep_yolak10_kronik_c_eriskin_exp(metin_lower: str, teshis_metin: str,
 
     ns5a_almis = gecmis_detay.get('ns5a', False)
     proteaz_almis = gecmis_detay.get('proteaz', False)
+    tur_belirsiz = gecmis_detay.get('tur_belirsiz', False)
     siroz_durum = hep_parse_kompanse_dekompanse(metin_lower)
     cp = hep_parse_child_pugh(metin_lower)
     genotip = hep_parse_genotip(metin_lower)
+    siroz_biliniyor = siroz_durum is not None or cp is not None
     is_nonsirot = (siroz_durum == 'nonsirotik')
     is_komp = (siroz_durum == 'kompanse' or cp == 'A')
     is_dekomp = (siroz_durum == 'dekompanse' or cp in ('B', 'C'))
+    uygun_genotip = genotip in ('1', '1a', '1b', '4', '5', '6')
     detaylar.update({'siroz_durum': siroz_durum, 'child_pugh': cp,
                      'genotip': genotip, 'rejim': rejim,
-                     'ns5a_almis': ns5a_almis, 'proteaz_almis': proteaz_almis})
+                     'ns5a_almis': ns5a_almis, 'proteaz_almis': proteaz_almis,
+                     'tur_belirsiz': tur_belirsiz})
 
-    # EX1 — NS5A almamış nonsirotik (SVV 12hf ∨ GP 8hf)
-    g_x1 = '(A.2.1) NS5A almamış nonsirotik [exp-1]'
-    sartlar.append(SartSonuc(
-        'NS5A almamış + nonsirotik',
-        SartDurumu.VAR if (not ns5a_almis and is_nonsirot)
-        else SartDurumu.YOK,
-        f'NS5A almış={ns5a_almis}, nonsirotik={is_nonsirot}',
-        'rapor_metni', grup=g_x1))
-    sartlar.append(SartSonuc(
-        'Reçete: SVV ∨ GP',
-        SartDurumu.VAR if rejim in ('SVV', 'GP') else SartDurumu.YOK,
-        f'Rejim: {rejim}', 'recete', grup=g_x1, veya_grubu=True))
+    # K4: önceki tedavi TÜRÜ belirsizse (deneyimli ama NS5A/proteaz bilinmiyor)
+    # "NS5A almamış" (EX1/EX2 izinli dal) ve "NS5A/proteaz almış" (EX3/EX4)
+    # koşulları örtük kabul edilemez → KE.
+    if tur_belirsiz:
+        ns5a_almadi = SartDurumu.KONTROL_EDILEMEDI
+        ns5a_proteaz_almis = SartDurumu.KONTROL_EDILEMEDI
+    else:
+        ns5a_almadi = (SartDurumu.VAR if not ns5a_almis else SartDurumu.YOK)
+        ns5a_proteaz_almis = (SartDurumu.VAR if (ns5a_almis or proteaz_almis)
+                              else SartDurumu.YOK)
+    rejim_svv_gp = SartDurumu.VAR if rejim in ('SVV', 'GP') else SartDurumu.YOK
+    rejim_svv_gp_rbv = (SartDurumu.VAR if rejim in ('SVV', 'GP', 'GP_RBV')
+                        else SartDurumu.YOK)
+    rejim_sl_rbv = SartDurumu.VAR if rejim == 'SL_RBV' else SartDurumu.YOK
+    komp_kanit = _hep_kompanse_biyopsisiz_kanit(metin_lower)
+    dekomp_kanit = _hep_dekompanse_kanit(metin_lower)
 
-    # EX2 — NS5A almamış kompanse (SVV 12hf ∨ GP 12hf)
-    g_x2 = '(A.2.2) NS5A almamış kompanse Child A [exp-2]'
+    # Her dal tek verdict atomuna indirgenir (K1 fix — rejim OR'u dal içi AND'i
+    # zehirlemesin); dört dal ust-VEYA ile OR'lanır.
+    g_x1 = '(A.2.1) NS5A almamış ∧ nonsirotik ∧ (SVV∨GP) [exp-1]'
+    ex1 = _hep_and_durum(ns5a_almadi,
+                         _hep_uc_deger(is_nonsirot, siroz_biliniyor),
+                         rejim_svv_gp)
     sartlar.append(SartSonuc(
-        'NS5A almamış + kompanse',
-        SartDurumu.VAR if (not ns5a_almis and is_komp)
-        else SartDurumu.YOK,
-        f'NS5A={ns5a_almis}, kompanse={is_komp}',
-        'rapor_metni', grup=g_x2))
-    sartlar.append(SartSonuc(
-        'Reçete: SVV ∨ GP (Child A için)',
-        SartDurumu.VAR if rejim in ('SVV', 'GP') else SartDurumu.YOK,
-        f'Rejim: {rejim}', 'recete', grup=g_x2, veya_grubu=True))
+        'Dal: NS5A almamış ∧ nonsirotik ∧ reçete SVV∨GP', ex1,
+        f'NS5A-almadı={ns5a_almadi.value}, nonsirotik={is_nonsirot}, rejim={rejim}',
+        'rapor_metni/recete', grup=g_x1))
 
-    # EX3 — NS5A/proteaz almış nonsirot/kompans (SVV 12hf ∨ GP±RBV 16hf)
-    g_x3 = '(A.2.3) NS5A∨proteaz almış nonsirot/kompans [exp-3]'
+    g_x2 = '(A.2.2) NS5A almamış ∧ kompanse ∧ (SVV∨GP) [exp-2]'
+    ex2 = _hep_and_durum(ns5a_almadi,
+                         _hep_uc_deger(is_komp, siroz_biliniyor),
+                         komp_kanit, rejim_svv_gp)
     sartlar.append(SartSonuc(
-        '(NS5A ∨ proteaz inhibitör) almış + nonsirot/kompans',
-        SartDurumu.VAR if ((ns5a_almis or proteaz_almis)
-                            and (is_nonsirot or is_komp))
-        else SartDurumu.YOK,
-        f'NS5A/proteaz alındı={ns5a_almis or proteaz_almis}, '
-        f'nonsirot/komp={is_nonsirot or is_komp}',
-        'rapor_metni', grup=g_x3))
+        'Dal: NS5A almamış ∧ kompanse ∧ biyopsisiz kanıt ∧ reçete SVV∨GP', ex2,
+        f'NS5A-almadı={ns5a_almadi.value}, kompanse={is_komp}, '
+        f'kanıt={komp_kanit.value}, rejim={rejim}',
+        'rapor_metni/recete', grup=g_x2))
+
+    g_x3 = '(A.2.3) (NS5A∨proteaz) almış ∧ nonsirot/kompans ∧ (SVV∨GP±RBV) [exp-3]'
+    ex3 = _hep_and_durum(ns5a_proteaz_almis,
+                         _hep_uc_deger(is_nonsirot or is_komp, siroz_biliniyor),
+                         rejim_svv_gp_rbv)
     sartlar.append(SartSonuc(
-        'Reçete: SVV ∨ GP±RBV (16hf SB onayı ile)',
-        SartDurumu.VAR if rejim in ('SVV', 'GP', 'GP_RBV')
-        else SartDurumu.YOK,
-        f'Rejim: {rejim}', 'recete', grup=g_x3, veya_grubu=True))
+        'Dal: (NS5A∨proteaz) almış ∧ nonsirot/kompans ∧ reçete SVV∨GP±RBV', ex3,
+        f'NS5A/proteaz-almış={ns5a_proteaz_almis.value}, '
+        f'nonsirot/komp={is_nonsirot or is_komp}, rejim={rejim}',
+        'rapor_metni/recete', grup=g_x3))
     if rejim == 'GP_RBV':
         sartlar.append(SartSonuc(
             'SB hasta bazında onay (GP+RBV için bilgi)',
@@ -3291,21 +3567,18 @@ def _hep_yolak10_kronik_c_eriskin_exp(metin_lower: str, teshis_metin: str,
             'SB onay belgesi eczacı tarafından kontrol edilmeli',
             'rapor_metni', grup=f'{g_x3} (bilgi)', sartli_atom=True))
 
-    # EX4 — NS5A/proteaz almış dekompanse G1a/1b/4/5/6 (SL+RBV 24hf)
-    g_x4 = '(A.2.4) NS5A∨proteaz almış dekompans G1a/1b/4/5/6 [exp-4]'
-    uygun_genotip = genotip in ('1', '1a', '1b', '4', '5', '6')
+    g_x4 = '(A.2.4) (NS5A∨proteaz) almış ∧ dekompans ∧ G1a/1b/4/5/6 ∧ SL+RBV [exp-4]'
+    ex4 = _hep_and_durum(ns5a_proteaz_almis,
+                         _hep_uc_deger(is_dekomp, siroz_biliniyor),
+                         dekomp_kanit,
+                         _hep_uc_deger(uygun_genotip, genotip is not None),
+                         rejim_sl_rbv)
     sartlar.append(SartSonuc(
-        '(NS5A ∨ proteaz) almış + dekompanse + G1a/1b/4/5/6',
-        SartDurumu.VAR if ((ns5a_almis or proteaz_almis)
-                            and is_dekomp and uygun_genotip)
-        else SartDurumu.YOK,
-        f'NS5A/proteaz alındı={ns5a_almis or proteaz_almis}, '
-        f'dekomp={is_dekomp}, genotip={genotip}',
-        'rapor_metni', grup=g_x4))
-    sartlar.append(SartSonuc(
-        'Reçete: Sofosbuvir+Ledipasvir+Ribavirin (24 hafta)',
-        SartDurumu.VAR if rejim == 'SL_RBV' else SartDurumu.YOK,
-        f'Rejim: {rejim}', 'recete', grup=g_x4))
+        'Dal: (NS5A∨proteaz) almış ∧ dekompanse ∧ kanıt ∧ uygun genotip ∧ SL+RBV',
+        ex4,
+        f'NS5A/proteaz-almış={ns5a_proteaz_almis.value}, dekomp={is_dekomp}, '
+        f'kanıt={dekomp_kanit.value}, genotip={genotip}, rejim={rejim}',
+        'rapor_metni/recete', grup=g_x4))
 
     # Başlangıç/idame raporu DB sorgu (deneyimli için kritik — önceki HCV
     # tedavisini DB'den kanıtlayabiliriz)
@@ -3314,10 +3587,10 @@ def _hep_yolak10_kronik_c_eriskin_exp(metin_lower: str, teshis_metin: str,
     return _hep_genel_sonuc(
         sartlar, detaylar, SUT_KURALI_HEPATIT,
         ust_or_ciftleri=[
-            ('(A.2.1) NS5A almamış nonsirotik',
-             '(A.2.2) NS5A almamış kompanse',
-             '(A.2.3) NS5A∨proteaz almış nonsirot',
-             '(A.2.4) NS5A∨proteaz almış dekompans')],
+            ('(A.2.1) NS5A almamış ∧ nonsirotik',
+             '(A.2.2) NS5A almamış ∧ kompanse',
+             '(A.2.3) (NS5A∨proteaz) almış ∧ nonsirot',
+             '(A.2.4) (NS5A∨proteaz) almış ∧ dekompans')],
         yolak_etiketi='[Yolak 10] Kronik HCV Erişkin Deneyimli '
                        '(4.2.13.3.2.A.2)')
 
@@ -3372,6 +3645,9 @@ def _hep_yolak11_kronik_c_cocuk_naive(metin_lower: str, teshis_metin: str,
         SartDurumu.VAR if genotip else SartDurumu.KONTROL_EDILEMEDI,
         f'Genotip: {genotip}', 'rapor_metni', grup=g_e,
         sartli_atom=genotip is None))
+
+    # K3: SUT 4.2.13.3.2(5) — 2./3. basamak sağlık kurumu + gastro/enf raporu
+    sartlar.append(hep_atom_rapor_2_3_basamak(metin_lower, rapor_kodu))
 
     # İlaç yolu A: IFN+RBV veya peg-IFN+RBV (RBV kontrendike ise tek)
     g_ilac_a = '(B.1) IFN+RBV ∨ peg-IFN+RBV ∨ tek (RBV kontrendike) [çocuk-rejim-1]'
@@ -3489,6 +3765,9 @@ def _hep_yolak12_kronik_c_cocuk_exp(metin_lower: str, teshis_metin: str,
         durum if durum != SartDurumu.NA else SartDurumu.KONTROL_EDILEMEDI,
         neden, 'rapor_metni/yerel_db', grup=g_e,
         sartli_atom=durum == SartDurumu.KONTROL_EDILEMEDI))
+
+    # K3: SUT 4.2.13.3.2(5) — 2./3. basamak sağlık kurumu + gastro/enf raporu
+    sartlar.append(hep_atom_rapor_2_3_basamak(metin_lower, rapor_kodu))
 
     ns5a_almis = gecmis_detay.get('ns5a', False)
     proteaz_almis = gecmis_detay.get('proteaz', False)

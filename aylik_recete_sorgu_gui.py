@@ -3007,6 +3007,20 @@ class AylikReceteSorguGUI:
         )
         self.btn_hepatit.pack(side="left", padx=(0, 4), pady=2)
 
+        # ── 📋 İlaç Geçmişini Raporlardan Topla (seçili hastanın TÜM raporları)
+        # Hastanın tüm raporlarına girip raporlu etken maddeleri × tarih
+        # tablosunu çıkarır (rapor_etken_madde_tablosu.hasta_etken_tablo).
+        # Not: SUT 4.2.13.1/4 hepatit "önceki etken aynı mı" karşılaştırması
+        # ayrıca satıra SAĞ TIK → "🔍 İlaç Geçmişini Raporlardan Tara".
+        self.btn_rapor_ilac_gecmisi = tk.Button(
+            row_diger, text="📋 Raporlu İlaç Geçmişi",
+            font=("Segoe UI", 9, "bold"),
+            fg="white", bg="#00695C", activebackground="#004D40",
+            bd=0, padx=10, pady=3, cursor="hand2",
+            command=lambda: self._baslangic_etken_tablosu_ac(self._aktif_satir())
+        )
+        self.btn_rapor_ilac_gecmisi.pack(side="left", padx=(0, 4), pady=2)
+
         # ── ASTIM / KOAH KONTROL butonu (SUT 4.2.24 / 4.2.24.B) ──
         # ATC R03* (solunum sistemi obstrüktif hastalık ilaçları): SABA / SAMA
         # / ICS / LABA / LAMA / LABA+ICS / LABA+LAMA / üçlü (LABA+ICS+LAMA) /
@@ -5744,16 +5758,22 @@ class AylikReceteSorguGUI:
             if orig_neden is not None:
                 self._klasik_neden_map = orig_neden
 
-    def _baslangic_etken_tablosu_ac(self) -> None:
+    def _baslangic_etken_tablosu_ac(self, satir=None) -> None:
         """📊 Raporlu Etken Maddeler Tablosu — popup pencere açar.
 
-        Aktif satırın hastasının TÜM raporlarındaki etken maddeleri × tarih
-        tablosu (yerel hasta_rapor_gecmisi.db'den parse). Her etken için ilk
-        tarihteki satır vurgulu = başlangıç raporu. Çift tıklama o etkenin
-        başlangıç kontrolünü tetikler.
+        Hastanın TÜM raporlarındaki etken maddeleri × tarih tablosu (yerel
+        hasta_rapor_gecmisi.db'den parse). Her etken için ilk tarihteki satır
+        vurgulu = başlangıç raporu. Çift tıklama o etkenin başlangıç
+        kontrolünü tetikler.
+
+        Args:
+            satir: hedef reçete satırı. None ise (buton/başlangıç sekmesi
+                çağrısı) `_baslangic_aktif_satir`; ana tablo sağ-tık menüsü
+                `_aktif_satir()` sonucunu geçer.
         """
         from tkinter import messagebox
-        satir = getattr(self, '_baslangic_aktif_satir', None)
+        if satir is None:
+            satir = getattr(self, '_baslangic_aktif_satir', None)
         if not satir:
             try:
                 messagebox.showinfo(
@@ -5786,8 +5806,9 @@ class AylikReceteSorguGUI:
                 "Etken Madde Tablosu",
                 f"Hasta: {hasta_adi} ({tc})\n\n"
                 "Yerel rapor DB'sinde bu hastaya ait rapor bulunamadı.\n\n"
-                "🩺 GEÇMİŞ RAPOR TARA butonuna basıp önce Medula'dan "
-                "raporları indirin.",
+                "Önce sağ tık → '🩺 MEDULA Geçmiş Raporlarını Tara' ile "
+                "hastanın raporlarını Medula'dan indirin, sonra bu tabloyu "
+                "tekrar açın.",
                 parent=self.root)
             return
 
@@ -13345,6 +13366,31 @@ class AylikReceteSorguGUI:
             m.add_command(
                 label="🩺 MEDULA Geçmiş Raporlarını Tara (TC yok)",
                 state="disabled")
+        # 📋 İlaç Geçmişini Raporlardan Topla — hastanın TÜM raporlarına girip
+        # raporlu etken maddeleri (× tarih, başlangıç ★) tablo halinde çıkarır
+        # (rapor_etken_madde_tablosu.hasta_etken_tablo). Her satır için görünür.
+        if tc_aktif and len(tc_aktif) == 11 and tc_aktif.isdigit():
+            m.add_command(
+                label=f"📋 İlaç Geçmişini Raporlardan Topla (raporlu etken tablosu){ek}",
+                command=lambda sa=s_aktif: self._baslangic_etken_tablosu_ac(sa))
+        else:
+            m.add_command(
+                label="📋 İlaç Geçmişini Raporlardan Topla (TC yok)",
+                state="disabled")
+        # 🔍 Hepatit: önceki HBV oral etkeni raporlardan tara (SUT 4.2.13.1/4
+        # "aktif etken önceki tedaviyle aynı mı" belirsizliğini giderir).
+        # Yalnız HBV oral antiviral satırında + TC varsa görünür.
+        try:
+            from recete_kontrol.hepatit_kontrol import (
+                _hbv_oral_etken_alt_tip as _hbv_alt_tip)
+            _hbv_satir = bool(_hbv_alt_tip(
+                s_aktif.get("ilac") or "", s_aktif.get("etkin") or ""))
+        except Exception:
+            _hbv_satir = False
+        if _hbv_satir and tc_aktif and len(tc_aktif) == 11 and tc_aktif.isdigit():
+            m.add_command(
+                label="🔍 İlaç Geçmişini Raporlardan Tara (hepatit önceki etken)",
+                command=self._hepatit_raporlardan_etken_tara)
         m.add_separator()
         # Üst grup: kopyala / Medula'da aç (tek satır işlemleri)
         m.add_command(label="📋 Hasta TC'sini Kopyala",
@@ -17698,7 +17744,7 @@ class AylikReceteSorguGUI:
         for t in _bol(s.get("rap_tesh")):
             rapor_aciklamalari.append(t)
 
-        return {
+        _out = {
             "ilac_adi": s.get("ilac") or "",
             "etkin_madde": s.get("etkin") or "",
             "atc_kodu": s.get("atc") or "",
@@ -17710,6 +17756,15 @@ class AylikReceteSorguGUI:
             "mesaj_metni": "",
             "doktor_uzmanligi": s.get("brans") or "",
         }
+        # "🔍 İlaç Geçmişini Raporlardan Tara" sonucu / manuel override —
+        # satır dict'inde varsa kontrole aktar (hepatit_kontrol okur).
+        # NOT: hasta_tc bilerek eklenmiyor — batch hepatit kontrolünde EOS/DB
+        # başlangıç-devam sorgularını her satır için tetikleyip yavaşlatmasın;
+        # override zaten önceki etkeni doğrudan taşır.
+        for _k in ("_gecmis_etken_override", "_force_recete_tipi"):
+            if s.get(_k):
+                _out[_k] = s.get(_k)
+        return _out
 
     # ───────────────────────────────────────────────────────────────────
     # KLOPİDOGREL / PRASUGREL / TIKAGRELOR (SUT 4.2.15) KATEGORİ + ilac_sonuc
@@ -21385,6 +21440,35 @@ class AylikReceteSorguGUI:
 
             _diger_rapor_notunu_uyariya_ekle(rapor, ek_icd, ['DM', 'KY'])
             etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+
+            # ── İKİNCİ GEÇİŞ: EOS Sinyal 4 + DB başlangıç/devam ──
+            # İlk geçiş hasta_tc taşımaz (batch geneli EOS sorgusuyla
+            # yavaşlamasın). Yalnız ŞÜPHELİ ya da DEVAM/BELİRSİZ satırlarda
+            # hasta_tc enjekte edip kontrolü tekrarlarız: _hep_recete_tipi_tespit
+            # EOS RaporAna karşılaştırması (Sinyal 4) + DB drug-history (Sinyal
+            # 1/3) çalıştırır → başlangıç/devam ve SUT 4.2.13.1/4 önceki-etken
+            # netleşir. EOS hatası olursa ilk sonuç korunur.
+            _tc_row = (s.get("tc") or "").strip()
+            _rc_tip = (rapor.detaylar or {}).get("recete_tipi", "")
+            if (_tc_row and len(_tc_row) == 11 and _tc_row.isdigit()
+                    and (etiket == "ŞÜPHELİ"
+                         or _rc_tip in ("DEVAM", "BELIRSIZ"))):
+                _isonuc_eos = dict(ilac_sonuc)
+                _isonuc_eos["hasta_tc"] = _tc_row
+                for _f in ("rapor_ana_id", "rapor_takip_no"):
+                    if s.get(_f):
+                        _isonuc_eos[_f] = s.get(_f)
+                try:
+                    _rapor2 = kontrol_hepatit(_isonuc_eos)
+                    _diger_rapor_notunu_uyariya_ekle(_rapor2, ek_icd,
+                                                     ['DM', 'KY'])
+                    rapor = _rapor2
+                    etiket = VERDICT_ETIKET.get(rapor.sonuc, "ŞÜPHELİ")
+                except Exception as _e:
+                    logger.debug(
+                        "Hepatit EOS ikinci geçiş hatası (rx %s): %s",
+                        s.get("rec_no"), _e)
+
             s["verdict"] = etiket
             s["verdict_detay"] = rapor.mesaj or ""
             s["verdict_kategori"] = kategori
@@ -21481,6 +21565,176 @@ class AylikReceteSorguGUI:
                 "Rapor Kaydedildi",
                 f"Rapor kaydedildi ama otomatik açılamadı:\n{rapor_yolu}\n\n{e}",
                 parent=self.root)
+
+    # ── HEPATİT: ÖNCEKİ ETKENİ RAPORLARDAN TARA ───────────────────────
+    def _hepatit_raporlardan_etken_tara(self):
+        """Sağ tık / buton → aktif satırdaki HBV oral reçetesi için hastanın
+        RAPORLARINI tarayıp önceki HBV oral etkenini tespit et ve SUT
+        4.2.13.1/4 "aktif etken önceki tedaviyle aynı mı" belirsizliğini gider.
+
+        Neden raporlar? Medula ilaç geçmişi ~1 yıl ile sınırlı; kendi-eczane
+        EOS yalnız bu eczanede satılanları gösterir. Raporlar eczane-ötesi ve
+        kalıcı kayıt olduğundan başka eczanede/1 yıldan önce başlanan tedavi
+        yalnız raporlardan güvenilir tespit edilir.
+        """
+        s = self._aktif_satir()
+        if not s:
+            messagebox.showinfo("Bilgi", "Önce bir satır seçin.",
+                                parent=self.root)
+            return
+        try:
+            from recete_kontrol.hepatit_kontrol import (
+                hepatit_onceki_etken_raporlardan, _hbv_oral_etken_alt_tip)
+        except Exception as e:
+            messagebox.showerror("Modül Hatası",
+                                 f"hepatit_kontrol yüklenemedi:\n{e}",
+                                 parent=self.root)
+            return
+        ilac = (s.get("ilac") or "").strip()
+        etken = (s.get("etkin") or "").strip()
+        tc = (s.get("tc") or "").strip()
+        if not _hbv_oral_etken_alt_tip(ilac, etken):
+            messagebox.showinfo(
+                "Kapsam dışı",
+                "Bu komut HBV oral antiviral ilaçlar (Tenofovir / Entekavir / "
+                "Lamivudin / Telbivudin / Adefovir) içindir.\n\n"
+                f"Seçili ilaç: {ilac} / {etken}",
+                parent=self.root)
+            return
+        if not (tc and len(tc) == 11 and tc.isdigit()):
+            messagebox.showwarning(
+                "TC yok",
+                "Bu satırda geçerli hasta TC yok — rapor taraması yapılamaz.",
+                parent=self.root)
+            return
+        self._durum_yaz("Raporlar taranıyor (önceki hepatit etkeni)…")
+        self.root.update_idletasks()
+        try:
+            sonuc = hepatit_onceki_etken_raporlardan(
+                tc, ilac, etken, aktif_rapor_tarih=(s.get("rec_tar") or ""))
+        except Exception as e:
+            logger.exception("Hepatit rapor tarama hatası")
+            messagebox.showerror("Tarama Hatası",
+                                 f"Rapor taraması başarısız:\n{e}",
+                                 parent=self.root)
+            return
+        self._hepatit_rapor_tarama_dialog(s, sonuc)
+
+    def _hepatit_rapor_tarama_dialog(self, s, sonuc):
+        """Rapor tarama sonucu penceresi + 'Uygula → Kontrolü Yenile' aksiyonu."""
+        win = tk.Toplevel(self.root)
+        win.title("İlaç Geçmişi — Raporlardan Tara")
+        win.geometry("660x480")
+        win.transient(self.root)
+        win.configure(bg="#1E3A5F")
+        hasta = (s.get("hasta") or "").strip()
+        tk.Label(win,
+                 text=f"🔍 {hasta or s.get('tc', '')} — Önceki Hepatit Etkeni "
+                      f"(raporlardan)",
+                 font=("Segoe UI", 12, "bold"), bg="#1E3A5F", fg="white"
+                 ).pack(anchor="w", padx=12, pady=(10, 2))
+        tk.Label(win,
+                 text=f"Aktif ilaç: {s.get('ilac', '')}  ·  alt-tip: "
+                      f"{sonuc.get('aktif_alt_tip') or '?'}",
+                 font=("Segoe UI", 9), bg="#1E3A5F", fg="#B0C4DE"
+                 ).pack(anchor="w", padx=12, pady=(0, 6))
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10), height=17)
+        txt.pack(fill="both", expand=True, padx=12, pady=6)
+        txt.insert("1.0", sonuc.get("mesaj") or "(sonuç yok)")
+        if not sonuc.get("rapor_var"):
+            txt.insert(
+                "end",
+                "\n\n⚠ Önce sağ tık → '🩺 MEDULA Geçmiş Raporlarını Tara' ile "
+                "hastanın raporlarını indirip tekrar deneyin.")
+        txt.config(state="disabled")
+        alt = tk.Frame(win, bg="#1E3A5F")
+        alt.pack(fill="x", padx=12, pady=(0, 10))
+        gerekce = sonuc.get("gecmis_etken_gerekce") or ""
+        if gerekce:
+            def _uygula():
+                s["_gecmis_etken_override"] = gerekce
+                win.destroy()
+                self._hepatit_tek_satir_yeniden_kontrol(s)
+            tk.Button(alt, text="✔ Uygula → Kontrolü Yenile",
+                      bg="#2E7D32", fg="white",
+                      font=("Segoe UI", 10, "bold"), padx=10, pady=3,
+                      command=_uygula).pack(side="left")
+        tk.Button(alt, text="Kapat", command=win.destroy,
+                  padx=10, pady=3).pack(side="right")
+
+    def _hepatit_tek_satir_yeniden_kontrol(self, s):
+        """Tek satır için hepatit kontrolünü yeniden çalıştır + verdict yaz
+        (rapor tarama override'ı uygulandıktan sonra). Batch yazımıyla birebir."""
+        try:
+            from recete_kontrol.sut_kontrolleri import (
+                kontrol_hepatit, _diger_rapor_notunu_uyariya_ekle)
+            from recete_kontrol.base_kontrol import KontrolSonucu
+        except Exception as e:
+            messagebox.showerror("Modül Hatası", str(e), parent=self.root)
+            return
+        VE = {
+            KontrolSonucu.UYGUN: "UYGUN",
+            KontrolSonucu.UYGUN_DEGIL: "UYGUN DEĞİL",
+            KontrolSonucu.KONTROL_EDILEMEDI: "ŞÜPHELİ",
+            KontrolSonucu.SARTLI_UYGUN: "ŞARTLI UYGUN",
+            KontrolSonucu.MANUEL_KONTROL: "MANUEL KONTROL",
+            KontrolSonucu.DIGER_RAPOR_UYGUN: "DİĞER RAPOR UYGUN",
+            KontrolSonucu.TIBBEN_UYGUN_DEGIL: "TIBBEN UYGUN DEĞİL",
+            KontrolSonucu.ATLANDI: "ATLANDI",
+        }
+        kategori = self._hepatit_kategori(
+            s.get("ilac"), s.get("etkin"), s.get("atc"))
+        alt_sinif = self._hepatit_alt_sinif(
+            s.get("ilac"), s.get("etkin"), s.get("atc"))
+        ilac_sonuc = self._ilac_sonuc_olustur_hepatit(s)
+        mid = s.get("musteri_id")
+        try:
+            ek_icd = (self._hasta_tum_icd_kodlarini_topla([mid]).get(mid, [])
+                      if mid else [])
+        except Exception:
+            ek_icd = []
+        ilac_sonuc["diger_raporlar_icd"] = list(ek_icd)
+        try:
+            rapor = kontrol_hepatit(ilac_sonuc)
+        except Exception as e:
+            messagebox.showerror("Kontrol Hatası", str(e), parent=self.root)
+            return
+        try:
+            _diger_rapor_notunu_uyariya_ekle(rapor, ek_icd, ['DM', 'KY'])
+        except Exception:
+            pass
+        s["verdict"] = VE.get(rapor.sonuc, "ŞÜPHELİ")
+        s["verdict_detay"] = rapor.mesaj or ""
+        s["verdict_kategori"] = kategori
+        s["verdict_alt_sinif"] = alt_sinif
+        s["verdict_uyari"] = rapor.uyari or ""
+        s["verdict_sut"] = rapor.sut_kurali or ""
+        s["verdict_aranan"] = rapor.aranan_ibare or ""
+        s["verdict_bulunan"] = rapor.bulunan_metin or ""
+        try:
+            s["verdict_detaylar"] = json.dumps(rapor.detaylar or {},
+                                               ensure_ascii=False)
+        except Exception:
+            s["verdict_detaylar"] = str(rapor.detaylar or {})
+        sartlar_obj = getattr(rapor, "sartlar", None) or []
+        try:
+            s["verdict_sartlar"] = json.dumps([
+                {"ad": p.ad,
+                 "durum": (p.durum.value if hasattr(p.durum, "value")
+                           else str(p.durum)),
+                 "neden": p.neden, "kaynak": getattr(p, "kaynak", ""),
+                 "grup": getattr(p, "grup", ""),
+                 "veya_grubu": bool(getattr(p, "veya_grubu", False)),
+                 "alt_liste": getattr(p, "alt_liste", None),
+                 "sartli_atom": bool(getattr(p, "sartli_atom", False)),
+                 "bypass_kaynak": getattr(p, "bypass_kaynak", None)}
+                for p in sartlar_obj], ensure_ascii=False)
+        except Exception:
+            s["verdict_sartlar"] = ""
+        self._tabloyu_yenile()
+        self._durum_yaz(
+            f"Rapor taraması uygulandı → {s['verdict']} "
+            f"(önceki etken raporlardan enjekte edildi)")
 
     # ── ASTIM / KOAH KONTROLÜ (verdict sütunu) ───────────────────────
     def _astim_koah_kontrol_baslat(self):
