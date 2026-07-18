@@ -80,6 +80,10 @@ class MinStokAnalizGUI:
         self.servis_var     = tk.DoubleVar(value=95.0)
         self.tedarik_var    = tk.IntVar(value=0)
         self.inceleme_var   = tk.IntVar(value=1)
+        # İlaç-dışı basit mantık parametreleri
+        self.basit_hedef_ay   = tk.IntVar(value=3)           # min kaç aya yeterli
+        self.basit_seyrek_esik = tk.IntVar(value=6)          # kaç ayda bir → 1
+        self.analiz_tip_vars  = {}                           # tür adı → BooleanVar
 
         self._arayuz_olustur()
 
@@ -105,6 +109,7 @@ class MinStokAnalizGUI:
 
         self._parametre_panel_olustur()
         self._rop_panel_olustur()
+        self._basit_panel_olustur()
         self._tablo_olustur()
         self._buton_panel_olustur()
 
@@ -161,6 +166,36 @@ class MinStokAnalizGUI:
                        value='finansal', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 5))
         tk.Radiobutton(mod_f, text="ROP (Bilimsel)", variable=self.hesaplama_modu,
                        value='rop', bg='#E8EAF6', font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 2))
+        tk.Radiobutton(mod_f, text="Basit (İlaç-dışı)", variable=self.hesaplama_modu,
+                       value='basit', bg='#E8EAF6', font=('Arial', 9, 'bold'),
+                       fg='#00695C').pack(side=tk.LEFT, padx=(0, 2))
+
+        # Ürün türü seçici — Botanik türlerinden çoklu (checkbox menüsü)
+        tip_f = tk.Frame(r2, bg='#E0F2F1', relief='ridge', bd=1, padx=5, pady=2)
+        tip_f.pack(side=tk.LEFT, padx=(8, 0))
+        tk.Label(tip_f, text="Ürün Türü:", font=('Arial', 9, 'bold'), bg='#E0F2F1').pack(side=tk.LEFT, padx=(2, 4))
+        self.analiz_tip_vars = {}
+        self.tip_mb = tk.Menubutton(tip_f, text="İlaç (varsayılan) ▾", relief='raised',
+                                    bd=1, bg='white', font=('Arial', 9), width=18)
+        tip_menu = tk.Menu(self.tip_mb, tearoff=0)
+        self.tip_mb.config(menu=tip_menu)
+        self.tip_mb.pack(side=tk.LEFT, padx=(0, 4))
+        try:
+            tipler = self.db.urun_tipleri_getir() if self.db else []
+            for t in tipler:
+                ad = t['UrunTipAdi']
+                v = tk.BooleanVar(value=False)
+                self.analiz_tip_vars[ad] = v
+                tip_menu.add_checkbutton(label=ad, variable=v, command=self._tip_ozet_guncelle)
+            tip_menu.add_separator()
+            tip_menu.add_command(
+                label="İlaç-dışı tümü",
+                command=lambda: (self._tip_topluca(
+                    lambda a: a not in ('İLAÇ', 'PASİF İLAÇ', 'SERUMLAR'))))
+            tip_menu.add_command(label="Temizle",
+                                 command=lambda: self._tip_topluca(lambda a: False))
+        except Exception as e:
+            logger.warning("Ürün türleri yüklenemedi: %s", e)
 
         self.durum_label = tk.Label(r2, text="Hazir", font=('Arial', 9), bg='#E3F2FD', fg='#666')
         self.durum_label.pack(side=tk.RIGHT, padx=10)
@@ -188,8 +223,48 @@ class MinStokAnalizGUI:
         tk.Label(self.rop_frame, text="PP=Tedarik+Inceleme | SS=Z*σ*√PP | Min=⌈d*PP+SS⌉",
                  font=('Arial', 8), bg='#E8F5E9', fg='#666').pack(side=tk.RIGHT, padx=10, pady=5)
 
+    def _tip_ozet_guncelle(self):
+        secili = [t for t, v in self.analiz_tip_vars.items() if v.get()]
+        if not secili:
+            self.tip_mb.config(text="İlaç (varsayılan) ▾")
+        elif len(secili) == len(self.analiz_tip_vars):
+            self.tip_mb.config(text="Tümü ▾")
+        elif len(secili) <= 2:
+            self.tip_mb.config(text=", ".join(secili[:2]) + " ▾")
+        else:
+            self.tip_mb.config(text=f"{len(secili)} tür ▾")
+
+    def _tip_topluca(self, kosul):
+        for ad, v in self.analiz_tip_vars.items():
+            v.set(bool(kosul(ad)))
+        self._tip_ozet_guncelle()
+
+    def _basit_panel_olustur(self):
+        self.basit_frame = tk.Frame(self.parent, bg='#E0F2F1', relief='ridge', bd=1)
+        tk.Label(self.basit_frame, text="Basit Min (İlaç-dışı):", font=('Arial', 9, 'bold'),
+                 bg='#E0F2F1', fg='#00695C').pack(side=tk.LEFT, padx=(10, 10), pady=5)
+        tk.Label(self.basit_frame, text="Hedef süre:", font=('Arial', 9), bg='#E0F2F1').pack(side=tk.LEFT, padx=(5, 3))
+        ttk.Spinbox(self.basit_frame, from_=1, to=24, textvariable=self.basit_hedef_ay,
+                    width=3).pack(side=tk.LEFT, padx=(0, 3), pady=5)
+        tk.Label(self.basit_frame, text="aya yeterli", font=('Arial', 9), bg='#E0F2F1').pack(side=tk.LEFT, padx=(0, 15))
+        tk.Label(self.basit_frame, text="Seyreklik:", font=('Arial', 9), bg='#E0F2F1').pack(side=tk.LEFT, padx=(5, 3))
+        ttk.Spinbox(self.basit_frame, from_=2, to=24, textvariable=self.basit_seyrek_esik,
+                    width=3).pack(side=tk.LEFT, padx=(0, 3), pady=5)
+        tk.Label(self.basit_frame, text="ayda bir → 1 adet", font=('Arial', 9), bg='#E0F2F1').pack(side=tk.LEFT, padx=(0, 15))
+        tk.Label(self.basit_frame,
+                 text="Min = ⌈aylık ort × hedef⌉ · seyrek ise 1 · Analiz penceresi = yukarıdaki 'Ay'",
+                 font=('Arial', 8), bg='#E0F2F1', fg='#666').pack(side=tk.RIGHT, padx=10, pady=5)
+
     def _mod_degisti(self, *args):
         modu = self.hesaplama_modu.get()
+        # Basit mod seçilince, hiç tür seçili değilse ilaç-dışı türleri otomatik seç
+        if modu == 'basit' and not any(v.get() for v in self.analiz_tip_vars.values()):
+            self._tip_topluca(lambda a: a not in ('İLAÇ', 'PASİF İLAÇ', 'SERUMLAR'))
+        if hasattr(self, 'basit_frame'):
+            if modu == 'basit':
+                self.basit_frame.pack(fill=tk.X, padx=10, pady=(0, 5), before=self.tablo_frame)
+            else:
+                self.basit_frame.pack_forget()
         if modu == 'rop':
             self.rop_frame.pack(fill=tk.X, padx=10, pady=(0, 5), before=self.tablo_frame)
         else:
@@ -553,7 +628,10 @@ class MinStokAnalizGUI:
                     progress_callback=progress_cb,
                     servis_seviyesi=self.servis_var.get(),
                     tedarik_suresi=self.tedarik_var.get(),
-                    inceleme_periyodu=self.inceleme_var.get()
+                    inceleme_periyodu=self.inceleme_var.get(),
+                    secili_tipler=[t for t, v in self.analiz_tip_vars.items() if v.get()] or None,
+                    basit_hedef_ay=self.basit_hedef_ay.get(),
+                    basit_seyrek_esik_ay=self.basit_seyrek_esik.get()
                 )
                 self.analiz_sonuclari = sonuclar
                 self.parent.after(0, self._tabloyu_doldur)

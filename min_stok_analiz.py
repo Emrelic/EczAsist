@@ -852,6 +852,42 @@ def rop_safety_stock_hesapla(
     }
 
 
+def basit_min_hesapla(analiz: dict, hedef_ay: float = 3.0,
+                      seyrek_esik_ay: float = 6.0) -> dict:
+    """İlaç-dışı ürünler için basit, açıklanabilir minimum stok mantığı.
+
+    Kural (kullanıcı kararı 2026-07-12):
+      - Genel: min = yukarı_yuvarla(aylık_ortalama × hedef_ay)  → hedef_ay'a yeterli
+      - Seyrek ürün: talepler arası ortalama aralık ≥ seyrek_esik_ay ise
+        (örn. 6 ayda bir gidiyorsa) min = 1  → tek bulundur
+      - Hiç satış yoksa min = 0
+
+    Args:
+        analiz: talep_pattern_analiz() çıktısı
+        hedef_ay: Minimum kaç aylık ihtiyacı karşılasın (varsayılan 3)
+        seyrek_esik_ay: Kaç ayda bir gideni "1 adet" say (varsayılan 6)
+
+    Returns:
+        dict: {'min_onerilen': int, 'aciklama': str}
+    """
+    aylik_ort = analiz.get('aylik_ort', 0) or 0
+    talep_sayisi = analiz.get('talep_sayisi', 0) or 0
+    adi_gun = analiz.get('adi', 999) or 999   # ortalama talepler arası gün
+    adi_ay = adi_gun / 30.0
+
+    if aylik_ort <= 0 or talep_sayisi == 0:
+        return {'min_onerilen': 0, 'aciklama': 'Satış yok → min 0'}
+
+    if adi_ay >= seyrek_esik_ay:
+        return {'min_onerilen': 1,
+                'aciklama': f'Seyrek (~{adi_ay:.1f} ayda bir) → 1 adet'}
+
+    min_deger = max(1, math.ceil(aylik_ort * hedef_ay))
+    return {'min_onerilen': min_deger,
+            'aciklama': (f'{hedef_ay:.0f} aya yeterli: '
+                         f'{aylik_ort:.2f}/ay × {hedef_ay:.0f} = {min_deger}')}
+
+
 def tum_ilaclari_analiz_et(
     db,
     ay_sayisi: int = 12,
@@ -863,7 +899,10 @@ def tum_ilaclari_analiz_et(
     progress_callback=None,
     servis_seviyesi: float = 95.0,
     tedarik_suresi: int = 0,
-    inceleme_periyodu: int = 1
+    inceleme_periyodu: int = 1,
+    secili_tipler: list = None,
+    basit_hedef_ay: float = 3.0,
+    basit_seyrek_esik_ay: float = 6.0
 ) -> list:
     """
     Tum ilaclari analiz et ve minimum stok onerisi olustur
@@ -899,6 +938,16 @@ def tum_ilaclari_analiz_et(
             'Aciklama': str
         }, ...]
     """
+    # Ürün tipi filtresi — Botanik UrunTip adlarından seçim (UrunTipAdi).
+    #   secili_tipler None/boş → varsayılan: sadece ilaç (UrunUrunTipId 1,16)
+    #   secili_tipler = ['SERUMLAR','OTC',...] → o tip adları (isimle filtre)
+    if secili_tipler:
+        _tipler = ",".join(
+            "'" + str(t).replace("'", "''") + "'" for t in secili_tipler)
+        tip_filtre = f"AND ut.UrunTipAdi IN ({_tipler})"
+    else:
+        tip_filtre = "AND u.UrunUrunTipId IN (1, 16)"
+
     # Tum ilaclari getir
     stok_filtre = "AND (u.UrunStokDepo + u.UrunStokRaf + u.UrunStokAcik) > 0" if sadece_stoklu else ""
 
@@ -952,7 +1001,7 @@ def tum_ilaclari_analiz_et(
     FROM Urun u
     LEFT JOIN UrunTip ut ON u.UrunUrunTipId = ut.UrunTipId
     WHERE u.UrunSilme = 0
-    AND u.UrunUrunTipId IN (1, 16)
+    {tip_filtre}
     {stok_filtre}
     {hareket_filtre}
     ORDER BY u.UrunAdi
@@ -977,7 +1026,33 @@ def tum_ilaclari_analiz_et(
         if progress_callback and i % 50 == 0:
             progress_callback(i, toplam)
 
-        if hesaplama_modu == 'finansal':
+        if hesaplama_modu == 'basit':
+            # İlaç-dışı basit mantık: aylık ort × hedef ay, seyrek → 1
+            analiz = talep_pattern_analiz(db, urun_id, ay_sayisi)
+            if not analiz:
+                continue
+            basit = basit_min_hesapla(analiz, basit_hedef_ay, basit_seyrek_esik_ay)
+            sonuclar.append({
+                'UrunId': urun_id,
+                'UrunAdi': ilac['UrunAdi'],
+                'UrunTipi': ilac.get('UrunTipi', '') or '',
+                'UrunBarkodu': ilac.get('UrunBarkodu', '') or '',
+                'MevcutMin': ilac.get('MevcutMin', 0) or 0,
+                'Stok': ilac.get('Stok', 0) or 0,
+                'AylikOrt': round(analiz['aylik_ort'], 1),
+                'AylikDokum': analiz.get('aylik_dokum', []),
+                'AnalizAy': ay_sayisi,
+                'TalepSayisi': analiz['talep_sayisi'],
+                'OrtParti': round(analiz['ort_parti'], 1),
+                'CV': round(analiz['cv'], 2),
+                'ADI': round(analiz['adi'], 1),
+                'Sinif': analiz['sinif'],
+                'MinBilimsel': 0,
+                'MinFinansal': 0,
+                'MinOnerilen': basit['min_onerilen'],
+                'Aciklama': basit['aciklama']
+            })
+        elif hesaplama_modu == 'finansal':
             # Finansal başabaş periyodu bazlı analiz (24 ay)
             fin_sonuc = finansal_periyot_analiz(db, urun_id, kar_marji, yillik_faiz)
 

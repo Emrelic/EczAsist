@@ -26,10 +26,22 @@ class SiparisDatabase:
         self.tablolari_olustur()
 
     def baglanti_kur(self):
-        """Database baglantisini kur"""
+        """Database baglantisini kur.
+
+        WAL modu + timeout: EczAsist ve Hibrit Siparişçi (ayrı süreç) ayni
+        siparis_calismalari.db'ye aynı anda erişebilir. WAL okuyucu-yazar
+        engellemesini kaldırır; timeout kısa yazma çakışmalarında bekletir
+        (aksi halde 'database is locked' anında hata verirdi).
+        """
         try:
-            self.conn = sqlite3.connect(str(self.db_yolu), check_same_thread=False)
+            self.conn = sqlite3.connect(str(self.db_yolu),
+                                        check_same_thread=False, timeout=10.0)
             self.conn.row_factory = sqlite3.Row  # Dict-like erişim
+            try:
+                self.conn.execute("PRAGMA journal_mode=WAL")
+                self.conn.execute("PRAGMA busy_timeout=10000")
+            except Exception as e:
+                logger.warning(f"Siparis DB PRAGMA ayari yapilamadi: {e}")
             self.cursor = self.conn.cursor()
             logger.info(f"Siparis DB baglantisi kuruldu: {self.db_yolu}")
         except Exception as e:
@@ -102,6 +114,26 @@ class SiparisDatabase:
                     urun_adi TEXT NOT NULL,
                     ekleme_tarihi TEXT NOT NULL
                 )
+            ''')
+
+            # Özel muadil grupları (ilaç-dışı ürünler için ortak kod eşlemesi).
+            # Botanik'teki UrunEsdegerId'ye YAZAMADIĞIMIZ için (kırmızı çizgi),
+            # ilaç-dışı ürünleri kendi aramızda "muadil" kabul edip konsolide
+            # değerlendirmek üzere yerel eşleme. Bir ürün tek bir gruba ait
+            # olabilir (urun_id UNIQUE).
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ozel_muadil_gruplari (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ortak_kod TEXT NOT NULL,
+                    ortak_ad TEXT,
+                    urun_id INTEGER NOT NULL UNIQUE,
+                    urun_adi TEXT,
+                    ekleme_tarihi TEXT NOT NULL
+                )
+            ''')
+            self.cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_ozel_muadil_kod
+                ON ozel_muadil_gruplari(ortak_kod)
             ''')
 
             self.conn.commit()
@@ -584,6 +616,95 @@ class SiparisDatabase:
         except Exception as e:
             logger.error(f"Reçete ile sipariş kontrol hatası: {e}")
             return False
+
+    # ── Özel muadil grupları (ilaç-dışı ortak kod) ──────────────────────────
+    def ozel_muadil_ata(self, ortak_kod, ortak_ad, urunler):
+        """Verilen ürünlere ortak kod ata (mevcut eşleme güncellenir).
+
+        Args:
+            ortak_kod: Grup kodu (ör. 'OTC-COLGATE')
+            ortak_ad: Grup görünen adı (ör. 'Colgate Diş Macunu Ailesi')
+            urunler: [{'urun_id': int, 'urun_adi': str}, ...]
+
+        Returns:
+            int: eşlenen ürün sayısı
+        """
+        try:
+            tarih = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            n = 0
+            for u in urunler:
+                uid = u.get('urun_id')
+                if uid is None:
+                    continue
+                # urun_id UNIQUE → varsa güncelle (başka gruba taşı), yoksa ekle
+                self.cursor.execute('''
+                    INSERT INTO ozel_muadil_gruplari
+                        (ortak_kod, ortak_ad, urun_id, urun_adi, ekleme_tarihi)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(urun_id) DO UPDATE SET
+                        ortak_kod=excluded.ortak_kod,
+                        ortak_ad=excluded.ortak_ad,
+                        urun_adi=excluded.urun_adi
+                ''', (ortak_kod, ortak_ad, uid, u.get('urun_adi', ''), tarih))
+                n += 1
+            self.conn.commit()
+            return n
+        except Exception as e:
+            logger.error(f"Ozel muadil atama hatasi: {e}")
+            return 0
+
+    def ozel_muadil_urun_cikar(self, urun_id):
+        """Bir ürünü özel muadil eşlemesinden çıkar."""
+        try:
+            self.cursor.execute(
+                'DELETE FROM ozel_muadil_gruplari WHERE urun_id = ?', (urun_id,))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Ozel muadil cikarma hatasi: {e}")
+            return False
+
+    def ozel_muadil_grup_sil(self, ortak_kod):
+        """Bir ortak koda ait tüm eşlemeleri sil (grubu dağıt)."""
+        try:
+            self.cursor.execute(
+                'DELETE FROM ozel_muadil_gruplari WHERE ortak_kod = ?', (ortak_kod,))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Ozel muadil grup silme hatasi: {e}")
+            return False
+
+    def ozel_muadil_map(self):
+        """UrunId → ortak_kod eşleme sözlüğü (tablo gruplaması için hızlı erişim)."""
+        try:
+            self.cursor.execute(
+                'SELECT urun_id, ortak_kod FROM ozel_muadil_gruplari')
+            return {r['urun_id']: r['ortak_kod'] for r in self.cursor.fetchall()}
+        except Exception as e:
+            logger.error(f"Ozel muadil map hatasi: {e}")
+            return {}
+
+    def ozel_muadil_gruplari_getir(self):
+        """Tüm grupları {ortak_kod: {'ad': str, 'urunler': [dict,...]}} olarak getir."""
+        try:
+            self.cursor.execute('''
+                SELECT ortak_kod, ortak_ad, urun_id, urun_adi
+                FROM ozel_muadil_gruplari
+                ORDER BY ortak_kod, urun_adi
+            ''')
+            gruplar = {}
+            for r in self.cursor.fetchall():
+                d = dict(r)
+                kod = d['ortak_kod']
+                if kod not in gruplar:
+                    gruplar[kod] = {'ad': d.get('ortak_ad') or kod, 'urunler': []}
+                gruplar[kod]['urunler'].append(
+                    {'urun_id': d['urun_id'], 'urun_adi': d.get('urun_adi', '')})
+            return gruplar
+        except Exception as e:
+            logger.error(f"Ozel muadil gruplari getirme hatasi: {e}")
+            return {}
 
     def kapat(self):
         """Database baglantisini kapat"""
