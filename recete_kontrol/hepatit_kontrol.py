@@ -198,6 +198,13 @@ def _hep_sayi_oku(s: str) -> Optional[float]:
     if not s:
         return None
     s = s.strip().replace(' ', '')
+    # Greedy [\d.,]+ yakalayan parser'lar değerden sonraki cümle-sonu noktası
+    # ya da virgülünü de kapabilir ("FIB-4: 1.0." → "1.0." → float hatası → None).
+    # Sondaki başıboş ayırıcı(lar)ı at. Baştakine DOKUNMA: ".5" gibi değerler
+    # float() ile zaten 0.5 olur; baştan kırpmak "5" yapıp değeri bozardı.
+    s = re.sub(r'[.,]+$', '', s)
+    if not s:
+        return None
     # Bilimsel: 1.5x10^6, 1.5e6, 1,5e6
     m = re.match(r'^([0-9]+[\.,]?[0-9]*)\s*[xX*]\s*10\s*[\^]?\s*([0-9]+)$', s)
     if m:

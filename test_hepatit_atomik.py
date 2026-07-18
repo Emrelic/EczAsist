@@ -102,6 +102,17 @@ def test_parserlar():
     assert hep_parse_sarilik_sure("sarılık süresi 5 hafta") == 5.0
     print("  ✓ INR=1.8, sarılık=5 hafta")
 
+    # Cümle-sonu noktası (greedy [\d.,]+ tuzağı) — sondaki ayırıcı kırpılır
+    assert hep_parse_fib4("Değerlendirmede FIB-4: 1.0.") == 1.0
+    assert hep_parse_apri("APRI skoru 0,3.") == 0.3
+    assert hep_parse_fib4("FIB-4 2,1, ileri fibrozis.") == 2.1
+    v, _ = hep_parse_hbv_dna("HBV DNA: 50.000 IU/ml.")
+    assert v == 50000.0, f"Beklenen 50000, alınan {v}"
+    # Baştaki ayırıcı bozulmamalı: ".5" → 0.5
+    assert hep_parse_apri("APRI .5") == 0.5
+    print("  ✓ Cümle-sonu noktası: '1.0.'→1.0, '0,3.'→0.3, '50.000.'→50000, "
+          "'.5'→0.5")
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # YOLAK SENARYOLARI
