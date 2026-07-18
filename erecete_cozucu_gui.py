@@ -19,7 +19,7 @@ from erecete_karisma_tablosu import KarismaTablosu, get_tablo
 from erecete_cozucu_motor import CozucuMotor, Pozisyon
 import erecete_cozucu_medula as medula
 import tc_yardimci
-from erecete_prefix_ogrenme import get_ogrenme
+from erecete_prefix_ogrenme import get_ogrenme, medula_tip_belirle
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,11 @@ KUTU_SAYISI = 8          # Geleceğe dönük 8 kutu (şu an e-reçete/takip = 7)
 VARSAYILAN_UZUNLUK = 7
 UYARI_ESIGI = 300        # Bu sayının üstünde onay iste
 BELIRSIZ_LIMIT = 3       # Ardışık bu kadar BELİRSİZ sonuçta dur
+# TC kutusuna barkod okutulunca 11 hane çok hızlı gelir; 9. hanede tamamlama +
+# odak geçişi yapılırsa son 2 hane numara kutusuna kaçar. Bu süre kadar tuş
+# gelmezse (giriş durulunca) tamamlama/odak işlenir — barkod serisi tek çağrıda
+# 11 hane olarak görülür, taşma olmaz.
+TC_BARKOD_DEBOUNCE_MS = 220
 
 
 def _renkler():
@@ -58,6 +63,28 @@ def _tr_i_duzelt(entry, var):
                 entry.icursor(pos)
             except Exception:
                 pass
+
+
+def _tur_belirle(num, ogrenme, medula_liste, override=None):
+    """Girilen numaranın türünü belirle — iki pencere de bunu kullanır.
+
+    Öncelik: override (tür kilidi) → MEDULA prefix tablosu (o tarihin canlı
+    e-reçete/takip başları) → öğrenilmiş prefiks (JSON) → heuristik
+    (harf→e-reçete, tümü rakam→takip).
+    Dönüş: (tip, kaynak, eslesen_prefix)  kaynak ∈
+           {'override','medula','ogren','tahmin'}
+    """
+    if override:
+        return override, "override", None
+    liste = medula_liste or {}
+    tip, pfx, _skor = medula_tip_belirle(
+        num, liste.get("erecete"), liste.get("takip"))
+    if tip:
+        return tip, "medula", pfx
+    tip2, ogr = ogrenme.tip_belirle(num)
+    if ogr:
+        return tip2, "ogren", (ogrenme.eslesen_prefix(num) or "")
+    return tip2, "tahmin", None
 
 
 def _hasta_sec_popup(parent, sonuclar, on_sec):
@@ -266,7 +293,182 @@ class HastaAutocomplete:
                 pass
 
 
-class EReceteCozucuGUI:
+class CanliMedulaKarma:
+    """İki çözücü penceresinin ORTAK Medula canlı-etkileşim davranışı:
+
+      • Canlı aktarım  — yazdıkça TC+numarayı Medula alanlarına yaz, numara 7.
+        karaktere ulaşınca otomatik Sorgula gönder.
+      • Canlı tut (keepalive) — oturumu SGK'yı yormayacak biçimde (rastgele
+        jitter, gece 20–08 susar, aktivite varken atlar) arka planda uyanık tut.
+
+    Host sınıf şu tk değişkenlerini + `calisiyor` (bool) + `win` + `_ui`'yi
+    sağlamalı ve __init__'inde `_canli_state_kur()` çağırmalı:
+      canli_var, canli_aktar_var, ka_min_var, ka_max_var, ka_sayac_var
+    Ayrıca şu KANCA metodlarını uygulamalı:
+      _canli_numara() -> str          (Medula'ya aktarılacak normalize numara)
+      _canli_tc() -> str | None       (aktarılacak TC — isim aramasıysa None)
+      _canli_mode(num) -> 'erecete' | 'takip'
+      _canli_durum(msg, r_err=False)  (durum satırına yaz)
+    """
+
+    def _canli_state_kur(self):
+        """Canlı aktarım + keepalive için thread-dışı durum alanlarını başlat."""
+        self._ka_thread = None
+        self._ka_stop = threading.Event()
+        self._son_medula_istek = 0.0     # son gerçek Medula isteği (monotonic)
+        self._ka_hedef = 0               # bu turun rastgele hedefi (sn)
+        self._aktar_after = None         # canlı aktarım debounce id
+        self._son_num_uzunluk = 0        # 7. karakterde otomatik sorgula için
+
+    # ── Canlı aktarım (yazdıkça Medula'ya) ────────────────────────────
+    def _canli_aktar_planla(self):
+        """Metin değişince aktarımı debounce'la (barkod hızlı yazımını birleştir,
+        UI donmasın). Kapalıysa / çözüm sürerken yapma."""
+        if not self.canli_aktar_var.get() or self.calisiyor:
+            return
+        try:
+            if self._aktar_after:
+                self.win.after_cancel(self._aktar_after)
+        except Exception:
+            pass
+        try:
+            self._aktar_after = self.win.after(70, self._canli_aktar)
+        except Exception:
+            pass
+
+    def _canli_aktar(self):
+        """TC + numarayı Medula alanlarına yaz (best-effort). Numara 7 karaktere
+        ulaşınca (yeni) otomatik Sorgula gönder — hangi alan olduğu türe göre."""
+        self._aktar_after = None
+        if not self.canli_aktar_var.get() or self.calisiyor:
+            return
+        num = self._canli_numara()
+        tc = self._canli_tc()
+        mode = self._canli_mode(num) if num else "erecete"
+        try:
+            yazildi = medula.canli_alan_yaz(mode, numara=(num or None), tc=tc)
+        except Exception:
+            yazildi = False
+        if yazildi:
+            self._medula_istek_oldu()   # aktivite → keepalive ping'i ertele
+        if len(num) == 7 and self._son_num_uzunluk < 7:
+            try:
+                medula.sorgula_gonder(mode)
+                self._medula_istek_oldu()
+                self._canli_durum(
+                    f"→ {num} otomatik sorgulandı "
+                    f"({'Takip' if mode == 'takip' else 'E-Reçete'})")
+            except Exception:
+                pass
+        self._son_num_uzunluk = len(num)
+
+    # ── Medula canlı tut (keepalive) ──────────────────────────────────
+    def _canli_toggle(self):
+        if self.canli_var.get():
+            import time
+            import random
+            self._son_medula_istek = time.monotonic()  # sayaç başlasın
+            self._ka_hedef = random.randint(*self._ka_aralik())
+            self._ka_stop.clear()
+            self._ka_thread = threading.Thread(target=self._ka_loop, daemon=True)
+            self._ka_thread.start()
+            self._ka_sayac_guncelle()                  # canlı geri sayım
+        else:
+            self._ka_stop.set()
+            self.ka_sayac_var.set("")
+
+    def _medula_istek_oldu(self):
+        """Gerçek bir Medula isteği gittiğinde çağrılır → keepalive sayacını
+        SIFIRLAR ve yeni rastgele hedef seçer (aktivite varken boşuna ping yok)."""
+        import time
+        import random
+        self._son_medula_istek = time.monotonic()
+        self._ka_hedef = random.randint(*self._ka_aralik())
+
+    def _ka_sayac_guncelle(self):
+        """Canlı tut açıkken sonraki tıklamaya kalan süreyi (M:SS) göster."""
+        if not self.canli_var.get():
+            self.ka_sayac_var.set("")
+            return
+        try:
+            import time
+            kalan = int(self._ka_hedef - (time.monotonic() - self._son_medula_istek))
+            kalan = max(0, kalan)
+            self.ka_sayac_var.set(f"▸ {kalan // 60}:{kalan % 60:02d}")
+        except Exception:
+            self.ka_sayac_var.set("")
+        try:
+            self.win.after(1000, self._ka_sayac_guncelle)
+        except Exception:
+            pass
+
+    def _ka_aralik(self):
+        """Keepalive rastgele aralığı (alt, üst) sn — doğrulanmış (alt≥30, üst≥alt)."""
+        try:
+            a = int(self.ka_min_var.get())
+            b = int(self.ka_max_var.get())
+        except Exception:
+            a, b = 240, 360
+        a = max(30, a)
+        b = max(a, b)
+        return a, b
+
+    def _ka_loop(self):
+        """Medulayı canlı tut — SGK'yı yormayacak biçimde: 4–6 dk rastgele aralık
+        (jitter), gece (20:00–08:00) susar, çözüm sürerken dokunmaz, yalnız
+        e-Reçete Sorgu ekranındayken GERÇEK app eylemiyle tazeler (menüden yeniden
+        aç). Oturum düşerse ≤3 kez Giriş'e basar (şifresiz), sonra durur."""
+        import random
+        import time
+        from datetime import datetime
+        try:
+            import medula_keepalive as ka
+            import medula_html_dom as mhd
+        except Exception:
+            return
+        giris_deneme = 0
+        eylem_sira = 0
+        while not self._ka_stop.is_set():
+            if self._ka_stop.wait(20):
+                return
+            try:
+                saat = datetime.now().hour
+            except Exception:
+                saat = 12
+            if saat >= 20 or saat < 8:
+                continue
+            if self.calisiyor:
+                continue
+            if time.monotonic() - self._son_medula_istek < self._ka_hedef:
+                continue
+            try:
+                w = ka.medula_penceresi_bul()
+                if w is None:
+                    continue
+                if not ka.oturum_aktif_mi(w):
+                    if giris_deneme < 3:
+                        giris_deneme += 1
+                        d = giris_deneme
+                        self._ui(lambda d=d: self._canli_durum(
+                            f"Oturum düştü — Giriş ({d}/3)…"))
+                        ka.oturumu_yenile(w)
+                    else:
+                        self._ui(lambda: self._canli_durum(
+                            "Oturum yenilenemedi — elle giriş yapın."))
+                    self._medula_istek_oldu()   # sayacı sıfırla + yeni hedef
+                    continue
+                giris_deneme = 0
+                uygun, _m = medula.sorgu_ekraninda_mi()
+                if uygun:
+                    mhd.erecete_sorgu_tikla(mhd._medula_hwnd())
+                    eylem_sira += 1
+                    self._medula_istek_oldu()   # sayacı sıfırla + yeni hedef
+                    self._ui(lambda: self._canli_durum("● Medula canlı tutuldu."))
+            except Exception:
+                pass
+
+
+class EReceteCozucuGUI(CanliMedulaKarma):
     def __init__(self, master):
         self.win = master
         self.win.title("🔍 E-Reçete No Çözücü")
@@ -286,9 +488,16 @@ class EReceteCozucuGUI:
         self.calisiyor = False
         self.durdur_bayrak = False
         self.worker = None
+        self._tc_after = None            # TC tamamlama debounce id (barkod)
+
+        # Medula prefix tablosu (o tarihin canlı e-reçete/takip başları) —
+        # "Otomatik" sorgu tipinde tür kararı doğrudan bu listeye bakılarak verilir.
+        self._medula_prefix_liste = {"erecete": [], "takip": []}
+        self._prefix_okunuyor = False
 
         # tk değişkenleri
-        self.mode_var = tk.StringVar(value="erecete")   # "erecete" | "takip"
+        self.mode_var = tk.StringVar(value="oto")   # "oto" | "erecete" | "takip"
+        self.oto_tip_var = tk.StringVar(value="")   # otomatik tespit önizleme
         self.tc_var = tk.StringVar()
         self.tc_bilgi_var = tk.StringVar(value="")       # TC durum/tamamlama bilgisi
         self.toplu_var = tk.StringVar()                  # toplu (hızlı) giriş
@@ -303,12 +512,80 @@ class EReceteCozucuGUI:
         self.durum_var = tk.StringVar(value="Hazır.")
         self.ilerleme_var = tk.StringVar(value="")
 
+        # Canlı etkileşim (mini penceredeki özellikler — CanliMedulaKarma mixin)
+        self.topmost_var = tk.BooleanVar(value=False)     # 📌 her zaman üstte
+        self.canli_aktar_var = tk.BooleanVar(value=False)  # yazdıkça Medula'ya aktar
+        self.canli_var = tk.BooleanVar(value=False)        # oturumu canlı tut
+        self.ka_min_var = tk.IntVar(value=240)             # keepalive alt sınır (sn)
+        self.ka_max_var = tk.IntVar(value=360)             # keepalive üst sınır (sn)
+        self.ka_sayac_var = tk.StringVar(value="")         # geri sayım göstergesi
+        self._canli_state_kur()
+
         self._mini_ref = None
         self._arayuz_kur()
         self._toplami_guncelle()
         # Ana pencere küçültülünce (minimize) mini'yi Medula giriş alanı üstüne aç
         try:
             self.win.bind("<Unmap>", self._ana_kucultuldu)
+        except Exception:
+            pass
+        # Açılışta (Otomatik tip varsayılan) Medula prefix tablosunu sessizce oku
+        try:
+            self.win.after(800, lambda: self._medula_prefix_oku(sessiz=True))
+        except Exception:
+            pass
+        # Canlı aktarım tetikleyicileri: TC/numara değişince Medula'ya aktar
+        # (numara değişimi zaten _toplami_guncelle → _canli_aktar_planla ile gelir)
+        try:
+            self.tc_var.trace_add("write", lambda *a: self._canli_aktar_planla())
+            self.toplu_var.trace_add("write", lambda *a: self._canli_aktar_planla())
+        except Exception:
+            pass
+        # Pencere kapanınca keepalive thread'ini durdur
+        try:
+            self.win.bind("<Destroy>", self._on_destroy, add="+")
+        except Exception:
+            pass
+
+    def _on_destroy(self, evt=None):
+        """Ana pencere yok edilince keepalive'ı durdur (daemon thread sızmasın)."""
+        try:
+            if evt is not None and evt.widget is not self.win:
+                return
+        except Exception:
+            pass
+        try:
+            self._ka_stop.set()
+        except Exception:
+            pass
+
+    # ── Canlı etkileşim kancaları (CanliMedulaKarma mixin için) ───────
+    def _canli_numara(self):
+        """Medula'ya aktarılacak numara = birincil kombinasyon (her aktif
+        pozisyonun ilk adayının birleşimi)."""
+        return self._oto_ornek_numara()
+
+    def _canli_tc(self):
+        tc_ham = self.tc_var.get().strip()
+        return tc_ham if (tc_ham and tc_ham.isdigit()) else None
+
+    def _canli_mode(self, num):
+        mode = self.mode_var.get()
+        if mode == "oto":
+            return _tur_belirle(num, self._ogrenme, self._medula_prefix_liste)[0]
+        return mode
+
+    def _canli_durum(self, msg, r_err=False):
+        self.durum_var.set(msg)
+        try:
+            self.durum_lbl.config(fg=self.r["error"] if r_err else self.r["fg"])
+        except Exception:
+            pass
+
+    def _topmost_toggle(self):
+        """📌 işareti: pencerenin her zaman üstte kalmasını aç/kapat."""
+        try:
+            self.win.attributes("-topmost", bool(self.topmost_var.get()))
         except Exception:
             pass
 
@@ -372,6 +649,11 @@ class EReceteCozucuGUI:
                   bg=r["card_bg"], fg=r["fg"], relief="flat",
                   activebackground=r["border"], cursor="hand2",
                   font=("Segoe UI", 9, "bold")).pack(side="right", padx=2)
+        tk.Checkbutton(baslik, text="📌 Üstte", variable=self.topmost_var,
+                       command=self._topmost_toggle, bg=r["header_bg"], fg=r["fg"],
+                       selectcolor=r["header_bg"], activebackground=r["header_bg"],
+                       activeforeground=r["fg"], font=("Segoe UI", 9, "bold"),
+                       bd=0, cursor="hand2").pack(side="right", padx=8)
 
         # Üst kontroller: mode switch + TC + uzunluk
         ust = tk.Frame(self.win, bg=r["bg"])
@@ -379,14 +661,27 @@ class EReceteCozucuGUI:
 
         tk.Label(ust, text="Sorgu Tipi:", bg=r["bg"], fg=r["fg_secondary"],
                  font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
-        tk.Radiobutton(ust, text="E-Reçete No", variable=self.mode_var,
-                       value="erecete", bg=r["bg"], fg=r["fg"],
-                       selectcolor=r["card_bg"], activebackground=r["bg"],
-                       font=("Segoe UI", 10)).grid(row=0, column=1, sticky="w", padx=4)
-        tk.Radiobutton(ust, text="Takip No", variable=self.mode_var,
-                       value="takip", bg=r["bg"], fg=r["fg"],
-                       selectcolor=r["card_bg"], activebackground=r["bg"],
-                       font=("Segoe UI", 10)).grid(row=0, column=2, sticky="w", padx=4)
+        # Radyo grubu tek çerçevede (TC sütunlarını kaydırmasın)
+        rf = tk.Frame(ust, bg=r["bg"])
+        rf.grid(row=0, column=1, columnspan=2, sticky="w", padx=4)
+        tk.Radiobutton(rf, text="🔎 Otomatik", variable=self.mode_var,
+                       value="oto", bg=r["bg"], fg=r["fg"], selectcolor=r["card_bg"],
+                       activebackground=r["bg"], font=("Segoe UI", 10),
+                       command=self._mode_tipi_degisti).pack(side="left")
+        tk.Radiobutton(rf, text="E-Reçete No", variable=self.mode_var,
+                       value="erecete", bg=r["bg"], fg=r["fg"], selectcolor=r["card_bg"],
+                       activebackground=r["bg"], font=("Segoe UI", 10),
+                       command=self._mode_tipi_degisti).pack(side="left", padx=4)
+        tk.Radiobutton(rf, text="Takip No", variable=self.mode_var,
+                       value="takip", bg=r["bg"], fg=r["fg"], selectcolor=r["card_bg"],
+                       activebackground=r["bg"], font=("Segoe UI", 10),
+                       command=self._mode_tipi_degisti).pack(side="left", padx=4)
+        self.oto_tip_lbl = tk.Label(rf, textvariable=self.oto_tip_var, bg=r["bg"],
+                                    fg=r["fg_secondary"], font=("Segoe UI", 9, "bold"))
+        self.oto_tip_lbl.pack(side="left", padx=(8, 2))
+        tk.Button(rf, text="⟳", command=self._medula_prefix_oku, bg=r["card_bg"],
+                  fg=r["fg"], relief="flat", cursor="hand2",
+                  font=("Segoe UI", 8)).pack(side="left")
 
         tk.Label(ust, text="T.C. Kimlik No (ops.):", bg=r["bg"], fg=r["fg_secondary"],
                  font=("Segoe UI", 10, "bold")).grid(row=0, column=3, sticky="e", padx=(24, 4))
@@ -542,6 +837,37 @@ class EReceteCozucuGUI:
                  wraplength=820, justify="left")
         self.ipucu_lbl.pack(padx=10, pady=(0, 6), anchor="w")
 
+        # Canlı Medula etkileşimi (mini penceredeki özellikler)
+        canli = tk.LabelFrame(self.win, text=" Canlı Medula ", bg=r["bg"],
+                              fg=r["fg_secondary"], font=("Segoe UI", 9, "bold"),
+                              bd=1, relief="groove")
+        canli.pack(fill="x", padx=14, pady=(0, 4))
+        cf = tk.Frame(canli, bg=r["bg"])
+        cf.pack(fill="x", padx=8, pady=4)
+        tk.Checkbutton(
+            cf, text="⚡ Yazdıkça aktar + 7'de sorgu", variable=self.canli_aktar_var,
+            bg=r["bg"], fg=r["fg"], selectcolor=r["card_bg"],
+            activebackground=r["bg"], font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(cf, text="   ", bg=r["bg"]).pack(side="left")
+        self.canli_chk = tk.Checkbutton(
+            cf, text="📡 Oturumu canlı tut", variable=self.canli_var,
+            bg=r["bg"], fg=r["fg"], selectcolor=r["card_bg"],
+            activebackground=r["bg"], font=("Segoe UI", 9),
+            command=self._canli_toggle)
+        self.canli_chk.pack(side="left", padx=(6, 0))
+        tk.Label(cf, text="aralık", bg=r["bg"], fg=r["fg_secondary"],
+                 font=("Segoe UI", 8)).pack(side="left", padx=(8, 1))
+        tk.Spinbox(cf, from_=30, to=1800, width=5, increment=30,
+                   textvariable=self.ka_min_var, font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(cf, text="–", bg=r["bg"], fg=r["fg_secondary"]).pack(side="left")
+        tk.Spinbox(cf, from_=30, to=1800, width=5, increment=30,
+                   textvariable=self.ka_max_var, font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(cf, text="sn", bg=r["bg"], fg=r["fg_secondary"],
+                 font=("Segoe UI", 8)).pack(side="left", padx=(1, 0))
+        tk.Label(cf, textvariable=self.ka_sayac_var, bg=r["bg"],
+                 fg=r["success"], font=("Consolas", 9, "bold")).pack(
+            side="left", padx=(8, 0))
+
         # Aksiyon çubuğu
         aksiyon = tk.Frame(self.win, bg=r["bg"])
         aksiyon.pack(fill="x", padx=14, pady=6)
@@ -600,25 +926,62 @@ class EReceteCozucuGUI:
             n = VARSAYILAN_UZUNLUK
         return max(1, min(KUTU_SAYISI, n))
 
+    def _tc_iptal_debounce(self):
+        try:
+            if self._tc_after:
+                self.tc_entry.after_cancel(self._tc_after)
+        except Exception:
+            pass
+        self._tc_after = None
+
     def _tc_guncelle(self):
         """TC kutusunu yorumla. 3 durum:
         - boş → Medula'daki TC kullanılır
         - harf içeriyor → isim; Enter'a basınca Botanik EOS'ta aranır
         - rakam → 9 hane girilince otomatik 11'e tamamlanır; durum gösterilir
+
+        Barkod okutulunca 11 hane çok hızlı gelir → 9. hanede tamamlamayı
+        DEBOUNCE ederiz ki son 2 hane 11'e eklenip TC'yi 13 haneye bozmasın.
         """
         giris = self.tc_var.get().strip()
         if not giris:
+            self._tc_iptal_debounce()
             self._ac.gizle()
             self.tc_bilgi_var.set("ⓘ boş → Medula TC · isim yaz → hasta listesi açılır")
             self.tc_bilgi_lbl.config(fg=self.r["fg_secondary"])
             return
         if any(c.isalpha() for c in giris):
+            self._tc_iptal_debounce()
             self._ac.tetikle(giris)      # canlı açılır öneri listesi
             self.tc_bilgi_var.set("🔎 hasta ara (en sık gelenler üstte)")
             self.tc_bilgi_lbl.config(fg=self.r["fg_secondary"])
             return
         self._ac.gizle()
-        # Sadece rakam: 9 hane → otomatik 11'e tamamla
+        # Anlık durum göstergesi — tamamlama YOK (debounce'a bırakılır).
+        try:
+            durum, n, _ilk = tc_yardimci.durum_ozeti(giris)
+        except Exception:
+            durum, n = "", 0
+        if durum:
+            renk = {0: self.r["error"], 1: self.r["success"]}.get(n, self.r["warning"])
+            onek = {0: "✗", 1: "✓"}.get(n, "●")
+            self.tc_bilgi_var.set(f"{onek} {durum}")
+            self.tc_bilgi_lbl.config(fg=renk)
+        # 9→11 tamamlamayı giriş durulunca yap (barkod serisi bitince).
+        self._tc_iptal_debounce()
+        try:
+            self._tc_after = self.tc_entry.after(
+                TC_BARKOD_DEBOUNCE_MS, self._tc_rakam_isle)
+        except Exception:
+            self._tc_after = None
+
+    def _tc_rakam_isle(self):
+        """Giriş durulunca yalnız 9 hane varsa 11'e tamamla. 11 hane zaten
+        geldiyse (barkod) tamamlama yapılmaz — bozulma olmaz."""
+        self._tc_after = None
+        giris = self.tc_var.get().strip()
+        if not giris or any(c.isalpha() for c in giris):
+            return
         rakam = "".join(c for c in giris if c.isdigit())
         if len(rakam) == 9:
             tam = tc_yardimci.tc_tamamla(rakam)
@@ -626,16 +989,6 @@ class EReceteCozucuGUI:
                 self.tc_var.set(tam)
                 self.tc_bilgi_var.set(f"✓ tamamlandı → {tam}")
                 self.tc_bilgi_lbl.config(fg=self.r["success"])
-                return
-        try:
-            durum, n, _ilk = tc_yardimci.durum_ozeti(giris)
-        except Exception:
-            self.tc_bilgi_var.set("")
-            return
-        renk = {0: self.r["error"], 1: self.r["success"]}.get(n, self.r["warning"])
-        onek = {0: "✗", 1: "✓"}.get(n, "●")
-        self.tc_bilgi_var.set(f"{onek} {durum}")
-        self.tc_bilgi_lbl.config(fg=renk)
 
     def _tc_hasta_ara(self):
         """TC kutusuna isim yazılmışsa Botanik EOS'ta hasta ara (arka planda)."""
@@ -741,6 +1094,99 @@ class EReceteCozucuGUI:
                 pass
         self._uzunluk_degisti()  # kutu aktif/pasif + _toplami_guncelle
 
+    # ── Otomatik tür (Medula prefix tablosundan) ──────────────────────
+    def _mode_tipi_degisti(self):
+        """Sorgu tipi radyosu değişince önizlemeyi güncelle. 'Otomatik'e
+        geçildiğinde prefiks tablosu elde yoksa Medula'dan sessizce oku."""
+        if self.mode_var.get() == "oto" and not (
+                self._medula_prefix_liste.get("erecete")
+                or self._medula_prefix_liste.get("takip")):
+            self._medula_prefix_oku(sessiz=True)
+        self._oto_tip_guncelle()
+
+    def _oto_ornek_numara(self):
+        """Tür tespiti / canlı aktarım için temsili numara: kullanıcının baştan
+        GİRDİĞİ karakterlerin (kesin/benzet/olası) ilk adaylarının birleşimi.
+        Girdisi olmayan (tüm-set) ilk boş pozisyonda durur — böylece boş form
+        '0000000' gibi yanıltıcı bir numara üretmez. Eksik modunda yazılan ham
+        numara kullanılır."""
+        if self.cozum_modu_var.get() == "eksik":
+            return self.motor._norm_yazilan(self.toplu_var.get())
+        ks = self.motor.karakter_seti
+        s = ""
+        for p in self._pozisyonlar():
+            if not p.aktif:
+                continue
+            # Bu pozisyonda kullanıcı girdisi var mı? Yoksa (tüm-set) → dur.
+            if not (p.kesin or p.benzet or p.olasi):
+                break
+            ad = p.adaylar(ks, self.motor.tablo)
+            s += ad[0] if ad else ""
+        return s
+
+    def _oto_tip_guncelle(self):
+        """'Otomatik' modda tespit edilen türü (→ E-Reçete / Takip) önizleme
+        etiketinde göster. Diğer modlarda etiket boş."""
+        if self.mode_var.get() != "oto":
+            self.oto_tip_var.set("")
+            return
+        num = self._oto_ornek_numara()
+        if not num:
+            self.oto_tip_var.set("→ numara bekleniyor")
+            self.oto_tip_lbl.config(fg=self.r["fg_secondary"])
+            return
+        tip, kaynak, pfx = _tur_belirle(num, self._ogrenme,
+                                        self._medula_prefix_liste)
+        ad = "E-Reçete" if tip == "erecete" else "Takip"
+        if kaynak == "medula":
+            self.oto_tip_var.set(f"→ {ad} ✓Medula {pfx}")
+            self.oto_tip_lbl.config(fg=self.r["success"])
+        elif kaynak == "ogren":
+            self.oto_tip_var.set(f"→ {ad} ✓prefiks {pfx}")
+            self.oto_tip_lbl.config(fg=self.r["fg_secondary"])
+        else:
+            self.oto_tip_var.set(f"→ {ad} (tahmin)")
+            self.oto_tip_lbl.config(fg=self.r["warning"])
+
+    def _medula_prefix_oku(self, sessiz=False):
+        """Medula E-Reçete Sorgu ekranındaki prefix tablosunu (arka planda) oku,
+        öğren ve önizlemeyi tazele."""
+        if self._prefix_okunuyor:
+            return
+        self._prefix_okunuyor = True
+        if not sessiz:
+            self.durum_var.set("Medula'dan prefiksler okunuyor…")
+
+        def isle():
+            try:
+                p = medula.prefix_tablosu_oku()
+            except Exception:
+                p = {"erecete": [], "takip": []}
+            self._ui(lambda: self._medula_prefix_geldi(p, sessiz))
+        threading.Thread(target=isle, daemon=True).start()
+
+    def _medula_prefix_geldi(self, p, sessiz=False):
+        self._prefix_okunuyor = False
+        er = p.get("erecete") or []
+        tk_ = p.get("takip") or []
+        if er:
+            self._medula_prefix_liste["erecete"] = er
+        if tk_:
+            self._medula_prefix_liste["takip"] = tk_
+        try:
+            self._ogrenme.meduladan_kaydet(er, tk_)
+        except Exception:
+            pass
+        if not er and not tk_:
+            if not sessiz:
+                self.durum_var.set("Medula prefix tablosu okunamadı "
+                                   "(E-Reçete Sorgu ekranı açık mı?).")
+            return
+        if not sessiz:
+            self.durum_var.set(f"Prefiks: E-Reçete={', '.join(er) or '?'} · "
+                               f"Takip={', '.join(tk_) or '?'}")
+        self._oto_tip_guncelle()
+
     def _pozisyonlar(self):
         n = self._aktif_uzunluk()
         poz = []
@@ -759,6 +1205,12 @@ class EReceteCozucuGUI:
         self._toplami_guncelle()
 
     def _toplami_guncelle(self):
+        # Otomatik tür önizlemesini + canlı aktarımı her değişimde tazele
+        try:
+            self._oto_tip_guncelle()
+            self._canli_aktar_planla()
+        except Exception:
+            pass
         # Eksik karakter modu
         if self.cozum_modu_var.get() == "eksik":
             self._eksik_guncelle()
@@ -937,6 +1389,18 @@ class EReceteCozucuGUI:
             self._ui(lambda: self._bitti(False, hmsg))
             return
         hwnd = mhd._medula_hwnd()
+        # Otomatik modda: türü o tarihin CANLI Medula prefix tablosuna bakarak
+        # belirle. Ekran hazır olduğuna göre tabloyu şimdi taze oku.
+        if mode == "oto":
+            try:
+                p = medula.prefix_tablosu_oku(hwnd)
+                self._ui(lambda p=p: self._medula_prefix_geldi(p, sessiz=True))
+                if p.get("erecete"):
+                    self._medula_prefix_liste["erecete"] = p["erecete"]
+                if p.get("takip"):
+                    self._medula_prefix_liste["takip"] = p["takip"]
+            except Exception:
+                pass
         belirsiz_ardisik = 0
         toplam = len(tc_list) * len(kombolar)
         coklu_tc = len(tc_list) > 1
@@ -952,11 +1416,24 @@ class EReceteCozucuGUI:
                     self._ui(lambda: self._bitti(False, "Kullanıcı durdurdu."))
                     return
                 i += 1
-                etiket = f"{kombo}  (TC {tc_etiket})" if coklu_tc else kombo
+                # Otomatik modda türü bu kombonun başına göre belirle (çapraz
+                # deneme yok — tek alan). Sabit modda seçilen tür kullanılır.
+                if mode == "oto":
+                    gercek_mode = _tur_belirle(
+                        kombo, self._ogrenme, self._medula_prefix_liste)[0]
+                    alan = "E-Reç" if gercek_mode == "erecete" else "Takip"
+                    etiket = f"{kombo} [{alan}]"
+                else:
+                    gercek_mode = mode
+                    etiket = kombo
+                if coklu_tc:
+                    etiket += f"  (TC {tc_etiket})"
                 self._ui(lambda i=i, etiket=etiket: self._ilerleme_guncelle(
                     i, toplam, etiket))
 
-                durum, mesaj = medula.tek_dene(kombo, mode=mode, tc=tc, hwnd=hwnd)
+                durum, mesaj = medula.tek_dene(
+                    kombo, mode=gercek_mode, tc=tc, hwnd=hwnd)
+                self._medula_istek_oldu()   # gerçek istek → keepalive sayacı sıfır
 
                 if durum == medula.BULUNAMADI:
                     belirsiz_ardisik = 0
@@ -964,7 +1441,7 @@ class EReceteCozucuGUI:
                         f"  [{i}/{toplam}] {etiket}  ✗ bulunamadı", "fail"))
                 elif durum == medula.BULUNDU:
                     try:
-                        self._ogrenme.ogren(mode, kombo)   # prefix+tür öğren
+                        self._ogrenme.ogren(gercek_mode, kombo)  # prefix+tür öğren
                     except Exception:
                         pass
                     self._ui(lambda i=i, etiket=etiket: self._log_yaz(
@@ -1148,7 +1625,7 @@ class AyarPenceresi:
         self.win.destroy()
 
 
-class MiniCozucuGUI:
+class MiniCozucuGUI(CanliMedulaKarma):
     """Sol üst köşede kalan küçük, her zaman üstte (topmost) hızlı çözücü.
 
     Kullanıcı TC (ops.) + tek bir numara girer. Sistem numaranın e-reçete mi
@@ -1174,7 +1651,11 @@ class MiniCozucuGUI:
         self.tablo = get_tablo()
         self.motor = CozucuMotor(self.tablo)
         self._ogrenme = get_ogrenme()
-        self._medula_prefix = {}     # {'erecete':'2P3','takip':'59X'} — Medula'dan
+        self._medula_prefix = {}     # {'erecete':'2P3','takip':'59X'} — Medula'dan (en güncel tek)
+        # Medula prefix tablosunun TAMAMI (o tarihin e-reçete + takip başları) —
+        # tür kararı doğrudan bu canlı listeye bakılarak verilir.
+        self._medula_prefix_liste = {"erecete": [], "takip": []}
+        self._prefix_okunuyor = False   # eşzamanlı okuma tekrarını engelle
 
         self.calisiyor = False
         self.durdur_bayrak = False
@@ -1185,6 +1666,7 @@ class MiniCozucuGUI:
         self._aktar_after = None         # canlı aktarım debounce id
         self._son_num_uzunluk = 0        # 7. karakterde otomatik sorgula için
         self._tc_tamamdi = False         # TC tamamlanınca imleç geçişi (tek sefer)
+        self._tc_after = None            # TC tamamlama/odak debounce id (barkod)
 
         self.tc_var = tk.StringVar()
         self.tc_bilgi_var = tk.StringVar(value="")
@@ -1360,40 +1842,73 @@ class MiniCozucuGUI:
         return True
 
     # ── TC / isim işleme ──────────────────────────────────────────────
+    def _tc_iptal_debounce(self):
+        try:
+            if self._tc_after:
+                self.tc_entry.after_cancel(self._tc_after)
+        except Exception:
+            pass
+        self._tc_after = None
+
     def _tc_guncelle(self):
         giris = self.tc_var.get().strip()
         if not giris:
+            self._tc_iptal_debounce()
             self._ac.gizle()
             self.tc_bilgi_var.set("boş → Medula TC · isim yaz → liste")
             self.tc_bilgi_lbl.config(fg=self.r["fg_secondary"])
+            self._tc_tamamdi = False
             return
         if any(c.isalpha() for c in giris):
+            self._tc_iptal_debounce()
             self._ac.tetikle(giris)
             self.tc_bilgi_var.set("🔎 hasta ara (en sık üstte)")
             self.tc_bilgi_lbl.config(fg=self.r["fg_secondary"])
             return
         self._ac.gizle()
+        # Anlık (hafif) durum göstergesi — tamamlama/odak YOK, sadece bilgi.
+        try:
+            durum, n, _ = tc_yardimci.durum_ozeti(giris)
+        except Exception:
+            durum, n = "", 0
+        if durum:
+            renk = {0: self.r["error"], 1: self.r["success"]}.get(
+                n, self.r["warning"])
+            onek = {0: "✗", 1: "✓"}.get(n, "●")
+            self.tc_bilgi_var.set(f"{onek} {durum}")
+            self.tc_bilgi_lbl.config(fg=renk)
+        # Tamamlama (9→11) + odak geçişini DEBOUNCE et — barkod hızlı serisinde
+        # 9. hanede erken tamamlayıp odağı numaraya geçirmesin (son 2 hane kaçar).
+        self._tc_iptal_debounce()
+        try:
+            self._tc_after = self.tc_entry.after(
+                TC_BARKOD_DEBOUNCE_MS, self._tc_rakam_isle)
+        except Exception:
+            self._tc_after = None
+
+    def _tc_rakam_isle(self):
+        """Giriş durulunca (barkod serisi bitince) TC'yi tamamla/doğrula ve
+        tamsa odağı Numara kutusuna geçir. Barkod 11 haneyi tek seferde
+        getirdiyse 9-hane tamamlaması ATLANIR → taşma/odak kayması olmaz."""
+        self._tc_after = None
+        giris = self.tc_var.get().strip()
+        if not giris or any(c.isalpha() for c in giris):
+            return
         rakam = "".join(c for c in giris if c.isdigit())
         tamam = False
-        if len(rakam) == 9:
+        if len(rakam) == 11:
+            # Tam 11 hane (barkod/elle): tamamlama yok, sadece doğrula.
+            try:
+                _durum, n, _ = tc_yardimci.durum_ozeti(rakam)
+            except Exception:
+                n = 0
+            tamam = (n == 1)
+        elif len(rakam) == 9:
             tam = tc_yardimci.tc_tamamla(rakam)
             if tam:
                 self.tc_var.set(tam)
                 self.tc_bilgi_var.set(f"✓ tamamlandı → {tam}")
                 self.tc_bilgi_lbl.config(fg=self.r["success"])
-                tamam = True
-        if not tamam:
-            try:
-                durum, n, _ = tc_yardimci.durum_ozeti(giris)
-            except Exception:
-                durum, n = "", 0
-            if n or not giris.isdigit():
-                renk = {0: self.r["error"], 1: self.r["success"]}.get(
-                    n, self.r["warning"])
-                onek = {0: "✗", 1: "✓"}.get(n, "●")
-                self.tc_bilgi_var.set(f"{onek} {durum}")
-                self.tc_bilgi_lbl.config(fg=renk)
-            if len(rakam) == 11 and n == 1:
                 tamam = True
         # TC yeni tamamlandıysa imleci e-reçete no (Numara) kutusuna geçir
         if tamam and not self._tc_tamamdi:
@@ -1445,19 +1960,41 @@ class MiniCozucuGUI:
         _tr_i_duzelt(self.num_entry, self.num_var)
         self._tip_guncelle()
 
+    def _tip_karar(self, num):
+        """Girilen numaranın türünü belirle. Öncelik sırası:
+           1) Kullanıcı override (tür kilidi)
+           2) MEDULA prefix tablosu (o tarihin canlı e-reçete/takip başları) —
+              en güvenilir; 'sayfaya bakarak karar' budur
+           3) Öğrenilmiş prefiks (yerel JSON)
+           4) Heuristik (harf→e-reçete, tümü rakam→takip)
+        Dönüş: (tip, kaynak, eslesen_prefix)
+               kaynak ∈ {'override','medula','ogren','tahmin'}"""
+        return _tur_belirle(num, self._ogrenme, self._medula_prefix_liste,
+                            override=self.tip_override)
+
     def _tip_guncelle(self):
         if self.tip_override:
             ad = "E-Reçete" if self.tip_override == "erecete" else "Takip"
             self.tip_var.set(f"Tip: yalnız {ad}")
+            self.tip_lbl.config(fg=self.r["fg_secondary"])
             return
         num = self.num_var.get()
-        tip, ogr = self._ogrenme.tip_belirle(num)
+        tip, kaynak, pfx = self._tip_karar(num)
         ad = "E-Reçete" if tip == "erecete" else "Takip"
-        if ogr:
-            pfx = self._ogrenme.eslesen_prefix(num) or ""
-            self.tip_var.set(f"Oto: {ad} ✓prefiks {pfx}")
+        if kaynak == "medula":
+            self.tip_var.set(f"Medula: {ad} ✓{pfx}")
+            self.tip_lbl.config(fg=self.r["success"])
+        elif kaynak == "ogren":
+            self.tip_var.set(f"Öğrenilen: {ad} ✓prefiks {pfx}")
+            self.tip_lbl.config(fg=self.r["fg_secondary"])
         else:
-            self.tip_var.set(f"Oto: {ad} (tahmin — prefiks yok)")
+            self.tip_var.set(f"Tahmin: {ad} (prefiks yok)")
+            self.tip_lbl.config(fg=self.r["warning"])
+            # Tablo elde yoksa arka planda sessizce Medula'dan okumayı dene
+            num_norm = "".join(c for c in num if c.isalnum())
+            if num_norm and not (self._medula_prefix_liste.get("erecete")
+                                 or self._medula_prefix_liste.get("takip")):
+                self._medula_prefix_oku(sessiz=True)
 
     def _tip_dongu(self):
         # oto (prefiksten tek tür) → yalnız erecete → yalnız takip
@@ -1496,6 +2033,9 @@ class MiniCozucuGUI:
         """Medula E-Reçete Sorgu ekranındaki prefix tablolarını (arka planda)
         okuyup öğren; seçili tür varsa kutuya uygula. sessiz=True → hata
         durumunda uyarı gösterme (açılışta otomatik okuma için)."""
+        if self._prefix_okunuyor:
+            return
+        self._prefix_okunuyor = True
         if not sessiz:
             self._durum("Medula'dan prefiksler okunuyor…")
 
@@ -1508,11 +2048,16 @@ class MiniCozucuGUI:
         threading.Thread(target=isle, daemon=True).start()
 
     def _medula_prefix_geldi(self, p, sessiz=False):
+        self._prefix_okunuyor = False
         er = p.get("erecete") or []
         tk_ = p.get("takip") or []
+        # Tam listeleri sakla (tür kararı bunlara göre verilir); tek-değer cache
+        # (auto-fill için) en güncel = ilk eleman.
         if er:
+            self._medula_prefix_liste["erecete"] = er
             self._medula_prefix["erecete"] = er[0]
         if tk_:
+            self._medula_prefix_liste["takip"] = tk_
             self._medula_prefix["takip"] = tk_[0]
         try:
             self._ogrenme.meduladan_kaydet(er, tk_)
@@ -1523,21 +2068,25 @@ class MiniCozucuGUI:
                 self._durum("Medula prefix tablosu okunamadı (E-Reçete Sorgu "
                             "ekranı açık mı?).", r_err=True)
             return
-        self._durum(f"Prefiks: E-Reçete={self._medula_prefix.get('erecete','?')} · "
-                    f"Takip={self._medula_prefix.get('takip','?')}")
+        self._durum(f"Prefiks: E-Reçete={', '.join(er) or '?'} · "
+                    f"Takip={', '.join(tk_) or '?'}")
+        # Yeni prefiksler geldi → mevcut numaranın tür göstergesini tazele
+        try:
+            self._tip_guncelle()
+        except Exception:
+            pass
         if self.tip_override in ("erecete", "takip"):
             self._prefix_uygula(self.tip_override)
 
     def _mode_sirasi(self, num):
-        """Denenecek TEK alanı döndürür — ÇAPRAZ DENEME YOK. Tür, numaranın
-        başındaki karakterlerden (Medula prefix tablosu / öğrenme) belirlenir;
-        bilinmiyorsa heuristik (harf→erecete, rakam→takip). Belirlenen alan
-        dışına asla geçilmez.
-        Dönüş: (modes[tek eleman], ogrenildi_mi)."""
-        if self.tip_override:
-            return [self.tip_override], True
-        tip, ogr = self._ogrenme.tip_belirle(num)
-        return [tip], ogr
+        """Denenecek/aktarılacak TEK alanı döndürür — ÇAPRAZ DENEME YOK. Tür,
+        numaranın başındaki karakterler Medula prefix tablosuyla (o tarihin canlı
+        e-reçete/takip başları) eşleştirilerek belirlenir; tabloda yoksa öğrenilmiş
+        prefiks, o da yoksa heuristik (harf→e-reçete, rakam→takip). Belirlenen
+        alan dışına asla geçilmez.
+        Dönüş: (modes[tek eleman], kesin_mi)."""
+        tip, kaynak, _pfx = self._tip_karar(num)
+        return [tip], (kaynak in ("override", "medula", "ogren"))
 
     # ── Çözüm ─────────────────────────────────────────────────────────
     def _coz(self):
@@ -1648,170 +2197,20 @@ class MiniCozucuGUI:
         except Exception:
             pass
 
-    # ── Medula canlı tut (keepalive) ──────────────────────────────────
-    def _canli_toggle(self):
-        if self.canli_var.get():
-            import time
-            import random
-            self._son_medula_istek = time.monotonic()  # sayaç başlasın
-            self._ka_hedef = random.randint(*self._ka_aralik())
-            self._ka_stop.clear()
-            self._ka_thread = threading.Thread(target=self._ka_loop, daemon=True)
-            self._ka_thread.start()
-            self._ka_sayac_guncelle()                  # canlı geri sayım
-        else:
-            self._ka_stop.set()
-            self.ka_sayac_var.set("")
+    # ── Canlı etkileşim kancaları (CanliMedulaKarma mixin için) ───────
+    def _canli_numara(self):
+        return "".join(c for c in self.num_var.get() if c.isalnum()).upper()
 
-    def _medula_istek_oldu(self):
-        """Sisteme gerçek bir Medula isteği gittiğinde çağrılır → keepalive
-        sayacını SIFIRLAR ve yeni rastgele hedef seçer (aktivite varken boşuna
-        ping atmayalım)."""
-        import time
-        import random
-        self._son_medula_istek = time.monotonic()
-        self._ka_hedef = random.randint(*self._ka_aralik())
-
-    def _ka_sayac_guncelle(self):
-        """Canlı tut açıkken sonraki tıklamaya kalan süreyi (M:SS) her saniye
-        göster. Kapalıysa durur."""
-        if not self.canli_var.get():
-            self.ka_sayac_var.set("")
-            return
-        try:
-            import time
-            kalan = int(self._ka_hedef - (time.monotonic() - self._son_medula_istek))
-            kalan = max(0, kalan)
-            self.ka_sayac_var.set(f"▸ {kalan // 60}:{kalan % 60:02d}")
-        except Exception:
-            self.ka_sayac_var.set("")
-        try:
-            self.win.after(1000, self._ka_sayac_guncelle)
-        except Exception:
-            pass
-
-    def _ka_aralik(self):
-        """Keepalive rastgele aralığı (alt, üst) sn — kullanıcı ayarından,
-        doğrulanmış (alt≥30, üst≥alt)."""
-        try:
-            a = int(self.ka_min_var.get())
-            b = int(self.ka_max_var.get())
-        except Exception:
-            a, b = 240, 360
-        a = max(30, a)
-        b = max(a, b)
-        return a, b
-
-    # ── Canlı aktarım (yazdıkça Medula'ya) ────────────────────────────
-    def _canli_aktar_planla(self):
-        """Metin değişince aktarımı debounce'la (barkod hızlı yazımını birleştir,
-        UI donmasın). Kapalıysa / çözüm sürerken yapma."""
-        if not self.canli_aktar_var.get() or self.calisiyor:
-            return
-        try:
-            if self._aktar_after:
-                self.win.after_cancel(self._aktar_after)
-        except Exception:
-            pass
-        try:
-            self._aktar_after = self.win.after(70, self._canli_aktar)
-        except Exception:
-            pass
-
-    def _canli_aktar(self):
-        """TC + numarayı Medula alanlarına yaz (best-effort). E-reçete/takip
-        numarası 7 karaktere ulaşınca (yeni) otomatik Sorgula gönder."""
-        self._aktar_after = None
-        if not self.canli_aktar_var.get() or self.calisiyor:
-            return
-        num = "".join(c for c in self.num_var.get() if c.isalnum()).upper()
+    def _canli_tc(self):
         tc_ham = self.tc_var.get().strip()
         # TC sadece rakamsa aktar (isim aramasıysa gönderme)
-        tc = tc_ham if (tc_ham and tc_ham.isdigit()) else None
-        mode = self._mode_sirasi(num)[0][0] if num else "erecete"
-        try:
-            yazildi = medula.canli_alan_yaz(
-                mode, numara=(num or None), tc=tc)
-        except Exception:
-            yazildi = False
-        if yazildi:
-            self._medula_istek_oldu()   # aktivite → keepalive ping'i ertele
-        # 7. karaktere YENİ ulaşıldıysa otomatik sorgula
-        if len(num) == 7 and self._son_num_uzunluk < 7:
-            try:
-                medula.sorgula_gonder(mode)
-                self._medula_istek_oldu()
-                self._durum(f"→ {num} otomatik sorgulandı ({'Takip' if mode=='takip' else 'E-Reçete'})")
-            except Exception:
-                pass
-        self._son_num_uzunluk = len(num)
+        return tc_ham if (tc_ham and tc_ham.isdigit()) else None
 
-    def _ka_loop(self):
-        """Medulayı canlı tut — SGK'yı yormayacak biçimde:
-        - 4–6 dk arası RASTGELE aralık (jitter; robotik kusursuz periyot yok)
-        - GECE (20:00–08:00) ping atmaz
-        - Çözüm sürerken dokunmaz (zaten sorgu trafiği var)
-        - Yalnız e-Reçete Sorgu ekranındayken GERÇEK app eylemiyle tazeler
-          (menüden e-Reçete Sorgu'yu yeniden aç — birebir kullanıcı tıklaması,
-          uydurma istek YOK). Başka ekranda ise (kullanıcı aktif) dokunmaz.
-        - Oturum düşerse ≤3 kez Giriş'e basar (şifresiz), sonra durur (kilit
-          riskine girmeyelim)."""
-        import random
-        import time
-        from datetime import datetime
-        try:
-            import medula_keepalive as ka
-            import medula_html_dom as mhd
-        except Exception:
-            return
-        giris_deneme = 0
-        eylem_sira = 0                     # dönüşümlü eylem sayacı
-        while not self._ka_stop.is_set():
-            # Her 20sn'de bir kontrol (yerel — sunucuya İSTEK GİTMEZ)
-            if self._ka_stop.wait(20):
-                return
-            # Gece (20:00–08:00): ping atma
-            try:
-                saat = datetime.now().hour
-            except Exception:
-                saat = 12
-            if saat >= 20 or saat < 8:
-                continue
-            # Çözüm sürüyorsa dokunma (kendi trafiği oturumu canlı tutar)
-            if self.calisiyor:
-                continue
-            # Son gerçek istekten bu yana HEDEF süre geçti mi? Geçmediyse bekle
-            # (yani sistem yakın zamanda Medula'ya istek attıysa keepalive atlanır)
-            if time.monotonic() - self._son_medula_istek < self._ka_hedef:
-                continue
-            try:
-                w = ka.medula_penceresi_bul()
-                if w is None:
-                    continue
-                if not ka.oturum_aktif_mi(w):
-                    if giris_deneme < 3:
-                        giris_deneme += 1
-                        d = giris_deneme
-                        self._ui(lambda d=d: self._durum(
-                            f"Oturum düştü — Giriş ({d}/3)…"))
-                        ka.oturumu_yenile(w)
-                    else:
-                        self._ui(lambda: self._durum(
-                            "Oturum yenilenemedi — elle giriş yapın."))
-                    self._medula_istek_oldu()   # sayacı sıfırla + yeni hedef
-                    continue
-                giris_deneme = 0
-                # Dönüşümlü GERÇEK eylem (uydurma istek yok). Şu an güvenli
-                # tek eylem: e-Reçete Sorgu'yu yeniden aç. (Ek ekranlar
-                # eklenince eylem_sira ile döngüye sokulacak.)
-                uygun, _m = medula.sorgu_ekraninda_mi()
-                if uygun:
-                    mhd.erecete_sorgu_tikla(mhd._medula_hwnd())
-                    eylem_sira += 1
-                    self._medula_istek_oldu()   # sayacı sıfırla + yeni hedef
-                    self._ui(lambda: self._durum("● Medula canlı tutuldu."))
-            except Exception:
-                pass
+    def _canli_mode(self, num):
+        return self._mode_sirasi(num)[0][0]
+
+    def _canli_durum(self, msg, r_err=False):
+        self._durum(msg, r_err=r_err)
 
     def _kapat(self):
         self.durdur_bayrak = True

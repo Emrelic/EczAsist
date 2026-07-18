@@ -47,6 +47,61 @@ def _heuristik(numara):
     return "takip" if s.isdigit() else "erecete"
 
 
+def _norm(s):
+    return "".join(c for c in (s or "") if c.isalnum()).upper()
+
+
+def prefix_eslesme_skoru(numara, prefix):
+    """Girilen `numara` ile bir `prefix` ne kadar örtüşüyor? (0 = uyuşmaz)
+
+    - numara prefix ile TAM başlıyorsa → skor = len(prefix)  (prefix yazılmış bitmiş)
+    - prefix numara ile başlıyorsa (kullanıcı hâlâ yazıyor) → skor = len(numara)
+    - hiçbiri değilse → 0  (ilk karakterlerden itibaren çelişki var)
+
+    Örn: numara='2P4X', prefix='2P4' → 3 · numara='2', prefix='2P4' → 1 ·
+         numara='59X', prefix='2P4' → 0
+    """
+    s = _norm(numara)
+    p = _norm(prefix)
+    if not s or not p:
+        return 0
+    if s.startswith(p):
+        return len(p)
+    if p.startswith(s):
+        return len(s)
+    return 0
+
+
+def medula_tip_belirle(numara, erecete_prefixler, takip_prefixler):
+    """Medula E-Reçete Sorgu ekranındaki prefix tablosuna göre türü belirle.
+
+    O tarihte/dönemde üretilen e-reçete numaraları (ör. 2P4, 2P3, 2P2) ve takip
+    numaraları (ör. 59Y, 59X, 59W) farklı başlangıçlarla gelir. Girilen numaranın
+    başı hangi listedeki bir prefix'le örtüşüyorsa tür odur. En uzun örtüşme
+    kazanır; iki listede de eşit güçte örtüşme olursa (çelişki) belirsiz döner.
+
+    Dönüş: (tip, eslesen_prefix, skor)
+       tip ∈ {'erecete','takip',None}   None → tabloda net eşleşme yok/çelişki
+    """
+    def _en_iyi(prefixler):
+        en_skor, en_p = 0, None
+        for p in (prefixler or []):
+            sk = prefix_eslesme_skoru(numara, p)
+            if sk > en_skor:
+                en_skor, en_p = sk, _norm(p)
+        return en_skor, en_p
+
+    ser, per = _en_iyi(erecete_prefixler)
+    stk, ptk = _en_iyi(takip_prefixler)
+    if ser == 0 and stk == 0:
+        return None, None, 0          # tablo yok / hiçbirine uymuyor
+    if ser > stk:
+        return "erecete", per, ser
+    if stk > ser:
+        return "takip", ptk, stk
+    return None, None, ser            # eşit skor, ikisine de uyuyor → çelişki
+
+
 class PrefixOgrenme:
     def __init__(self, dosya: str = OGRENME_JSON):
         self.dosya = dosya
@@ -134,11 +189,14 @@ class PrefixOgrenme:
         return recs[0].get("prefix")
 
     def meduladan_kaydet(self, erecete_list, takip_list):
-        """Medula prefix tablosundan okunan EN GÜNCEL (ilk) prefix'leri kaydet."""
-        if erecete_list:
-            self.ogren("erecete", erecete_list[0])
-        if takip_list:
-            self.ogren("takip", takip_list[0])
+        """Medula prefix tablosundan okunan TÜM prefix'leri (o dönem/tarih
+        aralığındaki e-reçete + takip başlangıçları) öğren. Liste en güncel
+        önce sıralı gelir; hepsi kaydedilir ki eski (birkaç gün önceki) bir
+        numara girildiğinde de doğru tür bulunabilsin."""
+        for p in (erecete_list or []):
+            self.ogren("erecete", p)
+        for p in (takip_list or []):
+            self.ogren("takip", p)
 
 
 _ORNEK = None

@@ -1,0 +1,16 @@
+{
+  "otomatik_calistir": true,
+  "profiller": [
+    {
+      "ad": "BOTANİK YEDEK",
+      "klasor_yolu": "E:/",
+      "mod": "gun",
+      "gun_sayisi": 10,
+      "kopya_sayisi": 5,
+      "uzanti_filtresi": "",
+      "yeni_dosya_kontrol_aktif": true,
+      "aktif": true,
+      "son_calisma_tarihi": ""
+    }
+  ]
+}
